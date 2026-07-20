@@ -39,7 +39,7 @@
     "svg": "导出 SVG",
     "svgDesc": "矢量格式，可无损缩放",
     "png": "导出 PNG",
-    "pngDesc": "图片格式，2 倍分辨率",
+    "pngDesc": "最高 2 倍分辨率，单边不超过 8192 像素",
     "ascii": "导出 ASCII",
     "asciiDesc": "文本艺术格式",
     "asciiNotSupported": "该图表类型不支持 ASCII 导出",
@@ -49,7 +49,9 @@
     "copyMarkdown": "复制 Markdown",
     "copyMarkdownDesc": "Mermaid.ink 图片链接",
     "svgSuccess": "SVG 已导出",
-    "pngSuccess": "PNG 已导出",
+    "pngPreparing": "正在生成 {{width}} × {{height}} PNG",
+    "pngSuccess": "PNG 已导出（{{width}} × {{height}}）",
+    "pngFailedAtDimensions": "当前浏览器无法导出 {{width}} × {{height}} PNG。请改用 SVG，或缩小图表尺寸。",
     "asciiSuccess": "ASCII 已导出",
     "failed": "导出失败"
   },
@@ -112,6 +114,8 @@
     "rawEvidenceDescription": "失败和预热样本保留在此处及下载报告中，但绝不会进入测量聚合。",
     "noSamples": "终止事件发生前没有样本完成。",
     "completedSummary": "保留 {{samples}} 个样本，{{errors}} 个错误，总计 {{duration}}",
+    "failureEvidence": "失败证据",
+    "failureEvidenceDescription": "每个失败都保留其实际产生错误的引擎与阶段。",
     "states": {
       "success": "已完成",
       "complete-with-errors": "已完成但含错误",
@@ -197,10 +201,15 @@
     }
   },
   "editor": {
+    "ariaLabel": "Mermaid 源代码",
     "codeMode": "代码",
     "configMode": "配置",
     "placeholder": "在此输入 Mermaid 代码...",
     "loading": "正在加载编辑器...",
+    "languageInitializing": "语言工具正在初始化",
+    "languageReconnecting": "语言工具正在重连",
+    "languageUnavailable": "语言工具不可用：{{message}}",
+    "retryLanguage": "重试",
     "hover": {
       "flowchart": "声明流程图。常用方向有 TD、LR、BT、RL。",
       "graph": "Mermaid 的另一种流程图开头。",
@@ -210,7 +219,7 @@
       "erDiagram": "声明实体关系图。",
       "journey": "声明用户旅程图，可包含 section、任务、评分和参与者。",
       "info": "声明 Mermaid 运行时/版本信息图。",
-      "zenuml": "声明 ZenUML 图。Merman 会把已支持的 ZenUML 形式转换为时序图布局。",
+      "zenuml": "声明 ZenUML 图，使用家族自有语法和类型化无头渲染管线。",
       "xychart": "声明 XY 图，可包含 x-axis、y-axis、bar 和 line 数据列。",
       "architecture": "声明架构图，可描述 group、service 和连接关系。",
       "c4": "声明 C4 图，例如 C4Context 或 C4Container。",
@@ -229,6 +238,7 @@
     }
   },
   "config": {
+    "ariaLabel": "Mermaid 配置",
     "valid": "配置可用",
     "invalidJson": "JSON 无效",
     "invalidObject": "配置无效",
@@ -237,14 +247,9 @@
   },
   "preview": {
     "title": "预览",
-    "wheelZoom": "滚轮缩放",
     "loading": "正在加载渲染引擎...",
     "error": "渲染错误",
-    "empty": "在左侧输入 Mermaid 代码",
-    "emptyHint": "或从示例中选择一个开始",
-    "mockMode": "模拟模式",
-    "mockModeDesc": "WASM 模块未加载，显示代码预览。",
-    "mockModeHint": "要启用真实渲染，请构建并加载 merman-wasm 模块。",
+    "empty": "暂无可用预览",
     "svgMode": "SVG 预览",
     "asciiMode": "ASCII 预览",
     "asciiNotSupported": "该图表类型不支持 ASCII",

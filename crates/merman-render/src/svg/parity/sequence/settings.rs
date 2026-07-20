@@ -181,4 +181,24 @@ mod tests {
 
         assert!(settings.force_menus);
     }
+
+    #[test]
+    fn sequence_render_settings_choose_bare_rect_fill_fallbacks() {
+        for (theme_variables, expected) in [
+            (
+                json!({
+                    "rectBkgColor": "#112233",
+                    "actorBkg": "#445566",
+                }),
+                "#112233",
+            ),
+            (json!({ "actorBkg": "#445566" }), "#445566"),
+            (json!({}), "rgba(128, 128, 128, 0.5)"),
+        ] {
+            let settings = SequenceRenderSettings::from_effective_config(&json!({
+                "themeVariables": theme_variables,
+            }));
+            assert_eq!(settings.rect_default_fill, expected);
+        }
+    }
 }

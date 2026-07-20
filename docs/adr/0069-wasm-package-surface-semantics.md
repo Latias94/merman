@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-06-10
-- Last amended: 2026-07-18
+- Last amended: 2026-07-19
 
 ## Context
 
@@ -16,9 +16,12 @@ The WASM feature-surface slimming lane split concerns that were previously easy 
 WASM host" artifact, because wasm-bindgen glue, browser imports, and TypeScript package helpers are
 part of its intended contract.
 
-At the same time, `merman-typst-plugin` now proves the Typst transport boundary: the default render
-artifact imports only the two `typst_env` wasm-minimal-protocol functions, exports `memory`, and
-passes a wasmi smoke call returning SVG JSON.
+At the same time, `merman-typst-plugin` proves the Typst transport boundary through an exact
+profile descriptor, a closed ABI, and a profile-owned artifact. The publish artifact may import
+only the two `typst_env` wasm-minimal-protocol functions. Its callable surface is exactly the five
+ABI-2 operations for version, capabilities, SVG render, and canonical analysis. Its non-callable
+support exports are exactly `memory` plus the immutable `i32` linker globals `__data_end` and
+`__heap_base` emitted by Rust's WebAssembly linker.
 
 ## Decision
 
@@ -59,11 +62,22 @@ flowchart LR
    - It must not be documented as the Typst or pure-WASM surface.
 
 3. `merman-typst-plugin` owns Typst-compatible WASM.
-   - Package builds must pass the `typst-wasm` import/export gate and the wasmi smoke gate.
-   - The default plugin artifact enables `render`.
+   - `crates/merman-typst-plugin/wasm-profiles.json` owns the plugin ABI number plus exact features
+     and expected capabilities for every measured profile. The crate build generates the numeric
+     ABI constant and wire bytes from it; package assembly, runtime smoke, and the size matrix
+     consume the same descriptor.
+   - Package builds must pass the exact `typst-wasm` import/export gate and invoke every ABI
+     operation through the wasmi smoke gate before assembly.
+   - The export gate distinguishes the five callable ABI operations from linker support metadata;
+     only `memory` and the immutable `i32` globals `__data_end` and `__heap_base` may accompany
+     those operations.
+   - The publish/default plugin artifact enables `render`, `analysis`, `core-full`, and
+     `elk-layout`; the public package API exposes canonical analysis schema 1 rather than the old
+     validation projection.
    - `--no-default-features` is the bridge-only protocol artifact.
-   - `core-full`, `core-host`, and `ratex-math` are opt-ins; Typst package builds should not enable
-     `core-host`.
+   - Typst package builds never enable `core-host`.
+   - RaTeX is not a Typst capability while its dependency closure imports browser system-font
+     discovery. A future math profile needs a separate zero-browser-import admission.
 
 4. Rust/native defaults stay compatibility-oriented.
    - This ADR does not change default feature behavior for normal Rust, CLI, browser, or native
@@ -80,7 +94,8 @@ flowchart LR
 | Browser preset evidence | All named browser presets build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and preset manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |
 | Typst import boundary | Only the two `typst_env` protocol imports are present | `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` |
-| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and return SVG JSON | `cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>` |
+| Typst export boundary | Exactly five callable ABI operations, `memory`, and immutable `i32` `__data_end`/`__heap_base` linker globals are present; every other export is rejected | The shared Wasmi module-surface validator used by `profile-budget check-wasm` and `typst-plugin-smoke` |
+| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and every ABI-2 operation matches the selected profile | `cargo run -p xtask -- typst-plugin-smoke --profile publish --wasm <plugin.wasm>` |
 | Surface documentation | Browser and Typst/pure-WASM surfaces are not conflated | `docs/release/PACKAGE_SURFACES.md`, `docs/FEATURES.md`, and README surface sections |
 
 ## Alternatives Considered
@@ -132,6 +147,7 @@ Keep `merman-typst-plugin` as an internal probe until the Typst package wrapper 
 | Editor helpers drift from LSP/parser semantics | High | Low | Keep behavior in `merman-editor-core`; run it through the dedicated ABI-2/schema-1 WASM Worker rather than TypeScript heuristics |
 | Typst docs imply full package readiness from transport smoke | Medium | Medium | Label Typst package publication as manual/future; document smoke as transport validation only |
 | Browser changes reintroduce JS imports into Typst builds | High | Low | Keep `profile-budget check-wasm --profile typst-wasm` and `typst-plugin-smoke` as release gates |
+| A stale or different-profile WASM is assembled into the Typst package | High | Low | Use a profile-owned artifact manifest, validate it on `--skip-wasm-build`, and replace package directories transactionally |
 | Feature defaults become unclear across crates | Medium | Medium | Record defaults in `docs/FEATURES.md`, README, and package surface docs |
 | Source-build preset sizes are compared across unlike surfaces | Low | Medium | Use `xtask wasm-size-matrix` with explicit `browser` and `typst` surfaces |
 

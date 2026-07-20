@@ -8,8 +8,8 @@ fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
         .expect("state diagram should parse")
         .expect("state diagram should be detected");
 
-    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
-    render_model(&parsed.model, options)
+    assert_eq!(parsed.metadata().diagram_type, "stateDiagram");
+    render_model(parsed.model(), options)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {

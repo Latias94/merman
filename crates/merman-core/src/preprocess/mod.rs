@@ -6,6 +6,23 @@ use crate::{DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, Result, So
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
+#[cfg(all(test, feature = "full"))]
+use std::cell::Cell;
+
+#[cfg(all(test, feature = "full"))]
+thread_local! {
+    static PUBLIC_PARSE_PREPROCESS_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(all(test, feature = "full"))]
+pub(crate) fn reset_public_parse_preprocess_count() {
+    PUBLIC_PARSE_PREPROCESS_COUNT.set(0);
+}
+
+#[cfg(all(test, feature = "full"))]
+pub(crate) fn public_parse_preprocess_count() -> usize {
+    PUBLIC_PARSE_PREPROCESS_COUNT.get()
+}
 
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
@@ -55,6 +72,9 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
+    #[cfg(all(test, feature = "full"))]
+    PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
+
     let outer = preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)?;
     // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
     // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
@@ -88,22 +108,25 @@ fn preprocess_single_pass(
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
     }
 
-    let (directive_config, directive_removals) =
-        process_directives(source.text(), registry, diagram_type)?;
-    for removal in &directive_removals {
+    let processed_directives = process_directives(source.text(), registry, diagram_type)?;
+    for prefix in processed_directives.editor_prefixes {
+        source.record_global_directive_prefix(prefix);
+    }
+    for removal in &processed_directives.removals {
         source.record_global_lexeme(
             EditorLexemeKind::Directive,
             SourceSpan::new(removal.start, removal.end),
         );
     }
     source.apply_edits(
-        directive_removals
+        processed_directives
+            .removals
             .into_iter()
             .map(SourceEdit::delete)
             .collect(),
     );
 
-    frontmatter_config.deep_merge(directive_config.as_value());
+    frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     remove_mermaid_comments(&mut source);
     Ok(PreprocessResult {
@@ -403,7 +426,7 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
     #[cfg(not(feature = "full-config"))]
     {
         let _ = yaml_body;
-        return Ok((stripped, None, MermaidConfig::empty_object()));
+        Ok((stripped, None, MermaidConfig::empty_object()))
     }
 
     #[cfg(feature = "full-config")]
@@ -607,24 +630,46 @@ fn merge_top_level_frontmatter_diagram_configs(
     }
 }
 
+struct ProcessedDirectives {
+    config: MermaidConfig,
+    removals: Vec<std::ops::Range<usize>>,
+    editor_prefixes: Vec<String>,
+}
+
 fn process_directives(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
-) -> Result<(MermaidConfig, Vec<std::ops::Range<usize>>)> {
+) -> Result<ProcessedDirectives> {
     let directives = detect_directives(input)?;
     if directives.is_empty() {
-        return Ok((MermaidConfig::empty_object(), Vec::new()));
+        return Ok(ProcessedDirectives {
+            config: MermaidConfig::empty_object(),
+            removals: Vec::new(),
+            editor_prefixes: Vec::new(),
+        });
     }
     let init = detect_init(&directives, input, registry, diagram_type)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
+    let mut editor_prefixes = Vec::new();
+    for directive in &directives {
+        if matches!(directive.ty.as_str(), "init" | "initialize" | "wrap")
+            && !editor_prefixes.contains(&directive.ty)
+        {
+            editor_prefixes.push(directive.ty.clone());
+        }
+    }
 
     let mut merged = init;
     if wrap {
         merged.set_value("wrap", Value::Bool(true));
     }
 
-    Ok((merged, directive_removal_ranges(input)))
+    Ok(ProcessedDirectives {
+        config: merged,
+        removals: directive_removal_ranges(input),
+        editor_prefixes,
+    })
 }
 
 fn detect_init(

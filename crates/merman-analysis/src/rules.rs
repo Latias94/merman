@@ -28,6 +28,7 @@ pub const RESOURCE_LIMIT_RULE_ID: &str = "merman.resource.source_bytes_exceeded"
 pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_matter";
 pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
+pub const INVALID_THEME_COLOR_RULE_ID: &str = "merman.config.invalid_theme_color";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const FLOWCHART_FACTS_PROJECTION_RULE_ID: &str = "merman.internal.flowchart_facts_projection";
@@ -350,6 +351,21 @@ const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+const INVALID_THEME_COLOR_RULE: RuleDescriptor = RuleDescriptor {
+    id: INVALID_THEME_COLOR_RULE_ID,
+    description: "Report theme color values rejected by Mermaid's pinned Khroma calculations.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/packages/mermaid/src/themes/theme-default.js",
+        "docs/adr/0068-render-side-presentation-theme-view.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+
 const PANIC_RULE: RuleDescriptor = RuleDescriptor {
     id: PANIC_RULE_ID,
     description: "Report an internal panic caught while analyzing Mermaid source.",
@@ -452,6 +468,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     MALFORMED_FRONT_MATTER_RULE,
     INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE,
+    INVALID_THEME_COLOR_RULE,
     PANIC_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     FLOWCHART_FACTS_PROJECTION_RULE,

@@ -39,6 +39,10 @@ impl AnalysisResult {
         self.payload
     }
 
+    pub fn into_parts(self) -> (AnalysisPayload, SourceMap, Vec<AnalyzedDiagram>) {
+        (self.payload, self.source_map, self.diagrams)
+    }
+
     pub fn source_map(&self) -> &SourceMap {
         &self.source_map
     }

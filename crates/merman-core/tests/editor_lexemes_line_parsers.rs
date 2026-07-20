@@ -1,6 +1,4 @@
-use merman_core::{
-    EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, ParseOptions,
-};
+use merman_core::{EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine};
 
 #[test]
 fn journey_emits_lexemes_from_its_line_parser() {
@@ -16,7 +14,7 @@ fn journey_emits_lexemes_from_its_line_parser() {
         "Choose item: 5: Alice, Bob\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("journey", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("journey", source)
         .expect("journey editor parse")
         .expect("journey editor facts");
 
@@ -55,7 +53,7 @@ fn journey_recovery_keeps_lexemes_after_a_malformed_middle_task() {
         "After: 4: Bob\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("journey", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("journey", source)
         .expect("journey editor recovery")
         .expect("journey recovery facts");
 
@@ -85,7 +83,7 @@ fn gantt_emits_dates_durations_dependencies_and_click_lexemes_from_its_parser() 
         "click task1 HREF \"https://example.com/task\"\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", source)
         .expect("gantt editor parse")
         .expect("gantt editor facts");
 
@@ -125,7 +123,7 @@ fn gantt_recovery_keeps_lexemes_after_a_malformed_middle_statement() {
         "After: after, 2024-01-02, 2d\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", source)
         .expect("gantt editor recovery")
         .expect("gantt recovery facts");
 
@@ -150,7 +148,7 @@ fn gantt_recovery_keeps_lexemes_after_a_malformed_middle_statement() {
 fn gantt_unterminated_accessibility_block_upgrades_late_attached_lexemes_to_recovery() {
     let source = "gantt\naccDescr {\n  partial description\n";
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", source)
         .expect("gantt editor recovery")
         .expect("gantt recovery facts");
 
@@ -178,7 +176,7 @@ fn sankey_emits_csv_fields_quotes_delimiters_and_values_from_its_parser() {
         "Target,End,NaN\r\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("sankey", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sankey", source)
         .expect("sankey editor parse")
         .expect("sankey editor facts");
 
@@ -207,7 +205,7 @@ fn sankey_emits_csv_fields_quotes_delimiters_and_values_from_its_parser() {
 fn sankey_recovery_keeps_csv_lexemes_after_a_malformed_middle_record() {
     let source = concat!("sankey\n", "Before,Middle,1\n", "broken\n", "After,End,2\n",);
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("sankey", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sankey", source)
         .expect("sankey editor recovery")
         .expect("sankey recovery facts");
 
@@ -235,7 +233,7 @@ fn quadrant_emits_structural_point_class_and_style_lexemes_from_its_parser() {
         "Campaign A:::priority: [0.2, 0.8] radius: 8, color: #ff0000\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source)
         .expect("quadrant editor parse")
         .expect("quadrant editor facts");
 
@@ -274,7 +272,7 @@ fn quadrant_recovery_keeps_point_lexemes_after_a_malformed_middle_statement() {
         "After: [0.3, 0.7]\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source)
         .expect("quadrant editor recovery")
         .expect("quadrant recovery facts");
 

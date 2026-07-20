@@ -4,6 +4,7 @@ import type { DiagramType } from "@mermanjs/web";
 import { renderCoordinatorStore } from "./render-coordinator-browser.ts";
 import type {
   CompletedRenderBatch,
+  EngineRenderFailure,
   RenderCoordinatorState,
 } from "./render-coordinator.ts";
 import { isCompletedRenderState } from "./render-coordinator.ts";
@@ -57,4 +58,20 @@ export function selectCurrentMermanRenderTime(
 
 export function selectRenderPending(state: RenderCoordinatorState): boolean {
   return state.status === "pending" || state.status === "updating";
+}
+
+export function selectCurrentMermanRenderFailure(
+  state: RenderCoordinatorState
+): EngineRenderFailure | null {
+  return isCompletedRenderState(state) && state.merman.status === "failure"
+    ? state.merman
+    : null;
+}
+
+export function selectCurrentMermaidRenderFailure(
+  state: RenderCoordinatorState
+): EngineRenderFailure | null {
+  return isCompletedRenderState(state) && state.mermaid?.status === "failure"
+    ? state.mermaid
+    : null;
 }

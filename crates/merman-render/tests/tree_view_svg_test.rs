@@ -81,12 +81,16 @@ fn layout_tree_view(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> TreeViewDiagramLayout {
-    let RenderSemanticModel::TreeView(model) = &parsed.model else {
+    let RenderSemanticModel::TreeView(model) = parsed.model() else {
         panic!("expected TreeView render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_tree_view_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-        .unwrap()
+    layout_tree_view_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -114,7 +118,7 @@ treeView-beta
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "treeView");
+    assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
         parsed,
@@ -154,7 +158,7 @@ accDescr: Accessible TreeView Description
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "treeView");
+    assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
         parsed,
@@ -737,7 +741,7 @@ treeView-beta
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "treeView");
+    assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
         parsed,
@@ -808,7 +812,7 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "treeView");
+    assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let tree_view = layout_tree_view(&parsed, &session);
 

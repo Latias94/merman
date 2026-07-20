@@ -52,7 +52,9 @@ const asciiRuntimeExportNames = [
 ];
 
 const editorRuntimeExportNames = [
+  "createEditorSession",
   "editorDiagnostics",
+  "editorDiagramDetection",
   "editorCodeActions",
   "editorCompletions",
   "editorHover",
@@ -62,11 +64,23 @@ const editorRuntimeExportNames = [
   "editorReferences",
   "editorPrepareRename",
   "editorRename",
-  "editorSemanticTokenLegend",
+  "editorSemanticTokenDescriptor",
   "editorSemanticTokens",
 ];
 
+const editorDescriptorValueExportNames = [
+  "SEMANTIC_TOKEN_DESCRIPTOR",
+  "SEMANTIC_TOKEN_DESCRIPTOR_DIGEST",
+  "SEMANTIC_TOKEN_MODIFIER_LSP_NAMES",
+  "SEMANTIC_TOKEN_RECORD_WIDTH",
+  "SEMANTIC_TOKEN_TYPE_LSP_NAMES",
+  "SEMANTIC_TOKEN_VALID_MODIFIER_MASK",
+  "SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX",
+];
+
 export const surfaceStableValueExportNames = [
+  "MERMAN_ABI_VERSION",
+  "UNAVAILABLE_DIAGRAM_DETECTION",
   "SUPPORTED_THEMES",
   "SUPPORTED_HOST_THEME_PRESETS",
   "SUPPORTED_DIAGRAMS",
@@ -152,13 +166,17 @@ const runtimeProfiles = Object.freeze({
   },
   editor: {
     runtimeExportNames: editorSurfaceRuntimeExportNames,
-    valueExportNames: surfaceStableValueExportNames,
+    valueExportNames: [
+      ...surfaceStableValueExportNames,
+      ...editorDescriptorValueExportNames,
+    ],
   },
   full: {
     runtimeExportNames: fullRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
       ...surfaceRenderValueExportNames,
+      ...editorDescriptorValueExportNames,
     ],
   },
 });

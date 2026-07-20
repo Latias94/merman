@@ -1,4 +1,10 @@
-import { expect, test, type Frame, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Frame,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
@@ -163,9 +169,13 @@ test("trusted Merman defers engine parse/eval until Fresh sampling and then reus
 
 test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(240_000);
   const harness = await startHarness(page);
+  let zenumlFirstLoadSuccess = false;
+  let zenumlFirstLoadParentPublication = false;
+  let zenumlReusedRealmSuccess = false;
+  let zenumlReusedRealmParentPublication = false;
   try {
     for (const scenario of EXTERNAL_MERMAID_SCENARIOS) {
       await createSession(page, harness.origin, "mermaid");
@@ -197,6 +207,10 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
       );
       expect(cold.trace.register_start).not.toBeNull();
       expectParentPublication(cold);
+      if (scenario.id === "zenuml") {
+        zenumlFirstLoadSuccess = cold.type === "benchmark-sample-success";
+        zenumlFirstLoadParentPublication = cold.parentPublication !== undefined;
+      }
       expect(await readEngineSentinel(frame)).toMatchObject({
         id: "benchmark-mermaid",
         version: "11.16.0",
@@ -213,9 +227,27 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
       expect(warm.trace.engine_import_start).toBeNull();
       expect(warm.trace.register_start).toBeNull();
       expectParentPublication(warm);
+      if (scenario.id === "zenuml") {
+        zenumlReusedRealmSuccess = warm.type === "benchmark-sample-success";
+        zenumlReusedRealmParentPublication = warm.parentPublication !== undefined;
+      }
       await disposeSession(page);
       await expect(iframe).toHaveCount(0);
     }
+    await attachAdmissionProbes(testInfo, "execution-isolation", [
+      admissionProbe("sandbox-allows-scripts-only", true),
+      admissionProbe("opaque-origin", true),
+      admissionProbe("zenuml-first-load-success", zenumlFirstLoadSuccess),
+      admissionProbe(
+        "zenuml-first-load-parent-publication",
+        zenumlFirstLoadParentPublication
+      ),
+      admissionProbe("zenuml-reused-realm-success", zenumlReusedRealmSuccess),
+      admissionProbe(
+        "zenuml-reused-realm-parent-publication",
+        zenumlReusedRealmParentPublication
+      ),
+    ]);
   } finally {
     await disposeSession(page);
     await harness.server.close();
@@ -224,7 +256,7 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
 
 test("opaque Mermaid denies ambient authority and installs only bounded ephemeral storage", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await startHarness(page);
   const blockedUrl = `${harness.origin}/blocked-realm-probe`;
@@ -280,12 +312,51 @@ test("opaque Mermaid denies ambient authority and installs only bounded ephemera
     });
     expect(result.type, JSON.stringify(result)).toBe("benchmark-sample-success");
     expectParentPublication(result);
-    expect(await probeEphemeralStorage(frame)).toEqual({
+    const ephemeralStorage = await probeEphemeralStorage(frame);
+    expect(ephemeralStorage).toEqual({
       frozen: true,
       local: "local-value",
       quotaError: "QuotaExceededError",
       session: "session-value",
     });
+    await attachAdmissionProbes(testInfo, "security", [
+      admissionProbe("parent-access-denied", probe.parent),
+      admissionProbe("origin-storage-denied", probe.storage),
+      admissionProbe("indexeddb-denied", probe.indexedDb),
+      admissionProbe("cookie-access-denied", probe.cookie),
+      admissionProbe("fetch-egress-denied", probe.fetch),
+      admissionProbe("xhr-egress-denied", probe.xhr),
+      admissionProbe("websocket-egress-denied", probe.webSocket),
+      admissionProbe("eventsource-egress-denied", probe.eventSource),
+      admissionProbe("worker-creation-denied", probe.worker),
+      admissionProbe("image-subresource-denied", probe.image),
+      admissionProbe(
+        "beacon-egress-denied",
+        probe.beaconReturnValue && serverReceivedRequests.length === 0
+      ),
+      admissionProbe(
+        "blocked-request-attempt-observed",
+        attemptedRequests.length > 0
+      ),
+      admissionProbe("server-http-egress-zero", serverReceivedRequests.length === 0),
+      admissionProbe("server-websocket-egress-zero", blockedSockets.length === 0),
+      admissionProbe("ephemeral-storage-frozen", ephemeralStorage.frozen),
+      admissionProbe(
+        "ephemeral-local-storage-bounded",
+        ephemeralStorage.local,
+        "local-value"
+      ),
+      admissionProbe(
+        "ephemeral-session-storage-isolated",
+        ephemeralStorage.session,
+        "session-value"
+      ),
+      admissionProbe(
+        "ephemeral-storage-quota-enforced",
+        ephemeralStorage.quotaError,
+        "QuotaExceededError"
+      ),
+    ]);
   } finally {
     page.off("request", observeRequest);
     page.off("websocket", observeSocket);
@@ -297,7 +368,7 @@ test("opaque Mermaid denies ambient authority and installs only bounded ephemera
 
 test("opaque self-navigation records the first-request residual then poisons the realm", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await startHarness(page);
   const navigationUrl = `${harness.origin}/opaque-navigation-probe`;
@@ -322,16 +393,25 @@ test("opaque self-navigation records the first-request residual then poisons the
     }, navigationUrl);
     await expect.poll(() => requests.length).toBe(1);
     await expect(iframe).toHaveCount(0);
-    await expect(
-      sampleSession(page, {
+    let poisoned = false;
+    try {
+      await sampleSession(page, {
         id: "post-navigation",
         engine: "mermaid",
         mode: "realm-cold",
         role: "measured",
         source: "flowchart LR\n  Poisoned --> Rejected",
         externalRequirements: { externalDiagrams: [], layoutModules: [] },
-      })
-    ).rejects.toThrow(/not ready/u);
+      });
+    } catch (error) {
+      poisoned = error instanceof Error && /not ready/u.test(error.message);
+    }
+    expect(poisoned).toBe(true);
+    await attachAdmissionProbes(testInfo, "execution-isolation", [
+      admissionProbe("self-navigation-first-request-recorded", requests.length === 1),
+      admissionProbe("self-navigation-removes-frame", (await iframe.count()) === 0),
+      admissionProbe("self-navigation-poisons-realm", poisoned),
+    ]);
   } finally {
     page.off("request", observeRequest);
     await page.unroute(navigationUrl);
@@ -342,7 +422,7 @@ test("opaque self-navigation records the first-request residual then poisons the
 
 test("invalid source poisons one opaque realm and a replacement renders ZenUML", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await startHarness(page);
   try {
@@ -357,14 +437,18 @@ test("invalid source poisons one opaque realm and a replacement renders ZenUML",
     });
     expect(invalid.type).toBe("benchmark-sample-failure");
     expect(invalid.parentPublication).toBeUndefined();
-    await expect(
-      sampleSession(page, {
+    let poisoned = false;
+    try {
+      await sampleSession(page, {
         ...EXTERNAL_MERMAID_SCENARIOS[0],
         engine: "mermaid",
         mode: "warm",
         role: "measured",
-      })
-    ).rejects.toThrow(/not ready/u);
+      });
+    } catch (error) {
+      poisoned = error instanceof Error && /not ready/u.test(error.message);
+    }
+    expect(poisoned).toBe(true);
 
     await disposeSession(page);
     await createSession(page, harness.origin, "mermaid");
@@ -378,6 +462,21 @@ test("invalid source poisons one opaque realm and a replacement renders ZenUML",
       "benchmark-sample-success"
     );
     expectParentPublication(recovered);
+    await attachAdmissionProbes(testInfo, "execution-isolation", [
+      admissionProbe(
+        "invalid-render-has-no-publication",
+        invalid.parentPublication === undefined
+      ),
+      admissionProbe("invalid-render-poisons-realm", poisoned),
+      admissionProbe(
+        "replacement-realm-renders-zenuml",
+        recovered.type === "benchmark-sample-success"
+      ),
+      admissionProbe(
+        "replacement-render-parent-publication",
+        recovered.parentPublication !== undefined
+      ),
+    ]);
   } finally {
     await disposeSession(page);
     await harness.server.close();
@@ -721,6 +820,37 @@ async function probeEphemeralStorage(frame: Frame) {
       session: sessionStorage.getItem("shared-key"),
       quotaError,
     };
+  });
+}
+
+type AdmissionCategory = "execution-isolation" | "security";
+
+interface AdmissionProbe {
+  readonly expected: boolean | string | null;
+  readonly id: string;
+  readonly observed: boolean | string | null;
+  readonly passed: boolean;
+}
+
+function admissionProbe(
+  id: string,
+  observed: boolean | string | null,
+  expected: boolean | string | null = true
+): AdmissionProbe {
+  return { id, observed, expected, passed: observed === expected };
+}
+
+async function attachAdmissionProbes(
+  testInfo: TestInfo,
+  category: AdmissionCategory,
+  probes: readonly AdmissionProbe[]
+): Promise<void> {
+  await testInfo.attach(`merman-zenuml-admission:${category}`, {
+    body: Buffer.from(
+      JSON.stringify({ schemaVersion: 1, category, probes }),
+      "utf8"
+    ),
+    contentType: "application/json",
   });
 }
 

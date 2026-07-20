@@ -27,8 +27,9 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-const wasmGlueExports = new Set(["default", "initSync", "start"]);
+const wasmGlueExports = new Set(["default", "EditorSession", "initSync", "start"]);
 const runtimeWrapperOnlyExports = new Set([
+  "createEditorSession",
   "initMerman",
   "getMerman",
   "isMermanInitialized",
@@ -84,6 +85,27 @@ const requiredRuntimeBindings = [
 ];
 
 const requiredTypeProperties = new Map([
+  [
+    "BrowserEditorSession",
+    [
+      "version",
+      "uri",
+      "update",
+      "diagnostics",
+      "diagramDetection",
+      "codeActions",
+      "completions",
+      "hover",
+      "documentSymbols",
+      "workspaceSymbols",
+      "definition",
+      "references",
+      "prepareRename",
+      "rename",
+      "semanticTokens",
+      "dispose",
+    ],
+  ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
   [
     "ResourceOptions",
@@ -119,9 +141,7 @@ const requiredTypeStringLiterals = new Map([
     [
       "unavailable",
       "parser_complete",
-      "parser_complete_degraded_spans",
       "parser_recovered",
-      "parser_recovered_degraded_spans",
     ],
   ],
   [

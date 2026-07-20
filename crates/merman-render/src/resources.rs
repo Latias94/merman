@@ -5,6 +5,25 @@ use merman_core::models::class_diagram::ClassDiagram;
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
+/// Maximum tree depth accepted by the sealed resvg-compatible SVG contract.
+///
+/// usvg, resvg, and krilla-svg all recurse through SVG groups. This is an implementation
+/// capability rather than a tunable resource policy, so every profile retains a hard cap. Native
+/// raster builds execute the recursive backend on a dedicated stack and exercise 256 levels in a
+/// checked-in PNG smoke test. WebAssembly keeps a smaller cap because it cannot create that worker
+/// stack. This is intentionally independent from any diagram grammar's nesting policy.
+#[cfg(not(target_arch = "wasm32"))]
+pub const MAX_RESVG_TREE_DEPTH: usize = 256;
+
+#[cfg(target_arch = "wasm32")]
+pub const MAX_RESVG_TREE_DEPTH: usize = 64;
+
+const BOUNDED_RESVG_TREE_DEPTH: usize = if MAX_RESVG_TREE_DEPTH < 128 {
+    MAX_RESVG_TREE_DEPTH
+} else {
+    128
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderResourceProfile {
     Interactive,
@@ -17,6 +36,8 @@ pub enum RenderResourceProfile {
 pub struct RenderResourceLimits {
     pub max_source_bytes: Option<usize>,
     pub max_svg_bytes: Option<usize>,
+    pub max_svg_elements: Option<usize>,
+    pub max_svg_tree_depth: usize,
     pub max_flowchart_nodes: Option<usize>,
     pub max_flowchart_edges: Option<usize>,
     pub max_flowchart_subgraphs: Option<usize>,
@@ -40,6 +61,8 @@ impl RenderResourceLimits {
         Self {
             max_source_bytes: Some(2 * MIB),
             max_svg_bytes: Some(24 * MIB),
+            max_svg_elements: Some(250_000),
+            max_svg_tree_depth: BOUNDED_RESVG_TREE_DEPTH,
             max_flowchart_nodes: Some(8_000),
             max_flowchart_edges: Some(16_000),
             max_flowchart_subgraphs: Some(2_000),
@@ -57,6 +80,8 @@ impl RenderResourceLimits {
         Self {
             max_source_bytes: Some(MIB),
             max_svg_bytes: Some(12 * MIB),
+            max_svg_elements: Some(125_000),
+            max_svg_tree_depth: BOUNDED_RESVG_TREE_DEPTH,
             max_flowchart_nodes: Some(4_000),
             max_flowchart_edges: Some(8_000),
             max_flowchart_subgraphs: Some(1_000),
@@ -74,6 +99,8 @@ impl RenderResourceLimits {
         Self {
             max_source_bytes: Some(16 * MIB),
             max_svg_bytes: Some(128 * MIB),
+            max_svg_elements: Some(1_000_000),
+            max_svg_tree_depth: MAX_RESVG_TREE_DEPTH,
             max_flowchart_nodes: Some(50_000),
             max_flowchart_edges: Some(100_000),
             max_flowchart_subgraphs: Some(10_000),
@@ -91,6 +118,8 @@ impl RenderResourceLimits {
         Self {
             max_source_bytes: None,
             max_svg_bytes: None,
+            max_svg_elements: None,
+            max_svg_tree_depth: MAX_RESVG_TREE_DEPTH,
             max_flowchart_nodes: None,
             max_flowchart_edges: None,
             max_flowchart_subgraphs: None,
@@ -128,6 +157,25 @@ impl RenderResourceLimits {
         phase: ResourceLimitPhase,
     ) -> Result<(), ResourceLimitExceeded> {
         check_limit(phase, "max_svg_bytes", svg.len(), self.max_svg_bytes)
+    }
+
+    pub fn check_svg_structure(
+        &self,
+        elements: usize,
+        tree_depth: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        check_limit(
+            ResourceLimitPhase::SvgPostprocess,
+            "max_svg_elements",
+            elements,
+            self.max_svg_elements,
+        )?;
+        check_limit(
+            ResourceLimitPhase::SvgPostprocess,
+            "max_svg_tree_depth",
+            tree_depth,
+            Some(self.max_svg_tree_depth.min(MAX_RESVG_TREE_DEPTH)),
+        )
     }
 
     pub fn check_flowchart_complexity(
@@ -622,10 +670,10 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Zenuml(model) = parsed.model else {
+        let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
-        let complexity = ZenumlComplexity::from_model(&model);
+        let complexity = ZenumlComplexity::from_model(model);
 
         assert_eq!(complexity.participants, 2);
         assert_eq!(complexity.statements, 1);
@@ -645,7 +693,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Zenuml(model) = parsed.model else {
+        let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
 
@@ -666,7 +714,7 @@ mod tests {
         for case in cases {
             let mut limits = RenderResourceLimits::unbounded_for_trusted_input();
             (case.configure)(&mut limits);
-            let error = limits.check_zenuml_complexity(&model).unwrap_err();
+            let error = limits.check_zenuml_complexity(model).unwrap_err();
             assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
             assert_eq!(error.limit, case.name);
         }

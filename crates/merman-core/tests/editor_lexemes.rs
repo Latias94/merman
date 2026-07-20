@@ -1,17 +1,317 @@
+use chrono::NaiveDate;
 use merman_core::{
-    EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, ParseOptions,
-    diagram_family_capabilities,
+    EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticFacts,
+    Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,
 };
+use merman_fixture_render_context::RenderContextCatalog;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .expect("workspace root")
+}
+
+fn fixtures_root() -> PathBuf {
+    workspace_root().join("fixtures")
+}
+
+fn fixture_render_contexts() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(fixtures_root()).expect("valid fixture render context catalog")
+    })
+}
+
+fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
+    fixture_render_contexts()
+        .context_for_fixture(path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid fixture render context lookup for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| MermaidConfig::from_value(context.site_config_value()))
+}
+
+fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
+    match fixture_site_config_for_path(path) {
+        Some(site_config) => base.clone().with_site_config(site_config),
+        None => base.clone(),
+    }
+}
+
+fn list_formal_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with('_'))
+        {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with('_'))
+                {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_some_and(|extension| extension == "mmd") {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+#[derive(Default)]
+struct FormalFixtureEditorFactsAudit {
+    total: usize,
+    malformed_metadata: usize,
+    unsupported: usize,
+    supported: usize,
+    available: usize,
+    malformed_editor: usize,
+    localized_drop_documents: usize,
+}
+
+impl FormalFixtureEditorFactsAudit {
+    fn accounted(&self) -> usize {
+        self.malformed_metadata + self.unsupported + self.available + self.malformed_editor
+    }
+}
+
+#[test]
+fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
+    let root = fixtures_root();
+    let fixtures = list_formal_fixture_mmd_files(&root);
+    assert!(
+        !fixtures.is_empty(),
+        "formal fixture corpus must not be empty"
+    );
+
+    let editor_capabilities = diagram_family_capabilities()
+        .iter()
+        .map(|capability| (capability.diagram_type, capability.has_editor_parser))
+        .collect::<BTreeMap<_, _>>();
+    let base = Engine::new()
+        .with_fixed_today(Some(
+            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed fixture date"),
+        ))
+        .with_fixed_local_offset_minutes(Some(0));
+    let mut audit = FormalFixtureEditorFactsAudit {
+        total: fixtures.len(),
+        ..Default::default()
+    };
+    let mut unavailable = Vec::new();
+    let mut malformed_samples = Vec::new();
+    let mut localized_drop_fixtures = Vec::new();
+    let mut unsupported_types = BTreeMap::<String, usize>::new();
+
+    for path in fixtures {
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let relative = path.strip_prefix(&root).unwrap_or(&path);
+        let engine = engine_for_fixture(&base, &path);
+        let metadata = match engine.parse_metadata_sync(&source) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                assert!(
+                    is_malformed_fixture_error(&error),
+                    "{} failed metadata extraction for a non-syntax reason: {error}",
+                    relative.display()
+                );
+                audit.malformed_metadata += 1;
+                record_sample(
+                    &mut malformed_samples,
+                    format!("{} (metadata): {error}", relative.display()),
+                );
+                continue;
+            }
+        };
+
+        let has_editor_parser = editor_capabilities
+            .get(metadata.diagram_type.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} detected uncataloged diagram type {}",
+                    relative.display(),
+                    metadata.diagram_type
+                )
+            });
+        if !*has_editor_parser {
+            audit.unsupported += 1;
+            *unsupported_types
+                .entry(metadata.diagram_type.clone())
+                .or_default() += 1;
+            continue;
+        }
+        audit.supported += 1;
+
+        match engine.parse_editor_semantic_facts_with_type_sync(&metadata.diagram_type, &source) {
+            Ok(Some(facts)) => {
+                audit.available += 1;
+                let localized_drop_diagnostics = facts
+                    .diagnostics
+                    .iter()
+                    .filter(|diagnostic| {
+                        diagnostic
+                            .message
+                            .contains("editor fact span(s) that crossed a preprocessing edit")
+                    })
+                    .map(|diagnostic| diagnostic.message.as_str())
+                    .collect::<Vec<_>>();
+                if !localized_drop_diagnostics.is_empty() {
+                    audit.localized_drop_documents += 1;
+                    localized_drop_fixtures.push(format!(
+                        "{} ({}): {}",
+                        relative.display(),
+                        metadata.diagram_type,
+                        localized_drop_diagnostics.join("; ")
+                    ));
+                }
+                assert_editor_fact_spans_belong_to_source(relative, &source, &facts);
+            }
+            Ok(None) => unavailable.push(format!(
+                "{} ({})",
+                relative.display(),
+                metadata.diagram_type
+            )),
+            Err(error) => {
+                assert!(
+                    is_malformed_fixture_error(&error),
+                    "{} ({}) failed editor parsing for a non-syntax reason: {error}",
+                    relative.display(),
+                    metadata.diagram_type
+                );
+                audit.malformed_editor += 1;
+                record_sample(
+                    &mut malformed_samples,
+                    format!(
+                        "{} ({} editor): {error}",
+                        relative.display(),
+                        metadata.diagram_type
+                    ),
+                );
+            }
+        }
+    }
+
+    assert_eq!(
+        audit.accounted() + unavailable.len(),
+        audit.total,
+        "every formal fixture must receive exactly one honest outcome"
+    );
+    assert_eq!(
+        audit.supported,
+        audit.available + audit.malformed_editor + unavailable.len(),
+        "every supported fixture must receive exactly one editor-parser outcome"
+    );
+    assert!(audit.available > 0, "the corpus must exercise editor facts");
+    assert!(
+        unavailable.is_empty(),
+        "supported fixtures must not lose the whole editor-fact document because one span is unmappable:\n{}",
+        unavailable.join("\n")
+    );
+
+    eprintln!(
+        "formal fixture editor-fact audit: total={}, supported={}, available={}, localized_drops={}, malformed_editor={}, unsupported={} {:?}, malformed_metadata={}{}{}",
+        audit.total,
+        audit.supported,
+        audit.available,
+        audit.localized_drop_documents,
+        audit.malformed_editor,
+        audit.unsupported,
+        unsupported_types,
+        audit.malformed_metadata,
+        if localized_drop_fixtures.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nlocalized preprocessing drops retained document facts:\n{}",
+                localized_drop_fixtures.join("\n")
+            )
+        },
+        if malformed_samples.is_empty() {
+            String::new()
+        } else {
+            format!("\nmalformed samples:\n{}", malformed_samples.join("\n"))
+        }
+    );
+}
+
+fn is_malformed_fixture_error(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::DiagramParse { .. }
+            | Error::MalformedFrontMatter
+            | Error::InvalidDirectiveJson { .. }
+            | Error::InvalidFrontMatterYaml { .. }
+    )
+}
+
+fn record_sample(samples: &mut Vec<String>, sample: String) {
+    const SAMPLE_LIMIT: usize = 8;
+    if samples.len() < SAMPLE_LIMIT {
+        samples.push(sample);
+    }
+}
+
+fn assert_editor_fact_spans_belong_to_source(
+    fixture: &Path,
+    source: &str,
+    facts: &EditorSemanticFacts,
+) {
+    let fixture = fixture.display().to_string();
+    for symbol in &facts.symbols {
+        assert_source_span(&fixture, source, "symbol", symbol.span);
+        assert_source_span(&fixture, source, "symbol selection", symbol.selection);
+    }
+    for lexeme in facts.lexemes() {
+        assert_source_span(&fixture, source, "lexeme", lexeme.span());
+    }
+    for diagnostic in &facts.diagnostics {
+        if let Some(span) = diagnostic.span {
+            assert_source_span(&fixture, source, "diagnostic", span);
+        }
+    }
+    for expected in &facts.expected_syntax {
+        assert_source_span(&fixture, source, "expected syntax", expected.span);
+    }
+}
+
+fn assert_source_span(fixture: &str, source: &str, owner: &str, span: SourceSpan) {
+    assert!(
+        span.start <= span.end,
+        "{fixture}: {owner} span is reversed: {span:?}"
+    );
+    assert!(
+        span.end <= source.len(),
+        "{fixture}: {owner} span is out of bounds: {span:?}"
+    );
+    assert!(
+        source.is_char_boundary(span.start) && source.is_char_boundary(span.end),
+        "{fixture}: {owner} span splits a UTF-8 code point: {span:?}"
+    );
 }
 
 fn family_baselines() -> BTreeMap<String, PathBuf> {
@@ -56,16 +356,11 @@ fn every_full_profile_family_emits_rich_non_overlapping_lexemes() {
         let source = fs::read_to_string(fixture)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", fixture.display()));
         let diagram_type = engine
-            .parse_metadata_sync(&source, ParseOptions::strict())
+            .parse_metadata_sync(&source)
             .unwrap_or_else(|error| panic!("{family} detection failed: {error}"))
-            .unwrap_or_else(|| panic!("{family} was not detected"))
             .diagram_type;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                &diagram_type,
-                &source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync(&diagram_type, &source)
             .unwrap_or_else(|error| panic!("{family} editor parse failed: {error}"))
             .unwrap_or_else(|| panic!("{family} has no editor facts"));
         assert_eq!(facts.lexeme_failure(), None, "{family} lexical validity");
@@ -105,7 +400,7 @@ fn global_preprocessing_owns_frontmatter_directives_and_comments() {
         "A --> B\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("flowchart", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart", source)
         .expect("editor parse")
         .expect("editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -137,7 +432,7 @@ fn flowchart_and_swimlane_use_the_real_flowchart_lexer_journal() {
 
     for (family, source) in cases {
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(family, source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync(family, source)
             .expect("editor parse")
             .expect("editor facts");
         assert_eq!(facts.lexeme_failure(), None);
@@ -174,7 +469,7 @@ fn flowchart_compound_tokens_emit_parser_owned_components() {
         "end\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("flowchart", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart", source)
         .expect("editor parse")
         .expect("editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -224,7 +519,7 @@ fn flowchart_recovery_journals_partial_strings_and_later_tokens() {
         "D --> E\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("flowchart", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart", source)
         .expect("editor recovery")
         .expect("editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -261,7 +556,7 @@ fn zenuml_uses_its_grammar_lexer_for_valid_and_recovered_facts() {
         "date = 2026-01-15\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("zenuml", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("zenuml", source)
         .expect("editor recovery")
         .expect("editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -307,7 +602,7 @@ fn zenuml_companion_matrix_tokens_keep_emoji_units_and_digit_names_exact() {
         "const result = await 3DSecure.next()\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("zenuml", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("zenuml", source)
         .expect("editor parse")
         .expect("editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -360,7 +655,7 @@ fn class_lexemes_come_from_the_single_lalrpop_lexer_pass() {
         "click Order href \"https://example.com\" \"Open\" _blank\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", source)
         .expect("class editor parse")
         .expect("class editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -405,7 +700,7 @@ fn sequence_lexemes_come_from_the_single_lalrpop_lexer_pass() {
         "end\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("sequence", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", source)
         .expect("sequence editor parse")
         .expect("sequence editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -462,11 +757,7 @@ fn class_and_sequence_recovery_keep_tokens_on_both_sides_of_the_error() {
 
     for (diagram_type, family, source) in cases {
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                diagram_type,
-                source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync(diagram_type, source)
             .expect("recoverable editor parse")
             .expect("recoverable editor facts");
         assert_eq!(facts.lexeme_failure(), None, "{family}");
@@ -546,7 +837,7 @@ fn state_uses_its_grammar_lexer_for_compound_tokens() {
         "# state-local comment\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("state", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("state", source)
         .expect("state editor parse")
         .expect("state editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -593,7 +884,7 @@ fn state_lexer_recovery_keeps_tokens_after_a_malformed_middle_statement() {
         "After --> End\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("state", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("state", source)
         .expect("state editor recovery")
         .expect("state editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -622,7 +913,7 @@ fn er_uses_its_grammar_lexer_for_relationships_attributes_and_styles() {
         "style ORDER fill:#fff\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("er", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", source)
         .expect("er editor parse")
         .expect("er editor facts");
     assert_eq!(facts.lexeme_failure(), None);
@@ -679,7 +970,7 @@ fn er_lexer_recovery_keeps_tokens_after_a_malformed_middle_statement() {
         "AFTER ||--|| END : retained\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("er", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", source)
         .expect("er editor recovery")
         .expect("er editor facts");
     assert_eq!(facts.lexeme_failure(), None);

@@ -1,7 +1,9 @@
 use crate::environment::RenderSession;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
-use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+use crate::svg::{
+    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+};
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, Result};
 use merman_core::diagrams;
@@ -532,7 +534,72 @@ impl RenderedFamilySvg {
         self.family_kind
     }
 
+    /// Applies an output pipeline while retaining the renderer-owned family capability.
+    pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
+        let output_metadata = self.output_metadata();
+        self.svg = pipeline.process_owned_to_string_with_metadata(
+            self.svg,
+            &output_metadata,
+            &self.session,
+        )?;
+        self.session
+            .resource_limits()
+            .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        Ok(self)
+    }
+
+    /// Finalizes the typed family output for resvg/raster consumption.
+    pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
+        let output_metadata = self.output_metadata();
+        let svg = pipeline.process_owned_resvg_compatible_with_metadata(
+            self.svg,
+            &output_metadata,
+            &self.session,
+        )?;
+        self.session
+            .resource_limits()
+            .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        Ok(RenderedResvgCompatibleSvg {
+            svg,
+            family_kind: self.family_kind,
+            metadata: self.metadata,
+            session: self.session,
+        })
+    }
+
+    fn output_metadata(&self) -> SvgPostprocessMetadata {
+        SvgPostprocessMetadata::from_svg(&self.svg)
+            .with_family_kind(self.family_kind)
+            .with_diagram_type(self.metadata.diagram_type.clone())
+            .with_optional_diagram_title(self.metadata.title.clone())
+    }
+
     pub fn into_parts(self) -> (String, RenderFamilyKind, ParseMetadata, RenderSession) {
+        (self.svg, self.family_kind, self.metadata, self.session)
+    }
+}
+
+/// Renderer-owned family output after the terminal resvg compatibility finalizer.
+pub struct RenderedResvgCompatibleSvg {
+    svg: ResvgCompatibleSvg,
+    family_kind: RenderFamilyKind,
+    metadata: ParseMetadata,
+    session: RenderSession,
+}
+
+impl RenderedResvgCompatibleSvg {
+    pub fn svg(&self) -> &ResvgCompatibleSvg {
+        &self.svg
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        ResvgCompatibleSvg,
+        RenderFamilyKind,
+        ParseMetadata,
+        RenderSession,
+    ) {
         (self.svg, self.family_kind, self.metadata, self.session)
     }
 }
@@ -648,7 +715,7 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
-    let ParsedDiagramRender { meta, model } = parsed;
+    let (meta, model) = parsed.into_parts();
     let diagram_type = meta.diagram_type.as_str();
     if let RenderSemanticModel::CustomJson(custom) = &model {
         return Err(Error::NonRenderableCustomModel {

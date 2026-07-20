@@ -85,10 +85,11 @@ silently fall back to the tiny registry.
 exposes `analyze()`, `analysisFacts()`, `detectDiagramFacts()`, document analysis, validation, and
 `lintRuleCatalog()`.
 `bindingCapabilities().editor_language` is the supported runtime contract for whether the loaded
-artifact exposes `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`,
+artifact exposes `createEditorSession()`, `editorDiagramDetection()`, `editorDiagnostics()`,
+`editorCodeActions()`, `editorCompletions()`,
 `editorHover()`, `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
 `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
-`editorSemanticTokenLegend()`, and `editorSemanticTokens()`.
+`editorSemanticTokenDescriptor()`, and `editorSemanticTokens()`.
 
 ## Published entry points
 
@@ -325,8 +326,10 @@ cache.
 document versioning, timeouts, and framework integration belong to the host application. The
 recommended pattern is to initialize one capability-specific subpath inside a module Worker. For
 language intelligence, use `@mermanjs/web/editor`, keep a URI plus monotonically increasing
-document version, and discard stale query results. For off-main-thread rendering, initialize the
-full or render subpath and send SVG strings back to the main thread:
+document version, create one `BrowserEditorSession` per open document, and discard stale query
+results. Call `update()` only with a newer document version and always call `dispose()` when the
+Worker or document closes. For off-main-thread rendering, initialize the full or render subpath and
+send SVG strings back to the main thread:
 
 ```ts
 // merman.worker.ts
@@ -384,10 +387,11 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
 - `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`, `detectDiagramFacts()`,
   `analyzeDocumentFacts()`, `validate()`
-- `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
+- `createEditorSession()`, `editorDiagramDetection()`, `editorDiagnostics()`,
+  `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
   `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
   `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
-  `editorSemanticTokenLegend()`, `editorSemanticTokens()`
+  `editorSemanticTokenDescriptor()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
 - `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
@@ -402,15 +406,23 @@ wrappers.
 `asciiCapabilities()` without the diagnostics analysis wrappers. Unsupported wrappers are absent
 from slim entry points rather than exported as throwing stubs.
 `@mermanjs/web/editor` exports analysis/facts, validation, metadata, and all editor-language
-queries over the full 35-family catalog. Its native browser ABI is 2; editor diagnostics and shared
-analysis/facts payloads remain schema 1.
+queries over the full 35-family catalog. `createEditorSession()` owns one analyzed document and
+reuses it across diagnostics, completion, navigation, rename, and semantic-token queries until
+`update()` replaces it or `dispose()` releases it. Its native browser ABI is 2; editor diagnostics
+and shared analysis/facts payloads remain schema 1.
 
 All render, parse, layout, analysis, validation, editor, and metadata functions require
-`initMerman()` first. The editor functions are stateless document queries backed by
-`merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
-same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
+`initMerman()` first. The stateless editor functions remain available for one-shot consumers.
+Interactive editors should use `createEditorSession()` so every query reads one versioned analyzed
+snapshot instead of rebuilding it from source. A disposed session fails closed and cannot be
+reused. Both forms are backed by `merman-editor-core` and return UTF-16 positions/ranges so Monaco
+and LSP adapters can project the same completion, diagnostics, hover, symbol, code-action, rename,
+and semantic-token semantics.
 Editor query results expose semantic fact provenance where applicable, matching the
 `ParserComplete`, `ParserRecovered`, and `Unavailable` boundary used by `merman-editor-core`.
+`SEMANTIC_TOKEN_DESCRIPTOR` and its generated digest, legend, and packing constants define the
+shared token identity. `editorSemanticTokens()` returns the validated LSP-relative `Uint32Array`
+in five-word records; consumers must not reorder the records or translate token names.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
 metadata drifts from the TypeScript surface. `lintRuleCatalog()` is available only on

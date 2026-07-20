@@ -239,9 +239,10 @@ impl<'input> Lexer<'input> {
                 self.push_lexeme(EditorLexemeKind::Keyword, start, after);
                 self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
                 self.push_trimmed_lexeme(EditorLexemeKind::String, self.pos, self.input.len());
+                self.pos = self.input.len();
                 return Some(Err(LexError {
                     message: "Unterminated accDescr block; missing '}'".to_string(),
-                    span: crate::SourceSpan::new(self.pos - 1, self.pos),
+                    span: crate::SourceSpan::new(opening, opening + 1),
                 }));
             };
             let body_start = self.pos;

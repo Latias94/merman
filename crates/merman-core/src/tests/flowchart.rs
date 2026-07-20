@@ -48,22 +48,52 @@ fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
     let engine = Engine::new();
     let text = "swimlane-beta LR\nA[Start] --> B[Done]\n";
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(text)
         .unwrap()
         .expect("swimlane parses through flowchart semantics");
 
-    assert_eq!(parsed.diagram.meta.diagram_type, "swimlane");
+    assert_eq!(parsed.metadata().diagram_type, "swimlane");
     assert_eq!(
-        parsed.diagram.meta.effective_config.get_str("layout"),
+        parsed.metadata().effective_config.get_str("layout"),
         Some("swimlane")
     );
-    assert_eq!(parsed.diagram.model["type"], json!("swimlane"));
-    assert_eq!(parsed.diagram.model["keyword"], json!("swimlane-beta"));
-    assert_eq!(parsed.diagram.model["direction"], json!("LR"));
-    assert_eq!(parsed.diagram.model["nodes"][0]["id"], json!("A"));
-    assert_eq!(parsed.diagram.model["edges"][0]["from"], json!("A"));
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["type"],
+        json!("swimlane")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["keyword"],
+        json!("swimlane-beta")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["direction"],
+        json!("LR")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["nodes"][0]["id"],
+        json!("A")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["edges"][0]["from"],
+        json!("A")
+    );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("swimlane should reuse flowchart editor facts");
     };
     let a_start = text.find("A[").expect("A node");
@@ -74,6 +104,93 @@ fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
         .expect("A editor symbol");
     assert_eq!(a.selection.start, a_start);
     assert_eq!(a.selection.end, a_start + "A".len());
+}
+
+#[test]
+fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
+    let cases = [
+        ("flowchart-v2", "flowchart TD"),
+        ("flowchart", "graph TD"),
+        ("flowchart-elk", "flowchart-elk TD"),
+        ("swimlane", "swimlane-beta LR"),
+    ];
+    let engine = Engine::new();
+
+    for (diagram_type, header) in cases {
+        for (tail, should_parse) in [
+            ("accTitle: One pass\nA --> B\n", true),
+            ("accTitle: One pass\nA((\n", false),
+        ] {
+            crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
+            crate::diagrams::flowchart::reset_flowchart_accessibility_scan_count();
+            let source = format!("{header}\n{tail}");
+            let snapshot = engine
+                .parse_diagram_snapshot_with_type_sync(diagram_type, &source)
+                .unwrap()
+                .expect("built-in Flowchart variant snapshot");
+
+            assert_eq!(
+                snapshot.outcome().parsed_model().is_some(),
+                should_parse,
+                "{diagram_type} strict parser outcome"
+            );
+            if !should_parse {
+                let DiagramParseOutcome::Failed(error) = snapshot.outcome() else {
+                    unreachable!("partial recovery token must not satisfy the strict parser");
+                };
+                assert!(error.to_string().contains("Unterminated node label"));
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("failed Flowchart construction must retain editor facts");
+                };
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            }
+            assert_eq!(
+                crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
+                1,
+                "{diagram_type} token trace"
+            );
+            assert_eq!(
+                crate::diagrams::flowchart::flowchart_accessibility_scan_count(),
+                1,
+                "{diagram_type} accessibility scan"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_accessibility_statements_emit_lexer_owned_unicode_lexemes() {
+    let source = concat!(
+        "flowchart TD\n",
+        "  accTitle : 结账流程\n",
+        "accDescr {\n  第一行\n  第二行\n}\n",
+        "A --> B\n",
+    );
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .expect("Flowchart snapshot");
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Flowchart editor facts");
+    };
+    let lexemes = facts
+        .lexemes()
+        .iter()
+        .map(|lexeme| {
+            let span = lexeme.span();
+            (lexeme.kind(), &source[span.start..span.end])
+        })
+        .collect::<Vec<_>>();
+
+    for keyword in ["accTitle", "accDescr"] {
+        assert!(lexemes.contains(&(EditorLexemeKind::Keyword, keyword)));
+    }
+    for delimiter in [":", "{", "}"] {
+        assert!(lexemes.contains(&(EditorLexemeKind::Delimiter, delimiter)));
+    }
+    for value in ["结账流程", "第一行\n  第二行"] {
+        assert!(lexemes.contains(&(EditorLexemeKind::String, value)));
+    }
 }
 
 #[test]
@@ -101,8 +218,7 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     })));
 
     let site_default = engine
-        .parse_metadata_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
-        .unwrap()
+        .parse_metadata_sync("swimlane-beta LR\nA-->B\n")
         .expect("swimlane metadata");
     assert_eq!(
         site_default.effective_config.get_str("layout"),
@@ -110,11 +226,7 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     );
 
     let user_override = engine
-        .parse_metadata_sync(
-            "%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
+        .parse_metadata_sync("%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n")
         .expect("swimlane metadata with user layout");
     assert_eq!(user_override.config.get_str("layout"), Some("elk"));
     assert_eq!(
@@ -123,11 +235,7 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     );
 
     let cleared_override = engine
-        .parse_metadata_sync(
-            "%%{init: {\"layout\": null}}%%\nswimlane-beta LR\nA-->B\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
+        .parse_metadata_sync("%%{init: {\"layout\": null}}%%\nswimlane-beta LR\nA-->B\n")
         .expect("swimlane metadata with a null layout override");
     assert_eq!(
         cleared_override.effective_config.get_str("layout"),
@@ -135,12 +243,7 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     );
 
     let known_type = engine
-        .parse_metadata_with_type_sync(
-            "swimlane",
-            "swimlane-beta LR\nA-->B\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
+        .parse_metadata_with_type_sync("swimlane", "swimlane-beta LR\nA-->B\n")
         .expect("known-type swimlane metadata");
     assert_eq!(
         known_type.effective_config.get_str("layout"),
@@ -156,12 +259,12 @@ fn parse_swimlane_render_model_reuses_flowchart_semantics() {
         .expect("swimlane render parse succeeds")
         .expect("swimlane render model");
 
-    assert_eq!(parsed.meta.diagram_type, "swimlane");
+    assert_eq!(parsed.metadata().diagram_type, "swimlane");
     assert_eq!(
-        parsed.meta.effective_config.get_str("layout"),
+        parsed.metadata().effective_config.get_str("layout"),
         Some("swimlane")
     );
-    let RenderSemanticModel::Flowchart(model) = parsed.model else {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("swimlane should reuse the flowchart semantic model");
     };
     assert_eq!(model.keyword, "swimlane-beta");
@@ -171,15 +274,16 @@ fn parse_swimlane_render_model_reuses_flowchart_semantics() {
 }
 
 #[test]
-fn parse_diagram_flowchart_accepts_acc_description_alias() {
-    let engine = Engine::new();
-    let text = "flowchart TD\naccTitle: Flow title\naccDescription: Flow description\nA-->B\n";
-    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_with_type_sync(
+            "flowchart-v2",
+            "flowchart TD\naccDescription: Flow description\nA-->B\n",
+        )
         .unwrap()
-        .unwrap();
+        .expect("Flowchart snapshot");
 
-    assert_eq!(res.model["accTitle"], json!("Flow title"));
-    assert_eq!(res.model["accDescr"], json!("Flow description"));
+    assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
 }
 
 #[test]
@@ -2447,7 +2551,7 @@ fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
         .unwrap()
         .unwrap();
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Flowchart(model) => {
             assert_eq!(model.direction.as_deref(), Some("TB"));
             assert_eq!(model.warning_facts.len(), 1);
@@ -2472,7 +2576,7 @@ fn parse_flowchart_render_model_remaps_missing_direction_warning_fact_after_fron
         .unwrap();
     let flowchart_start = text.find("flowchart").expect("flowchart header");
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Flowchart(model) => {
             assert_eq!(
                 model.warning_facts[0].span,
@@ -2538,7 +2642,7 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2564,7 +2668,7 @@ fn parse_flowchart_editor_facts_accept_legacy_flowchart_type() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart", text)
         .unwrap()
         .expect("legacy flowchart editor facts");
 
@@ -2583,7 +2687,7 @@ fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2602,7 +2706,7 @@ fn parse_flowchart_editor_facts_emit_label_payload_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA[\"Start node\"] & C -->|go| B{\"Decision\"} & D\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2676,7 +2780,7 @@ fn parse_flowchart_editor_facts_recover_label_payload_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA[\"Start node\"] -->|go| B{\"Decision\"}\nC-->";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2729,7 +2833,7 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nclassDef hot fill:#f00,stroke:#333;\nA-->B\nstyle A fill:#fff\nclass A,B hot\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2800,7 +2904,7 @@ fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
     let text =
         "flowchart TD\nclassDef hot fill:#f00,stroke:#333\nstyle A fill:#fff\nclass A,B hot\nC-->";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2865,7 +2969,7 @@ fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nA@{\n  shape: rounded\n}\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2886,7 +2990,7 @@ fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
     let engine = Engine::new();
     let text = "flowchart TD\nD@{ shape: rounded }\nD --> E\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2912,7 +3016,7 @@ fn parse_flowchart_editor_facts_do_not_emit_edge_shape_data_as_node_symbol() {
     let engine = Engine::new();
     let text = "flowchart TD\nA e1@--> B\ne1@{ curve: basis }\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2933,7 +3037,7 @@ fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2954,7 +3058,7 @@ fn parse_flowchart_editor_facts_emit_shape_trigger_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nA((\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2975,7 +3079,7 @@ fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nA@{\n  shape: rounded\n}\nC-->";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -2998,13 +3102,12 @@ fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
         "%%{init: {\"theme\": \"dark\"}}%%\n",
         "flowchart TD\n",
         "accTitle: Flow title\n",
-        "accDescription: Flow description\n",
-        "accDescr: Legacy description\n",
+        "accDescr: Flow description\n",
         "classDef hot fill:#f00\n",
         "A-->B\n",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -3027,7 +3130,7 @@ fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
             .any(|prefix| prefix == "accTitle")
     );
     assert!(
-        facts
+        !facts
             .directive_prefixes
             .iter()
             .any(|prefix| prefix == "accDescription")
@@ -3054,7 +3157,7 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "flowchart TD\nsubgraph group\nA-->B\nC-->";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -3087,7 +3190,7 @@ fn parse_flowchart_editor_facts_recovers_from_malformed_label_without_hanging() 
     let engine = Engine::new();
     let text = "flowchart TD\nA[bad (label)]\nB-->C\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 
@@ -3102,7 +3205,7 @@ fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\nA -->|go|";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
         .unwrap()
         .expect("flowchart editor facts");
 

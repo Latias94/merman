@@ -1,3 +1,6 @@
 {
-  "merman.languageIntelligence.enabled": true
+  "merman.languageIntelligence.enabled": true,
+  "merman.analysis.lint.enable_rules": [
+    "merman.authoring.flowchart.explicit_direction"
+  ]
 }

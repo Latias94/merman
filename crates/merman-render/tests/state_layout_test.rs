@@ -52,14 +52,18 @@ fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagra
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::State(model) = parsed.model else {
+    let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected State render model");
     };
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_state_diagram_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("typed State layout")
+    layout_state_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("typed State layout")
 }
 
 fn layout_state_from_text_with_options(
@@ -70,14 +74,18 @@ fn layout_state_from_text_with_options(
         .parse_diagram_for_render_model_sync(text, parse_options)
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::State(model) = parsed.model else {
+    let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected State render model");
     };
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_state_diagram_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("typed State layout")
+    layout_state_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("typed State layout")
 }
 
 #[test]
@@ -90,7 +98,7 @@ fn state_parse_for_render_model_handles_deep_composite_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+    assert_eq!(parsed.metadata().diagram_type, "stateDiagram");
 }
 
 #[test]

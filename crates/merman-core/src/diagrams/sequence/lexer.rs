@@ -290,10 +290,13 @@ impl<'input> Lexer<'input> {
         }
         let start = self.pos;
         let Some(rel_end) = self.input[self.pos..].find('}') else {
-            let s = self.input[self.pos..].to_string();
             self.pos = self.input.len();
             self.push_trimmed_lexeme(EditorLexemeKind::String, start, self.pos);
-            return Some((start, Tok::AccDescrMultiline(s), self.pos));
+            self.mode = Mode::Default;
+            // The pinned Jison lexer reaches EOF in its exclusive accessibility state without
+            // returning `acc_descr_multiline_value`; the incomplete directive is therefore
+            // ignored semantically while consuming the remainder of the document.
+            return None;
         };
         let end = self.pos + rel_end;
         let s = self.input[self.pos..end].to_string();
@@ -301,7 +304,37 @@ impl<'input> Lexer<'input> {
         self.push_trimmed_lexeme(EditorLexemeKind::String, start, end);
         self.push_lexeme(EditorLexemeKind::Delimiter, end, end + 1);
         self.mode = Mode::Default;
+        // In the upstream Jison grammar the multiline value is a complete statement and the
+        // closing brace returns the lexer to INITIAL, where a same-line statement may begin.
+        // The local grammar uses Newline as its statement boundary, so preserve that token-level
+        // contract only when no physical line boundary will provide it.
+        if self.multiline_acc_descr_needs_boundary() {
+            self.pending.push_back((self.pos, Tok::Newline, self.pos));
+        }
         Some((start, Tok::AccDescrMultiline(s), self.pos))
+    }
+
+    fn multiline_acc_descr_needs_boundary(&self) -> bool {
+        let bytes = self.input.as_bytes();
+        let mut cursor = self.pos;
+        while matches!(bytes.get(cursor), Some(b' ' | b'\t')) {
+            cursor += 1;
+        }
+
+        match bytes.get(cursor).copied() {
+            None => true,
+            Some(b'\n' | b';') => false,
+            Some(b'\r') if bytes.get(cursor + 1).is_none_or(|next| *next == b'\n') => false,
+            Some(b'#') => self.comment_reaches_eof(cursor),
+            Some(b'%') if bytes.get(cursor + 1) == Some(&b'%') => self.comment_reaches_eof(cursor),
+            Some(_) => true,
+        }
+    }
+
+    fn comment_reaches_eof(&self, start: usize) -> bool {
+        !self.input.as_bytes()[start..]
+            .iter()
+            .any(|byte| matches!(byte, b'\r' | b'\n'))
     }
 
     fn lex_keyword_lines(&mut self) -> Option<(usize, Tok, usize)> {
@@ -923,6 +956,9 @@ impl<'input> Iterator for Lexer<'input> {
             if let Some(tok) = self.lex_keyword_lines() {
                 return self.emit(tok);
             }
+            if self.pos >= self.input.len() {
+                return None;
+            }
 
             if self.force_actor_id
                 && let Some(tok) = self.lex_forced_actor_id()
@@ -1055,4 +1091,56 @@ fn record_sequence_token(
         EditorLexemeModifiers::NONE,
         SourceSpan::new(start, end),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Lexer, Tok};
+
+    fn token_trace(input: &str) -> Vec<(usize, &'static str, usize)> {
+        Lexer::new(input)
+            .map(|event| {
+                let (start, token, end) = event.expect("sequence token");
+                let name = match token {
+                    Tok::AccDescrMultiline(_) => "accDescrMultiline",
+                    Tok::Newline => "newline",
+                    Tok::Participant => "participant",
+                    _ => "other",
+                };
+                (start, name, end)
+            })
+            .collect()
+    }
+
+    fn boundary_after_accessibility(input: &str) -> (usize, &'static str, usize) {
+        let trace = token_trace(input);
+        let accessibility = trace
+            .iter()
+            .position(|(_, name, _)| *name == "accDescrMultiline")
+            .expect("multiline accessibility token");
+        trace[accessibility + 1]
+    }
+
+    #[test]
+    fn multiline_accessibility_only_synthesizes_required_statement_boundaries() {
+        let ordinary = "sequenceDiagram\naccDescr {desc}\nparticipant A";
+        let physical_newline = ordinary.find("}\n").expect("closing brace") + 1;
+        assert_eq!(
+            boundary_after_accessibility(ordinary),
+            (physical_newline, "newline", physical_newline + 1)
+        );
+
+        let same_line = "sequenceDiagram\naccDescr {desc} participant A";
+        let closing = same_line.find('}').expect("closing brace") + 1;
+        assert_eq!(
+            boundary_after_accessibility(same_line),
+            (closing, "newline", closing)
+        );
+
+        let eof = "sequenceDiagram\naccDescr {desc}";
+        assert_eq!(
+            boundary_after_accessibility(eof),
+            (eof.len(), "newline", eof.len())
+        );
+    }
 }

@@ -131,26 +131,6 @@ pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
     styles: &FlowchartCompiledStyles,
     color_as_rgb: bool,
 ) -> String {
-    fn parse_hex_rgb_u8(v: &str) -> Option<(u8, u8, u8)> {
-        let v = v.trim();
-        let hex = v.strip_prefix('#')?;
-        match hex.len() {
-            6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-                Some((r, g, b))
-            }
-            3 => {
-                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-                Some((r, g, b))
-            }
-            _ => None,
-        }
-    }
-
     fn div_style_survives_mermaid_overrides(key: &str) -> bool {
         !matches!(key, "line-height" | "text-align" | "white-space")
     }
@@ -164,15 +144,8 @@ pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
         }
         if key == "color" {
             if color_as_rgb {
-                if let Some((r, g, b)) = parse_hex_rgb_u8(value) {
-                    let _ = write!(&mut out, "color: rgb({r}, {g}, {b}) !important; ");
-                } else {
-                    let _ = write!(
-                        &mut out,
-                        "color: {} !important; ",
-                        value.to_ascii_lowercase()
-                    );
-                }
+                let color = super::super::util::cssom_color_value(value);
+                let _ = write!(&mut out, "color: {color} !important; ");
             } else {
                 let _ = write!(
                     &mut out,
@@ -185,4 +158,37 @@ pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn color_style(value: &str) -> FlowchartCompiledStyles {
+        FlowchartCompiledStyles {
+            node_style: String::new(),
+            label_style: String::new(),
+            label_div_decls: vec![("color".to_string(), value.to_string())],
+            fill: None,
+            stroke: None,
+            stroke_width: None,
+            stroke_dasharray: None,
+        }
+    }
+
+    #[test]
+    fn flowchart_html_label_color_uses_the_shared_cssom_boundary() {
+        assert_eq!(
+            flowchart_label_div_style_prefix(&color_style("#12345680"), true),
+            "color: rgba(18, 52, 86, 0.502) !important; "
+        );
+        assert_eq!(
+            flowchart_label_div_style_prefix(&color_style("hsl(210 50% 40%)"), true),
+            "color: rgb(51, 102, 153) !important; "
+        );
+        assert_eq!(
+            flowchart_label_div_style_prefix(&color_style("var(--LabelColor)"), true),
+            "color: var(--LabelColor) !important; "
+        );
+    }
 }

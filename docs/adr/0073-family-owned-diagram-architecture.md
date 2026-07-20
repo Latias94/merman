@@ -52,14 +52,39 @@ that import Mermaid's Langium `common.langium` share one span-rich implementatio
 accessibility syntax; grammars with different upstream rules retain their own implementation.
 
 The built-in Diagram Family catalog is the single declaration of family ids, aliases, detector
-order, tiny/full profile membership, semantic and editor adapters, typed render adapters, metadata,
-configuration namespaces, and authoring headers. Public capability projections are derived from
-that catalog. Custom parser registries remain explicit overlays and do not inherit built-in editor
-or render capabilities.
+order, tiny/full profile membership, semantic parsers, closed combined semantic/editor
+constructions, typed render adapters, metadata, configuration namespaces, and authoring headers.
+Public capability projections are derived from that catalog. There is no independent built-in
+editor parser registry. Custom parser registries remain explicit overlays and do not inherit
+built-in editor or render capabilities.
 
 The parse pipeline continues to own cross-family orchestration: preprocessing, detection, source
 remapping, effective configuration, sanitization, timing, error suppression, and result ordering.
 It does not own family grammar or family model construction.
+
+For editor and analysis consumers, one closed parse snapshot retains preprocessing metadata, either
+the semantic model or the original family error, and editor facts produced during that same family
+construction. A family failure is not reparsed for layout metadata or recovery facts, and
+suppression cannot turn the snapshot into a successful error-family model.
+
+### Built-in parser construction is internal
+
+Public family modules expose model and vocabulary types, not built-in parser entrypoints. Semantic
+JSON constructors, typed render-model constructors, combined semantic/editor constructors, and
+family-specific editor recovery functions are crate-private or narrower. External callers obtain
+built-in results only through `Engine`; editor consumers use `DiagramParseSnapshot` so metadata,
+the original semantic outcome, and recovery facts remain operation-owned.
+
+`DiagramRegistry::insert` remains public for explicit custom parser overlays. Resolution is
+crate-private: a registry cannot hand an external caller a built-in parser function pointer, and
+the helper that executes a resolved parser from caller-supplied `ParseMetadata` is internal. Public
+capability discovery uses `supported_diagrams()` and `diagram_family_capabilities()` instead of
+parser lookup.
+
+This is an intentional alpha API break. The former per-family `parse_*`, typed parser,
+`*_model_for_render`, and `*_editor_facts` entrypoints have no deprecated aliases. Tests that need
+family-local evidence consume the combined construction; public integration tests consume the
+`Engine` snapshot or render-model facade.
 
 ### Editor behavior uses parser facts only
 
@@ -69,9 +94,10 @@ fallback. When parser facts are unavailable, the body semantic index is empty. D
 templates may still be offered at legal source starts because they are static catalog facts and do
 not claim to understand the document body.
 
-`FenceTextIndexSource` records `ParserComplete`, `ParserCompleteDegradedSpans`,
-`ParserRecovered`, `ParserRecoveredDegradedSpans`, or `Unavailable`. Degraded spans may support
-identity and outline behavior, but precise edits must require `source_mapped_spans=true`.
+`FenceTextIndexSource` records `ParserComplete`, `ParserRecovered`, or `Unavailable`.
+Preprocessing carries a composable exact edit map; a fact that crosses a locally unmappable rewrite
+is dropped with a diagnostic while unrelated facts retain original-source spans. There is no
+whole-document degraded coordinate mode. Precise edits still require `source_mapped_spans=true`.
 
 The serialized diagnostics payload and richer facts payload are independent contracts with separate
 version constants. The diagnostics-only `AnalysisPayload` remains version `1`. The parser-only
@@ -170,6 +196,8 @@ substrings are not durable architecture guards.
   unknown body text now returns honest absence instead of plausible but invented symbols.
 - Compatibility JSON remains supported, but callers must not use it as evidence that a separate
   render grammar exists.
+- Public family model types remain available, while built-in parsing cannot bypass preprocessing,
+  detection, effective configuration, or the closed snapshot through a leaked function pointer.
 - Invalid cross-family render pairings are unrepresentable on the canonical path.
 - Host-specific rendering behavior is explicit, reproducible, and observable in operation reports.
 - Root viewport algorithms can evolve without reopening every family renderer, while family-specific
@@ -190,6 +218,13 @@ Rejected because it preserves duplicated dispatch and allows semantic/layout dri
 
 Rejected because the project is still alpha and the layer would make the transition architecture
 permanent. Migration is documented instead.
+
+### Keep direct family parser APIs for advanced callers
+
+Rejected because those functions accepted caller-constructed metadata and exposed semantic,
+render-model, and editor projections as independently executable operations. Custom registries
+already provide an explicit extension boundary; built-in parsing must preserve the canonical
+operation contract.
 
 ### Introduce one parser framework for every family
 

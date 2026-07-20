@@ -111,8 +111,8 @@ impl DiagramRegistry {
         Arc::make_mut(&mut self.overlays).insert(diagram_type, parser);
     }
 
-    /// Looks up a parser by Mermaid diagram type id.
-    pub fn get(&self, diagram_type: &str) -> Option<DiagramSemanticParser> {
+    /// Looks up a parser by Mermaid diagram type id inside the canonical parse pipeline.
+    pub(crate) fn get(&self, diagram_type: &str) -> Option<DiagramSemanticParser> {
         self.resolve(diagram_type).map(|resolved| resolved.parser)
     }
 
@@ -193,18 +193,73 @@ pub struct ParsedDiagram {
     pub model: Value,
 }
 
-/// Parser-backed editor facts produced alongside a successful semantic JSON parse.
+/// Parser-backed editor facts produced by a diagram parse operation.
 #[derive(Debug)]
 pub enum ParsedEditorFacts {
     Available(EditorSemanticFacts),
     Unavailable,
 }
 
-/// Parsed semantic JSON plus editor-facing semantic facts from the same preprocessing pass.
+/// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]
-pub struct ParsedDiagramWithEditorFacts {
-    pub diagram: ParsedDiagram,
-    pub editor_facts: ParsedEditorFacts,
+pub enum DiagramParseOutcome {
+    Parsed(Value),
+    Failed(Error),
+}
+
+impl DiagramParseOutcome {
+    /// Returns the semantic model when family construction succeeded.
+    pub fn parsed_model(&self) -> Option<&Value> {
+        match self {
+            Self::Parsed(model) => Some(model),
+            Self::Failed(_) => None,
+        }
+    }
+}
+
+/// One preprocessing, detection, and family-construction operation for editor consumers.
+///
+/// Metadata, semantic output or its original error, and recovery facts are retained together so
+/// downstream analysis cannot reconstruct failure state by parsing the source again.
+#[derive(Debug)]
+pub struct DiagramParseSnapshot {
+    meta: ParseMetadata,
+    outcome: DiagramParseOutcome,
+    editor_facts: ParsedEditorFacts,
+}
+
+impl DiagramParseSnapshot {
+    pub(crate) fn new(
+        meta: ParseMetadata,
+        outcome: DiagramParseOutcome,
+        editor_facts: ParsedEditorFacts,
+    ) -> Self {
+        Self {
+            meta,
+            outcome,
+            editor_facts,
+        }
+    }
+
+    /// Consumes the closed snapshot into its three operation-owned projections.
+    pub fn into_parts(self) -> (ParseMetadata, DiagramParseOutcome, ParsedEditorFacts) {
+        (self.meta, self.outcome, self.editor_facts)
+    }
+
+    /// Returns metadata produced by this preprocessing and detection operation.
+    pub fn metadata(&self) -> &ParseMetadata {
+        &self.meta
+    }
+
+    /// Returns the semantic success or original family-construction error.
+    pub fn outcome(&self) -> &DiagramParseOutcome {
+        &self.outcome
+    }
+
+    /// Returns parser-backed editor facts retained by this operation.
+    pub fn editor_facts(&self) -> &ParsedEditorFacts {
+        &self.editor_facts
+    }
 }
 
 /// Origin of a custom JSON render model.
@@ -749,17 +804,53 @@ impl RenderDiagramRegistry {
     }
 }
 
-/// Parsed diagram metadata plus a typed render model.
+/// Parsed diagram metadata plus its canonically paired typed render model.
+///
+/// Construction is restricted to `merman-core`; its parse pipeline pairs the metadata and model.
+/// External consumers may inspect the pair or consume it, but cannot assemble metadata and a
+/// model produced by different parse operations:
+///
+/// ```compile_fail,E0451
+/// use merman_core::{ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
+///
+/// fn forge(
+///     meta: ParseMetadata,
+///     model: RenderSemanticModel,
+/// ) -> ParsedDiagramRender {
+///     ParsedDiagramRender { meta, model }
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParsedDiagramRender {
     /// Diagram type and effective configuration extracted during preprocessing.
-    pub meta: ParseMetadata,
+    meta: ParseMetadata,
     /// Typed model consumed by layout and SVG renderers.
-    pub model: RenderSemanticModel,
+    model: RenderSemanticModel,
+}
+
+impl ParsedDiagramRender {
+    pub(crate) fn new(meta: ParseMetadata, model: RenderSemanticModel) -> Self {
+        Self { meta, model }
+    }
+
+    /// Returns the metadata paired with this render model by the core parse pipeline.
+    pub fn metadata(&self) -> &ParseMetadata {
+        &self.meta
+    }
+
+    /// Returns the typed render model paired with this metadata by the core parse pipeline.
+    pub fn model(&self) -> &RenderSemanticModel {
+        &self.model
+    }
+
+    /// Consumes the parsed diagram and returns its canonical metadata/model pair.
+    pub fn into_parts(self) -> (ParseMetadata, RenderSemanticModel) {
+        (self.meta, self.model)
+    }
 }
 
 /// Parses with a registry entry or reports an unsupported Mermaid diagram type.
-pub fn parse_or_unsupported(
+pub(crate) fn parse_or_unsupported(
     registry: &DiagramRegistry,
     diagram_type: &str,
     code: &str,

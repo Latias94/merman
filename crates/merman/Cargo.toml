@@ -39,6 +39,8 @@ raster = [
     "dep:tiny-skia",
     "dep:krilla",
     "dep:krilla-svg",
+    "dep:data-url",
+    "dep:quick-xml",
 ]
 
 [dependencies]
@@ -54,6 +56,8 @@ usvg = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
+data-url = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
 
 [dev-dependencies]
 base64.workspace = true

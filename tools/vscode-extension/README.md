@@ -123,6 +123,18 @@ owns VS Code Problems:
 }
 ```
 
+The extension consumes semantic tokens directly from `merman-lsp`. After LSP initialization it
+checks the server's generated editor schema, descriptor digest, packed encoding, and complete legend
+before enabling language intelligence. A mismatched local or packaged server is stopped instead of
+letting VS Code interpret token indices with stale meanings.
+
+Custom token declarations, theme supertypes, Mermaid TextMate fallback scopes, and the Mermaid
+semantic-highlighting default in `package.json` are generated from
+`editor-language/token-descriptor-v1.json`. Edit the descriptor and run
+`cargo run -p xtask -- gen-editor-token-descriptor`; do not maintain a second token table in the
+extension manifest. Theme descriptions and fallback scopes use the manifest drift gate rather than
+the packed-protocol digest, so editor-only theme changes do not invalidate compatible LSP servers.
+
 JavaScript lint tools that want Merman parser-backed evidence can use `@mermanjs/web`
 `analyzeDocument(source, options, uri)` without adopting the LSP. See
 `docs/integrations/` for adapter guidance and coexistence examples.

@@ -1,18 +1,21 @@
 import MermanLanguageWorker from "./merman-language.worker.ts?worker";
+import { SEMANTIC_TOKEN_DESCRIPTOR_DIGEST } from "@mermanjs/web/editor";
 import {
   createMermanLanguageWorkerClient,
+  type EditorLanguageIdentity,
   type MermanLanguageWorkerClient,
 } from "./worker-client.ts";
 
 export async function startMermanLanguageWorker(): Promise<{
   readonly client: MermanLanguageWorkerClient;
-  readonly legend: Awaited<ReturnType<MermanLanguageWorkerClient["initialize"]>>;
+  readonly identity: EditorLanguageIdentity;
 }> {
   const client = createMermanLanguageWorkerClient(
-    new MermanLanguageWorker({ name: "merman-editor-language" })
+    new MermanLanguageWorker({ name: "merman-editor-language" }),
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST
   );
   try {
-    return { client, legend: await client.initialize() };
+    return { client, identity: await client.initialize() };
   } catch (error) {
     client.dispose();
     throw error;

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "zenuml-core-major-admission",
+  "status": "deferred",
+  "decision": "deferred-incompatible-major",
+  "generatedFrom": "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json",
+  "latestStable": {
+    "package": "@zenuml/core",
+    "version": "4.2.0",
+    "integrity": "sha512-tat/UfF++eKrlT0MiJCN1fd9I0aOnX8bAPSzQJFNutx2bJ1Mqe5WfIeV65umfq+71+B+9qLnVWRpiKWEVTmJPQ==",
+    "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-4.2.0.tgz",
+    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@zenuml%2fcore@4.2.0",
+    "publishGitHead": "377f6002edac0e7591d6f788bc2d925e0e8a6f85",
+    "source": {
+      "repository": "https://github.com/mermaid-js/zenuml-core.git",
+      "reference": "v4.2.0",
+      "commit": "377f6002edac0e7591d6f788bc2d925e0e8a6f85",
+      "checkoutPath": null,
+      "packagePath": "."
+    },
+    "requiredSurfaces": [
+      "separate-major-admission"
+    ]
+  },
+  "hostGraph": {
+    "mermaidRelease": "11.16.0",
+    "plugin": "@mermaid-js/mermaid-zenuml@0.2.3",
+    "pluginDeclaredRange": "^3.47.0",
+    "mermaidWorkspaceRange": "^3.47.8",
+    "selectedVersion": "3.50.1",
+    "selectedCommit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+    "latestStableSatisfiesPluginRange": false,
+    "latestStableSatisfiesWorkspaceRange": false
+  },
+  "selectionImpact": {
+    "selectedGraphChanged": false,
+    "parserPorted": false,
+    "semanticPorted": false,
+    "editorLspPorted": false,
+    "rendererPorted": false,
+    "playgroundRuntimeChanged": false,
+    "cargoFeatureDecision": "not-evaluated-until-admission"
+  },
+  "reason": "ZenUML Core 4.2.0 is outside both the Mermaid 11.16 plugin range ^3.47.0 and workspace range ^3.47.8. It cannot replace the selected 3.50.1 behavior source without a separate source-backed major admission.",
+  "behaviorDeltaInventory": [
+    {
+      "area": "grammar-and-recovery",
+      "source": "ZenUML Core v4.2.0 lexer/parser source tree (checkout and path inventory required)",
+      "classification": "uninspected-major-delta",
+      "owner": "future-major-admission/parser",
+      "summary": "Inventory every lexical, grammar, precedence, predicate, Unicode, and recovery change before changing parser claims.",
+      "evidenceRequired": [
+        "verified v4.2.0 source checkout",
+        "grammar rule delta inventory",
+        "positive and malformed corpus agreement",
+        "exact span and recovery tests"
+      ]
+    },
+    {
+      "area": "semantic-and-model",
+      "source": "ZenUML Core v4.2.0 parser/model source tree (checkout and path inventory required)",
+      "classification": "uninspected-major-delta",
+      "owner": "future-major-admission/semantic",
+      "summary": "Prove participant, message, fragment, group, return, creation, and source-range behavior before porting observable model changes.",
+      "evidenceRequired": [
+        "typed model delta inventory",
+        "semantic corpus evidence",
+        "resource-limit impact",
+        "compatibility projection tests"
+      ]
+    },
+    {
+      "area": "editor-and-lsp",
+      "source": "ZenUML Core v4.2.0 parser/LSP source tree (checkout and path inventory required)",
+      "classification": "uninspected-major-delta",
+      "owner": "future-major-admission/editor",
+      "summary": "Map grammar and model changes into the single family-owned analysis snapshot instead of adding a transport-specific parser.",
+      "evidenceRequired": [
+        "lexeme and diagnostic deltas",
+        "completion hover symbol rename and reference tests",
+        "Monaco and VS Code projection tests",
+        "recovered-input capability evidence"
+      ]
+    },
+    {
+      "area": "render-and-geometry",
+      "source": "ZenUML Core v4.2.0 SVG/positioning source tree (checkout and path inventory required)",
+      "classification": "uninspected-major-delta",
+      "owner": "future-major-admission/render",
+      "summary": "Port only observable headless topology, styling, geometry, and viewport behavior supported by source and browser evidence.",
+      "evidenceRequired": [
+        "SVG topology delta inventory",
+        "strict inline SVG corpus",
+        "layout and viewport parity evidence",
+        "browser-dependent residual classification"
+      ]
+    },
+    {
+      "area": "browser-runtime-and-security",
+      "source": "@zenuml/core@4.2.0 published runtime entry and Mermaid integration candidate",
+      "classification": "uninspected-major-delta",
+      "owner": "future-major-admission/browser-security",
+      "summary": "Re-run cold/reused execution, opaque-realm containment, publication validation, failure replacement, supply-chain, and dependency isolation gates.",
+      "evidenceRequired": [
+        "verified npm integrity and provenance",
+        "desktop and mobile execution-isolation probes",
+        "desktop and mobile security probes",
+        "dependency graph and package-entry measurements"
+      ]
+    },
+    {
+      "area": "feature-and-release-surface",
+      "source": "Merman Cargo, WASM, Playground, CLI, LSP, and package release surfaces",
+      "classification": "admission-decision-required",
+      "owner": "future-major-admission/release",
+      "summary": "Decide feature ownership only after dependency, license, platform, build-time, and artifact-size evidence exists; update all public surfaces atomically if admitted.",
+      "evidenceRequired": [
+        "dependency and license inventory",
+        "clean-build and WASM size measurements",
+        "family capability and example catalog updates",
+        "release migration notes"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@ use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_ma
 use merman::render::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
 };
-use merman_core::{DetectorRegistry, Engine, ParseMetadata, ParseOptions};
+use merman_core::{DetectorRegistry, Engine, ParseOptions};
 use std::hint::black_box;
 
 fn fixtures() -> Vec<(&'static str, &'static str)> {
@@ -203,12 +203,8 @@ fn bench_parse_known_type(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("parse_known_type");
     for (name, input) in fixtures() {
-        let diagram_type = match engine.parse_metadata_sync(input, parse_opts) {
-            Ok(Some(v)) => v.diagram_type,
-            Ok(None) => {
-                eprintln!("[bench][skip][parse_known_type] {name}: not a diagram");
-                continue;
-            }
+        let diagram_type = match engine.parse_metadata_sync(input) {
+            Ok(v) => v.diagram_type,
             Err(_) => {
                 eprintln!("[bench][skip][parse_known_type] {name}: metadata error");
                 continue;
@@ -463,148 +459,12 @@ fn bench_end_to_end(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_parse_typed(c: &mut Criterion) {
-    let registry = merman_core::DetectorRegistry::for_pinned_mermaid_baseline();
-
-    let mut group = c.benchmark_group("parse_typed");
-    for (name, input) in fixtures() {
-        if !name.starts_with("class_") {
-            continue;
-        }
-
-        // Pre-check typed parse viability once to keep the bench stable.
-        let pre = match merman_core::preprocess_diagram_with_known_type(
-            input,
-            &registry,
-            Some("classDiagram"),
-        ) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let mut effective_config = merman_core::generated::default_site_config();
-        effective_config.deep_merge(pre.config.as_value());
-        let title = pre
-            .title
-            .as_ref()
-            .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
-            .filter(|t| !t.is_empty());
-
-        let meta = ParseMetadata {
-            diagram_type: "classDiagram".to_string(),
-            config: pre.config.clone(),
-            effective_config,
-            title,
-        };
-
-        if merman_core::diagrams::class::parse_class_typed(pre.code(), &meta).is_err() {
-            eprintln!("[bench][skip][parse_typed] {name}: parse_class_typed error");
-            continue;
-        }
-
-        group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
-            b.iter(|| {
-                let pre = match merman_core::preprocess_diagram_with_known_type(
-                    black_box(data),
-                    &registry,
-                    Some("classDiagram"),
-                ) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-
-                let mut effective_config = merman_core::generated::default_site_config();
-                effective_config.deep_merge(pre.config.as_value());
-                let title = pre
-                    .title
-                    .as_ref()
-                    .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
-                    .filter(|t| !t.is_empty());
-
-                let meta = ParseMetadata {
-                    diagram_type: "classDiagram".to_string(),
-                    config: pre.config.clone(),
-                    effective_config,
-                    title,
-                };
-
-                let parsed = merman_core::diagrams::class::parse_class_typed(pre.code(), &meta);
-                let parsed = match parsed {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-
-                black_box(parsed.classes.len());
-            })
-        });
-    }
-    group.finish();
-}
-
-fn bench_parse_typed_only(c: &mut Criterion) {
-    let registry = merman_core::DetectorRegistry::for_pinned_mermaid_baseline();
-
-    let mut group = c.benchmark_group("parse_typed_only");
-    for (name, input) in fixtures() {
-        if !name.starts_with("class_") {
-            continue;
-        }
-
-        let pre = match merman_core::preprocess_diagram_with_known_type(
-            input,
-            &registry,
-            Some("classDiagram"),
-        ) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let mut effective_config = merman_core::generated::default_site_config();
-        effective_config.deep_merge(pre.config.as_value());
-        let title = pre
-            .title
-            .as_ref()
-            .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
-            .filter(|t| !t.is_empty());
-        let code = pre.code().to_owned();
-
-        let meta = ParseMetadata {
-            diagram_type: "classDiagram".to_string(),
-            config: pre.config,
-            effective_config,
-            title,
-        };
-
-        // Pre-check typed parse viability once to keep the bench stable.
-        if merman_core::diagrams::class::parse_class_typed(&code, &meta).is_err() {
-            eprintln!("[bench][skip][parse_typed_only] {name}: parse_class_typed error");
-            continue;
-        }
-
-        let meta = meta;
-        group.bench_function(BenchmarkId::from_parameter(name), move |b| {
-            b.iter(|| {
-                let parsed =
-                    merman_core::diagrams::class::parse_class_typed(black_box(&code), &meta);
-                let parsed = match parsed {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-                black_box(parsed.classes.len());
-            })
-        });
-    }
-    group.finish();
-}
-
 criterion_group!(
     benches,
     bench_parse,
     bench_parse_known_type,
     bench_parse_cold_engine,
     bench_frontmatter_preprocess,
-    bench_parse_typed,
-    bench_parse_typed_only,
     bench_layout,
     bench_render,
     bench_end_to_end

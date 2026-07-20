@@ -12,6 +12,8 @@ fn test_store() -> Arc<Mutex<DocumentStore>> {
 
 fn stale_message(kind: SnapshotContextKind) -> &'static str {
     match kind {
+        SnapshotContextKind::CodeActions => "code action document changed",
+        SnapshotContextKind::Diagnostics => "diagnostic document changed",
         SnapshotContextKind::SemanticTokens => "semantic tokens document changed",
         SnapshotContextKind::Structure => "structure document changed",
         SnapshotContextKind::WorkspaceSymbols => "workspace symbol documents changed",

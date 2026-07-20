@@ -34,6 +34,7 @@ export interface CompareArtifact {
   svg: string | null;
   error: string | null;
   errorDetail: string | null;
+  errorStage: string | null;
   renderTime: number | null;
   loading: boolean;
   loadingLabel: string | null;
@@ -310,7 +311,9 @@ function ComparePaneBody({
     return (
       <CompareFailure
         detail={artifact.errorDetail}
+        engine={artifact.title}
         message={artifact.error}
+        stage={artifact.errorStage}
         onRetry={onRetry}
         t={t}
       />
@@ -336,12 +339,16 @@ function ComparePaneBody({
 
 function CompareFailure({
   detail,
+  engine,
   message,
+  stage,
   onRetry,
   t,
 }: {
   detail: string | null;
+  engine: string;
   message: string;
+  stage: string | null;
   onRetry(): void;
   t: (key: string) => string;
 }) {
@@ -349,13 +356,20 @@ function CompareFailure({
     <div
       className="flex h-full items-center justify-center p-5"
       data-merman-render-error="true"
+      data-merman-error-engine={engine}
+      data-merman-error-stage={stage ?? undefined}
       role="alert"
     >
       <div className="max-w-sm text-center">
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-5 text-destructive" />
         </div>
-        <h3 className="mb-2 font-medium text-foreground">{t("preview.error")}</h3>
+        <h3 className="mb-1 font-medium text-foreground">
+          {engine} · {t("preview.error")}
+        </h3>
+        {stage && (
+          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+        )}
         <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
           {message}
         </p>

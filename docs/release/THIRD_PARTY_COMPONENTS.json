@@ -1,0 +1,849 @@
+{
+  "schema_version": 1,
+  "generated_notice": "THIRD_PARTY_NOTICES.md",
+  "license_root": "THIRD_PARTY_LICENSES",
+  "repository_lock": {
+    "path": "tools/upstreams/REPOS.lock.json",
+    "schema_version": 1
+  },
+  "externally_managed_files": [
+    {
+      "path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about normalized runtime dependency closure",
+      "required": true,
+      "format": "json"
+    }
+  ],
+  "artifact_scopes": [
+    {
+      "id": "rust-render-base",
+      "description": "Headless parser and renderer artifacts without optional ELK, RaTeX, ASCII, or Typst transport features.",
+      "extends": [],
+      "components": [
+        "cose-base-v1",
+        "cose-base-v2",
+        "cytoscape",
+        "cytoscape-cose-bilkent",
+        "cytoscape-fcose",
+        "d3-shape",
+        "dagre",
+        "dompurify",
+        "fmin",
+        "graphlib",
+        "layout-base-v1",
+        "layout-base-v2",
+        "mermaid",
+        "rough-rs",
+        "roughjs",
+        "sanitize-url",
+        "venn-js",
+        "zenuml-core"
+      ]
+    },
+    {
+      "id": "elk-render",
+      "description": "Render artifacts that include the source-translated Eclipse ELK layered implementation.",
+      "extends": ["rust-render-base"],
+      "components": ["eclipse-elk", "elkjs"]
+    },
+    {
+      "id": "ratex-render",
+      "description": "Render artifacts that link RaTeX and embed the KaTeX TrueType font payload.",
+      "extends": ["rust-render-base"],
+      "components": ["katex-fonts", "ratex"]
+    },
+    {
+      "id": "ascii-render",
+      "description": "ASCII rendering source, copied fixtures, and behavior references.",
+      "extends": [],
+      "components": ["beautiful-mermaid", "mermaid", "mermaid-ascii", "mermaid-rs-renderer"]
+    },
+    {
+      "id": "typst-publish",
+      "description": "The published Typst WASM profile, including ELK and wasm-minimal-protocol but excluding RaTeX.",
+      "extends": ["elk-render"],
+      "components": ["wasm-minimal-protocol"]
+    },
+    {
+      "id": "cli-default",
+      "description": "The default CLI feature closure, including ELK layout and RaTeX math/font support.",
+      "extends": ["elk-render", "ratex-render"],
+      "components": []
+    },
+    {
+      "id": "web-full",
+      "description": "The published full browser WASM preset with ELK layout and without the separate RaTeX math profile.",
+      "extends": ["elk-render"],
+      "components": []
+    },
+    {
+      "id": "playground-reference",
+      "description": "Third-party projects loaded by or used as behavioral evidence for the deployed Playground.",
+      "extends": [],
+      "components": [
+        "d3-shape",
+        "dompurify",
+        "elkjs",
+        "mermaid",
+        "roughjs",
+        "sanitize-url",
+        "venn-js",
+        "zenuml-core"
+      ]
+    },
+    {
+      "id": "source-archive",
+      "description": "Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.",
+      "extends": ["ascii-render", "cli-default", "typst-publish"],
+      "components": []
+    }
+  ],
+  "components": [
+    {
+      "id": "beautiful-mermaid",
+      "name": "beautiful-mermaid",
+      "version": "1.1.3",
+      "source": {
+        "repository": "https://github.com/lukilabs/beautiful-mermaid",
+        "ref": "main",
+        "commit": "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488",
+        "path": "."
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["crates/merman-ascii"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/beautiful-mermaid/LICENSE",
+          "sha256": "f05f5a4009eae7fadfd4a55f77ffe10948f621982d56076667e68afbb54de894",
+          "source_url": "https://raw.githubusercontent.com/lukilabs/beautiful-mermaid/2ac8bbbb060ca0a65a6a21f3200bd99b1587b488/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "beautiful-mermaid"}],
+      "notice": "The ASCII renderer uses this implementation as a behavior and presentation reference; its parser is not embedded."
+    },
+    {
+      "id": "cose-base-v1",
+      "name": "cose-base 1.x",
+      "version": "1.0.3",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/cose-base.git",
+        "ref": "v1.0.3",
+        "commit": "914bfe712991534af1d8b795d6f262687edc2563",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/cose-base-v1/LICENSE",
+          "sha256": "5fb3cf4a14c3c5af6e473a192df8bca10c77754e3a0c6492c79fb92a76a5478a",
+          "source_url": "https://raw.githubusercontent.com/iVis-at-Bilkent/cose-base/914bfe712991534af1d8b795d6f262687edc2563/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "cose-base"}],
+      "notice": "Manatee contains Rust translations and adaptations of CoSE layout behavior from this baseline."
+    },
+    {
+      "id": "cose-base-v2",
+      "name": "cose-base 2.x",
+      "version": "2.2.0",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/cose-base.git",
+        "ref": "v2.2.0",
+        "commit": "37f07ed2b8803211ec6c74110574cc47c156a136",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/cose-base-v2/LICENSE",
+          "sha256": "5fb3cf4a14c3c5af6e473a192df8bca10c77754e3a0c6492c79fb92a76a5478a",
+          "source_url": "https://raw.githubusercontent.com/iVis-at-Bilkent/cose-base/37f07ed2b8803211ec6c74110574cc47c156a136/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "cose-base-v2"}],
+      "notice": "Manatee contains Rust translations and adaptations of the newer CoSE base behavior from this baseline."
+    },
+    {
+      "id": "cytoscape",
+      "name": "Cytoscape.js",
+      "version": "3.33.1",
+      "source": {
+        "repository": "https://github.com/cytoscape/cytoscape.js.git",
+        "ref": "v3.33.1",
+        "commit": "72af5edb6cd988851f42dc25f9e1092fd2d9e7cf",
+        "path": "."
+      },
+      "relationships": ["behavior-reference", "translated"],
+      "local_paths": ["crates/manatee", "crates/merman-render/src/architecture.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/cytoscape/LICENSE",
+          "sha256": "e4b62495bacaefaf330f38f226e20d1d60d658d444998ba7406a191f96a2e701",
+          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js/72af5edb6cd988851f42dc25f9e1092fd2d9e7cf/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "cytoscape"}],
+      "notice": "Architecture layout and styling use source-backed Cytoscape behavior and defaults."
+    },
+    {
+      "id": "cytoscape-cose-bilkent",
+      "name": "cytoscape.js-cose-bilkent",
+      "version": "4.1.0",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/cytoscape.js-cose-bilkent.git",
+        "ref": "v4.1.0",
+        "commit": "999090a8438b4f14788d636ef4fd7a5355e29e8c",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/cytoscape-cose-bilkent/LICENSE",
+          "sha256": "440fc58a56a12814e417d2b341da89b050da052dc75bdb235607d37ec5fe74ef",
+          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js-cose-bilkent/999090a8438b4f14788d636ef4fd7a5355e29e8c/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "cytoscape-cose-bilkent"}],
+      "notice": "Manatee includes source-backed CoSE-Bilkent layout behavior translated to Rust."
+    },
+    {
+      "id": "cytoscape-fcose",
+      "name": "cytoscape.js-fcose",
+      "version": "2.2.0",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/cytoscape.js-fcose.git",
+        "ref": "v2.2.0",
+        "commit": "78afcf96512a409abc903699277ad616c02dfad9",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee", "crates/merman-render/src/architecture.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE",
+          "sha256": "2837634f403949215760fcdd2fa1ed0c64875d02099ecc8318c704b852f1421d",
+          "source_url": "https://raw.githubusercontent.com/iVis-at-Bilkent/cytoscape.js-fcose/78afcf96512a409abc903699277ad616c02dfad9/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "cytoscape-fcose"}],
+      "notice": "The headless Architecture layout is a modified Rust implementation of FCoSE behavior."
+    },
+    {
+      "id": "d3-shape",
+      "name": "d3-shape",
+      "version": "3.2.0",
+      "source": {
+        "repository": "https://github.com/d3/d3-shape.git",
+        "ref": "npm:d3-shape@3.2.0",
+        "commit": "8ec82658454750cfa29efb1e0ea514e3dd9b2297",
+        "path": "src/curve"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render/src/svg/parity/curve.rs"],
+      "license_expression": "ISC",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-shape/LICENSE",
+          "sha256": "faa682e3e430941f958d26180458f5934a62f58dac4d70ccdd15608c15d0f884",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-shape/8ec82658454750cfa29efb1e0ea514e3dd9b2297/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/d3-shape",
+          "version": "3.2.0",
+          "integrity": "sha512-SaLBuwGm3MOViRq2ABk3eLoxwZELpH6zhl3FbAoJ7Vm1gofKx6El1Ib5z23NUEhF9AsGl7y+dzLe5Cw2AArGTA=="
+        }
+      ],
+      "notice": "The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants."
+    },
+    {
+      "id": "dagre",
+      "name": "Dagre",
+      "version": "2.0.2",
+      "source": {
+        "repository": "https://github.com/dagrejs/dagre.git",
+        "ref": "v2.0.2",
+        "commit": "ba986662394f8f3ed608717194e5958f3386ce01",
+        "path": "lib"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/dugong"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/dagre/LICENSE",
+          "sha256": "6a349742a6cb219d5a2fc8d0844f6d89a6efc62e20c664450d884fc7ff2d6015",
+          "source_url": "https://raw.githubusercontent.com/dagrejs/dagre/ba986662394f8f3ed608717194e5958f3386ce01/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "dagre"}],
+      "notice": "Dugong is a modified Rust translation of Dagre's directed graph layout pipeline."
+    },
+    {
+      "id": "dompurify",
+      "name": "DOMPurify",
+      "version": "3.4.0",
+      "source": {
+        "repository": "https://github.com/cure53/DOMPurify.git",
+        "ref": "3.4.0",
+        "commit": "5b16e0b892e82b1779d62b9928b43c4c4ff290b9",
+        "path": "."
+      },
+      "relationships": ["generated", "translated"],
+      "local_paths": ["crates/merman-core/src/generated/dompurify_defaults.rs"],
+      "license_expression": "(Apache-2.0 OR MPL-2.0)",
+      "selected_license": "Apache-2.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/dompurify/LICENSE",
+          "sha256": "1b02e03c3fb4f87d476c128f0eb9def1f5a1709d28b180465228bd41574623b7",
+          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/5b16e0b892e82b1779d62b9928b43c4c4ff290b9/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "dompurify"}],
+      "notice": "Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream dual-license file is preserved."
+    },
+    {
+      "id": "eclipse-elk",
+      "name": "Eclipse Layout Kernel",
+      "version": "0.9.1",
+      "source": {
+        "repository": "https://github.com/eclipse-elk/elk.git",
+        "ref": "v0.9.1",
+        "commit": "62d5909f96fad541bc101ad52dabaece6b7eab7e",
+        "path": "plugins/org.eclipse.elk.alg.layered"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-elk-layered", "crates/merman-layout-elk"],
+      "license_expression": "EPL-2.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md",
+          "sha256": "89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617",
+          "source_url": "https://raw.githubusercontent.com/eclipse-elk/elk/62d5909f96fad541bc101ad52dabaece6b7eab7e/LICENSE.md",
+          "source_path": "LICENSE.md",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-source",
+          "evidence": "Source references in crates/merman-elk-layered and the v0.9.1 Git tag"
+        }
+      ],
+      "notice": "The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0."
+    },
+    {
+      "id": "elkjs",
+      "name": "elkjs",
+      "version": "0.9.3",
+      "source": {
+        "repository": "https://github.com/kieler/elkjs.git",
+        "ref": "npm:elkjs@0.9.3",
+        "commit": "a8304cf79fde75bc2ab1a89d28320f53f8637436",
+        "path": "."
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["crates/merman-layout-elk", "playground"],
+      "license_expression": "EPL-2.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/elkjs/LICENSE.md",
+          "sha256": "89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617",
+          "source_url": "https://raw.githubusercontent.com/kieler/elkjs/a8304cf79fde75bc2ab1a89d28320f53f8637436/LICENSE.md",
+          "source_path": "LICENSE.md",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/elkjs",
+          "version": "0.9.3",
+          "integrity": "sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ=="
+        }
+      ],
+      "notice": "Mermaid's ELK adapter behavior is compared against this JavaScript distribution, which is generated from Eclipse ELK sources."
+    },
+    {
+      "id": "fmin",
+      "name": "fmin",
+      "version": "0.0.4",
+      "source": {
+        "repository": "https://github.com/benfred/fmin.git",
+        "ref": "npm:fmin@0.0.4",
+        "commit": "6b155c9f4a6ecf73ea5d71666da8e5dcd418b18b",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render/src/venn.rs"],
+      "license_expression": "BSD-3-Clause",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/fmin/LICENSE",
+          "sha256": "e4503e78185bff178d3ee91835f082d05771da1b3a2d795f17e03a40251bab77",
+          "source_url": "https://raw.githubusercontent.com/benfred/fmin/6b155c9f4a6ecf73ea5d71666da8e5dcd418b18b/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "pinned-source", "evidence": "npm fmin@0.0.4 publish gitHead"}],
+      "notice": "The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient optimization behavior."
+    },
+    {
+      "id": "graphlib",
+      "name": "Graphlib",
+      "version": "2.2.4",
+      "source": {
+        "repository": "https://github.com/dagrejs/graphlib.git",
+        "ref": "v2.2.4",
+        "commit": "380d5efa1f4ab0904539f046bdba583d14ac2add",
+        "path": "lib"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/dugong-graphlib"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/graphlib/LICENSE",
+          "sha256": "6a349742a6cb219d5a2fc8d0844f6d89a6efc62e20c664450d884fc7ff2d6015",
+          "source_url": "https://raw.githubusercontent.com/dagrejs/graphlib/380d5efa1f4ab0904539f046bdba583d14ac2add/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "graphlib"}],
+      "notice": "dugong-graphlib is a modified Rust translation of the graph model used by Dagre."
+    },
+    {
+      "id": "katex-fonts",
+      "name": "KaTeX fonts bundled by ratex-katex-fonts",
+      "version": "ratex-katex-fonts@0.1.12",
+      "source": {
+        "repository": "https://github.com/erweixin/RaTeX.git",
+        "ref": "crates.io:ratex-katex-fonts@0.1.12",
+        "commit": "00315b83897aa44611bb7597fc80cbc54daf9a37",
+        "path": "crates/ratex-katex-fonts/fonts"
+      },
+      "relationships": ["embedded"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "license_expression": "OFL-1.1",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt",
+          "sha256": "752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e",
+          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.12/download",
+          "source_path": "fonts/FONT_NOTICE.txt",
+          "role": "notice"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/katex-fonts/OFL.txt",
+          "sha256": "f19c674290e5dc79f02e8efe16139ab56a06a7128876f5b1579ffd0db5bc897e",
+          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.12/download",
+          "source_path": "fonts/OFL.txt",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "cargo",
+          "path": "Cargo.lock",
+          "package": "ratex-katex-fonts",
+          "version": "0.1.12",
+          "checksum": "0bc5367156629534615e31fa89a5f32870f44f9556f314cf37bc31603453925a"
+        }
+      ],
+      "notice": "The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license."
+    },
+    {
+      "id": "layout-base-v1",
+      "name": "layout-base 1.x",
+      "version": "1.0.2",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/layout-base.git",
+        "ref": "v1.0.2",
+        "commit": "836898aa4a88e2794774997d7128b383108a3d5a",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/layout-base-v1/LICENSE",
+          "sha256": "eabb762d8a95109a39c9be3247325529a5239a7aca327d909c3ccdc41f3a06bf",
+          "source_url": "https://raw.githubusercontent.com/iVis-at-Bilkent/layout-base/836898aa4a88e2794774997d7128b383108a3d5a/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "layout-base"}],
+      "notice": "Manatee translates shared layout-base geometry, graph, and force-layout primitives from this baseline."
+    },
+    {
+      "id": "layout-base-v2",
+      "name": "layout-base 2.x",
+      "version": "2.0.1",
+      "source": {
+        "repository": "https://github.com/iVis-at-Bilkent/layout-base.git",
+        "ref": "v2.0.1",
+        "commit": "3f7549940feef31416cc35ef8256282ebc4d1ecd",
+        "path": "."
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/manatee"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/layout-base-v2/LICENSE",
+          "sha256": "eabb762d8a95109a39c9be3247325529a5239a7aca327d909c3ccdc41f3a06bf",
+          "source_url": "https://raw.githubusercontent.com/iVis-at-Bilkent/layout-base/3f7549940feef31416cc35ef8256282ebc4d1ecd/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "layout-base-v2"}],
+      "notice": "Manatee also follows the newer layout-base behavior selected by the FCoSE dependency graph."
+    },
+    {
+      "id": "mermaid",
+      "name": "Mermaid",
+      "version": "11.16.0",
+      "source": {
+        "repository": "https://github.com/mermaid-js/mermaid.git",
+        "ref": "mermaid@11.16.0",
+        "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+        "path": "packages/mermaid"
+      },
+      "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
+      "local_paths": [
+        "crates/merman-core/src",
+        "crates/merman-render/src",
+        "crates/merman-render/src/svg/parity/architecture/icons.rs",
+        "fixtures"
+      ],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+          "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "mermaid"}],
+      "notice": "Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots."
+    },
+    {
+      "id": "mermaid-ascii",
+      "name": "mermaid-ascii",
+      "version": "git-6fffb8e",
+      "source": {
+        "repository": "https://github.com/AlexanderGrooff/mermaid-ascii",
+        "ref": "master",
+        "commit": "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
+        "path": "."
+      },
+      "relationships": ["fixtures", "modified", "translated"],
+      "local_paths": ["crates/merman-ascii", "crates/merman-ascii/tests/testdata/mermaid-ascii"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid-ascii/LICENSE",
+          "sha256": "2568bfc33918af28d45f8ba672c93c8fbdcdfbc430b8ba86228b8ea1c2469b31",
+          "source_url": "https://raw.githubusercontent.com/AlexanderGrooff/mermaid-ascii/6fffb8e2714acab2c4cb41c78894fabbc62cee56/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "mermaid-ascii"}],
+      "notice": "The ASCII renderer translates algorithms and retains a documented set of copied upstream fixtures from this source."
+    },
+    {
+      "id": "mermaid-rs-renderer",
+      "name": "mermaid-rs-renderer",
+      "version": "0.2.0",
+      "source": {
+        "repository": "https://github.com/1jehuang/mermaid-rs-renderer",
+        "ref": "master",
+        "commit": "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1",
+        "path": "."
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["crates/merman-ascii"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid-rs-renderer/LICENSE",
+          "sha256": "57ed7943c34463678a150769d4a4f6c95d2a190fe2c1977f74bc883492c94b86",
+          "source_url": "https://raw.githubusercontent.com/1jehuang/mermaid-rs-renderer/859253415e69dce28bd65cd5a7c1d1ae8b39f4a1/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "mermaid-rs-renderer"}],
+      "notice": "This Rust renderer is retained as an ASCII and headless rendering behavior reference."
+    },
+    {
+      "id": "ratex",
+      "name": "RaTeX",
+      "version": "0.1.12",
+      "source": {
+        "repository": "https://github.com/erweixin/RaTeX.git",
+        "ref": "crates.io:ratex-*@0.1.12",
+        "commit": "00315b83897aa44611bb7597fc80cbc54daf9a37",
+        "path": "crates"
+      },
+      "relationships": ["linked"],
+      "local_paths": ["Cargo.lock", "crates/merman-render/src/math.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/ratex/LICENSE",
+          "sha256": "f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0",
+          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/00315b83897aa44611bb7597fc80cbc54daf9a37/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt",
+          "sha256": "e3cf753ddd8012543a3297b62b4cf5450db1d5a3ae7ddd7afae593db927c2980",
+          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/00315b83897aa44611bb7597fc80cbc54daf9a37/THIRD_PARTY_NOTICES.txt",
+          "source_path": "THIRD_PARTY_NOTICES.txt",
+          "role": "notice"
+        }
+      ],
+      "locks": [
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font", "version": "0.1.12", "checksum": "03059293a2a4cdeab32f348fbf2eb649e696a6a8c88b8142de7d016ab84f0013"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font-loader", "version": "0.1.12", "checksum": "b30bd5fd1fa354d0d5276a677fdb8fec50a27ecf39b7bd35bb5f3bf034a3e747"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-katex-fonts", "version": "0.1.12", "checksum": "0bc5367156629534615e31fa89a5f32870f44f9556f314cf37bc31603453925a"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-layout", "version": "0.1.12", "checksum": "947076a171664e6cc1a201d5e9d9cefc07c43a53e6cbb3e703422eeaec7b172f"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-lexer", "version": "0.1.12", "checksum": "6af24235c2700f21a80620885bb3de96efe884726ac89937abb8c27e4683ff28"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-parser", "version": "0.1.12", "checksum": "c897f4653b44a87fa257b1602dc1962c3d738fd1fad01aa0ea0f44ef6af1f202"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-svg", "version": "0.1.12", "checksum": "940dc91507873b5f9dc18224df2552ccb1eef3f5047b454710e517da026360f1"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-types", "version": "0.1.12", "checksum": "43de9e079b1056b08fd89143cb905e47bcb459510141c5dd702b290e18447054"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-unicode-font", "version": "0.1.12", "checksum": "267bdf384926da00f205545a97173e6d817213651e9e6640de3ed5e0a3855397"}
+      ],
+      "notice": "Optional math rendering links the RaTeX 0.1.12 crate family; its separately licensed embedded fonts are recorded as their own component."
+    },
+    {
+      "id": "rough-rs",
+      "name": "rough-rs roughr",
+      "version": "0.12.0",
+      "source": {
+        "repository": "https://github.com/orhanbalci/rough-rs.git",
+        "ref": "roughr@0.12.0",
+        "commit": "b1c2d96c944da4e74275aa09892be14e2d54445a",
+        "path": "roughr"
+      },
+      "relationships": ["copied", "modified"],
+      "local_paths": ["crates/roughr"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/rough-rs/LICENSE",
+          "sha256": "0bef4264af5b4af4de4b01700f27afb7bdaf7498949692ff272ebf24489b0531",
+          "source_url": "https://raw.githubusercontent.com/orhanbalci/rough-rs/b1c2d96c944da4e74275aa09892be14e2d54445a/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "pinned-source", "evidence": "roughr@0.12.0 peeled Git tag and the original local fork commit"}],
+      "notice": "roughr-merman is a modified in-tree fork of the rough-rs roughr crate."
+    },
+    {
+      "id": "roughjs",
+      "name": "Rough.js",
+      "version": "4.6.6",
+      "source": {
+        "repository": "https://github.com/pshihn/rough.git",
+        "ref": "npm:roughjs@4.6.6",
+        "commit": "56a2762171b1294d643501e8d14f120db6b27bd7",
+        "path": "src"
+      },
+      "relationships": ["behavior-reference", "translated"],
+      "local_paths": ["crates/roughr"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/roughjs/LICENSE",
+          "sha256": "dca9a392272606ac748ac0976a2a1133f14eef841c27beaa51a844d53c56a09d",
+          "source_url": "https://raw.githubusercontent.com/pshihn/rough/56a2762171b1294d643501e8d14f120db6b27bd7/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/roughjs",
+          "version": "4.6.6",
+          "integrity": "sha512-ZUz/69+SYpFN/g/lUlo2FXcIjRkSu3nDarreVdGGndHEBJ6cXPdKguS8JGxwj5HA5xIbVKSmLgr5b3AWxtRfvQ=="
+        }
+      ],
+      "notice": "The roughr fork aligns its randomization and drawing-operation semantics with Rough.js as used by Mermaid."
+    },
+    {
+      "id": "sanitize-url",
+      "name": "sanitize-url",
+      "version": "7.1.1",
+      "source": {
+        "repository": "https://github.com/braintree/sanitize-url.git",
+        "ref": "v7.1.1",
+        "commit": "b1e8d50e4066a9af00fa042176676374747f754b",
+        "path": "src"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-core/src/utils.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/sanitize-url/LICENSE",
+          "sha256": "0984740e0c3d725c8044dec7edcefe1dbce180ef5a7bc710c251e19607000158",
+          "source_url": "https://raw.githubusercontent.com/braintree/sanitize-url/b1e8d50e4066a9af00fa042176676374747f754b/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "sanitize-url"}],
+      "notice": "Merman's URL sanitization behavior is a source-backed Rust translation of sanitize-url."
+    },
+    {
+      "id": "venn-js",
+      "name": "@upsetjs/venn.js",
+      "version": "2.0.0",
+      "source": {
+        "repository": "https://github.com/upsetjs/venn.js.git",
+        "ref": "v2.0.0",
+        "commit": "350c835aab4a92a7570963c28f725cf9f6e5f258",
+        "path": "src"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-core/src/diagrams/venn.rs", "crates/merman-render/src/venn.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/venn-js/LICENSE",
+          "sha256": "6a3508febf2cfccfee96597394543a6154a4bb0b1f91f28404be42c09e9fcb54",
+          "source_url": "https://raw.githubusercontent.com/upsetjs/venn.js/350c835aab4a92a7570963c28f725cf9f6e5f258/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/@upsetjs/venn.js",
+          "version": "2.0.0",
+          "integrity": "sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw=="
+        }
+      ],
+      "notice": "The Venn family uses a modified Rust translation of the venn.js geometry and layout kernel."
+    },
+    {
+      "id": "wasm-minimal-protocol",
+      "name": "wasm-minimal-protocol",
+      "version": "0.2.0",
+      "source": {
+        "repository": "https://github.com/typst-community/wasm-minimal-protocol.git",
+        "ref": "wasm-minimal-protocol-0.2.0",
+        "commit": "cc08c96b8e7683188eb16ad315a9689b89290f85",
+        "path": "crates/macro"
+      },
+      "relationships": ["linked"],
+      "local_paths": ["Cargo.lock", "crates/merman-typst-plugin"],
+      "license_expression": "Unlicense",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/wasm-minimal-protocol/LICENSE",
+          "sha256": "6b0382b16279f26ff69014300541967a356a666eb0b91b422f6862f6b7dad17e",
+          "source_url": "https://raw.githubusercontent.com/typst-community/wasm-minimal-protocol/cc08c96b8e7683188eb16ad315a9689b89290f85/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "cargo",
+          "path": "Cargo.lock",
+          "package": "wasm-minimal-protocol",
+          "version": "0.2.0",
+          "checksum": "ae17f1dd65ee737caf73ea45f517c09578ab60970c28e5e96b7900fe2e245633"
+        }
+      ],
+      "notice": "The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text."
+    },
+    {
+      "id": "zenuml-core",
+      "name": "ZenUML Core",
+      "version": "3.50.1",
+      "source": {
+        "repository": "https://github.com/mermaid-js/zenuml-core.git",
+        "ref": "v3.50.1",
+        "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+        "path": "."
+      },
+      "relationships": ["behavior-reference", "copied", "modified", "translated"],
+      "local_paths": [
+        "crates/merman-core/src/diagrams/zenuml",
+        "crates/merman-render/assets/zenuml",
+        "crates/merman-render/src/zenuml.rs"
+      ],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+          "sha256": "d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/zenuml-core/38404ccc14243ed54ab45b804b2eb6f2ca73af36/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "zenuml-core-candidate"},
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/@mermaid-js/mermaid-zenuml/node_modules/@zenuml/core",
+          "version": "3.50.1",
+          "integrity": "sha512-Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw=="
+        }
+      ],
+      "notice": "Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes follow the admitted ZenUML Core 3.50.1 source baseline."
+    }
+  ]
+}

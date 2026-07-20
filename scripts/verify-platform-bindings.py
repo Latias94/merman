@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
+import json
 import os
 import platform
 import shutil
 import subprocess
 import sys
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -20,6 +23,9 @@ ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
 ANDROID_JAR_OUT = REPO_ROOT / "target" / "platforms" / "android" / "merman-android.jar"
 ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
+ANDROID_MAVEN_MODULE_ROOT = (
+    ANDROID_ROOT / "build" / "repo" / "io" / "merman" / "merman-android"
+)
 ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
 ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
@@ -31,6 +37,29 @@ ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanTextMeasurementResultKind.class",
     "io/merman/MermanTextMeasurer.class",
 ]
+ANDROID_NATIVE_LIBRARIES = [
+    "jni/arm64-v8a/libmerman_ffi.so",
+    "jni/x86_64/libmerman_ffi.so",
+]
+ANDROID_MAVEN_COORDINATES = ("io.merman", "merman-android")
+ANDROID_MAVEN_LICENSES = {
+    ("MIT License", "https://opensource.org/license/mit", "repo"),
+    (
+        "Apache License, Version 2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0",
+        "repo",
+    ),
+}
+ANDROID_MAVEN_DEVELOPER = (
+    "frankorz",
+    "Mingzhen Zhuang",
+    "superfrankie621@gmail.com",
+)
+ANDROID_MAVEN_SCM = (
+    "scm:git:https://github.com/Latias94/merman.git",
+    "scm:git:ssh://git@github.com/Latias94/merman.git",
+    "https://github.com/Latias94/merman",
+)
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
 
 
@@ -39,6 +68,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-android-slices", action="store_true")
     parser.add_argument("--run-flutter-android-smoke", action="store_true")
     parser.add_argument("--run-android-gradle-build", action="store_true")
+    parser.add_argument(
+        "--verify-android-aar",
+        action="store_true",
+        help="Verify the assembled Android AAR contract and exit.",
+    )
+    parser.add_argument(
+        "--verify-android-maven",
+        action="store_true",
+        help="Verify the staged Android Maven publication contract and exit.",
+    )
     parser.add_argument("--run-android-instrumentation-smoke", action="store_true")
     parser.add_argument(
         "--only-android-instrumentation-smoke",
@@ -105,9 +144,17 @@ def resolve_gradle_command(path: str | None) -> str:
             raise RuntimeError(f"Gradle executable not found: {resolved}")
         return str(resolved)
 
+    wrapper_name = "gradlew.bat" if os.name == "nt" else "gradlew"
+    wrapper = ANDROID_ROOT / wrapper_name
+    if wrapper.is_file():
+        return str(wrapper)
+
     gradle = shutil.which("gradle")
     if not gradle:
-        raise RuntimeError("gradle not found. Pass --gradle-path or set MERMAN_GRADLE.")
+        raise RuntimeError(
+            "Android Gradle wrapper not found and gradle is not on PATH. "
+            "Pass --gradle-path or set MERMAN_GRADLE."
+        )
     return gradle
 
 
@@ -119,6 +166,17 @@ def android_jni_libs_ready() -> bool:
             ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so",
         ]
     )
+
+
+def android_kotlin_compile_sources(android_root: Path = ANDROID_ROOT) -> list[Path]:
+    source_root = android_root / "src" / "main" / "kotlin" / "io" / "merman"
+    sources = sorted(source_root.glob("*.kt"))
+    smoke_source = android_root / "examples" / "MermanSmoke.kt"
+    if not sources:
+        raise RuntimeError(f"Android Kotlin source set is empty: {source_root}")
+    if not smoke_source.exists():
+        raise RuntimeError(f"Android Kotlin smoke source not found: {smoke_source}")
+    return [*sources, smoke_source]
 
 
 def ensure_android_native_slices() -> None:
@@ -142,29 +200,300 @@ def run_android_instrumentation_smoke(gradle_path: str | None) -> None:
     ensure_android_native_slices()
     gradle = resolve_gradle_command(gradle_path)
     run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-    assert_android_aar_contains_kotlin_wrappers()
+    assert_android_aar_contract()
     run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
     assert_android_instrumentation_smoke_report()
 
 
-def assert_android_aar_contains_kotlin_wrappers(aar_path: Path = ANDROID_RELEASE_AAR) -> None:
+def android_expected_resource_entries(android_root: Path = ANDROID_ROOT) -> list[str]:
+    resources_root = android_root / "src" / "main" / "resources"
+    if not resources_root.is_dir():
+        raise RuntimeError(f"Android resource directory not found: {resources_root}")
+    return sorted(
+        path.relative_to(resources_root).as_posix()
+        for path in resources_root.rglob("*")
+        if path.is_file()
+    )
+
+
+def assert_android_aar_contract(
+    aar_path: Path = ANDROID_RELEASE_AAR,
+    android_root: Path = ANDROID_ROOT,
+) -> None:
     if not aar_path.exists():
         raise RuntimeError(f"Android release AAR not found: {aar_path}")
 
     with zipfile.ZipFile(aar_path) as aar:
+        aar_names = set(aar.namelist())
         try:
             classes_jar = aar.read("classes.jar")
         except KeyError as error:
             raise RuntimeError(f"Android release AAR is missing classes.jar: {aar_path}") from error
 
+    missing_native = [name for name in ANDROID_NATIVE_LIBRARIES if name not in aar_names]
+    if missing_native:
+        raise RuntimeError(
+            "Android release AAR is missing native libraries: " + ", ".join(missing_native)
+        )
+
     with zipfile.ZipFile(io.BytesIO(classes_jar)) as jar:
         names = set(jar.namelist())
 
-    missing = [class_name for class_name in ANDROID_WRAPPER_CLASSES if class_name not in names]
+    missing_wrappers = [class_name for class_name in ANDROID_WRAPPER_CLASSES if class_name not in names]
+    if missing_wrappers:
+        raise RuntimeError(
+            "Android release AAR is missing Kotlin wrapper classes: "
+            + ", ".join(missing_wrappers)
+        )
+
+    missing_resources = [
+        name for name in android_expected_resource_entries(android_root) if name not in names
+    ]
+    if missing_resources:
+        raise RuntimeError(
+            "Android release AAR is missing projected resources: "
+            + ", ".join(missing_resources)
+        )
+
+
+def _single_path(paths: list[Path], description: str) -> Path:
+    if len(paths) != 1:
+        rendered = ", ".join(str(path) for path in paths) or "none"
+        raise RuntimeError(f"Expected exactly one {description}, found: {rendered}")
+    return paths[0]
+
+
+def _xml_text(parent: ET.Element, child_name: str) -> str:
+    child = parent.find(f"{{*}}{child_name}")
+    return (child.text or "").strip() if child is not None else ""
+
+
+def _require_xml_child(parent: ET.Element, child_name: str, context: str) -> ET.Element:
+    child = parent.find(f"{{*}}{child_name}")
+    if child is None:
+        raise RuntimeError(f"Android Maven POM is missing {context}/{child_name}")
+    return child
+
+
+def _assert_sha256(artifact: Path) -> None:
+    checksum_path = artifact.with_name(f"{artifact.name}.sha256")
+    if not checksum_path.is_file():
+        raise RuntimeError(f"Android Maven artifact is missing SHA-256: {checksum_path}")
+    expected = checksum_path.read_text(encoding="ascii").strip().lower()
+    actual = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    if expected != actual:
+        raise RuntimeError(
+            f"Android Maven SHA-256 mismatch for {artifact.name}: "
+            f"expected {expected}, computed {actual}"
+        )
+
+
+def _assert_android_maven_pom(pom_path: Path, version: str) -> None:
+    root = ET.parse(pom_path).getroot()
+    group_id, artifact_id = ANDROID_MAVEN_COORDINATES
+    expected_fields = {
+        "groupId": group_id,
+        "artifactId": artifact_id,
+        "version": version,
+        "packaging": "aar",
+        "name": artifact_id,
+        "description": "Android JNI bindings for merman headless Mermaid rendering.",
+        "url": "https://github.com/Latias94/merman",
+    }
+    for field, expected in expected_fields.items():
+        actual = _xml_text(root, field)
+        if actual != expected:
+            raise RuntimeError(
+                f"Android Maven POM {field} mismatch: expected {expected!r}, got {actual!r}"
+            )
+
+    licenses = _require_xml_child(root, "licenses", "project")
+    actual_licenses = {
+        (
+            _xml_text(license_node, "name"),
+            _xml_text(license_node, "url"),
+            _xml_text(license_node, "distribution"),
+        )
+        for license_node in licenses.findall("{*}license")
+    }
+    if actual_licenses != ANDROID_MAVEN_LICENSES:
+        raise RuntimeError(
+            "Android Maven POM license metadata mismatch: "
+            f"expected {sorted(ANDROID_MAVEN_LICENSES)!r}, got {sorted(actual_licenses)!r}"
+        )
+
+    developers = _require_xml_child(root, "developers", "project")
+    developer = _single_path(
+        list(developers.findall("{*}developer")),
+        "Android Maven POM developer",
+    )
+    actual_developer = tuple(
+        _xml_text(developer, field) for field in ("id", "name", "email")
+    )
+    if actual_developer != ANDROID_MAVEN_DEVELOPER:
+        raise RuntimeError(
+            "Android Maven POM developer metadata mismatch: "
+            f"expected {ANDROID_MAVEN_DEVELOPER!r}, got {actual_developer!r}"
+        )
+
+    scm = _require_xml_child(root, "scm", "project")
+    actual_scm = tuple(
+        _xml_text(scm, field) for field in ("connection", "developerConnection", "url")
+    )
+    if actual_scm != ANDROID_MAVEN_SCM:
+        raise RuntimeError(
+            "Android Maven POM SCM metadata mismatch: "
+            f"expected {ANDROID_MAVEN_SCM!r}, got {actual_scm!r}"
+        )
+
+    dependencies = root.find("{*}dependencies")
+    kotlin_dependencies = [] if dependencies is None else [
+        dependency
+        for dependency in dependencies.findall("{*}dependency")
+        if (
+            _xml_text(dependency, "groupId"),
+            _xml_text(dependency, "artifactId"),
+        )
+        == ("org.jetbrains.kotlin", "kotlin-stdlib")
+    ]
+    kotlin_dependency = _single_path(
+        kotlin_dependencies,
+        "Kotlin standard-library dependency in the Android Maven POM",
+    )
+    if not _xml_text(kotlin_dependency, "version"):
+        raise RuntimeError("Android Maven POM Kotlin dependency has no version")
+    if _xml_text(kotlin_dependency, "scope") != "compile":
+        raise RuntimeError("Android Maven POM Kotlin dependency must use compile scope")
+
+
+def _assert_android_source_jar(source_jar: Path, android_root: Path) -> None:
+    expected_sources = {
+        path.relative_to(android_root / "src" / "main" / "kotlin").as_posix()
+        for path in android_kotlin_compile_sources(android_root)[:-1]
+    }
+    with zipfile.ZipFile(source_jar) as archive:
+        actual_sources = {name for name in archive.namelist() if name.endswith(".kt")}
+    if actual_sources != expected_sources:
+        raise RuntimeError(
+            "Android Maven sources JAR does not match the public Kotlin source set: "
+            f"expected {sorted(expected_sources)!r}, got {sorted(actual_sources)!r}"
+        )
+
+
+def _assert_android_javadoc_jar(javadoc_jar: Path) -> None:
+    required_entries = {
+        "index.html",
+        "merman-android/package-list",
+        "merman-android/io.merman/index.html",
+        "merman-android/io.merman/-merman-engine/index.html",
+        "merman-android/io.merman/-merman-reusable-engine/index.html",
+    }
+    with zipfile.ZipFile(javadoc_jar) as archive:
+        names = set(archive.namelist())
+    missing = sorted(required_entries - names)
     if missing:
         raise RuntimeError(
-            "Android release AAR is missing Kotlin wrapper classes: " + ", ".join(missing)
+            "Android Maven javadoc JAR is missing generated API documentation: "
+            + ", ".join(missing)
         )
+
+
+def _assert_android_gradle_module(
+    module_path: Path,
+    version: str,
+    published_artifacts: dict[str, Path],
+) -> None:
+    module = json.loads(module_path.read_text(encoding="utf-8"))
+    group_id, artifact_id = ANDROID_MAVEN_COORDINATES
+    expected_component = {
+        "group": group_id,
+        "module": artifact_id,
+        "version": version,
+    }
+    component = module.get("component", {})
+    for field, expected in expected_component.items():
+        if component.get(field) != expected:
+            raise RuntimeError(
+                f"Android Gradle module component.{field} mismatch: "
+                f"expected {expected!r}, got {component.get(field)!r}"
+            )
+
+    variant_files: dict[str, list[dict[str, object]]] = {}
+    documentation_types: set[str] = set()
+    has_aar_variant = False
+    for variant in module.get("variants", []):
+        attributes = variant.get("attributes", {})
+        if attributes.get("org.gradle.libraryelements") == "aar":
+            has_aar_variant = True
+        docs_type = attributes.get("org.gradle.docstype")
+        if isinstance(docs_type, str):
+            documentation_types.add(docs_type)
+        for file_entry in variant.get("files", []):
+            name = file_entry.get("name")
+            if isinstance(name, str):
+                variant_files.setdefault(name, []).append(file_entry)
+
+    if not has_aar_variant:
+        raise RuntimeError("Android Gradle module has no AAR library variant")
+    missing_documentation = {"sources", "javadoc"} - documentation_types
+    if missing_documentation:
+        raise RuntimeError(
+            "Android Gradle module is missing documentation variants: "
+            + ", ".join(sorted(missing_documentation))
+        )
+
+    for name, artifact in published_artifacts.items():
+        entries = variant_files.get(name, [])
+        if not entries:
+            raise RuntimeError(f"Android Gradle module does not declare artifact: {name}")
+        actual_sha256 = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        actual_size = artifact.stat().st_size
+        for entry in entries:
+            if entry.get("sha256") != actual_sha256 or entry.get("size") != actual_size:
+                raise RuntimeError(
+                    f"Android Gradle module digest or size mismatch for artifact: {name}"
+                )
+
+
+def assert_android_maven_publication(
+    module_root: Path = ANDROID_MAVEN_MODULE_ROOT,
+    android_root: Path = ANDROID_ROOT,
+) -> Path:
+    if not module_root.is_dir():
+        raise RuntimeError(f"Android Maven module repository not found: {module_root}")
+    version_dir = _single_path(
+        sorted(path for path in module_root.iterdir() if path.is_dir()),
+        "Android Maven publication version directory",
+    )
+    version = version_dir.name
+    _, artifact_id = ANDROID_MAVEN_COORDINATES
+    base_name = f"{artifact_id}-{version}"
+    artifacts = {
+        "pom": version_dir / f"{base_name}.pom",
+        "module": version_dir / f"{base_name}.module",
+        "aar": version_dir / f"{base_name}.aar",
+        "sources": version_dir / f"{base_name}-sources.jar",
+        "javadoc": version_dir / f"{base_name}-javadoc.jar",
+    }
+    for artifact in artifacts.values():
+        if not artifact.is_file():
+            raise RuntimeError(f"Android Maven publication is missing artifact: {artifact}")
+        _assert_sha256(artifact)
+
+    _assert_android_maven_pom(artifacts["pom"], version)
+    assert_android_aar_contract(artifacts["aar"], android_root)
+    _assert_android_source_jar(artifacts["sources"], android_root)
+    _assert_android_javadoc_jar(artifacts["javadoc"])
+    _assert_android_gradle_module(
+        artifacts["module"],
+        version,
+        {
+            artifacts["aar"].name: artifacts["aar"],
+            artifacts["sources"].name: artifacts["sources"],
+            artifacts["javadoc"].name: artifacts["javadoc"],
+        },
+    )
+    return version_dir
 
 
 def assert_android_instrumentation_smoke_report(
@@ -223,6 +552,16 @@ def main() -> int:
     args = parse_args()
 
     try:
+        if args.verify_android_aar:
+            assert_android_aar_contract()
+            print(f"Android AAR contract verified: {ANDROID_RELEASE_AAR}")
+            return 0
+
+        if args.verify_android_maven:
+            version_dir = assert_android_maven_publication()
+            print(f"Android Maven publication contract verified: {version_dir}")
+            return 0
+
         if args.only_android_instrumentation_smoke:
             step("Android instrumentation smoke")
             run_android_instrumentation_smoke(args.gradle_path)
@@ -257,13 +596,7 @@ def main() -> int:
         run(
             [
                 kotlinc,
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanException.kt"),
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasureRequest.kt"),
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasureResult.kt"),
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasurer.kt"),
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanEngine.kt"),
-                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanReusableEngine.kt"),
-                str(ANDROID_ROOT / "examples" / "MermanSmoke.kt"),
+                *(str(path) for path in android_kotlin_compile_sources()),
                 "-d",
                 str(ANDROID_JAR_OUT),
             ]
@@ -344,7 +677,7 @@ def main() -> int:
             step("Android Gradle library assemble")
             gradle = resolve_gradle_command(args.gradle_path)
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-            assert_android_aar_contains_kotlin_wrappers()
+            assert_android_aar_contract()
 
         if args.run_android_instrumentation_smoke:
             step("Android instrumentation smoke")

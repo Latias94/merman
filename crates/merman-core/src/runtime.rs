@@ -48,8 +48,14 @@ pub(crate) fn timing_elapsed(_start: TimingInstant) -> TimingDuration {
     TimingDuration
 }
 
+#[cfg(feature = "host-timing")]
 pub(crate) fn timing_zero_duration() -> TimingDuration {
     TimingDuration::default()
+}
+
+#[cfg(not(feature = "host-timing"))]
+pub(crate) fn timing_zero_duration() -> TimingDuration {
+    TimingDuration
 }
 
 pub(crate) fn with_fixed_today_local<R>(today: Option<NaiveDate>, f: impl FnOnce() -> R) -> R {
@@ -225,12 +231,12 @@ mod no_host_random_tests {
     #[test]
     fn generated_id_hex_is_deterministic_without_host_random() {
         assert_eq!(
-            generated_id_hex(12, 7, 0x626C_6F63_6B),
-            generated_id_hex(12, 7, 0x626C_6F63_6B)
+            generated_id_hex(12, 7, 0x0062_6C6F_636B),
+            generated_id_hex(12, 7, 0x0062_6C6F_636B)
         );
         assert_ne!(
-            generated_id_hex(12, 7, 0x626C_6F63_6B),
-            generated_id_hex(12, 8, 0x626C_6F63_6B)
+            generated_id_hex(12, 7, 0x0062_6C6F_636B),
+            generated_id_hex(12, 8, 0x0062_6C6F_636B)
         );
     }
 }

@@ -1,7 +1,10 @@
-use crate::{XtaskError, cmd::paths};
+use crate::{
+    XtaskError,
+    cmd::{paths, typst_profiles::load_typst_profiles, wasm_build_lock::WorkspaceWasmBuildLock},
+};
 use flate2::{Compression, write::GzEncoder};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -38,14 +41,14 @@ struct Options {
     budget_file: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct WasmPreset {
-    name: &'static str,
+    name: String,
     surface: Surface,
-    package: &'static str,
-    artifact_name: &'static str,
+    package: String,
+    artifact_name: String,
     no_default_features: bool,
-    features: &'static [&'static str],
+    features: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -86,144 +89,158 @@ struct WasmPresetBudget {
     max_brotli_bytes: Option<u64>,
 }
 
-const PRESETS: &[WasmPreset] = &[
-    WasmPreset {
-        name: "browser-bridge",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &[],
-    },
-    WasmPreset {
-        name: "browser-core",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["analysis"],
-    },
-    WasmPreset {
-        name: "browser-render",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["render", "analysis"],
-    },
-    WasmPreset {
-        name: "browser-render-only",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["render"],
-    },
-    WasmPreset {
-        name: "browser-ascii",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["ascii"],
-    },
-    WasmPreset {
-        name: "browser-editor",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["core-full", "editor-language"],
-    },
-    WasmPreset {
-        name: "browser-full",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: false,
-        features: &[],
-    },
-    WasmPreset {
-        name: "browser-full-no-elk",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &[
-            "core-full",
-            "core-host",
-            "render",
-            "analysis",
-            "ascii",
-            "editor-language",
-        ],
-    },
-    WasmPreset {
-        name: "browser-ratex-math",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: false,
-        features: &["ratex-math"],
-    },
-    WasmPreset {
-        name: "typst-bridge",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &[],
-    },
-    WasmPreset {
-        name: "typst-render-only-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render"],
-    },
-    WasmPreset {
-        name: "typst-render-analysis-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render", "analysis"],
-    },
-    WasmPreset {
-        name: "typst-core-full-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render", "analysis", "core-full"],
-    },
-    WasmPreset {
-        name: "typst-full-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: false,
-        features: &[],
-    },
-    WasmPreset {
-        name: "typst-ratex-math",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: false,
-        features: &["ratex-math"],
-    },
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawWebSurfaceDescriptor {
+    schema_version: u32,
+    default_preset: String,
+    presets: Vec<RawWebPreset>,
+    public_surfaces: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawWebPreset {
+    name: String,
+    surface: String,
+    default_features: bool,
+    features: Vec<String>,
+    capabilities: BTreeMap<String, bool>,
+}
+
+const WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
+const WEB_SURFACE_DESCRIPTOR_SOURCE: &str =
+    include_str!("../../../../platforms/web/web-surface-descriptor.json");
+const WEB_CAPABILITY_NAMES: &[&str] = &[
+    "analysis",
+    "ascii",
+    "core_full",
+    "core_host",
+    "editor_language",
+    "elk_layout",
+    "ratex_math",
+    "render",
 ];
 
+fn all_presets() -> Result<Vec<WasmPreset>, XtaskError> {
+    let mut presets = load_browser_presets()?;
+
+    let typst = load_typst_profiles()?;
+    presets.extend(typst.profiles().iter().map(|profile| WasmPreset {
+        name: profile.name().to_string(),
+        surface: Surface::Typst,
+        package: typst.package().to_string(),
+        artifact_name: typst.artifact_name().to_string(),
+        no_default_features: true,
+        features: profile.features().to_vec(),
+    }));
+
+    let mut names = BTreeSet::new();
+    if let Some(duplicate) = presets
+        .iter()
+        .map(|preset| preset.name.as_str())
+        .find(|name| !names.insert(*name))
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "duplicate WASM size preset `{duplicate}`"
+        )));
+    }
+
+    Ok(presets)
+}
+
+fn load_browser_presets() -> Result<Vec<WasmPreset>, XtaskError> {
+    let descriptor: RawWebSurfaceDescriptor = serde_json::from_str(WEB_SURFACE_DESCRIPTOR_SOURCE)
+        .map_err(|error| {
+        XtaskError::WasmSizeMatrixFailed(format!("failed to parse Web surface descriptor: {error}"))
+    })?;
+    if descriptor.schema_version != WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "Web surface descriptor schema must be {WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION}, found {}",
+            descriptor.schema_version
+        )));
+    }
+    if descriptor.presets.is_empty() || descriptor.public_surfaces.is_empty() {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "Web surface descriptor must own presets and public surfaces".to_string(),
+        ));
+    }
+    if !descriptor
+        .presets
+        .iter()
+        .any(|preset| preset.name == descriptor.default_preset)
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "Web default preset `{}` is not declared",
+            descriptor.default_preset
+        )));
+    }
+
+    let expected_capabilities = WEB_CAPABILITY_NAMES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let mut names = BTreeSet::new();
+    descriptor
+        .presets
+        .into_iter()
+        .map(|preset| {
+            if preset.surface != "browser" {
+                return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                    "Web preset `{}` must declare the browser surface",
+                    preset.name
+                )));
+            }
+            if !names.insert(preset.name.clone()) {
+                return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                    "duplicate Web preset `{}`",
+                    preset.name
+                )));
+            }
+            let capability_names = preset
+                .capabilities
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            if capability_names != expected_capabilities {
+                return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                    "Web preset `{}` has an incomplete capability record",
+                    preset.name
+                )));
+            }
+            let mut features = BTreeSet::new();
+            if let Some(duplicate) = preset
+                .features
+                .iter()
+                .find(|feature| !features.insert(feature.as_str()))
+            {
+                return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                    "Web preset `{}` repeats feature `{duplicate}`",
+                    preset.name
+                )));
+            }
+            Ok(WasmPreset {
+                name: preset.name,
+                surface: Surface::Browser,
+                package: "merman-wasm".to_string(),
+                artifact_name: "merman_wasm.wasm".to_string(),
+                no_default_features: !preset.default_features,
+                features: preset.features,
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
-    let options = parse_options(args)?;
-    let presets = selected_presets(&options)?;
+    let all_presets = all_presets()?;
+    let options = parse_options(args, &all_presets)?;
+    let presets = selected_presets(&options, &all_presets)?;
     let budgets = options
         .budget_file
         .as_deref()
         .map(load_budget_file)
         .transpose()?;
+    let _build_lock = WorkspaceWasmBuildLock::acquire()?;
     let strip_dir = paths::target_root().join("wasm-size-matrix");
     if !options.no_strip {
         fs::create_dir_all(&strip_dir).map_err(|source| XtaskError::WriteFile {
@@ -251,7 +268,7 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
             preset.name,
             preset.package,
             !preset.no_default_features,
-            feature_label(preset.features),
+            feature_label(&preset.features),
             measurement.raw_bytes,
             measurement
                 .stripped_bytes
@@ -281,12 +298,12 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
-fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
+fn parse_options(args: Vec<String>, presets: &[WasmPreset]) -> Result<Options, XtaskError> {
     if args
         .iter()
         .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
     {
-        print_usage();
+        print_usage(presets);
         return Err(XtaskError::Usage);
     }
 
@@ -312,7 +329,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
                 options.budget_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
             }
             _ => {
-                print_usage();
+                print_usage(presets);
                 return Err(XtaskError::Usage);
             }
         }
@@ -321,20 +338,20 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
     Ok(options)
 }
 
-fn print_usage() {
+fn print_usage(presets: &[WasmPreset]) {
     println!(
         "usage: xtask wasm-size-matrix [--surface browser|typst|all] [--preset <name>] [--no-strip] [--budget-file <path>]"
     );
     println!();
     println!("Presets:");
-    for preset in PRESETS {
+    for preset in presets {
         println!(
             "  {:<18} surface={} package={} default_features={} features={}",
             preset.name,
             preset.surface.label(),
             preset.package,
             !preset.no_default_features,
-            feature_label(preset.features)
+            feature_label(&preset.features)
         );
     }
 }
@@ -389,7 +406,7 @@ fn check_budget(
     measurement: &WasmMeasurement,
     budgets: &WasmSizeBudgets,
 ) -> Vec<String> {
-    let Some(budget) = budgets.presets.get(preset.name) else {
+    let Some(budget) = budgets.presets.get(&preset.name) else {
         return vec![format!(
             "missing wasm size budget for preset {}",
             preset.name
@@ -399,7 +416,7 @@ fn check_budget(
     let mut failures = Vec::new();
     check_metric(
         &mut failures,
-        preset.name,
+        &preset.name,
         "raw_bytes",
         measurement.raw_bytes,
         budget.max_raw_bytes,
@@ -408,7 +425,7 @@ fn check_budget(
         if let Some(stripped_bytes) = measurement.stripped_bytes {
             check_metric(
                 &mut failures,
-                preset.name,
+                &preset.name,
                 "stripped_bytes",
                 stripped_bytes,
                 Some(max),
@@ -422,14 +439,14 @@ fn check_budget(
     }
     check_metric(
         &mut failures,
-        preset.name,
+        &preset.name,
         "gzip_bytes",
         measurement.gzip_bytes,
         budget.max_gzip_bytes,
     );
     check_metric(
         &mut failures,
-        preset.name,
+        &preset.name,
         "brotli_bytes",
         measurement.brotli_bytes,
         budget.max_brotli_bytes,
@@ -454,8 +471,11 @@ fn check_metric(
     }
 }
 
-fn selected_presets(options: &Options) -> Result<Vec<&'static WasmPreset>, XtaskError> {
-    let presets = PRESETS
+fn selected_presets<'a>(
+    options: &Options,
+    all_presets: &'a [WasmPreset],
+) -> Result<Vec<&'a WasmPreset>, XtaskError> {
+    let presets = all_presets
         .iter()
         .filter(|preset| {
             options
@@ -484,12 +504,15 @@ fn build_preset(preset: &WasmPreset) -> Result<(), XtaskError> {
     command.args([
         "build",
         "-p",
-        preset.package,
+        &preset.package,
         "--profile",
         "wasm-size",
         "--target",
         "wasm32-unknown-unknown",
+        "--locked",
+        "--target-dir",
     ]);
+    command.arg(paths::wasm_build_target_root());
 
     if preset.no_default_features {
         command.arg("--no-default-features");
@@ -519,10 +542,10 @@ fn build_preset(preset: &WasmPreset) -> Result<(), XtaskError> {
 }
 
 fn artifact_path(preset: &WasmPreset) -> PathBuf {
-    paths::target_root()
+    paths::wasm_build_target_root()
         .join("wasm32-unknown-unknown")
         .join("wasm-size")
-        .join(preset.artifact_name)
+        .join(&preset.artifact_name)
 }
 
 fn strip_copy(
@@ -599,7 +622,7 @@ fn brotli_size(path: &Path) -> Result<u64, XtaskError> {
     Ok(compressed.len() as u64)
 }
 
-fn feature_label(features: &[&str]) -> String {
+fn feature_label(features: &[String]) -> String {
     if features.is_empty() {
         "none".to_string()
     } else {
@@ -613,8 +636,9 @@ mod tests {
 
     #[test]
     fn default_selection_includes_browser_and_typst_surfaces() {
+        let all_presets = all_presets().unwrap();
         let options = Options::default();
-        let presets = selected_presets(&options).unwrap();
+        let presets = selected_presets(&options, &all_presets).unwrap();
 
         assert!(presets.iter().any(|preset| preset.name == "browser-full"));
         assert!(presets.iter().any(|preset| preset.name == "typst-full-elk"));
@@ -622,13 +646,14 @@ mod tests {
 
     #[test]
     fn surface_filter_selects_only_that_surface() {
+        let all_presets = all_presets().unwrap();
         let options = Options {
             surface: Some(Surface::Typst),
             preset: None,
             no_strip: false,
             budget_file: None,
         };
-        let presets = selected_presets(&options).unwrap();
+        let presets = selected_presets(&options, &all_presets).unwrap();
 
         assert!(!presets.is_empty());
         assert!(
@@ -640,34 +665,64 @@ mod tests {
 
     #[test]
     fn preset_filter_selects_one_named_preset() {
+        let all_presets = all_presets().unwrap();
         let options = Options {
             surface: None,
             preset: Some("browser-render-only".to_string()),
             no_strip: false,
             budget_file: None,
         };
-        let presets = selected_presets(&options).unwrap();
+        let presets = selected_presets(&options, &all_presets).unwrap();
 
         assert_eq!(presets.len(), 1);
         assert_eq!(presets[0].name, "browser-render-only");
-        assert_eq!(presets[0].features, &["render"]);
+        assert_eq!(feature_names(presets[0]), vec!["render"]);
         assert!(presets[0].no_default_features);
     }
 
     #[test]
     fn browser_editor_measures_full_family_editor_surface() {
-        let preset = PRESETS
+        let all_presets = all_presets().unwrap();
+        let preset = all_presets
             .iter()
             .find(|preset| preset.name == "browser-editor")
             .unwrap();
 
         assert_eq!(preset.surface, Surface::Browser);
-        assert_eq!(preset.features, &["core-full", "editor-language"]);
+        assert_eq!(feature_names(preset), vec!["core-full", "editor-language"]);
         assert!(preset.no_default_features);
     }
 
     #[test]
+    fn typst_publish_profile_measures_the_complete_release_surface() {
+        let all_presets = all_presets().unwrap();
+        let preset = all_presets
+            .iter()
+            .find(|preset| preset.name == "typst-full-elk")
+            .unwrap();
+
+        assert_eq!(preset.surface, Surface::Typst);
+        assert_eq!(
+            feature_names(preset),
+            vec!["render", "analysis", "core-full", "elk-layout"]
+        );
+        assert!(preset.no_default_features);
+    }
+
+    #[test]
+    fn typst_matrix_does_not_publish_the_host_font_ratex_surface() {
+        let all_presets = all_presets().unwrap();
+
+        assert!(
+            all_presets
+                .iter()
+                .all(|preset| preset.name != "typst-ratex-math")
+        );
+    }
+
+    #[test]
     fn unmatched_filters_are_errors() {
+        let all_presets = all_presets().unwrap();
         let options = Options {
             surface: Some(Surface::Typst),
             preset: Some("browser-render".to_string()),
@@ -675,20 +730,24 @@ mod tests {
             budget_file: None,
         };
 
-        assert!(selected_presets(&options).is_err());
+        assert!(selected_presets(&options, &all_presets).is_err());
     }
 
     #[test]
     fn option_parser_accepts_surface_preset_and_no_strip() {
-        let options = parse_options(vec![
-            "--surface".to_string(),
-            "browser".to_string(),
-            "--preset".to_string(),
-            "browser-core".to_string(),
-            "--no-strip".to_string(),
-            "--budget-file".to_string(),
-            "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
-        ])
+        let all_presets = all_presets().unwrap();
+        let options = parse_options(
+            vec![
+                "--surface".to_string(),
+                "browser".to_string(),
+                "--preset".to_string(),
+                "browser-core".to_string(),
+                "--no-strip".to_string(),
+                "--budget-file".to_string(),
+                "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
+            ],
+            &all_presets,
+        )
         .unwrap();
 
         assert_eq!(options.surface, Some(Surface::Browser));
@@ -702,7 +761,8 @@ mod tests {
 
     #[test]
     fn budget_check_reports_missing_preset_budget() {
-        let preset = PRESETS
+        let all_presets = all_presets().unwrap();
+        let preset = all_presets
             .iter()
             .find(|preset| preset.name == "browser-core")
             .unwrap();
@@ -721,7 +781,8 @@ mod tests {
 
     #[test]
     fn budget_check_reports_only_exceeded_metrics() {
-        let preset = PRESETS
+        let all_presets = all_presets().unwrap();
+        let preset = all_presets
             .iter()
             .find(|preset| preset.name == "browser-core")
             .unwrap();
@@ -752,11 +813,15 @@ mod tests {
 
     #[test]
     fn feature_label_uses_none_for_empty_features() {
-        assert_eq!(feature_label(&[]), "none");
+        assert_eq!(feature_label(&Vec::new()), "none");
         assert_eq!(
-            feature_label(&["render", "ratex-math"]),
-            "render+ratex-math"
+            feature_label(&["render".to_string(), "analysis".to_string()]),
+            "render+analysis"
         );
+    }
+
+    fn feature_names(preset: &WasmPreset) -> Vec<&str> {
+        preset.features.iter().map(String::as_str).collect()
     }
 
     fn measurement_for_test() -> WasmMeasurement {

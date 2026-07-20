@@ -39,7 +39,7 @@
     "svg": "Export SVG",
     "svgDesc": "Vector format, scalable",
     "png": "Export PNG",
-    "pngDesc": "Image format, 2x resolution",
+    "pngDesc": "Up to 2x, bounded to 8192 px per side",
     "ascii": "Export ASCII",
     "asciiDesc": "Text art format",
     "asciiNotSupported": "ASCII export not supported for this diagram type",
@@ -49,7 +49,9 @@
     "copyMarkdown": "Copy Markdown",
     "copyMarkdownDesc": "Mermaid.ink image link",
     "svgSuccess": "SVG exported",
-    "pngSuccess": "PNG exported",
+    "pngPreparing": "Preparing {{width}} × {{height}} PNG",
+    "pngSuccess": "PNG exported ({{width}} × {{height}})",
+    "pngFailedAtDimensions": "This browser could not export a {{width}} × {{height}} PNG. Export SVG or reduce the diagram size.",
     "asciiSuccess": "ASCII exported",
     "failed": "Export failed"
   },
@@ -112,6 +114,8 @@
     "rawEvidenceDescription": "Failed and warmup samples remain inspectable here and in the downloaded report; they never enter measured aggregates.",
     "noSamples": "No sample completed before the terminal event.",
     "completedSummary": "{{samples}} retained samples, {{errors}} errors, {{duration}} total",
+    "failureEvidence": "Failure evidence",
+    "failureEvidenceDescription": "Each failure remains attributed to the engine and stage that produced it.",
     "states": {
       "success": "Complete",
       "complete-with-errors": "Complete with errors",
@@ -197,10 +201,15 @@
     }
   },
   "editor": {
+    "ariaLabel": "Mermaid source",
     "codeMode": "Code",
     "configMode": "Config",
     "placeholder": "Enter your Mermaid code here...",
     "loading": "Loading editor...",
+    "languageInitializing": "Language tools initializing",
+    "languageReconnecting": "Language tools reconnecting",
+    "languageUnavailable": "Language tools unavailable: {{message}}",
+    "retryLanguage": "Retry",
     "hover": {
       "flowchart": "Declares a flowchart. Common directions are TD, LR, BT, and RL.",
       "graph": "Alternative flowchart header used by Mermaid.",
@@ -210,7 +219,7 @@
       "erDiagram": "Declares an entity relationship diagram.",
       "journey": "Declares a user journey diagram with sections, tasks, scores, and actors.",
       "info": "Declares an info diagram for Mermaid runtime/version information.",
-      "zenuml": "Declares a ZenUML diagram. Merman translates supported ZenUML forms into sequence layout.",
+      "zenuml": "Declares a ZenUML diagram with family-owned grammar and typed headless rendering.",
       "xychart": "Declares an XY chart with x-axis, y-axis, bar, and line series.",
       "architecture": "Declares an architecture diagram with groups, services, and edges.",
       "c4": "Declares a C4 diagram such as C4Context or C4Container.",
@@ -229,6 +238,7 @@
     }
   },
   "config": {
+    "ariaLabel": "Mermaid configuration",
     "valid": "Config OK",
     "invalidJson": "Invalid JSON",
     "invalidObject": "Invalid config",
@@ -237,14 +247,9 @@
   },
   "preview": {
     "title": "Preview",
-    "wheelZoom": "Wheel to zoom",
     "loading": "Loading render engine...",
     "error": "Render Error",
-    "empty": "Enter Mermaid code on the left",
-    "emptyHint": "Or select an example to get started",
-    "mockMode": "Mock Mode",
-    "mockModeDesc": "WASM module not loaded. Showing code preview.",
-    "mockModeHint": "To enable real rendering, build and load the merman-wasm module.",
+    "empty": "No preview available",
     "svgMode": "SVG Preview",
     "asciiMode": "ASCII Preview",
     "asciiNotSupported": "ASCII not supported for this diagram type",

@@ -122,13 +122,13 @@ struct KanbanParseFailure {
 }
 
 impl KanbanParseFailure {
-    fn into_editor_facts(self) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = *self.editor_facts;
         facts.mark_recovered_from_parse_error(
             format!("kanban parser recovered after parse error: {}", self.error),
             Some(self.span),
         );
-        facts
+        (*self.error, facts)
     }
 }
 
@@ -1613,7 +1613,7 @@ fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
     }
 }
 
-pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     let model = kanban_db_into_render_model(&source.db, meta);
     render_model_to_compat_json(&model, meta)
@@ -1622,13 +1622,18 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let model = kanban_db_into_render_model(&source.db, meta);
-    Ok((
-        render_model_to_compat_json(&model, meta)?,
-        source.editor_facts,
-    ))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_kanban_semantic_source(code, meta),
+        |source| {
+            let model = kanban_db_into_render_model(&source.db, meta);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        KanbanParseFailure::into_error_and_editor_facts,
+    )
 }
 
 fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
@@ -1726,19 +1731,12 @@ fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig
         .collect()
 }
 
-pub fn parse_kanban_model_for_render(
+pub(crate) fn parse_kanban_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     Ok(kanban_db_into_render_model(&source.db, meta))
-}
-
-pub fn parse_kanban_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_kanban_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
 }
 
 #[cfg(test)]
@@ -1790,15 +1788,17 @@ mod tests {
             "theme": "forest"
         }));
         let expected_json = parse_kanban(text, &meta).unwrap();
-        let expected_facts = parse_kanban_editor_facts(text, &meta);
         let expected_model = parse_kanban_model_for_render(text, &meta).unwrap();
 
         reset_kanban_syntax_construction_count();
-        let (json, facts) = parse_kanban_json_and_editor_facts(text, &meta).unwrap();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_kanban_json_and_editor_facts(text, &meta),
+        )
+        .unwrap();
 
         assert_eq!(kanban_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
-        assert_eq!(facts, expected_facts);
+        assert!(!facts.symbols.is_empty());
         assert_eq!(
             render_model_to_compat_json(&expected_model, &meta).unwrap(),
             json
@@ -1824,7 +1824,11 @@ mod tests {
     fn malformed_editor_input_recovers_from_one_construction() {
         let text = "kanban\n  backlog[Backlog]\n    broken[Open\n";
         reset_kanban_syntax_construction_count();
-        let facts = parse_kanban_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_kanban_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(kanban_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
@@ -1849,7 +1853,7 @@ mod tests {
         );
         let engine = Engine::new();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
             .unwrap()
             .unwrap();
 
@@ -1929,7 +1933,11 @@ mod tests {
         );
 
         reset_kanban_syntax_construction_count();
-        let facts = parse_kanban_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_kanban_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(kanban_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
@@ -2005,7 +2013,7 @@ mod tests {
         let engine = Engine::new();
         let text = "kanban\n    root\n      child1\n    :::highlight\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
             .unwrap()
             .unwrap();
 
@@ -2024,7 +2032,7 @@ mod tests {
         let engine = Engine::new();
         let text = "kanban\n  broken[Open\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
             .unwrap()
             .unwrap();
 

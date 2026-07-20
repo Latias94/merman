@@ -45,14 +45,23 @@ export async function runSmoke({
     await testRunner({
       extensionDevelopmentPath: extensionRoot,
       extensionTestsPath: path.join(packageRoot, "dist", "extension-host-smoke.js"),
-      launchArgs: [
-        path.join(packageRoot, "test-fixtures", "extension-host"),
-      ],
+      launchArgs: buildLaunchArgs({
+        fixturePath: path.join(packageRoot, "test-fixtures", "extension-host"),
+        tempRoot,
+      }),
     });
     console.log(`packaged VSIX smoke passed: ${path.basename(vsixPath)}`);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
+}
+
+export function buildLaunchArgs({ fixturePath, tempRoot }) {
+  return [
+    fixturePath,
+    `--user-data-dir=${path.join(tempRoot, "u")}`,
+    `--extensions-dir=${path.join(tempRoot, "e")}`,
+  ];
 }
 
 function extractVsixExtension(filePath, destinationRoot) {

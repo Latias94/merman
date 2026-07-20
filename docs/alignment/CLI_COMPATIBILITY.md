@@ -4,7 +4,7 @@
 **Baseline**: `@mermaid-js/mermaid-cli` `11.16.0`
 **Reference source**: `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js`
 **Created**: 2026-06-04
-**Last updated**: 2026-07-10
+**Last updated**: 2026-07-20
 
 This document is the source of truth for making `merman-cli` behave like the official Mermaid CLI
 where a pure-Rust implementation can reasonably do so. It tracks both the public command surface and
@@ -25,8 +25,8 @@ the observable file/stdout/Markdown behavior. Compatibility here means functiona
 
 ## Non-Goals
 
-- Pixel-identical raster output. Upstream uses Puppeteer screenshots/PDF output; `merman-cli` uses
-  pure-Rust SVG rendering and Rust rasterizers.
+- Pixel-identical PNG/PDF output. Upstream uses Puppeteer screenshots and Chromium PDF output;
+  `merman-cli` uses pure-Rust SVG rendering, a Rust rasterizer, and a Rust vector PDF backend.
 - Replacing the Rust diagram renderers with browser execution.
 
 ## High-Level Design
@@ -95,19 +95,19 @@ costs, makes Rust renderers irrelevant for CLI output.
 | Official option | Upstream behavior | Local status | Notes |
 |---|---|---|---|
 | `-t, --theme [theme]` | Choices: `default`, `forest`, `dark`, `neutral`; default `default`. Config file can override it. | Implemented | Local config merge matches upstream `{ theme }` then config file merge. |
-| `-w, --width [width]` | Positive integer, default `800`. | Implemented | Local accepts positive number and stores as `f64`. |
+| `-w, --width [width]` | Positive integer, default `800`. | Implemented | Local accepts a positive number and stores it as `f64`; it is also the CSS viewport width for `--pdfFit`. |
 | `-H, --height [height]` | Positive integer, default `600`. | Implemented | Local accepts positive number and stores as `f64`. |
 | `-i, --input <input>` | File path; `-` means stdin without missing-input warning. `.md`/`.markdown` activates Markdown mode. | Implemented | Single-diagram, stdin, and Markdown batch rendering implemented. |
 | `-o, --output [output]` | Missing output defaults to `<input>.svg` or `out.svg`; `-` writes stdout and defaults format to SVG. | Implemented divergence | Official extensions are validated; documented Rust extensions `jpg`/`jpeg`/`txt`/`ascii` are also accepted. |
 | `-a, --artefacts [artefacts]` | Only valid with Markdown input; creates directory recursively; overrides artefact location. | Implemented | Supports both `--artefacts` and Rust-friendly `--artifacts` alias. |
 | `-j, --jobs <jobs>` | Positive integer; default half available CPUs or `1`; limits Markdown render concurrency. | Implemented | Uses a bounded Rayon pool for Markdown chart renders; `jobs=1` keeps serial behavior. |
 | `-e, --outputFormat [format]` | Choices: `svg`, `png`, `pdf`; overrides output extension. | Implemented divergence | Local also supports `jpg`, `ascii`, `unicode` for Rust-specific output; unknown values are rejected by clap. |
-| `-b, --backgroundColor [color]` | Default `white`; applied to SVG/PNG/PDF browser page path. | Implemented | Local applies root background/postprocess and raster background. |
+| `-b, --backgroundColor [color]` | Default `white`; applied to SVG/PNG/PDF browser page path. | Implemented | Local applies root SVG/background postprocessing, PNG/JPG pixmap background, and vector PDF page background. |
 | `-c, --configFile [configFile]` | JSON Mermaid config file; must exist and contain an object. | Implemented | JSON parse errors bubble as CLI errors; non-object JSON is rejected before rendering. |
 | `-C, --cssFile [cssFile]` | CSS file; must exist; injected into page before rendering. | Implemented | Local injects scoped CSS through SVG postprocessor. |
 | `-I, --svgId [svgId]` | Root SVG id used by `mermaid.render`. | Implemented | Local sanitizes for Rust SVG internals. |
-| `-s, --scale [scale]` | Positive float, default `1`; Puppeteer device scale factor. | Implemented | Local uses raster scale. |
-| `-f, --pdfFit` | PDF page clipped to chart bounding box. | Implemented divergence | Top-level default PDF uses a Letter-sized page approximation; `--pdfFit` uses chart-sized `svg2pdf` output. |
+| `-s, --scale [scale]` | Positive float, default `1`; Puppeteer device scale factor. | Implemented | Local applies it only to PNG/JPG pixel output. |
+| `-f, --pdfFit` | Reads the rendered SVG's CSS bounding rectangle and uses those CSS-pixel dimensions for the PDF page. | Implemented functional divergence | Top-level default PDF uses a 612-by-792-point Letter approximation. `--pdfFit` constrains responsive SVG width to `--width` (800 CSS pixels by default), preserves aspect ratio, and converts 96 CSS pixels to 72 PDF points. The backend is vector Rust PDF rather than Chromium. |
 | `-q, --quiet` | Suppresses info logs. | Implemented | Markdown chart-count and artefact logs are suppressed. |
 | `-p, --puppeteerConfigFile [file]` | JSON Puppeteer launch config; must exist. | Implemented divergence | File existence and JSON parsing match upstream preflight behavior; values are accepted no-op because the Rust CLI has no Puppeteer runtime. |
 | `--iconPacks <icons...>` | Registers Iconify package loaders in browser; may fetch from unpkg. | Implemented | Loads local `node_modules/<package>/icons.json` when present. Missing packages fetch from `https://unpkg.com/<package>/icons.json` only with `--allow-network`; the package tail is used as the Iconify prefix like upstream. |
@@ -121,6 +121,14 @@ costs, makes Rust renderers irrelevant for CLI output.
 |---|---|---|---|
 | `--fixed-today <YYYY-MM-DD>` | Overrides the local "today" date used by time-dependent diagrams. | Implemented | Primarily stabilizes Gantt parse/render output for snapshots and headless automation. |
 | `--fixed-local-offset-minutes <minutes>` | Overrides local timezone semantics with a fixed offset in minutes. | Implemented | Validated to offsets accepted by `chrono::FixedOffset`; useful for cross-runner Gantt determinism. |
+| `--raster-fit-width`, `--raster-fit-height` | Fits PNG/JPG output into a CSS-pixel box before applying `--scale`. | Implemented | Preserves aspect ratio and avoids allocating an intrinsic oversized SVG as a preview bitmap. |
+| `--raster-max-width`, `--raster-max-height`, `--raster-max-pixels` | Replaces the corresponding PNG/JPG pixmap budget. | Implemented | Defaults are 4096 pixels per side and 16,777,216 total pixels. Automatic constraint reports requested and final dimensions unless `--quiet` is set. |
+| `--raster-unbounded` | Disables final PNG/JPG pixmap limits for trusted oversized exports. | Implemented | Conflicts with explicit `--raster-max-*` values and does not disable decoded-image or render budgets. |
+| `--pdf-filter-scale`, `--pdf-max-filter-pixels` | Configures localized SVG-filter sampling in vector PDF. | Implemented | Defaults are scale 4 and 33,554,432 aggregate filter pixels; automatic reduction is reported unless `--quiet` is set. |
+| `--pdf-filter-unbounded` | Disables the localized PDF filter bitmap budget for trusted input. | Implemented | It does not affect page dimensions, embedded images, or PNG/JPG limits. |
+| `--embedded-image-max-pixels`, `--embedded-image-max-total-pixels` | Sets header-derived embedded image decode budgets for PNG/JPG and PDF. | Implemented | Defaults are 16,777,216 pixels per image and 33,554,432 in aggregate. |
+| `--embedded-images-unbounded` | Disables embedded raster image decode budgets for trusted input. | Implemented | It does not disable output pixmap, PDF filter, or render resource budgets. |
+| `--encoding-memory-budget-mib` | Bounds aggregate in-flight PNG/JPG/PDF encoding memory in Markdown mode. | Implemented | Defaults to 512 MiB, includes the native recursive SVG worker-stack weight, and complements the `--jobs` concurrency limit. |
 
 ## Observable Behavior Matrix
 
@@ -153,7 +161,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 | ASCII/Unicode output | Local supports text output; upstream does not. | Valuable Rust-native CLI capability. | Keep enabled by default for `merman-cli`; `--no-default-features` can still exclude it. |
 | RaTeX math | Local CLI enables `ratex-math` by default; upstream uses browser Mermaid/KaTeX behavior. | Rust CLI should render math without extra feature friction. | Keep `--math-renderer none|ratex`; no-default build still rejects. |
 | Puppeteer config | No browser runtime in local CLI. | Browserless architecture. | Validate file for compatibility, treat runtime config as accepted no-op. |
-| PDF output | Local PDF is generated through Rust `svg2pdf`, not Chromium print-to-PDF. | Browser PDF pagination, margins, and CSS print behavior cannot be pixel-identical without Puppeteer. | Top-level default uses a Letter page approximation; `--pdfFit` uses chart-sized output. |
+| PDF output | Local PDF is generated by a Rust vector backend, not Chromium print-to-PDF. | Browser PDF pagination, margins, and CSS print behavior cannot be pixel-identical without Puppeteer. | Top-level default uses a 612-by-792-point Letter approximation; `--pdfFit` reproduces CSS viewport sizing and the 96-CSS-pixel to 72-point conversion. |
 | Icon pack rendering internals | Upstream uses browser DOM `getBBox()` and Iconify `replaceIDs()` when embedding icons. | Local renderer parses Iconify JSON into a Rust registry and emits deterministic nested SVGs for Flowchart, Architecture, and TreeView; TreeView uses Mermaid's 14px icon size. | Keep tests focused on successful real icon rendering; deepen DOM-level icon parity separately if fixture comparison exposes differences. |
 
 ## Execution Model / Concurrency
@@ -202,7 +210,7 @@ thread pool inside Markdown mode:
 
 ### Phase 4: Browser-Specific Decision Points
 
-- [x] Decide `pdfFit` semantics for Rust `svg2pdf`.
+- [x] Define and test `pdfFit` CSS-viewport semantics for the Rust vector PDF backend.
 - [x] Implement Iconify icon pack support through a Rust SVG icon registry for Flowchart, Architecture, and TreeView.
 - [x] Document any final divergence in the register above.
 
@@ -214,7 +222,7 @@ thread pool inside Markdown mode:
 | Markdown regex drift from upstream | High | Medium | Copy upstream regex semantics into tests with fixtures. |
 | Output file naming surprises | Medium | Medium | Test exact paths for `.svg`, `.png`, `.pdf`, `.md`, and artefacts. |
 | Network icon pack behavior introduces supply-chain risk | High | Medium | Remote fetching only occurs when the user explicitly passes `--allow-network` with a missing `--iconPacks` package or an HTTP(S) `prefix#url`; tests use local JSON sources. |
-| PDF fit cannot match browser PDF exactly | Medium | High | Define Rust-specific behavior and document divergence. |
+| PDF rendering cannot match Chromium print behavior exactly | Medium | High | Keep page-unit semantics source-backed, test `--pdfFit`, and document pagination/print-CSS divergence. |
 
 ## Immediate Next Tests
 

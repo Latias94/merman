@@ -3529,7 +3529,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let session = crate::cmd::svg_compare_environment()
             .begin_session()
             .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
-        let model = match &parsed.model {
+        let model = match parsed.model() {
             merman_core::RenderSemanticModel::Architecture(model) => model,
             model => {
                 return Err(XtaskError::SvgCompareFailed(format!(
@@ -3545,7 +3545,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
             merman_render::architecture::layout_architecture_diagram_typed(
                 model,
-                parsed.meta.effective_config.as_value(),
+                parsed.metadata().effective_config.as_value(),
                 &measurer,
                 session.seed().seed().get(),
             )
@@ -4418,7 +4418,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             .begin_session()
             .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
         if !matches!(
-            &parsed.model,
+            parsed.model(),
             merman_core::RenderSemanticModel::Architecture(_)
         ) {
             continue;

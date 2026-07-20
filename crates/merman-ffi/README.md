@@ -2,244 +2,108 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-ffi.svg)](https://crates.io/crates/merman-ffi)
 [![Documentation](https://docs.rs/merman-ffi/badge.svg)](https://docs.rs/merman-ffi)
-[![Crates.io Downloads](https://img.shields.io/crates/d/merman-ffi.svg)](https://crates.io/crates/merman-ffi)
-[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+Embed Merman's headless Mermaid parser, analyzer, layout engine, and SVG/terminal renderer in any C-compatible host. No browser or JavaScript runtime is required.
 
-C ABI bindings for embedding `merman` in non-Rust hosts.
-
-`merman` is a headless Rust implementation of Mermaid diagram parsing, layout, and rendering. It is
-intended for servers, CLIs, mobile apps, desktop apps, and other environments that need Mermaid
-output without launching a browser. The main library can produce semantic JSON, layout JSON, SVG,
-terminal text, and raster formats depending on enabled features.
-
-Start with the main project README for product scope and diagram coverage:
-
-- Repository: <https://github.com/Latias94/merman>
-- Project README: <https://github.com/Latias94/merman>
-- Rust library: <https://crates.io/crates/merman>
-- CLI: <https://crates.io/crates/merman-cli>
-- Coverage status:
-  <https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md>
-
-This crate exposes the low-level C boundary described by
-[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md).
-Higher-level generated bindings such as UniFFI should sit above the same behavior, not replace this
-C ABI.
+> **Alpha:** the library reports C ABI `2`, but prerelease ABI 2 records can still be replaced in place before the stable release. Always ship the header and native library from the same Merman release and keep the runtime ABI and struct-size checks.
 
 ## Build
 
-From the workspace:
+The crates.io package contains source for `cdylib`, `staticlib`, and `rlib` artifacts; it is not a prebuilt native SDK.
 
 ```sh
 cargo build -p merman-ffi --release
 ```
 
-The crate builds `cdylib`, `staticlib`, and `rlib` artifacts. Include
-[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
-from C or C-compatible hosts.
+Include `include/merman.h` from the same crate archive or source release as the library, then link
+the resulting `merman_ffi` artifact. Do not substitute a header from the repository's moving
+`main` branch for a released native library.
 
-Optional features:
+## Minimal C Example
+
+```c
+#include "merman.h"
+#include <stdio.h>
+
+static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
+
+int main(void) {
+    if (merman_abi_version() != MERMAN_ABI_VERSION) return 1;
+
+    MermanResult result = merman_render_svg(source, sizeof(source) - 1, NULL, 0);
+    if (result.code != MERMAN_OK) {
+        merman_buffer_free(result.data);
+        return 2;
+    }
+
+    fwrite(result.data.data, 1, result.data.len, stdout);
+    merman_buffer_free(result.data);
+    return 0;
+}
+```
+
+Every non-empty `MermanResult.data` buffer must be released exactly once with
+`merman_buffer_free`; never pass it to the host allocator. The crate archive includes
+`examples/render_svg.c` for a complete consumer and `examples/render_svg_engine.c` for the
+reusable engine, both matched to the packaged header.
+
+## Public Surface
+
+The stateless and reusable-engine entry points expose:
+
+- Mermaid source to SVG or Unicode terminal text;
+- semantic and layout JSON;
+- diagram and Markdown/MDX document diagnostics;
+- parser-backed document facts for editor integrations;
+- validation, themes, lint rules, ASCII grades, and the complete diagram-family capability catalog.
+
+Use `merman_engine_new` when several calls share one options document. Concurrent read-style calls require a thread-safe callback and `user_data`; callback replacement is an exclusive mutation. Do not re-enter the same engine from a callback, and release it exactly once with `merman_engine_free`.
+
+`options_json` uses the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). `NULL/0` selects defaults. The default SVG pipeline targets Mermaid parity; `readable` and `resvg-safe` are explicit alternatives for consumers with stricter SVG support.
+
+## Compatibility Contracts
+
+- Native ABI: `2`. Hosts must compare `merman_abi_version()` with `MERMAN_ABI_VERSION` and verify every exposed struct size before use.
+- Diagnostics and parser-facts payload schemas: `1`. These schema numbers are independent of the native ABI. The current facts v1 contract is parser-only; the removed alpha TextScan shape is not accepted.
+- Text measurement: ABI 2 defines 19 exact operations (`0..18`) and four tagged result kinds. A handled callback must return the result kind required by `request.operation`; do not infer a shape from zero-valued fields.
+- Diagram discovery: query `merman_diagram_family_capabilities_json()` instead of hard-coding parser, editor, layout, or render availability.
+
+This prerelease replaced the earlier ABI 2 text-measurement records without changing the numeric ABI. Rebuild the native library and host bindings together; old headers will fail the struct-size contract.
+
+## Text Measurement Ownership
+
+Merman owns a deterministic vendored text measurer by default. It is appropriate for servers, CLIs, CI, and documentation builds, and it keeps rendering available when no GUI font API exists.
+
+Preview hosts can install `merman_engine_set_text_measure_callback` on a reusable engine when geometry must match the final font stack. The callback is synchronous and may run on any rendering thread. Measure with the same DOM, canvas, Core Text, Android text layout, or Flutter text stack that displays the SVG; return `handled = 0` when an operation cannot be answered immediately and faithfully. Unsupported, invalid, wrong-kind, or failed requests fall back per operation without transferring ownership of the render.
+
+The exact request lifetimes, operation/result mapping, concurrency rules, and signed-length exceptions are specified in the [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#host-text-measurement) and [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
+
+## Feature Selection
+
+Default builds enable the full registry, host environment, SVG rendering, analysis, and terminal output. Minimal source builds can opt into the required surfaces:
 
 ```sh
 cargo build -p merman-ffi --release --no-default-features --features analysis
 cargo build -p merman-ffi --release --no-default-features --features render
 cargo build -p merman-ffi --release --no-default-features --features ascii
-cargo build -p merman-ffi --release --features elk-layout
-cargo build -p merman-ffi --release --features ratex-math
-cargo build -p merman-ffi --release --features raster,ratex-math
+cargo build -p merman-ffi --release --features elk-layout,ratex-math
 ```
 
-Default builds enable `core-full`, `core-host`, `render`, `analysis`, and `ascii`.
-`analysis` powers diagnostics, validation, document analysis, and the lint rule catalog; `render`
-powers SVG, parse, layout, host theme presets, and host text measurement; `ascii` powers text
-rendering and ASCII capability metadata. `elk-layout` opts native artifacts into the optional ELK
-layout engine. `raster` forwards the shared binding capability, but the C ABI does not expose native
-raster byte output functions yet. Entry points stay exported across feature sets and return
-`MERMAN_UNSUPPORTED_FORMAT` when the required capability is not compiled in.
+Entry points remain exported when their feature is absent and return `MERMAN_UNSUPPORTED_FORMAT`. The `raster` Cargo feature prepares shared conversion support, but the C ABI does not yet expose raster byte-output functions.
 
-The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, single-diagram and
-document-level analysis JSON, binding metadata, and an optional host text-measurement callback for
-reusable engines. Native raster byte outputs are intentionally split into a later ABI lane.
+## Platform Wrappers
 
-Hosts that need SVG for strict renderers can still request the export-safe SVG pipeline through
-`options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
-default Mermaid-parity SVG contract.
+- [Apple / Swift](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
+- [Android / Kotlin](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
+- [Flutter / Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
+- [Python / UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
 
-Capability metadata includes per-family logical/render identity, detector, parser/editor, header,
-config-namespace, and typed-render availability through
-`merman_diagram_family_capabilities_json()` and ASCII support grades through
-`merman_ascii_capabilities_json()`. Hosts can use those diagnostic surfaces to discover which full
-or tiny registry profile a build contains, and whether an ASCII diagram family is `full`, `partial`,
-or summary-only before rendering.
+Project scope and diagram coverage live in the [main README](https://github.com/Latias94/merman#readme) and [alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md). Release changes are recorded in the [project changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
 
-## Minimal C Usage
+## License And Notices
 
-```c
-#include "merman.h"
-
-static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
-
-MermanResult result = merman_render_svg(source, sizeof(source) - 1, NULL, 0);
-if (result.code == MERMAN_OK) {
-    /* result.data contains UTF-8 SVG bytes. */
-}
-merman_buffer_free(result.data);
-```
-
-Every non-empty `MermanResult.data` buffer must be freed exactly once with `merman_buffer_free`.
-Do not use `free`, `delete`, or a host runtime allocator for buffers returned by Rust.
-
-For repeated calls with the same options, create a reusable engine:
-
-```c
-MermanEngineResult engine = merman_engine_new(NULL, 0);
-if (engine.code != MERMAN_OK) {
-    /* engine.data contains UTF-8 JSON error bytes. */
-    merman_buffer_free(engine.data);
-    return;
-}
-
-MermanResult result = merman_engine_render_svg(engine.engine, source, sizeof(source) - 1);
-merman_buffer_free(result.data);
-merman_engine_free(engine.engine);
-```
-
-Hosts that already own a font stack can install a text measurement callback on a reusable engine:
-
-```c
-MermanResult set_result =
-    merman_engine_set_text_measure_callback(engine.engine, measure_text, user_data);
-merman_buffer_free(set_result.data);
-```
-
-The current alpha C contract reports ABI 2. Text measurement requests identify both the routing
-`phase` and exact `operation`. ABI 2 exposes 19 exact operations with contiguous codes `0..18`;
-operation 18 is `raw-bbox-height` and returns a length. A handled callback result must set
-`result_kind` and populate the matching metrics, `length`, horizontal-extents, or
-wrapped-with-raw-width fields. Returning a wrong kind is invalid and falls back; it is never
-inferred from zero/default fields. Return `handled = 0` when the exact operation is unsupported.
-
-Operation 14 (`create-text-bbox-y-offset`) measures the ordinary createText DOM. Operation 17
-(`create-text-middle-bbox-y-offset`) measures Architecture's `createFormattedText(...)` bbox y under
-inherited `dominant-baseline="middle"`; it cannot be substituted with operation 14. Both y-offset
-operations accept finite signed lengths, while every other valid length is non-negative. The header
-and C-consumer smokes lock ABI 2, the complete `0..18` operation range, and the distinct result
-shapes for operations 17 and 18.
-
-Return `handled=0` for measurement requests your host does not support. `merman` will fall back
-to its vendored Mermaid-compatible measurer for that request. The callback may be invoked from any
-thread that renders with the engine, so shared host font state must be thread-safe.
-
-## Headless Font Measurement
-
-Mermaid normally measures labels in a browser after CSS and font fallback have been resolved. A
-headless renderer has to estimate those metrics before there is a DOM. That means browser and host
-differences can show up as slightly wider labels, clipped `foreignObject` content, or layout drift
-when the final display font differs from merman's vendored compatibility profile.
-
-`merman` keeps Flowchart HTML labels non-clipping by default, which avoids losing trailing
-characters when a browser chooses a wider fallback font. For hosts that need accurate geometry,
-install `merman_engine_set_text_measure_callback` and measure with the same text stack that will
-display the SVG:
-
-- Browser/WebView hosts can use their DOM or canvas text measurement path.
-- Native editors can use their own shaping and font fallback system.
-- Android native previews should use `TextPaint` and `StaticLayout`.
-- Apple native previews should use Core Text or matching `NSAttributedString` layout.
-- Flutter/Dart previews should keep the measured reusable engine on the same isolate and use the
-  same Flutter paragraph/text layout, WebView cache, or SVG widget measurement path as the final
-  display surface.
-- Unsupported requests can return `handled=0` and let merman fall back per request.
-
-Treat the callback as a fidelity opt-in, not a required dependency. CLIs, documentation builds, CI,
-and server-side batch renderers should usually keep the default vendored metrics because they are
-deterministic and do not require host UI APIs. Editors, preview panes, design tools, and WebView
-integrations should consider the callback when clipping or host-specific font fallback matters.
-If a request would require async UI-thread work that is not already cached, return `handled=0`
-instead of blocking the render thread.
-
-The callback request includes the UTF-8 text, font family, size, weight, style, line height,
-spacing, wrap mode, direction, white-space mode, and optional max width. See
-[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
-and
-[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#host-text-measurement)
-for the exact ABI contract.
-
-## Example
-
-[`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
-is a small C consumer that renders a flowchart to SVG through the C ABI.
-[`examples/render_svg_engine.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg_engine.c)
-shows the reusable engine/context API and a minimal text measurement callback for repeated calls
-with shared options.
-
-On macOS or Linux:
-
-```sh
-cargo build -p merman-ffi --release
-cc -I crates/merman-ffi/include \
-  crates/merman-ffi/examples/render_svg.c \
-  -L target/release -lmerman_ffi \
-  -Wl,-rpath,"$PWD/target/release" \
-  -o target/merman-ffi-render-svg
-target/merman-ffi-render-svg
-```
-
-To compile the reusable-engine example, replace `render_svg.c` with `render_svg_engine.c` in the
-same command.
-
-## Entry Points
-
-- `merman_abi_version`
-- `merman_package_version`
-- `merman_buffer_struct_size`
-- `merman_result_struct_size`
-- `merman_engine_result_struct_size`
-- `merman_host_text_measure_request_struct_size`
-- `merman_host_text_measure_result_struct_size`
-- `merman_engine_new`
-- `merman_engine_free`
-- `merman_engine_set_text_measure_callback`
-- `merman_engine_render_svg`
-- `merman_engine_render_ascii`
-- `merman_engine_analyze_json`
-- `merman_engine_analyze_document_json`
-- `merman_engine_analyze_document_facts_json`
-- `merman_engine_parse_json`
-- `merman_engine_layout_json`
-- `merman_engine_validate_json`
-- `merman_render_svg`
-- `merman_render_ascii`
-- `merman_analyze_json`
-- `merman_analyze_document_json`
-- `merman_analyze_document_facts_json`
-- `merman_parse_json`
-- `merman_layout_json`
-- `merman_validate_json`
-- `merman_supported_diagrams_json`
-- `merman_ascii_capabilities_json`
-- `merman_diagram_family_capabilities_json`
-- `merman_lint_rule_catalog_json`
-- `merman_supported_themes_json`
-- `merman_supported_host_theme_presets_json`
-- `merman_buffer_free`
-
-See
-[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
-for declarations and
-[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md)
-for result codes, options JSON, threading, and compatibility rules.
-
-Higher-level platform wrappers:
-
-- Apple SwiftPM:
-  [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
-- Android JNI/Kotlin:
-  [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
-- Flutter/Dart FFI:
-  [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
-- Python UniFFI:
-  [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
+Merman is available under MIT or Apache-2.0. The crate archive includes the release-matched
+`LICENSE-MIT` and `LICENSE-APACHE` texts. Project-wide source provenance and third-party legal
+materials are recorded in [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).

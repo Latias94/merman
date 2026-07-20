@@ -36,6 +36,8 @@ enum XtaskError {
     ParseDompurify(String),
     #[error("failed to project Mermaid default config: {0}")]
     DefaultConfigProjection(String),
+    #[error("failed to project Mermaid theme behavior: {0}")]
+    ThemeSnapshotProjection(String),
     #[error("text-measurement ABI descriptor is invalid: {0}")]
     TextMeasurementAbi(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
@@ -48,6 +50,8 @@ enum XtaskError {
     ProfileBudgetFailed(String),
     #[error("WASM size matrix failed:\n{0}")]
     WasmSizeMatrixFailed(String),
+    #[error("workspace WASM build lock failed: {0}")]
+    WasmBuildLockFailed(String),
     #[error("Typst package build failed:\n{0}")]
     TypstPackageFailed(String),
     #[error("Typst package smoke failed:\n{0}")]
@@ -85,6 +89,8 @@ fn print_help(topic: Option<&str>) {
     println!("  verify");
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
+    println!("  verify-theme-snapshot");
+    println!("  verify-editor-token-descriptor");
     println!("  verify-playground-example-catalog");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
@@ -121,6 +127,8 @@ fn print_help(topic: Option<&str>) {
     println!("  debug-mindmap-svg-positions");
     println!("  gen-font-metrics");
     println!("  measure-text");
+    println!("  gen-theme-snapshot");
+    println!("  gen-editor-token-descriptor");
     println!("  gen-text-measurement-abi");
     println!("  verify-text-measurement-abi");
     println!("  gen-playground-example-catalog");
@@ -173,6 +181,8 @@ fn main() -> Result<(), XtaskError> {
     match cmd_name.as_str() {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
+        "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
+        "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
@@ -180,6 +190,8 @@ fn main() -> Result<(), XtaskError> {
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
+        "verify-theme-snapshot" => cmd::verify_theme_snapshot(args.collect()),
+        "verify-editor-token-descriptor" => cmd::verify_editor_token_descriptor(args.collect()),
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
         }

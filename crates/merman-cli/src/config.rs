@@ -169,14 +169,13 @@ pub(crate) fn renderer_for(
         ..SvgRenderOptions::default()
     };
 
-    Ok(HeadlessRenderer::new()
-        .with_engine(
-            time.apply_engine(Engine::new().with_site_config(site_config_for(parse, render)?)),
-        )
-        .with_parse_options(parse_options(parse))
-        .with_environment(environment)
-        .with_layout_options(layout_options(render))
-        .with_svg_options(svg))
+    let engine = time.apply_engine(Engine::new().with_site_config(site_config_for(parse, render)?));
+    Ok(
+        HeadlessRenderer::from_engine_and_environment(engine, environment)
+            .with_parse_options(parse_options(parse))
+            .with_layout_options(layout_options(render))
+            .with_svg_options(svg),
+    )
 }
 
 #[cfg(test)]

@@ -19,8 +19,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
     let x = -w / 2.0;
     let y = -h / 2.0;
 
-    let note_fill = util::theme_color(ctx.config.as_value(), "noteBkgColor", "#fff5ad");
-    let note_stroke = util::theme_color(ctx.config.as_value(), "noteBorderColor", "#aaaa33");
+    let note_fill = util::theme_token(ctx.config.as_value(), "noteBkgColor", "#fff5ad");
+    let note_stroke = util::theme_token(ctx.config.as_value(), "noteBorderColor", "#aaaa33");
 
     if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {

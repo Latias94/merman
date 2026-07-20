@@ -21,14 +21,14 @@ pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};
 pub use parity::*;
 pub use pipeline::{
-    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
+    ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, resvg_safe_svg,
+    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
+    SvgPostprocessor, finalize_resvg_svg,
 };
 pub use theme_profile::{
-    CompiledHostTheme, CompiledHostThemeOutput, HostThemeAppearance, HostThemeOutput,
-    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeProfileBuilder,
-    HostThemeRoles, HostThemeRootBackground, supported_host_theme_presets,
+    CompiledHostTheme, HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset,
+    HostThemePreset, HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles,
+    HostThemeRootBackground, supported_host_theme_presets,
 };

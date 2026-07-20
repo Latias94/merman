@@ -185,7 +185,7 @@ impl<'a> FlowchartConfigView<'a> {
         style
     }
 
-    pub(crate) fn theme_color(&self, key: &str, fallback: &str) -> String {
+    pub(crate) fn theme_token(&self, key: &str, fallback: &str) -> String {
         self.theme_string(key)
             .unwrap_or_else(|| fallback.to_string())
     }
@@ -443,8 +443,8 @@ mod tests {
         assert_eq!(config.render_node_padding(), 0.0);
         assert_eq!(config.render_curve().as_deref(), Some("linear"));
         assert_eq!(config.render_subgraph_title_y_shift(), 4.0);
-        assert_eq!(config.theme_color("mainBkg", "#ECECFF"), "#112233");
-        assert_eq!(config.theme_color("nodeBorder", "#9370DB"), "#445566");
+        assert_eq!(config.theme_token("mainBkg", "#ECECFF"), "#112233");
+        assert_eq!(config.theme_token("nodeBorder", "#9370DB"), "#445566");
     }
 
     #[test]

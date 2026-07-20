@@ -213,11 +213,15 @@ import merman
 
 class PreviewMeasurer(merman.MermanTextMeasurer):
     def measure(self, request):
+        # The generated callback method is measure(), not measure_text().
+        # Return None unless this host can answer request.operation faithfully.
         return None
 
 
 engine = merman.MermanEngine()
 reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
+svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+assert svg.startswith("<svg")
 ```
 
 For long-lived preview surfaces, call `set_text_measurer()` when the host text stack becomes
@@ -227,6 +231,13 @@ metrics and callback exceptions or errors have the same per-request behavior: Me
 vendored fallback and continues the enclosing layout or render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
+
+The one-shot engine accepts `options_json` on each operation, for example
+`engine.render_svg(source, options_json)`. A reusable engine receives `options_json` when it is
+created and therefore uses `reusable.render_svg(source)` without a second argument. The repository's
+[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py) is the
+canonical executable example; the UniFFI bindgen smoke generates a fresh Python binding and native
+library, then runs that file against the generated API.
 
 ## Android JNI
 

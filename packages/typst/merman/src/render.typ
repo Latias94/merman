@@ -1,8 +1,10 @@
 #import "context.typ": typst-layout
+#import "errors.typ": validate-error-mode
 #import "image.typ": result-image, svg-bytes-or-panic
 #import "options.typ": config-with-context-width, context-host-theme, options-bytes, render-config
 #import "plugin.typ": merman-plugin
 #import "source.typ": source-text-value
+#import "units.typ": context-width-css-px
 
 #let render-svg-result-with-config(source, config) = {
   let source-text = source-text-value(source)
@@ -17,13 +19,13 @@
   svg-bytes-or-panic(render-svg-result(..args))
 }
 
-#let validate-payload-with-config(source, config) = {
+#let analyze-payload-with-config(source, config) = {
   let source-text = source-text-value(source)
-  json(merman-plugin.validate_json(bytes(source-text), options-bytes(config.binding_options)))
+  json(merman-plugin.analyze_json(bytes(source-text), options-bytes(config.binding_options)))
 }
 
-#let validate-payload(source, ..args) = {
-  validate-payload-with-config(source, render-config(..args))
+#let analyze-payload(source, ..args) = {
+  analyze-payload-with-config(source, render-config(..args))
 }
 
 #let mermaid-result(source, ..args) = render-svg-result(source, ..args)
@@ -32,7 +34,7 @@
   str(render-svg-bytes(source, ..args))
 }
 
-#let validate-mermaid(source, ..args) = validate-payload(source, ..args)
+#let analyze-mermaid(source, ..args) = analyze-payload(source, ..args)
 
 #let render-image(
   source,
@@ -67,7 +69,7 @@
     typst-layout(size => {
       let result = render-svg-result-with-config(
         source,
-        config-with-context-width(base-config, size.width / 1pt),
+        config-with-context-width(base-config, context-width-css-px(size.width)),
       )
       result-image(result, width, height, fit, alt, scale, error-mode)
     })
@@ -85,6 +87,7 @@
   error-mode: "panic",
   ..args,
 ) = {
+  let error-mode = validate-error-mode(error-mode)
   if document-context {
     render-image-with-document-context(
       source,

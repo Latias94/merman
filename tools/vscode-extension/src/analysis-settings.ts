@@ -7,9 +7,6 @@ export interface AnalysisSettings {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
   site_config?: Record<string, unknown>;
-  parse?: {
-    suppress_errors?: boolean;
-  };
   resources?: {
     max_source_bytes?: number;
   };
@@ -25,7 +22,6 @@ export interface RawAnalysisSettings {
   fixedToday: unknown;
   fixedLocalOffsetMinutes: unknown;
   siteConfig: unknown;
-  suppressErrors: boolean;
   maxSourceBytes: unknown;
   lintProfile: string;
   enableRules: unknown[];
@@ -53,7 +49,6 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     fixed_today: fixedToday,
     fixed_local_offset_minutes: fixedLocalOffsetMinutes,
     site_config: siteConfig,
-    parse: raw.suppressErrors ? { suppress_errors: true } : undefined,
     resources: maxSourceBytes ? { max_source_bytes: maxSourceBytes } : undefined,
     lint:
       lintProfile || enableRules.length || disableRules.length || ruleSeverities.length

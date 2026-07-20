@@ -219,9 +219,10 @@ gates:
 cargo run -p xtask -- wasm-size-matrix --surface browser
 cargo run -p xtask -- wasm-size-matrix --surface typst
 cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
-cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
 The web package build uses `wasm-pack --profile wasm-size`, so CI and local release machines need
@@ -235,7 +236,16 @@ public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`,
 wasm-bindgen, WASM, preset manifest, ABI 2, editor schema 1, full 35-family registry, and
 `browser-editor` size budget; it is not valid to publish only the wrapper declaration.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
-browser/wasm-bindgen artifacts.
+browser/wasm-bindgen artifacts. Its default and publish profile is public alias `publish`, canonical
+profile `typst-full-elk`, with exactly `render`, `analysis`, `core-full`, and `elk-layout`. Release
+validation requires ABI 2, the closed export surface including `analyze_json`, and the profile-owned
+artifact at `target/typst-wasm-artifacts/typst-full-elk/`. That directory contains the stripped
+WASM and `manifest.json`; `--skip-wasm-build` is allowed only because it validates the manifest's
+profile, inputs, tools, versions, flags, and artifact digest before package reuse. Do not package
+the private raw Cargo output under `target/wasm-build/`. The final package must also contain
+`merman_package.manifest.json`; it binds the verified artifact to the frozen wrapper/license source
+snapshot, and the packaging transaction must fail before replacing the prior version if live source
+or any staged byte changes.
 
 ## Tag And Push
 

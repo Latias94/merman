@@ -45,7 +45,7 @@ crate.
 | --- | --- | --- |
 | `merman` | `render` | Enables layout and SVG rendering through `merman-render`. |
 | `merman` | `ascii` | Enables terminal-oriented ASCII/Unicode rendering through `merman-ascii`. |
-| `merman` | `raster` | Enables PNG/JPG/PDF conversion support. |
+| `merman` | `raster` | Enables bounded PNG/JPG raster conversion and independently configured vector PDF output. |
 | `merman` | `ratex-math` | Enables the pure-Rust RaTeX math backend for supported labels. |
 | `merman` | `cytoscape-layout` | Enables Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout through `merman-render`; those families are unsupported without it. Enabled by `core-full`. |
 | `merman` | `elk-layout` | Enables the optional ELK layout engine integration through `merman-layout-elk`; not implied by `render`. |
@@ -77,16 +77,25 @@ crate.
 | `merman-wasm` | `editor-language` | Browser editor-language APIs; implies `analysis` and adds `merman-editor-core`. |
 | `merman-wasm` | `ratex-math` | Browser package RaTeX math rendering support; implies `render`. |
 | `merman-typst-plugin` | `render` | Typst wasm-minimal-protocol SVG render surface; enabled by default. |
-| `merman-typst-plugin` | `analysis` | Typst validation surface; enabled by default so the package `validate-mermaid` API keeps existing behavior. |
-| `merman-typst-plugin` | `core-full` | Typst no-host artifact with full config and sanitization support. |
+| `merman-typst-plugin` | `analysis` | Canonical analysis-schema-1 surface used by the Typst package `analyze-mermaid` API; enabled by default. |
+| `merman-typst-plugin` | `core-full` | Complete family registry plus full config, sanitization, and Cytoscape layout support; enabled by the publish profile and crate defaults. |
 | `merman-typst-plugin` | `core-host` | Opt-in host capability profile; do not enable for Typst package builds. |
 | `merman-typst-plugin` | `cytoscape-layout` | Typst opt-in for Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout. Enabled by `core-full`. |
 | `merman-typst-plugin` | `elk-layout` | Typst opt-in for ELK-backed layouts; enabled by default for the package artifact. |
-| `merman-typst-plugin` | `ratex-math` | Typst plugin artifact plus RaTeX math rendering support; implies `render`. |
+
+The `raster` feature name is an umbrella for image export dependencies; it does not mean that PDF
+pages are rasterized or share the PNG/JPG pixel limit. SVG output has no global width/height cap.
+PNG/JPG use `RasterOptions`; vector PDF uses independent `PdfOptions` page, filter-rasterization,
+and embedded-image policies. Resvg-safe PNG/JPG/PDF conversion additionally enforces a resolved
+SVG-tree depth capability (256 native levels, 64 WebAssembly levels); native recursive work runs
+on a bounded worker stack, while raw parity SVG remains vector output beyond that backend limit.
 
 The current `merman-wasm` crate is a browser/JavaScript WebAssembly package. It is not the
 pure-WASM or Typst plugin surface. The Typst surface is `merman-typst-plugin`, which uses
 wasm-minimal-protocol and must keep browser/wasm-bindgen imports out of package builds.
+RaTeX is intentionally not exposed by `merman-typst-plugin`: its current upstream SVG closure uses
+browser system-font discovery and therefore violates the Typst import contract. It requires a
+separate zero-browser-import admission before a future Typst profile may advertise it.
 
 Bindings expose the selected registry profile and per-family parser/render capability metadata so
 hosts can inspect the actual full/tiny diagram surface in slim artifacts instead of inferring it

@@ -1,11 +1,9 @@
 use super::{
-    LayoutOptions, Result, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
-    apply_owned_svg_pipeline_with_metadata,
+    LayoutOptions, Result, ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgRenderOptions,
 };
 use merman_render::{
-    ResourceLimitExceeded, ResourceLimitPhase,
+    ResourceLimitExceeded,
     environment::{RenderEnvironment, RenderLocalTimePolicy, RenderSession, RenderSessionReport},
-    family::RenderFamilyKind,
 };
 
 #[cfg(feature = "raster")]
@@ -125,12 +123,12 @@ pub struct PreparedSemantic {
 impl PreparedSemantic {
     /// Returns preprocessed metadata for admission and diagnostics.
     pub fn metadata(&self) -> &merman_core::ParseMetadata {
-        &self.parsed.meta
+        self.parsed.metadata()
     }
 
     /// Returns the family-owned typed semantic variant name without exposing mutable pairing.
     pub fn semantic_kind(&self) -> &'static str {
-        self.parsed.model.kind()
+        self.parsed.model().kind()
     }
 
     /// Runs layout exactly once and advances to the pre-SVG render stage.
@@ -289,29 +287,49 @@ impl PreparedRender {
             .into_pipeline_svg(pipeline)
     }
 
+    /// Renders and terminally finalizes SVG for resvg/raster consumers.
+    ///
+    /// The supplied pipeline contributes draft transformations. Its terminal preset is always
+    /// replaced with `resvg_safe`, so no custom pass can run after compatibility validation.
+    pub fn render_resvg_compatible_svg(
+        self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<ResvgCompatibleSvg> {
+        self.render_resvg_compatible_svg_with_debug(
+            svg_options,
+            &SvgDebugOptions::default(),
+            pipeline,
+        )
+        .map(|(svg, _)| svg)
+    }
+
+    pub fn render_resvg_compatible_svg_with_debug(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<(ResvgCompatibleSvg, RenderOperationReport)> {
+        let pipeline = pipeline.clone().into_resvg_safe();
+        self.render_svg_parts(svg_options, debug_options)?
+            .into_resvg_compatible(&pipeline)
+    }
+
     fn render_svg_parts(
         self,
         svg_options: &SvgRenderOptions,
         debug_options: &SvgDebugOptions,
     ) -> Result<RenderedSvgParts> {
         let rendered = self.artifact.render_svg(svg_options, debug_options)?;
-        let (svg, family_kind, metadata, session) = rendered.into_parts();
-
-        Ok(RenderedSvgParts {
-            svg,
-            family_kind,
-            diagram_type: metadata.diagram_type,
-            diagram_title: metadata.title,
-            session,
-        })
+        Ok(RenderedSvgParts { rendered })
     }
 }
 
 #[cfg(feature = "raster")]
-enum HeadlessRasterOutput<'a> {
+enum HeadlessEncodedOutput<'a> {
     Png(&'a raster::RasterOptions),
     Jpeg(&'a raster::RasterOptions),
-    Pdf,
+    Pdf(&'a raster::PdfOptions),
 }
 
 impl<'a> HeadlessOperation<'a> {
@@ -406,11 +424,11 @@ impl<'a> HeadlessOperation<'a> {
         pipeline: &SvgPipeline,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(
+        self.render_encoded_output(
             svg_options,
             debug_options,
             pipeline,
-            HeadlessRasterOutput::Png(raster),
+            HeadlessEncodedOutput::Png(raster),
         )
     }
 
@@ -422,11 +440,11 @@ impl<'a> HeadlessOperation<'a> {
         pipeline: &SvgPipeline,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(
+        self.render_encoded_output(
             svg_options,
             debug_options,
             pipeline,
-            HeadlessRasterOutput::Jpeg(raster),
+            HeadlessEncodedOutput::Jpeg(raster),
         )
     }
 
@@ -436,73 +454,68 @@ impl<'a> HeadlessOperation<'a> {
         svg_options: &SvgRenderOptions,
         debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
+        pdf: &raster::PdfOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(
+        self.render_encoded_output(
             svg_options,
             debug_options,
             pipeline,
-            HeadlessRasterOutput::Pdf,
+            HeadlessEncodedOutput::Pdf(pdf),
         )
     }
 
     #[cfg(feature = "raster")]
-    fn render_raster(
+    fn render_encoded_output(
         self,
         svg_options: &SvgRenderOptions,
         debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
-        output: HeadlessRasterOutput<'_>,
+        output: HeadlessEncodedOutput<'_>,
     ) -> raster::Result<Option<Vec<u8>>> {
-        let Some(svg) = self.render_svg_with_pipeline(svg_options, debug_options, pipeline)? else {
+        let Some(prepared) = self.prepare_render()? else {
             return Ok(None);
         };
+        let (svg, _) = prepared.render_resvg_compatible_svg_with_debug(
+            svg_options,
+            debug_options,
+            pipeline,
+        )?;
 
         let bytes = match output {
-            HeadlessRasterOutput::Png(raster) => raster::svg_to_png(&svg, raster)?,
-            HeadlessRasterOutput::Jpeg(raster) => raster::svg_to_jpeg(&svg, raster)?,
-            HeadlessRasterOutput::Pdf => raster::svg_to_pdf(&svg)?,
+            HeadlessEncodedOutput::Png(raster) => raster::svg_to_png(&svg, raster)?,
+            HeadlessEncodedOutput::Jpeg(raster) => raster::svg_to_jpeg(&svg, raster)?,
+            HeadlessEncodedOutput::Pdf(pdf) => raster::svg_to_pdf_with_options(&svg, pdf)?,
         };
         Ok(Some(bytes))
     }
 }
 
 struct RenderedSvgParts {
-    svg: String,
-    family_kind: RenderFamilyKind,
-    diagram_type: String,
-    diagram_title: Option<String>,
-    session: RenderSession,
+    rendered: merman_render::family::RenderedFamilySvg,
 }
 
 impl RenderedSvgParts {
     fn into_rendered_svg(self) -> RenderedSvg {
-        let report = CompletedTypedHeadlessSvg::new(self.session).into_report();
-        RenderedSvg {
-            svg: self.svg,
-            report,
-        }
+        let (svg, _, _, session) = self.rendered.into_parts();
+        let report = CompletedTypedHeadlessSvg::new(session).into_report();
+        RenderedSvg { svg, report }
     }
 
     fn into_pipeline_svg(self, pipeline: &SvgPipeline) -> Result<RenderedSvg> {
-        let Self {
-            svg,
-            family_kind,
-            diagram_type,
-            diagram_title,
-            session,
-        } = self;
-        let metadata = SvgPostprocessMetadata::from_svg(&svg)
-            .with_family_kind(family_kind)
-            .with_diagram_type(diagram_type)
-            .with_optional_diagram_title(diagram_title);
-
-        let out = apply_owned_svg_pipeline_with_metadata(svg, pipeline, &metadata, &session)?;
-        session
-            .resource_limits()
-            .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
-            .map_err(resource_limit_error)?;
+        let rendered = self.rendered.apply_pipeline(pipeline)?;
+        let (svg, _, _, session) = rendered.into_parts();
         let report = CompletedTypedHeadlessSvg::new(session).into_report();
-        Ok(RenderedSvg { svg: out, report })
+        Ok(RenderedSvg { svg, report })
+    }
+
+    fn into_resvg_compatible(
+        self,
+        pipeline: &SvgPipeline,
+    ) -> Result<(ResvgCompatibleSvg, RenderOperationReport)> {
+        let rendered = self.rendered.finalize_resvg(pipeline)?;
+        let (svg, _, _, session) = rendered.into_parts();
+        let report = CompletedTypedHeadlessSvg::new(session).into_report();
+        Ok((svg, report))
     }
 }
 

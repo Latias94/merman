@@ -85,7 +85,7 @@ fn foreign_object_for_text<'a>(svg: &'a str, text: &str) -> &'a str {
 }
 
 fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
-    let RenderSemanticModel::Class(model) = &parsed.model else {
+    let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");
     };
     model
@@ -101,7 +101,7 @@ fn layout_class_with_dagre(
         .check_class_complexity(model)
         .expect("class complexity within test limits");
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_class_diagram_typed_with_config(model, &parsed.meta.effective_config, &measurer)
+    layout_class_diagram_typed_with_config(model, &parsed.metadata().effective_config, &measurer)
         .expect("Dagre class layout")
 }
 
@@ -141,12 +141,13 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
             .expect("parse ok")
             .expect("diagram detected");
         assert_eq!(
-            parsed.meta.diagram_type, expected_role,
+            parsed.metadata().diagram_type,
+            expected_role,
             "Class detection must follow Mermaid's renderer-aware detector contract for {source:?}"
         );
         assert_eq!(
             class_model(&parsed).diagram_type,
-            parsed.meta.diagram_type,
+            parsed.metadata().diagram_type,
             "the typed Class model must preserve the detector-selected diagram id for {source:?}"
         );
         let session = RenderEnvironment::parity().begin_session().unwrap();

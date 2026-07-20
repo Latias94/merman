@@ -3,6 +3,22 @@
   "default_preset": "browser-full",
   "presets": [
     {
+      "name": "browser-bridge",
+      "surface": "browser",
+      "default_features": false,
+      "features": [],
+      "capabilities": {
+        "render": false,
+        "analysis": false,
+        "ascii": false,
+        "core_full": false,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": false
+      }
+    },
+    {
       "name": "browser-core",
       "surface": "browser",
       "default_features": false,

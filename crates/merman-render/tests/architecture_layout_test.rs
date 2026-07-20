@@ -18,14 +18,14 @@ fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureD
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+    let RenderSemanticModel::Architecture(model) = parsed.model() else {
         panic!("expected architecture render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     layout_architecture_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
         session.seed().seed().get(),
     )

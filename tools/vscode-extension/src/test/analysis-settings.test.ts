@@ -98,7 +98,6 @@ function defaultRawAnalysisSettings(): RawAnalysisSettings {
     fixedToday: "",
     fixedLocalOffsetMinutes: null,
     siteConfig: {},
-    suppressErrors: false,
     maxSourceBytes: 0,
     lintProfile: "core",
     enableRules: [],

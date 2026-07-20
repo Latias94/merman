@@ -7,110 +7,8 @@ const EMPTY_PIE_HEIGHT: f64 = 450.0;
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
-    let color = css_color_to_rgb_string(fill).unwrap_or_else(|| fill.to_string());
+    let color = super::super::util::cssom_color_value(fill);
     format!("fill: {color}; stroke: {color};")
-}
-
-fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
-    let t = s.trim().strip_prefix('#').unwrap_or(s.trim());
-    if t.len() != 6 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
-    }
-    let r = u8::from_str_radix(&t[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&t[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&t[4..6], 16).ok()?;
-    Some((r, g, b))
-}
-
-fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
-    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
-    let mut parts = inner.split(',').map(|p| p.trim());
-    let parse_channel = |part: &str| -> Option<u8> {
-        let value = part.parse::<f64>().ok()?;
-        if !value.is_finite() {
-            return None;
-        }
-        Some(value.round().clamp(0.0, 255.0) as u8)
-    };
-    let r = parse_channel(parts.next()?)?;
-    let g = parse_channel(parts.next()?)?;
-    let b = parse_channel(parts.next()?)?;
-    Some((r, g, b))
-}
-
-fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
-    let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-    let mut parts = inner.split(',').map(|p| p.trim());
-    let h = parts.next()?.parse::<f64>().ok()?;
-    let s = parts
-        .next()?
-        .strip_suffix('%')
-        .unwrap_or_default()
-        .parse::<f64>()
-        .ok()?;
-    let l = parts
-        .next()?
-        .strip_suffix('%')
-        .unwrap_or_default()
-        .parse::<f64>()
-        .ok()?;
-    Some((h, s, l))
-}
-
-fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
-    if !(h_deg.is_finite() && s_pct.is_finite() && l_pct.is_finite()) {
-        return None;
-    }
-
-    let h = (h_deg / 360.0).rem_euclid(1.0);
-    let s = (s_pct / 100.0).clamp(0.0, 1.0);
-    let l = (l_pct / 100.0).clamp(0.0, 1.0);
-
-    if s == 0.0 {
-        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
-        return Some((v, v, v));
-    }
-
-    let q = if l < 0.5 {
-        l * (1.0 + s)
-    } else {
-        l + s - l * s
-    };
-    let p = 2.0 * l - q;
-
-    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
-        if t < 0.0 {
-            t += 1.0;
-        }
-        if t > 1.0 {
-            t -= 1.0;
-        }
-        if t < 1.0 / 6.0 {
-            return p + (q - p) * 6.0 * t;
-        }
-        if t < 1.0 / 2.0 {
-            return q;
-        }
-        if t < 2.0 / 3.0 {
-            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
-        }
-        p
-    }
-
-    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
-    let g = hue_to_rgb(p, q, h);
-    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
-
-    let to_u8 = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
-    Some((to_u8(r), to_u8(g), to_u8(b)))
-}
-
-fn css_color_to_rgb_string(s: &str) -> Option<String> {
-    let t = s.trim();
-    let (r, g, b) = parse_rgb_css(t)
-        .or_else(|| parse_hex_rgb(t))
-        .or_else(|| parse_hsl_css(t).and_then(|(h, s, l)| hsl_to_rgb_u8(h, s, l)))?;
-    Some(format!("rgb({r}, {g}, {b})"))
 }
 
 fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
@@ -418,12 +316,20 @@ mod tests {
     #[test]
     fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {
         assert_eq!(
-            pie_legend_rect_style("hsl(60, 100%, 57.0588235294%)"),
-            "fill: rgb(255, 255, 36); stroke: rgb(255, 255, 36);"
+            pie_legend_rect_style("hsl(60, 100%, 63.5294117647%)"),
+            "fill: rgb(255, 255, 69); stroke: rgb(255, 255, 69);"
         );
         assert_eq!(
             pie_legend_rect_style("#ECECFF"),
             "fill: rgb(236, 236, 255); stroke: rgb(236, 236, 255);"
+        );
+        assert_eq!(
+            pie_legend_rect_style("hsla(210 65.3846153846% 20.3921568627% / .5)"),
+            "fill: rgba(18, 52, 86, 0.5); stroke: rgba(18, 52, 86, 0.5);"
+        );
+        assert_eq!(
+            pie_legend_rect_style("ReBeccAPurple"),
+            "fill: rebeccapurple; stroke: rebeccapurple;"
         );
     }
 

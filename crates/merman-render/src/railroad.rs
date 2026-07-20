@@ -1218,7 +1218,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
@@ -1340,12 +1340,12 @@ mod tests {
             )
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
         let layout = layout_railroad_diagram_typed(
-            &model,
+            model,
             &serde_json::json!({}),
             &DeterministicTextMeasurer::default(),
         )
@@ -1363,7 +1363,7 @@ mod tests {
         assert_eq!(layout.diagram_type, "railroad");
 
         let ebnf_layout = layout_railroad_diagram_typed_for_type(
-            &model,
+            model,
             "railroadEbnf",
             &serde_json::json!({}),
             &DeterministicTextMeasurer::default(),
@@ -1428,13 +1428,13 @@ mod tests {
             )
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
         for diagram_type in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
             let layout = layout_railroad_diagram_typed_for_type(
-                &model,
+                model,
                 diagram_type,
                 &serde_json::json!({}),
                 &RailroadBBoxMeasurer,

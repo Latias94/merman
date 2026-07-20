@@ -25,16 +25,16 @@ fn c4_public_layout_handles_deep_boundary_chain() {
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    assert_eq!(parsed.meta.diagram_type, "c4");
+    assert_eq!(parsed.metadata().diagram_type, "c4");
 
-    let RenderSemanticModel::C4(model) = &parsed.model else {
+    let RenderSemanticModel::C4(model) = parsed.model() else {
         panic!("expected C4 render model");
     };
     let options = LayoutOptions::default();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let c4 = layout_c4_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
         options.container_width,
         options.container_height,

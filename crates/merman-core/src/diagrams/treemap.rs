@@ -4,7 +4,7 @@ use crate::diagrams::langium_common::{
 use crate::diagrams::scan::{leading_whitespace_len, physical_line_at, split_ascii_indent};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Map, Value, json};
 
@@ -152,8 +152,29 @@ impl TreemapParseOutcome {
         }
     }
 
-    fn into_editor_facts(self) -> EditorSemanticFacts {
-        self.parsed.editor_facts
+    fn into_combined(self, meta: &ParseMetadata) -> family::CombinedSemanticParse {
+        let Self {
+            parsed,
+            first_issue,
+        } = self;
+        let construction = match first_issue {
+            Some(issue) => Err(family::CombinedSemanticFailure::new(
+                treemap_error(meta, issue.message, issue.span),
+                parsed.editor_facts,
+            )),
+            None => Ok(treemap_semantic_source_from_parsed(parsed)),
+        };
+        family::CombinedSemanticParse::from_construction(
+            construction,
+            |source| {
+                let model = source.render_model();
+                (
+                    render_model_to_compat_json(&model, meta),
+                    source.editor_facts,
+                )
+            },
+            family::CombinedSemanticFailure::into_parts,
+        )
     }
 }
 
@@ -270,11 +291,7 @@ fn push_treemap_row_editor_facts(facts: &mut EditorSemanticFacts, row: &TreemapR
     }
 }
 
-pub fn parse_treemap_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_treemap_outcome(code).into_editor_facts()
-}
-
-pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_treemap_semantic_source(code, meta)?.render_model();
     render_model_to_compat_json(&model, meta)
 }
@@ -282,14 +299,11 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_treemap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_treemap_semantic_source(code, meta)?;
-    let model = source.render_model();
-    let compat = render_model_to_compat_json(&model, meta)?;
-    Ok((compat, source.editor_facts))
+) -> family::CombinedSemanticParse {
+    parse_treemap_outcome(code).into_combined(meta)
 }
 
-pub fn parse_treemap_model_for_render(
+pub(crate) fn parse_treemap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
@@ -439,10 +453,14 @@ fn construct_treemap_semantic_source(
     meta: &ParseMetadata,
 ) -> Result<TreemapSemanticSource> {
     let parsed = parse_treemap_outcome(code).into_strict(meta)?;
+    Ok(treemap_semantic_source_from_parsed(parsed))
+}
+
+fn treemap_semantic_source_from_parsed(parsed: TreemapParsedInput) -> TreemapSemanticSource {
     let class_defs = class_defs_from_rows(&parsed.rows);
     let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
     let (arena, roots) = build_hierarchy(&flat_items);
-    Ok(TreemapSemanticSource {
+    TreemapSemanticSource {
         present: parsed.present,
         title: parsed.title,
         acc_title: parsed.acc_title,
@@ -451,7 +469,7 @@ fn construct_treemap_semantic_source(
         arena,
         roots,
         editor_facts: parsed.editor_facts,
-    })
+    }
 }
 
 fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
@@ -1341,8 +1359,8 @@ accDescr: Treemap accDescr
             .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        assert_eq!(parsed.meta.diagram_type, "treemap");
-        match parsed.model {
+        assert_eq!(parsed.metadata().diagram_type, "treemap");
+        match parsed.model() {
             RenderSemanticModel::Treemap(model) => {
                 assert_eq!(model.title.as_deref(), Some("Treemap Title"));
                 assert_eq!(model.acc_title.as_deref(), Some("Treemap accTitle"));
@@ -1428,7 +1446,7 @@ accDescr: Treemap accDescr
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        match parsed.model {
+        match parsed.model() {
             RenderSemanticModel::Treemap(model) => {
                 assert_eq!(count_render_nodes(&model.root), DEPTH + 2);
             }
@@ -1653,7 +1671,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     }
 
     #[test]
-    fn treemap_combined_parse_constructs_source_once_and_matches_standalone() {
+    fn treemap_combined_parse_constructs_source_once_and_preserves_projections() {
         let text = concat!(
             "treemap\n",
             "title Product Map\n",
@@ -1666,8 +1684,10 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         let meta = meta();
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("treemap");
-        let (combined_json, combined_editor) =
-            parse_treemap_json_and_editor_facts(text, &meta).unwrap();
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_treemap_json_and_editor_facts(text, &meta),
+        )
+        .unwrap();
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("treemap"),
             1,
@@ -1675,9 +1695,8 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         );
 
         let standalone_json = parse_treemap(text, &meta).unwrap();
-        let standalone_editor = parse_treemap_editor_facts(text, &meta);
         assert_eq!(combined_json, standalone_json);
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
     }
 
     #[test]
@@ -1717,7 +1736,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     #[test]
     fn treemap_editor_projection_uses_exact_statement_spans() {
         let text = "treemap\n\"Leaf\": 42 :::hot\nclassDef hot fill:#f96;\n";
-        let facts = parse_treemap_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_treemap_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         for (name, detail) in [
             ("Leaf", "treemap leaf"),
@@ -1740,7 +1763,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         let meta = meta();
 
         let error = parse_treemap(text, &meta).expect_err("strict parse must reject the leaf");
-        let facts = parse_treemap_editor_facts(text, &meta);
+        let facts = crate::family::test_support::editor_facts(
+            parse_treemap_json_and_editor_facts,
+            text,
+            &meta,
+        );
 
         assert_eq!(
             facts.completeness,
@@ -1793,7 +1820,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         let error = parse_treemap(text, &meta).expect_err("strict parse must use the first error");
         assert!(error.to_string().contains("expected class selector"));
 
-        let facts = parse_treemap_editor_facts(text, &meta);
+        let facts = crate::family::test_support::editor_facts(
+            parse_treemap_json_and_editor_facts,
+            text,
+            &meta,
+        );
         assert_eq!(
             facts.completeness,
             crate::EditorSemanticCompleteness::Recovered
@@ -1856,7 +1887,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     #[test]
     fn treemap_crlf_lexemes_keep_original_utf8_byte_spans() {
         let text = "treemap-beta\r\n\"根\": 12:::hot\r\n";
-        let facts = parse_treemap_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_treemap_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(
             facts.completeness,
             crate::EditorSemanticCompleteness::Complete
@@ -1889,7 +1924,10 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     fn treemap_multiline_acc_descr_uses_common_syntax_and_recovers_when_unterminated() {
         let complete = "treemap\naccDescr {\nline one\nline two\n}\n\"Root\"\n";
         let meta = meta();
-        let (json, facts) = parse_treemap_json_and_editor_facts(complete, &meta).unwrap();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_treemap_json_and_editor_facts(complete, &meta),
+        )
+        .unwrap();
         assert_eq!(json["accDescr"], json!("line one\nline two"));
         let payload_start = complete.find("line one").unwrap();
         let payload = facts
@@ -1904,7 +1942,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 
         let incomplete = "treemap\naccDescr {\nline one\n";
         assert!(parse_treemap(incomplete, &meta).is_err());
-        let recovered = parse_treemap_editor_facts(incomplete, &meta);
+        let recovered = crate::family::test_support::editor_facts(
+            parse_treemap_json_and_editor_facts,
+            incomplete,
+            &meta,
+        );
         assert_eq!(
             recovered.completeness,
             crate::EditorSemanticCompleteness::Recovered

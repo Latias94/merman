@@ -666,7 +666,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 19);
+    assert_eq!(descriptors.len(), 20);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -772,6 +772,27 @@ fn rule_descriptors_expose_stable_rule_metadata() {
         descriptors
             .iter()
             .any(|descriptor| descriptor.id == INVALID_FRONT_MATTER_YAML_RULE_ID)
+    );
+    let invalid_theme_color = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == INVALID_THEME_COLOR_RULE_ID)
+        .expect("invalid theme color descriptor");
+    assert_eq!(invalid_theme_color.origin, RuleOrigin::MermaidCompatibility);
+    assert_eq!(invalid_theme_color.category, DiagnosticCategory::Config);
+    assert_eq!(
+        invalid_theme_color.default_severity,
+        DiagnosticSeverity::Error
+    );
+    assert!(invalid_theme_color.default_enabled);
+    assert_eq!(
+        invalid_theme_color.default_profile,
+        AnalysisRuleProfile::Core
+    );
+    assert!(!invalid_theme_color.fixable);
+    assert!(
+        invalid_theme_color
+            .evidence
+            .contains(&"docs/adr/0068-render-side-presentation-theme-view.md")
     );
     assert!(
         descriptors

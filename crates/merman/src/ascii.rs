@@ -48,7 +48,7 @@ pub fn render_ascii_sync(
 
     Ok(Some(render_model_with_engine_time(
         engine,
-        &parsed.model,
+        parsed.model(),
         ascii_options,
     )?))
 }
@@ -133,8 +133,8 @@ impl HeadlessAsciiRenderer {
         self
     }
 
-    pub fn parse_metadata_sync(&self, text: &str) -> Result<Option<merman_core::ParseMetadata>> {
-        Ok(self.engine.parse_metadata_sync(text, self.parse)?)
+    pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
+        Ok(self.engine.parse_metadata_sync(text)?)
     }
 
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {

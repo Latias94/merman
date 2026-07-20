@@ -4,6 +4,7 @@ import ts from "typescript";
 
 export const BENCHMARK_SOURCES = Object.freeze({
   bootstrap: "src/benchmark/realm/bootstrap.ts",
+  mermanArtifact: "src/benchmark/realm/merman-engine-artifact.ts",
   mermanAdapter: "src/benchmark/realm/engines/merman.ts",
   mermaidAdapter: "src/benchmark/realm/engines/mermaid.ts",
 });
@@ -32,6 +33,7 @@ export const BENCHMARK_ADAPTER_FORBIDDEN_SOURCES = new Set([
   "src/benchmark/schedule.ts",
   "src/benchmark/statistics.ts",
   "src/benchmark/report.ts",
+  BENCHMARK_SOURCES.mermanArtifact,
 ]);
 
 const SAFE_MERMAN_WEB_IMPORTS = new Set([

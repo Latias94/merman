@@ -91,6 +91,8 @@ pub(crate) struct BindingOptions {
     pub(crate) version: Option<u32>,
     #[serde(flatten)]
     pub(crate) analysis: BindingAnalysisOptionsJson,
+    #[cfg(any(feature = "render", feature = "ascii"))]
+    pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "render")]
     pub(crate) host_theme: Option<HostThemeOptionsJson>,
     #[cfg(feature = "ascii")]
@@ -110,14 +112,13 @@ pub(crate) struct BindingAnalysisOptionsJson {
     pub(crate) fixed_today: Option<String>,
     pub(crate) fixed_local_offset_minutes: Option<i32>,
     pub(crate) site_config: Option<Value>,
-    pub(crate) parse: Option<ParseOptionsJson>,
     pub(crate) resources: Option<ResourceOptionsJson>,
     #[cfg(feature = "analysis")]
     pub(crate) lint: Option<merman_analysis::LintOptionsJson>,
 }
 
 #[allow(dead_code)]
-#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+#[cfg(any(feature = "render", feature = "ascii"))]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct ParseOptionsJson {
     pub(crate) suppress_errors: Option<bool>,
@@ -208,6 +209,7 @@ pub(crate) struct SvgOptionsJson {
 
 #[cfg(feature = "render")]
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HostThemeOptionsJson {
     pub(crate) preset: Option<String>,
     pub(crate) appearance: Option<String>,
@@ -216,13 +218,13 @@ pub(crate) struct HostThemeOptionsJson {
     pub(crate) roles: Option<HostThemeRolesJson>,
     pub(crate) series_palette: Option<Vec<String>>,
     pub(crate) output: Option<HostThemeOutputJson>,
-    #[serde(default, alias = "themeVariables")]
     pub(crate) theme_variables: Option<serde_json::Map<String, serde_json::Value>>,
     pub(crate) site_config: Option<serde_json::Value>,
 }
 
 #[cfg(feature = "render")]
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HostThemeRolesJson {
     pub(crate) canvas: Option<String>,
     pub(crate) surface: Option<String>,
@@ -250,6 +252,7 @@ pub(crate) struct HostThemeRolesJson {
 
 #[cfg(feature = "render")]
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HostThemeOutputJson {
     pub(crate) pipeline: Option<String>,
     pub(crate) css_override_policy: Option<String>,
@@ -403,6 +406,7 @@ fn reject_removed_layout_fields(value: &Value) -> Result<(), BindingError> {
 fn binding_analysis_options_json_from_json_value(
     value: &Value,
 ) -> Result<BindingAnalysisOptionsJson, BindingError> {
+    reject_removed_nested_analysis_parse_option(value)?;
     let options_value = binding_analysis_options_root_value(value)?;
     serde_json::from_value(options_value.clone()).map_err(|err| {
         BindingError::new(
@@ -457,12 +461,38 @@ fn binding_analysis_option_keys_present(map: &Map<String, Value>) -> bool {
         "fixed_today",
         "fixed_local_offset_minutes",
         "site_config",
-        "parse",
         "resources",
         "lint",
     ]
     .iter()
     .any(|key| map.contains_key(*key))
+}
+
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+fn reject_removed_nested_analysis_parse_option(value: &Value) -> Result<(), BindingError> {
+    let Value::Object(map) = value else {
+        return Ok(());
+    };
+
+    #[cfg(not(any(feature = "render", feature = "ascii")))]
+    if map.contains_key("parse") {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "analysis option `parse` was removed; this build has no parse, render, or ASCII operation",
+        ));
+    }
+
+    if ["merman", "analysis"].iter().any(|key| {
+        map.get(*key)
+            .and_then(Value::as_object)
+            .is_some_and(|options| options.contains_key("parse"))
+    }) {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "analysis option `parse` was removed; use top-level `parse` only for parse, render, or ASCII operations",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
@@ -548,6 +578,7 @@ pub(crate) fn binding_fixed_local_offset_minutes(
 pub(crate) struct BindingLocalTimePolicy {
     pub(crate) today: Option<chrono::NaiveDate>,
     pub(crate) time_zone: merman::time::LocalTimeZone,
+    #[cfg(feature = "render")]
     pub(crate) explicit: bool,
 }
 
@@ -589,6 +620,7 @@ pub(crate) fn binding_local_time_policy(
     Ok(BindingLocalTimePolicy {
         today,
         time_zone,
+        #[cfg(feature = "render")]
         explicit: today.is_some() || offset_minutes.is_some(),
     })
 }
@@ -601,13 +633,6 @@ pub(crate) fn analysis_options(
         fixed_today: options.analysis.fixed_today.clone(),
         fixed_local_offset_minutes: options.analysis.fixed_local_offset_minutes,
         site_config: options.analysis.site_config.clone(),
-        parse: options
-            .analysis
-            .parse
-            .as_ref()
-            .map(|parse| merman_analysis::ParseOptionsJson {
-                suppress_errors: parse.suppress_errors,
-            }),
         resources: options.analysis.resources.as_ref().map(|resources| {
             merman_analysis::ResourceOptionsJson {
                 profile: resources.profile.clone(),
@@ -738,13 +763,13 @@ mod tests {
         assert!(json["svg"].is_null());
     }
 
-    #[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+    #[cfg(any(feature = "render", feature = "ascii"))]
     #[test]
     fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
         let options = parse_options(
             br#"{
+                "parse": { "suppress_errors": true },
                 "analysis": {
-                    "parse": { "suppress_errors": true },
                     "resources": { "max_source_bytes": 4 }
                 },
                 "version": 1,
@@ -756,7 +781,6 @@ mod tests {
         assert_eq!(options.version, Some(1));
         assert_eq!(
             options
-                .analysis
                 .parse
                 .as_ref()
                 .and_then(|parse| parse.suppress_errors),
@@ -775,6 +799,33 @@ mod tests {
             options.svg.as_ref().and_then(|svg| svg.pipeline.as_deref()),
             Some("resvg-safe")
         );
+    }
+
+    #[cfg(all(feature = "analysis", not(any(feature = "render", feature = "ascii"))))]
+    #[test]
+    fn analysis_only_build_rejects_top_level_parse_options() {
+        let err = parse_options(br#"{ "parse": { "suppress_errors": true } }"#).unwrap_err();
+        assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            err.message()
+                .contains("analysis option `parse` was removed")
+        );
+    }
+
+    #[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+    #[test]
+    fn parse_options_rejects_removed_nested_analysis_parse_option() {
+        for wrapper in ["analysis", "merman"] {
+            let input =
+                format!(r#"{{ "{wrapper}": {{ "parse": {{ "suppress_errors": true }} }} }}"#);
+            let err = parse_options(input.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+            assert!(
+                err.message()
+                    .contains("analysis option `parse` was removed"),
+                "unexpected error: {err:?}"
+            );
+        }
     }
 
     #[cfg(feature = "analysis")]

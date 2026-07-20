@@ -106,7 +106,7 @@ impl CynefinParseOutcome {
     }
 }
 
-pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
 
@@ -116,13 +116,35 @@ pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let CynefinSemanticSource {
-        mut model,
-        editor_facts,
-    } = parse_cynefin_semantic_source(code, meta)?;
+) -> crate::family::CombinedSemanticParse {
+    let CynefinParseOutcome {
+        source: CynefinSemanticSource {
+            mut model,
+            editor_facts,
+        },
+        first_error,
+    } = construct_cynefin_parse_outcome(code, meta);
     model.sanitize_common_db_fields(&meta.effective_config);
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+    let construction = match first_error {
+        Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )),
+        None => Ok(CynefinSemanticSource {
+            model,
+            editor_facts,
+        }),
+    };
+    crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| {
+            (
+                render_model_to_compat_json(&source.model, meta),
+                source.editor_facts,
+            )
+        },
+        crate::family::CombinedSemanticFailure::into_parts,
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -139,19 +161,13 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-pub fn parse_cynefin_model_for_render(
+pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<CynefinDiagramRenderModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
     Ok(model)
-}
-
-pub fn parse_cynefin_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_cynefin_parse_outcome(code, meta)
-        .source
-        .editor_facts
 }
 
 fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
@@ -700,11 +716,7 @@ mod tests {
             ("cynefin-beta\r\n  \"orphan\" %% hidden\r\n", "\"orphan\""),
         ] {
             let facts = crate::Engine::new()
-                .parse_editor_semantic_facts_with_type_sync(
-                    "cynefin",
-                    source,
-                    crate::ParseOptions::strict(),
-                )
+                .parse_editor_semantic_facts_with_type_sync("cynefin", source)
                 .unwrap()
                 .unwrap();
             let start = source.find(invalid).unwrap();
@@ -726,7 +738,8 @@ mod tests {
         let invalid = "complex --> ???";
         let invalid_start = source.find(invalid).unwrap();
 
-        let facts = parse_cynefin_editor_facts(
+        let facts = crate::family::test_support::editor_facts(
+            parse_cynefin_json_and_editor_facts,
             source,
             &crate::ParseMetadata {
                 diagram_type: "cynefin".to_string(),
@@ -778,12 +791,12 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let crate::RenderSemanticModel::Cynefin(model) = typed.model else {
+        let crate::RenderSemanticModel::Cynefin(model) = typed.model() else {
             panic!("expected Cynefin render model");
         };
 
         assert_eq!(
-            render_model_to_compat_json(&model, &typed.meta).unwrap(),
+            render_model_to_compat_json(model, typed.metadata()).unwrap(),
             compat.model
         );
     }

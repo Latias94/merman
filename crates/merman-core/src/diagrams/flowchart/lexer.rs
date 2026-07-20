@@ -47,10 +47,6 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    pub(super) fn position(&self) -> usize {
-        self.pos
-    }
-
     pub(super) fn bump(&mut self) -> Option<u8> {
         if self.pos >= self.input.len() {
             return None;
@@ -1063,7 +1059,13 @@ impl<'input> Lexer<'input> {
                             SourceSpan::new(content_start, token_end),
                             &raw,
                             SourceSpan::new(raw_start, token_end),
-                            Some(SourceSpan::new(start, content_start)),
+                            PartialNodeLabelRecovery {
+                                trigger_span: Some(SourceSpan::new(start, content_start)),
+                                error: LexError::with_span(
+                                    "Unterminated node label (missing `/]` or `\\]`)",
+                                    SourceSpan::new(start, token_end),
+                                ),
+                            },
                         );
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
@@ -1122,7 +1124,13 @@ impl<'input> Lexer<'input> {
                             SourceSpan::new(content_start, token_end),
                             &raw,
                             SourceSpan::new(raw_start, token_end),
-                            Some(SourceSpan::new(start, content_start)),
+                            PartialNodeLabelRecovery {
+                                trigger_span: Some(SourceSpan::new(start, content_start)),
+                                error: LexError::with_span(
+                                    "Unterminated node label (missing `/]` or `\\]`)",
+                                    SourceSpan::new(start, token_end),
+                                ),
+                            },
                         );
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
@@ -1216,7 +1224,13 @@ impl<'input> Lexer<'input> {
                     SourceSpan::new(content_start, token_end),
                     &raw,
                     SourceSpan::new(raw_start, token_end),
-                    Some(SourceSpan::new(start, content_start)),
+                    PartialNodeLabelRecovery {
+                        trigger_span: Some(SourceSpan::new(start, content_start)),
+                        error: LexError::with_span(
+                            format!("Unterminated node label (missing `{close}`)"),
+                            SourceSpan::new(start, token_end),
+                        ),
+                    },
                 );
                 self.pos = token_end;
                 token
@@ -1276,7 +1290,13 @@ impl<'input> Lexer<'input> {
                     SourceSpan::new(content_start, token_end),
                     label_raw,
                     label_span,
-                    Some(SourceSpan::new(start, content_start)),
+                    PartialNodeLabelRecovery {
+                        trigger_span: Some(SourceSpan::new(start, content_start)),
+                        error: LexError::with_span(
+                            "Unterminated node label (missing `]`)",
+                            SourceSpan::new(start, token_end),
+                        ),
+                    },
                 );
                 self.pos = token_end;
                 token
@@ -1322,7 +1342,13 @@ impl<'input> Lexer<'input> {
                         SourceSpan::new(content_start, token_end),
                         &raw,
                         SourceSpan::new(raw_start, token_end),
-                        Some(SourceSpan::new(start, content_start)),
+                        PartialNodeLabelRecovery {
+                            trigger_span: Some(SourceSpan::new(start, content_start)),
+                            error: LexError::with_span(
+                                "Unterminated node label (missing `}`)",
+                                SourceSpan::new(start, token_end),
+                            ),
+                        },
                     );
                     self.pos = token_end;
                     token
@@ -1368,7 +1394,13 @@ impl<'input> Lexer<'input> {
                         SourceSpan::new(content_start, token_end),
                         &raw,
                         SourceSpan::new(raw_start, token_end),
-                        Some(SourceSpan::new(start, content_start)),
+                        PartialNodeLabelRecovery {
+                            trigger_span: Some(SourceSpan::new(start, content_start)),
+                            error: LexError::with_span(
+                                "Unterminated node label (missing `)`)",
+                                SourceSpan::new(start, token_end),
+                            ),
+                        },
                     );
                     self.pos = token_end;
                     token
@@ -1414,7 +1446,13 @@ fn build_node_label_token_from_raw(
         text: labeled_text_with_spans(input, text, token_span, raw_span),
         trigger_span,
         lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
+        recovery_error: None,
     }))
+}
+
+struct PartialNodeLabelRecovery {
+    trigger_span: Option<SourceSpan>,
+    error: LexError,
 }
 
 fn build_partial_node_label_token_from_raw(
@@ -1424,7 +1462,7 @@ fn build_partial_node_label_token_from_raw(
     content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
-    trigger_span: Option<SourceSpan>,
+    recovery: PartialNodeLabelRecovery,
 ) -> Tok {
     let (text, kind) = parse_label_text(raw);
     Tok::NodeLabel(NodeLabelToken {
@@ -1441,8 +1479,9 @@ fn build_partial_node_label_token_from_raw(
             token_span,
             raw_span,
         ),
-        trigger_span,
+        trigger_span: recovery.trigger_span,
         lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
+        recovery_error: Some(recovery.error),
     })
 }
 

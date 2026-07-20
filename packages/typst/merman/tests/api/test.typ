@@ -1,4 +1,5 @@
-#import "@preview/merman:0.1.0": (
+#import "@preview/merman:0.2.0": (
+  analyze-mermaid,
   mermaid,
   mermaid-figure,
   mermaid-profile,
@@ -6,7 +7,6 @@
   mermaid-svg,
   merman-capabilities,
   show-mermaid-blocks,
-  validate-mermaid,
 )
 
 #let source = "flowchart TD
@@ -18,8 +18,18 @@
 #assert.eq(result.code_name, "MERMAN_OK")
 #assert(result.svg.contains("api-result"), message: "structured result should use renderer options")
 
-#let validation = validate-mermaid(source)
-#assert.eq(validation.code_name, "MERMAN_OK")
+#let analysis = analyze-mermaid(source)
+#assert.eq(analysis.version, 1)
+#assert(analysis.valid, message: "valid input should produce a valid canonical analysis payload")
+#assert.eq(analysis.summary.errors, 0)
+#assert.eq(analysis.source.kind, "diagram")
+#assert.eq(analysis.diagnostics.len(), 0)
+
+#let failed-analysis = analyze-mermaid("")
+#assert.eq(failed-analysis.version, 1)
+#assert(not failed-analysis.valid, message: "invalid input should stay inside the analysis schema")
+#assert.eq(failed-analysis.summary.errors, 1)
+#assert.eq(failed-analysis.diagnostics.at(0).code_name, "MERMAN_NO_DIAGRAM")
 
 #let svg-profile = mermaid-profile(
   id: "api-profile",
@@ -55,6 +65,40 @@
 #assert(options-svg.contains("api-options"), message: "options should override direct and profile id")
 #assert(options-svg.contains("API Options Sans"), message: "options should bypass high-level fields")
 #assert(not options-svg.contains("api-direct"), message: "direct id should not override options")
+
+#let forest-svg = mermaid-svg(
+  source,
+  id: "api-theme-layer",
+  pipeline: "readable",
+  theme-name: "forest",
+)
+#let profile-theme-svg = mermaid-svg(
+  source,
+  id: "api-theme-layer",
+  pipeline: "readable",
+  profile: mermaid-profile(
+    site-config: (theme: "dark"),
+    theme-name: "forest",
+  ),
+)
+#assert.eq(
+  profile-theme-svg,
+  forest-svg,
+  message: "profile theme shorthand should override profile site-config theme fields",
+)
+#let direct-theme-svg = mermaid-svg(
+  source,
+  id: "api-theme-layer",
+  pipeline: "readable",
+  profile: mermaid-profile(site-config: (theme: "dark")),
+  site-config: (theme: "neutral"),
+  theme-name: "forest",
+)
+#assert.eq(
+  direct-theme-svg,
+  forest-svg,
+  message: "direct theme shorthand should override profile and direct site-config theme fields",
+)
 
 #let capabilities = merman-capabilities()
 #assert(capabilities.render, message: "capabilities should stay exported")

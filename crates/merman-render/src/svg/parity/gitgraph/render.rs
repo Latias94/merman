@@ -79,7 +79,7 @@ fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> Stri
     if config_diagram_look(effective_config).is_neo()
         && crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name)
     {
-        let filter_color = theme_color(effective_config, "filterColor", "#000000");
+        let filter_color = theme_token(effective_config, "filterColor", "#000000");
         let _ = write!(
             &mut out,
             r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
@@ -143,11 +143,11 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
             .unwrap_or_else(|| "10px".to_string());
     let commit_label_font_size_px = parse_gitgraph_label_font_size_px(&commit_label_font_size);
     let tag_label_font_size_px = parse_gitgraph_label_font_size_px(&tag_label_font_size);
-    let commit_label_color = theme_color(effective_config, "commitLabelColor", "#000021");
-    let commit_label_background = theme_color(effective_config, "commitLabelBackground", "#ffffde");
-    let tag_label_color = theme_color(effective_config, "tagLabelColor", "#131300");
-    let tag_label_background = theme_color(effective_config, "tagLabelBackground", "#ECECFF");
-    let tag_label_border = theme_color(
+    let commit_label_color = theme_token(effective_config, "commitLabelColor", "#000021");
+    let commit_label_background = theme_token(effective_config, "commitLabelBackground", "#ffffde");
+    let tag_label_color = theme_token(effective_config, "tagLabelColor", "#131300");
+    let tag_label_background = theme_token(effective_config, "tagLabelBackground", "#ECECFF");
+    let tag_label_border = theme_token(
         effective_config,
         "tagLabelBorder",
         "hsl(240, 60%, 86.2745098039%)",
@@ -169,9 +169,9 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     .unwrap_or_else(|| "1".to_string());
     let commit_line_color = config_string(effective_config, &["themeVariables", "commitLineColor"])
         .unwrap_or_else(|| parts.line_color.clone());
-    let primary_color = theme_color(effective_config, "primaryColor", "#ECECFF");
-    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
+    let primary_color = theme_token(effective_config, "primaryColor", "#ECECFF");
+    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
+    let main_bkg = theme_token(effective_config, "mainBkg", "#ECECFF");
     let note_font_weight = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "noteFontWeight"],
@@ -237,13 +237,13 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
                     }
                 } else {
                     let git =
-                        theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
-                    let branch_label = theme_color(
+                        theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
+                    let branch_label = theme_token(
                         effective_config,
                         &format!("gitBranchLabel{ci}"),
                         default_git_branch_label(ci),
                     );
-                    let git_inv = theme_color(
+                    let git_inv = theme_token(
                         effective_config,
                         &format!("gitInv{ci}"),
                         default_git_inv(ci),
@@ -347,13 +347,13 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
                 );
             }
         } else {
-            let git = theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
-            let branch_label = theme_color(
+            let git = theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
+            let branch_label = theme_token(
                 effective_config,
                 &format!("gitBranchLabel{ci}"),
                 default_git_branch_label(ci),
             );
-            let git_inv = theme_color(
+            let git_inv = theme_token(
                 effective_config,
                 &format!("gitInv{ci}"),
                 default_git_inv(ci),

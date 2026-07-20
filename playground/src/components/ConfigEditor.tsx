@@ -33,11 +33,11 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
       mermaidConfig: state.mermaidConfig,
       resolvedTheme: state.resolvedTheme,
       setMermaidConfig: state.setMermaidConfig,
-    }))
+    })),
   );
   const validation = useMemo(
     () => validateConfig(mermaidConfig, t),
-    [mermaidConfig, t]
+    [mermaidConfig, t],
   );
 
   const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
@@ -48,7 +48,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
         <div
           className={cn(
             "flex min-w-0 items-center gap-2 text-xs",
-            validation.valid ? "text-muted-foreground" : "text-destructive"
+            validation.valid ? "text-muted-foreground" : "text-destructive",
           )}
         >
           {validation.valid ? (
@@ -105,6 +105,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
             </div>
           }
           options={{
+            ariaLabel: t("config.ariaLabel"),
             automaticLayout: true,
             minimap: { enabled: false },
             lineNumbers: "on",
@@ -127,7 +128,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
 
 function validateConfig(
   configJson: string,
-  t: (key: string) => string
+  t: (key: string) => string,
 ): { valid: true } | { valid: false; error: string } {
   try {
     parseMermaidConfigJson(configJson);

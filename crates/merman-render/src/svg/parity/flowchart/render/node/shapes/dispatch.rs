@@ -91,28 +91,20 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_hourglass_collate(out, common, details);
         }
         FlowchartShape::Icon => {
-            if super::try_render_icon(out, ctx, common, label, details) {
-                return Ok(true);
-            }
-            return missing_asset_error(common.shape, "icon");
+            super::render_icon(out, ctx, common, label, details);
+            return Ok(true);
         }
         FlowchartShape::IconCircle => {
-            if super::try_render_icon_circle(out, ctx, common, label, details) {
-                return Ok(true);
-            }
-            return missing_asset_error(common.shape, "icon");
+            super::render_icon_circle(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::IconRounded => {
-            if super::try_render_icon_rounded(out, ctx, common, label, details) {
-                return Ok(true);
-            }
-            return missing_asset_error(common.shape, "icon");
+            super::render_icon_rounded(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::IconSquare => {
-            if super::try_render_icon_square(out, ctx, common, label, details) {
-                return Ok(true);
-            }
-            return missing_asset_error(common.shape, "icon");
+            super::render_icon_square(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::ImageSquare => {
             if super::try_render_image_square(out, ctx, common, label, details) {

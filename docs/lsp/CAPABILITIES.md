@@ -18,10 +18,23 @@ mapping, and internal projection failures. Editor-core owns protocol-neutral com
 symbols, navigation, rename, folding, and semantic-token facts. LSP owns request lifecycle,
 capability advertising, URI/range conversion, token delta encoding, and client cache state.
 
+Semantic-token codes, modifier bits, legend indices, and the five-word relative UTF-16 record are
+owned by `editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
+extension. LSP initialization publishes the descriptor digest and packed encoding under
+`capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
+the standard LSP legend differs. The same descriptor projects custom VS Code token declarations,
+theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-highlighting defaults;
+standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
+the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
+description change cannot create a false LSP/WASM incompatibility.
+`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-family
+baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
+generated evidence artifact without transport-local sorting or token name lookup.
+
 The LSP document store keeps lazy editor snapshots, but those snapshots are built from the same
 active analyzer configuration used for diagnostics. Diagnostic-only lint rule changes refresh
 diagnostics without invalidating editor snapshots or semantic-token result state. Snapshot-affecting
-changes such as parse options, site config, fixed date/time, resource limits, or source descriptor
+changes such as site config, fixed date/time, resource limits, or source descriptor
 changes clear snapshot-dependent state.
 
 Request handlers capture document/configuration generations before running projection work outside
@@ -84,7 +97,7 @@ semantic tokens. Legal source-start header and template completion remains catal
 | Treemap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
 | Block | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
 | C4 | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
-| ZenUML | Yes | Yes | Yes | Yes | Yes | Yes | Mature for the supported headless ZenUML subset, with source-mapped participants, messages, calls, assignments, titles, and payload spans. |
+| ZenUML | Yes | Yes | Yes | Yes | Yes | Yes | Grammar-derived family facts cover source-mapped participants, groups, messages, creation, calls, assignments, returns, references, fragments, titles, and payload spans. |
 | Journey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
 | Info | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
 | Timeline | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |

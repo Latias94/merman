@@ -72,39 +72,7 @@ fn cli_renders_pdf_with_default_out_path_for_file_input() {
 }
 
 #[test]
-fn cli_pdf_rejects_large_intrinsic_svg_by_default() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let input = tmp.path().join("large.svg");
-    let out = tmp.path().join("large.pdf");
-    fs::write(&input, large_svg_input()).expect("write svg");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .args([
-            "render",
-            "--format",
-            "pdf",
-            "--out",
-            out.to_string_lossy().as_ref(),
-            input.to_string_lossy().as_ref(),
-        ])
-        .output()
-        .expect("run cli");
-
-    assert!(
-        !output.status.success(),
-        "expected oversized PDF input to fail"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("PDF output exceeds configured size_limit"),
-        "unexpected stderr:\n{stderr}"
-    );
-    assert!(!out.exists(), "failed PDF export should not create output");
-}
-
-#[test]
-fn cli_pdf_unbounded_allows_large_intrinsic_svg() {
+fn cli_pdf_preserves_large_intrinsic_vector_page_by_default() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("large.svg");
     let out = tmp.path().join("large.pdf");
@@ -116,7 +84,40 @@ fn cli_pdf_unbounded_allows_large_intrinsic_svg() {
             "render",
             "--format",
             "pdf",
-            "--raster-unbounded",
+            "--out",
+            out.to_string_lossy().as_ref(),
+            input.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "output is not a PDF");
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("9000"),
+        "the vector PDF page should keep the source dimensions"
+    );
+}
+
+#[test]
+fn cli_pdf_is_independent_of_raster_pixel_limit_flags() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("large.svg");
+    let out = tmp.path().join("large.pdf");
+    fs::write(&input, large_svg_input()).expect("write svg");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "pdf",
+            "--raster-max-width",
+            "1",
+            "--raster-max-height",
+            "1",
+            "--raster-max-pixels",
+            "1",
             "--out",
             out.to_string_lossy().as_ref(),
             input.to_string_lossy().as_ref(),

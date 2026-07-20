@@ -444,13 +444,26 @@ impl ErSemanticFailure {
     }
 
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        Error::diagram_parse_diagnostic(
-            meta.diagram_type.clone(),
-            lalrpop_parse_diagnostic(&self.error, fallback_offset),
-        )
+        self.into_error_and_editor_facts(meta, fallback_offset).0
     }
 
-    fn into_editor_facts(mut self, fallback_offset: usize) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        mut self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        let error = Error::diagram_parse_diagnostic(
+            diagram_type.to_string(),
+            lalrpop_parse_diagnostic(&self.error, fallback_offset),
+        );
         let span = self.recovery_span(fallback_offset);
         self.editor_facts.mark_recovered_from_parse_error(
             format!(
@@ -459,7 +472,7 @@ impl ErSemanticFailure {
             ),
             Some(span),
         );
-        self.editor_facts
+        (error, self.editor_facts)
     }
 }
 
@@ -490,27 +503,26 @@ fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemant
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
-pub fn parse_er_model_for_render(code: &str, meta: &ParseMetadata) -> Result<ErDiagramRenderModel> {
+pub(crate) fn parse_er_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<ErDiagramRenderModel> {
     Ok(parse_er_semantic_source(code, meta)?.db.into_render_model())
 }
 
-pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_er_semantic_source(code, meta)?.db.into_model(meta)
 }
 
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let ErSemanticSource { db, editor_facts } = parse_er_semantic_source(code, meta)?;
-    Ok((db.into_model(meta)?, editor_facts))
-}
-
-pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_er_semantic_source(code) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => (*failure).into_editor_facts(code.len()),
-    }
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_er_semantic_source(code),
+        |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    )
 }
 
 #[derive(Debug, Default)]
@@ -1303,6 +1315,8 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             let consumed_ws = rest.len() - rest_trim.len();
             self.pos = after + consumed_ws + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
+                self.record_keyword_value(start, self.input.len(), "accDescr");
+                self.pos = self.input.len();
                 return Some(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
                     SourceSpan::new(start, self.input.len()),

@@ -94,6 +94,7 @@ The remaining defects reveal deeper missing contracts:
 - **R28.** Architecture regressions already fixed in HEAD remain gated: Flowchart complexity before all layout dispatch, full time-zone rules for target dates, range-owned root SVG finalization, checked boundary dates, closed family/report types, generated text-measurement ABI, no Quadrant comparator whitelist, and independent Wardley admission.
 - **R29.** Add `.agents/skills/align-mermaid-release` as a model-invoked repository skill. It must guide an agent through release discovery, exact source/companion pinning, generated reference updates, family/layout admission, parser/editor/LSP/render/Playground work, feature-split evidence, parity gates, documentation, and a no-publish handoff. It must call repository commands and reference a concise checklist instead of duplicating implementation logic.
 - **R30.** Documentation must update the Mermaid upgrade playbook, relevant ADRs, ZenUML/theme/editor alignment records, package surfaces, and Playground design. Generated status and provenance must remain readable and reproducible.
+- **R31.** The Typst 0.15 package must keep plugin ABI `2` while replacing wrapper heuristics with typed boundaries: absolute Typst lengths convert through SVG's 96-DPI CSS-pixel coordinate system; infinite `layout` widths are not serialized; legal font descriptors project to ordered family names; invalid `error-mode` values fail before rendering even for valid source; and package publication uses a provenance-bound, profile-owned WASM plus an immutable source snapshot whose complete staged shape and bytes are verified before atomic installation. Expected compile failures are first-class smoke fixtures rather than comments or data-dependent behavior.
 
 ### Key Flows
 
@@ -115,6 +116,7 @@ The remaining defects reveal deeper missing contracts:
 - **AE7.** `npm ls` in Playground and the reference CLI reports exactly the current reference bundle. A tidy-tree Mindmap, an ELK subgraph with `mergeEdges`, and advanced ZenUML all render in Compare and Benchmark cold/reused modes.
 - **AE8.** Editing a relevant Rust source after building Web causes the Playground freshness gate to fail; rebuilding updates the digest and restores production build/browser tests. A stale prebuilt WASM cannot masquerade as current Rust behavior.
 - **AE9.** Invoking `align-mermaid-release` on a fixture release delta produces a complete inventory and command sequence, including a reasoned feature decision, and refuses completion when a new upstream diagram lacks parser/editor/render/Playground evidence.
+- **AE10.** Typst maps a 72pt context width to 96 CSS pixels and a 12pt context font to `16px`; `page(width: auto)` renders without serializing infinity; string/dictionary font descriptor lists compile; a valid diagram with an invalid `error-mode` is an expected compile failure; and mutating wrapper source after snapshot capture fails the package transaction without replacing the prior installed version.
 
 ---
 
@@ -259,6 +261,7 @@ U1 reference bundle and dependency graph --> U1A WASM freshness gate
  +--> U2 Playground viewport/examples/errors --> U3 external modules/opaque execution
  +--> U4 ZenUML grammar/model/render
  +--> U11 release alignment skill
+ +--> U11A Typst wrapper and package transaction
 
 U1A -----------------------> U2 and every later Playground build/browser gate
 U1A -----------------------> U10 LSP/WASM/Monaco/VS Code switch
@@ -272,7 +275,7 @@ U8 exact source map -------> U9 lexical facts and token planner
 U4 ------------------------> U9 lexical facts and token planner
 U9 ------------------------> U10 LSP/WASM/Monaco/VS Code switch
 
-U1 + U1A + U7 + U10 + U11 -> U12 gates, docs, cleanup, review
+U1 + U1A + U7 + U10 + U11 + U11A -> U12 gates, docs, cleanup, review
 ```
 
 ### Supersession and Scope
@@ -383,7 +386,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 **Approach:**
 
-1. Generate and verify the curated source-backed catalog with exact 35-family coverage. The current manifest contains 70 examples; that count is descriptive, while each example beyond the required family minimum must cite a distinct syntax, behavior, or workflow fixture and earn its place independently.
+1. Generate and verify the curated source-backed catalog with exact 35-family coverage. The current manifest contains 78 examples; that count is descriptive, while each example beyond the required family minimum must cite a distinct syntax, behavior, or workflow fixture and earn its place independently.
 2. Freeze the canonical viewport in every Compare/Benchmark request and remove pane-width mutation from Preview.
 3. Rename visible benchmark modes while retaining internal protocol identifiers where they remain precise.
 4. Project recoverable diagram identity separately from validity and update requirement selection to consume it.
@@ -439,7 +442,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 **Approach:**
 
-1. Consume U1's admission decision and oracle/candidate delta inventory, then translate the matrix-selected lexer/parser grammar into the existing Rust parser-generator ecosystem, preserving rule boundaries, precedence, comments, Unicode, and recovery ranges.
+1. Consume U1's admission decision and oracle/candidate delta inventory, then translate the matrix-selected lexer/parser grammar into the grammar-derived Unicode token scanner and bounded recursive-descent strategy selected by ADR-0075, preserving rule boundaries, precedence, semantic predicates, lexer modes/channels, comments, Unicode, exact spans, and local recovery. A parser generator is an implementation option only when evidence shows it preserves those contracts and reduces owned complexity; it is not a U4 architecture requirement.
 2. Port every observable parser/model/render delta plus selected participant ordering, message ownership, fragments, assignments, returns, stereotypes, colors, and numbering semantics from the companion source.
 3. Construct one typed ZenUML semantic artifact and route every downstream capability through it.
 4. Port headless geometry/render behavior from ZenUML Core's SVG geometry modules where it is source-backed; use owned text measurement rather than guessed widths.
@@ -625,6 +628,47 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 **Verification:** `quick_validate.py` for the skill; repository skill smoke/fixture test; manual trigger review against `writing-great-skills` quality criteria.
 
+### U11A. Refactor the Typst 0.15 wrapper and package transaction
+
+**Goal:** Make the Typst surface a typed document-context adapter over the same ABI 2 renderer and
+make its release bundle a reproducible transaction rather than a live-source copy.
+
+**Files:**
+
+- Refactor `packages/typst/merman/src/` and its source-backed examples/tests.
+- Update `crates/merman-typst-plugin/wasm-profiles.json` and the Typst package/artifact/smoke commands
+  under `crates/xtask/src/cmd/`.
+- Update active CI and `docs/release/PACKAGE_SURFACES.md` without reviving obsolete ABI aliases or
+  unsupported Typst RaTeX claims.
+
+**Approach:**
+
+1. Give Typst length conversion one owner. Convert absolute lengths using `96 / 72`, emit canonical
+   positive finite `px` strings for typography, and omit an infinite auto-page context width.
+2. Accept Typst 0.15 font strings, descriptors, and mixed fallback lists by projecting descriptor
+   names in order. Document `covers` as a bounded residual because CSS and the vendored measurer do
+   not carry the same codepoint-selection contract.
+3. Validate public image configuration before invoking the plugin. Extend package smoke with
+   expected compile-failure fixtures whose required diagnostics are checked explicitly.
+4. Keep the callable Typst plugin ABI at `2` and analysis schema at `1`. Build the exact publish
+   profile to a profile-owned artifact with a closed import/export gate, behavior smoke, input
+   closure, content digest, and artifact manifest.
+5. Capture the runtime wrapper tree as a sorted path/byte/digest snapshot, stage only frozen bytes,
+   bind the wrapper/source/WASM/artifact identities in a schema-1 package manifest, reject any
+   missing/extra/tampered file, recheck live-source identity immediately before installation, and
+   preserve the old package on failure.
+
+**Requirements:** R31.
+
+**Test scenarios:** 72pt width; 12pt and relative context text size; auto page width; string,
+descriptor, and mixed font stacks; valid source with invalid `error-mode`; null resource profile;
+closed WASM imports/exports; snapshot source mutation; staged extra/missing/tampered files; package
+rollback.
+
+**Verification:** focused Rust nextest and Clippy; real Typst 0.15 compile of examples, positive tests,
+and expected failures; exact publish-profile artifact build; ABI/behavior smoke; package provenance
+verification; size budget.
+
 ### U12. Integrate gates, documentation, cleanup, and final review
 
 **Goal:** Prove every surface is aligned, remove superseded code, and leave a durable release-alignment architecture.
@@ -644,7 +688,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 5. Perform a simplification pass, full structured code review, apply all actionable findings, and rerun the complete verification contract.
 6. Commit in dependency-coherent Conventional Commit units; leave no publish or PR side effect.
 
-**Requirements:** R1-R30.
+**Requirements:** R1-R31.
 
 **Test scenarios:** strict verification from a clean generated state; intentional stale descriptor/token/WASM/catalog/provenance; all family/parser/editor/render matrices; desktop/mobile browser; no-network local production build; architecture guard mutation tests.
 
@@ -669,6 +713,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 | Playground | Exact 35-family example coverage plus evidence-backed variants, canonical viewport, structured errors, exact versions, external layouts, accessible/polished desktop/mobile flows |
 | Build freshness | Relevant-input digest, stale failure, deterministic rebuild, production chunk/CSP validation |
 | Existing invariants | Flowchart limits, DST, root ranges, date errors, closed types/reports, ABI descriptor, Wardley admission |
+| Typst | ABI 2 closed surface, 96-DPI context conversion, font descriptors, auto width, expected failures, profile-owned provenance, immutable package snapshot and rollback |
 
 ### Commands
 
@@ -685,6 +730,9 @@ cargo run -p xtask -- verify-mermaid-reference
 cargo run -p xtask -- verify-text-measurement-abi
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- verify-playground-example-catalog
+cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst <typst-0.15-path>
 cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure
 cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity
 cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root
@@ -700,6 +748,7 @@ Also run each affected JavaScript workspace's unit tests, typecheck, lint, produ
 - An unmappable editor span drops only that span with evidence; unresolved overlap or invalid range fails token planning.
 - External output that is non-SVG or fails strict validation, budgets, protocol checks, or execution CSP is not displayed and cannot fall back to a family-specific exception or alternate presenter.
 - A stale WASM input digest fails dev/build/test before Vite serves the Playground.
+- Typst package smoke fails when its artifact provenance is stale, an expected-failure diagnostic is absent, source changes after snapshot capture, or the staged bundle differs by any file or byte.
 - Browser-visible parity failures cannot be waived by raw comparator normalization.
 - Unsupported environments may be reported with exact evidence, but Rust/Web/editor gates that can run locally must pass.
 
@@ -715,6 +764,7 @@ Also run each affected JavaScript workspace's unit tests, typecheck, lint, produ
 - LSP, Web WASM, Monaco, and VS Code consume one generated token descriptor and produce equivalent results; completion, hover/structure, rename, code actions, diagnostics, detection, and tokens prove the same parse-snapshot identity; old sparse/heuristic paths are deleted.
 - Playground/Web builds cannot use stale WASM artifacts.
 - `.agents/skills/align-mermaid-release` is scaffolded, validated, forward-tested, and describes the complete release/companion/admission/feature-decision workflow without hardcoded current versions.
+- The Typst 0.15 wrapper has one exact point-to-pixel boundary, handles legal document font descriptors and auto width, rejects invalid image configuration eagerly, retains ABI 2, and installs only a provenance-bound immutable package snapshot.
 - R28 architecture invariants remain green; no semantic comparator whitelist, brittle source-name guard, dual schema path, or unnecessary compatibility code is introduced.
 - Full Rust, Web, Playground, VS Code, compare, browser, generation, formatting, lint, documentation, and diff checks pass, with any unavailable platform check reported precisely.
 - Work is committed locally in reviewable Conventional Commits; nothing is pushed, published, released, or opened as a PR.
@@ -730,6 +780,11 @@ Also run each affected JavaScript workspace's unit tests, typecheck, lint, produ
 - `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttRenderer.js` for host-width tick behavior.
 - `repo-ref/zenuml-core/src/g4/sequenceLexer.g4` and `sequenceParser.g4` for ZenUML syntax.
 - `repo-ref/zenuml-core/src/parser/` and `src/svg/` for observable ZenUML semantic and geometry behavior.
-- `docs/adr/0014-upstream-parity-policy.md`, `docs/adr/0069-wasm-package-surface-semantics.md`, `docs/adr/0073-family-owned-diagram-architecture.md`, and `docs/adr/0074-browser-runtime-and-benchmark-ownership.md`.
+- `docs/adr/0014-upstream-parity-policy.md`, `docs/adr/0069-wasm-package-surface-semantics.md`, `docs/adr/0073-family-owned-diagram-architecture.md`, `docs/adr/0074-browser-runtime-and-benchmark-ownership.md`, and `docs/adr/0075-zenuml-parser-technology.md`.
 - `docs/release/MERMAID_UPGRADE_PLAYBOOK.md`, `docs/release/PACKAGE_SURFACES.md`, and `docs/release/WASM_SIZE_BUDGETS.json`.
+- Typst 0.15 `layout`, `length`, `text`, and package-manifest contracts at
+  `https://typst.app/docs/reference/layout/layout/`,
+  `https://typst.app/docs/reference/layout/length/`,
+  `https://typst.app/docs/reference/text/text`, and
+  `https://github.com/typst/packages/blob/main/docs/manifest.md`.
 - `docs/plans/2026-07-14-001-refactor-family-owned-architecture-plan.md` and `docs/plans/2026-07-18-001-refactor-web-runtime-benchmark-playground-hardening-plan.md`.

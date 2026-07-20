@@ -124,7 +124,7 @@ fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json:
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let effective_config = parsed.meta.effective_config.as_value().clone();
+    let effective_config = parsed.metadata().effective_config.as_value().clone();
 
     let layout_options = LayoutOptions::default();
     let session = RenderEnvironment::parity()
@@ -289,7 +289,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         .expect("parse returns suppressed error")
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "error");
+    assert_eq!(parsed.metadata().diagram_type, "error");
 
     let layout_options = LayoutOptions::default();
     let session = RenderEnvironment::parity()
@@ -322,13 +322,16 @@ fn treemap_typed_layout_handles_deep_chain() {
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let RenderSemanticModel::Treemap(model) = &parsed.model else {
+    let RenderSemanticModel::Treemap(model) = parsed.model() else {
         panic!("expected Treemap render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout =
-        layout_treemap_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .expect("layout ok");
+    let layout = layout_treemap_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("layout ok");
 
     assert_eq!(layout.sections.len(), DEPTH + 1);
     assert_eq!(layout.leaves.len(), 1);

@@ -50,26 +50,6 @@ impl SvgPostprocessor for StripForeignObjectPostprocessor {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct DropNativeDuplicateFallbacksPostprocessor;
-
-impl SvgPostprocessor for DropNativeDuplicateFallbacksPostprocessor {
-    fn name(&self) -> &'static str {
-        "drop-native-duplicate-fallbacks"
-    }
-
-    fn process<'a>(
-        &self,
-        svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
-    ) -> Result<Cow<'a, str>> {
-        if !svg.contains(r#"data-merman-foreignobject="fallback""#) {
-            return Ok(svg);
-        }
-        Ok(Cow::Owned(drop_native_duplicate_fallbacks(&svg)))
-    }
-}
-
 pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
     if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
         return svg.to_string();
@@ -215,7 +195,7 @@ fn find_wrapping_switch_start(svg: &str, cursor: usize, before: usize) -> Option
     None
 }
 
-pub fn drop_native_duplicate_fallbacks(svg: &str) -> String {
+pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
     let native_text = collect_native_text_contents(svg);
     if native_text.is_empty() {
         return svg.to_string();
@@ -554,7 +534,7 @@ mod tests {
 
         let session = render_session();
         let out = SvgPipeline::resvg_safe()
-            .with_postprocessor(DropNativeDuplicateFallbacksPostprocessor)
+            .with_drop_native_duplicate_fallbacks(true)
             .process_to_string(svg, &session)
             .unwrap();
 

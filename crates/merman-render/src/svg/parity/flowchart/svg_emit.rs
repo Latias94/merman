@@ -356,7 +356,7 @@ fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
-    );
+    )?;
     if swimlane_layout.is_some() {
         css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));
     }

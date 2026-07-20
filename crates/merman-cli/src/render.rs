@@ -12,13 +12,31 @@ pub(crate) use plan::{render_plan_for_mmdc, render_plan_for_subcommand};
 mod tests {
     use super::executor::RenderRequest;
     use super::plan::{RenderMode, RenderPlan};
-    use super::raster::RasterCliOptions;
-    use super::svg_pipeline::svg_postprocess_pipeline;
+    use super::raster::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
+    use super::svg_pipeline::svg_output_policy;
     use crate::cli::{
         ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind, TextOutputCliArgs,
     };
     use crate::io::OutputTarget;
-    use merman::render::{HeadlessRenderer, RenderEnvironment, SvgPipeline};
+    use merman::render::{HeadlessRenderer, RenderEnvironment};
+
+    fn assert_root_background(svg: &str, expected: &str) {
+        let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+        let style = document
+            .root_element()
+            .attribute("style")
+            .expect("root style attribute");
+        assert!(
+            style.split(';').map(str::trim).any(|declaration| {
+                declaration
+                    .split_once(':')
+                    .is_some_and(|(property, value)| {
+                        property.trim() == "background-color" && value.trim() == expected
+                    })
+            }),
+            "expected root background {expected:?}, got {style:?}"
+        );
+    }
 
     fn test_plan(format: RenderFormat) -> RenderPlan {
         RenderPlan {
@@ -29,6 +47,8 @@ mod tests {
             render: RenderCliArgs::default(),
             scale: 1.0,
             raster: RasterCliOptions::default(),
+            pdf: PdfCliOptions::default(),
+            embedded_images: EmbeddedImageCliOptions::default(),
             background: Some("#f8fafc".to_string()),
             css: Some(".node { fill: red; }".to_string()),
             svg_pipeline: None,
@@ -46,10 +66,11 @@ mod tests {
     fn diagram_raster_pipeline_uses_resvg_safe_before_cli_postprocessors() {
         let mut plan = test_plan(RenderFormat::Png);
         plan.svg_pipeline = Some(SvgPipelineKind::Readable);
-        let request = RenderRequest {
-            plan: &plan,
-            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
-        };
+        let request = RenderRequest::new(
+            &plan,
+            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            None,
+        );
         let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
@@ -61,7 +82,7 @@ mod tests {
         assert!(!out.contains("<foreignObject"));
         assert!(!out.contains("@keyframes bad"));
         assert!(!out.contains("animation: bad"));
-        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_root_background(&out, "#f8fafc");
         assert_eq!(
             out.matches(r#"data-merman-postprocess="scoped-css""#)
                 .count(),
@@ -72,10 +93,11 @@ mod tests {
     #[test]
     fn diagram_svg_pipeline_keeps_parity_base_before_cli_postprocessors() {
         let plan = test_plan(RenderFormat::Svg);
-        let request = RenderRequest {
-            plan: &plan,
-            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
-        };
+        let request = RenderRequest::new(
+            &plan,
+            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            None,
+        );
         let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
@@ -85,7 +107,7 @@ mod tests {
             .unwrap();
 
         assert!(out.contains("<foreignObject"));
-        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_root_background(&out, "#f8fafc");
         assert_eq!(
             out.matches(r#"data-merman-postprocess="scoped-css""#)
                 .count(),
@@ -97,10 +119,11 @@ mod tests {
     fn diagram_svg_pipeline_can_request_resvg_safe_before_cli_postprocessors() {
         let mut plan = test_plan(RenderFormat::Svg);
         plan.svg_pipeline = Some(SvgPipelineKind::ResvgSafe);
-        let request = RenderRequest {
-            plan: &plan,
-            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
-        };
+        let request = RenderRequest::new(
+            &plan,
+            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            None,
+        );
         let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
@@ -111,7 +134,7 @@ mod tests {
 
         assert!(!out.contains("<foreignObject"));
         assert!(out.contains(r#"data-merman-foreignobject="fallback""#));
-        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_root_background(&out, "#f8fafc");
         assert_eq!(
             out.matches(r#"data-merman-postprocess="scoped-css""#)
                 .count(),
@@ -121,11 +144,12 @@ mod tests {
 
     #[test]
     fn raw_svg_raster_pipeline_sanitizes_before_cli_postprocessors() {
-        let pipeline = svg_postprocess_pipeline(
-            SvgPipeline::resvg_safe(),
+        let pipeline = svg_output_policy(
+            SvgPipelineKind::ResvgSafe,
             Some("#f8fafc"),
             Some(".node { fill: red; }"),
-        );
+        )
+        .pipeline();
         let svg = r#"<svg id="raw" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
         let session = RenderEnvironment::parity().begin_session().unwrap();
@@ -134,8 +158,18 @@ mod tests {
         assert!(!out.contains("<foreignObject"));
         assert!(!out.contains("@keyframes bad"));
         assert!(!out.contains("animation: bad"));
-        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_root_background(&out, "#f8fafc");
         assert!(out.contains(r#"data-merman-postprocess="scoped-css""#));
-        assert!(out.contains("#raw .node { fill: red; }"));
+        let document = roxmltree::Document::parse(&out).expect("valid SVG XML");
+        let scoped_css = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("style")
+                    && node.attribute("data-merman-postprocess") == Some("scoped-css")
+            })
+            .and_then(|node| node.text())
+            .expect("scoped CSS style element");
+        assert!(scoped_css.contains("#raw .node"), "{scoped_css}");
+        assert!(scoped_css.contains("fill: red"), "{scoped_css}");
     }
 }

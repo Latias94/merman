@@ -1,6 +1,4 @@
-use crate::diagnostic_projection::{
-    ParseDiagnosticLocation, core_error_diagnostic, rule_diagnostic,
-};
+use crate::diagnostic_projection::{ParseDiagnosticLocation, rule_diagnostic};
 use crate::rules::{DIAGRAM_PARSE_RULE_ID, RECOVERED_EDITOR_FACTS_RULE_ID};
 use crate::{AnalysisDiagnostic, AnalysisStatus, SourceMap};
 use merman_core::{EditorSemanticDiagnostic, EditorSemanticDiagnosticKind};
@@ -19,13 +17,6 @@ impl AnalysisRecoveryDiagnostic {
         Self {
             diagnostic,
             kind: Some(kind),
-        }
-    }
-
-    pub(crate) fn plain(diagnostic: AnalysisDiagnostic) -> Self {
-        Self {
-            diagnostic,
-            kind: None,
         }
     }
 }
@@ -187,16 +178,4 @@ fn recovered_editor_diagnostic(
     }
 
     Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))
-}
-
-pub(crate) fn core_error_recovery_diagnostics(
-    error: merman_core::Error,
-    source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Vec<AnalysisRecoveryDiagnostic> {
-    core_error_diagnostic(error, source_map, rule_config)
-        .diagnostic
-        .map(AnalysisRecoveryDiagnostic::plain)
-        .into_iter()
-        .collect()
 }

@@ -29,8 +29,18 @@ pub(crate) fn analysis_payload_to_versioned_diagnostics(
     uri: &Url,
     document_version: i32,
 ) -> Vec<Diagnostic> {
-    analysis_payload_to_editor_diagnostics(payload)
-        .into_iter()
+    let diagnostics = analysis_payload_to_editor_diagnostics(payload);
+    editor_diagnostics_to_versioned_diagnostics(&diagnostics, uri, document_version)
+}
+
+pub(crate) fn editor_diagnostics_to_versioned_diagnostics(
+    diagnostics: &[EditorDiagnostic],
+    uri: &Url,
+    document_version: i32,
+) -> Vec<Diagnostic> {
+    diagnostics
+        .iter()
+        .cloned()
         .map(|diagnostic| editor_diagnostic_to_versioned_lsp(diagnostic, uri, document_version))
         .collect()
 }

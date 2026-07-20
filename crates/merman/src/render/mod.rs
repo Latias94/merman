@@ -20,15 +20,15 @@ pub use merman_render::resources::{
     ResourceLimitExceeded, ResourceLimitPhase,
 };
 pub use merman_render::svg::{
-    CompiledHostTheme, CompiledHostThemeOutput, CssOverridePolicy, CssOverridePostprocessor,
-    DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
-    HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset, HostThemePreset,
-    HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles, HostThemeRootBackground,
-    IconRegistry, IconRegistryError, IconSvg, RootBackgroundPostprocessor,
-    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
-    StripForeignObjectPostprocessor, SvgDebugOptions, SvgPipeline, SvgPipelinePreset,
-    SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
-    foreign_object_label_fallback_svg_text, resvg_safe_svg, supported_host_theme_presets,
+    CompiledHostTheme, CssOverridePolicy, CssOverridePostprocessor,
+    ForeignObjectFallbackPostprocessor, HostThemeAppearance, HostThemeOutput,
+    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeProfileBuilder,
+    HostThemeRoles, HostThemeRootBackground, IconRegistry, IconRegistryError, IconSvg,
+    ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
+    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
+    SvgDebugOptions, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions, finalize_resvg_svg,
+    foreign_object_label_fallback_svg_text, supported_host_theme_presets,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
@@ -278,15 +278,6 @@ pub fn apply_svg_pipeline_with_metadata(
     Ok(pipeline.process_to_string_with_metadata(svg, metadata, session)?)
 }
 
-fn apply_owned_svg_pipeline_with_metadata(
-    svg: String,
-    pipeline: &SvgPipeline,
-    metadata: &SvgPostprocessMetadata,
-    session: &merman_render::environment::RenderSession,
-) -> Result<String> {
-    Ok(pipeline.process_owned_to_string_with_metadata(svg, metadata, session)?)
-}
-
 pub fn svg_readable(
     svg: &str,
     session: &merman_render::environment::RenderSession,
@@ -436,6 +427,22 @@ mod svg_pipeline_tests {
     use super::*;
     use serde_json::{Value, json};
     use std::borrow::Cow;
+
+    fn root_style_property_is(svg: &str, property: &str, expected: &str) -> bool {
+        let Ok(document) = roxmltree::Document::parse(svg) else {
+            return false;
+        };
+        document
+            .root_element()
+            .attribute("style")
+            .is_some_and(|style| {
+                style.split(';').map(str::trim).any(|declaration| {
+                    declaration.split_once(':').is_some_and(|(name, value)| {
+                        name.trim() == property && value.trim() == expected
+                    })
+                })
+            })
+    }
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         model["tasks"]
@@ -927,7 +934,10 @@ flowchart TD
         assert!(svg.contains("#111827"), "{svg}");
         assert!(svg.contains("#e5e7eb"), "{svg}");
         assert!(svg.contains("#94a3b8"), "{svg}");
-        assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#0f172a"),
+            "{svg}"
+        );
         assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(!svg.contains("!important"), "{svg}");
     }
@@ -968,9 +978,15 @@ flowchart TD
         let plain = renderer.render_svg_sync(source).unwrap().unwrap();
 
         assert!(themed.contains("#111827"), "{themed}");
-        assert!(themed.contains("background-color: #0f172a;"), "{themed}");
+        assert!(
+            root_style_property_is(&themed, "background-color", "#0f172a"),
+            "{themed}"
+        );
         assert!(!themed.contains("<foreignObject"), "{themed}");
-        assert!(!plain.contains("background-color: #0f172a;"), "{plain}");
+        assert!(
+            !root_style_property_is(&plain, "background-color", "#0f172a"),
+            "{plain}"
+        );
         assert!(plain.contains("<foreignObject"), "{plain}");
     }
 
@@ -986,7 +1002,10 @@ flowchart TD
             .unwrap();
 
         assert!(svg.contains("#21252b"), "{svg}");
-        assert!(svg.contains("background-color: #282c34;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#282c34"),
+            "{svg}"
+        );
         assert!(!svg.contains("<foreignObject"), "{svg}");
     }
 
@@ -1053,19 +1072,28 @@ pub struct HeadlessRenderer {
 
 impl Default for HeadlessRenderer {
     fn default() -> Self {
+        Self::from_engine_and_environment(merman_core::Engine::new(), default_render_environment())
+    }
+}
+
+impl HeadlessRenderer {
+    /// Creates a renderer from its two operation-scoped runtime owners without constructing
+    /// throwaway defaults.
+    pub fn from_engine_and_environment(
+        engine: merman_core::Engine,
+        environment: RenderEnvironment,
+    ) -> Self {
         Self {
-            engine: merman_core::Engine::new(),
+            engine,
+            environment,
             parse: merman_core::ParseOptions::default(),
-            environment: default_render_environment(),
             layout: LayoutOptions::headless_svg_defaults(),
             svg: SvgRenderOptions::default(),
             svg_debug: SvgDebugOptions::default(),
             svg_pipeline: None,
         }
     }
-}
 
-impl HeadlessRenderer {
     pub fn new() -> Self {
         Self::default()
     }
@@ -1207,7 +1235,7 @@ impl HeadlessRenderer {
         engine_with_session_time(&self.engine, session)
     }
 
-    pub fn parse_metadata_sync(&self, text: &str) -> Result<Option<merman_core::ParseMetadata>> {
+    pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
         let session = self.environment.begin_session()?;
         session
             .resource_limits()
@@ -1215,7 +1243,7 @@ impl HeadlessRenderer {
             .map_err(operation::resource_limit_error)?;
         Ok(self
             .engine_for_session(&session)
-            .parse_metadata_sync(text, self.parse)?)
+            .parse_metadata_sync(text)?)
     }
 
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
@@ -1351,6 +1379,22 @@ impl HeadlessRenderer {
         )?))
     }
 
+    /// Renders one diagram into the sealed resvg/raster input contract.
+    pub fn render_resvg_compatible_svg_with_pipeline_sync(
+        &self,
+        text: &str,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<ResvgCompatibleSvg>> {
+        let Some(prepared) = self.prepare_render_sync(text)? else {
+            return Ok(None);
+        };
+        Ok(Some(
+            prepared
+                .render_resvg_compatible_svg_with_debug(&self.svg, &self.svg_debug, pipeline)?
+                .0,
+        ))
+    }
+
     /// Renders SVG and applies a best-effort readability fallback for `<foreignObject>` labels.
     ///
     /// Many headless SVG renderers and rasterizers do not fully support HTML inside
@@ -1361,7 +1405,9 @@ impl HeadlessRenderer {
     }
 
     pub fn render_svg_resvg_safe_sync(&self, text: &str) -> Result<Option<String>> {
-        self.render_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
+        Ok(self
+            .render_resvg_compatible_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())?
+            .map(ResvgCompatibleSvg::into_string))
     }
 
     #[cfg(feature = "raster")]
@@ -1407,6 +1453,16 @@ impl HeadlessRenderer {
 
     #[cfg(feature = "raster")]
     pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
+        self.render_pdf_with_options_sync(text, &raster::PdfOptions::default())
+    }
+
+    /// Renders vector PDF using PDF-specific page and filter policy.
+    #[cfg(feature = "raster")]
+    pub fn render_pdf_with_options_sync(
+        &self,
+        text: &str,
+        pdf: &raster::PdfOptions,
+    ) -> raster::Result<Option<Vec<u8>>> {
         let pipeline = self.raster_pipeline();
         operation::HeadlessOperation::new(
             &self.engine,
@@ -1415,6 +1471,6 @@ impl HeadlessRenderer {
             &self.layout,
             &self.environment,
         )?
-        .render_pdf(&self.svg, &self.svg_debug, &pipeline)
+        .render_pdf(&self.svg, &self.svg_debug, &pipeline, pdf)
     }
 }

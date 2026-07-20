@@ -2094,10 +2094,10 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Zenuml(model) = parsed.model else {
+        let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
-        layout_zenuml_diagram_typed(&model, &DeterministicTextMeasurer::default()).unwrap()
+        layout_zenuml_diagram_typed(model, &DeterministicTextMeasurer::default()).unwrap()
     }
 
     #[test]

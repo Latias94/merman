@@ -5,7 +5,7 @@ use crate::diagrams::scan::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::EditorLexemeJournal,
+    SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -164,38 +164,6 @@ struct JourneySemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
-struct JourneySemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl JourneySemanticFailure {
-    fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
-        Self {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        }
-    }
-
-    fn into_error(self) -> Error {
-        *self.error
-    }
-
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("journey parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
-}
-
 fn parse_keyword_arg_one_ws(line: &str, keyword: &str) -> Option<String> {
     let t = line.trim_start();
     if !starts_with_case_insensitive(t, keyword) {
@@ -244,14 +212,13 @@ fn parse_acc_descr_block_spanned(
     let mut buf = String::new();
     if let Some(end) = rest.find('}') {
         buf.push_str(&rest[..end]);
+        let closing = SourceSpan::new(content_start + end, content_start + end + 1);
+        lines.resume_same_line_at(closing.end);
         return Some(JourneyBlockText {
             text: buf.trim().to_string(),
             span: SourceSpan::new(content_start, content_start + end),
             opening: SourceSpan::new(content_start - 1, content_start),
-            closing: Some(SourceSpan::new(
-                content_start + end,
-                content_start + end + 1,
-            )),
+            closing: Some(closing),
         });
     }
     buf.push_str(rest);
@@ -264,6 +231,7 @@ fn parse_acc_descr_block_spanned(
             buf.push_str(&line[..end]);
             content_end = line_start + end;
             closing = Some(SourceSpan::new(content_end, content_end + 1));
+            lines.resume_same_line_at(content_end + 1);
             break;
         }
         buf.push_str(line);
@@ -394,9 +362,9 @@ fn record_journey_people(lexemes: &mut EditorLexemeJournal<'_>, people: &str, pe
     }
 }
 
-pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_journey_semantic_source(code, meta)
-        .map_err(JourneySemanticFailure::into_error)?;
+        .map_err(CombinedSemanticFailure::into_error)?;
     match source.model {
         Some(model) => render_model_to_compat_json(&model, meta),
         None => Ok(json!({})),
@@ -406,17 +374,21 @@ pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let JourneySemanticSource {
-        model,
-        editor_facts,
-    } = construct_journey_semantic_source(code, meta)
-        .map_err(JourneySemanticFailure::into_error)?;
-    let model = match model {
-        Some(model) => render_model_to_compat_json(&model, meta)?,
-        None => json!({}),
-    };
-    Ok((model, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_journey_semantic_source(code, meta),
+        |JourneySemanticSource {
+             model,
+             editor_facts,
+         }| {
+            let model = match model {
+                Some(model) => render_model_to_compat_json(&model, meta),
+                None => Ok(json!({})),
+            };
+            (model, editor_facts)
+        },
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -437,7 +409,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-pub fn parse_journey_model_for_render(
+pub(crate) fn parse_journey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<JourneyDiagramRenderModel> {
@@ -447,20 +419,13 @@ pub fn parse_journey_model_for_render(
                 .model
                 .unwrap_or_else(JourneyDiagramRenderModel::empty_compatibility_output)
         })
-        .map_err(JourneySemanticFailure::into_error)
-}
-
-pub fn parse_journey_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_journey_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
+        .map_err(CombinedSemanticFailure::into_error)
 }
 
 fn construct_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<JourneySemanticSource, JourneySemanticFailure> {
+) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -473,7 +438,7 @@ fn construct_journey_semantic_source(
             Ok(source)
         }
         Err(mut failure) => {
-            failure.editor_facts.replace_family_lexemes(lexemes);
+            failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
     }
@@ -483,7 +448,7 @@ fn parse_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<JourneySemanticSource, JourneySemanticFailure> {
+) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
     let mut db = JourneyDb::default();
     db.clear();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -632,6 +597,19 @@ fn parse_journey_semantic_source(
                 "journey accessibility description",
                 EditorSemanticKind::String,
             );
+            if v.closing.is_none() {
+                editor_facts.mark_recovered_from_parse_error(
+                    "journey parser recovered from unterminated accDescr block",
+                    Some(SourceSpan::new(v.opening.start, v.span.end)),
+                );
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        "unterminated accDescr block",
+                        v.span.end,
+                    )
+                });
+            }
             db.acc_descr = v.text;
             continue;
         }
@@ -813,7 +791,11 @@ fn parse_journey_semantic_source(
     }
 
     if let Some(error) = first_error {
-        return Err(JourneySemanticFailure::new(error, editor_facts));
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "journey",
+            error,
+            editor_facts,
+        ));
     }
 
     let actors = db.actors_sorted();
@@ -1019,7 +1001,7 @@ accDescr: A user journey for family shopping\n\
 section Order from website\n\
 A task: 5: Alice, Bob\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("journey", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("journey", text)
             .unwrap()
             .unwrap();
 
@@ -1082,8 +1064,6 @@ A task: 5: Alice, Bob\n";
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("standalone Journey JSON parse succeeds")
             .expect("standalone Journey JSON parse returns a diagram");
-        let standalone_editor = parse_journey_editor_facts(text, &parsed.meta);
-
         reset_journey_syntax_construction_count();
         parse_journey(text, &parsed.meta).expect("Journey JSON projection succeeds");
         assert_eq!(journey_syntax_construction_count(), 1);
@@ -1094,16 +1074,13 @@ A task: 5: Alice, Bob\n";
         assert_eq!(journey_syntax_construction_count(), 1);
 
         reset_journey_syntax_construction_count();
-        parse_journey_editor_facts(text, &parsed.meta);
-        assert_eq!(journey_syntax_construction_count(), 1);
-
-        reset_journey_syntax_construction_count();
-        let (combined_json, combined_editor) =
-            parse_journey_json_and_editor_facts(text, &parsed.meta)
-                .expect("Journey combined projection succeeds");
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_journey_json_and_editor_facts(text, &parsed.meta),
+        )
+        .expect("Journey combined projection succeeds");
         assert_eq!(journey_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
 
         assert_eq!(
             render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
@@ -1142,7 +1119,7 @@ A task: 5: Alice, Bob\n";
 
         reset_journey_syntax_construction_count();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("journey", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("journey", text)
             .expect("Journey editor recovery succeeds")
             .expect("Journey editor facts are available");
 
@@ -1192,7 +1169,8 @@ A task: 5: Alice, Bob\n";
             "  Second line\n",
             "}\n",
         );
-        let facts = parse_journey_editor_facts(
+        let facts = crate::family::test_support::editor_facts(
+            parse_journey_json_and_editor_facts,
             text,
             &ParseMetadata {
                 diagram_type: "journey".to_string(),

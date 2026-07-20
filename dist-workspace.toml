@@ -1,11 +1,16 @@
 [workspace]
-# Only distribute the CLI. Libraries are published to crates.io separately.
+# Load the Cargo workspace that owns the distributable binaries.
 members = ["cargo:crates/merman-cli"]
 
 # Config for 'dist'
 [dist]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.32.0"
+# release.yml is derived from cargo-dist but keeps repository-owned permission and shell-safety
+# hardening that cargo-dist 0.32.0 cannot express.
+allow-dirty = ["ci"]
+# Distribute the two user-facing executables. Libraries are published to crates.io separately.
+packages = ["merman-cli", "merman-lsp"]
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -20,6 +25,9 @@ install-path = "CARGO_HOME"
 install-updater = false
 # Where to host releases
 hosting = "github"
+# Legal material is part of every executable archive and installer, not a
+# repository-only side document.
+include = ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES/"]
 
 # Keep release jobs on current GitHub-hosted runner images.
 [dist.github-custom-runners]

@@ -36,3 +36,4 @@ thiserror.workspace = true
 assert_cmd = "2.2.2"
 tempfile = "3.27.0"
 png.workspace = true
+roxmltree.workspace = true

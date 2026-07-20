@@ -1,0 +1,711 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "playground/scripts/zenuml-browser-admission.mjs",
+  "command": "npm run test:zenuml-browser-admission",
+  "probeContract": {
+    "path": "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
+    "sha256": "9cf221b645c46cc0358c20f828f67ee51ebb5d687f7ab69e1edcb95fb5f87f40"
+  },
+  "sourceFiles": [
+    {
+      "path": "platforms/web/src/svg-safety-policy.ts",
+      "sha256": "f18a0864aaf30db31cc3bcf39290c17015dfa7edb889f3315a2f039075ad77d1"
+    },
+    {
+      "path": "platforms/web/src/svg-safety.ts",
+      "sha256": "ed915775295c6a1c66097bdbea5c6c00e613f0cd88fe7f5584bf77cbbb11c0cd"
+    },
+    {
+      "path": "playground/scripts/build-opaque-realm.mjs",
+      "sha256": "a360616d4125d646aedc7a4401f0772a754da05521ad6c346cf48c1a43c32a22"
+    },
+    {
+      "path": "playground/scripts/zenuml-admission-reporter.mjs",
+      "sha256": "57cbe205cf0e4d5050dad72fb8840c8007408e1bf06b2ab8b4aa5132cc3a579c"
+    },
+    {
+      "path": "playground/scripts/zenuml-browser-admission.mjs",
+      "sha256": "1273733130a8c059466c13c971f84222e98e6185030d2cac1117fe2af7a87288"
+    },
+    {
+      "path": "playground/src/benchmark/realm/bootstrap.ts",
+      "sha256": "7bcd23adfbfd3493638cf2e7f169c4193c71280ccedf22ca6eed908ef307f272"
+    },
+    {
+      "path": "playground/src/benchmark/realm/controller.ts",
+      "sha256": "a4e75fc6bc44f83619160fd14fb10d88f610e60cfb1443d9cd9da73e0b69f295"
+    },
+    {
+      "path": "playground/src/benchmark/realm/engines/mermaid.ts",
+      "sha256": "c32e2041dc9b10200329cd3904a2c91c994cf85031adead40988fd8aa377c1fc"
+    },
+    {
+      "path": "playground/src/benchmark/realm/opaque-mermaid-entry.ts",
+      "sha256": "b856fbfa4f47fd460bc2c219b1c5411308d01b9c908d67735687297b3b9b6275"
+    },
+    {
+      "path": "playground/src/runtime/realm/browser-realm-channel.ts",
+      "sha256": "88cb42178c313878f29d08f0791db042336b8d23e512bb87fef735cdd0c8ebf4"
+    },
+    {
+      "path": "playground/src/runtime/realm/channel-protocol.ts",
+      "sha256": "854c814d340ce0bf5a0d1cc8b82996580aee2c713adadd1b23d8be310ddc8fba"
+    },
+    {
+      "path": "playground/src/runtime/realm/opaque-realm-artifacts.ts",
+      "sha256": "3de83082e38c6c4992433a88c55b722bcfa9c8dbe7744a10c3ddcca8c5635143"
+    },
+    {
+      "path": "playground/src/runtime/realm/opaque-realm-document.ts",
+      "sha256": "17c485c8bd0892be64e354b43eb554fd1d522b9ddf758a6fcdb8fb53d71bbeea"
+    },
+    {
+      "path": "playground/src/runtime/render-artifact.ts",
+      "sha256": "5077e6431f7f95631044b4e5e2b77d323fb51a4b9646bf2bc39dda6e2c789ee8"
+    },
+    {
+      "path": "playground/tests/benchmark.realm.spec.ts",
+      "sha256": "d9a5ae5603fea66a806ac3b118059560868ddc94f338937382df65c130520551"
+    }
+  ],
+  "projects": [
+    "chromium-desktop",
+    "chromium-mobile"
+  ],
+  "executionIsolation": {
+    "projectCount": 2,
+    "probeCount": 13,
+    "observationCount": 26,
+    "passedObservationCount": 26,
+    "probes": [
+      {
+        "id": "sandbox-allows-scripts-only",
+        "description": "The external Mermaid frame grants scripts without same-origin authority.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "opaque-origin",
+        "description": "The external Mermaid frame executes with a unique opaque origin.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "zenuml-first-load-success",
+        "description": "Advanced ZenUML renders in a fresh external execution realm.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "zenuml-first-load-parent-publication",
+        "description": "The fresh ZenUML result crosses the strict parent publication boundary.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "zenuml-reused-realm-success",
+        "description": "Advanced ZenUML renders again in the authenticated reused realm.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "zenuml-reused-realm-parent-publication",
+        "description": "The reused ZenUML result crosses the strict parent publication boundary.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "self-navigation-first-request-recorded",
+        "description": "The unavoidable first self-navigation request is recorded exactly once.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "self-navigation-removes-frame",
+        "description": "A self-navigation attempt removes the external execution frame.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "self-navigation-poisons-realm",
+        "description": "A self-navigation attempt prevents any later operation on that realm.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "invalid-render-has-no-publication",
+        "description": "Invalid external source cannot produce a parent publication artifact.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "invalid-render-poisons-realm",
+        "description": "An invalid external render poisons the failed realm.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "replacement-realm-renders-zenuml",
+        "description": "A replacement realm renders advanced ZenUML after a poisoned predecessor.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "replacement-render-parent-publication",
+        "description": "The replacement ZenUML result crosses the strict parent publication boundary.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      }
+    ]
+  },
+  "security": {
+    "projectCount": 2,
+    "probeCount": 18,
+    "observationCount": 36,
+    "passedObservationCount": 36,
+    "probes": [
+      {
+        "id": "parent-access-denied",
+        "description": "The opaque frame cannot inspect its parent location.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "origin-storage-denied",
+        "description": "Ambient localStorage and sessionStorage are unavailable.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "indexeddb-denied",
+        "description": "Ambient IndexedDB access is unavailable.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "cookie-access-denied",
+        "description": "Ambient cookie access is unavailable.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "fetch-egress-denied",
+        "description": "Direct fetch cannot reach the harness server.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "xhr-egress-denied",
+        "description": "XMLHttpRequest cannot reach the harness server.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "websocket-egress-denied",
+        "description": "WebSocket cannot connect to the harness server.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "eventsource-egress-denied",
+        "description": "EventSource cannot connect to the harness server.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "worker-creation-denied",
+        "description": "The opaque frame cannot create a worker.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "image-subresource-denied",
+        "description": "An external image subresource cannot load.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "beacon-egress-denied",
+        "description": "A queued beacon produces no server-side request.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "blocked-request-attempt-observed",
+        "description": "The browser observes a denied request attempt, proving the probe executed.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "server-http-egress-zero",
+        "description": "The harness server receives no denied HTTP request.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "server-websocket-egress-zero",
+        "description": "The harness server receives no denied WebSocket connection.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "ephemeral-storage-frozen",
+        "description": "The injected bounded storage facade is immutable.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": true,
+            "observed": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "ephemeral-local-storage-bounded",
+        "description": "The bounded local facade retains an in-budget value.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "local-value",
+            "observed": "local-value",
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "local-value",
+            "observed": "local-value",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "ephemeral-session-storage-isolated",
+        "description": "The bounded session facade retains its own in-budget value.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "session-value",
+            "observed": "session-value",
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "session-value",
+            "observed": "session-value",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "id": "ephemeral-storage-quota-enforced",
+        "description": "The bounded storage facade rejects an over-budget value.",
+        "observations": [
+          {
+            "project": "chromium-desktop",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "QuotaExceededError",
+            "observed": "QuotaExceededError",
+            "passed": true
+          },
+          {
+            "project": "chromium-mobile",
+            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
+            "expected": "QuotaExceededError",
+            "observed": "QuotaExceededError",
+            "passed": true
+          }
+        ]
+      }
+    ]
+  }
+}

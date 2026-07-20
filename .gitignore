@@ -5,6 +5,7 @@
 /platforms/web/dist/
 /platforms/web/pkg/
 /playground/node_modules/
+/playground/tests/node_modules/
 /playground/dist/
 /playground/.runtime/
 /playground/playwright-report/
@@ -23,6 +24,7 @@
 /fuzz/corpus/
 /fuzz/coverage/
 /fuzz/target/
+**/.kotlin/
 
 # Local npm tarballs used for upstream layout source inspection (do not commit)
 /cose-base-*.tgz

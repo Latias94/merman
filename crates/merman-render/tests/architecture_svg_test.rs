@@ -124,13 +124,13 @@ fn layout_architecture_typed(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> ArchitectureDiagramLayout {
-    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+    let RenderSemanticModel::Architecture(model) = parsed.model() else {
         panic!("expected architecture render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     layout_architecture_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
         session.seed().seed().get(),
     )

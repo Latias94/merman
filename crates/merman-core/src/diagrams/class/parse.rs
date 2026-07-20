@@ -90,23 +90,31 @@ enum ClassSemanticFailure {
 
 impl ClassSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        match self {
-            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&error, fallback_offset),
-            ),
-            Self::Db { message, .. } => {
-                Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
-            }
-        }
+        self.into_error_and_editor_facts(meta, fallback_offset).0
     }
 
-    fn into_editor_facts(self, fallback_offset: usize) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
         match self {
             Self::Grammar {
                 error,
                 mut editor_facts,
             } => {
+                let parse_error = Error::diagram_parse_diagnostic(
+                    diagram_type.to_string(),
+                    lalrpop_parse_diagnostic(&error, fallback_offset),
+                );
                 let span = match &error {
                     lalrpop_util::ParseError::User { error } => error.span,
                     _ => lalrpop_recovery_span(&error, fallback_offset),
@@ -118,17 +126,19 @@ impl ClassSemanticFailure {
                     ),
                     Some(span),
                 );
-                editor_facts
+                (parse_error, editor_facts)
             }
             Self::Db {
                 message,
                 mut editor_facts,
             } => {
+                let parse_error =
+                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
                 editor_facts.mark_recovered_from_parse_error(
                     format!("class semantic construction failed: {message}"),
                     None,
                 );
-                editor_facts
+                (parse_error, editor_facts)
             }
         }
     }
@@ -171,11 +181,14 @@ fn parse_class_semantic_source<'a>(
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
-pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
-pub fn parse_class_typed(code: &str, meta: &ParseMetadata) -> Result<class_typed::ClassDiagram> {
+pub(crate) fn parse_class_typed(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<class_typed::ClassDiagram> {
     Ok(parse_class_semantic_source(code, meta)?
         .db
         .into_typed_model(meta))
@@ -184,16 +197,12 @@ pub fn parse_class_typed(code: &str, meta: &ParseMetadata) -> Result<class_typed
 pub(crate) fn parse_class_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let ClassSemanticSource { db, editor_facts } = parse_class_semantic_source(code, meta)?;
-    Ok((db.into_model(meta), editor_facts))
-}
-
-pub fn parse_class_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_class_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => (*failure).into_editor_facts(code.len()),
-    }
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_class_semantic_source(code, meta),
+        |ClassSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    )
 }
 
 fn collect_class_editor_facts_from_events(

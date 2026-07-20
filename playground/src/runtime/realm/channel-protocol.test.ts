@@ -91,7 +91,7 @@ test("handshake validation rejects foreign identity and schema drift", () => {
   };
   for (const invalid of [
     { ...hello, bootNonce: "x".repeat(43) },
-    { ...hello, protocol: 2 },
+    { ...hello, protocol: REALM_PROTOCOL_VERSION + 1 },
     { ...hello, extra: true },
   ]) {
     assert.throws(
@@ -268,6 +268,37 @@ test("response validation binds sequence and request id", () => {
       RealmProtocolError
     );
   }
+});
+
+test("failure responses preserve structured engine detail", () => {
+  const response = {
+    type: "render-failure",
+    protocol: REALM_PROTOCOL_VERSION,
+    ...IDENTITY,
+    sequence: 1,
+    requestId: "request-1",
+    stage: "render",
+    message: "Parse error on line 2",
+    detail: JSON.stringify({
+      name: "Error",
+      hash: { token: "INVALID", loc: { first_line: 2 } },
+    }),
+  };
+
+  assert.deepEqual(
+    validateCompareRenderResponse(response, IDENTITY, 1, "request-1"),
+    response
+  );
+  assert.throws(
+    () =>
+      validateCompareRenderResponse(
+        { ...response, detail: { token: "INVALID" } },
+        IDENTITY,
+        1,
+        "request-1"
+      ),
+    RealmProtocolError
+  );
 });
 
 test("realm tokens use browser entropy and do not repeat", () => {

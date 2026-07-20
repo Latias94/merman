@@ -2,7 +2,7 @@ use crate::Result;
 use cssparser::{Delimiter, Parser, ParserInput, Token};
 use std::borrow::Cow;
 
-use super::css_sanitize::strip_css_deg_units;
+use super::css_sanitize::sanitize_css_value;
 use super::presentation_fallback::is_mermaid_missing_amount_hsl;
 use super::util::{SvgTagScanner, escape_xml_attr, next_svg_quoted_attr, start_tag_name};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
@@ -20,34 +20,43 @@ impl SvgPostprocessor for SanitizeSvgAttributesPostprocessor {
         svg: Cow<'a, str>,
         _ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        Ok(Cow::Owned(sanitize_element_attributes(&svg)))
+        Ok(sanitize_element_attributes_cow(svg))
     }
 }
 
-pub(crate) fn sanitize_element_attributes(svg: &str) -> String {
-    let mut out = String::with_capacity(svg.len());
-    let mut scanner = SvgTagScanner::new(svg);
+#[cfg(test)]
+fn sanitize_element_attributes(svg: &str) -> String {
+    sanitize_element_attributes_cow(Cow::Borrowed(svg)).into_owned()
+}
+
+pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, str> {
+    let source = svg.as_ref();
+    let mut out = None::<String>;
+    let mut scanner = SvgTagScanner::new(source);
     let mut copied_until = 0;
 
     while let Some(tag) = scanner.next() {
-        out.push_str(&svg[copied_until..tag.start()]);
-
         let raw_tag = tag.raw();
         if let Some(active_name) = active_svg_element_name(raw_tag) {
+            let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
+            output.push_str(&source[copied_until..tag.start()]);
             copied_until = if tag.is_self_closing() {
                 scanner.cursor()
             } else {
-                find_close_tag_end(svg, scanner.cursor(), active_name).unwrap_or(scanner.cursor())
+                find_close_tag_end(source, scanner.cursor(), active_name)
+                    .unwrap_or(scanner.cursor())
             };
             scanner.skip_to(copied_until);
             continue;
         }
 
         if is_bad_rect_tag(raw_tag) {
+            let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
+            output.push_str(&source[copied_until..tag.start()]);
             copied_until = if tag.is_self_closing() {
                 scanner.cursor()
             } else {
-                svg[scanner.cursor()..]
+                source[scanner.cursor()..]
                     .find("</rect>")
                     .map(|rel_close| scanner.cursor() + rel_close + "</rect>".len())
                     .unwrap_or(scanner.cursor())
@@ -55,12 +64,28 @@ pub(crate) fn sanitize_element_attributes(svg: &str) -> String {
             scanner.skip_to(copied_until);
             continue;
         }
-        out.push_str(&sanitize_tag_attributes(raw_tag));
-        copied_until = scanner.cursor();
+
+        match sanitize_tag_attributes(raw_tag) {
+            Cow::Borrowed(_) => {
+                if let Some(output) = out.as_mut() {
+                    output.push_str(&source[copied_until..scanner.cursor()]);
+                    copied_until = scanner.cursor();
+                }
+            }
+            Cow::Owned(sanitized) => {
+                let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
+                output.push_str(&source[copied_until..tag.start()]);
+                output.push_str(&sanitized);
+                copied_until = scanner.cursor();
+            }
+        }
     }
 
-    out.push_str(&svg[copied_until..]);
-    out
+    let Some(mut out) = out else {
+        return svg;
+    };
+    out.push_str(&source[copied_until..]);
+    Cow::Owned(out)
 }
 
 fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
@@ -186,6 +211,10 @@ fn should_drop_attribute(name: &str, value: &str) -> bool {
     }
 }
 
+pub(in crate::svg::pipeline) fn attribute_violates_resvg_contract(name: &str, value: &str) -> bool {
+    should_drop_attribute(name, value)
+}
+
 fn is_event_handler_attribute(name: &str) -> bool {
     let name = local_name(name.trim());
     name.len() > 2
@@ -218,7 +247,7 @@ fn is_url_function_attribute(name: &str) -> bool {
     )
 }
 
-fn is_unsafe_url_value(value: &str) -> bool {
+pub(super) fn is_unsafe_url_value(value: &str) -> bool {
     let value = normalize_url_attr_for_scheme_check(value);
     if value.is_empty() || value.starts_with('#') {
         return false;
@@ -349,10 +378,27 @@ fn active_svg_element_name(tag: &str) -> Option<&str> {
     matches_active_svg_element(name).then_some(name)
 }
 
-fn matches_active_svg_element(name: &str) -> bool {
+pub(in crate::svg::pipeline) fn matches_active_svg_element(name: &str) -> bool {
     matches!(
         local_name(name).to_ascii_lowercase().as_str(),
-        "script" | "iframe" | "object" | "embed" | "foreignobject"
+        "animate"
+            | "animatecolor"
+            | "animatemotion"
+            | "animatetransform"
+            | "applet"
+            | "audio"
+            | "canvas"
+            | "discard"
+            | "embed"
+            | "foreignobject"
+            | "form"
+            | "iframe"
+            | "link"
+            | "mpath"
+            | "object"
+            | "script"
+            | "set"
+            | "video"
     )
 }
 
@@ -428,10 +474,11 @@ fn sanitize_style_attribute(value: &str) -> String {
     let mut out = Vec::new();
 
     for (property, value) in parse_css_declarations(value) {
-        let normalized_value = strip_css_deg_units(&value);
+        let Some(normalized_value) = sanitize_css_value(&value) else {
+            continue;
+        };
         if normalized_value.is_empty()
             || is_invalid_style_property_value(&property, &normalized_value)
-            || css_value_violates_url_safety(&normalized_value)
         {
             continue;
         }
@@ -661,16 +708,25 @@ mod tests {
 
     #[test]
     fn sanitize_element_attributes_strips_active_svg_elements() {
-        let svg = r#"<svg><script>alert(1)</script><svg:script>alert(2)</svg:script><SCRIPT/><iframe src="https://example.com"></iframe><object data="x"></object><rect width="12" height="8"/></svg>"#;
+        let svg = r##"<svg><script>alert(1)</script><svg:script>alert(2)</svg:script><SCRIPT/><iframe src="https://example.com"></iframe><object data="x"></object><animate attributeName="x"/><animateMotion><mpath href="#route"/></animateMotion><animateTransform/><animateColor/><set attributeName="fill" to="red"/><discard/><rect width="12" height="8"/></svg>"##;
         let out = sanitize_element_attributes(svg);
+        let lower = out.to_ascii_lowercase();
 
-        assert!(!out.to_ascii_lowercase().contains("<script"), "got: {out}");
-        assert!(
-            !out.to_ascii_lowercase().contains("<svg:script"),
-            "got: {out}"
-        );
-        assert!(!out.to_ascii_lowercase().contains("<iframe"), "got: {out}");
-        assert!(!out.to_ascii_lowercase().contains("<object"), "got: {out}");
+        for element in [
+            "script",
+            "svg:script",
+            "iframe",
+            "object",
+            "animate",
+            "animatemotion",
+            "animatetransform",
+            "animatecolor",
+            "mpath",
+            "set",
+            "discard",
+        ] {
+            assert!(!lower.contains(&format!("<{element}")), "got: {out}");
+        }
         assert!(
             out.contains(r#"<rect width="12" height="8"/>"#),
             "got: {out}"
@@ -769,5 +825,16 @@ mod tests {
         assert!(!lower.contains("javascript"), "got: {out}");
         assert!(!lower.contains(r#"stroke="url("#), "got: {out}");
         assert!(!lower.contains("filter:"), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_style_rewrites_angle_tokens_without_corrupting_text() {
+        let svg = r#"<svg><path style="transform:rotate(45deg);content:&quot;45deg&quot;;background:url(a45deg.png);--label:foo45deg"/></svg>"#;
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains("transform:rotate(45)"), "{out}");
+        assert!(out.contains("content:&quot;45deg&quot;"), "{out}");
+        assert!(out.contains("background:url(a45deg.png)"), "{out}");
+        assert!(out.contains("--label:foo45deg"), "{out}");
     }
 }

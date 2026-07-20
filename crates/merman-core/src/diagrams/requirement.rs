@@ -3,6 +3,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -341,12 +342,12 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
     }
 }
 
-pub fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_requirement_semantic_source(code, meta)?.model;
     render_model_to_compat_json(&model, meta)
 }
 
-pub fn parse_requirement_model_for_render(
+pub(crate) fn parse_requirement_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RequirementDiagramRenderModel> {
@@ -356,38 +357,20 @@ pub fn parse_requirement_model_for_render(
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let RequirementSemanticSource {
-        model,
-        editor_facts,
-    } = parse_requirement_semantic_source(code, meta)?;
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_requirement_semantic_source(code, meta),
+        |RequirementSemanticSource {
+             model,
+             editor_facts,
+         }| (render_model_to_compat_json(&model, meta), editor_facts),
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
 struct RequirementSemanticSource {
     model: RequirementDiagramRenderModel,
     editor_facts: EditorSemanticFacts,
-}
-
-struct RequirementSemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl RequirementSemanticFailure {
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("requirement parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -471,13 +454,6 @@ fn parse_keyword_rest_ci<'a>(line: &'a str, key: &str) -> Option<(&'a str, usize
         Some((rest, rest_start))
     } else {
         None
-    }
-}
-
-pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_requirement_semantic_source(code, _meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
     }
 }
 
@@ -582,13 +558,13 @@ fn parse_requirement_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RequirementSemanticSource> {
-    construct_requirement_semantic_source(code, meta).map_err(|failure| *failure.error)
+    construct_requirement_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
 fn construct_requirement_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<RequirementSemanticSource, RequirementSemanticFailure> {
+) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
     #[cfg(test)]
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.set(REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -601,7 +577,7 @@ fn construct_requirement_semantic_source(
             Ok(source)
         }
         Err(mut failure) => {
-            failure.editor_facts.replace_family_lexemes(lexemes);
+            failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
     }
@@ -611,7 +587,7 @@ fn parse_requirement_semantic_source_once(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<RequirementSemanticSource, RequirementSemanticFailure> {
+) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
     let mut db = RequirementDb::new();
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
@@ -685,6 +661,13 @@ fn parse_requirement_semantic_source_once(
                     "requirement parser recovered from unterminated accDescr block",
                     Some(parsed.statement_span),
                 );
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        "unterminated accDescr block",
+                        parsed.statement_span.end,
+                    )
+                });
             }
             acc_descr = Some(parsed.value);
             continue;
@@ -918,23 +901,17 @@ fn parse_requirement_semantic_source_once(
     }
 
     if let Some(error) = first_error {
-        return Err(requirement_failure(error, editor_facts));
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "requirement",
+            error,
+            editor_facts,
+        ));
     }
 
     Ok(RequirementSemanticSource {
         model: db.to_render_model(acc_title, acc_descr),
         editor_facts,
     })
-}
-
-fn requirement_failure(
-    error: Error,
-    editor_facts: EditorSemanticFacts,
-) -> RequirementSemanticFailure {
-    RequirementSemanticFailure {
-        error: Box::new(error),
-        editor_facts: Box::new(editor_facts),
-    }
 }
 
 fn requirement_exact_error(error: Error, meta: &ParseMetadata, span: SourceSpan) -> Error {
@@ -1051,6 +1028,7 @@ fn parse_requirement_acc_descr(
         );
         statement_end = first_start + close + 1;
         complete = true;
+        cursor.resume_same_line_at(statement_end);
     } else {
         append_requirement_acc_descr_line(
             after_brace,
@@ -1071,6 +1049,7 @@ fn parse_requirement_acc_descr(
                 );
                 statement_end = next_start + close + 1;
                 complete = true;
+                cursor.resume_same_line_at(statement_end);
                 break;
             }
             append_requirement_acc_descr_line(
@@ -2643,7 +2622,11 @@ mod tests {
             "class cls,cls cls,cls\n",
             "verifies - verifies -> verifies\n",
         );
-        let facts = parse_requirement_editor_facts(source, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_requirement_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
 
         let definition = "requirement same:::same,same {";
         let definition_same = statement_occurrences(source, definition, "same");
@@ -2750,11 +2733,7 @@ mod tests {
             "\"登录 需求\" - verifies -> api\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync(
-                "requirement",
-                source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("requirement", source)
             .expect("requirement editor parse")
             .expect("requirement editor facts");
 
@@ -2825,11 +2804,7 @@ mod tests {
             "before - verifies -> 后续\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync(
-                "requirement",
-                source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("requirement", source)
             .expect("requirement editor recovery")
             .expect("requirement recovery facts");
 
@@ -2881,7 +2856,7 @@ mod tests {
 
         reset_requirement_syntax_construction_count();
         engine
-            .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("requirement", text)
             .unwrap()
             .unwrap();
         assert_eq!(requirement_syntax_construction_count(), 1);
@@ -2911,15 +2886,15 @@ mod tests {
             "securityLevel": "strict"
         }));
         let standalone_json = parse_requirement(text, &meta).unwrap();
-        let standalone_editor = parse_requirement_editor_facts(text, &meta);
-
         reset_requirement_syntax_construction_count();
-        let (combined_json, combined_editor) =
-            parse_requirement_json_and_editor_facts(text, &meta).unwrap();
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_requirement_json_and_editor_facts(text, &meta),
+        )
+        .unwrap();
 
         assert_eq!(requirement_syntax_construction_count(), 1);
         assert_eq!(combined_json, standalone_json);
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
     }
 
     #[test]
@@ -2980,7 +2955,7 @@ mod tests {
 
         reset_requirement_syntax_construction_count();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("requirement", text)
             .unwrap()
             .unwrap();
         assert_eq!(requirement_syntax_construction_count(), 1);
@@ -3057,7 +3032,11 @@ element el {
   docref: docref
 }
 "#;
-        let facts = parse_requirement_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_requirement_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         for (detail, name, needle) in [
             (
@@ -3099,7 +3078,11 @@ element el {
             "  element elem {\n",
             "  }\n",
         );
-        let facts = parse_requirement_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_requirement_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         for (detail, name, declaration) in [
             ("requirement", "require", "  requirement require {"),

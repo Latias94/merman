@@ -46,7 +46,11 @@ import type {
   MermanRenderSuccess,
   MermaidRenderSuccess,
 } from "@/src/runtime/render-coordinator";
-import { exportPNG, exportSVG } from "@/src/lib/export";
+import {
+  exportPNG,
+  exportSVG,
+} from "@/src/lib/export";
+import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import {
   SvgViewport,
   useSvgViewport,
@@ -141,8 +145,10 @@ export function Preview({ className }: PreviewProps) {
   const currentMerman = successfulMerman(currentBatch?.merman ?? null);
   const svg = currentMerman?.svg ?? null;
   const ascii = currentMerman?.ascii ?? null;
+  const asciiError = currentMerman?.asciiError ?? null;
   const error = failedMessage(currentBatch?.merman ?? null);
   const errorDetail = failedDetail(currentBatch?.merman ?? null);
+  const errorStage = failedStage(currentBatch?.merman ?? null);
   const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
   const visibleMermaid = successfulMermaid(visibleBatch?.mermaid ?? null);
   const mermaidSvg = visibleMermaid?.artifact.svg ?? null;
@@ -287,6 +293,7 @@ export function Preview({ className }: PreviewProps) {
     }
     exportingPngEnginesRef.current.add(engine);
     setExportingPngEngines(new Set(exportingPngEnginesRef.current));
+    let notificationId: string | number | undefined;
     try {
       if (!actionsEnabled || !svgValue || !currentBatch) {
         throw new Error("Current SVG artifact is unavailable.");
@@ -301,16 +308,33 @@ export function Preview({ className }: PreviewProps) {
           snapshot.configJson,
           { ...snapshot.options, pipeline: "resvg-safe" }
         );
-        if (!pngResult?.svg) {
-          throw new Error(pngResult?.error ?? "Failed to render PNG SVG");
+        if (!pngResult || pngResult.status === "failure") {
+          throw new Error(
+            pngResult?.error.summary ?? "Failed to render PNG SVG"
+          );
         }
         exportSvg = requireSafeSvgString(pngResult.svg);
       }
 
-      await exportPNG(exportSvg, `merman-compare-${engine}`, 2);
-      toast.success(t("export.pngSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
+      const plan = await exportPNG(exportSvg, `merman-compare-${engine}`, 2, {
+        onPlan: ({ outputWidth, outputHeight }) => {
+          notificationId = toast.loading(
+            t("export.pngPreparing", {
+              width: outputWidth,
+              height: outputHeight,
+            })
+          );
+        },
+      });
+      toast.success(
+        t("export.pngSuccess", {
+          width: plan.outputWidth,
+          height: plan.outputHeight,
+        }),
+        { id: notificationId }
+      );
+    } catch (error) {
+      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
     } finally {
       exportingPngEnginesRef.current.delete(engine);
       setExportingPngEngines(new Set(exportingPngEnginesRef.current));
@@ -405,7 +429,6 @@ export function Preview({ className }: PreviewProps) {
         >
           <div className="text-center text-muted-foreground">
             <p className="text-sm">{t("preview.empty")}</p>
-            <p className="text-xs mt-1">{t("preview.emptyHint")}</p>
           </div>
         </div>
       </div>
@@ -422,7 +445,13 @@ export function Preview({ className }: PreviewProps) {
           aria-labelledby={`preview-${previewMode}-tab`}
           className="min-h-0 flex-1"
         >
-          <RenderError message={error} detail={errorDetail} t={t} />
+          <RenderError
+            engine={t("preview.mermanEngine")}
+            stage={errorStage}
+            message={error}
+            detail={errorDetail}
+            t={t}
+          />
         </div>
       </div>
     );
@@ -438,6 +467,7 @@ export function Preview({ className }: PreviewProps) {
     svg: visibleMerman?.svg ?? null,
     error: failedMessage(visibleBatch?.merman ?? null),
     errorDetail: failedDetail(visibleBatch?.merman ?? null),
+    errorStage: failedStage(visibleBatch?.merman ?? null),
     renderTime: visibleMerman?.renderTimeMs ?? null,
     loading: mermanRendering,
     loadingLabel: mermanRendering ? t("preview.renderingCurrent") : null,
@@ -454,6 +484,7 @@ export function Preview({ className }: PreviewProps) {
     svg: mermaidSvg,
     error: mermaidError,
     errorDetail: mermaidErrorDetail,
+    errorStage: failedStage(visibleBatch?.mermaid ?? null),
     renderTime: mermaidRenderTime,
     loading: mermaidRendering,
     loadingLabel: mermaidLoadingLabel,
@@ -665,6 +696,15 @@ export function Preview({ className }: PreviewProps) {
                   />
                 </div>
               </div>
+            ) : asciiError ? (
+              <RenderError
+                engine={t("preview.mermanEngine")}
+                stage="ascii-render"
+                message={asciiError.summary}
+                detail={asciiError.detail}
+                t={t}
+                compact
+              />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="max-w-sm text-center">
@@ -936,6 +976,7 @@ function DiagnosticsView({
         >
           <DiagnosticArtifactView
             artifact={diagnostics[tab]}
+            stage={tab}
             loading={loading}
             isDarkMode={isDarkMode}
             t={t}
@@ -948,11 +989,13 @@ function DiagnosticsView({
 
 function DiagnosticArtifactView({
   artifact,
+  stage,
   loading,
   isDarkMode,
   t,
 }: {
   artifact: DiagnosticArtifact;
+  stage: DiagnosticKey;
   loading: boolean;
   isDarkMode: boolean;
   t: (key: string) => string;
@@ -967,6 +1010,8 @@ function DiagnosticArtifactView({
   if (artifact.error) {
     return (
       <RenderError
+        engine="Merman"
+        stage={stage}
         message={artifact.error}
         detail={artifact.errorDetail}
         t={t}
@@ -1085,11 +1130,15 @@ function CenteredMessage({
 }
 
 function RenderError({
+  engine,
+  stage,
   message,
   detail,
   t,
   compact = false,
 }: {
+  engine?: string;
+  stage?: string | null;
   message: string;
   detail?: string | null;
   t: (key: string) => string;
@@ -1099,13 +1148,20 @@ function RenderError({
     <div
       className="flex h-full flex-1 items-center justify-center p-6"
       data-merman-render-error="true"
+      data-merman-error-engine={engine}
+      data-merman-error-stage={stage ?? undefined}
       role="alert"
     >
       <div className={cn("text-center", compact ? "max-w-sm" : "max-w-md")}>
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-6 text-destructive" />
         </div>
-        <h3 className="mb-2 font-medium text-foreground">{t("preview.error")}</h3>
+        <h3 className="mb-1 font-medium text-foreground">
+          {engine ? `${engine} · ${t("preview.error")}` : t("preview.error")}
+        </h3>
+        {stage && (
+          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+        )}
         <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
           {message}
         </p>
@@ -1204,4 +1260,14 @@ function failedDetail(
     | null
 ): string | null {
   return artifact?.status === "failure" ? artifact.detail : null;
+}
+
+function failedStage(
+  artifact:
+    | MermanRenderSuccess
+    | MermaidRenderSuccess
+    | EngineRenderFailure
+    | null
+): string | null {
+  return artifact?.status === "failure" ? artifact.stage : null;
 }

@@ -13,12 +13,12 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
-    let person_border = theme_color(
+    let person_border = theme_token(
         effective_config,
         "personBorder",
         "hsl(240, 60%, 86.2745098039%)",
     );
-    let person_bkg = theme_color(effective_config, "personBkg", "#ECECFF");
+    let person_bkg = theme_token(effective_config, "personBkg", "#ECECFF");
     let _ = write!(
         &mut out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,

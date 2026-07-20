@@ -7,7 +7,7 @@ use crate::text::{
 use std::fmt::Write as _;
 use web_time::Duration;
 
-use super::super::{escape_attr_display, escape_xml_into, fmt, theme_color};
+use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
 use super::label::class_note_html_div_style;
@@ -124,8 +124,8 @@ pub(super) fn render_class_note_node(
         label_h,
     );
     let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-    let note_fill = theme_color(ctx.effective_config, "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_color(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let note_fill = theme_token(ctx.effective_config, "noteBkgColor", "#fff5ad");
+    let note_stroke = theme_token(ctx.effective_config, "noteBorderColor", "#aaaa33");
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(

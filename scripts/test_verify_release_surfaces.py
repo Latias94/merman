@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -89,11 +91,32 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
 
 
 class ReleaseSurfaceInventoryTests(unittest.TestCase):
+    def test_package_inventory_skips_downloaded_vscode_test_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "source/package.json", json.dumps({"name": "source"}))
+            write(
+                root,
+                "tools/vscode-extension/.vscode-test/vscode/package.json",
+                json.dumps({"name": "downloaded-vscode"}),
+            )
+
+            manifests = {
+                path.relative_to(root).as_posix()
+                for path in verify_release_surfaces.iter_package_jsons(root)
+            }
+            self.assertEqual(manifests, {"source/package.json"})
+
     def test_package_inventory_rejects_unallowlisted_package_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write(root, "package.json", json.dumps({"name": "internal-root"}))
             write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
             write(
                 root,
                 "tools/mermaid-cli/package.json",
@@ -127,6 +150,11 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
             write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
             write(
                 root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
+            write(
+                root,
                 "tools/mermaid-cli/package.json",
                 json.dumps({"name": "mermaid-cli", "private": True}),
             )
@@ -150,7 +178,14 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
     def test_package_inventory_allows_internal_generated_web_presets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            write(root, ".gitignore", "/platforms/web/pkg/\n")
             write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
             write(
                 root,
                 "tools/mermaid-cli/package.json",
@@ -229,6 +264,27 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
         ):
             verify_release_surfaces.check_blocked_channel_metadata(contract)
 
+    def test_conditionally_not_applicable_channels_must_explain_why(self) -> None:
+        contract = {
+            "surfaces": [
+                {
+                    "id": "homebrew",
+                    "channels": [
+                        {
+                            "id": "homebrew-core",
+                            "declared_state": "published",
+                            "release_kinds": ["stable"],
+                        }
+                    ],
+                }
+            ]
+        }
+        with self.assertRaisesRegex(
+            verify_release_surfaces.CheckFailure,
+            "conditionally not-applicable channels must explain why",
+        ):
+            verify_release_surfaces.check_blocked_channel_metadata(contract)
+
     def test_web_contract_rejects_analysis_subpath_export(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -236,16 +292,301 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
-                "analysis is not a supported export",
+                "unexpected: ./analysis",
+            ):
+                verify_release_surfaces.check_web_contract(root, web_contract())
+
+    def test_web_contract_rejects_wrong_export_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write_minimal_web_surface(root)
+            package = json.loads((root / "platforms/web/package.json").read_text())
+            package["exports"]["./core"]["import"] = "./dist/surfaces/ascii.js"
+            write(root, "platforms/web/package.json", json.dumps(package))
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "wrong targets: ./core",
+            ):
+                verify_release_surfaces.check_web_contract(root, web_contract())
+
+    def test_web_contract_rejects_capabilities_that_disagree_with_features(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write_minimal_web_surface(root)
+            descriptor_path = root / verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH
+            descriptor = json.loads(descriptor_path.read_text())
+            core = next(preset for preset in descriptor["presets"] if preset["name"] == "browser-core")
+            core["capabilities"]["render"] = True
+            write(root, verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH, json.dumps(descriptor))
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "capabilities do not match its Cargo feature closure",
             ):
                 verify_release_surfaces.check_web_contract(root, web_contract())
 
 
+class WorkflowOperationContractTests(unittest.TestCase):
+    def test_declared_job_must_exist_and_invoke_the_channel_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/release-web.yml",
+                textwrap.dedent("""
+                name: release
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    permissions:
+                      id-token: write
+                    steps:
+                      - name: Publish package
+                        run: npm publish package.tgz --access public
+                """),
+            )
+            contract = operational_workflow_contract("npm", ".github/workflows/release-web.yml")
+
+            verify_release_surfaces.check_workflow_operations(root, contract)
+
+            contract["surfaces"][0]["channels"][0]["workflow_job"] = "missing"
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "workflow job not found: missing",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_dead_jobs_steps_and_heredocs_cannot_impersonate_operations(self) -> None:
+        cases = [
+            {"if": "false", "steps": [{"run": "npm publish package.tgz"}]},
+            {"steps": [{"if": "${{ false }}", "run": "npm publish package.tgz"}]},
+            {"steps": [{"run": "if false; then\n  npm publish package.tgz\nfi"}]},
+            {"steps": [{"run": "false && npm publish package.tgz"}]},
+            {"steps": [{"run": "cat <<'EOF'\nnpm publish package.tgz\nEOF"}]},
+        ]
+        for job in cases:
+            with self.subTest(job=job):
+                self.assertFalse(
+                    verify_release_surfaces.workflow_job_performs_channel_operation(job, "npm")
+                )
+
+    def test_publish_operations_require_effective_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/release-web.yml",
+                textwrap.dedent("""
+                name: release
+                permissions:
+                  contents: read
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: Publish package
+                        run: npm publish package.tgz --access public
+                """),
+            )
+            contract = operational_workflow_contract("npm", ".github/workflows/release-web.yml")
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "requires id-token: write",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_explicit_empty_job_permissions_do_not_inherit_workflow_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/release-web.yml",
+                textwrap.dedent("""
+                name: release
+                permissions:
+                  id-token: write
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    permissions:
+                    steps:
+                      - run: npm publish package.tgz
+                """),
+            )
+            contract = operational_workflow_contract("npm", ".github/workflows/release-web.yml")
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "requires id-token: write",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_release_credentials_must_be_trusted_nonempty_expressions(self) -> None:
+        for token in ["", "${{ inputs.token }}"]:
+            with self.subTest(token=token), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write(
+                    root,
+                    ".github/workflows/release.yml",
+                    textwrap.dedent(f"""
+                    name: release
+                    jobs:
+                      publish:
+                        runs-on: ubuntu-latest
+                        permissions:
+                          contents: write
+                        steps:
+                          - name: Upload release
+                            env:
+                              GH_REPO: ${{{{ github.repository }}}}
+                              GH_TOKEN: "{token}"
+                            run: gh release upload "$RELEASE_TAG" asset.zip
+                    """),
+                )
+                contract = operational_workflow_contract(
+                    "github-release-assets", ".github/workflows/release.yml"
+                )
+                with self.assertRaisesRegex(
+                    verify_release_surfaces.CheckFailure,
+                    "requires credential environment keys",
+                ):
+                    verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_comments_and_echoes_cannot_impersonate_a_publish_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/release-web.yml",
+                textwrap.dedent("""
+                name: release
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: Pretend publication
+                        run: |
+                          # npm publish package.tgz
+                          echo "npm publish package.tgz"
+                """),
+            )
+            contract = operational_workflow_contract("npm", ".github/workflows/release-web.yml")
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "does not perform the declared npm operation",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_action_channels_require_the_active_action_step(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/vscode-extension.yml",
+                textwrap.dedent("""
+                name: package
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      matrix:
+                        include:
+                          - os: ubuntu-latest
+                            target: linux-x64
+                          - os: macos-latest
+                            target: darwin-arm64
+                    steps:
+                      - name: Upload package
+                        uses: actions/upload-artifact@v6
+                        with:
+                          name: package-${{ steps.meta.outputs.release_version }}-${{ steps.meta.outputs.release_channel }}-${{ steps.meta.outputs.source_sha }}-${{ matrix.target }}
+                          path: package.vsix
+                """),
+            )
+            contract = operational_workflow_contract(
+                "github-actions-artifact",
+                ".github/workflows/vscode-extension.yml",
+            )
+            contract["surfaces"][0]["channels"][0]["artifact_patterns"] = [
+                {
+                    "glob": "package-{version}-{channel}-{source_sha}-linux-x64",
+                    "min_matches": 1,
+                    "max_matches": 1,
+                },
+                {
+                    "glob": "package-{version}-{channel}-{source_sha}-darwin-arm64",
+                    "min_matches": 1,
+                    "max_matches": 1,
+                },
+            ]
+
+            verify_release_surfaces.check_workflow_operations(root, contract)
+
+            contract["surfaces"][0]["channels"][0]["artifact_patterns"].pop()
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "artifact patterns and workflow matrix targets differ",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_cargo_dist_assets_are_derived_from_packages_targets_and_installers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                "dist-workspace.toml",
+                textwrap.dedent("""
+                [dist]
+                packages = ["merman-cli"]
+                targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+                installers = ["shell", "powershell"]
+                """),
+            )
+            expected = [
+                "merman-cli-x86_64-unknown-linux-gnu.tar.xz",
+                "merman-cli-x86_64-unknown-linux-gnu.tar.xz.sha256",
+                "merman-cli-x86_64-pc-windows-msvc.zip",
+                "merman-cli-x86_64-pc-windows-msvc.zip.sha256",
+                "merman-cli-installer.sh",
+                "merman-cli-installer.ps1",
+            ]
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "crate",
+                                "name": "merman-cli",
+                                "manifest": "crates/merman-cli/Cargo.toml",
+                            }
+                        ],
+                        "channels": [
+                            {
+                                "kind": "github-release-assets",
+                                "asset_patterns": [
+                                    {"glob": glob, "min_matches": 1, "max_matches": 1}
+                                    for glob in expected
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+
+            verify_release_surfaces.check_cargo_dist_asset_contract(root, contract)
+
+            contract["surfaces"][0]["channels"][0]["asset_patterns"].pop()
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "cargo-dist asset contract differs",
+            ):
+                verify_release_surfaces.check_cargo_dist_asset_contract(root, contract)
+
+
 def minimal_web_descriptor() -> dict:
-    capabilities = {
-        name: False for name in verify_release_surfaces.WEB_CAPABILITY_NAMES
-    }
     preset_features = {
+        "browser-bridge": [],
         "browser-core": ["analysis"],
         "browser-render": ["render", "analysis"],
         "browser-render-only": ["render"],
@@ -279,7 +620,10 @@ def minimal_web_descriptor() -> dict:
                 "surface": "browser",
                 "default_features": name in {"browser-full", "browser-ratex-math"},
                 "features": features,
-                "capabilities": dict(capabilities),
+                "capabilities": preset_capabilities(
+                    features,
+                    default_features=name in {"browser-full", "browser-ratex-math"},
+                ),
             }
             for name, features in preset_features.items()
         ],
@@ -300,8 +644,8 @@ def web_contract() -> dict:
         "feature_contract": {
             "web_descriptor": verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
             "web_default_preset": "browser-full",
-            "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./editor", "./full"],
             "browser_presets": [
+                "browser-bridge",
                 "browser-core",
                 "browser-render",
                 "browser-render-only",
@@ -311,20 +655,43 @@ def web_contract() -> dict:
                 "browser-full-no-elk",
                 "browser-ratex-math",
             ],
+            "web_auxiliary_exports": {
+                ".": {"import": "./dist/index.js", "types": "./dist/index.d.ts"},
+                "./catalog": {
+                    "import": "./dist/public-catalog.js",
+                    "types": "./dist/public-catalog.d.ts",
+                },
+            },
         }
     }
 
 
-def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | None = None) -> None:
-    exports = {
-        ".": "./index.js",
-        "./core": "./core.js",
-        "./render": "./render.js",
-        "./render-only": "./render-only.js",
-        "./ascii": "./ascii.js",
-        "./editor": "./editor.js",
-        "./full": "./full.js",
+def operational_workflow_contract(kind: str, workflow: str) -> dict:
+    return {
+        "surfaces": [
+            {
+                "id": "example",
+                "channels": [
+                    {
+                        "id": "publish",
+                        "kind": kind,
+                        "declared_state": "published",
+                        "workflow": workflow,
+                        "workflow_job": "publish",
+                    }
+                ],
+            }
+        ]
     }
+
+
+def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | None = None) -> None:
+    contract = web_contract()
+    descriptor = minimal_web_descriptor()
+    exports = verify_release_surfaces.expected_web_package_exports(
+        descriptor,
+        contract["feature_contract"],
+    )
     exports.update(extra_exports or {})
     write(
         root,
@@ -334,7 +701,7 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
     write(
         root,
         verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
-        json.dumps(minimal_web_descriptor()),
+        json.dumps(descriptor),
     )
     write(
         root,
@@ -344,6 +711,7 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         name = "merman-wasm"
 
         [features]
+        default = ["core-full", "core-host", "render", "analysis", "ascii", "elk-layout", "editor-language"]
         core-full = []
         core-host = []
         analysis = []
@@ -351,8 +719,8 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         render = []
         cytoscape-layout = []
         elk-layout = []
-        editor-language = []
-        ratex-math = []
+        editor-language = ["analysis"]
+        ratex-math = ["render"]
         """,
     )
     for subdir in ["core", "render", "render-only", "ascii", "editor", "full"]:
@@ -364,6 +732,30 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
     write(root, "README.md", docs)
     write(root, "platforms/web/README.md", docs)
     write(root, "docs/release/PACKAGE_SURFACES.md", docs)
+
+
+def preset_capabilities(features: list[str], *, default_features: bool) -> dict[str, bool]:
+    enabled = set(features)
+    if default_features:
+        enabled.update(
+            {
+                "core-full",
+                "core-host",
+                "render",
+                "analysis",
+                "ascii",
+                "elk-layout",
+                "editor-language",
+            }
+        )
+    if "editor-language" in enabled:
+        enabled.add("analysis")
+    if "ratex-math" in enabled:
+        enabled.add("render")
+    return {
+        capability: feature in enabled
+        for capability, feature in verify_release_surfaces.WEB_CAPABILITY_FEATURES.items()
+    }
 
 
 def write(root: Path, rel_path: str, text: str) -> None:

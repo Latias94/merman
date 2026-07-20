@@ -39,7 +39,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             true
         }
         "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = util::theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
             let inner_fill =
                 util::config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
                     .unwrap_or_else(|| ctx.node_border_color.clone());
@@ -84,7 +84,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             } else {
                 (10.0, 70.0)
             };
-            let line_color = util::theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
                     roughjs_paths_for_rect(RoughRectSpec {

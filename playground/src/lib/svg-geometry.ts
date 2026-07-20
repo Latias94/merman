@@ -23,7 +23,7 @@ export function parseSvgDimensions(svg: string): SvgDimensions | null {
   return resolveSvgDimensions(parsed.root);
 }
 
-export function normalizeSvgDimensions(
+export function normalizeSvgForResponsivePreview(
   svg: string
 ): NormalizedSvgDimensions | null {
   const parsed = parseSvgRoot(svg);
@@ -32,13 +32,46 @@ export function normalizeSvgDimensions(
   const dimensions = resolveSvgDimensions(parsed.root);
   if (!dimensions) return null;
 
-  parsed.root.setAttribute("width", formatSvgNumber(dimensions.width));
-  parsed.root.setAttribute("height", formatSvgNumber(dimensions.height));
+  ensureViewBox(parsed.root, dimensions);
+  parsed.root.setAttribute("width", "100%");
+  parsed.root.setAttribute("height", "100%");
+  appendRootStyle(
+    parsed.root,
+    "display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important"
+  );
 
   return {
     svg: new XMLSerializer().serializeToString(parsed.root),
     ...dimensions,
   };
+}
+
+export function sizeSvgForRasterization(
+  svg: string,
+  renderedDimensions: SvgDimensions
+): string | null {
+  if (
+    !isPositiveFinite(renderedDimensions.width) ||
+    !isPositiveFinite(renderedDimensions.height)
+  ) {
+    return null;
+  }
+
+  const parsed = parseSvgRoot(svg);
+  if (!parsed) return null;
+  const intrinsicDimensions = resolveSvgDimensions(parsed.root);
+  if (!intrinsicDimensions) return null;
+
+  ensureViewBox(parsed.root, intrinsicDimensions);
+  const width = formatSvgNumber(renderedDimensions.width);
+  const height = formatSvgNumber(renderedDimensions.height);
+  parsed.root.setAttribute("width", width);
+  parsed.root.setAttribute("height", height);
+  appendRootStyle(
+    parsed.root,
+    `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
+  );
+  return new XMLSerializer().serializeToString(parsed.root);
 }
 
 function parseSvgRoot(svg: string): ParsedSvgRoot | null {
@@ -54,6 +87,20 @@ function parseSvgRoot(svg: string): ParsedSvgRoot | null {
   }
 
   return { root };
+}
+
+function ensureViewBox(root: Element, dimensions: SvgDimensions): void {
+  if (parseViewBox(root.getAttribute("viewBox"))) return;
+  root.setAttribute(
+    "viewBox",
+    `0 0 ${formatSvgNumber(dimensions.width)} ${formatSvgNumber(dimensions.height)}`
+  );
+}
+
+function appendRootStyle(root: Element, declarations: string): void {
+  const existing = root.getAttribute("style")?.trim();
+  const prefix = existing ? `${existing.replace(/;+$/u, "")};` : "";
+  root.setAttribute("style", `${prefix}${declarations}`);
 }
 
 function resolveSvgDimensions(root: Element): SvgDimensions | null {

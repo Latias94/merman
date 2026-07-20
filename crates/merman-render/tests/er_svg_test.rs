@@ -97,8 +97,8 @@ fn er_svg_renders_entities_and_relationships() {
         "expected curveBasis cubic bezier commands in relationship paths"
     );
     assert!(
-        svg.contains("color:#fff") || svg.contains("color: rgb(255, 255, 255)"),
-        "expected classDef text color to apply to HTML labels"
+        svg.contains("color: rgb(255, 255, 255) !important;"),
+        "expected classDef text color to use the ER HTML label CSSOM path"
     );
 }
 

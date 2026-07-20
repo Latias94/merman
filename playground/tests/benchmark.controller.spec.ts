@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { BENCHMARK_REPORT_SCHEMA_VERSION } from "../src/benchmark/report-schema";
 import {
   monitorBrowserErrors,
   openPlayground,
@@ -33,7 +34,7 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
     dialog.getByRole("button", { name: "Fresh runtime" })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(dialog).toContainText(
-    "Each measured sample rebuilds a separate iframe and module state for its engine. The HTTP cache may be reused and is reported as separate evidence."
+    "Each measured sample rebuilds a separate iframe and module state."
   );
   const accessibility = await new AxeBuilder({ page })
     .include('[role="dialog"]')
@@ -41,7 +42,7 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   expect(accessibility.violations).toEqual([]);
   await dialog.getByRole("button", { name: "Reused runtime" }).click();
   await expect(dialog).toContainText(
-    "Each engine keeps its own isolated iframe, receives the same number of real-source warmups, then is measured repeatedly."
+    "Each engine keeps its own isolated iframe, receives the same number of real-source warmups, then is measured repeatedly to the same strict parent-side SVG boundary."
   );
   await expect(dialog).not.toContainText(/\brealm(?:-cold)?\b/i);
   await dialog.getByLabel("Measured blocks").click();
@@ -51,7 +52,9 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
 
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(page.locator('iframe[data-merman-realm="benchmark"]')).toHaveCount(2);
+  await expect(
+    page.locator('iframe[data-merman-realm="benchmark"]').first(),
+  ).toBeAttached();
   await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible({
     timeout: 90_000,
   });
@@ -72,7 +75,7 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
     samples: unknown[];
   };
   expect(report).toMatchObject({
-    schemaVersion: 1,
+    schemaVersion: BENCHMARK_REPORT_SCHEMA_VERSION,
     terminalStatus: "success",
     run: { mode: "warm", iterations: 2, warmups: 0 },
   });

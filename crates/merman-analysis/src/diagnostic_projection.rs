@@ -1,8 +1,8 @@
 use crate::rules::{
     DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
-    INVALID_FRONT_MATTER_YAML_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID,
-    PANIC_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID, internal_rule_registry_gap_diagnostic,
-    rule_descriptor,
+    INVALID_FRONT_MATTER_YAML_RULE_ID, INVALID_THEME_COLOR_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID,
+    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
+    internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
 use crate::{AnalysisDiagnostic, AnalysisStatus, SourceMap};
 use merman_core::{Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind};
@@ -33,6 +33,16 @@ pub(crate) fn core_error_diagnostic(
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> CoreErrorDiagnostic {
     match error {
+        CoreError::ThemeColor(error) => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic_without_default_span(
+                INVALID_THEME_COLOR_RULE_ID,
+                AnalysisStatus::ParseError,
+                error.to_string(),
+                rule_config,
+            ),
+            diagram_type: None,
+            parse_location: None,
+        },
         CoreError::InvalidLocalTimeZone(error) => CoreErrorDiagnostic {
             diagnostic: rule_diagnostic(
                 DIAGRAM_PARSE_RULE_ID,
@@ -267,4 +277,35 @@ pub(crate) fn rule_diagnostic_without_default_span(
         )
         .with_code(status.code(), status.code_name()),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        DiagnosticCategory, DiagnosticSeverity,
+        rules::{AnalysisRuleConfig, INVALID_THEME_COLOR_RULE_ID},
+    };
+    use merman_core::theme_color::ColorError;
+
+    #[test]
+    fn theme_color_errors_are_config_diagnostics_without_fabricated_source_ownership() {
+        let projection = core_error_diagnostic(
+            CoreError::ThemeColor(ColorError::UnsupportedFormat {
+                input: "not-a-color".to_string(),
+            }),
+            &SourceMap::new("flowchart TD\nA-->B\n"),
+            &AnalysisRuleConfig::default(),
+        );
+
+        let diagnostic = projection.diagnostic.expect("theme color diagnostic");
+        assert_eq!(diagnostic.id, INVALID_THEME_COLOR_RULE_ID);
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+        assert_eq!(diagnostic.code, Some(AnalysisStatus::ParseError.code()));
+        assert!(diagnostic.message.contains("not-a-color"));
+        assert_eq!(diagnostic.span, None);
+        assert_eq!(projection.diagram_type, None);
+        assert_eq!(projection.parse_location, None);
+    }
 }

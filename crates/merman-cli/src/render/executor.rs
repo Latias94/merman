@@ -1,14 +1,17 @@
 use super::plan::RenderPlan;
-use super::svg_pipeline::{svg_metadata, svg_pipeline_from_kind, svg_postprocess_pipeline};
+use super::raster::EncodingParallelBudget;
+use super::svg_pipeline::{svg_metadata, svg_output_policy};
 use crate::cli::{RenderFormat, SvgPipelineKind};
 use crate::config::renderer_for;
 use crate::error::CliError;
 use crate::io::write_output;
-use merman::render::{HeadlessRenderer, SvgPipeline};
+use merman::render::{HeadlessRenderer, ResvgCompatibleSvg, SvgPipeline};
 
 pub(super) struct RenderRequest<'a> {
     pub(super) plan: &'a RenderPlan,
     pub(super) renderer: HeadlessRenderer,
+    pub(super) encoding_parallel_budget: Option<EncodingParallelBudget>,
+    pipeline: SvgPipeline,
 }
 
 pub(super) struct RenderedArtifact {
@@ -22,12 +25,12 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     let text = crate::io::read_input(plan.input.as_deref(), plan.quiet)?;
 
     let renderer = renderer_for(&plan.parse, &plan.render, plan.icon_registry.clone())?;
-    let request = RenderRequest {
-        plan: &plan,
-        renderer,
-    };
+    let markdown_input = plan.is_mmdc_markdown_input();
+    let encoding_parallel_budget = (markdown_input && plan.format.requires_svg_encoding())
+        .then(|| EncodingParallelBudget::new(plan.raster.encoding_parallel_budget_bytes()));
+    let request = RenderRequest::new(&plan, renderer, encoding_parallel_budget);
 
-    if plan.is_mmdc_markdown_input() {
+    if markdown_input {
         request.render_markdown(&text)
     } else {
         request.render(&text)
@@ -35,6 +38,26 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
 }
 
 impl<'a> RenderRequest<'a> {
+    pub(super) fn new(
+        plan: &'a RenderPlan,
+        renderer: HeadlessRenderer,
+        encoding_parallel_budget: Option<EncodingParallelBudget>,
+    ) -> Self {
+        let kind = if plan.format.requires_svg_encoding() {
+            SvgPipelineKind::ResvgSafe
+        } else {
+            plan.svg_pipeline.unwrap_or(SvgPipelineKind::Parity)
+        };
+        let pipeline =
+            svg_output_policy(kind, plan.background.as_deref(), plan.css.as_deref()).pipeline();
+        Self {
+            plan,
+            renderer,
+            encoding_parallel_budget,
+            pipeline,
+        }
+    }
+
     fn render(&self, text: &str) -> Result<(), CliError> {
         let artifact = self.render_artifact(text)?;
         write_output(self.plan.output.as_ref(), &artifact.bytes)
@@ -45,59 +68,51 @@ impl<'a> RenderRequest<'a> {
             return self.render_text(text);
         }
 
-        if text.trim_start().starts_with("<svg") && self.plan.format.is_raster() {
-            let svg = self.postprocess_raw_svg_for_raster(text)?;
-            return self.rasterize_prepared_svg(&svg);
+        if text.trim_start().starts_with("<svg") && self.plan.format.requires_svg_encoding() {
+            let svg = self.prepare_raw_svg_for_encoding(text)?;
+            return self.encode_prepared_svg(&svg);
         }
 
-        let pipeline = self.postprocess_pipeline();
-        let Some(svg) = self
-            .renderer
-            .render_svg_with_pipeline_sync(text, &pipeline)?
-        else {
-            return Err(CliError::NoDiagram);
-        };
-
         match self.plan.format {
-            RenderFormat::Svg => Ok(RenderedArtifact::from_svg(svg)),
+            RenderFormat::Svg => {
+                let Some(svg) = self
+                    .renderer
+                    .render_svg_with_pipeline_sync(text, self.postprocess_pipeline())?
+                else {
+                    return Err(CliError::NoDiagram);
+                };
+                Ok(RenderedArtifact::from_svg(svg))
+            }
             RenderFormat::Ascii | RenderFormat::Unicode => unreachable!("handled above"),
             RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => {
-                self.rasterize_prepared_svg(&svg)
+                let Some(svg) = self
+                    .renderer
+                    .render_resvg_compatible_svg_with_pipeline_sync(
+                        text,
+                        self.postprocess_pipeline(),
+                    )?
+                else {
+                    return Err(CliError::NoDiagram);
+                };
+                self.encode_prepared_svg(&svg)
             }
         }
     }
 
-    pub(super) fn postprocess_pipeline(&self) -> SvgPipeline {
-        let pipeline = if self.plan.format.is_raster() {
-            SvgPipeline::resvg_safe()
-        } else {
-            svg_pipeline_from_kind(self.plan.svg_pipeline.unwrap_or(SvgPipelineKind::Parity))
-        };
-        svg_postprocess_pipeline(
-            pipeline,
-            self.plan.background.as_deref(),
-            self.plan.css.as_deref(),
-        )
+    pub(super) const fn postprocess_pipeline(&self) -> &SvgPipeline {
+        &self.pipeline
     }
 
-    fn raw_svg_raster_pipeline(&self) -> SvgPipeline {
-        svg_postprocess_pipeline(
-            SvgPipeline::resvg_safe(),
-            self.plan.background.as_deref(),
-            self.plan.css.as_deref(),
-        )
-    }
-
-    fn postprocess_raw_svg_for_raster(&self, svg: &str) -> Result<String, CliError> {
-        let pipeline = self.raw_svg_raster_pipeline();
+    fn prepare_raw_svg_for_encoding(&self, svg: &str) -> Result<ResvgCompatibleSvg, CliError> {
         let session = self
             .renderer
             .environment()
             .begin_session()
             .map_err(merman::render::HeadlessError::from)?;
-        Ok(merman::render::apply_svg_pipeline(
-            svg, &pipeline, &session,
-        )?)
+        Ok(self
+            .pipeline
+            .process_resvg_compatible(svg, &session)
+            .map_err(merman::render::HeadlessError::from)?)
     }
 
     #[cfg(feature = "ascii")]

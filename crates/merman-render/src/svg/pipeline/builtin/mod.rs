@@ -10,10 +10,7 @@ pub(crate) mod util;
 
 pub use css_override::{CssOverridePolicy, CssOverridePostprocessor};
 pub use css_sanitize::SanitizeCssPostprocessor;
-pub use foreign_object::{
-    DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
-    StripForeignObjectPostprocessor,
-};
+pub use foreign_object::{ForeignObjectFallbackPostprocessor, StripForeignObjectPostprocessor};
 pub(crate) use gitgraph_label::GitGraphBranchLabelBaselinePostprocessor;
 pub use root_background::RootBackgroundPostprocessor;
 pub use scoped_css::ScopedCssPostprocessor;

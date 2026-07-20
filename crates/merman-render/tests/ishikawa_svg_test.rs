@@ -71,15 +71,19 @@ ishikawa-beta
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "ishikawa");
+    assert_eq!(parsed.metadata().diagram_type, "ishikawa");
 
     let ishikawa_layout = {
-        let RenderSemanticModel::Ishikawa(model) = &parsed.model else {
+        let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
             panic!("expected Ishikawa render model");
         };
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_ishikawa_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .unwrap()
+        layout_ishikawa_diagram_typed(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            &measurer,
+        )
+        .unwrap()
     };
     assert!(ishikawa_layout.spine.is_some());
     assert_eq!(ishikawa_layout.pairs.len(), 1);
@@ -421,13 +425,16 @@ fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
         .unwrap()
         .unwrap();
 
-    let RenderSemanticModel::Ishikawa(model) = &parsed.model else {
+    let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
         panic!("expected Ishikawa render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout =
-        layout_ishikawa_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .unwrap();
+    let layout = layout_ishikawa_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .unwrap();
 
     assert!(layout.total_width.is_finite());
     assert!(layout.total_height.is_finite());
@@ -454,13 +461,13 @@ fn ishikawa_end_anchored_labels_preserve_computed_length_precision() {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::Ishikawa(model) = &parsed.model else {
+    let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
         panic!("expected Ishikawa render model");
     };
 
     let layout = layout_ishikawa_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &PreciseIshikawaMeasurer,
     )
     .unwrap();

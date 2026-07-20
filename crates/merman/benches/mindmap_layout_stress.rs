@@ -17,9 +17,10 @@ fn bench_mindmap_layout_stress(c: &mut Criterion) {
         .parse_diagram_for_render_model_sync(MINDMAP_BALANCED_TREE, parse_opts)
         .expect("parse")
         .expect("supported diagram");
-    let RenderSemanticModel::Mindmap(model) = &parsed.model else {
+    let RenderSemanticModel::Mindmap(model) = parsed.model() else {
         panic!("expected mindmap render model");
     };
+    let effective_config = parsed.metadata().effective_config.as_value();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     let mut group = c.benchmark_group("layout_stress");
@@ -31,12 +32,9 @@ fn bench_mindmap_layout_stress(c: &mut Criterion) {
         b.iter(|| {
             let mut acc: usize = 0;
             for _ in 0..50usize {
-                let layouted = layout_mindmap_diagram_typed(
-                    black_box(model),
-                    parsed.meta.effective_config.as_value(),
-                    &measurer,
-                )
-                .expect("layout");
+                let layouted =
+                    layout_mindmap_diagram_typed(black_box(model), effective_config, &measurer)
+                        .expect("layout");
                 acc ^= layouted.nodes.len();
                 acc ^= layouted.edges.len();
             }

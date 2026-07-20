@@ -254,12 +254,9 @@ function EditorPanel({
 function PreviewPanel({ t }: { t(key: string): string }) {
   return (
     <div className="h-full min-h-0 flex flex-col">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b bg-muted/20 px-3 sm:px-4">
+      <div className="flex h-11 shrink-0 items-center border-b bg-muted/20 px-3 sm:px-4">
         <span className="text-xs font-medium text-muted-foreground">
           {t("preview.title")}
-        </span>
-        <span className="hidden text-xs text-muted-foreground sm:inline">
-          {t("preview.wheelZoom")}
         </span>
       </div>
       <Suspense fallback={<PanelLoading label={t("preview.loading")} />}>

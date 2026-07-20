@@ -6,24 +6,13 @@ import type {
   BindingCapabilities,
   DiagramDetectionFacts,
   DiagramType,
-  EditorCodeAction,
-  EditorCompletionList,
-  EditorDiagnosticsResult,
-  EditorDocumentSymbol,
-  EditorHover,
-  EditorLocation,
-  EditorPosition,
-  EditorPrepareRename,
-  EditorSemanticToken,
-  EditorSemanticTokenLegend,
-  EditorWorkspaceEdit,
   HostThemePresetName,
   RegistryProfile,
   ThemeName,
   ValidationResult,
 } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { projectError } from "./error-projection.ts";
+import { projectError, type ErrorProjection } from "./error-projection.ts";
 
 export type MermanLoadStage =
   | "acquire"
@@ -45,38 +34,33 @@ export interface MermanRenderOptions {
   textMeasurementMode?: MermanTextMeasurementMode;
 }
 
-export interface MermanRenderResult {
-  error: string | null;
-  renderTime: number;
-  svg: string | null;
-}
+export type MermanRenderResult =
+  | {
+      readonly error: null;
+      readonly renderTime: number;
+      readonly status: "success";
+      readonly svg: string;
+    }
+  | {
+      readonly error: ErrorProjection;
+      readonly renderTime: number;
+      readonly status: "failure";
+      readonly svg: null;
+    };
 
-export interface MermanEditorService {
-  editorCodeActions(code: string): EditorCodeAction[];
-  editorCompletions(code: string, position: EditorPosition): EditorCompletionList;
-  editorDefinition(code: string, position: EditorPosition): EditorLocation | null;
-  editorDiagnostics(code: string): EditorDiagnosticsResult;
-  editorDocumentSymbols(code: string): EditorDocumentSymbol[];
-  editorHover(code: string, position: EditorPosition): EditorHover | null;
-  editorPrepareRename(
-    code: string,
-    position: EditorPosition
-  ): EditorPrepareRename | null;
-  editorReferences(
-    code: string,
-    position: EditorPosition,
-    includeDeclaration: boolean
-  ): EditorLocation[];
-  editorRename(
-    code: string,
-    position: EditorPosition,
-    newName: string
-  ): EditorWorkspaceEdit | null;
-  editorSemanticTokenLegend(): EditorSemanticTokenLegend;
-  editorSemanticTokens(code: string): EditorSemanticToken[];
-}
+export type MermanAsciiResult =
+  | {
+      readonly ascii: string;
+      readonly error: null;
+      readonly status: "success";
+    }
+  | {
+      readonly ascii: null;
+      readonly error: ErrorProjection;
+      readonly status: "failure";
+    };
 
-export interface MermanDomainFacade extends MermanEditorService {
+export interface MermanDomainFacade {
   readonly packageVersion: string;
   bindingCapabilities(): BindingCapabilities;
   detectDiagram(
@@ -108,7 +92,11 @@ export interface MermanDomainFacade extends MermanEditorService {
     configJson?: string,
     options?: MermanRenderOptions
   ): MermanRenderResult;
-  renderAscii(code: string, theme?: string, configJson?: string): string | null;
+  renderAscii(
+    code: string,
+    theme?: string,
+    configJson?: string
+  ): MermanAsciiResult;
   validate(code: string): ValidationResult;
 }
 
@@ -170,7 +158,7 @@ export interface MermanRuntime {
   suspend(): void;
 }
 
-class StagedRuntimeError extends Error {
+export class MermanRuntimeError extends Error implements MermanRuntimeFailure {
   readonly cause: unknown;
   readonly detail: string | null;
   readonly recovery: MermanRecovery;
@@ -179,11 +167,11 @@ class StagedRuntimeError extends Error {
   constructor(
     stage: MermanLoadStage,
     recovery: MermanRecovery,
-    cause: unknown
+    cause: unknown,
+    projection: ErrorProjection = projectError(cause)
   ) {
-    const projection = projectError(cause);
     super(projection.summary);
-    this.name = "StagedRuntimeError";
+    this.name = "MermanRuntimeError";
     this.cause = cause;
     this.detail = projection.detail;
     this.recovery = recovery;
@@ -274,7 +262,7 @@ export function createMermanRuntime(
           status: "error",
           suspended: false,
         });
-        throw staged.cause instanceof Error ? staged.cause : staged;
+        throw staged;
       })
       .finally(() => {
         if (inFlight === pending) {
@@ -385,17 +373,17 @@ async function runAttempt(
   try {
     initialized = dependencies.isInitialized();
   } catch (error) {
-    throw new StagedRuntimeError("module-import", "reload", error);
+    throw new MermanRuntimeError("module-import", "reload", error);
   }
 
   if (!initialized) {
     const modulePromise = dependencies.loadModule().catch((error) => {
-      throw new StagedRuntimeError("module-import", "reload", error);
+      throw new MermanRuntimeError("module-import", "reload", error);
     });
     const wasmPromise = dependencies
       .fetchWasm({ cache: "default", signal })
       .catch((error) => {
-        throw new StagedRuntimeError("wasm-fetch", "retry", error);
+        throw new MermanRuntimeError("wasm-fetch", "retry", error);
       });
 
     const [module, firstResponse] = await Promise.all([modulePromise, wasmPromise]);
@@ -406,14 +394,14 @@ async function runAttempt(
       await dependencies.initialize({ module, wasm: firstResponse });
     } catch (error) {
       if (!dependencies.isRetryableInitializationError(error)) {
-        throw new StagedRuntimeError("initialize", "retry", error);
+        throw new MermanRuntimeError("initialize", "retry", error);
       }
       let reloadResponse: Response;
       try {
         setStage("wasm-fetch");
         reloadResponse = await dependencies.fetchWasm({ cache: "reload", signal });
       } catch (reloadError) {
-        throw new StagedRuntimeError("wasm-fetch", "retry", reloadError);
+        throw new MermanRuntimeError("wasm-fetch", "retry", reloadError);
       }
       setStage("response-validation");
       validateWasmResponse(reloadResponse);
@@ -421,7 +409,7 @@ async function runAttempt(
       try {
         await dependencies.initialize({ module, wasm: reloadResponse });
       } catch (reloadError) {
-        throw new StagedRuntimeError("initialize", "retry", reloadError);
+        throw new MermanRuntimeError("initialize", "retry", reloadError);
       }
     }
   }
@@ -430,13 +418,13 @@ async function runAttempt(
   try {
     return dependencies.createSession();
   } catch (error) {
-    throw new StagedRuntimeError("session", "retry", error);
+    throw new MermanRuntimeError("session", "retry", error);
   }
 }
 
 function validateWasmResponse(response: Response): void {
   if (!response.ok) {
-    throw new StagedRuntimeError(
+    throw new MermanRuntimeError(
       "response-validation",
       "retry",
       new Error(`WASM request failed with HTTP ${response.status}.`)
@@ -444,7 +432,7 @@ function validateWasmResponse(response: Response): void {
   }
   const contentType = response.headers.get("content-type") ?? "";
   if (!/^application\/wasm(?:\s*;|$)/i.test(contentType)) {
-    throw new StagedRuntimeError(
+    throw new MermanRuntimeError(
       "response-validation",
       "retry",
       new Error(`WASM response must use application/wasm, received ${contentType || "none"}.`)
@@ -452,16 +440,17 @@ function validateWasmResponse(response: Response): void {
   }
 }
 
-function toStagedError(error: unknown): StagedRuntimeError {
-  return error instanceof StagedRuntimeError
+function toStagedError(error: unknown): MermanRuntimeError {
+  return error instanceof MermanRuntimeError
     ? error
-    : new StagedRuntimeError("session", "retry", error);
+    : new MermanRuntimeError("session", "retry", error);
 }
 
-function runtimeFailureError(failure: MermanRuntimeFailure): Error {
-  return failure.cause instanceof Error
-    ? failure.cause
-    : new Error(failure.message);
+function runtimeFailureError(failure: MermanRuntimeFailure): MermanRuntimeError {
+  return new MermanRuntimeError(failure.stage, failure.recovery, failure.cause, {
+    summary: failure.message,
+    detail: failure.detail,
+  });
 }
 
 export interface MermanLifecycleEventTarget {

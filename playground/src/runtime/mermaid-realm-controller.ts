@@ -12,6 +12,7 @@ import {
   type RealmViewport,
 } from "./realm/channel-protocol.ts";
 import { createOperationQueue } from "./realm/operation-queue.ts";
+import { projectError } from "./error-projection.ts";
 
 export interface MermaidRealmRenderInput {
   readonly configJson: string;
@@ -41,7 +42,7 @@ export interface MermaidRealmExecutionSuccess {
 }
 
 export interface MermaidRealmRenderFailure {
-  readonly detail?: string | null;
+  readonly detail: string | null;
   readonly message: string;
   readonly stage: CompareFailureStage;
   readonly status: "failure";
@@ -151,7 +152,7 @@ export function createMermaidRealmController({
         if (disposed || generation !== operationGeneration) {
           return failure("disposed", "Mermaid realm operation was superseded.");
         }
-        return failure("handshake", errorMessage(error));
+        return failure("handshake", error);
       }
     }
 
@@ -160,7 +161,7 @@ export function createMermaidRealmController({
       await activeSession.setViewport(input.viewport);
     } catch (error) {
       disposeSession();
-      return failure("presentation", errorMessage(error));
+      return failure("presentation", error);
     }
 
     let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -195,14 +196,14 @@ export function createMermaidRealmController({
         return { ...evidence, artifact };
       } catch (error) {
         disposeActiveSession(activeSession);
-        return failure("svg-validation", errorMessage(error));
+        return failure("svg-validation", error);
       }
     } catch (error) {
       disposeActiveSession(activeSession);
       if (operationTimedOut) return timeoutFailure;
       return failure(
         error instanceof RealmTimeoutError ? "timeout" : "protocol",
-        errorMessage(error)
+        error
       );
     } finally {
       if (timeout !== null) clearTimeout(timeout);
@@ -223,11 +224,13 @@ export function createMermaidRealmController({
 
 function failure(
   stage: CompareFailureStage,
-  message: string
+  error: unknown
 ): MermaidRealmRenderFailure {
-  return { status: "failure", stage, message };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const projection = projectError(error);
+  return {
+    status: "failure",
+    stage,
+    message: projection.summary,
+    detail: projection.detail,
+  };
 }

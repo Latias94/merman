@@ -1,6 +1,10 @@
 import type { CompareRenderPayload } from "../../runtime/realm/channel-protocol.ts";
 import type { BenchmarkFailureStage } from "../protocol.ts";
 import type { BenchmarkTraceMark } from "../trace.ts";
+import {
+  projectError,
+  type ErrorProjection,
+} from "../../runtime/error-projection.ts";
 
 export interface BenchmarkEngineContext {
   readonly mark: (event: BenchmarkTraceMark) => void;
@@ -20,12 +24,15 @@ export interface BenchmarkEngineAdapter {
 
 export class BenchmarkEngineError extends Error {
   readonly cause: unknown;
+  readonly error: ErrorProjection;
   readonly stage: BenchmarkFailureStage;
 
   constructor(stage: BenchmarkFailureStage, cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause));
+    const projection = projectError(cause);
+    super(projection.summary);
     this.name = "BenchmarkEngineError";
     this.cause = cause;
+    this.error = projection;
     this.stage = stage;
   }
 }

@@ -38,6 +38,27 @@ test("ordinary realm failures do not poison the serialized operation queue", asy
   assert.equal(session.disposeCalls, 0);
 });
 
+test("ordinary Mermaid failures retain their realm-owned structured detail", async () => {
+  const session = fakeSession(async () => ({
+    status: "failure",
+    stage: "render",
+    message: "Parse error on line 2",
+    detail: '{"hash":{"token":"INVALID"}}',
+  }));
+  const controller = createMermaidRealmController({
+    kind: "compare",
+    createSession: async () => session,
+  });
+
+  assert.deepEqual(await controller.render(INPUT), {
+    status: "failure",
+    stage: "render",
+    message: "Parse error on line 2",
+    detail: '{"hash":{"token":"INVALID"}}',
+  });
+  assert.equal(session.disposeCalls, 0);
+});
+
 test("concurrent controller callers cannot interleave one realm", async () => {
   const first = deferred<MermaidRealmExecutionResult>();
   const calls: string[] = [];
@@ -109,10 +130,13 @@ test("channel stage timeouts retain their timeout failure stage", async () => {
     createSession: async () => session,
   });
 
-  assert.deepEqual(
-    await controller.render(INPUT),
-    failure("timeout", "Mermaid realm timed out during render.")
-  );
+  const result = await controller.render(INPUT);
+  assert.equal(result.status, "failure");
+  if (result.status === "failure") {
+    assert.equal(result.stage, "timeout");
+    assert.equal(result.message, "Mermaid realm timed out during render.");
+    assert.match(result.detail ?? "", /RealmTimeoutError/);
+  }
   assert.equal(session.disposeCalls, 1);
 });
 
@@ -171,7 +195,7 @@ function failure(
   stage: "render" | "timeout" | "svg-validation" | "disposed",
   message: string
 ): Extract<MermaidRealmExecutionResult, { status: "failure" }> {
-  return { status: "failure", stage, message };
+  return { status: "failure", stage, message, detail: null };
 }
 
 function fakeSession(

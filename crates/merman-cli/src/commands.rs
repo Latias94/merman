@@ -70,9 +70,7 @@ pub(crate) fn run(cli: Cli) -> Result<i32, CliError> {
 fn run_detect(args: DetectArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
     let engine = engine_for(&args.parse, &RenderCliArgs::default())?;
-    let Some(meta) = engine.parse_metadata_sync(&text, parse_options(&args.parse))? else {
-        return Err(CliError::NoDiagram);
-    };
+    let meta = engine.parse_metadata_sync(&text)?;
     write_stdout_line(&meta.diagram_type)?;
     Ok(())
 }
@@ -234,12 +232,8 @@ fn lint_analyzer_options(
         ..Default::default()
     };
     validate_time_policy(&time_args)?;
-    let parse = merman::ParseOptions {
-        suppress_errors: false,
-    };
     let site_config = site_config_for(&time_args, &RenderCliArgs::default())?;
     Ok(merman_analysis::AnalysisOptions::default()
-        .with_parse_options(parse)
         .with_source(source)
         .with_site_config(site_config)
         .with_fixed_today(args.fixed_today)

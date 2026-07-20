@@ -7,10 +7,26 @@ import json
 import re
 import shlex
 import subprocess
+import tempfile
 import textwrap
 import unittest
 import uuid
 from pathlib import Path
+
+try:
+    from scripts.github_workflow_contract import (
+        WorkflowContractError,
+        load_workflow_contract as parse_workflow_structure,
+        workflow_job,
+        workflow_step,
+    )
+except ModuleNotFoundError:
+    from github_workflow_contract import (
+        WorkflowContractError,
+        load_workflow_contract as parse_workflow_structure,
+        workflow_job,
+        workflow_step,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -322,6 +338,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     )
                     self.assertEqual(outputs["source_ref"], "refs/tags/v1.2.3")
 
+    def test_validation_scripts_accept_semver_build_metadata(self) -> None:
+        release_tag = "v1.2.3-rc.4+build.7"
+        for path in SOURCE_REF_WORKFLOWS:
+            with self.subTest(workflow=path.name):
+                result, outputs = run_workflow_validation(
+                    path,
+                    release_tag=release_tag,
+                    version=release_tag.removeprefix("v"),
+                    source_ref=release_tag,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertEqual(outputs["source_ref"], f"refs/tags/{release_tag}")
+
     def test_validation_scripts_reject_multiline_source_ref_values(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             with self.subTest(workflow=path.name):
@@ -389,11 +422,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
                 self.assertTrue(
-                    "semver_re='^[0-9]+\\.[0-9]+\\.[0-9]+" in validate_job
+                    ("semver_re=" in validate_job and "0|[1-9]" in validate_job)
                     or ("is_uint()" in validate_job and "is_release_version()" in validate_job)
                 )
                 self.assertIn("source_ref tag must match", validate_job)
                 self.assertIn("refs/tags/<release-tag>", validate_job)
+
+    def test_crates_publish_step_defines_its_version_regex_locally(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-crates.yml")
+        publish = workflow_job(workflow, "publish")
+        upload = workflow_step(publish, name="Upload crates to crates.io")
+        run = upload["run"]
+        self.assertIn("semver_re=", run)
+        self.assertLess(run.index("semver_re="), run.index('[[ ! "$version" =~ $semver_re ]]'))
 
     def test_validation_jobs_do_not_hold_publish_permissions(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -537,7 +578,29 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "wasm-pack",
         ]:
             with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, publish_job)
+                    self.assertNotIn(forbidden, publish_job)
+
+    def test_release_web_pack_output_is_the_exact_uploaded_and_published_artifact(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-web.yml")
+        build = workflow_job(workflow, "build")
+        publish = workflow_job(workflow, "publish")
+        pack = workflow_step(build, name="Pack web package")
+        upload = workflow_step(build, name="Upload web package artifact")
+        download = workflow_step(publish, name="Download web package artifact")
+        publish_step = workflow_step(publish, name="Publish to npm")
+
+        self.assertEqual(pack["id"], "pack")
+        self.assertIn("npm pack --ignore-scripts --json", pack["run"])
+        self.assertIn("JSON.parse", pack["run"])
+        self.assertIn("Array.isArray(pack) || pack.length !== 1", pack["run"])
+        self.assertIn("printf 'package_file=%s\\n'", pack["run"])
+        self.assertEqual(upload["uses"], "actions/upload-artifact@v6")
+        self.assertEqual(upload["with"]["name"], "merman-web-npm-package")
+        self.assertEqual(upload["with"]["path"], "${{ steps.pack.outputs.package_file }}")
+        self.assertEqual(download["uses"], "actions/download-artifact@v7")
+        self.assertEqual(download["with"]["name"], "merman-web-npm-package")
+        self.assertIn("find target/npm-package -maxdepth 1 -type f -name '*.tgz'", publish_step["run"])
+        self.assertIn('npm publish "$package_file" --ignore-scripts', publish_step["run"])
 
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
@@ -613,49 +676,214 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("tools/publish.py --list-crates-io-packages", text)
         self.assertNotIn('package.get("publish") != []', text)
 
-    def test_cargo_dist_release_workflow_is_tag_only_and_uses_generated_publish_path(self) -> None:
+    def test_cargo_dist_release_workflow_is_tag_only_and_isolates_publish_authority(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
         text = read_workflow(WORKFLOW_ROOT / "release.yml")
         dist_config = read_workflow(ROOT / "dist-workspace.toml")
         header = text.split("\njobs:", 1)[0]
-        plan_job = indented_block(text, "plan:")
-        local_build_job = indented_block(text, "build-local-artifacts:")
-        global_build_job = indented_block(text, "build-global-artifacts:")
-        host_job = indented_block(text, "host:")
+        plan = workflow_job(workflow, "plan")
+        local_build = workflow_job(workflow, "build-local-artifacts")
+        global_build = workflow_job(workflow, "build-global-artifacts")
+        host = workflow_job(workflow, "host")
 
-        # cargo-dist 0.32 generates a workflow-level contents: write permission.
-        # Keep the assertions focused on tag-only publishing and release-path shape.
-        self.assertRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?write"?'))
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertNotIn("pull_request:", header)
         self.assertIn("push:", header)
         self.assertIn("tags:", header)
         self.assertIn("'**[0-9]+.[0-9]+.[0-9]+*'", header)
         self.assertIn('pr-run-mode = "skip"', dist_config)
         self.assertNotIn('pr-run-mode = "plan"', dist_config)
+        self.assertIn('cargo-dist-version = "0.32.0"', dist_config)
+        self.assertIn('allow-dirty = ["ci"]', dist_config)
+        self.assertIn('packages = ["merman-cli", "merman-lsp"]', dist_config)
+        self.assertIn("Merman maintains the permission split", header)
 
-        for job_name, job in [
-            ("build-local-artifacts", local_build_job),
-            ("build-global-artifacts", global_build_job),
-        ]:
+        for job_name, job in workflow["jobs"].items():
+            assert isinstance(job, dict)
+            permissions = job["permissions"]
+            assert isinstance(permissions, dict)
+            env = job["env"]
+            assert isinstance(env, dict)
+            steps = job["steps"]
+            assert isinstance(steps, list)
+            for step in steps:
+                assert isinstance(step, dict)
+                run = step.get("run", "")
+                self.assertNotRegex(run, re.compile(r"\$\{\{[^}]*github\.ref(?:_name)?"))
+                self.assertNotRegex(run, re.compile(r"\$\{\{[^}]*outputs\.tag"))
+            if job_name == "host":
+                continue
             with self.subTest(job=job_name):
-                self.assertNotIn("gh release create", job)
-                self.assertNotIn("--steps=release", job)
+                self.assertNotEqual(permissions.get("contents"), "write")
+                self.assertNotIn("GH_TOKEN", env)
+                for step in steps:
+                    self.assertNotIn("GH_TOKEN", step["env"])
 
-        self.assertIn("tag: ${{ !github.event.pull_request && github.ref_name || '' }}", plan_job)
-        self.assertIn(
-            "tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}",
-            plan_job,
+        plan_step = workflow_step(plan, step_id="plan")
+        self.assertEqual(plan_step["env"]["RELEASE_TAG"], "${{ github.ref_name }}")
+        self.assertIn('dist host --steps=create "--tag=$RELEASE_TAG"', plan_step["run"])
+        self.assertNotIn("github.event.pull_request", text)
+        self.assertNotIn("tag-flag", text)
+
+        for build_job in [local_build, global_build]:
+            self.assertEqual(build_job["env"]["RELEASE_TAG"], "${{ needs.plan.outputs.tag }}")
+            build_step = next(
+                step
+                for step in build_job["steps"]
+                if isinstance(step, dict) and "dist build" in step.get("run", "")
+            )
+            self.assertIn('dist build "--tag=$RELEASE_TAG"', build_step["run"])
+            self.assertEqual(build_step["shell"], "bash")
+
+        self.assertEqual(host["environment"], "github-release")
+        self.assertEqual(host["permissions"], {"contents": "write"})
+        self.assertNotIn("GH_TOKEN", host["env"])
+        self.assertFalse(
+            any(
+                isinstance(step, dict) and step.get("uses", "").startswith("actions/checkout")
+                for step in host["steps"]
+            )
         )
-        self.assertIn("publishing: ${{ !github.event.pull_request }}", plan_job)
-        self.assertIn("host --steps=create", plan_job)
-        self.assertIn("needs.plan.outputs.publishing == 'true'", host_job)
-        self.assertIn("dist build ${{ needs.plan.outputs.tag-flag }}", local_build_job)
-        self.assertIn("dist build ${{ needs.plan.outputs.tag-flag }}", global_build_job)
-        self.assertIn(
-            "dist host ${{ needs.plan.outputs.tag-flag }} --steps=upload --steps=release",
-            host_job,
-        )
-        self.assertIn("gh release create", host_job)
-        self.assertIn('gh release create "${{ needs.plan.outputs.tag }}"', host_job)
+        create_release = workflow_step(host, name="Create GitHub Release")
+        self.assertEqual(create_release["env"]["GH_TOKEN"], "${{ secrets.GITHUB_TOKEN }}")
+        self.assertEqual(create_release["env"]["GH_REPO"], "${{ github.repository }}")
+        self.assertEqual(create_release["env"]["RELEASE_TAG"], "${{ needs.plan.outputs.tag }}")
+        self.assertNotIn("dist host", create_release["run"])
+        self.assertIn('release_args+=(-- "$RELEASE_TAG" "${assets[@]}")', create_release["run"])
+        self.assertIn('gh release create "${release_args[@]}"', create_release["run"])
+
+    def test_cargo_dist_tag_is_passed_as_one_literal_argument(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
+        plan = workflow_job(workflow, "plan")
+        plan_step = workflow_step(plan, step_id="plan")
+
+        cases = [
+            "v1.2.3$(printf injected > exploit-marker)",
+            "v1.2.3;printf injected > exploit-marker;#",
+            "--help1.2.3",
+        ]
+        for release_tag in cases:
+            with self.subTest(release_tag=release_tag), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                captured_args = temp / "captured-args.txt"
+                github_output = temp / "github-output.txt"
+                script = "\n".join(
+                    [
+                        'dist() { printf \'%s\\n\' "$@" > "$CAPTURED_ARGS"; printf \'{}\\n\'; }',
+                        'jq() { printf \'{}\'; }',
+                        str(plan_step["run"]),
+                    ]
+                )
+                env = {
+                    "PATH": "/usr/bin:/bin",
+                    "RELEASE_TAG": release_tag,
+                    "CAPTURED_ARGS": str(captured_args),
+                    "GITHUB_OUTPUT": str(github_output),
+                }
+
+                result = subprocess.run(
+                    ["bash", "-c", script],
+                    cwd=temp,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                self.assertFalse((temp / "exploit-marker").exists())
+                self.assertIn(f"--tag={release_tag}", captured_args.read_text(encoding="utf-8").splitlines())
+
+    def test_workflow_contract_parser_rejects_ambiguous_security_shapes(self) -> None:
+        cases = {
+            "duplicate-permissions": """
+                permissions:
+                  contents: read
+                permissions:
+                  contents: write
+                jobs:
+                  build:
+                    steps:
+                      - run: true
+            """,
+            "duplicate-job": """
+                jobs:
+                  build:
+                    steps:
+                      - run: true
+                  build:
+                    steps:
+                      - run: false
+            """,
+            "duplicate-env": """
+                jobs:
+                  build:
+                    env:
+                      TOKEN: first
+                      TOKEN: second
+                    steps:
+                      - run: true
+            """,
+            "uses-and-run": """
+                jobs:
+                  build:
+                    steps:
+                      - uses: actions/checkout@v6
+                        run: echo ambiguous
+            """,
+            "modified-block-scalar": """
+                jobs:
+                  build:
+                    steps:
+                      - run: >-
+                          echo hidden
+            """,
+            "permission-block-scalar": """
+                permissions:
+                  contents: >
+                    write
+                jobs:
+                  build:
+                    permissions:
+                      contents: read
+                    steps:
+                      - run: echo safe
+            """,
+            "yaml-alias": """
+                permissions:
+                  contents: read
+                jobs:
+                  build:
+                    env:
+                      GH_TOKEN: *secret
+                    steps:
+                      - run: echo ambiguous
+            """,
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            for name, source in cases.items():
+                with self.subTest(case=name):
+                    workflow = temp / f"{name}.yml"
+                    workflow.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
+                    with self.assertRaises(WorkflowContractError):
+                        parse_workflow_structure(workflow)
+
+    def test_github_release_upload_jobs_pin_repository_context(self) -> None:
+        cases = [
+            ("release-android.yml", "upload-release", "Upload AAR to GitHub Release"),
+            ("release-apple.yml", "upload-release", "Upload XCFramework to GitHub Release"),
+            ("release-python.yml", "github-release", "Create GitHub Release"),
+        ]
+        for workflow_name, job_id, step_name in cases:
+            with self.subTest(workflow=workflow_name):
+                workflow = parse_workflow_structure(WORKFLOW_ROOT / workflow_name)
+                job = workflow_job(workflow, job_id)
+                step = workflow_step(job, name=step_name)
+                self.assertEqual(step["env"]["GH_REPO"], "${{ github.repository }}")
+                self.assertEqual(job["environment"], "github-release")
+                self.assertEqual(job["permissions"]["contents"], "write")
 
 
 class CiWorkflowSecurityTests(unittest.TestCase):

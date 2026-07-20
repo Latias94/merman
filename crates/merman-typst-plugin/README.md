@@ -1,74 +1,110 @@
 # merman-typst-plugin
 
-`merman-typst-plugin` is the experimental Typst WebAssembly plugin bridge for
-`merman`.
+`merman-typst-plugin` is the Typst WebAssembly transport for `merman`. It uses
+`wasm-minimal-protocol` and delegates rendering and analysis to
+`merman-bindings-core`; it does not own a second Mermaid parser or renderer.
 
-The crate exports Typst-compatible `wasm-minimal-protocol` functions and delegates
-rendering and validation to `merman-bindings-core`.
+## ABI 2
 
-Current exported functions:
+The current Typst plugin ABI version is `2`. The WebAssembly module has a closed
+host surface that distinguishes callable ABI operations from linker metadata.
+
+It imports exactly these two protocol functions:
+
+- `typst_env::wasm_minimal_protocol_write_args_to_buffer`
+- `typst_env::wasm_minimal_protocol_send_result_to_host`
+
+Its callable ABI consists of exactly these five protocol functions:
 
 - `abi_version() -> bytes`
 - `package_version() -> bytes`
 - `capabilities_json() -> bytes`
 - `render_svg_json(source: bytes, options_json: bytes) -> bytes`
-- `validate_json(source: bytes, options_json: bytes) -> bytes`
+- `analyze_json(source: bytes, options_json: bytes) -> bytes`
 
-`render_svg_json` returns a stable JSON payload with `ok`, `code`,
-`code_name`, `message`, and `svg` fields so the Typst package can render
-placeholder or text errors without failing compilation.
+The module also exports exactly three non-callable support values:
 
-## ABI Boundary
+- `memory`
+- `__data_end`, an immutable `i32` global emitted by Rust's WebAssembly linker
+- `__heap_base`, an immutable `i32` global emitted by Rust's WebAssembly linker
 
-Current Typst plugin ABI version: `1`.
+The linker globals are transport metadata, not plugin operations. No other
+function, memory, table, or global export is allowed.
 
-The plugin ABI covers the exported `wasm-minimal-protocol` function names and
-their byte payload contracts. That includes the `abi_version`,
-`package_version`, `capabilities_json`, `render_svg_json`, and `validate_json`
-exports, plus the JSON schemas consumed or produced by those exports.
+`wasm-profiles.json` owns the ABI number. The crate build generates both the
+numeric `TYPST_PLUGIN_ABI_VERSION` constant and the ASCII bytes returned by
+`abi_version` from that field. `package_version` returns the Rust workspace
+package version.
 
-Typst wrapper API changes in `packages/typst/merman/src/*.typ` do not require a
-plugin ABI bump when this WebAssembly surface remains stable. Bump
-`TYPST_PLUGIN_ABI_VERSION` and update the ABI tests and package README mapping
-when an export is added, removed, renamed, changes argument or return bytes, or
-changes the render, validate, or capabilities JSON contract.
+`capabilities_json` must exactly match the selected entry in
+`wasm-profiles.json`. `render_svg_json` returns render payload schema 1 with only
+`version`, `ok`, `code`, `code_name`, `message`, and `svg`. `analyze_json`
+returns the canonical analysis schema 1 used by the Rust analysis and editor
+surfaces; ABI 1's legacy `validate_json` projection is not exported.
 
-The `package_version` export reports the Rust crate version. The Typst package
-version in `packages/typst/merman/typst.toml` is a separate `@preview` wrapper
-version.
+Changing an imported or exported function, its WebAssembly signature, or one of
+these byte payload contracts requires a Typst plugin ABI change. Changes to the
+Typst wrapper API under `packages/typst/merman/src/` do not require an ABI bump
+when this transport remains unchanged.
 
-Build the default Typst render artifact with:
+## Profiles
 
-```bash
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
-```
+`wasm-profiles.json` is the source of truth for features and capabilities. The
+package tooling defaults to the `publish` profile and accepts only these public
+profile aliases:
 
-Build the bridge-only protocol artifact with:
+| Alias | Capabilities |
+| --- | --- |
+| `publish` | Render, canonical analysis, full Mermaid config, and ELK layout |
+| `full-no-elk` | Render, canonical analysis, and full Mermaid config without ELK |
+| `minimal` | Render and canonical analysis without full config or ELK |
 
-```bash
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --no-default-features
-```
+Bridge-only and render-only entries are internal size-measurement profiles, not
+package publication choices.
 
-Build a pure render artifact without validation analysis with:
+RaTeX math is not supported by the Typst plugin. Its current dependency closure
+uses browser system-font discovery, which violates the zero-browser-import
+Typst boundary. A future math profile must pass a separate import and behavior
+admission before it can be exposed.
 
-```bash
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --no-default-features --features render
-```
+The Typst wrapper version in `packages/typst/merman/typst.toml` is independent
+from the Rust workspace version returned by `package_version`.
 
-Build the larger full-config/full-sanitization no-host artifact with:
+## Verification
 
-```bash
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --features core-full
-```
-
-Then check the Typst wasm surface with:
-
-```bash
-cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-```
-
-Smoke the plugin through a Typst-compatible `wasmi` host call with:
+Build and install the provenance-bound publish artifact with:
 
 ```bash
-cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- build-typst-package --profile publish
 ```
+
+Check its closed import, export, and function-signature surface with the shared
+Wasmi module validator:
+
+```bash
+cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+```
+
+Invoke and validate all five ABI operations through a Typst-compatible `wasmi`
+host:
+
+```bash
+cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+```
+
+The smoke command defaults to `--profile publish`. Use `minimal` or
+`full-no-elk` only when the artifact was built from that exact descriptor
+profile. Raw Cargo output under `target/wasm-build/` is private build input and
+must not be packaged or used as release evidence.
+
+Compile the wrapper examples and tests against the exact staged bundle with:
+
+```bash
+cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
+```
+
+The installed bundle carries two schema-1 manifests. `merman_typst_plugin.manifest.json` proves the
+canonical WASM profile, production Cargo input closure, toolchain, flags, versions, and artifact
+digest. `merman_package.manifest.json` additionally binds the frozen Typst wrapper tree and licenses
+to that artifact. The package transaction rejects source drift and any extra, missing, or changed
+staged file before replacing an existing version.

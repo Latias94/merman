@@ -62,6 +62,29 @@ test("projects binding and cyclic object failures without object coercion", () =
     summary: "Unexpected error.",
     detail: '"[unreadable error]"',
   });
+
+  const parserError = new Error("Parse error on line 2");
+  Object.assign(parserError, {
+    hash: {
+      expected: ["NODE_TEXT"],
+      loc: { first_column: 4, first_line: 2 },
+      token: "INVALID",
+    },
+  });
+  const parserProjection = projectError(parserError);
+  assert.equal(parserProjection.summary, "Parse error on line 2");
+  assert.match(parserProjection.detail ?? "", /"token": "INVALID"/);
+  assert.match(parserProjection.detail ?? "", /"first_line": 2/);
+
+  const oversizedBinding = projectError({
+    version: 2,
+    ok: false,
+    code: 5,
+    code_name: "MERMAN_PARSE_ERROR",
+    message: "x".repeat(9_001),
+  });
+  assert.ok(oversizedBinding.summary.length < 9_001);
+  assert.match(oversizedBinding.summary, /\[truncated\]$/);
 });
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
@@ -132,7 +155,12 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     );
   }
 
-  second.resolve({ status: "failure", stage: "render", message: "broken" });
+  second.resolve({
+    status: "failure",
+    stage: "render",
+    message: "Mermaid parse failed",
+    detail: '{"token":"INVALID"}',
+  });
   await waitFor(() => coordinator.store.getState().status === "partial");
   const partial = coordinator.store.getState();
   assert.equal(partial.status, "partial");
@@ -144,7 +172,49 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     /partial/
   );
   assert.equal(partial.mermaid.status, "failure");
+  assert.equal(partial.mermaid.message, "Mermaid parse failed");
+  assert.equal(partial.mermaid.detail, '{"token":"INVALID"}');
+  assert.notEqual(partial.mermaid.message, partial.merman.status);
   assert.equal("svg" in partial.mermaid, false);
+});
+
+test("a completed Mermaid failure replaces stale success without borrowing Merman error", async () => {
+  const first = deferred<MermaidRealmRenderResult>();
+  const second = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([first.promise, second.promise]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+    validateSvg: () => {},
+  });
+  coordinator.setCompareEnabled(true);
+
+  coordinator.setInput(input("stable"));
+  await waitFor(() => compare.calls.length === 1);
+  first.resolve(mermaidSuccess("stable"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  coordinator.setInput(input("invalid", bindingFailureFacade()));
+  await waitFor(() => compare.calls.length === 2);
+  assert.equal(coordinator.store.getState().status, "updating");
+  second.resolve({
+    status: "failure",
+    stage: "render",
+    message: "Parse error on line 1",
+    detail: '{"engine":"mermaid","token":"INVALID"}',
+  });
+  await waitFor(() => coordinator.store.getState().status === "failed");
+
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "failed");
+  if (completed.status !== "failed" || !completed.mermaid) return;
+  assert.equal(completed.snapshot.source, "invalid");
+  assert.equal(completed.merman.message, "Source is invalid.");
+  assert.match(completed.merman.detail ?? "", /MERMAN_PARSE_ERROR/);
+  assert.equal(completed.mermaid.message, "Parse error on line 1");
+  assert.match(completed.mermaid.detail ?? "", /"engine":"mermaid"/);
+  assert.doesNotMatch(completed.mermaid.detail ?? "", /MERMAN_PARSE_ERROR/);
 });
 
 test("pause waits for active work and resumes only the latest snapshot", async () => {
@@ -304,8 +374,13 @@ function facade(): MermanDomainFacade {
       svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`,
       error: null,
       renderTime: 2,
+      status: "success",
     }),
-    renderAscii: (source: string) => source,
+    renderAscii: (source: string) => ({
+      ascii: source,
+      error: null,
+      status: "success",
+    }),
   } as unknown as MermanDomainFacade;
 }
 

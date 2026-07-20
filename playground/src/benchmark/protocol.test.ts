@@ -207,6 +207,7 @@ test("pre-clock environment failure may return null trace without a version", ()
     resourceError: null,
     stage: "environment",
     message: "hidden",
+    detail: null,
     version: null,
   };
   assert.deepEqual(
@@ -242,6 +243,7 @@ test("failure response retains a validated completed trace prefix", () => {
     type: "benchmark-sample-failure",
     stage: "render",
     message: "render failed",
+    detail: '{"code":"MERMAN_PARSE_ERROR"}',
     svg: undefined,
     version: "0.8.0-alpha.3",
     trace: {
@@ -327,6 +329,7 @@ function failureFromSuccess(
     type: "benchmark-sample-failure",
     stage,
     message: `${stage} failed`,
+    detail: null,
     trace,
   } as Record<string, unknown>;
   delete response.svg;

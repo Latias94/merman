@@ -1,0 +1,12 @@
+KaTeX font files (KaTeX_*.ttf)
+================================
+
+These TrueType fonts are taken from the KaTeX project:
+  https://github.com/KaTeX/KaTeX
+
+They are licensed under the SIL Open Font License, Version 1.1. The full
+license text is in OFL.txt in this directory.
+
+KaTeX's own MIT license applies to its software, not to the font binaries;
+font licensing follows OFL as described in KaTeX's documentation and
+upstream repository.

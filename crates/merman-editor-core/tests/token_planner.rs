@@ -86,10 +86,12 @@ fn planner_uses_exact_structured_marker_spans_for_all_fence_forms() {
     assert_eq!(
         plan.tokens()
             .iter()
-            .filter(|token| token.kind == PlannedTokenKind::Delimiter)
-            .map(|token| token.length)
+            .filter(|token| {
+                token.kind == PlannedTokenKind::Delimiter && matches!(token.line, 0 | 3 | 4 | 7)
+            })
+            .map(|token| (token.line, token.start, token.length))
             .collect::<Vec<_>>(),
-        vec![4, 6, 3, 5]
+        vec![(0, 2, 4), (3, 3, 6), (4, 0, 3), (7, 0, 5)]
     );
 }
 

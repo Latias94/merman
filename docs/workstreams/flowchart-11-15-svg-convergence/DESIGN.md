@@ -1,7 +1,7 @@
 # Flowchart 11.15 SVG Convergence
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed (historical archive)
+Last updated: 2026-07-21
 
 ## Why This Lane Exists
 

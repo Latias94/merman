@@ -67,9 +67,35 @@
       "gate": "execution-isolation",
       "status": "pass",
       "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#executionIsolation",
+        "summary": "Desktop and mobile Chromium prove opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
+        "projectCount": 2,
+        "probeCount": 13,
+        "observationCount": 26,
+        "passedObservationCount": 26
+      }
+    },
+    {
+      "gate": "security",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#security",
+        "summary": "Desktop and mobile Chromium prove ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
+        "projectCount": 2,
+        "probeCount": 18,
+        "observationCount": 36,
+        "passedObservationCount": 36
+      }
+    },
+    {
+      "gate": "dependency-isolation",
+      "status": "pass",
+      "evidence": {
         "kind": "command",
-        "reference": "cd playground && npx playwright test tests/benchmark.realm.spec.ts --project=chromium-desktop --project=chromium-mobile",
-        "summary": "The browser gate proves opaque execution, authenticated messaging, bounded ephemeral storage, no server receipt from denied network APIs, navigation containment, failure poisoning, and successful replacement realms."
+        "reference": "cd playground && npm run verify:dependencies",
+        "summary": "The application runtime and browser-test toolchain use separate manifests, locks, and node_modules trees; both complete npm dependency inventories pass without peer overrides or ignored conflicts."
       }
     },
     {
@@ -110,19 +136,14 @@
       "classification": "lazy-companion-surface",
       "owner": "U3/U4",
       "summary": "CLI/LSP/browser assets are not part of the normal Mermaid plugin chunk; they receive separate capability and security gates."
-    },
-    {
-      "area": "tooling-peer-metadata",
-      "source": "@zenuml/core@3.50.1 peerDependencies.playwright-core",
-      "classification": "dev-only-optional-peer-residual",
-      "owner": "upstream-zenuml-core",
-      "summary": "Core pins its optional CLI peer to playwright-core 1.57.0 while the Playground test harness uses 1.61.1. The selected browser runtime does not import that peer; npm install, exact locks, runtime entry evidence, and browser gates remain authoritative, while npm ls --all reports this classified metadata conflict."
     }
   ],
   "excludedLatestMajor": {
     "version": "4.2.0",
     "commit": "377f6002edac0e7591d6f788bc2d925e0e8a6f85",
     "reason": "Rejected from Mermaid 11.16 graph: plugin range ^3.47.0 and Mermaid workspace range ^3.47.8 both exclude major 4.",
-    "nextAdmission": "separate-major-zenuml-v4"
+    "nextAdmission": "separate-major-zenuml-v4",
+    "artifact": "tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json",
+    "artifactSha256": "c86e5a8aa45c64404e9e4bfb6decd923e107ce1258cdcaba39c22be4082a9fa0"
   }
 }

@@ -101,9 +101,15 @@ pub fn binding_capabilities_json() -> Result<Vec<u8>, BindingError> {
         return Ok(bytes.clone());
     }
 
-    let bytes = serde_json::to_vec(&binding_capabilities()).map_err(internal_json_error)?;
+    let bytes = binding_capabilities_json_for(binding_capabilities())?;
     let _ = BINDING_CAPABILITIES_JSON.set(bytes.clone());
     Ok(bytes)
+}
+
+pub fn binding_capabilities_json_for(
+    capabilities: BindingCapabilities,
+) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&capabilities).map_err(internal_json_error)
 }
 
 pub fn supported_themes() -> &'static [&'static str] {
@@ -226,10 +232,10 @@ pub fn configurable_lint_rule_catalog() -> Vec<RuleCatalogEntry> {
 pub fn lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
     #[cfg(not(feature = "analysis"))]
     {
-        return Err(crate::common::feature_required_error(
+        Err(crate::common::feature_required_error(
             "lint rule catalog",
             "analysis",
-        ));
+        ))
     }
 
     #[cfg(feature = "analysis")]
@@ -248,10 +254,10 @@ pub fn lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
 pub fn configurable_lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
     #[cfg(not(feature = "analysis"))]
     {
-        return Err(crate::common::feature_required_error(
+        Err(crate::common::feature_required_error(
             "configurable lint rule catalog",
             "analysis",
-        ));
+        ))
     }
 
     #[cfg(feature = "analysis")]
@@ -519,7 +525,6 @@ mod tests {
                     "timeline",
                     "treeView",
                     "xychart",
-                    "zenuml",
                 ]
             );
         } else {
@@ -539,7 +544,7 @@ mod tests {
                 .collect();
 
             assert_eq!(ascii_supported_diagrams(), supported.as_slice());
-            assert!(supported.contains(&"zenuml"));
+            assert!(!supported.contains(&"zenuml"));
         } else {
             assert!(capabilities.is_empty());
             assert!(ascii_supported_diagrams().is_empty());
@@ -586,8 +591,12 @@ mod tests {
                 && evidence.source.contains("xychart-ascii.test.ts")
         }));
 
-        let zenuml = ascii_capability(&capabilities, "zenuml");
-        assert_eq!(zenuml.support_level, "partial");
+        assert!(
+            capabilities
+                .iter()
+                .all(|capability| capability.diagram_type != "zenuml"),
+            "ZenUML has no family-owned terminal projection"
+        );
     }
 
     #[test]

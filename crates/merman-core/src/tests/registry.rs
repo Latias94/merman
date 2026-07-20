@@ -898,11 +898,6 @@ fn every_catalog_variant_projects_all_declared_capabilities_in_full_and_tiny_pro
                 .iter()
                 .map(|fact| fact.id),
         );
-        let editor_ids = sorted_set(
-            crate::family::editor_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
         let combined_ids = sorted_set(
             crate::family::combined_parser_facts(profile)
                 .iter()
@@ -933,7 +928,7 @@ fn every_catalog_variant_projects_all_declared_capabilities_in_full_and_tiny_pro
             );
             assert_eq!(
                 capability.has_editor_parser,
-                editor_ids.contains(id),
+                combined_ids.contains(id),
                 "{profile:?} {id}"
             );
             assert_eq!(
@@ -1089,7 +1084,6 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                     .parse_editor_semantic_facts_with_type_sync(
                         row.variant_id,
                         row.representative_source,
-                        crate::ParseOptions::strict(),
                     )
                     .unwrap_or_else(|err| {
                         panic!(
@@ -1117,15 +1111,12 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                     )
                 })
                 .unwrap_or_else(|| panic!("{} returned no typed model", row.variant_id));
-            assert_eq!(parsed.meta.diagram_type, row.variant_id);
+            assert_eq!(parsed.metadata().diagram_type, row.variant_id);
         }
 
         if row.capabilities.combined {
             let parsed = engine
-                .parse_diagram_with_editor_facts_sync(
-                    row.representative_source,
-                    crate::ParseOptions::strict(),
-                )
+                .parse_diagram_snapshot_sync(row.representative_source)
                 .unwrap_or_else(|err| {
                     panic!(
                         "{} representative combined parse failed: {err}",
@@ -1134,13 +1125,13 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                 })
                 .unwrap_or_else(|| panic!("{} returned no combined model", row.variant_id));
             assert_eq!(
-                crate::diagram_type_family_kind(&parsed.diagram.meta.diagram_type),
+                crate::diagram_type_family_kind(&parsed.metadata().diagram_type),
                 Some(row.logical_family),
                 "{} combined detection left its logical family",
                 row.variant_id
             );
             assert!(matches!(
-                parsed.editor_facts,
+                parsed.editor_facts(),
                 crate::ParsedEditorFacts::Available(_)
             ));
         }
@@ -1150,11 +1141,39 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
             row.malformed_source,
             crate::ParseOptions::strict(),
         );
-        let malformed_editor = engine.parse_editor_semantic_facts_with_type_sync(
-            row.variant_id,
-            row.malformed_source,
-            crate::ParseOptions::strict(),
-        );
+        let malformed_editor =
+            engine.parse_editor_semantic_facts_with_type_sync(row.variant_id, row.malformed_source);
+        if row.capabilities.combined {
+            let snapshot = engine
+                .parse_diagram_snapshot_with_type_sync(row.variant_id, row.malformed_source)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} malformed snapshot operation failed: {error}",
+                        row.variant_id
+                    )
+                })
+                .unwrap_or_else(|| panic!("{} malformed snapshot was absent", row.variant_id));
+            let outcome_matches_semantic = matches!(
+                (&malformed_semantic, snapshot.outcome()),
+                (Ok(Some(_)), crate::DiagramParseOutcome::Parsed(_))
+                    | (Err(_), crate::DiagramParseOutcome::Failed(_))
+            );
+            if !outcome_matches_semantic {
+                recovery_contract_mismatches.push(format!(
+                    "{} malformed snapshot outcome drifted from strict semantics",
+                    row.variant_id
+                ));
+            }
+            if !matches!(
+                snapshot.editor_facts(),
+                crate::ParsedEditorFacts::Available(_)
+            ) {
+                recovery_contract_mismatches.push(format!(
+                    "{} malformed snapshot omitted parser-backed editor facts",
+                    row.variant_id
+                ));
+            }
+        }
         if let (Err(_), Ok(Some(facts))) = (&malformed_semantic, &malformed_editor) {
             if facts.completeness != crate::EditorSemanticCompleteness::Recovered {
                 recovery_contract_mismatches.push(format!(
@@ -1401,12 +1420,12 @@ fn langium_family_combined_parse_constructs_syntax_once() {
         crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
 
         let parsed = crate::Engine::new()
-            .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+            .parse_diagram_snapshot_sync(source)
             .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
             .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
 
         assert!(matches!(
-            parsed.editor_facts,
+            parsed.editor_facts(),
             crate::ParsedEditorFacts::Available(_)
         ));
         assert_eq!(
@@ -1423,12 +1442,12 @@ fn git_graph_combined_parse_constructs_syntax_once() {
     crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync("gitGraph\ncommit\n", crate::ParseOptions::strict())
+        .parse_diagram_snapshot_sync("gitGraph\ncommit\n")
         .expect("gitGraph combined parse succeeds")
         .expect("gitGraph combined parse returns a diagram");
 
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -1443,15 +1462,12 @@ fn er_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::er::reset_er_syntax_construction_count();
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync(
-            "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
-            crate::ParseOptions::strict(),
-        )
+        .parse_diagram_snapshot_sync("erDiagram\nCUSTOMER ||--o{ ORDER : places\n")
         .expect("ER combined parse succeeds")
         .expect("ER combined parse returns a diagram");
 
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -1466,15 +1482,12 @@ fn sequence_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync(
-            "sequenceDiagram\nAlice->>Bob: Hello\n",
-            crate::ParseOptions::strict(),
-        )
+        .parse_diagram_snapshot_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
         .expect("Sequence combined parse succeeds")
         .expect("Sequence combined parse returns a diagram");
 
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -1489,16 +1502,15 @@ fn class_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::class::reset_class_syntax_construction_count();
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync(
+        .parse_diagram_snapshot_sync(
             "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
-            crate::ParseOptions::strict(),
         )
         .expect("Class combined parse succeeds")
         .expect("Class combined parse returns a diagram");
 
-    assert_eq!(parsed.diagram.meta.diagram_type, "classDiagram");
+    assert_eq!(parsed.metadata().diagram_type, "classDiagram");
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -1519,19 +1531,23 @@ fn assert_combined_projections_match_standalone(
         .unwrap_or_else(|error| panic!("{family} standalone JSON failed: {error}"))
         .unwrap_or_else(|| panic!("{family} standalone JSON returned no diagram"));
     let standalone_editor = engine
-        .parse_editor_semantic_facts_with_type_sync(family, source, crate::ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync(family, source)
         .unwrap_or_else(|error| panic!("{family} standalone editor failed: {error}"))
         .unwrap_or_else(|| panic!("{family} standalone editor returned no facts"));
     let combined = engine
-        .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+        .parse_diagram_snapshot_sync(source)
         .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
         .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
 
     assert_eq!(standalone.meta.diagram_type, family);
-    assert_eq!(combined.diagram.meta.diagram_type, family);
+    assert_eq!(combined.metadata().diagram_type, family);
 
     let mut standalone_model = standalone.model;
-    let mut combined_model = combined.diagram.model;
+    let mut combined_model = combined
+        .outcome()
+        .parsed_model()
+        .expect("expected parsed snapshot")
+        .clone();
     if let Some(field) = volatile_top_level_json_field {
         let standalone_value = standalone_model
             .as_object_mut()
@@ -1551,11 +1567,11 @@ fn assert_combined_projections_match_standalone(
         "{family} JSON projection drift"
     );
 
-    let crate::ParsedEditorFacts::Available(combined_editor) = combined.editor_facts else {
+    let crate::ParsedEditorFacts::Available(combined_editor) = combined.editor_facts() else {
         panic!("{family} combined parse returned unavailable editor facts");
     };
     assert_eq!(
-        standalone_editor, combined_editor,
+        &standalone_editor, combined_editor,
         "{family} editor projection drift"
     );
 
@@ -1662,7 +1678,7 @@ fn er_combined_projections_match_standalone_and_typed_public_entrypoints() {
         .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
         .expect("ER typed parse succeeds")
         .expect("ER typed parse returns a diagram");
-    let crate::RenderSemanticModel::Er(typed) = typed.model else {
+    let crate::RenderSemanticModel::Er(typed) = typed.model() else {
         panic!("ER typed parse returned a different family");
     };
     let typed = serde_json::to_value(typed).expect("ER typed model serializes");
@@ -1716,7 +1732,7 @@ fn class_combined_projections_match_standalone_and_typed_public_entrypoints() {
         .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
         .expect("Class typed parse succeeds")
         .expect("Class typed parse returns a diagram");
-    let crate::RenderSemanticModel::Class(typed) = typed.model else {
+    let crate::RenderSemanticModel::Class(typed) = typed.model() else {
         panic!("Class typed parse returned a different family");
     };
     let typed = serde_json::to_value(typed).expect("Class typed model serializes");
@@ -1769,7 +1785,7 @@ fn sequence_combined_projections_match_standalone_and_typed_public_entrypoints()
         .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
         .expect("Sequence typed parse succeeds")
         .expect("Sequence typed parse returns a diagram");
-    let crate::RenderSemanticModel::Sequence(typed) = typed.model else {
+    let crate::RenderSemanticModel::Sequence(typed) = typed.model() else {
         panic!("Sequence typed parse returned a different family");
     };
     let typed = serde_json::to_value(typed).expect("Sequence typed model serializes");
@@ -1793,11 +1809,7 @@ fn sequence_combined_projections_match_standalone_and_typed_public_entrypoints()
     assert_eq!(typed["messages"][4]["message"], "完了");
 
     let editor = engine
-        .parse_editor_semantic_facts_with_type_sync(
-            "sequence",
-            source,
-            crate::ParseOptions::strict(),
-        )
+        .parse_editor_semantic_facts_with_type_sync("sequence", source)
         .expect("Sequence editor parse succeeds")
         .expect("Sequence editor parse returns facts");
     for (name, detail) in [
@@ -1826,15 +1838,12 @@ fn mindmap_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync(
-            "mindmap\n  root\n    child\n",
-            crate::ParseOptions::strict(),
-        )
+        .parse_diagram_snapshot_sync("mindmap\n  root\n    child\n")
         .expect("mindmap combined parse succeeds")
         .expect("mindmap combined parse returns a diagram");
 
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -1876,12 +1885,12 @@ fn railroad_combined_parse_constructs_family_syntax_once_for_every_dialect() {
         crate::diagrams::railroad::reset_railroad_syntax_construction_count();
 
         let parsed = crate::Engine::new()
-            .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+            .parse_diagram_snapshot_sync(source)
             .expect("railroad combined parse succeeds")
             .expect("railroad combined parse returns a diagram");
 
         assert!(matches!(
-            parsed.editor_facts,
+            parsed.editor_facts(),
             crate::ParsedEditorFacts::Available(_)
         ));
         assert_eq!(
@@ -1923,12 +1932,12 @@ fn sankey_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::sankey::reset_sankey_syntax_construction_count();
 
     let parsed = crate::Engine::new()
-        .parse_diagram_with_editor_facts_sync("sankey-beta\nA,B,1\n", crate::ParseOptions::strict())
+        .parse_diagram_snapshot_sync("sankey-beta\nA,B,1\n")
         .expect("sankey combined parse succeeds")
         .expect("sankey combined parse returns a diagram");
 
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
     assert_eq!(
@@ -2071,11 +2080,7 @@ fn tiny_engine_rejects_full_only_known_type_parsers() {
         assert_eq!(diagram_type, expected_type);
 
         let err = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                expected_type,
-                source,
-                crate::ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync(expected_type, source)
             .unwrap_err();
         let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
             panic!("unexpected editor facts error for {expected_type}: {err}");
@@ -2101,6 +2106,49 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
             );
         }
     }
+}
+
+#[cfg(feature = "full")]
+#[test]
+fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
+    let source = concat!(
+        "%%{ initialize: {\"theme\": \"dark\"} }%%\n",
+        "mindmap\n",
+        " root\n",
+        "  broken[unterminated\n",
+        "  after\n",
+    );
+    crate::preprocess::reset_public_parse_preprocess_count();
+    crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
+
+    let snapshot = crate::Engine::new()
+        .parse_diagram_snapshot_sync(source)
+        .expect("snapshot operation")
+        .expect("detected mindmap");
+
+    assert_eq!(snapshot.metadata().diagram_type, "mindmap");
+    assert!(matches!(
+        snapshot.outcome(),
+        crate::DiagramParseOutcome::Failed(_)
+    ));
+    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("mindmap snapshot must retain parser-backed recovery facts");
+    };
+    assert_eq!(
+        facts.completeness,
+        crate::EditorSemanticCompleteness::Recovered
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "initialize")
+    );
+    assert_eq!(crate::preprocess::public_parse_preprocess_count(), 1);
+    assert_eq!(
+        crate::diagrams::mindmap::mindmap_syntax_construction_count(),
+        1
+    );
 }
 
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {

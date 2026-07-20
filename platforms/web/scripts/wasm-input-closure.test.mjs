@@ -17,6 +17,12 @@ const repositoryRoot = path.resolve(
 );
 
 const expectedCrateDirectories = {
+  "browser-bridge": [
+    "merman",
+    "merman-bindings-core",
+    "merman-core",
+    "merman-wasm",
+  ],
   "browser-core": [
     "merman",
     "merman-analysis",

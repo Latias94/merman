@@ -91,6 +91,8 @@ pub enum Error {
     SvgPostprocess { pass: String, message: String },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
+    #[error(transparent)]
+    Color(#[from] merman_core::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -285,13 +287,13 @@ mod tests {
         options: &LayoutOptions,
         session: &RenderSession,
     ) -> model::FlowchartLayout {
-        let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected flowchart render model");
         };
         layout_flowchart_typed_by_engine(
-            &parsed.meta.diagram_type,
+            &parsed.metadata().diagram_type,
             model,
-            &parsed.meta.effective_config,
+            &parsed.metadata().effective_config,
             &LayoutExecution::new(options, session),
         )
         .expect("flowchart layout")
@@ -303,13 +305,13 @@ mod tests {
         options: &LayoutOptions,
         session: &RenderSession,
     ) -> model::ClassDiagramLayout {
-        let RenderSemanticModel::Class(model) = &parsed.model else {
+        let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected class render model");
         };
         layout_class_typed_by_engine(
-            &parsed.meta.diagram_type,
+            &parsed.metadata().diagram_type,
             model,
-            &parsed.meta.effective_config,
+            &parsed.metadata().effective_config,
             &LayoutExecution::new(options, session),
         )
         .expect("class layout")
@@ -378,7 +380,7 @@ A-->B
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "flowchart-elk");
+        assert_eq!(parsed.metadata().diagram_type, "flowchart-elk");
         let layout = flowchart_layout(&parsed, &LayoutOptions::default(), &session);
         let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
@@ -438,7 +440,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "class");
+        assert_eq!(parsed.metadata().diagram_type, "class");
         let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
         let animal = layout
             .nodes
@@ -766,29 +768,6 @@ Animal <|-- Duck
             err,
             Error::UnsupportedDiagram { diagram_type } if diagram_type == "class"
         ));
-    }
-
-    #[test]
-    fn render_model_dispatch_rejects_mismatched_typed_model() {
-        let session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let mut parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(
-                "sequenceDiagram\nAlice->>Bob: Hi",
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-        parsed.meta.diagram_type = "flowchart-v2".to_string();
-
-        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
-            Err(error) => error,
-            Ok(_) => panic!("expected invalid model error"),
-        };
-        let message = err.to_string();
-        assert!(message.contains("sequence"));
-        assert!(message.contains("flowchart-v2"));
     }
 
     #[test]

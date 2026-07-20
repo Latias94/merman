@@ -1,6 +1,7 @@
 package io.merman
 
 class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val lifecycleLock = Object()
     private var handle: Long = nativeNew(optionsJson)
     private var activeNativeThread: Thread? = null

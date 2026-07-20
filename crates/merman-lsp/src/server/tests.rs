@@ -1,9 +1,10 @@
 use super::MermanLanguageServer;
+use super::semantic_token_planning_error;
 use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::document_store::{
     DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
-    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE, default_lsp_analysis_options,
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::structure::{
@@ -11,29 +12,41 @@ use crate::structure::{
     selection_ranges,
 };
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticCategory,
-    DiagnosticFix, DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
+    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
+    DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
 };
-use merman_core::ParseOptions;
-use merman_editor_core::DocumentKind;
+use merman_editor_core::{DocumentKind, semantic_token_descriptor};
 use tower::{Service, ServiceExt};
 use tower_lsp::LanguageServer;
 use tower_lsp::jsonrpc::Request;
 use tower_lsp::lsp_types::SemanticTokensResult;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    CodeActionProviderCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolResponse, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
-    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
-    SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
-    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-    VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+    CodeActionProviderCapability, CompletionParams, DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
+    HoverParams, InitializeParams, NumberOrString, Position, Range, RenameParams,
+    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensFullOptions,
+    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
+    SemanticTokensServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    Url, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
 use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
+
+async fn assert_cached_snapshot_identity(
+    server: &MermanLanguageServer,
+    uri: &Url,
+    expected: &std::sync::Arc<crate::snapshot::DocumentSnapshot>,
+) {
+    let actual = server
+        .snapshot_for_uri(uri)
+        .await
+        .expect("expected cached snapshot");
+    assert!(std::sync::Arc::ptr_eq(expected, &actual));
+    assert_eq!(actual.version, expected.version);
+}
 
 #[test]
 fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
@@ -54,6 +67,30 @@ fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
     );
 
     assert!(!store.is_snapshot_contexts_current(&contexts));
+}
+
+#[test]
+fn semantic_token_planner_failures_are_typed_internal_errors() {
+    let mut store = DocumentStore::new();
+    let snapshot = store.upsert(
+        Url::parse("file:///tmp/token-plan-error.mmd").unwrap(),
+        7,
+        "flowchart TD\nA --> B\n".to_string(),
+    );
+    let error = semantic_token_planning_error(
+        &snapshot,
+        merman_editor_core::TokenPlanError::PositionOverflow { value: usize::MAX },
+    );
+
+    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::InternalError);
+    assert_eq!(error.message, "semantic token planning failed");
+    assert_eq!(
+        error.data,
+        Some(serde_json::json!({
+            "code": "merman.lsp.semantic_token_planning_failed",
+            "detail": format!("token position {} exceeds the packed u32 contract", usize::MAX),
+        }))
+    );
 }
 
 #[test]
@@ -111,12 +148,11 @@ fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
 #[test]
 fn analyzer_configuration_change_classifies_snapshot_affecting_changes() {
     let current = AnalysisOptions::default();
-    let changed_parse = AnalysisOptions::default().with_parse_options(ParseOptions::lenient());
     let changed_resource = AnalysisOptions::default().with_max_source_bytes(Some(1));
     let changed_date =
         AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
 
-    for next in [changed_parse, changed_resource, changed_date] {
+    for next in [changed_resource, changed_date] {
         assert_eq!(
             crate::document_store::analyzer_configuration_change(&current, &next),
             crate::document_store::AnalyzerConfigurationChange::SnapshotAffecting
@@ -146,10 +182,7 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
+    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -193,10 +226,7 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
         .get(&uri)
         .expect("expected discarded document")
         .clone();
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
+    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -232,10 +262,7 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
         sync_error: Some(DocumentSyncError::InvalidIncrementalRange),
     };
 
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
-    );
+    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -339,24 +366,32 @@ fn capabilities_advertise_completion_and_incremental_sync() {
         capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
+    let descriptor = semantic_token_descriptor();
+    assert_eq!(
+        capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
+        serde_json::json!({
+            "schemaVersion": descriptor.schema_version,
+            "descriptorDigest": descriptor.digest,
+            "packedEncoding": descriptor.packed.encoding,
+            "wordsPerToken": descriptor.packed.words_per_token,
+        })
+    );
 }
 
 #[test]
 fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
     let uri = Url::parse("untitled:notes").unwrap();
-    let document = StoredDocument {
-        uri: uri.clone(),
-        version: 7,
-        text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
-        kind: DocumentKind::Markdown,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: None,
-    };
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
+    let mut store = DocumentStore::new();
+    store.upsert_text(
+        uri,
+        7,
+        "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".to_string(),
+        DocumentKind::Markdown,
     );
+    let context = store
+        .diagnostic_context(&Url::parse("untitled:notes").unwrap())
+        .expect("expected snapshot-backed diagnostic context");
+    let diagnostics = MermanLanguageServer::diagnostics_for_context(&context);
 
     assert!(
         diagnostics.iter().all(|diagnostic| {
@@ -567,7 +602,7 @@ fn hierarchical_document_symbol_support_comes_from_client_capabilities() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn did_open_defers_editor_snapshot_until_editor_request() {
+async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
@@ -583,11 +618,14 @@ async fn did_open_defers_editor_snapshot_until_editor_request() {
         })
         .await;
 
-    {
-        let store = server.store.lock().await;
+    let diagnostic_snapshot = {
+        let mut store = server.store.lock().await;
         assert!(store.get(&uri).is_some());
-        assert!(!store.has_snapshot(&uri));
-    }
+        assert!(store.has_snapshot(&uri));
+        store
+            .snapshot(&uri)
+            .expect("diagnostics should cache a snapshot")
+    };
 
     let hover = server
         .hover(HoverParams {
@@ -601,8 +639,177 @@ async fn did_open_defers_editor_snapshot_until_editor_request() {
         .unwrap();
 
     assert!(hover.is_some());
-    let store = server.store.lock().await;
+    let mut store = server.store.lock().await;
     assert!(store.has_snapshot(&uri));
+    let editor_snapshot = store.snapshot(&uri).expect("expected cached snapshot");
+    assert!(std::sync::Arc::ptr_eq(
+        &diagnostic_snapshot,
+        &editor_snapshot
+    ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Url::parse("file:///tmp/r24-identity.mmd").unwrap();
+    let version = 11;
+
+    {
+        let mut store = server.store.lock().await;
+        store.apply_analyzer_options(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+            ),
+        );
+        store.upsert_text(
+            uri.clone(),
+            version,
+            "flowchart\nsubgraph group\nA-->B\nA-->C\nend\n".to_string(),
+            DocumentKind::Diagram,
+        );
+        assert!(!store.has_snapshot(&uri));
+    }
+
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("diagnostics should use the shared snapshot");
+    let diagnostics = match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            report.full_document_diagnostic_report.items
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    };
+    let direction_diagnostic = diagnostics
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected snapshot-owned flowchart direction diagnostic");
+    let shared = server
+        .snapshot_for_uri(&uri)
+        .await
+        .expect("diagnostics should cache the shared snapshot");
+    assert_eq!(shared.version, version);
+
+    let detection = shared
+        .detection()
+        .expect("diagram detection should be projected by the shared snapshot");
+    assert_eq!(detection.diagram_type, "flowchart");
+    assert_eq!(detection.syntax_id, "flowchart-v2");
+    assert_eq!(detection.effective_layout_id, "dagre");
+
+    let completion = server
+        .completion(CompletionParams {
+            text_document_position: TextDocumentPositionParams::new(
+                TextDocumentIdentifier { uri: uri.clone() },
+                Position::new(2, 1),
+            ),
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: None,
+        })
+        .await
+        .expect("completion request");
+    assert!(completion.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let hover = server
+        .hover(HoverParams {
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier { uri: uri.clone() },
+                Position::new(1, 0),
+            ),
+            work_done_progress_params: Default::default(),
+        })
+        .await
+        .expect("hover request");
+    assert!(hover.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let symbols = server
+        .document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("document symbol request");
+    assert!(symbols.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let rename_position = TextDocumentPositionParams::new(
+        TextDocumentIdentifier { uri: uri.clone() },
+        Position::new(2, 0),
+    );
+    assert!(
+        server
+            .prepare_rename(rename_position.clone())
+            .await
+            .expect("prepare rename request")
+            .is_some()
+    );
+    assert!(
+        server
+            .rename(RenameParams {
+                text_document_position: rename_position,
+                new_name: "Renamed".to_string(),
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .expect("rename request")
+            .is_some()
+    );
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let code_actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: direction_diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![direction_diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("code action request")
+        .expect("expected snapshot-owned quick fix");
+    assert!(code_actions.iter().any(|action| {
+        matches!(
+            action,
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Insert `TB` into the flowchart header"
+        )
+    }));
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let tokens = server
+        .semantic_tokens_full(SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("semantic token request");
+    assert!(matches!(
+        tokens,
+        Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
+    ));
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -788,7 +995,7 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
         );
     }
     let context = {
-        let store = server.store.lock().await;
+        let mut store = server.store.lock().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
@@ -871,7 +1078,7 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         );
     }
     let context = {
-        let store = server.store.lock().await;
+        let mut store = server.store.lock().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
@@ -922,12 +1129,11 @@ async fn stale_diagnostic_commit_returns_content_modified_error() {
         );
     }
     let (context, diagnostics) = {
-        let store = server.store.lock().await;
+        let mut store = server.store.lock().await;
         let context = store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context");
-        let diagnostics =
-            MermanLanguageServer::diagnostics_for_document(&context.document, &context.analyzer);
+        let diagnostics = MermanLanguageServer::diagnostics_for_context(&context);
         (context, diagnostics)
     };
     let state = DocumentDiagnosticState {
@@ -1172,10 +1378,16 @@ async fn lsp_handlers_return_hover_and_symbols() {
 
     {
         let mut store = server.store.lock().await;
+        store.apply_analyzer_options(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+            ),
+        );
         store.upsert(
             uri.clone(),
             1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+            "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
         );
         store.upsert(
             Url::parse("file:///tmp/example.md").unwrap(),
@@ -1256,20 +1468,21 @@ async fn lsp_handlers_return_hover_and_symbols() {
         Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
 
-    let map = SourceMap::new("bad");
-    let fix_span = map.whole_source_span().unwrap();
-    let diagnostic = AnalysisDiagnostic::error(
-        "merman.test.fix",
-        DiagnosticCategory::Semantic,
-        "test diagnostic",
-    )
-    .with_fix(
-        DiagnosticFix::new(
-            "Replace invalid text",
-            vec![DiagnosticFixEdit::new(fix_span, "fixed")],
-        )
-        .preferred(),
-    );
+    let diagnostic = {
+        let mut store = server.store.lock().await;
+        let context = store
+            .diagnostic_context(&uri)
+            .expect("expected snapshot-backed diagnostics");
+        MermanLanguageServer::diagnostics_for_context(&context)
+            .into_iter()
+            .find(|diagnostic| {
+                diagnostic.code
+                    == Some(NumberOrString::String(
+                        "merman.authoring.flowchart.explicit_direction".to_string(),
+                    ))
+            })
+            .expect("expected flowchart direction diagnostic")
+    };
     let code_actions = server
         .code_action(CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -1278,7 +1491,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
                 end: Position::new(0, 3),
             },
             context: CodeActionContext {
-                diagnostics: vec![analysis_diagnostic_to_versioned_lsp(&diagnostic, &uri, 1)],
+                diagnostics: vec![diagnostic],
                 only: Some(vec![CodeActionKind::QUICKFIX]),
                 trigger_kind: None,
             },
@@ -1292,7 +1505,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
     assert!(matches!(
         &code_actions[0],
         CodeActionOrCommand::CodeAction(action)
-            if action.title == "Replace invalid text"
+            if action.title == "Insert `TB` into the flowchart header"
                 && action.kind == Some(CodeActionKind::QUICKFIX)
                 && action.is_preferred == Some(true)
     ));

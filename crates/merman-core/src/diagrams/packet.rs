@@ -7,6 +7,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
     editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
+    family,
 };
 use serde_json::{Map, Value, json};
 
@@ -95,19 +96,24 @@ struct PacketSemanticSource {
 
 type PacketWord = Vec<PacketRenderBlock>;
 
-pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
     packet_output_into_json(parse_packet_semantic_source(code, meta)?.output, meta)
 }
 
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let PacketSemanticSource {
-        output,
-        editor_facts,
-    } = parse_packet_semantic_source(code, meta)?;
-    Ok((packet_output_into_json(output, meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_packet_semantic_source(code, meta),
+        |source| {
+            (
+                packet_output_into_json(source.output, meta),
+                source.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    )
 }
 
 fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> Result<Value> {
@@ -117,7 +123,7 @@ fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> R
     }
 }
 
-pub fn parse_packet_model_for_render(
+pub(crate) fn parse_packet_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PacketDiagramRenderModel> {
@@ -127,78 +133,33 @@ pub fn parse_packet_model_for_render(
     }
 }
 
-pub fn parse_packet_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_packet_editor_source(code, meta)
-}
-
-fn parse_packet_editor_source(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let body = match packet_body_start(code) {
-        Ok(Some(body)) => body,
-        Ok(None) => return facts,
-        Err(error) => {
-            return ensure_editor_recovery_from_error(
-                facts,
-                &error,
-                editor_recovery_fallback_span(code),
-            );
-        }
-    };
-    let mut offset = body.offset;
-    let mut blocks = Vec::new();
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
-
-    while offset < code.len() {
-        if let Some(parsed) = parse_langium_common(code, offset) {
-            lexemes.extend(parsed.lexemes.clone());
-            push_langium_common_editor_fact(&mut facts, &parsed.fact, "packet");
-            if let Some(diagnostic) = &parsed.diagnostic {
-                push_langium_common_recovery(&mut facts, diagnostic);
-            }
-            offset += parsed.consumed;
-            continue;
-        }
-
-        let (line, next_offset) = physical_line(code, offset);
-        let line_start = offset;
-        offset = next_offset;
-        if let Some(block) = parse_packet_block_spanned(line, line_start) {
-            lexemes.extend(block.lexemes.clone());
-            push_packet_block_editor_fact(&mut facts, &block);
-            blocks.push(block.semantic);
-            continue;
-        }
-
-        let visible = strip_inline_comment(line);
-        let invalid = visible.trim();
-        if !invalid.is_empty() {
-            let start = line_start + visible.find(invalid).unwrap_or_default();
-            facts.mark_recovered_from_parse_error(
-                format!("unexpected packet statement: {invalid}"),
-                Some(SourceSpan::new(start, start + invalid.len())),
-            );
-        }
-    }
-
-    lexemes.attach(code, &mut facts);
-    let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
-    if let Err(error) = populate_packet(blocks, bits_per_row) {
-        facts =
-            ensure_editor_recovery_from_error(facts, &error, editor_recovery_fallback_span(code));
-    }
-    facts
-}
-
 fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PacketSemanticSource> {
+    construct_packet_semantic_source(code, meta)
+        .map_err(family::CombinedSemanticFailure::into_error)
+}
+
+fn construct_packet_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("packet");
 
-    let Some(body) = packet_body_start(code)? else {
-        return Ok(PacketSemanticSource {
-            output: PacketParseOutput::Empty,
-            editor_facts: EditorSemanticFacts::new(),
-        });
+    let body = match packet_body_start(code) {
+        Ok(Some(body)) => body,
+        Ok(None) => {
+            return Ok(PacketSemanticSource {
+                output: PacketParseOutput::Empty,
+                editor_facts: EditorSemanticFacts::new(),
+            });
+        }
+        Err(error) => {
+            return Err(packet_parse_failure(
+                error,
+                EditorSemanticFacts::new(),
+                code,
+            ));
+        }
     };
     let mut offset = body.offset;
     let mut common = LangiumCommonFacts::default();
@@ -206,15 +167,19 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
     let mut editor_facts = EditorSemanticFacts::new();
     let mut lexemes = LangiumLexemeTrace::default();
     lexemes.keyword(body.header_span);
+    let mut first_error = None;
 
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
-            if let Some(diagnostic) = parsed.diagnostic {
-                return Err(Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
-                    diagnostic.message,
-                    diagnostic.span.start,
-                ));
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut editor_facts, diagnostic);
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        diagnostic.message.clone(),
+                        diagnostic.span.start,
+                    )
+                });
             }
             lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "packet");
@@ -226,7 +191,8 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
         let line_start = offset;
         let (line, next_offset) = physical_line(code, offset);
         offset = next_offset;
-        let t = strip_inline_comment(line).trim();
+        let visible = strip_inline_comment(line);
+        let t = visible.trim();
         if t.is_empty() {
             continue;
         }
@@ -243,16 +209,37 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
         } else {
             format!("unexpected packet statement: {t}")
         };
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            diagnostic,
-        ));
+        let start = line_start + visible.find(t).unwrap_or_default();
+        editor_facts.mark_recovered_from_parse_error(
+            diagnostic.clone(),
+            Some(SourceSpan::new(start, start + t.len())),
+        );
+        first_error.get_or_insert_with(|| {
+            Error::diagram_parse_fallback(meta.diagram_type.clone(), diagnostic)
+        });
     }
 
     let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
-    let packet = populate_packet(blocks, bits_per_row)?;
+    let packet = match populate_packet(blocks, bits_per_row) {
+        Ok(packet) => packet,
+        Err(error) => {
+            editor_facts = ensure_editor_recovery_from_error(
+                editor_facts,
+                &error,
+                editor_recovery_fallback_span(code),
+            );
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+            Vec::new()
+        }
+    };
     let common = LangiumCommonDbFields::from_facts(&common);
     lexemes.attach(code, &mut editor_facts);
+
+    if let Some(error) = first_error {
+        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+    }
 
     Ok(PacketSemanticSource {
         output: PacketParseOutput::Model(PacketDiagramRenderModel {
@@ -264,6 +251,19 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
         }),
         editor_facts,
     })
+}
+
+fn packet_parse_failure(
+    error: Error,
+    editor_facts: EditorSemanticFacts,
+    code: &str,
+) -> family::CombinedSemanticFailure {
+    let editor_facts = ensure_editor_recovery_from_error(
+        editor_facts,
+        &error,
+        editor_recovery_fallback_span(code),
+    );
+    family::CombinedSemanticFailure::new(error, editor_facts)
 }
 
 fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketBlockSpanned) {
@@ -777,7 +777,7 @@ accDescr: Packet accDescription
         assert_eq!(model["packet"][0][1]["label"], "Btlabel");
 
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("packet", source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("packet", source)
             .unwrap()
             .unwrap();
         let escaped = "A\\n100%% complete";
@@ -828,11 +828,7 @@ accDescr: Packet accDescription
 11: "single"
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "packet",
-                text,
-                crate::ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
             .unwrap()
             .unwrap();
 
@@ -874,11 +870,7 @@ accDescr: Packet accDescription
             "8-15: \"next\"\n",
         );
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "packet",
-                text,
-                crate::ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
             .unwrap()
             .unwrap();
 
@@ -919,7 +911,7 @@ accDescr: Packet accDescription
         assert_eq!(diagnostic.span(), Some(expected_span));
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("packet", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
             .unwrap()
             .expect("packet editor recovery facts");
         assert_eq!(

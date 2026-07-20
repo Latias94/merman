@@ -27,6 +27,7 @@ import {
   copySVGToClipboard,
   copyCodeToClipboard,
 } from "@/src/lib/export";
+import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import {
@@ -202,8 +203,8 @@ export function Toolbar() {
         snapshot.configJson,
         { ...snapshot.options, pipeline }
       );
-      if (!result.svg) {
-        throw new Error(result.error ?? "Failed to render SVG");
+      if (result.status === "failure") {
+        throw new Error(result.error.summary);
       }
       return result.svg;
     },
@@ -222,11 +223,32 @@ export function Toolbar() {
 
   const handleExportPNG = useCallback(async () => {
     setIsExporting(true);
+    let notificationId: string | number | undefined;
     try {
-      await exportPNG(renderCurrentSvg("resvg-safe"), "merman-diagram", 2);
-      toast.success(t("export.pngSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
+      const plan = await exportPNG(
+        renderCurrentSvg("resvg-safe"),
+        "merman-diagram",
+        2,
+        {
+          onPlan: ({ outputWidth, outputHeight }) => {
+            notificationId = toast.loading(
+              t("export.pngPreparing", {
+                width: outputWidth,
+                height: outputHeight,
+              })
+            );
+          },
+        }
+      );
+      toast.success(
+        t("export.pngSuccess", {
+          width: plan.outputWidth,
+          height: plan.outputHeight,
+        }),
+        { id: notificationId }
+      );
+    } catch (error) {
+      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
     } finally {
       setIsExporting(false);
     }

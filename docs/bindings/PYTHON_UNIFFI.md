@@ -73,39 +73,13 @@ host_presets = engine.supported_host_theme_presets()
 family_capabilities = engine.diagram_family_capabilities()
 lint_rules = engine.lint_rule_catalog()
 
-class Measurer(merman.MermanTextMeasurer):
+class PreviewMeasurer(merman.MermanTextMeasurer):
     def measure(self, request):
-        print(request.phase)
-        width = max(len(request.text) * 8.0, 1.0)
-        if request.operation == merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH:
-            return merman.MermanTextMeasureResult(
-                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
-                width=0.0,
-                height=0.0,
-                length=width,
-                line_count=0,
-                bbox_left=None,
-                bbox_right=None,
-                raw_width=None,
-            )
-        if request.operation not in {
-            merman.MermanTextMeasurementOperation.MEASURE,
-            merman.MermanTextMeasurementOperation.WRAPPED,
-            merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
-        }:
-            return None
-        return merman.MermanTextMeasureResult(
-            result_kind=merman.MermanTextMeasurementResultKind.METRICS,
-            width=width,
-            height=max(request.line_height, 1.0),
-            length=0.0,
-            line_count=1,
-            bbox_left=None,
-            bbox_right=None,
-            raw_width=None,
-        )
+        # Use the final display surface's font API here. Returning None asks
+        # Merman to use its operation-specific vendored fallback.
+        return None
 
-reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
+reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 
 reusable = engine.reusable_engine(None)
@@ -113,7 +87,7 @@ reusable_document_json = reusable.analyze_document_json(
     "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
     "file:///tmp/example.md",
 )
-reusable.set_text_measurer(Measurer())
+reusable.set_text_measurer(PreviewMeasurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 reusable.clear_text_measurer()
 ```
@@ -149,6 +123,12 @@ ABI 2 exposes 19 text-measurement operations with contiguous codes 0 through 18.
 interchangeable and both may return a finite negative value. `RAW_B_BOX_HEIGHT` returns the
 non-negative height from a direct raw SVG `<text>.getBBox()` probe.
 
+The generated callback method is `measure(self, request)`, not `measure_text`. One-shot engine
+methods receive `options_json` explicitly (`engine.render_svg(source, options_json)`), while a
+reusable engine receives it at construction and renders with `reusable.render_svg(source)`. Do not
+estimate width from character count in production; return `None` when the host cannot reproduce the
+requested operation with the display surface's real font API.
+
 ## Verification
 
 ```bash
@@ -157,7 +137,9 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
-it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
+it, and runs the repository's canonical
+[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py)
+against that fresh package. The executable example calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
 `MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
 `MermanEngine.validate`, metadata methods, `MermanEngine.ascii_capabilities`,

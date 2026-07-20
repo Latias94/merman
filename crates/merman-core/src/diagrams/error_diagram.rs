@@ -33,7 +33,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(model.compatibility_json())
 }
 
-pub fn parse_error(_code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_error(_code: &str, meta: &ParseMetadata) -> Result<Value> {
     render_model_to_compat_json(&ErrorDiagramRenderModel::new(meta), meta)
 }
 
@@ -55,10 +55,7 @@ pub(crate) fn suppressed_error_diagram(source_meta: &ParseMetadata) -> ParsedDia
 pub(crate) fn suppressed_error_render_diagram(source_meta: &ParseMetadata) -> ParsedDiagramRender {
     let meta = suppressed_error_metadata(source_meta);
     let model = ErrorDiagramRenderModel::new(&meta);
-    ParsedDiagramRender {
-        meta,
-        model: RenderSemanticModel::Error(model),
-    }
+    ParsedDiagramRender::new(meta, RenderSemanticModel::Error(model))
 }
 
 fn suppressed_error_metadata(source_meta: &ParseMetadata) -> ParseMetadata {

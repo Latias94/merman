@@ -2,8 +2,9 @@ import type { EditorSemanticTokenLegend } from "@mermanjs/web";
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
-  MERMAN_NATIVE_ABI_VERSION,
+  MERMAN_ABI_VERSION,
   type EditorDocumentSnapshot,
+  type EditorWorkerErrorCode,
   type EditorWorkerQuery,
   type EditorWorkerQueryResult,
   type EditorWorkerRequest,
@@ -26,7 +27,7 @@ export interface EditorWorkerPort {
 }
 
 export interface MermanLanguageWorkerClient {
-  initialize(): Promise<EditorSemanticTokenLegend>;
+  initialize(): Promise<EditorLanguageIdentity>;
   openDocument(document: EditorDocumentSnapshot): Promise<void>;
   changeDocument(document: EditorDocumentSnapshot): Promise<void>;
   query<Query extends EditorWorkerQuery>(
@@ -37,32 +38,54 @@ export interface MermanLanguageWorkerClient {
   dispose(): void;
 }
 
+export interface EditorLanguageIdentity {
+  readonly legend: EditorSemanticTokenLegend;
+  readonly legendDigest: string;
+}
+
+interface EditorSnapshotIdentity {
+  readonly uri: string;
+  readonly version: number;
+  readonly legendDigest: string;
+}
+
 interface PendingRequest {
-  readonly document?: Pick<EditorDocumentSnapshot, "uri" | "version">;
-  readonly expected: "ready" | "result";
+  readonly document?: EditorSnapshotIdentity;
+  readonly expected: "queryResult" | "ready" | "result";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   cancellation?: { dispose(): void };
 }
 
-export class StaleDocumentError extends Error {
-  constructor(message = "The editor result belongs to an obsolete document version.") {
+export class StaleLanguageSnapshotError extends Error {
+  readonly code = "STALE_DOCUMENT" as const;
+
+  constructor(
+    message = "The editor result belongs to an obsolete document or legend.",
+    readonly detail: string | null = null
+  ) {
     super(message);
-    this.name = "StaleDocumentError";
+    this.name = "StaleLanguageSnapshotError";
   }
 }
 
 export class EditorWorkerProtocolError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly code: EditorWorkerErrorCode | "CLIENT_PROTOCOL" = "CLIENT_PROTOCOL",
+    readonly detail: string | null = null,
+    readonly nativeCode: string | null = null
+  ) {
     super(message);
     this.name = "EditorWorkerProtocolError";
   }
 }
 
 export function createMermanLanguageWorkerClient(
-  worker: EditorWorkerPort
+  worker: EditorWorkerPort,
+  expectedLegendDigest: string
 ): MermanLanguageWorkerClient {
-  return new WorkerClient(worker);
+  return new WorkerClient(worker, expectedLegendDigest);
 }
 
 class WorkerClient implements MermanLanguageWorkerClient {
@@ -71,7 +94,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
   private disposed = false;
   private failure: Error | null = null;
   private initialized = false;
-  private initializePromise: Promise<EditorSemanticTokenLegend> | null = null;
+  private initializePromise: Promise<EditorLanguageIdentity> | null = null;
   private nextRequestId = 1;
   private synchronization: Promise<void> = Promise.resolve();
 
@@ -104,7 +127,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
     pending.cancellation?.dispose();
 
     if (response.type === "error") {
-      const failure = workerResponseError(response.code, response.message);
+      const failure = workerResponseError(
+        response.code,
+        response.message,
+        response.detail,
+        response.nativeCode
+      );
       pending.reject(failure);
       if (isFatalWorkerError(response.code)) this.poison(failure);
       return;
@@ -112,9 +140,9 @@ class WorkerClient implements MermanLanguageWorkerClient {
 
     if (response.type === "ready") {
       try {
-        if (response.nativeAbi !== MERMAN_NATIVE_ABI_VERSION) {
+        if (response.nativeAbi !== MERMAN_ABI_VERSION) {
           throw new EditorWorkerProtocolError(
-            `Merman editor worker ABI ${response.nativeAbi} does not match ${MERMAN_NATIVE_ABI_VERSION}.`
+            `Merman editor worker ABI ${response.nativeAbi} does not match ${MERMAN_ABI_VERSION}.`
           );
         }
         if (response.editorSchema !== EDITOR_SCHEMA_VERSION) {
@@ -122,30 +150,54 @@ class WorkerClient implements MermanLanguageWorkerClient {
             `Merman editor schema ${response.editorSchema} does not match ${EDITOR_SCHEMA_VERSION}.`
           );
         }
-        pending.resolve(validateLegend(response.legend));
+        if (response.legendDigest !== this.expectedLegendDigest) {
+          throw new EditorWorkerProtocolError(
+            `Merman editor legend ${response.legendDigest} does not match ${this.expectedLegendDigest}.`
+          );
+        }
+        pending.resolve(
+          Object.freeze({
+            legend: validateLegend(response.legend),
+            legendDigest: response.legendDigest,
+          }) satisfies EditorLanguageIdentity
+        );
       } catch (error) {
         pending.reject(asError(error));
       }
       return;
     }
 
-    if (pending.document && !this.isCurrentDocument(pending.document)) {
-      pending.reject(new StaleDocumentError());
+    if (response.type === "queryResult") {
+      if (
+        !pending.document ||
+        !sameSnapshotIdentity(pending.document, response) ||
+        !this.isCurrentDocument(pending.document)
+      ) {
+        pending.reject(new StaleLanguageSnapshotError());
+        return;
+      }
+      pending.resolve(response.result);
       return;
     }
     pending.resolve(response.result);
   };
 
-  constructor(private readonly worker: EditorWorkerPort) {
+  constructor(
+    private readonly worker: EditorWorkerPort,
+    private readonly expectedLegendDigest: string
+  ) {
+    if (!expectedLegendDigest) {
+      throw new EditorWorkerProtocolError("A generated editor legend digest is required.");
+    }
     worker.addEventListener("error", this.handleError);
     worker.addEventListener("message", this.handleMessage);
   }
 
-  initialize(): Promise<EditorSemanticTokenLegend> {
+  initialize(): Promise<EditorLanguageIdentity> {
     this.assertActive();
     if (this.initializePromise) return this.initializePromise;
 
-    this.initializePromise = this.request<EditorSemanticTokenLegend>({
+    this.initializePromise = this.request<EditorLanguageIdentity>({
       protocol: EDITOR_WORKER_PROTOCOL,
       requestId: this.allocateRequestId(),
       type: "initialize",
@@ -201,7 +253,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
   ): Promise<EditorWorkerQueryResult<Query>> {
     this.assertReady();
     if (!this.isCurrentDocument(document)) {
-      throw new StaleDocumentError();
+      throw new StaleLanguageSnapshotError();
     }
     if (cancellation?.isCancellationRequested) {
       throw abortError();
@@ -212,7 +264,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
       throw abortError();
     }
     if (!this.isCurrentDocument(document)) {
-      throw new StaleDocumentError();
+      throw new StaleLanguageSnapshotError();
     }
 
     const requestId = this.allocateRequestId();
@@ -223,9 +275,10 @@ class WorkerClient implements MermanLanguageWorkerClient {
         type: "query",
         uri: document.uri,
         version: document.version,
+        legendDigest: this.expectedLegendDigest,
         query,
       },
-      document,
+      snapshotIdentity(document, this.expectedLegendDigest),
       cancellation,
       requestId
     );
@@ -285,7 +338,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
 
   private request<Result>(
     message: EditorWorkerRequest,
-    document?: Pick<EditorDocumentSnapshot, "uri" | "version">,
+    document?: EditorSnapshotIdentity,
     cancellation?: EditorCancellationToken,
     knownRequestId?: number
   ): Promise<Result> {
@@ -297,7 +350,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
     return new Promise<Result>((resolve, reject) => {
       const pending: PendingRequest = {
         document,
-        expected: message.type === "initialize" ? "ready" : "result",
+        expected:
+          message.type === "initialize"
+            ? "ready"
+            : message.type === "query"
+              ? "queryResult"
+              : "result",
         resolve: (value) => resolve(value as Result),
         reject,
       };
@@ -305,18 +363,8 @@ class WorkerClient implements MermanLanguageWorkerClient {
         pending.cancellation = cancellation.onCancellationRequested(() => {
           if (!this.pending.delete(requestId)) return;
           pending.cancellation?.dispose();
-          try {
-            this.worker.postMessage({
-              protocol: EDITOR_WORKER_PROTOCOL,
-              requestId,
-              type: "cancel",
-            });
-            reject(abortError());
-          } catch (error) {
-            const failure = asError(error);
-            this.poison(failure);
-            reject(failure);
-          }
+          // WASM calls are synchronous. Cancellation only prevents publishing their result.
+          reject(abortError());
         });
       }
       this.pending.set(requestId, pending);
@@ -333,11 +381,14 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 
   private isCurrentDocument(
-    document: Pick<EditorDocumentSnapshot, "uri" | "version">
+    document: Pick<EditorDocumentSnapshot, "uri" | "version"> &
+      Partial<Pick<EditorSnapshotIdentity, "legendDigest">>
   ): boolean {
     return (
       this.currentDocument?.uri === document.uri &&
-      this.currentDocument.version === document.version
+      this.currentDocument.version === document.version &&
+      (document.legendDigest === undefined ||
+        document.legendDigest === this.expectedLegendDigest)
     );
   }
 
@@ -387,6 +438,24 @@ function copySnapshot(document: EditorDocumentSnapshot): EditorDocumentSnapshot 
   };
 }
 
+function snapshotIdentity(
+  document: Pick<EditorDocumentSnapshot, "uri" | "version">,
+  legendDigest: string
+): EditorSnapshotIdentity {
+  return { uri: document.uri, version: document.version, legendDigest };
+}
+
+function sameSnapshotIdentity(
+  expected: EditorSnapshotIdentity,
+  actual: EditorSnapshotIdentity
+): boolean {
+  return (
+    expected.uri === actual.uri &&
+    expected.version === actual.version &&
+    expected.legendDigest === actual.legendDigest
+  );
+}
+
 function validateLegend(value: unknown): EditorSemanticTokenLegend {
   if (!value || typeof value !== "object") {
     throw new EditorWorkerProtocolError("Merman returned an invalid semantic token legend.");
@@ -421,6 +490,7 @@ function parseResponse(value: unknown): EditorWorkerResponse | null {
     candidate.protocol !== EDITOR_WORKER_PROTOCOL ||
     !Number.isSafeInteger(candidate.requestId) ||
     (candidate.type !== "error" &&
+      candidate.type !== "queryResult" &&
       candidate.type !== "ready" &&
       candidate.type !== "result")
   ) {
@@ -428,7 +498,12 @@ function parseResponse(value: unknown): EditorWorkerResponse | null {
   }
   if (candidate.type === "error") {
     const error = candidate as Record<string, unknown>;
-    return isWorkerErrorCode(error.code) && typeof error.message === "string"
+    return (
+      isWorkerErrorCode(error.code) &&
+      typeof error.message === "string" &&
+      (error.detail === null || typeof error.detail === "string") &&
+      (error.nativeCode === null || typeof error.nativeCode === "string")
+    )
       ? (candidate as EditorWorkerResponse)
       : null;
   }
@@ -437,8 +512,21 @@ function parseResponse(value: unknown): EditorWorkerResponse | null {
     return (
       Number.isSafeInteger(ready.nativeAbi) &&
       Number.isSafeInteger(ready.editorSchema) &&
+      typeof ready.legendDigest === "string" &&
+      ready.legendDigest.length > 0 &&
       ready.legend !== null &&
       typeof ready.legend === "object"
+    )
+      ? (candidate as EditorWorkerResponse)
+      : null;
+  }
+  if (candidate.type === "queryResult") {
+    const result = candidate as Record<string, unknown>;
+    return (
+      typeof result.uri === "string" &&
+      Number.isSafeInteger(result.version) &&
+      typeof result.legendDigest === "string" &&
+      result.legendDigest.length > 0
     )
       ? (candidate as EditorWorkerResponse)
       : null;
@@ -446,17 +534,23 @@ function parseResponse(value: unknown): EditorWorkerResponse | null {
   return candidate as EditorWorkerResponse;
 }
 
-function workerResponseError(code: string, message: string): Error {
-  if (code === "STALE_DOCUMENT") return new StaleDocumentError(message);
-  if (code === "CANCELED") return abortError(message);
-  return new EditorWorkerProtocolError(message);
+function workerResponseError(
+  code: EditorWorkerErrorCode,
+  message: string,
+  detail: string | null,
+  nativeCode: string | null
+): Error {
+  if (code === "STALE_DOCUMENT") {
+    return new StaleLanguageSnapshotError(message, detail);
+  }
+  return new EditorWorkerProtocolError(message, code, detail, nativeCode);
 }
 
-function isWorkerErrorCode(value: unknown): boolean {
+function isWorkerErrorCode(value: unknown): value is EditorWorkerErrorCode {
   return (
-    value === "CANCELED" ||
     value === "INITIALIZATION_FAILED" ||
     value === "INVALID_STATE" ||
+    value === "OPERATION_REJECTED" ||
     value === "PROTOCOL_MISMATCH" ||
     value === "QUERY_FAILED" ||
     value === "STALE_DOCUMENT"
@@ -467,8 +561,7 @@ function isFatalWorkerError(code: string): boolean {
   return (
     code === "INITIALIZATION_FAILED" ||
     code === "INVALID_STATE" ||
-    code === "PROTOCOL_MISMATCH" ||
-    code === "STALE_DOCUMENT"
+    code === "PROTOCOL_MISMATCH"
   );
 }
 

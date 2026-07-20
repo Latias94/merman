@@ -2,32 +2,33 @@
 
 import {
   abiVersion,
-  editorCodeActions,
-  editorCompletions,
-  editorDefinition,
-  editorDiagnostics,
-  editorDocumentSymbols,
-  editorHover,
-  editorPrepareRename,
-  editorReferences,
-  editorRename,
-  editorSemanticTokenLegend,
-  editorSemanticTokens,
+  createEditorSession,
+  editorSemanticTokenDescriptor,
   initMerman,
+  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
+  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
+  type BrowserEditorSession,
 } from "@mermanjs/web/editor";
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
-  MERMAN_NATIVE_ABI_VERSION,
+  MERMAN_ABI_VERSION,
   type EditorDocumentSnapshot,
   type EditorWorkerQuery,
   type EditorWorkerRequest,
   type EditorWorkerResponse,
 } from "./protocol.ts";
+import {
+  isBindingErrorPayload,
+  projectError,
+} from "../runtime/error-projection.ts";
 
 const scope = self;
-const canceled = new Set<number>();
-let document: EditorDocumentSnapshot | null = null;
+type EditorDocumentIdentity = Pick<EditorDocumentSnapshot, "uri" | "version">;
+
+let document: EditorDocumentIdentity | null = null;
+let editorSession: BrowserEditorSession | null = null;
 let initialized = false;
 let disposed = false;
 
@@ -50,14 +51,7 @@ scope.addEventListener("message", (event: MessageEvent<unknown>) => {
 async function dispatch(request: EditorWorkerRequest): Promise<void> {
   if (request.type === "dispose") {
     disposed = true;
-    document = null;
-    canceled.clear();
-    scope.close();
-    return;
-  }
-  if (request.type === "cancel") {
-    canceled.add(request.requestId);
-    scope.setTimeout(() => canceled.delete(request.requestId), 0);
+    disposeEditorSession();
     return;
   }
   if (disposed) {
@@ -82,24 +76,25 @@ async function dispatch(request: EditorWorkerRequest): Promise<void> {
         return;
       case "query":
         requireInitialized();
-        if (canceled.delete(request.requestId)) {
-          respondError(request.requestId, "CANCELED", "Editor request was canceled.");
-          return;
-        }
-        respond(
+        respondQuery(
           request.requestId,
-          executeQuery(requireDocument(request.uri, request.version), request.query)
+          request.uri,
+          request.version,
+          request.legendDigest,
+          executeQuery(
+            requireDocument(
+              request.uri,
+              request.version,
+              request.legendDigest
+            ),
+            request.query
+          )
         );
         return;
     }
   } catch (error) {
-    const code =
-      error instanceof WorkerStateError ? error.code : request.type === "initialize"
-        ? "INITIALIZATION_FAILED"
-        : "QUERY_FAILED";
-    respondError(request.requestId, code, errorMessage(error));
-  } finally {
-    canceled.delete(request.requestId);
+    const code = workerErrorCode(request, error);
+    respondError(request.requestId, code, error);
   }
 }
 
@@ -107,10 +102,17 @@ async function initialize(requestId: number): Promise<void> {
   if (!initialized) {
     await initMerman();
     const nativeAbi = abiVersion();
-    if (nativeAbi !== MERMAN_NATIVE_ABI_VERSION) {
+    if (nativeAbi !== MERMAN_ABI_VERSION) {
       throw new WorkerStateError(
         "PROTOCOL_MISMATCH",
-        `Merman native ABI ${nativeAbi} does not match ${MERMAN_NATIVE_ABI_VERSION}.`
+        `Merman native ABI ${nativeAbi} does not match ${MERMAN_ABI_VERSION}.`
+      );
+    }
+    const descriptor = editorSemanticTokenDescriptor();
+    if (descriptor.digest !== SEMANTIC_TOKEN_DESCRIPTOR_DIGEST) {
+      throw new WorkerStateError(
+        "PROTOCOL_MISMATCH",
+        `Merman editor legend ${descriptor.digest} does not match ${SEMANTIC_TOKEN_DESCRIPTOR_DIGEST}.`
       );
     }
     initialized = true;
@@ -119,23 +121,43 @@ async function initialize(requestId: number): Promise<void> {
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "ready",
     requestId,
-    nativeAbi: MERMAN_NATIVE_ABI_VERSION,
+    nativeAbi: MERMAN_ABI_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
-    legend: editorSemanticTokenLegend(),
+    legendDigest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+    legend: {
+      tokenTypes: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
+      tokenModifiers: [...SEMANTIC_TOKEN_MODIFIER_LSP_NAMES],
+    },
   });
 }
 
 function openDocument(next: EditorDocumentSnapshot): void {
   validateDocument(next);
-  if (document) {
+  if (document || editorSession) {
     throw new WorkerStateError("INVALID_STATE", "Editor worker already owns a document.");
   }
-  document = { ...next };
+  const session = createEditorSession(next.source, next.version, next.uri);
+  let identityMatches: boolean;
+  try {
+    identityMatches = session.uri === next.uri && session.version === next.version;
+  } catch (error) {
+    disposeQuietly(session);
+    throw error;
+  }
+  if (!identityMatches) {
+    disposeQuietly(session);
+    throw new WorkerStateError(
+      "PROTOCOL_MISMATCH",
+      "Merman editor session identity does not match the opened document."
+    );
+  }
+  editorSession = session;
+  document = { uri: next.uri, version: next.version };
 }
 
 function changeDocument(next: EditorDocumentSnapshot): void {
   validateDocument(next);
-  if (!document || document.uri !== next.uri) {
+  if (!document || !editorSession || document.uri !== next.uri) {
     throw new WorkerStateError("INVALID_STATE", "Editor worker does not own this URI.");
   }
   if (next.version <= document.version) {
@@ -144,24 +166,58 @@ function changeDocument(next: EditorDocumentSnapshot): void {
       `Document version ${next.version} is not newer than ${document.version}.`
     );
   }
-  document = { ...next };
+  editorSession.update(next.source, next.version);
+  let identityMatches: boolean;
+  try {
+    identityMatches =
+      editorSession.uri === next.uri && editorSession.version === next.version;
+  } catch (error) {
+    abandonEditorSession();
+    throw error;
+  }
+  if (!identityMatches) {
+    abandonEditorSession();
+    throw new WorkerStateError(
+      "PROTOCOL_MISMATCH",
+      "Merman editor session identity drifted after an update."
+    );
+  }
+  document = { uri: next.uri, version: next.version };
 }
 
-function requireDocument(uri: string, version: number): EditorDocumentSnapshot {
-  if (!document || document.uri !== uri || document.version !== version) {
+function requireDocument(
+  uri: string,
+  version: number,
+  legendDigest: string
+): BrowserEditorSession {
+  if (legendDigest !== SEMANTIC_TOKEN_DESCRIPTOR_DIGEST) {
+    throw new WorkerStateError(
+      "PROTOCOL_MISMATCH",
+      `Editor query legend ${legendDigest} does not match ${SEMANTIC_TOKEN_DESCRIPTOR_DIGEST}.`
+    );
+  }
+  if (
+    !document ||
+    !editorSession ||
+    document.uri !== uri ||
+    document.version !== version ||
+    editorSession.uri !== uri ||
+    editorSession.version !== version
+  ) {
     throw new WorkerStateError(
       "STALE_DOCUMENT",
       "Editor query does not match the current document URI and version."
     );
   }
-  return document;
+  return editorSession;
 }
 
-function executeQuery(current: EditorDocumentSnapshot, query: EditorWorkerQuery): unknown {
-  const { source, uri } = current;
+function executeQuery(current: BrowserEditorSession, query: EditorWorkerQuery): unknown {
   switch (query.kind) {
+    case "diagramDetection":
+      return current.diagramDetection();
     case "diagnostics": {
-      const result = editorDiagnostics(source, undefined, uri);
+      const result = current.diagnostics();
       if (result.version !== EDITOR_SCHEMA_VERSION) {
         throw new WorkerStateError(
           "PROTOCOL_MISMATCH",
@@ -171,28 +227,51 @@ function executeQuery(current: EditorDocumentSnapshot, query: EditorWorkerQuery)
       return result;
     }
     case "codeActions":
-      return editorCodeActions(source, undefined, uri);
+      return current.codeActions();
     case "completions":
-      return editorCompletions(source, query.position, uri);
+      return current.completions(query.position);
     case "hover":
-      return editorHover(source, query.position, uri);
+      return current.hover(query.position);
     case "documentSymbols":
-      return editorDocumentSymbols(source, uri);
+      return current.documentSymbols();
     case "definition":
-      return editorDefinition(source, query.position, uri);
+      return current.definition(query.position);
     case "references":
-      return editorReferences(
-        source,
-        query.position,
-        query.includeDeclaration,
-        uri
-      );
+      return current.references(query.position, query.includeDeclaration);
     case "prepareRename":
-      return editorPrepareRename(source, query.position, uri);
+      return current.prepareRename(query.position);
     case "rename":
-      return editorRename(source, query.position, query.newName, uri);
+      return current.rename(query.position, query.newName);
     case "semanticTokens":
-      return editorSemanticTokens(source, uri);
+      return current.semanticTokens();
+  }
+}
+
+function disposeEditorSession(): void {
+  const session = editorSession;
+  editorSession = null;
+  document = null;
+  try {
+    session?.dispose();
+  } catch {
+    // Worker teardown remains final even if the realm is already invalid.
+  } finally {
+    scope.close();
+  }
+}
+
+function abandonEditorSession(): void {
+  const session = editorSession;
+  editorSession = null;
+  document = null;
+  disposeQuietly(session);
+}
+
+function disposeQuietly(session: BrowserEditorSession | null): void {
+  try {
+    session?.dispose();
+  } catch {
+    // The client will poison the worker after the protocol failure.
   }
 }
 
@@ -216,8 +295,7 @@ function parseRequest(value: unknown): EditorWorkerRequest | null {
   const requestId = (candidate as { requestId?: unknown }).requestId;
   if (
     !Number.isSafeInteger(requestId) ||
-    (candidate.type !== "cancel" &&
-      candidate.type !== "didChange" &&
+    (candidate.type !== "didChange" &&
       candidate.type !== "didOpen" &&
       candidate.type !== "initialize" &&
       candidate.type !== "query")
@@ -235,13 +313,54 @@ function parseRequest(value: unknown): EditorWorkerRequest | null {
     if (
       typeof queryRequest.uri !== "string" ||
       !Number.isSafeInteger(queryRequest.version) ||
-      !queryRequest.query ||
-      typeof queryRequest.query !== "object"
+      typeof queryRequest.legendDigest !== "string" ||
+      queryRequest.legendDigest.length === 0 ||
+      !isEditorWorkerQuery(queryRequest.query)
     ) {
       return null;
     }
   }
   return candidate as EditorWorkerRequest;
+}
+
+function isEditorWorkerQuery(value: unknown): value is EditorWorkerQuery {
+  if (!value || typeof value !== "object") return false;
+  const query = value as Record<string, unknown>;
+  switch (query.kind) {
+    case "codeActions":
+    case "diagnostics":
+    case "diagramDetection":
+    case "documentSymbols":
+    case "semanticTokens":
+      return true;
+    case "completions":
+    case "definition":
+    case "hover":
+    case "prepareRename":
+      return isEditorPosition(query.position);
+    case "references":
+      return (
+        isEditorPosition(query.position) &&
+        typeof query.includeDeclaration === "boolean"
+      );
+    case "rename":
+      return (
+        isEditorPosition(query.position) && typeof query.newName === "string"
+      );
+    default:
+      return false;
+  }
+}
+
+function isEditorPosition(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const position = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(position.line) &&
+    (position.line as number) >= 0 &&
+    Number.isSafeInteger(position.character) &&
+    (position.character as number) >= 0
+  );
 }
 
 function requestIdFromMalformedMessage(value: unknown): number | null {
@@ -259,26 +378,60 @@ function respond(requestId: number, result: unknown): void {
   });
 }
 
+function respondQuery(
+  requestId: number,
+  uri: string,
+  version: number,
+  legendDigest: string,
+  result: unknown
+): void {
+  post({
+    protocol: EDITOR_WORKER_PROTOCOL,
+    type: "queryResult",
+    requestId,
+    uri,
+    version,
+    legendDigest,
+    result,
+  });
+}
+
 function respondError(
   requestId: number,
   code: Extract<EditorWorkerResponse, { type: "error" }>["code"],
-  message: string
+  error: unknown
 ): void {
+  const projection = projectError(error);
   post({
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "error",
     requestId,
     code,
-    message,
+    message: projection.summary,
+    detail: projection.detail,
+    nativeCode: isBindingErrorPayload(error) ? error.code_name : null,
   });
+}
+
+function workerErrorCode(
+  request: Exclude<EditorWorkerRequest, { type: "dispose" }>,
+  error: unknown
+): Extract<EditorWorkerResponse, { type: "error" }>["code"] {
+  if (error instanceof WorkerStateError) return error.code;
+  if (request.type === "initialize") return "INITIALIZATION_FAILED";
+  if (
+    request.type === "query" &&
+    request.query.kind === "rename" &&
+    isBindingErrorPayload(error) &&
+    error.code_name === "MERMAN_INVALID_ARGUMENT"
+  ) {
+    return "OPERATION_REJECTED";
+  }
+  return "QUERY_FAILED";
 }
 
 function post(message: EditorWorkerResponse): void {
   scope.postMessage(message);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 class WorkerStateError extends Error {
@@ -287,5 +440,6 @@ class WorkerStateError extends Error {
     message: string
   ) {
     super(message);
+    this.name = "WorkerStateError";
   }
 }

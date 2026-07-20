@@ -1,0 +1,83 @@
+[advisories]
+ignore = [
+  { id = "RUSTSEC-2026-0206", reason = "The current resvg/usvg and krilla releases require rustybuzz; no safe upstream upgrade is available yet." },
+  { id = "RUSTSEC-2026-0192", reason = "The current resvg/usvg, krilla, and ratex releases require ttf-parser; no safe upstream upgrade is available yet." },
+]
+
+[licenses]
+confidence-threshold = 0.93
+unused-allowed-license = "deny"
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+[[licenses.exceptions]]
+name = "merman-elk-layered"
+allow = ["EPL-2.0"]
+
+[[licenses.exceptions]]
+name = "cssparser"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "cssparser-macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "dtoa-short"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "selectors"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_core"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_internal_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_meta"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_pipeline"
+allow = ["MPL-2.0"]
+
+[[licenses.clarify]]
+name = "wasm-minimal-protocol"
+version = "=0.2.0"
+expression = "Unlicense"
+license-files = [{ path = "LICENSE", hash = 0x5ac143a6 }]
+
+[licenses.private]
+ignore = false
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

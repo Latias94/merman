@@ -7,7 +7,7 @@ import {
   type MermaidExternalRequirements,
 } from "../mermaid-requirements.ts";
 
-export const REALM_PROTOCOL_VERSION = 1 as const;
+export const REALM_PROTOCOL_VERSION = 2 as const;
 
 export const REALM_BUDGETS = Object.freeze({
   engineArtifactBytes: 20 * 1024 * 1024,
@@ -159,6 +159,7 @@ export type CompareFailureStage =
   | CompareOperationStage;
 
 export interface CompareRenderFailure extends RealmIdentity {
+  readonly detail: string | null;
   readonly message: string;
   readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly requestId: string;
@@ -564,6 +565,7 @@ export function validateCompareRenderResponse(
       "requestId",
       "stage",
       "message",
+      "detail",
     ]);
     assertEnvelope(message, identity, expectedSequence, type);
     assertRequestId(message.requestId, expectedRequestId);
@@ -575,6 +577,10 @@ export function validateCompareRenderResponse(
     }
     const failureMessage = expectString(message.message, "message");
     assertTextBudget(failureMessage, REALM_BUDGETS.errorBytes, "message");
+    const failureDetail = expectNullableString(message.detail, "detail");
+    if (failureDetail !== null) {
+      assertTextBudget(failureDetail, REALM_BUDGETS.errorBytes, "detail");
+    }
     return {
       type,
       protocol: REALM_PROTOCOL_VERSION,
@@ -583,6 +589,7 @@ export function validateCompareRenderResponse(
       requestId: expectedRequestId,
       stage: message.stage as CompareFailureStage,
       message: failureMessage,
+      detail: failureDetail,
     };
   }
 
@@ -764,6 +771,11 @@ function expectString(value: unknown, label: string): string {
     throw new RealmProtocolError(`Realm ${label} must be a string.`);
   }
   return value;
+}
+
+function expectNullableString(value: unknown, label: string): string | null {
+  if (value === null) return null;
+  return expectString(value, label);
 }
 
 function expectStringArray(value: unknown, label: string): string[] {

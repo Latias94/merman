@@ -3,7 +3,7 @@ use crate::{
     source_directives::{ByteSpan, init_directive_spans},
 };
 use merman_core::{
-    Engine, ParseOptions,
+    Engine,
     preprocess::{FrontmatterBlock, parse_frontmatter_yaml_fields, split_frontmatter_block},
 };
 use serde_json::{Map, Value};
@@ -88,9 +88,8 @@ pub(crate) fn frontmatter_config_fix(
 
 fn merged_diagram_config(source: &str) -> Option<Value> {
     migration_engine()
-        .parse_metadata_sync(source, ParseOptions::strict())
+        .parse_metadata_sync(source)
         .ok()
-        .flatten()
         .map(|metadata| metadata.config.as_value().clone())
 }
 
@@ -485,15 +484,13 @@ mod tests {
         let source_map = SourceMap::new(source);
         let engine = Engine::new();
         let original = engine
-            .parse_metadata_sync(source, ParseOptions::strict())
-            .unwrap()
+            .parse_metadata_sync(source)
             .expect("original metadata");
 
         let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
         let migrated = engine
-            .parse_metadata_sync(&edited, ParseOptions::strict())
-            .unwrap()
+            .parse_metadata_sync(&edited)
             .expect("migrated metadata");
 
         assert_eq!(migrated.config.as_value(), original.config.as_value());
@@ -506,15 +503,13 @@ mod tests {
         let source_map = SourceMap::new(source);
         let engine = Engine::new();
         let original = engine
-            .parse_metadata_sync(source, ParseOptions::strict())
-            .unwrap()
+            .parse_metadata_sync(source)
             .expect("original metadata");
 
         let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
         let migrated = engine
-            .parse_metadata_sync(&edited, ParseOptions::strict())
-            .unwrap()
+            .parse_metadata_sync(&edited)
             .expect("migrated metadata");
 
         assert!(edited.starts_with("  ---\n"));

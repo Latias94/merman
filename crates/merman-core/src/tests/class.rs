@@ -483,7 +483,7 @@ cssClass "User,Admin" service
 style User fill:#fff
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -696,7 +696,7 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
     let text =
         "classDiagram\nclass `123`\n`123` --> Service\nclick `123` href \"https://example.com\"\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -733,7 +733,7 @@ fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitesp
     let engine = Engine::new();
     let text = "classDiagram\nclass Admin\nclick Admin call   open(userId)\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -772,7 +772,7 @@ fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_s
         "style 顧客 fill:#fff\r\n",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("Class editor facts");
 
@@ -827,7 +827,7 @@ fn parse_class_editor_facts_record_expected_node_identifier_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -842,7 +842,7 @@ fn parse_class_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "classDiagram\nclass User\nUser <|--";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -856,7 +856,7 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     let text = "classDiagram\nclass User {\n  +name";
     crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -890,7 +890,7 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     let invalid_start = text.find('"').unwrap();
     crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 

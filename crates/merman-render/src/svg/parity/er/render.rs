@@ -272,16 +272,16 @@ pub(crate) fn render_er_diagram_svg_model(
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
-    let _stroke = theme_color(effective_config, "lineColor", "#333333");
-    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
-    let _tertiary = theme_color(
+    let _stroke = theme_token(effective_config, "lineColor", "#333333");
+    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
+    let main_bkg = theme_token(effective_config, "mainBkg", "#ECECFF");
+    let _tertiary = theme_token(
         effective_config,
         "tertiaryColor",
         "hsl(80, 100%, 96.2745098039%)",
     );
-    let text_color = theme_color(effective_config, "textColor", "#333333");
-    let _node_text_color = theme_color(effective_config, "nodeTextColor", &text_color);
+    let text_color = theme_token(effective_config, "textColor", "#333333");
+    let _node_text_color = theme_token(effective_config, "nodeTextColor", &text_color);
     let font_family = er_render_settings.font_family.clone();
     let font_size = er_render_settings.font_size;
     let title_top_margin = er_render_settings.title_top_margin;
@@ -455,11 +455,8 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str("</desc>");
     }
 
-    let _ = write!(
-        &mut out,
-        r#"<style>{}</style>"#,
-        er_css(diagram_id, effective_config)
-    );
+    let css = er_css(diagram_id, effective_config)?;
+    let _ = write!(&mut out, r#"<style>{css}</style>"#);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -950,27 +947,13 @@ pub(crate) fn render_er_diagram_svg_model(
             )
         }
 
-        fn parse_hex_color_rgb(s: &str) -> Option<(u8, u8, u8)> {
-            let s = s.trim();
-            let hex = s.strip_prefix('#')?;
-            if hex.len() == 3 {
-                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-                return Some((r, g, b));
-            }
-            if hex.len() == 6 {
-                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-                return Some((r, g, b));
-            }
-            None
-        }
-
         let label_div_color_prefix = last_style_value(&text_style_decls, "color")
-            .and_then(|v| parse_hex_color_rgb(&v))
-            .map(|(r, g, b)| format!("color: rgb({r}, {g}, {b}) !important; "))
+            .map(|value| {
+                format!(
+                    "color: {} !important; ",
+                    super::super::util::cssom_color_value(&value)
+                )
+            })
             .unwrap_or_default();
         let span_style_attr = if text_style_decls.is_empty() {
             String::new()
@@ -1150,8 +1133,8 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str("</g>");
 
         // Row rectangles
-        let odd_fill = theme_color(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
-        let even_fill = theme_color(
+        let odd_fill = theme_token(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
+        let even_fill = theme_token(
             effective_config,
             "rowEven",
             "hsl(240, 100%, 97.2745098039%)",

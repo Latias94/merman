@@ -636,7 +636,7 @@ pub(crate) fn run_canonical_svg_compare(
     };
 
     // Keep the toolchain read guard alive through the family compare. This preserves the global
-    // toolchain -> family lock order used by the existing Sequence adapter.
+    // toolchain -> family lock order used by the Sequence specialist.
     let tools_root = crate::cmd::mermaid_cli_root();
     let toolchain_read_guard = if fact.specialist == SpecialistHook::SequenceMath {
         Some(

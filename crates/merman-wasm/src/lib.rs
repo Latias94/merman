@@ -17,9 +17,10 @@ mod editor_language;
 
 #[cfg(feature = "editor-language")]
 pub use editor_language::{
-    editor_code_actions, editor_completions, editor_definition, editor_diagnostics,
-    editor_document_symbols, editor_hover, editor_prepare_rename, editor_references, editor_rename,
-    editor_semantic_token_legend, editor_semantic_tokens, editor_workspace_symbols,
+    WasmEditorSession, editor_code_actions, editor_completions, editor_definition,
+    editor_diagnostics, editor_diagram_detection, editor_document_symbols, editor_hover,
+    editor_prepare_rename, editor_references, editor_rename, editor_semantic_token_descriptor,
+    editor_semantic_tokens, editor_workspace_symbols,
 };
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]

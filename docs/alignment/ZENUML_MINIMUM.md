@@ -13,10 +13,16 @@ ZenUML into Mermaid Sequence actions or Sequence JSON.
 - Selected grammar: `repo-ref/zenuml-core-3.50.1/src/g4/sequenceLexer.g4` and
   `repo-ref/zenuml-core-3.50.1/src/g4/sequenceParser.g4`.
 - Latest stable major `4.2.0` is outside Mermaid's declared plugin range and remains a separate
-  admission rather than an implicit upgrade.
+  admission rather than an implicit upgrade. Its exact deferred contract and future behavior-work
+  inventory live in `tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json`.
 
 The machine-readable decision is `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; companion gate
 evidence is `tools/upstreams/ZENUML_CORE_ADMISSION.json`.
+
+ADR-0075 records the parser technology decision. The selected grammar's lexer channels/modes,
+runtime semantic predicates, Unicode lookahead, incomplete-input recovery, and exact source spans
+are implemented by a grammar-derived Unicode token scanner plus bounded recursive descent. Parser
+generator uniformity is not a capability claim or architecture invariant.
 
 ## Owned pipeline
 
@@ -64,7 +70,8 @@ return the first structured diagnostic; the editor entry point returns the recov
 | Semantic topology and source ranges | Implemented | typed model and `EditorSemanticFacts` tests |
 | Headless SVG topology, labels, colors, fragments | Implemented source-derived port | `crates/merman/tests/zenuml_typed_render.rs` |
 | Pixel-identical browser geometry | Residual under measurement audit | `docs/alignment/ZENUML_GEOMETRY.md` |
-| Oracle-to-selected deltas | Admitted through all seven gates | `tools/upstreams/ZENUML_CORE_ADMISSION.json` |
+| Oracle-to-selected deltas | Admitted through all nine gates | `tools/upstreams/ZENUML_CORE_ADMISSION.json` and `ZENUML_BROWSER_SECURITY_EVIDENCE.json` |
+| Latest stable major `4.2.0` | Deferred outside the Mermaid 11.16 graph | `tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json` |
 
 Pixel or browser-dependent differences must be recorded as evidence. They must not be hidden by
 fixture-specific comparator exceptions.

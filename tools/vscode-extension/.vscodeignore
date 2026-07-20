@@ -9,7 +9,10 @@ scripts/**
 *.vsix
 !dist/extension.js
 !dist/extension.js.map
+!dist/extension.js.LEGAL.txt
 !language-configuration.json
 !snippets/**
 !media/**
 !bin/**
+!THIRD_PARTY_LICENSES/**
+!THIRD_PARTY_NOTICES.md

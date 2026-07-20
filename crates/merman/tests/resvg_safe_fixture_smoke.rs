@@ -382,8 +382,13 @@ fn assert_expected_labels_and_colors(
 
 #[cfg(feature = "raster")]
 fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
+    let session = merman::render::RenderEnvironment::parity()
+        .begin_session()
+        .expect("fixture render session");
+    let svg = merman::render::finalize_resvg_svg(svg, &session)
+        .unwrap_or_else(|err| panic!("{name}: output should pass terminal validation: {err}"));
     let png =
-        merman::render::raster::svg_to_png(svg, &merman::render::raster::RasterOptions::default())
+        merman::render::raster::svg_to_png(&svg, &merman::render::raster::RasterOptions::default())
             .unwrap_or_else(|err| {
                 panic!("{name}: resvg-safe output should rasterize to PNG: {err}")
             });

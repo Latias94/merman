@@ -5,7 +5,9 @@ import { useAppStore } from "@/src/store";
 import {
   selectCurrentDetectionValidity,
   selectCurrentDiagramType,
+  selectCurrentMermanRenderFailure,
   selectCurrentMermanRenderTime,
+  selectCurrentMermaidRenderFailure,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,12 @@ export function StatusBar() {
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const detectionValidity = useRenderCoordinator(selectCurrentDetectionValidity);
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
+  const mermanRenderFailure = useRenderCoordinator(
+    selectCurrentMermanRenderFailure
+  );
+  const mermaidRenderFailure = useRenderCoordinator(
+    selectCurrentMermaidRenderFailure
+  );
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const facade = useMermanRuntime(selectMermanFacade);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
@@ -99,6 +107,21 @@ export function StatusBar() {
             {runtimeFailure.stage}: {runtimeFailure.message}
           </span>
         )}
+        {[mermanRenderFailure, mermaidRenderFailure].map((failure) => {
+          if (!failure) return null;
+          const engine = failure.engine === "merman" ? "Merman" : "Mermaid JS";
+          const label = `${engine} · ${failure.stage}: ${failure.message}`;
+          return (
+            <span
+              key={failure.engine}
+              className="hidden max-w-64 truncate text-destructive md:inline"
+              data-merman-status-error-engine={failure.engine}
+              title={label}
+            >
+              {label}
+            </span>
+          );
+        })}
         {capabilities && (
           <span className="hidden shrink-0 md:inline">
             {t("status.editorLanguage")}:{" "}
@@ -130,7 +153,6 @@ export function StatusBar() {
         <span className="hidden xl:inline">
           {t("status.font")}: {t(`diagramFonts.${diagramFont}`)}
         </span>
-        <span className="hidden lg:inline">{t("app.title")}</span>
       </div>
     </footer>
   );

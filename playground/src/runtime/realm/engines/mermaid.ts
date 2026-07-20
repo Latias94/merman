@@ -14,6 +14,10 @@ import {
   type CompareOperationStage,
   type CompareRenderPayload,
 } from "../channel-protocol.ts";
+import {
+  projectError,
+  type ErrorProjection,
+} from "../../error-projection.ts";
 
 export interface MermaidEngineResult {
   readonly prepareTimeMs: number;
@@ -24,11 +28,14 @@ export interface MermaidEngineResult {
 }
 
 export class MermaidEngineError extends Error {
+  readonly error: ErrorProjection;
   readonly stage: CompareOperationStage;
 
   constructor(stage: CompareOperationStage, cause: unknown) {
-    super(errorMessage(cause));
+    const projection = projectError(cause);
+    super(projection.summary);
     this.name = "MermaidEngineError";
+    this.error = projection;
     this.stage = stage;
   }
 }
@@ -146,8 +153,4 @@ async function presentIsolatedSvg(
   } finally {
     host.replaceChildren();
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

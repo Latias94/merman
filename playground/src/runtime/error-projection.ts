@@ -1,11 +1,18 @@
-import { isBindingErrorPayload } from "@mermanjs/web";
-
 export interface ErrorProjection {
   readonly detail: string | null;
   readonly summary: string;
 }
 
+export interface BindingErrorPayload {
+  readonly code: number;
+  readonly code_name: string;
+  readonly message: string;
+  readonly ok: false;
+  readonly version: number;
+}
+
 const MAX_DETAIL_LENGTH = 8_000;
+const MAX_SUMMARY_LENGTH = 8_000;
 const MAX_DEPTH = 6;
 const MAX_ENTRIES = 50;
 
@@ -21,9 +28,9 @@ export function projectError(error: unknown): ErrorProjection {
 }
 
 function projectErrorValue(error: unknown): ErrorProjection {
-  if (isBindingPayload(error)) {
+  if (isBindingErrorPayload(error)) {
     return {
-      summary: nonEmpty(error.message, error.code_name),
+      summary: boundedSummary(nonEmpty(error.message, error.code_name)),
       detail: serializeDetail({
         version: error.version,
         code: error.code,
@@ -35,16 +42,18 @@ function projectErrorValue(error: unknown): ErrorProjection {
 
   if (error instanceof Error) {
     return {
-      summary: nonEmpty(error.message, error.name, "Unexpected error."),
-      detail:
-        "cause" in error && error.cause !== undefined
-          ? serializeDetail({ cause: error.cause })
-          : null,
+      summary: boundedSummary(
+        nonEmpty(error.message, error.name, "Unexpected error.")
+      ),
+      detail: projectNativeErrorDetail(error),
     };
   }
 
   if (typeof error === "string") {
-    return { summary: nonEmpty(error, "Unexpected error."), detail: null };
+    return {
+      summary: boundedSummary(nonEmpty(error, "Unexpected error.")),
+      detail: null,
+    };
   }
 
   if (error && typeof error === "object") {
@@ -52,7 +61,7 @@ function projectErrorValue(error: unknown): ErrorProjection {
     return {
       summary:
         typeof message === "string"
-          ? nonEmpty(message, "Unexpected error.")
+          ? boundedSummary(nonEmpty(message, "Unexpected error."))
           : "Unexpected error.",
       detail: serializeDetail(error),
     };
@@ -76,20 +85,49 @@ function nonEmpty(...candidates: string[]): string {
   );
 }
 
-function isBindingPayload(
+function boundedSummary(summary: string): string {
+  return summary.length <= MAX_SUMMARY_LENGTH
+    ? summary
+    : `${summary.slice(0, MAX_SUMMARY_LENGTH)}\n... [truncated]`;
+}
+
+export function isBindingErrorPayload(
   error: unknown
-): error is Parameters<typeof isBindingErrorPayload>[0] & {
-  version: number;
-  ok: false;
-  code: number;
-  code_name: string;
-  message: string;
-} {
+): error is BindingErrorPayload {
   try {
-    return isBindingErrorPayload(error);
+    if (!error || typeof error !== "object") return false;
+    return (
+      readProperty(error, "ok") === false &&
+      typeof readProperty(error, "version") === "number" &&
+      typeof readProperty(error, "code") === "number" &&
+      typeof readProperty(error, "code_name") === "string" &&
+      typeof readProperty(error, "message") === "string"
+    );
   } catch {
     return false;
   }
+}
+
+function projectNativeErrorDetail(error: Error): string | null {
+  const detail: Record<string, unknown> = {};
+  let keys: string[];
+  try {
+    keys = Reflect.ownKeys(error)
+      .filter((key): key is string => typeof key === "string")
+      .filter((key) => key !== "message" && key !== "name" && key !== "stack")
+      .sort();
+  } catch {
+    return '"[unreadable error]"';
+  }
+
+  for (const key of keys) {
+    detail[key] = readProperty(error, key);
+  }
+  const name = readProperty(error, "name");
+  if (typeof name === "string" && name && name !== "Error") {
+    detail.name = name;
+  }
+  return Object.keys(detail).length > 0 ? serializeDetail(detail) : null;
 }
 
 function readProperty(value: object, key: string): unknown {

@@ -340,23 +340,41 @@ impl C4ParseOutcome {
         Ok(self.source)
     }
 
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+    fn into_combined(mut self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+        let mut first_error = None;
         for issue in self.issues {
             self.source.editor_facts.mark_recovered_from_parse_error(
                 format!("c4 parser recovered after parse error: {}", issue.error),
                 Some(issue.span),
             );
+            if first_error.is_none() {
+                first_error = Some(issue.error);
+            }
         }
-        self.source.editor_facts
+        let construction = match first_error {
+            Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+                error,
+                self.source.editor_facts,
+            )),
+            None => Ok(self.source),
+        };
+        crate::family::CombinedSemanticParse::from_construction(
+            construction,
+            |source| (source.db.to_model(meta), source.editor_facts),
+            crate::family::CombinedSemanticFailure::into_parts,
+        )
     }
 }
 
-pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_c4_semantic_source(code, meta).into_strict_source()?;
     source.db.to_model(meta)
 }
 
-pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
+pub(crate) fn parse_c4_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<C4DiagramRenderModel> {
     construct_c4_semantic_source(code, meta)
         .into_strict_source()?
         .db
@@ -366,9 +384,8 @@ pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4D
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = construct_c4_semantic_source(code, meta).into_strict_source()?;
-    Ok((source.db.to_model(meta)?, source.editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    construct_c4_semantic_source(code, meta).into_combined(meta)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -403,10 +420,6 @@ pub(crate) fn render_model_to_compat_json(
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
-}
-
-pub fn parse_c4_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_c4_semantic_source(code, meta).into_editor_facts()
 }
 
 fn is_c4_header(line: &str) -> bool {
@@ -721,6 +734,7 @@ fn parse_acc_descr_spanned_c4(
             EditorLexemeKind::Delimiter,
             SourceSpan::new(content_start + end, content_start + end + 1),
         );
+        lines.resume_same_line_at(content_start + end + 1);
         return Some(SpannedAccDescr {
             value,
             closed: true,
@@ -754,6 +768,7 @@ fn parse_acc_descr_spanned_c4(
                 EditorLexemeKind::Delimiter,
                 SourceSpan::new(segment_start + close_pos, segment_start + close_pos + 1),
             );
+            lines.resume_same_line_at(segment_start + close_pos + 1);
             closed = true;
             break;
         }
@@ -2374,15 +2389,16 @@ mod tests {
             "direction LR\r\n",
         );
         let expected_json = parse_c4(text, &meta()).unwrap();
-        let expected_facts = parse_c4_editor_facts(text, &meta());
         let expected_model = parse_c4_model_for_render(text, &meta()).unwrap();
 
         reset_c4_syntax_construction_count();
-        let (json, facts) = parse_c4_json_and_editor_facts(text, &meta()).unwrap();
+        let (json, facts) =
+            crate::family::test_support::into_result(parse_c4_json_and_editor_facts(text, &meta()))
+                .unwrap();
 
         assert_eq!(c4_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
-        assert_eq!(facts, expected_facts);
+        assert!(!facts.symbols.is_empty());
         assert_eq!(
             render_model_to_compat_json(&expected_model, &meta()).unwrap(),
             json,
@@ -2435,7 +2451,11 @@ mod tests {
     fn malformed_editor_input_recovers_from_one_construction() {
         let text = "C4Context\nPerson(customer, \"Customer\")\nNotAMacro customer\n";
         reset_c4_syntax_construction_count();
-        let facts = parse_c4_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(c4_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
@@ -2460,7 +2480,11 @@ mod tests {
         );
 
         reset_c4_syntax_construction_count();
-        let facts = parse_c4_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(c4_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(
@@ -3080,8 +3104,8 @@ Rel(customer, system, "Uses", "HTTPS")
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "c4");
-        match parsed.model {
+        assert_eq!(parsed.metadata().diagram_type, "c4");
+        match parsed.model() {
             RenderSemanticModel::C4(model) => {
                 assert_eq!(model.c4_type, "C4Context");
                 assert_eq!(model.title.as_deref(), Some("Banking Context"));
@@ -3123,7 +3147,7 @@ UpdateRelStyle(customer, system, $lineColor="blue")
 "#;
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("c4", input)
             .unwrap()
             .unwrap();
 
@@ -3185,7 +3209,7 @@ UpdateRelStyle(customer, system, $lineColor="blue")
         let input = "C4Context\nPerson(customer, \"Customer\")\nNotAMacro customer\n";
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("c4", input)
             .unwrap()
             .unwrap();
 
@@ -3209,7 +3233,11 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             "C4Deployment",
         ] {
             let source = format!("{header}\r\n");
-            let facts = parse_c4_editor_facts(&source, &meta());
+            let facts = crate::family::test_support::editor_facts(
+                parse_c4_json_and_editor_facts,
+                &source,
+                &meta(),
+            );
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
             assert_eq!(facts.lexeme_failure(), None);
             assert_c4_lexeme(
@@ -3245,7 +3273,11 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             "direction LR\r\n",
         );
         parse_c4(source, &meta()).expect("rich C4 syntax must remain renderable");
-        let facts = parse_c4_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
@@ -3365,7 +3397,11 @@ UpdateRelStyle(customer, system, $lineColor="blue")
         let error = parse_c4(source, &meta()).expect_err("strict C4 parse must return first error");
         assert!(error.to_string().contains("missing relation target"));
 
-        let facts = parse_c4_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "后续"));
@@ -3400,7 +3436,11 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             parse_c4(source, &meta()).expect_err("strict parse must require a boundary brace");
         assert!(error.to_string().contains("expected '{' after boundary"));
 
-        let facts = parse_c4_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
         let person = source.find("Person").unwrap();

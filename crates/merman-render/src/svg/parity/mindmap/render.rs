@@ -392,10 +392,10 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_FILLS.len() as i64)
         .clamp(1, 64) as usize;
-    let root_fill = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let root_label = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
-    let node_border = theme_color(effective_config, "nodeBorder", root_label.as_str());
-    let main_bkg = theme_color(effective_config, "mainBkg", root_fill.as_str());
+    let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
+    let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
+    let node_border = theme_token(effective_config, "nodeBorder", root_label.as_str());
+    let main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
     let stroke_width = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "strokeWidth"],
@@ -413,17 +413,17 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
 
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
-        let c_scale = theme_color(
+        let c_scale = theme_token(
             effective_config,
             &format!("cScale{}", i),
             default_mindmap_fill(i),
         );
-        let c_scale_inv = theme_color(
+        let c_scale_inv = theme_token(
             effective_config,
             &format!("cScaleInv{}", i),
             default_mindmap_inv_fill(i),
         );
-        let c_scale_label = theme_color(
+        let c_scale_label = theme_token(
             effective_config,
             &format!("cScaleLabel{}", i),
             default_mindmap_label(i),
@@ -452,7 +452,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         let neo_text_label = if theme == "redux" || theme == "redux-dark" {
             node_border.clone()
         } else {
-            theme_color(
+            theme_token(
                 effective_config,
                 &format!("cScaleLabel{}", neo_text_label_index),
                 default_mindmap_label(neo_text_label_index),
@@ -571,7 +571,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let neo_root_text = if theme.contains("redux") {
         node_border
     } else {
-        theme_color(
+        theme_token(
             effective_config,
             &format!("cScaleLabel{}", neo_root_text_label_index),
             default_mindmap_label(neo_root_text_label_index),

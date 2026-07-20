@@ -43,6 +43,7 @@ import {
   type CompareRenderPayload,
   type RealmViewport,
 } from "../runtime/realm/channel-protocol.ts";
+import { projectError } from "../runtime/error-projection.ts";
 
 export interface BenchmarkRunRequest {
   readonly detection: BenchmarkDetectionSnapshot;
@@ -290,11 +291,14 @@ export function createBenchmarkController(
   ) => {
     if (run.settled) return;
     run.transitions.push(Object.freeze(transition));
-    settle(run, "invalidated", {
-      kind: "transport",
-      stage: "environment",
-      message: `Benchmark environment changed during ${transition.kind}.`,
-    });
+    settle(
+      run,
+      "invalidated",
+      transportFailure(
+        "environment",
+        `Benchmark environment changed during ${transition.kind}.`
+      )
+    );
   };
 
   const installLifecycleListeners = (run: ActiveBenchmarkRun): (() => void) => {
@@ -449,11 +453,13 @@ export function createBenchmarkController(
         projected.outcome === "success" &&
         projected.version !== run.request.versions[input.engine]
       ) {
-        projected = rejectBenchmarkRecordedSample(projected, {
-          kind: "transport",
-          stage: "version",
-          message: `${engineLabel(input.engine)} returned ${projected.version}; expected ${run.request.versions[input.engine]}.`,
-        });
+        projected = rejectBenchmarkRecordedSample(
+          projected,
+          transportFailure(
+            "version",
+            `${engineLabel(input.engine)} returned ${projected.version}; expected ${run.request.versions[input.engine]}.`
+          )
+        );
       }
       run.samples.push(projected);
       run.completed += 1;
@@ -616,11 +622,14 @@ export function createBenchmarkController(
       );
     } catch (error) {
       if (run.settled) return;
-      settle(run, "failed", {
-        kind: "transport",
-        stage: run.releaseCoordinator ? "controller" : "coordinator-pause",
-        message: boundedErrorMessage(error),
-      });
+      settle(
+        run,
+        "failed",
+        transportFailure(
+          run.releaseCoordinator ? "controller" : "coordinator-pause",
+          error
+        )
+      );
     }
   };
 
@@ -687,11 +696,11 @@ export function createBenchmarkController(
     active = current;
     current.listenerCleanup = installLifecycleListeners(current);
     current.runTimer = dependencies.setTimer(() => {
-      settle(current, "failed", {
-        kind: "transport",
-        stage: "timeout",
-        message: "Benchmark controller run timed out.",
-      });
+      settle(
+        current,
+        "failed",
+        transportFailure("timeout", "Benchmark controller run timed out.")
+      );
     }, REALM_BUDGETS.runTimeoutMs);
     replaceState({
       status: "running",
@@ -715,11 +724,11 @@ export function createBenchmarkController(
     run,
     cancel(reason = "user") {
       if (!active) return;
-      settle(active, "cancelled", {
-        kind: "transport",
-        stage: "cancelled",
-        message: `Benchmark was cancelled (${reason}).`,
-      });
+      settle(
+        active,
+        "cancelled",
+        transportFailure("cancelled", `Benchmark was cancelled (${reason}).`)
+      );
     },
     markStale() {
       const state = store.getState();
@@ -730,11 +739,11 @@ export function createBenchmarkController(
       if (disposed) return;
       disposed = true;
       if (active) {
-        settle(active, "cancelled", {
-          kind: "transport",
-          stage: "disposed",
-          message: "Benchmark controller was disposed.",
-        });
+        settle(
+          active,
+          "cancelled",
+          transportFailure("disposed", "Benchmark controller was disposed.")
+        );
       }
     },
   };
@@ -846,9 +855,17 @@ function elapsed(run: ActiveBenchmarkRun, now: number): number {
   return Math.max(0, now - run.startedAtMs);
 }
 
-function boundedErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 8_192);
+function transportFailure(
+  stage: string,
+  error: unknown
+): BenchmarkRecordedFailureDetail {
+  const projection = projectError(error);
+  return {
+    detail: projection.detail,
+    kind: "transport",
+    message: projection.summary,
+    stage,
+  };
 }
 
 function engineLabel(engine: BenchmarkEngine): string {

@@ -35,7 +35,12 @@ The intended shape is:
 - `SvgPipeline::readable()` adds best-effort text fallback for labels that use `<foreignObject>`.
 - `SvgPipeline::resvg_safe()` adds readable output plus compatibility cleanup for
   `usvg` / `resvg` and raster/PDF export.
-- A public `SvgPostprocessor` trait lets host applications append product-specific output passes.
+- A public `SvgPostprocessor` trait lets host applications append product-specific draft passes.
+- Custom passes execute in insertion order before the selected preset. `ResvgSafe` is a terminal
+  finalizer: it performs structured CSS cleanup, removes active SVG content, parses the completed
+  XML, and validates the residual resvg contract after every custom transformation.
+- Low-level raster APIs accept only the sealed `ResvgCompatibleSvg` artifact. It cannot be forged
+  from a string outside the rendering crate.
 
 The first public postprocessor API should be string-oriented:
 
@@ -71,6 +76,9 @@ output-contract conversion, not comparator color equivalence.
   lanes. Passing one lane does not satisfy either of the other two.
 - Raster/readable output can improve without each host copying ad hoc cleanup logic.
 - Hosts like Zed can keep application-specific accent/theme passes without forking `merman`.
+- A custom pass cannot reintroduce active content after resvg compatibility validation. Parity and
+  readable output remain intentionally unsealed, and resvg compatibility does not imply browser
+  DOM safety.
 - Public API review must treat pass ordering, error handling, and ownership as semver-significant.
 - A future advanced event-stream API remains possible if profiling proves string-oriented custom
   passes are a real bottleneck.

@@ -18,6 +18,10 @@ import {
   verifyAndCreateRealmEngineModuleLoader,
 } from "./engine-artifact-loader.ts";
 import { createOperationQueue } from "./operation-queue.ts";
+import {
+  projectError,
+  type ErrorProjection,
+} from "../error-projection.ts";
 
 export async function startCompareRealm(
   boot: RealmBootIdentity,
@@ -145,7 +149,7 @@ function servePort(
         try {
           engine = await loadEngine();
         } catch (error) {
-          throw new RealmOperationError("adapter-import", error);
+          throw new RealmOperationError("adapter-import", projectError(error));
         }
         try {
           return await engine.renderWithMermaid(
@@ -155,7 +159,7 @@ function servePort(
           );
         } catch (error) {
           if (isCompareEngineError(error)) {
-            throw new RealmOperationError(error.stage, error);
+            throw new RealmOperationError(error.stage, error.error);
           }
           throw error;
         }
@@ -186,6 +190,10 @@ function servePort(
           outgoingSequence += 1;
           const stage =
             error instanceof RealmOperationError ? error.stage : "render";
+          const projection =
+            error instanceof RealmOperationError
+              ? error.error
+              : projectError(error);
           const response = validateCompareRenderResponse(
             {
               type: "render-failure",
@@ -194,7 +202,8 @@ function servePort(
               sequence: outgoingSequence,
               requestId: request.requestId,
               stage,
-              message: boundedErrorMessage(error),
+              message: projection.summary,
+              detail: projection.detail,
             },
             identity,
             outgoingSequence,
@@ -235,28 +244,40 @@ function validateCompareEngineModule(
 
 function isCompareEngineError(
   error: unknown
-): error is Error & { readonly stage: CompareOperationStage } {
+): error is Error & {
+  readonly error: ErrorProjection;
+  readonly stage: CompareOperationStage;
+} {
   return (
     error instanceof Error &&
-    typeof (error as { stage?: unknown }).stage === "string"
+    typeof (error as { stage?: unknown }).stage === "string" &&
+    isErrorProjection((error as { error?: unknown }).error)
   );
 }
 
 class RealmOperationError extends Error {
+  readonly error: ErrorProjection;
   readonly stage: CompareFailureStage;
 
-  constructor(stage: CompareFailureStage, cause: unknown) {
-    super(errorMessage(cause));
+  constructor(stage: CompareFailureStage, error: ErrorProjection) {
+    super(error.summary);
     this.name = "RealmOperationError";
+    this.error = error;
     this.stage = stage;
   }
 }
 
 function boundedErrorMessage(error: unknown): string {
-  const message = errorMessage(error);
+  const message = projectError(error).summary;
   return message.slice(0, Math.floor(REALM_BUDGETS.errorBytes / 4));
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function isErrorProjection(value: unknown): value is ErrorProjection {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { summary?: unknown }).summary === "string" &&
+    ((value as { detail?: unknown }).detail === null ||
+      typeof (value as { detail?: unknown }).detail === "string")
+  );
 }

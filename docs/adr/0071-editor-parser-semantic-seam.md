@@ -7,7 +7,7 @@ Accepted
 ## Dates
 
 - Accepted: 2026-06-24
-- Updated: 2026-07-15
+- Updated: 2026-07-19
 
 ## Context
 
@@ -25,8 +25,9 @@ with render semantics.
 ### Parser technology is family-local; semantic facts are shared
 
 - Each built-in family owns its successful semantic construction and its recoverable editor facts.
-- The Diagram Family catalog declares the semantic parser, editor parser, aliases, profile gates,
-  and authoring headers for every built-in id. Analysis does not maintain another family match.
+- The Diagram Family catalog declares the semantic parser, closed combined semantic/editor
+  construction, aliases, profile gates, and authoring headers for every built-in id. Analysis does
+  not maintain another family match or invoke a second family parser after failure.
 - Recoverable partial parsing is a first-class family contract for incomplete editor buffers. It
   shares family tokens and grammar facts; it is not a separate editor-only successful grammar.
 - Families that use Mermaid's Langium `common.langium` share the same span-rich title and
@@ -42,6 +43,11 @@ Semantic facts are classified by projection role:
 Every renameable entity carries a family-owned `FenceRenamePolicy`. LSP does not impose a second
 identifier grammar.
 
+Lexical facts are a separate family-owned projection over the same grammar evidence. Global
+preprocessing owns fences, frontmatter, directives, and global comments; each family owns its body
+keywords, operators, delimiters, identifiers, literals, comments, and family-specific values.
+Lexemes are not inferred by LSP, Monaco, a Monarch grammar, or a raw-text fallback.
+
 ### Raw-text body semantics are removed
 
 Analysis, editor-core, WASM editor queries, and LSP features use parser facts. Generic raw-text body
@@ -54,6 +60,11 @@ facts. This is authoring metadata, not evidence that an unknown or malformed bod
 Rich-facts projection errors are explicit internal analysis failures. If a typed family model
 cannot be projected into its published fact shape, analysis reports that failure and omits only the
 failed projection. It does not turn the error into indistinguishable absence or invoke a text scan.
+
+One core parse snapshot owns preprocessing metadata, either the compatibility semantic model or the
+original family error, and editor facts retained by that same construction. The known-type editor
+facts API only projects this snapshot. Error suppression remains a compatibility behavior of the
+JSON and render facades; it never rewrites a failed editor snapshot into a successful error family.
 
 ### Provenance and span safety are explicit
 
@@ -88,8 +99,8 @@ alpha shape must update to the current v1 schema, and version `1` alone is not e
 obsolete alpha payload is compatible.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
-analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`, `DocumentSnapshot`, and
-`FenceTextIndex` data without a JSON round trip.
+analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`, `DocumentSnapshot`,
+`AnalyzedDocumentSnapshot`, and `FenceTextIndex` data without a JSON round trip.
 
 The facts schema version is unrelated to:
 
@@ -103,20 +114,36 @@ The facts schema version is unrelated to:
 - `merman-analysis::FenceTextIndex` is the shared semantic index and owns diagnostic/fact payload
   construction and source mapping.
 - `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, references,
-  rename, selection, folding, code-action metadata, and semantic-token selection.
-- `merman-lsp` owns request lifecycle, URI/range conversion, token delta encoding, capability
-  advertising, and stale-result suppression. It does not own language semantics.
-- WASM and other bindings project the same editor-core and analysis contracts into host types.
+  rename, selection, folding, code-action metadata, one analyzed document bundle, and the sole
+  semantic-token planner.
+- One generated token descriptor owns token codes, modifiers, precedence, LSP legend indices, and
+  the five-word LSP-relative UTF-16 packed representation. Editor-core validates, sorts, resolves
+  overlaps, splits multiline spans, converts UTF-16 positions, and packs the sequence once.
+- `merman-lsp` owns request lifecycle, URI/range projection, full/delta result state, capability
+  advertising, and stale-result suppression. It does not sort tokens, assign legend indices, or
+  define language semantics.
+- WASM validates the same descriptor and returns the same packed words. Monaco and VS Code consume
+  that descriptor without a second enum, lookup table, sort, or regex grammar.
 
-Editor snapshots share the active analyzer configuration. Diagnostic-only rule changes refresh
-diagnostics without rebuilding semantic snapshots. Parse options, site configuration, fixed
-date/time, resource limits, and source descriptors invalidate snapshots because they can change
-parser facts or source mapping.
+One cached `AnalyzedDocumentSnapshot` owns the document parse snapshot, diagnostics, fixes,
+detection, and token input for a source version and analyzer-configuration epoch. Completion,
+hover/structure, rename, code actions, diagnostics, detection, and tokens all borrow that bundle.
+No capability invokes analysis independently for the same document epoch.
+
+The current `Analyzer` applies rule configuration while constructing diagnostics, so a diagnostic
+rule change rebuilds one coherent analyzed bundle rather than retaining an old semantic snapshot
+and running an independent diagnostic parse. Only changes that can alter language facts require a
+client semantic-token refresh; a rule-only rebuild produces the same token meaning. Site
+configuration, fixed date/time, resource limits, and source descriptors are language-fact
+changes because they can alter parser facts or source mapping.
 
 ## User-Visible Behavior
 
 - Completion, hover, symbols, definition, references, rename, folding, and semantic tokens keep
   working for parser-complete and tested parser-recovered families.
+- Syntax highlighting uses the same grammar facts and recovery identity in LSP, Playground Monaco,
+  and the unpublished VS Code extension. An unavailable language Worker leaves the editor usable as
+  plain text and exposes an explicit retry state; it does not install heuristic coloring.
 - Refactoring becomes stricter and safer because candidate identity, references, and rename policy
   come from the same family semantics used by parsing and rendering.
 - Unknown, unsupported, or unrecoverable body text no longer receives guessed identifiers or

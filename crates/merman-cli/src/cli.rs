@@ -284,7 +284,7 @@ pub(crate) struct RenderCliArgs {
         long = "text-measurer",
         value_enum,
         default_value_t = TextMeasurerKind::Vendored,
-        help_heading = "Rust renderer controls"
+        help_heading = "Merman renderer controls"
     )]
     pub(crate) text_measurer: TextMeasurerKind,
 
@@ -293,7 +293,7 @@ pub(crate) struct RenderCliArgs {
         long = "math-renderer",
         value_enum,
         default_value_t = MathRendererKind::None,
-        help_heading = "Rust renderer controls"
+        help_heading = "Merman renderer controls"
     )]
     pub(crate) math_renderer: MathRendererKind,
 
@@ -302,7 +302,7 @@ pub(crate) struct RenderCliArgs {
         short = 'w',
         long = "width",
         value_parser = parse_positive_f64,
-        help_heading = "Rust renderer controls"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) container_width: Option<f64>,
 
@@ -311,7 +311,7 @@ pub(crate) struct RenderCliArgs {
         short = 'H',
         long = "height",
         value_parser = parse_positive_f64,
-        help_heading = "Rust renderer controls"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) container_height: Option<f64>,
 
@@ -321,7 +321,7 @@ pub(crate) struct RenderCliArgs {
         long = "svgId",
         alias = "svg-id",
         alias = "id",
-        help_heading = "Rust renderer controls"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) svg_id: Option<String>,
 
@@ -334,7 +334,7 @@ pub(crate) struct RenderCliArgs {
         long = "resource-profile",
         value_enum,
         default_value_t = ResourceProfile::TrustedNative,
-        help_heading = "Rust renderer controls"
+        help_heading = "Merman renderer controls"
     )]
     pub(crate) resource_profile: ResourceProfile,
 }
@@ -410,17 +410,17 @@ pub(crate) struct ExportArgs {
     #[arg(
         long = "svg-pipeline",
         value_enum,
-        help_heading = "Rust renderer controls"
+        help_heading = "Merman renderer controls"
     )]
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
-    /// Background color for SVG/PNG/JPG output. Top-level mmdc-compatible mode defaults to white.
+    /// Background color for SVG/PNG/JPG/PDF output. Top-level mmdc-compatible mode defaults to white.
     #[arg(
         short = 'b',
         long = "backgroundColor",
         alias = "background-color",
         alias = "background",
-        help_heading = "Raster and PDF export"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) background_color: Option<String>,
 
@@ -439,7 +439,7 @@ pub(crate) struct ExportArgs {
         short = 'f',
         long = "pdfFit",
         alias = "pdf-fit",
-        help_heading = "Raster and PDF export"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) pdf_fit: bool,
 
@@ -459,6 +459,12 @@ pub(crate) struct ExportArgs {
 
     #[command(flatten)]
     pub(crate) raster: RasterCliArgs,
+
+    #[command(flatten)]
+    pub(crate) pdf: PdfCliArgs,
+
+    #[command(flatten)]
+    pub(crate) embedded_images: EmbeddedImageCliArgs,
 
     #[command(flatten)]
     pub(crate) icons: IconCliArgs,
@@ -511,17 +517,17 @@ pub(crate) struct RenderExportArgs {
     #[arg(
         long = "svg-pipeline",
         value_enum,
-        help_heading = "Rust renderer controls"
+        help_heading = "Merman renderer controls"
     )]
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
-    /// Background color for SVG/PNG/JPG output.
+    /// Background color for SVG/PNG/JPG/PDF output.
     #[arg(
         short = 'b',
         long = "backgroundColor",
         alias = "background-color",
         alias = "background",
-        help_heading = "Raster and PDF export"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) background_color: Option<String>,
 
@@ -543,6 +549,12 @@ pub(crate) struct RenderExportArgs {
     pub(crate) raster: RasterCliArgs,
 
     #[command(flatten)]
+    pub(crate) pdf: PdfCliArgs,
+
+    #[command(flatten)]
+    pub(crate) embedded_images: EmbeddedImageCliArgs,
+
+    #[command(flatten)]
     pub(crate) icons: IconCliArgs,
 
     #[command(flatten)]
@@ -557,12 +569,12 @@ pub(crate) struct RenderExportArgs {
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct RasterCliArgs {
-    /// Raster/PDF scale factor. Defaults to 1.
+    /// PNG/JPG scale factor. Defaults to 1.
     #[arg(
         short = 's',
         long = "scale",
         value_parser = parse_positive_f32,
-        help_heading = "Raster and PDF export"
+        help_heading = "mmdc-compatible export"
     )]
     pub(crate) scale: Option<f32>,
 
@@ -570,7 +582,7 @@ pub(crate) struct RasterCliArgs {
     #[arg(
         long = "raster-fit-width",
         value_parser = parse_positive_u32,
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_fit_width: Option<u32>,
 
@@ -578,41 +590,129 @@ pub(crate) struct RasterCliArgs {
     #[arg(
         long = "raster-fit-height",
         value_parser = parse_positive_u32,
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_fit_height: Option<u32>,
 
-    /// Maximum PNG/JPG output width after scale and fit. Defaults to 8192.
+    /// Maximum PNG/JPG output width after scale and fit. Defaults to 4096.
     #[arg(
         long = "raster-max-width",
         value_parser = parse_positive_u32,
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_max_width: Option<u32>,
 
-    /// Maximum PNG/JPG output height after scale and fit. Defaults to 8192.
+    /// Maximum PNG/JPG output height after scale and fit. Defaults to 4096.
     #[arg(
         long = "raster-max-height",
         value_parser = parse_positive_u32,
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_max_height: Option<u32>,
 
-    /// Maximum PNG/JPG output pixels after scale and fit. Defaults to 8192*8192.
+    /// Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096.
     #[arg(
         long = "raster-max-pixels",
         value_parser = parse_positive_u64,
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_max_pixels: Option<u64>,
+
+    /// Parallel encoding scheduling budget for Markdown jobs, in MiB. Defaults to 512.
+    #[arg(
+        long = "encoding-parallel-budget-mib",
+        value_parser = parse_positive_u64,
+        help_heading = "Merman resource controls"
+    )]
+    pub(crate) encoding_parallel_budget_mib: Option<u64>,
 
     /// Disable PNG/JPG raster size limits. Use only for trusted oversized exports.
     #[arg(
         long = "raster-unbounded",
         conflicts_with_all = ["raster_max_width", "raster_max_height", "raster_max_pixels"],
-        help_heading = "Raster and PDF export"
+        help_heading = "Merman raster controls"
     )]
     pub(crate) raster_unbounded: bool,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct PdfCliArgs {
+    /// Sampling scale for SVG filters that require localized PDF bitmaps. Defaults to 4.
+    #[arg(
+        long = "pdf-filter-scale",
+        value_parser = parse_positive_f32,
+        help_heading = "Merman PDF controls"
+    )]
+    pub(crate) filter_scale: Option<f32>,
+
+    /// Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432.
+    #[arg(
+        long = "pdf-max-filter-image-pixels",
+        value_parser = parse_positive_u64,
+        conflicts_with = "filter_images_unbounded",
+        help_heading = "Merman PDF controls"
+    )]
+    pub(crate) max_filter_image_pixels: Option<u64>,
+
+    /// Disable the retained PDF filter-image pixel budget for trusted inputs.
+    #[arg(
+        long = "pdf-filter-images-unbounded",
+        conflicts_with = "max_filter_image_pixels",
+        help_heading = "Merman PDF controls"
+    )]
+    pub(crate) filter_images_unbounded: bool,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct EmbeddedImageCliArgs {
+    /// Maximum decoded data-URL bytes for one embedded image. Defaults to 16777216.
+    #[arg(
+        long = "embedded-image-max-bytes",
+        value_parser = parse_positive_u64,
+        conflicts_with = "embedded_images_unbounded",
+        help_heading = "Merman embedded-image controls"
+    )]
+    pub(crate) max_image_bytes: Option<u64>,
+
+    /// Maximum aggregate decoded data-URL bytes for embedded images. Defaults to 33554432.
+    #[arg(
+        long = "embedded-image-max-total-bytes",
+        value_parser = parse_positive_u64,
+        conflicts_with = "embedded_images_unbounded",
+        help_heading = "Merman embedded-image controls"
+    )]
+    pub(crate) max_total_bytes: Option<u64>,
+
+    /// Maximum intrinsic pixels for one embedded raster image. Defaults to 16777216.
+    #[arg(
+        long = "embedded-image-max-pixels",
+        value_parser = parse_positive_u64,
+        conflicts_with = "embedded_images_unbounded",
+        help_heading = "Merman embedded-image controls"
+    )]
+    pub(crate) max_image_pixels: Option<u64>,
+
+    /// Maximum aggregate intrinsic pixels for embedded raster images. Defaults to 33554432.
+    #[arg(
+        long = "embedded-image-max-total-pixels",
+        value_parser = parse_positive_u64,
+        conflicts_with = "embedded_images_unbounded",
+        help_heading = "Merman embedded-image controls"
+    )]
+    pub(crate) max_total_pixels: Option<u64>,
+
+    /// Disable embedded raster image decode budgets for trusted inputs.
+    #[arg(
+        long = "embedded-images-unbounded",
+        conflicts_with_all = [
+            "max_image_bytes",
+            "max_total_bytes",
+            "max_image_pixels",
+            "max_total_pixels"
+        ],
+        help_heading = "Merman embedded-image controls"
+    )]
+    pub(crate) embedded_images_unbounded: bool,
 }
 
 #[derive(Debug, Clone, ClapArgs, Default)]
@@ -772,7 +872,7 @@ impl RenderFormat {
         }
     }
 
-    pub(crate) fn is_raster(self) -> bool {
+    pub(crate) fn requires_svg_encoding(self) -> bool {
         matches!(
             self,
             RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf

@@ -24,7 +24,7 @@ fn render_parsed(input: &str) -> String {
         .parse_diagram_for_render_model_sync(input, merman_core::ParseOptions::strict())
         .unwrap()
         .unwrap();
-    render_model(&parsed.model, &AsciiRenderOptions::ascii()).unwrap()
+    render_model(parsed.model(), &AsciiRenderOptions::ascii()).unwrap()
 }
 
 fn tree_node(

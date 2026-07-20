@@ -3,8 +3,7 @@ use crate::diagnostic_projection::{
     panic_diagnostic,
 };
 use crate::recovery::{
-    AnalysisRecoveryDiagnostic, core_error_recovery_diagnostics, editor_recovery_diagnostics,
-    merge_recovery_diagnostics,
+    AnalysisRecoveryDiagnostic, editor_recovery_diagnostics, merge_recovery_diagnostics,
 };
 use crate::rules::AnalysisRuleConfig;
 use crate::{
@@ -13,15 +12,14 @@ use crate::{
     SourceMap,
 };
 use merman_core::{
-    EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig, ParseOptions, ParsedDiagram,
-    ParsedDiagramWithEditorFacts, ParsedEditorFacts,
+    DiagramParseOutcome, EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig,
+    ParseMetadata, ParsedDiagram, ParsedEditorFacts,
 };
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisOptions {
-    pub parse: ParseOptions,
     pub source: SourceDescriptor,
     pub site_config: Option<MermaidConfig>,
     pub fixed_today: Option<chrono::NaiveDate>,
@@ -33,7 +31,6 @@ pub struct AnalysisOptions {
 impl Default for AnalysisOptions {
     fn default() -> Self {
         Self {
-            parse: ParseOptions::strict(),
             source: SourceDescriptor::diagram(),
             site_config: None,
             fixed_today: None,
@@ -45,11 +42,6 @@ impl Default for AnalysisOptions {
 }
 
 impl AnalysisOptions {
-    pub fn with_parse_options(mut self, parse: ParseOptions) -> Self {
-        self.parse = parse;
-        self
-    }
-
     pub fn with_source(mut self, source: SourceDescriptor) -> Self {
         self.source = source;
         self
@@ -81,8 +73,7 @@ impl AnalysisOptions {
     }
 
     pub fn snapshot_affecting_eq(&self, other: &Self) -> bool {
-        self.parse == other.parse
-            && self.site_config == other.site_config
+        self.site_config == other.site_config
             && self.fixed_today == other.fixed_today
             && self.fixed_local_offset_minutes == other.fixed_local_offset_minutes
             && self.max_source_bytes == other.max_source_bytes
@@ -128,7 +119,7 @@ impl Analyzer {
         let source_text = Arc::<str>::from(source);
         let source_map = SourceMap::new(Arc::clone(&source_text));
         let diagram = crate::document::whole_document_diagram(source_text, &self.options.source);
-        let analyzed = self.analyze_diagram(&diagram);
+        let analyzed = self.analyze_diagram(&diagram, &source_map);
         AnalysisResult::new(
             self.options.source.clone(),
             source_map,
@@ -160,16 +151,23 @@ impl Analyzer {
         self.analyze_facts(source).to_json_bytes()
     }
 
-    pub(crate) fn analyze_diagram(&self, diagram: &DocumentDiagram) -> AnalyzedDiagram {
-        let local = self.analyze_local(&diagram.text, AnalysisMode::RichFacts);
+    pub(crate) fn analyze_diagram(
+        &self,
+        diagram: &DocumentDiagram,
+        document_source_map: &SourceMap,
+    ) -> AnalyzedDiagram {
+        let local =
+            self.analyze_diagram_local(diagram, document_source_map, AnalysisMode::RichFacts);
         AnalyzedDiagram::from_document_diagram(diagram, local.diagnostics, local.syntax)
     }
 
     pub(crate) fn analyze_diagram_diagnostics(
         &self,
         diagram: &DocumentDiagram,
+        document_source_map: &SourceMap,
     ) -> Vec<AnalysisDiagnostic> {
-        self.analyze_source_diagnostics(&diagram.text)
+        self.analyze_diagram_local(diagram, document_source_map, AnalysisMode::Diagnostics)
+            .diagnostics
     }
 
     pub(crate) fn analyze_source_diagnostics(&self, source: &str) -> Vec<AnalysisDiagnostic> {
@@ -178,51 +176,81 @@ impl Analyzer {
     }
 
     fn analyze_local(&self, source: &str, mode: AnalysisMode) -> LocalAnalysis {
+        let source_map = SourceMap::new(source);
+        self.analyze_local_with_source_map(source, &source_map, mode)
+    }
+
+    fn analyze_diagram_local(
+        &self,
+        diagram: &DocumentDiagram,
+        document_source_map: &SourceMap,
+        mode: AnalysisMode,
+    ) -> LocalAnalysis {
+        if diagram.is_fence() {
+            self.analyze_local(&diagram.text, mode)
+        } else {
+            self.analyze_local_with_source_map(&diagram.text, document_source_map, mode)
+        }
+    }
+
+    fn analyze_local_with_source_map(
+        &self,
+        source: &str,
+        source_map: &SourceMap,
+        mode: AnalysisMode,
+    ) -> LocalAnalysis {
         if let Some(diagnostics) = self.source_limit_diagnostics(source) {
             return LocalAnalysis::empty_syntax(diagnostics);
         }
 
-        let source_map = SourceMap::new(source);
-
         if source.trim().is_empty() {
-            let diagnostics = no_diagram_diagnostic(&source_map, &self.options.rule_config)
+            let diagnostics = no_diagram_diagnostic(source_map, &self.options.rule_config)
                 .into_iter()
                 .collect();
             return mode.unavailable_syntax(None, diagnostics);
         }
 
         let source_lints =
-            crate::rules::source_lint_diagnostics(source, &source_map, &self.options.rule_config);
+            crate::rules::source_lint_diagnostics(source, source_map, &self.options.rule_config);
 
-        let parse_result = panic::catch_unwind(AssertUnwindSafe(|| match mode {
-            AnalysisMode::Diagnostics => self
-                .engine
-                .parse_diagram_sync(source, self.options.parse)
-                .map(|parsed| parsed.map(ParsedAnalysisDiagram::Diagnostics)),
-            AnalysisMode::RichFacts => self
-                .engine
-                .parse_diagram_with_editor_facts_sync(source, self.options.parse)
-                .map(|parsed| parsed.map(ParsedAnalysisDiagram::RichFacts)),
+        let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
+            self.engine.parse_diagram_snapshot_sync(source)
         }));
 
         match parse_result {
             Err(panic_payload) => {
                 let mut diagnostics = source_lints;
                 if let Some(diagnostic) =
-                    panic_diagnostic(panic_payload, &source_map, &self.options.rule_config)
+                    panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
                 {
                     diagnostics.push(diagnostic);
                 }
                 mode.unavailable_syntax(None, diagnostics)
             }
             Ok(parse_result) => match parse_result {
-                Ok(Some(parsed)) => {
-                    self.analyze_parsed_diagram(source, &source_map, parsed, source_lints, mode)
+                Ok(Some(snapshot)) => {
+                    let (meta, outcome, editor_facts) = snapshot.into_parts();
+                    match outcome {
+                        DiagramParseOutcome::Parsed(model) => self.analyze_parsed_diagram(
+                            source,
+                            source_map,
+                            ParsedDiagram { meta, model },
+                            editor_facts,
+                            source_lints,
+                            mode,
+                        ),
+                        DiagramParseOutcome::Failed(error) => self.analyze_parse_error(
+                            source_map,
+                            source_lints,
+                            meta,
+                            editor_facts,
+                            error,
+                            mode,
+                        ),
+                    }
                 }
                 Ok(None) => mode.unavailable_syntax(None, source_lints),
-                Err(error) => {
-                    self.analyze_parse_error(source, &source_map, source_lints, error, mode)
-                }
+                Err(error) => self.analyze_operation_error(source_map, source_lints, error, mode),
             },
         }
     }
@@ -231,11 +259,11 @@ impl Analyzer {
         &self,
         source: &str,
         source_map: &SourceMap,
-        parsed: ParsedAnalysisDiagram,
+        parsed: ParsedDiagram,
+        editor_facts: ParsedEditorFacts,
         mut diagnostics: Vec<AnalysisDiagnostic>,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
-        let (parsed, precomputed_editor_facts) = parsed.into_parts();
         let diagram_type = parsed.meta.diagram_type;
         diagnostics.extend(crate::rules::parsed_source_lint_diagnostics(
             source,
@@ -263,17 +291,19 @@ impl Analyzer {
                 let flowchart_projection =
                     self.flowchart_facts_projection(&parsed.model, &diagram_type, source_map);
                 diagnostics.extend(flowchart_projection.diagnostics);
-                let editor_projection = match precomputed_editor_facts {
-                    Some(ParsedEditorFacts::Available(facts)) => self
-                        .editor_facts_projection_from_facts(
-                            &diagram_type,
-                            source_map,
-                            mode,
-                            Some(facts),
-                        ),
-                    Some(ParsedEditorFacts::Unavailable) => self
-                        .editor_facts_projection_from_facts(&diagram_type, source_map, mode, None),
-                    None => self.editor_facts_projection(source, &diagram_type, source_map, mode),
+                let editor_projection = match editor_facts {
+                    ParsedEditorFacts::Available(facts) => self.editor_facts_projection_from_facts(
+                        &diagram_type,
+                        source_map,
+                        mode,
+                        Some(facts),
+                    ),
+                    ParsedEditorFacts::Unavailable => self.editor_facts_projection_from_facts(
+                        &diagram_type,
+                        source_map,
+                        mode,
+                        None,
+                    ),
                 };
                 diagnostics.extend(
                     editor_projection
@@ -296,7 +326,45 @@ impl Analyzer {
 
     fn analyze_parse_error(
         &self,
-        source: &str,
+        source_map: &SourceMap,
+        mut diagnostics: Vec<AnalysisDiagnostic>,
+        meta: ParseMetadata,
+        editor_facts: ParsedEditorFacts,
+        error: CoreError,
+        mode: AnalysisMode,
+    ) -> LocalAnalysis {
+        let core_diagnostic = core_error_diagnostic(error, source_map, &self.options.rule_config);
+        if let Some(diagnostic) = core_diagnostic.diagnostic {
+            diagnostics.push(diagnostic);
+        }
+        let diagram_type = meta.diagram_type;
+        let editor_projection = match editor_facts {
+            ParsedEditorFacts::Available(facts) => self.editor_facts_projection_from_facts(
+                &diagram_type,
+                source_map,
+                mode,
+                Some(facts),
+            ),
+            ParsedEditorFacts::Unavailable => {
+                self.editor_facts_projection_from_facts(&diagram_type, source_map, mode, None)
+            }
+        };
+        merge_recovery_diagnostics(
+            &mut diagnostics,
+            editor_projection.diagnostics,
+            core_diagnostic.parse_location,
+        );
+        let effective_layout = meta.effective_config.get_str("layout").map(str::to_owned);
+        let syntax = AnalysisSyntaxFacts::new(Some(diagram_type), editor_projection.text_index)
+            .with_effective_layout(effective_layout);
+        LocalAnalysis {
+            diagnostics,
+            syntax,
+        }
+    }
+
+    fn analyze_operation_error(
+        &self,
         source_map: &SourceMap,
         mut diagnostics: Vec<AnalysisDiagnostic>,
         error: CoreError,
@@ -306,44 +374,7 @@ impl Analyzer {
         if let Some(diagnostic) = core_diagnostic.diagnostic {
             diagnostics.push(diagnostic);
         }
-        let syntax = match core_diagnostic.diagram_type {
-            Some(diagram_type) => {
-                let editor_projection =
-                    self.editor_facts_projection(source, &diagram_type, source_map, mode);
-                merge_recovery_diagnostics(
-                    &mut diagnostics,
-                    editor_projection.diagnostics,
-                    core_diagnostic.parse_location,
-                );
-                AnalysisSyntaxFacts::new(Some(diagram_type), editor_projection.text_index)
-            }
-            None if mode == AnalysisMode::Diagnostics => {
-                AnalysisSyntaxFacts::new(None, FenceTextIndex::default())
-            }
-            None => AnalysisSyntaxFacts::unavailable(None),
-        };
-        LocalAnalysis {
-            diagnostics,
-            syntax,
-        }
-    }
-
-    fn editor_facts_projection(
-        &self,
-        source: &str,
-        diagram_type: &str,
-        source_map: &SourceMap,
-        mode: AnalysisMode,
-    ) -> EditorFactsProjection {
-        match self.parse_editor_semantic_facts(source, diagram_type, source_map) {
-            Err(diagnostics) => EditorFactsProjection::unavailable(diagnostics),
-            Ok(Some(facts)) => {
-                self.editor_facts_projection_from_facts(diagram_type, source_map, mode, Some(facts))
-            }
-            Ok(None) => {
-                self.editor_facts_projection_from_facts(diagram_type, source_map, mode, None)
-            }
-        }
+        mode.unavailable_syntax(core_diagnostic.diagram_type, diagnostics)
     }
 
     fn editor_facts_projection_from_facts(
@@ -397,39 +428,6 @@ impl Analyzer {
         }
     }
 
-    fn parse_editor_semantic_facts(
-        &self,
-        source: &str,
-        diagram_type: &str,
-        source_map: &SourceMap,
-    ) -> Result<Option<EditorSemanticFacts>, Vec<AnalysisRecoveryDiagnostic>> {
-        let facts_result = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.engine.parse_editor_semantic_facts_with_type_sync(
-                diagram_type,
-                source,
-                self.options.parse,
-            )
-        }));
-
-        match facts_result {
-            Err(panic_payload) => {
-                Err(
-                    panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
-                        .map(AnalysisRecoveryDiagnostic::plain)
-                        .into_iter()
-                        .collect(),
-                )
-            }
-            Ok(Ok(facts)) => Ok(facts),
-            Ok(Err(CoreError::UnsupportedDiagram { .. })) => Ok(None),
-            Ok(Err(error)) => Err(core_error_recovery_diagnostics(
-                error,
-                source_map,
-                &self.options.rule_config,
-            )),
-        }
-    }
-
     pub(crate) fn source_limit_result(
         &self,
         source: &str,
@@ -447,20 +445,6 @@ impl Analyzer {
 enum AnalysisMode {
     Diagnostics,
     RichFacts,
-}
-
-enum ParsedAnalysisDiagram {
-    Diagnostics(ParsedDiagram),
-    RichFacts(ParsedDiagramWithEditorFacts),
-}
-
-impl ParsedAnalysisDiagram {
-    fn into_parts(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
-        match self {
-            Self::Diagnostics(parsed) => (parsed, None),
-            Self::RichFacts(parsed) => (parsed.diagram, Some(parsed.editor_facts)),
-        }
-    }
 }
 
 impl AnalysisMode {

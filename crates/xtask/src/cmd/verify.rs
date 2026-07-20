@@ -48,7 +48,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
-        println!("  cargo nextest run");
+        println!("  cargo nextest run --workspace");
         println!("  cargo test -p merman-render --doc");
         println!("  cargo test -p merman --doc --features render");
         println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
@@ -61,7 +61,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --feature-matrix");
         println!("                  check public no-default/render/raster feature combinations");
         println!("  --root-parity   run full SVG root parity after normal DOM parity");
-        println!("  --strict        run every optional gate plus Mermaid reference evidence");
+        println!("  --strict        run every optional gate plus materialized release, generated,");
+        println!("                  Web, Playground browser, VS Code, and skill evidence");
+        println!("                  and cargo test --workspace --doc");
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -86,6 +88,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .arg("--check")
         .current_dir(&workspace_root);
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
+
+    println!("\n== editor token descriptor ==");
+    cmd::verify_editor_token_descriptor(Vec::new())?;
 
     if options.all_features {
         println!("\n== cargo check --workspace --all-features ==");
@@ -134,8 +139,60 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if options.strict {
-        println!("\n== Mermaid reference bundle ==");
-        cmd::verify_mermaid_reference(Vec::new())?;
+        println!("\n== materialized Mermaid reference bundle ==");
+        cmd::verify_mermaid_reference(vec!["--materialized".to_string()])?;
+
+        println!("\n== all generated contracts ==");
+        cmd::verify_generated(Vec::new())?;
+
+        println!("\n== alignment evidence ==");
+        cmd::check_alignment(Vec::new())?;
+
+        println!("\n== Mermaid alignment skill ==");
+        let mut skill_cmd = Command::new("python3");
+        skill_cmd
+            .arg(".agents/skills/align-mermaid-release/scripts/validate_workflow.py")
+            .current_dir(&workspace_root);
+        run_checked("align-mermaid-release workflow validator", &mut skill_cmd)?;
+
+        println!("\n== open-source release materials ==");
+        for (what, script, argument) in [
+            (
+                "third-party source and license contract",
+                "scripts/verify-third-party-licenses.py",
+                None,
+            ),
+            (
+                "Rust dependency license report",
+                "scripts/generate-rust-license-report.py",
+                Some("--check"),
+            ),
+            (
+                "release legal material projections",
+                "scripts/sync-release-legal-materials.py",
+                Some("--check"),
+            ),
+            (
+                "Cargo package legal materials",
+                "scripts/verify_crate_package_legal_materials.py",
+                None,
+            ),
+        ] {
+            let mut legal_cmd = Command::new("python3");
+            legal_cmd.arg(script).current_dir(&workspace_root);
+            if let Some(argument) = argument {
+                legal_cmd.arg(argument);
+            }
+            run_checked(what, &mut legal_cmd)?;
+        }
+        for package_dir in ["playground", "tools/vscode-extension"] {
+            run_npm_script(
+                &workspace_root,
+                package_dir,
+                "licenses:check",
+                &mut run_checked,
+            )?;
+        }
 
         println!("\n== ZenUML candidate matrix ==");
         let mut npm_cmd = Command::new("npm");
@@ -150,8 +207,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     nextest_cmd
         .arg("nextest")
         .arg("run")
+        .arg("--workspace")
         .current_dir(&workspace_root);
-    run_checked("cargo nextest run", &mut nextest_cmd)?;
+    run_checked("cargo nextest run --workspace", &mut nextest_cmd)?;
 
     println!("\n== architecture compile-fail contracts ==");
     for (what, package, features) in [
@@ -169,6 +227,13 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         }
         doctest_cmd.current_dir(&workspace_root);
         run_checked(what, &mut doctest_cmd)?;
+    }
+    if options.strict {
+        let mut workspace_doctest_cmd = Command::new("cargo");
+        workspace_doctest_cmd
+            .args(["test", "--workspace", "--doc"])
+            .current_dir(&workspace_root);
+        run_checked("cargo test --workspace --doc", &mut workspace_doctest_cmd)?;
     }
 
     println!("\n== svg dom structure ==");
@@ -200,7 +265,42 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         ])?;
     }
 
+    if options.strict {
+        println!("\n== Web package ==");
+        for script in ["build", "smoke", "prepack"] {
+            run_npm_script(&workspace_root, "platforms/web", script, &mut run_checked)?;
+        }
+
+        println!("\n== Playground package and browsers ==");
+        for script in ["test", "lint", "build", "test:browser:chromium"] {
+            run_npm_script(&workspace_root, "playground", script, &mut run_checked)?;
+        }
+
+        println!("\n== VS Code extension ==");
+        run_npm_script(
+            &workspace_root,
+            "tools/vscode-extension",
+            "test",
+            &mut run_checked,
+        )?;
+    }
+
     Ok(())
+}
+
+fn run_npm_script(
+    workspace_root: &std::path::Path,
+    package_dir: &str,
+    script: &str,
+    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
+) -> Result<(), XtaskError> {
+    let what = format!("npm run {script} ({package_dir})");
+    println!("{what}");
+    let mut command = Command::new("npm");
+    command
+        .args(["run", script])
+        .current_dir(workspace_root.join(package_dir));
+    run_checked(&what, &mut command)
 }
 
 fn run_feature_matrix(

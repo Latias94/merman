@@ -168,7 +168,7 @@ fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
     .expect("write svg");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
+    let output = Command::new(exe)
         .current_dir(&root)
         .args([
             "render",
@@ -180,8 +180,14 @@ fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
-        .assert()
-        .success();
+        .output()
+        .expect("run cli");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("constrained from 1000x500 to 128x64 pixels"),
+        "{stderr}"
+    );
 
     let bytes = fs::read(&out).expect("read png");
     assert_eq!(png_dimensions(&bytes), (128, 64));

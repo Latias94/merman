@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -53,7 +53,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match version."
             validated_source_ref="refs/tags/$source_tag"
@@ -91,6 +91,9 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
       - name: Verify FFI publish surface
         run: python3 scripts/verify-ffi-publish-surface.py
 
@@ -105,6 +108,9 @@ jobs:
           while IFS= read -r crate; do
             cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
           done < target/package-lists/crates.txt
+
+      - name: Verify Cargo package legal materials
+        run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Verify registry-independent crate dry-runs
         run: |
@@ -229,6 +235,12 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
 
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: |
+          echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
+          echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
+
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -238,15 +250,13 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.4.1"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -260,7 +270,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
 
       - name: Build Android native libraries
         env:
@@ -268,10 +278,16 @@ jobs:
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
       - name: Build Android AAR
-        run: gradle -p platforms/android assembleRelease --stacktrace
+        run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
 
-      - name: Verify Maven publication metadata
-        run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+      - name: Verify AAR contract
+        run: python3 scripts/verify-platform-bindings.py --verify-android-aar
+
+      - name: Publish to the local Maven staging repository
+        run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+
+      - name: Verify Maven publication contract
+        run: python3 scripts/verify-platform-bindings.py --verify-android-maven
 
   apple-xcframework:
     needs: validate-inputs
@@ -341,6 +357,13 @@ jobs:
         run: |
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
           cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Verify generated Web contracts
+        run: |
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -493,6 +516,10 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
 
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
+
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -520,7 +547,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
 
       - name: Build Android native libraries
         env:

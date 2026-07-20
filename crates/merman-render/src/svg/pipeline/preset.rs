@@ -1,8 +1,9 @@
 use super::builtin::{
-    attr_sanitize::sanitize_element_attributes,
+    attr_sanitize::sanitize_element_attributes_cow,
     css_sanitize::sanitize_style_elements,
     foreign_object::{
-        drop_switch_native_fallbacks, foreign_object_fallback_svg, strip_foreign_objects,
+        drop_native_duplicate_fallbacks, drop_switch_native_fallbacks, foreign_object_fallback_svg,
+        strip_foreign_objects,
     },
     presentation_fallback::resolve_resvg_presentation_fallbacks,
 };
@@ -47,16 +48,34 @@ impl BuiltinSvgStage {
     ) -> Cow<'a, str> {
         match self {
             Self::ForeignObjectFallback => {
+                if !svg.contains("<foreignObject") {
+                    return svg;
+                }
                 let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
                 Cow::Owned(foreign_object_fallback_svg(&svg, &measurer))
             }
-            Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
-            Self::DropSwitchNativeFallbacks => Cow::Owned(drop_switch_native_fallbacks(&svg)),
-            Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
+            Self::StripForeignObject => {
+                if !svg.contains("<foreignObject") {
+                    return svg;
+                }
+                Cow::Owned(strip_foreign_objects(&svg))
+            }
+            Self::DropSwitchNativeFallbacks => {
+                if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
+                    return svg;
+                }
+                Cow::Owned(drop_switch_native_fallbacks(&svg))
+            }
+            Self::SanitizeCss => {
+                if !svg.contains("<style") {
+                    return svg;
+                }
+                Cow::Owned(sanitize_style_elements(&svg))
+            }
             Self::ResolvePresentationFallbacks => {
                 resolve_resvg_presentation_fallbacks(svg, metadata)
             }
-            Self::SanitizeAttributes => Cow::Owned(sanitize_element_attributes(&svg)),
+            Self::SanitizeAttributes => sanitize_element_attributes_cow(svg),
         }
     }
 }
@@ -76,35 +95,20 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
     }
 }
 
-pub(crate) fn apply_preset<'a>(
-    preset: SvgPipelinePreset,
-    svg: &'a str,
-    metadata: &SvgPostprocessMetadata,
-    session: &RenderSession,
-) -> Cow<'a, str> {
-    apply_preset_cow(preset, Cow::Borrowed(svg), metadata, session)
-}
-
 pub(crate) fn apply_preset_cow<'a>(
     preset: SvgPipelinePreset,
     mut current: Cow<'a, str>,
     metadata: &SvgPostprocessMetadata,
     session: &RenderSession,
+    drop_native_duplicates: bool,
 ) -> Cow<'a, str> {
     for stage in builtin_stages_for_preset(preset) {
         current = stage.apply(current, metadata, session);
+        if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
+            current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
+        }
     }
     current
-}
-
-/// Converts Mermaid-like SVG into a best-effort resvg/usvg compatible SVG string.
-///
-/// This source-string helper is deliberately family-agnostic. Call
-/// [`super::SvgPipeline::process_to_string_with_metadata`] with an explicitly typed family context
-/// when a family-specific fallback is required.
-pub fn resvg_safe_svg(svg: &str, session: &RenderSession) -> String {
-    let metadata = SvgPostprocessMetadata::from_svg(svg);
-    apply_preset(SvgPipelinePreset::ResvgSafe, svg, &metadata, session).into_owned()
 }
 
 #[cfg(test)]
@@ -132,22 +136,42 @@ mod tests {
     }
 
     #[test]
-    fn resvg_safe_function_uses_preset_stage_runner() {
+    fn resvg_safe_pipeline_uses_preset_stage_runner() {
         let svg = r#"<svg><style>@keyframes a{to{opacity:1}}</style><foreignObject width="10" height="10"><div><p>Hello</p></div></foreignObject><rect width="10px" height="NaN"/></svg>"#;
         let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
 
-        assert_eq!(
-            resvg_safe_svg(svg, &session),
-            apply_preset(
-                SvgPipelinePreset::ResvgSafe,
-                svg,
-                &SvgPostprocessMetadata::from_svg(svg),
-                &session,
-            )
-            .into_owned()
+        let output = super::super::finalize_resvg_svg(svg, &session).unwrap();
+        let expected = apply_preset_cow(
+            SvgPipelinePreset::ResvgSafe,
+            Cow::Borrowed(svg),
+            &SvgPostprocessMetadata::from_svg(svg),
+            &session,
+            false,
         );
+
+        assert_eq!(output.as_str(), expected.as_ref());
+    }
+
+    #[test]
+    fn resvg_safe_stages_keep_an_unchanged_svg_borrowed() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L1 1"/></svg>"#;
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+
+        let output = apply_preset_cow(
+            SvgPipelinePreset::ResvgSafe,
+            Cow::Borrowed(svg),
+            &metadata,
+            &session,
+            false,
+        );
+
+        assert!(matches!(output, Cow::Borrowed(_)));
+        assert_eq!(output, svg);
     }
 
     #[test]
@@ -157,7 +181,9 @@ mod tests {
             .begin_session()
             .unwrap();
 
-        let out = resvg_safe_svg(svg, &session);
+        let out = super::super::finalize_resvg_svg(svg, &session)
+            .unwrap()
+            .into_string();
 
         assert!(!out.contains("NaN"), "{out}");
         let document = roxmltree::Document::parse(&out).expect("valid generic resvg-safe SVG");
@@ -178,7 +204,13 @@ mod tests {
         let metadata = SvgPostprocessMetadata::from_svg(svg)
             .with_family_kind(crate::family::RenderFamilyKind::QuadrantChart);
 
-        let out = apply_preset(SvgPipelinePreset::ResvgSafe, svg, &metadata, &session);
+        let out = apply_preset_cow(
+            SvgPipelinePreset::ResvgSafe,
+            Cow::Borrowed(svg),
+            &metadata,
+            &session,
+            false,
+        );
 
         assert!(out.contains(r##"fill="#000000""##), "{out}");
         assert!(out.contains(r#"stroke="none""#), "{out}");
@@ -191,7 +223,9 @@ mod tests {
             .begin_session()
             .unwrap();
 
-        let out = resvg_safe_svg(svg, &session);
+        let out = super::super::finalize_resvg_svg(svg, &session)
+            .unwrap()
+            .into_string();
 
         assert!(out.contains(r##"fill="url(#undefined)""##), "{out}");
         assert!(out.contains(r##"stroke="url(#nan)""##), "{out}");

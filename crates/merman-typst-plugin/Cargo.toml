@@ -17,14 +17,13 @@ categories = ["wasm", "visualization"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["render", "analysis", "elk-layout"]
+default = ["render", "analysis", "core-full", "elk-layout"]
 core-full = ["merman-bindings-core/core-full"]
 core-host = ["merman-bindings-core/core-host"]
-analysis = ["merman-bindings-core/analysis"]
+analysis = ["merman-bindings-core/analysis", "dep:serde_json"]
 render = ["merman-bindings-core/render", "dep:serde_json"]
 cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
 elk-layout = ["merman-bindings-core/elk-layout"]
-ratex-math = ["render", "merman-bindings-core/ratex-math"]
 
 [dependencies]
 merman-bindings-core.workspace = true
@@ -32,4 +31,7 @@ serde_json = { workspace = true, optional = true }
 wasm-minimal-protocol.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
+
+[build-dependencies]
 serde_json.workspace = true

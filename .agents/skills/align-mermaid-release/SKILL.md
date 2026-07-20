@@ -33,7 +33,7 @@ Use the repository generator named by the reference descriptor and exposed by `x
 hand-edit generated projections or invent a second updater. Then run:
 
 ```bash
-cargo run -p xtask -- verify-mermaid-reference
+cargo run -p xtask -- verify-mermaid-reference --materialized
 ```
 
 Resolve three facts for every Mermaid companion:
@@ -152,11 +152,12 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-Run release DOM comparisons in `structure`, `parity`, and `parity-root` modes. Run Web contract,
-build, smoke, Playground unit/browser, reference CLI, LSP, and VS Code gates whenever those surfaces
-changed. Run the WASM size matrix and target build matrix whenever dependency or feature ownership
-changed. Use `npm ls --all` in the Playground and reference CLI to prove that materialized companion
-graphs match the descriptor. Use `cargo nextest` for Rust tests.
+The strict command owns release DOM comparisons in `structure`, `parity`, and `parity-root`, Web
+contract/build/smoke/prepack, Playground unit/lint/build/browser, and VS Code package gates. Run
+reference CLI, LSP, platform, and extension-host matrices whenever those surfaces changed. Run the
+WASM size matrix and target build matrix whenever dependency or feature ownership changed. Use
+`npm ls --all` in the Playground and reference CLI to prove that materialized companion graphs match
+the descriptor. Use `cargo nextest` for Rust tests.
 
 Update the upgrade playbook, relevant ADRs and family/editor records, package surfaces, Playground
 design, generated status, and provenance. Report selected versus rejected companions, admitted
@@ -175,4 +176,7 @@ python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 ```
 
 Also run the installed `skill-creator` `quick_validate.py` against this skill directory. The
-workflow validator must reject a fixture with any required workflow heading removed.
+workflow validator must reject a fixture with any required workflow heading removed. Its minimal
+release-delta forward test must also fail closed on missing capability ownership, incomplete
+parser/editor/render/Playground evidence, an unscoped companion major, an unreasoned feature
+decision, or an incomplete verification command sequence.

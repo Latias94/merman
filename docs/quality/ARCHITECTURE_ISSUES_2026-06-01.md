@@ -337,6 +337,16 @@ and documented lenient/strict semantics remain unchanged for compatibility and
 can be reassessed separately if the public Interface is revised before a stable
 release.
 
+Status note 2026-07-20:
+
+The editor/analysis boundary no longer accepts `ParseOptions`. Its closed parse
+snapshot always retains the original family failure and same-construction
+recovery facts. `ParseOptions::suppress_errors` remains intentionally limited to
+model-producing JSON, render, and ASCII facades, where it is observable rather
+than silently ignored. This closes the analysis-side ambiguity while preserving
+the Mermaid-compatible Error-family projection where it is part of the output
+contract.
+
 Related decisions:
 
 - ADR-0004 public API and headless output

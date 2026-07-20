@@ -18,9 +18,10 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
         .parse_diagram_for_render_model_sync(ARCH_REASONABLE_HEIGHT, parse_opts)
         .expect("parse")
         .expect("supported diagram");
-    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+    let RenderSemanticModel::Architecture(model) = parsed.model() else {
         panic!("expected architecture render model");
     };
+    let effective_config = parsed.metadata().effective_config.as_value();
     let ambient_seed = session.seed().seed().get();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
@@ -35,7 +36,7 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
             for _ in 0..50usize {
                 let layouted = layout_architecture_diagram_typed(
                     black_box(model),
-                    parsed.meta.effective_config.as_value(),
+                    effective_config,
                     &measurer,
                     ambient_seed,
                 )

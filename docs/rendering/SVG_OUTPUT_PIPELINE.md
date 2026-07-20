@@ -1,10 +1,12 @@
 # SVG Output Pipeline
 
-`merman` has two SVG output contracts:
+`merman` has distinct SVG output contracts:
 
 - `render_svg_sync` returns Mermaid-parity SVG and remains the default.
 - `SvgPipeline` turns that parity SVG into consumer-oriented output for previews, raster export,
   or host-specific cleanup.
+- `ResvgCompatibleSvg` is a sealed artifact produced only after the terminal resvg finalizer and is
+  the only input accepted by the low-level raster encoders.
 
 Default SVG output is not optimized or cleaned by default because parity output is the comparison
 surface for upstream Mermaid fixtures. Consumers that need renderer compatibility should opt in to
@@ -28,11 +30,13 @@ Typical choices:
 
 - Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
 - Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
-- Use `render_svg_resvg_safe_sync` or `SvgPipeline::resvg_safe()` before PNG/JPG/PDF export through `resvg` / `usvg`.
+- Use `render_resvg_compatible_svg_with_pipeline_sync` or
+  `SvgPipeline::process_resvg_compatible()` before calling low-level PNG/JPG/PDF encoders.
 - Use `merman-cli --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG bytes
   instead of the default Mermaid-parity SVG contract.
 - Use `HeadlessRenderer::render_png_sync`, `render_jpeg_sync`, or `render_pdf_sync` when the input is Mermaid source and the caller wants the standard render-and-raster path; those helpers select the raster-safe pipeline through the Headless Render Operation.
-- Add `SvgPostprocessor` passes when a host application needs product-specific styling, metadata, or cleanup after a built-in preset.
+- Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
+  metadata. The selected built-in preset always runs after these passes.
 
 ## Presets
 
@@ -79,16 +83,14 @@ The compatibility helpers are wrappers around the same pipeline:
 
 The source-string helpers extract root SVG attributes only as descriptive metadata. They never
 promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
-Family-specific processing requires `SvgPipeline::process_to_string_with_metadata` (or
-`apply_svg_pipeline_with_metadata`) plus an explicit
-`SvgPostprocessMetadata::with_family_kind`, normally supplied by the typed render operation. A
-diagram-type string alone does not authorize a family-specific fallback, and the generic
-`resvg_safe_svg(svg, session)` helper deliberately performs only family-agnostic cleanup.
+Only the typed family render operation can retain that capability through postprocessing. A
+diagram-type string alone does not authorize a family-specific fallback, and
+`finalize_resvg_svg(svg, session)` deliberately performs only family-agnostic cleanup.
 
 ## Host Postprocessors
 
-Applications can append product-specific passes after a built-in preset. The postprocess context
-includes preset, pass ordering, diagram type, diagram title, and root SVG id:
+Applications can append product-specific draft passes. The postprocess context includes preset,
+pass ordering, diagram type, diagram title, and root SVG id:
 
 ```rust
 use merman::render::{
@@ -120,8 +122,14 @@ let pipeline = SvgPipeline::resvg_safe().with_postprocessor(AddComment);
 # let _ = pipeline;
 ```
 
-Built-in passes always run before custom postprocessors, and custom postprocessors run in insertion
-order. Custom pass errors are surfaced as render errors with the pass name attached.
+Custom postprocessors run in insertion order, then the selected built-in preset runs as the terminal
+stage. A `resvg_safe` pipeline tokenizes and sanitizes CSS, strips active SVG constructs and unsafe
+attributes, parses the final XML, and validates the residual compatibility contract after every
+custom pass. Custom pass errors are surfaced with the pass name attached. Finalized output is
+represented by `ResvgCompatibleSvg`; callers cannot construct that type from an arbitrary string.
+
+This contract targets `usvg` / `resvg`. It does not claim browser DOM safety. Browser embedding must
+use the Web package's `SafeInlineSvg` validator and the surrounding CSP/sandbox policy.
 
 ## Built-In Host Styling Blocks
 
@@ -169,7 +177,7 @@ before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
-`SvgPostprocessor` passes layered after these generic blocks. `RootBackgroundPostprocessor` is the
+`SvgPostprocessor` draft passes. `RootBackgroundPostprocessor` is the
 narrow exception for a common host canvas need: it rewrites only the root `<svg>` inline
 `background-color`, preserving all Mermaid-owned diagram colors.
 

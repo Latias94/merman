@@ -2,6 +2,7 @@ use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::theme::VennTheme;
 use super::super::*;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
+use merman_core::theme_color::transparentize;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr as _;
 
@@ -60,123 +61,6 @@ fn rough_color(value: &str) -> Result<roughr::Srgba> {
         color.green as f32 / 255.0,
         color.blue as f32 / 255.0,
         color.alpha as f32 / 255.0,
-    ))
-}
-
-fn khroma_round(value: f64) -> f64 {
-    (value * 10_000_000_000.0).round() / 10_000_000_000.0
-}
-
-fn parse_css_function(value: &str) -> Option<(String, Vec<String>)> {
-    let value = value.trim();
-    let open = value.find('(')?;
-    let body = value.get(open + 1..)?.strip_suffix(')')?;
-    let name = value.get(..open)?.trim().to_ascii_lowercase();
-    let normalized: String = body
-        .chars()
-        .map(|ch| if ch == ',' || ch == '/' { ' ' } else { ch })
-        .collect();
-    let channels = normalized.split_whitespace().map(str::to_string).collect();
-    Some((name, channels))
-}
-
-fn parse_percentage(value: &str, scale: f64) -> Option<f64> {
-    value
-        .strip_suffix('%')
-        .and_then(|value| value.parse::<f64>().ok())
-        .map(|value| value * scale)
-}
-
-fn parse_alpha(value: Option<&String>) -> Option<f64> {
-    match value {
-        Some(value) => parse_percentage(value, 0.01).or_else(|| value.parse::<f64>().ok()),
-        None => Some(1.0),
-    }
-    .map(|value| value.clamp(0.0, 1.0))
-}
-
-fn parse_hue(value: &str) -> Option<f64> {
-    let lower = value.to_ascii_lowercase();
-    let hue = if let Some(value) = lower.strip_suffix("grad") {
-        value.parse::<f64>().ok()? * 0.9
-    } else if let Some(value) = lower.strip_suffix("rad") {
-        value.parse::<f64>().ok()? * 180.0 / std::f64::consts::PI
-    } else if let Some(value) = lower.strip_suffix("turn") {
-        value.parse::<f64>().ok()? * 360.0
-    } else {
-        lower
-            .strip_suffix("deg")
-            .unwrap_or(lower.as_str())
-            .parse::<f64>()
-            .ok()?
-    };
-    Some(hue % 360.0)
-}
-
-fn khroma_transparentize(color: &str, amount: f64) -> Result<String> {
-    if let Some((name, channels)) = parse_css_function(color) {
-        if (name == "hsl" || name == "hsla") && (3..=4).contains(&channels.len()) {
-            let hue = parse_hue(&channels[0]);
-            let saturation = parse_percentage(&channels[1], 1.0);
-            let lightness = parse_percentage(&channels[2], 1.0);
-            if let (Some(hue), Some(saturation), Some(lightness), Some(alpha)) =
-                (hue, saturation, lightness, parse_alpha(channels.get(3)))
-            {
-                let next_alpha = (alpha - amount).clamp(0.0, 1.0);
-                if next_alpha == alpha {
-                    return Ok(color.to_string());
-                }
-                return Ok(format!(
-                    "hsla({}, {}%, {}%, {})",
-                    khroma_round(hue),
-                    khroma_round(saturation.clamp(0.0, 100.0)),
-                    khroma_round(lightness.clamp(0.0, 100.0)),
-                    next_alpha
-                ));
-            }
-        }
-
-        if (name == "rgb" || name == "rgba") && (3..=4).contains(&channels.len()) {
-            let channel = |value: &str| {
-                parse_percentage(value, 2.55)
-                    .or_else(|| value.parse::<f64>().ok())
-                    .map(|value| value.clamp(0.0, 255.0))
-            };
-            if let (Some(red), Some(green), Some(blue), Some(alpha)) = (
-                channel(&channels[0]),
-                channel(&channels[1]),
-                channel(&channels[2]),
-                parse_alpha(channels.get(3)),
-            ) {
-                let next_alpha = (alpha - amount).clamp(0.0, 1.0);
-                if next_alpha == alpha {
-                    return Ok(color.to_string());
-                }
-                return Ok(format!(
-                    "rgba({}, {}, {}, {})",
-                    khroma_round(red),
-                    khroma_round(green),
-                    khroma_round(blue),
-                    khroma_round(next_alpha)
-                ));
-            }
-        }
-    }
-
-    let parsed = roughr::Color::from_str(color.trim()).map_err(|error| Error::InvalidModel {
-        message: format!("cannot transparentize Venn color `{color}`: {error}"),
-    })?;
-    let alpha = parsed.alpha as f64 / 255.0;
-    let next_alpha = (alpha - amount).clamp(0.0, 1.0);
-    if next_alpha == alpha {
-        return Ok(color.to_string());
-    }
-    Ok(format!(
-        "rgba({}, {}, {}, {})",
-        parsed.red,
-        parsed.green,
-        parsed.blue,
-        khroma_round(next_alpha)
     ))
 }
 
@@ -385,7 +269,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         );
     }
 
-    let theme = PresentationTheme::new(effective_config).venn();
+    let theme = PresentationTheme::new(effective_config).venn()?;
     let css = venn_css(diagram_id, &theme);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
     out.push_str("<g/>");
@@ -434,9 +318,10 @@ pub(crate) fn render_venn_diagram_svg_model(
             let stroke_width = style_value(styles, "stroke-width")
                 .map(str::to_string)
                 .unwrap_or_else(|| fmt_string(5.0 * layout.scale));
-            let text_color = style_value(styles, "color")
-                .map(str::to_string)
-                .unwrap_or_else(|| theme.circle_text_color(&base_color));
+            let text_color = match style_value(styles, "color") {
+                Some(color) => color.to_string(),
+                None => theme.circle_text_color(&base_color)?,
+            };
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}">"#,
@@ -463,7 +348,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     -41.0 + circle_index as f32 * 60.0,
                     hand_drawn_seed,
                 )?;
-                let fill_stroke = khroma_transparentize(&base_color, 0.7)?;
+                let fill_stroke = transparentize(&base_color, 0.7)?;
                 let _ = write!(
                     &mut out,
                     r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/><path d="{stroke_path}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/></g>"#,
@@ -499,7 +384,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                 if let Some(fill) = custom_fill {
                     let fill_path =
                         rough_intersection_fill_path(&area.path, fill, hand_drawn_seed)?;
-                    let fill_stroke = khroma_transparentize(fill, 0.3)?;
+                    let fill_stroke = transparentize(fill, 0.3)?;
                     let _ = write!(
                         &mut out,
                         r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/></g>"#,

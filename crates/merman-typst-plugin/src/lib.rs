@@ -10,7 +10,7 @@ use std::fmt::{self, Display, Formatter};
 #[cfg(target_arch = "wasm32")]
 wasm_minimal_protocol::initiate_protocol!();
 
-pub const TYPST_PLUGIN_ABI_VERSION: &str = "1";
+include!(concat!(env!("OUT_DIR"), "/typst_plugin_abi.rs"));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypstPluginError {
@@ -45,7 +45,7 @@ impl From<merman_bindings_core::BindingError> for TypstPluginError {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn abi_version() -> &'static [u8] {
-    TYPST_PLUGIN_ABI_VERSION.as_bytes()
+    TYPST_PLUGIN_ABI_VERSION_BYTES
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
@@ -55,24 +55,28 @@ pub fn package_version() -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn capabilities_json() -> Vec<u8> {
-    typst_capabilities_json().unwrap_or_else(fallback_capabilities_json)
+    typst_capabilities_json()
 }
 
-#[cfg(feature = "render")]
-fn typst_capabilities_json() -> Option<Vec<u8>> {
-    let mut capabilities = merman_bindings_core::binding_capabilities();
-    capabilities.text_measurement.host_callback = false;
-    capabilities.text_measurement.font_assets = false;
-    serde_json::to_vec(&capabilities).ok()
-}
-
-#[cfg(not(feature = "render"))]
-fn typst_capabilities_json() -> Option<Vec<u8>> {
-    merman_bindings_core::binding_capabilities_json().ok()
-}
-
-fn fallback_capabilities_json() -> Vec<u8> {
-    br#"{"render":false,"analysis":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"editor_language":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
+fn typst_capabilities_json() -> Vec<u8> {
+    let capabilities = merman_bindings_core::BindingCapabilities {
+        render: cfg!(feature = "render"),
+        analysis: cfg!(feature = "analysis"),
+        ascii: false,
+        core_full: cfg!(feature = "core-full"),
+        core_host: cfg!(feature = "core-host"),
+        elk_layout: cfg!(feature = "elk-layout"),
+        ratex_math: false,
+        editor_language: false,
+        text_measurement: merman_bindings_core::TextMeasurementCapabilities {
+            vendored: cfg!(feature = "render"),
+            deterministic: cfg!(feature = "render"),
+            host_callback: false,
+            font_assets: false,
+        },
+    };
+    merman_bindings_core::binding_capabilities_json_for(capabilities)
+        .expect("BindingCapabilities contains only infallibly serializable fields")
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
@@ -103,12 +107,12 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
-pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, TypstPluginError> {
+pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, TypstPluginError> {
     let options_json = typst_options_json(options_json);
-    merman_bindings_core::validate_json(source, &options_json).map_err(TypstPluginError::from)
+    merman_bindings_core::analyze_json(source, &options_json).map_err(TypstPluginError::from)
 }
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "analysis"))]
 fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
     if options_json.is_empty() {
         return br#"{"resources":{"profile":"typst-package"}}"#.to_vec();
@@ -120,13 +124,14 @@ fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
     let Some(object) = value.as_object_mut() else {
         return options_json.to_vec();
     };
-    object
-        .entry("resources")
-        .or_insert_with(|| serde_json::json!({ "profile": "typst-package" }));
-    serde_json::to_vec(&value).unwrap_or_else(|_| options_json.to_vec())
+    object.insert(
+        "resources".to_string(),
+        serde_json::json!({ "profile": "typst-package" }),
+    );
+    serde_json::to_vec(&value).expect("serde_json::Value serialization is infallible")
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(any(feature = "render", feature = "analysis")))]
 fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
     options_json.to_vec()
 }
@@ -138,8 +143,9 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, "1");
-        assert_eq!(abi_version(), b"1");
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 2);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"2");
+        assert_eq!(abi_version(), b"2");
     }
 
     #[test]
@@ -153,6 +159,12 @@ mod tests {
 
         assert_eq!(payload["render"], cfg!(feature = "render"));
         assert_eq!(payload["analysis"], cfg!(feature = "analysis"));
+        assert_eq!(payload["ascii"], false);
+        assert_eq!(payload["core_full"], cfg!(feature = "core-full"));
+        assert_eq!(payload["core_host"], cfg!(feature = "core-host"));
+        assert_eq!(payload["elk_layout"], cfg!(feature = "elk-layout"));
+        assert_eq!(payload["ratex_math"], false);
+        assert_eq!(payload["editor_language"], false);
         assert_eq!(
             payload["text_measurement"]["vendored"],
             cfg!(feature = "render")
@@ -163,6 +175,45 @@ mod tests {
         );
         assert_eq!(payload["text_measurement"]["host_callback"], false);
         assert_eq!(payload["text_measurement"]["font_assets"], false);
+    }
+
+    #[cfg(any(feature = "render", feature = "analysis"))]
+    #[test]
+    fn typst_resource_policy_replaces_caller_resource_options() {
+        let options = typst_options_json(br#"{"resources":{"max_source_bytes":4096}}"#);
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+
+        assert_eq!(payload["resources"]["profile"], "typst-package");
+        assert!(payload["resources"].get("max_source_bytes").is_none());
+    }
+
+    #[cfg(any(feature = "render", feature = "analysis"))]
+    #[test]
+    fn explicit_resource_profile_cannot_bypass_typst_limits() {
+        let options = typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#);
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+
+        assert_eq!(payload["resources"]["profile"], "typst-package");
+    }
+
+    #[cfg(any(feature = "render", feature = "analysis"))]
+    #[test]
+    fn null_resources_select_the_typst_profile() {
+        let options = typst_options_json(br#"{"resources":null}"#);
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+
+        assert_eq!(payload["resources"]["profile"], "typst-package");
+    }
+
+    #[cfg(any(feature = "render", feature = "analysis"))]
+    #[test]
+    fn null_resource_profile_cannot_bypass_the_typst_limits() {
+        let options =
+            typst_options_json(br#"{"resources":{"profile":null,"max_source_bytes":4096}}"#);
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+
+        assert_eq!(payload["resources"]["profile"], "typst-package");
+        assert!(payload["resources"].get("max_source_bytes").is_none());
     }
 
     #[cfg(feature = "render")]
@@ -222,5 +273,21 @@ mod tests {
         assert_eq!(payload["code_name"], "MERMAN_NO_DIAGRAM");
         assert!(!payload["message"].as_str().unwrap().is_empty());
         assert!(payload["svg"].is_null());
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn analyze_json_returns_the_canonical_analysis_payload() {
+        let payload: Value = serde_json::from_slice(
+            &analyze_json(b"flowchart TD\nA --> B", b"").expect("analysis payload"),
+        )
+        .expect("valid JSON payload");
+
+        assert_eq!(
+            payload["version"],
+            merman_bindings_core::ANALYSIS_PAYLOAD_VERSION
+        );
+        assert_eq!(payload["valid"], true);
+        assert!(payload["diagnostics"].as_array().is_some());
     }
 }

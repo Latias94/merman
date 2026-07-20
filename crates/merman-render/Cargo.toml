@@ -52,6 +52,7 @@ ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
 rustc-hash.workspace = true
 roxmltree.workspace = true
+quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

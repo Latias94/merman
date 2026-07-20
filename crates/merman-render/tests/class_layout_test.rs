@@ -18,7 +18,7 @@ fn parse_class(text: &str) -> ParsedDiagramRender {
 }
 
 fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
-    let RenderSemanticModel::Class(model) = &parsed.model else {
+    let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");
     };
     model
@@ -34,7 +34,7 @@ fn layout_class_with_dagre(
         .check_class_complexity(model)
         .expect("class complexity within test limits");
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_class_diagram_typed_with_config(model, &parsed.meta.effective_config, &measurer)
+    layout_class_diagram_typed_with_config(model, &parsed.metadata().effective_config, &measurer)
         .expect("Dagre class layout")
 }
 

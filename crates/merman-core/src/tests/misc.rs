@@ -7,9 +7,7 @@ use std::fmt::Write;
 #[test]
 fn parse_graph_defaults_to_flowchart_v2() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("graph TD;A-->B;", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("graph TD;A-->B;")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-v2");
     assert_eq!(res.config.as_value(), &json!({}));
     assert_eq!(
@@ -52,10 +50,7 @@ fn parse_indented_headers_across_common_diagrams() {
     ];
 
     for (text, expected_type) in cases {
-        let meta = engine
-            .parse_metadata_sync(text, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let meta = engine.parse_metadata_sync(text).unwrap();
         assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
     }
 
@@ -67,10 +62,7 @@ fn parse_indented_headers_across_common_diagrams() {
             "architecture",
         ),
     ] {
-        let meta = engine
-            .parse_metadata_sync(text, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let meta = engine.parse_metadata_sync(text).unwrap();
         assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
     }
 }
@@ -88,9 +80,7 @@ config:
 %%{init: { 'theme': 'base' } }%%
 graph TD;A-->B;"#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(
         res.config.as_value(),
         &json!({
@@ -117,10 +107,7 @@ config:
 %%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 100}, "mindmap": {"padding": 15}}}%%
 graph TD;A-->B;"#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(
         res.config.as_value(),
         &json!({
@@ -146,10 +133,7 @@ fn parse_init_directives_deep_merge_in_source_order_like_upstream() {
 %%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 100}, "mindmap": {"padding": 15}}}%%
 graph TD;A-->B;"#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(
         res.config.as_value(),
         &json!({
@@ -173,10 +157,7 @@ fn parse_theme_variables_are_retained_but_default_secure_filters_effective_confi
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.config.get_str("theme"), Some("forest"));
     assert_eq!(
         res.config.get_str("themeVariables.primaryColor"),
@@ -205,10 +186,7 @@ fn site_secure_policy_can_opt_into_legacy_theme_variable_init_compatibility() {
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(
         res.effective_config.get_str("themeVariables.primaryColor"),
         Some("#123456")
@@ -253,10 +231,7 @@ gantt
         House : 1986, 3y
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "gantt");
     assert_eq!(
         res.config.as_value(),
@@ -311,10 +286,7 @@ gantt
         Iron  : 1982, 3y
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.config.get_str("look"), Some("neo"));
     assert_eq!(res.config.get_str("layout"), Some("elk"));
     assert_eq!(res.config.as_value()["gantt"]["useWidth"], json!(640));
@@ -348,10 +320,8 @@ fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
     let input = "%%{init: {\"config\": {\"htmlLabels\": true}}}%%\nflowchart TD; A-->B;";
 
     let meta = engine
-        .parse_metadata_with_type_sync("flowchart-v2", input, ParseOptions::strict())
-        .unwrap()
+        .parse_metadata_with_type_sync("flowchart-v2", input)
         .unwrap();
-
     // Mermaid special-case: `flowchart-v2` config is stored under `flowchart`.
     assert_eq!(meta.config.get_bool("flowchart.htmlLabels"), Some(true));
 }
@@ -374,10 +344,8 @@ fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
         let input = format!("%%{{init: {{\"config\": {{\"useMaxWidth\": false}}}}}}%%\n{source}");
 
         let meta = engine
-            .parse_metadata_with_type_sync(diagram_type, &input, ParseOptions::strict())
-            .unwrap()
+            .parse_metadata_with_type_sync(diagram_type, &input)
             .unwrap();
-
         assert_eq!(
             meta.config
                 .as_value()
@@ -400,8 +368,7 @@ fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
     let input = "flowchart-elk TD\nA-->B;";
 
     let meta = engine
-        .parse_metadata_with_type_sync("flowchart-elk", input, ParseOptions::strict())
-        .unwrap()
+        .parse_metadata_with_type_sync("flowchart-elk", input)
         .unwrap();
     assert_eq!(meta.effective_config.get_str("layout"), Some("elk"));
 }
@@ -417,10 +384,7 @@ graph <
 A-->B
 "#;
 
-    let meta = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let meta = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(
         meta.title,
         Some(r#"Flowchart v2 arrows: graph direction "&lt;""#.to_string())
@@ -439,9 +403,7 @@ title: true
 sequenceDiagram
 Alice->Bob: Hi
 ",
-            ParseOptions::strict(),
         )
-        .unwrap()
         .unwrap();
 
     assert_eq!(meta.title, Some("true".to_string()));
@@ -462,9 +424,7 @@ fn parse_indented_frontmatter_like_upstream() {
    graph TD
    A-->B
 ",
-            ParseOptions::strict(),
         )
-        .unwrap()
         .unwrap();
 
     assert_eq!(meta.diagram_type, "flowchart-v2");
@@ -480,9 +440,7 @@ sequenceDiagram
 Alice->Bob: Hi
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "sequence");
     assert_eq!(res.config.as_value(), &json!({ "logLevel": 0 }));
 }
@@ -494,10 +452,7 @@ fn parse_init_font_family_mirrors_retained_config_but_default_secure_filters_eff
 graph TD;A-->B;
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.config.get_str("themeVariables.fontFamily"),
@@ -520,10 +475,7 @@ fn parse_init_theme_variable_font_family_is_retained_but_default_secure_filters_
 graph TD;A-->B;
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.config.get_str("themeVariables.fontFamily"),
@@ -548,10 +500,7 @@ fn site_secure_policy_can_opt_into_legacy_font_family_init_compatibility() {
 graph TD;A-->B;
 "#;
 
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.effective_config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
@@ -563,12 +512,8 @@ graph TD;A-->B;
 #[cfg(feature = "full")]
 fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
-    let default = block_on(engine.parse_metadata(
-        "architecture-beta\n  service a(server)[A]\n",
-        ParseOptions::strict(),
-    ))
-    .unwrap()
-    .unwrap();
+    let default =
+        block_on(engine.parse_metadata("architecture-beta\n  service a(server)[A]\n")).unwrap();
 
     let arch = &default.effective_config.as_value()["architecture"];
     assert_eq!(arch["randomize"], json!(false));
@@ -583,9 +528,7 @@ fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
 architecture-beta
   service a(server)[A]
 "#,
-        ParseOptions::strict(),
     ))
-    .unwrap()
     .unwrap();
 
     let arch = &configured.effective_config.as_value()["architecture"];
@@ -600,9 +543,7 @@ architecture-beta
 #[test]
 fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
     let engine = Engine::new();
-    let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B")).unwrap();
     let config = meta.effective_config.as_value();
 
     let eventmodeling = &config["eventmodeling"];
@@ -684,10 +625,8 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
         .spawn(move || {
             let engine = engine.with_site_config(site_config);
             let meta = engine
-                .parse_metadata_sync("sequenceDiagram\nAlice->Bob: Hi", ParseOptions::strict())
-                .expect("parse succeeds")
-                .expect("diagram detected");
-
+                .parse_metadata_sync("sequenceDiagram\nAlice->Bob: Hi")
+                .expect("parse succeeds");
             assert_eq!(
                 deep_config_leaf(meta.effective_config.as_value(), "sequence", DEPTH)
                     .and_then(Value::as_str),
@@ -714,11 +653,7 @@ flowchart TD
     A --> B
 "#;
 
-    let meta = engine
-        .parse_metadata_sync(text, ParseOptions::strict())
-        .expect("parse succeeds")
-        .expect("diagram detected");
-
+    let meta = engine.parse_metadata_sync(text).expect("parse succeeds");
     assert_eq!(meta.config.get_str("fontFamily"), Some("diagram-font"));
     assert_eq!(meta.config.as_value()["fontSize"], json!(99));
     assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
@@ -753,11 +688,7 @@ flowchart TD
     A --> B
 "#;
 
-    let meta = engine
-        .parse_metadata_sync(text, ParseOptions::strict())
-        .expect("parse succeeds")
-        .expect("diagram detected");
-
+    let meta = engine.parse_metadata_sync(text).expect("parse succeeds");
     assert_eq!(meta.config.get_str("theme"), Some("dark"));
     assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
     assert_eq!(
@@ -809,9 +740,8 @@ flowchart TD
 "##;
 
     let metadata = Engine::new()
-        .parse_metadata_sync(source, ParseOptions::strict())
-        .expect("parse succeeds")
-        .expect("diagram detected");
+        .parse_metadata_sync(source)
+        .expect("parse succeeds");
     let retained = metadata.config.as_value();
 
     assert!(retained.get("notAConfigKey").is_none());
@@ -991,10 +921,8 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
         .stack_size(256 * 1024)
         .spawn(move || {
             let meta = Engine::new()
-                .parse_metadata_sync(&source, ParseOptions::strict())
-                .expect("parse succeeds")
-                .expect("diagram detected");
-
+                .parse_metadata_sync(&source)
+                .expect("parse succeeds");
             assert_eq!(
                 deep_repeated_config_leaf(meta.config.as_value(), "sequence", DEPTH)
                     .and_then(Value::as_str),
@@ -1031,10 +959,8 @@ fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
         .stack_size(256 * 1024)
         .spawn(move || {
             let meta = Engine::new()
-                .parse_metadata_sync(&source, ParseOptions::strict())
-                .expect("parse succeeds")
-                .expect("diagram detected");
-
+                .parse_metadata_sync(&source)
+                .expect("parse succeeds");
             assert_eq!(
                 deep_config_leaf(meta.config.as_value(), "sequence", DEPTH).and_then(Value::as_str),
                 Some("#334455")
@@ -1057,7 +983,7 @@ fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
         .stack_size(128 * 1024)
         .spawn(move || {
             let err = engine
-                .parse_metadata_sync(&source, ParseOptions::strict())
+                .parse_metadata_sync(&source)
                 .expect_err("excessive init config depth should be rejected");
             assert!(
                 err.to_string().contains("config nesting exceeds"),
@@ -1082,7 +1008,7 @@ fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
         .stack_size(128 * 1024)
         .spawn(move || {
             let err = engine
-                .parse_metadata_sync(&source, ParseOptions::strict())
+                .parse_metadata_sync(&source)
                 .expect_err("excessive frontmatter config depth should be rejected");
             assert!(
                 err.to_string().contains("config nesting exceeds"),
@@ -1109,7 +1035,7 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
         .stack_size(128 * 1024)
         .spawn(move || {
             let err = engine
-                .parse_metadata_sync(&source, ParseOptions::strict())
+                .parse_metadata_sync(&source)
                 .expect_err("excessive inline YAML sequence depth should be rejected");
             assert!(
                 err.to_string().contains("config nesting exceeds"),
@@ -1128,10 +1054,8 @@ fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata(
         "---\n? [non, string, key]\n: ignored\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
-        ParseOptions::strict(),
     ))
-    .expect("non-string YAML keys should not fail frontmatter parsing")
-    .expect("diagram detected");
+    .expect("non-string YAML keys should not fail frontmatter parsing");
 
     assert_eq!(res.diagram_type, "sequence");
     assert_eq!(res.config.as_value(), &json!({}));
@@ -1143,10 +1067,8 @@ fn frontmatter_is_stripped_without_full_config_but_config_is_not_applied() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata(
         "---\ntitle: Pure profile title\nconfig:\n  theme: forest\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
-        ParseOptions::strict(),
     ))
-    .expect("closed frontmatter should be stripped")
-    .expect("diagram detected");
+    .expect("closed frontmatter should be stripped");
 
     assert_eq!(res.diagram_type, "sequence");
     assert_eq!(res.title, None);
@@ -1156,11 +1078,8 @@ fn frontmatter_is_stripped_without_full_config_but_config_is_not_applied() {
 #[test]
 fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
-    let err = block_on(engine.parse_metadata(
-        "---\ntitle: a malformed YAML front-matter\n",
-        ParseOptions::default(),
-    ))
-    .unwrap_err();
+    let err =
+        block_on(engine.parse_metadata("---\ntitle: a malformed YAML front-matter\n")).unwrap_err();
     assert!(err.to_string().contains("Malformed YAML front-matter"));
 }
 
@@ -1169,47 +1088,50 @@ fn parse_matches_public_api_for_mismatched_indented_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
         "---\ntitle: mismatched YAML front-matter\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
-        ParseOptions::default(),
     ))
     .unwrap_err();
     assert!(err.to_string().contains("Malformed YAML front-matter"));
 
     let res = block_on(engine.parse_metadata(
         "   ---\ntitle: mismatched YAML front-matter\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
-        ParseOptions::strict(),
     ))
-    .expect("the public Mermaid parse pipeline exposes this frontmatter on its second preprocess")
-    .expect("diagram detected");
+    .expect("the public Mermaid parse pipeline exposes this frontmatter on its second preprocess");
     assert_eq!(res.diagram_type, "sequence");
     assert_eq!(res.title, None);
     assert_eq!(res.config.as_value(), &json!({}));
 }
 
 #[test]
-fn parse_can_suppress_unknown_diagram_errors() {
+fn parse_metadata_rejects_unknown_diagram_sources() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata(
-        "this is not a mermaid diagram definition",
-        ParseOptions {
-            suppress_errors: true,
-        },
-    ))
-    .unwrap();
-    assert!(res.is_none());
+    let error = block_on(engine.parse_metadata("this is not a mermaid diagram definition"))
+        .expect_err("metadata detection has no lenient mode");
+
+    assert!(matches!(error, Error::DetectType(_)));
 }
 
 #[test]
-fn parse_lenient_unknown_diagram_returns_none_across_auto_detect_entrypoints() {
+fn parse_metadata_with_type_rejects_errors_without_a_suppression_mode() {
+    let error = Engine::new()
+        .parse_metadata_with_type_sync(
+            "flowchart-v2",
+            "---\ntitle: unclosed frontmatter\nflowchart TD\nA-->B\n",
+        )
+        .expect_err("known-type metadata must surface preprocessing errors");
+
+    assert!(matches!(error, Error::MalformedFrontMatter));
+}
+
+#[test]
+fn parse_lenient_unknown_diagram_returns_none_only_for_model_entrypoints() {
     let engine = Engine::new();
     let input = "this is not a mermaid diagram definition";
     let options = ParseOptions::lenient();
 
-    assert!(
-        engine
-            .parse_metadata_sync(input, options)
-            .unwrap()
-            .is_none()
-    );
+    assert!(matches!(
+        engine.parse_metadata_sync(input),
+        Err(Error::DetectType(_))
+    ));
     assert!(engine.parse_diagram_sync(input, options).unwrap().is_none());
     assert!(
         engine
@@ -1255,8 +1177,8 @@ fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
         .unwrap();
 
     assert_suppressed_error_render_diagram(&parsed);
-    assert!(parsed.model.supports_diagram_type("error"));
-    assert!(!parsed.model.supports_diagram_type("flowchart-v2"));
+    assert!(parsed.model().supports_diagram_type("error"));
+    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
 }
 
 fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
@@ -1265,8 +1187,8 @@ fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
 }
 
 fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
-    assert_eq!(parsed.meta.diagram_type, "error");
-    match &parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "error");
+    match parsed.model() {
         RenderSemanticModel::Error(model) => {
             assert_eq!(model.diagram_type, "error");
             assert_eq!(
@@ -1347,9 +1269,9 @@ fn render_parser_registry_drives_typed_alias_parse() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "flowchart-elk");
-    assert_eq!(parsed.model.kind(), "flowchart");
-    assert!(matches!(parsed.model, RenderSemanticModel::Flowchart(_)));
+    assert_eq!(parsed.metadata().diagram_type, "flowchart-elk");
+    assert_eq!(parsed.model().kind(), "flowchart");
+    assert!(matches!(parsed.model(), RenderSemanticModel::Flowchart(_)));
 }
 
 #[test]
@@ -1369,8 +1291,8 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "customDiagram");
-    let RenderSemanticModel::CustomJson(model) = parsed.model else {
+    assert_eq!(parsed.metadata().diagram_type, "customDiagram");
+    let RenderSemanticModel::CustomJson(model) = parsed.model() else {
         panic!("custom semantic parsers must produce an explicit CustomJson render boundary");
     };
     assert_eq!(model.model_name(), "customDiagram");
@@ -1412,7 +1334,7 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::CustomJson(model) = parsed.model else {
+        let RenderSemanticModel::CustomJson(model) = parsed.model() else {
             panic!("custom semantic overlay for {diagram_type} inherited a built-in typed model");
         };
         assert_eq!(model.model_name(), diagram_type);
@@ -1422,15 +1344,11 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
         );
         assert_eq!(model.value()["owner"], json!("custom-semantic"));
         assert_eq!(model.value()["diagramType"], json!(diagram_type));
-        assert!(!RenderSemanticModel::CustomJson(model).supports_diagram_type(diagram_type));
+        assert!(!parsed.model().supports_diagram_type(diagram_type));
 
         assert!(
             engine
-                .parse_editor_semantic_facts_with_type_sync(
-                    diagram_type,
-                    source,
-                    ParseOptions::strict(),
-                )
+                .parse_editor_semantic_facts_with_type_sync(diagram_type, source,)
                 .unwrap()
                 .is_none(),
             "custom semantic overlay for {diagram_type} inherited built-in editor facts"
@@ -1453,14 +1371,17 @@ fn combined_parse_keeps_custom_semantic_overlay_and_reports_editor_unavailable()
             .diagram_registry_mut()
             .insert(diagram_type, custom_overlay_json_parser);
 
-        let parsed = engine
-            .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-        assert_eq!(parsed.diagram.meta.diagram_type, diagram_type);
-        assert_eq!(parsed.diagram.model["owner"], json!("custom-semantic"));
+        let parsed = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+        assert_eq!(parsed.metadata().diagram_type, diagram_type);
+        assert_eq!(
+            parsed
+                .outcome()
+                .parsed_model()
+                .expect("expected parsed snapshot")["owner"],
+            json!("custom-semantic")
+        );
         assert!(matches!(
-            parsed.editor_facts,
+            parsed.editor_facts(),
             crate::ParsedEditorFacts::Unavailable
         ));
     }
@@ -1477,28 +1398,46 @@ fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable(
         .insert("generic-custom", custom_overlay_json_parser);
 
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync("generic-custom\npayload", ParseOptions::strict())
+        .parse_diagram_snapshot_sync("generic-custom\npayload")
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.diagram.meta.diagram_type, "generic-custom");
-    assert_eq!(parsed.diagram.model["owner"], json!("custom-semantic"));
+    assert_eq!(parsed.metadata().diagram_type, "generic-custom");
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["owner"],
+        json!("custom-semantic")
+    );
     assert!(matches!(
-        parsed.editor_facts,
+        parsed.editor_facts(),
         crate::ParsedEditorFacts::Unavailable
     ));
 }
 
 #[test]
-fn combined_parse_uses_wardley_semantics_and_suppresses_only_missing_custom_parsers() {
+fn combined_parse_uses_wardley_semantics_and_retains_missing_custom_parser_failure() {
     let wardley = Engine::new()
-        .parse_diagram_with_editor_facts_sync("wardley-beta\ntitle Example", ParseOptions::strict())
+        .parse_diagram_snapshot_sync("wardley-beta\ntitle Example")
         .unwrap()
         .unwrap();
-    assert_eq!(wardley.diagram.meta.diagram_type, "wardley");
-    assert_eq!(wardley.diagram.model["type"], json!("wardley"));
-    assert_eq!(wardley.diagram.model["title"], json!("Example"));
+    assert_eq!(wardley.metadata().diagram_type, "wardley");
+    assert_eq!(
+        wardley
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["type"],
+        json!("wardley")
+    );
+    assert_eq!(
+        wardley
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["title"],
+        json!("Example")
+    );
     assert!(matches!(
-        wardley.editor_facts,
+        wardley.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
 
@@ -1510,21 +1449,18 @@ fn combined_parse_uses_wardley_semantics_and_suppresses_only_missing_custom_pars
 }
 
 fn assert_combined_missing_semantic_contract(engine: &Engine, expected_type: &str, source: &str) {
-    let error = engine
-        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
-        .unwrap_err();
+    let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+    let (meta, outcome, editor_facts) = snapshot.into_parts();
+    assert_eq!(meta.diagram_type, expected_type);
+    let crate::DiagramParseOutcome::Failed(error) = outcome else {
+        panic!("custom snapshot unexpectedly parsed {expected_type}");
+    };
     let crate::Error::UnsupportedDiagram { diagram_type } = error else {
-        panic!("unexpected strict combined error for {expected_type}: {error}");
+        panic!("unexpected combined error for {expected_type}: {error}");
     };
     assert_eq!(diagram_type, expected_type);
-
-    let parsed = engine
-        .parse_diagram_with_editor_facts_sync(source, ParseOptions::lenient())
-        .unwrap()
-        .unwrap();
-    assert_suppressed_error_diagram(&parsed.diagram);
     assert!(matches!(
-        parsed.editor_facts,
+        editor_facts,
         crate::ParsedEditorFacts::Unavailable
     ));
 }
@@ -1548,7 +1484,7 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
         )
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::CustomJson(model) = parsed.model else {
+    let RenderSemanticModel::CustomJson(model) = parsed.model() else {
         panic!("explicit custom render overlay should select an explicit CustomJson model");
     };
     assert_eq!(model.model_name(), "custom-flowchart-model");
@@ -1591,7 +1527,7 @@ fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_
         )
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::CustomJson(model) = rendered.model else {
+    let RenderSemanticModel::CustomJson(model) = rendered.model() else {
         panic!("custom Architecture semantics should remain an explicit JSON boundary");
     };
     assert_eq!(
@@ -1600,11 +1536,7 @@ fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_
     );
     assert!(
         engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "architecture",
-                source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("architecture", source,)
             .unwrap()
             .is_none()
     );
@@ -1690,7 +1622,8 @@ fn render_model_for(input: &str) -> RenderSemanticModel {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap()
-        .model
+        .into_parts()
+        .1
 }
 
 fn deep_config_value(root_key: &str, depth: usize, leaf: Value) -> Value {
@@ -1776,11 +1709,11 @@ click A href "https://example.test" "tip <b>safe</b>" _blank
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let model = match typed.model {
+    let model = match typed.model() {
         RenderSemanticModel::Flowchart(model) => model,
         other => panic!("flowchart render parse should return typed model, got {other:?}"),
     };
-    let typed_json = serde_json::to_value(&model).unwrap();
+    let typed_json = serde_json::to_value(model).unwrap();
 
     let parsed_json = engine
         .parse_diagram_sync(input, ParseOptions::strict())
@@ -1892,8 +1825,8 @@ Dana-->>Bob: Done
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "sequence");
-    let typed_json = match &parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "sequence");
+    let typed_json = match parsed.model() {
         RenderSemanticModel::Sequence(model) => {
             assert_eq!(model.actor_order, ["Alice", "Bob", "Carol", "Dana"]);
             assert_eq!(model.messages[0].message_text(), "Hi");
@@ -1901,7 +1834,7 @@ Dana-->>Bob: Done
             assert_eq!(model.boxes[0].actor_keys, ["Carol"]);
             assert_eq!(model.created_actors["Dana"], 3);
             assert_eq!(model.destroyed_actors["Dana"], 4);
-            model.to_compat_json(&parsed.meta.diagram_type)
+            model.to_compat_json(&parsed.metadata().diagram_type)
         }
         other => panic!("sequence render parse should return typed model, got {other:?}"),
     };
@@ -1931,8 +1864,8 @@ fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "kanban");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "kanban");
+    match parsed.model() {
         RenderSemanticModel::Kanban(model) => {
             assert_eq!(model.nodes.len(), 4);
             assert!(model.nodes[0].is_group);
@@ -1968,8 +1901,8 @@ Task 1: id1, 2024-01-01, 2d
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "gantt");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "gantt");
+    match parsed.model() {
         RenderSemanticModel::Gantt(model) => {
             assert_eq!(model.title.as_deref(), Some("Typed Gantt"));
             assert_eq!(model.date_format, "YYYY-MM-DD");
@@ -2005,8 +1938,8 @@ pie showData title Typed Pie
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "pie");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "pie");
+    match parsed.model() {
         RenderSemanticModel::Pie(model) => {
             assert!(model.show_data);
             assert_eq!(model.title.as_deref(), Some("Typed Pie"));
@@ -2047,8 +1980,8 @@ line "Series 2" [2 "early", 3 "late"]
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "xychart");
-    let typed_json = match &parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "xychart");
+    let typed_json = match parsed.model() {
         RenderSemanticModel::XyChart(model) => {
             assert_eq!(model.orientation, "horizontal");
             assert_eq!(model.title.as_deref(), Some("Typed XYChart"));
@@ -2083,7 +2016,7 @@ line "Series 2" [2 "early", 3 "late"]
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
             assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
             assert_eq!(model.plots[1].point_labels, vec!["early", "late"]);
-            model.to_compat_json(&parsed.meta)
+            model.to_compat_json(parsed.metadata())
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };
@@ -2129,7 +2062,7 @@ bar "Series 1" [1, 2]
         .unwrap()
         .unwrap();
 
-    let typed_json = match &parsed.model {
+    let typed_json = match parsed.model() {
         RenderSemanticModel::XyChart(model) => {
             assert!(!model.display.show_title);
             assert!(model.display.show_data_label);
@@ -2142,7 +2075,7 @@ bar "Series 1" [1, 2]
             assert!(!model.display.y_axis.show_title);
             assert!(!model.display.y_axis.show_tick);
             assert!(!model.display.y_axis.show_axis_line);
-            model.to_compat_json(&parsed.meta)
+            model.to_compat_json(parsed.metadata())
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };
@@ -2158,9 +2091,7 @@ bar "Series 1" [1, 2]
 #[test]
 fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
     let engine = Engine::new();
-    let default = block_on(engine.parse_metadata("xychart\nbar [1]", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let default = block_on(engine.parse_metadata("xychart\nbar [1]")).unwrap();
     let xychart = &default.effective_config.as_value()["xyChart"];
     assert_eq!(xychart["showDataLabel"], json!(false));
     assert_eq!(xychart["showDataLabelOutsideBar"], json!(false));
@@ -2169,9 +2100,7 @@ fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
         r#"%%{init: {"xyChart": {"showDataLabel": true, "showDataLabelOutsideBar": true}}}%%
 xychart
 bar [1]"#,
-        ParseOptions::default(),
     ))
-    .unwrap()
     .unwrap();
     let xychart = &configured.effective_config.as_value()["xyChart"];
     assert_eq!(xychart["showDataLabel"], json!(true));
@@ -2192,7 +2121,7 @@ bar "Series 1" [1, 2]
 line "Series 2" [2, 3]
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("xychart", text)
         .unwrap()
         .unwrap();
 
@@ -2247,7 +2176,7 @@ classDef class1 color: #109060, radius: 10
 Point A:::class1: [0.9, 0.0]
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
         .unwrap()
         .unwrap();
 
@@ -2286,9 +2215,7 @@ Point A:::class1: [0.9, 0.0]
 #[test]
 fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
     let engine = Engine::new();
-    let default = block_on(engine.parse_metadata("classDiagram\nclass A", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let default = block_on(engine.parse_metadata("classDiagram\nclass A")).unwrap();
     let class = &default.effective_config.as_value()["class"];
     assert_eq!(class["hierarchicalNamespaces"], json!(true));
 
@@ -2296,9 +2223,7 @@ fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
         r#"%%{init: {"class": {"hierarchicalNamespaces": false}}}%%
 classDiagram
 class A"#,
-        ParseOptions::default(),
     ))
-    .unwrap()
     .unwrap();
     let class = &configured.effective_config.as_value()["class"];
     assert_eq!(class["hierarchicalNamespaces"], json!(false));
@@ -2324,7 +2249,7 @@ element test_el {
 a - contains -> b
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("requirement", text)
         .unwrap()
         .unwrap();
 
@@ -2361,7 +2286,7 @@ class req,elem firstClass,secondClass
 style req,elem fill:#ffa,stroke:#000
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("requirement", text)
         .unwrap()
         .expect("requirement editor facts");
 
@@ -2447,7 +2372,7 @@ element elem {
 class req,elem a,aa
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("requirement", text)
         .unwrap()
         .expect("requirement editor facts");
 
@@ -2486,8 +2411,8 @@ accDescr: Packet accDescription
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "packet");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "packet");
+    match parsed.model() {
         RenderSemanticModel::Packet(model) => {
             assert_eq!(model.title.as_deref(), Some("Typed Packet"));
             assert_eq!(model.acc_title.as_deref(), Some("Packet accTitle"));
@@ -2534,8 +2459,8 @@ Task 1: event 1: event 2
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "timeline");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "timeline");
+    match parsed.model() {
         RenderSemanticModel::Timeline(model) => {
             assert_eq!(model.title.as_deref(), Some("Typed Timeline"));
             assert_eq!(model.acc_title.as_deref(), Some("Timeline accTitle"));
@@ -2585,8 +2510,8 @@ Drive: bad-score: Dad, Mum
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "journey");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "journey");
+    match parsed.model() {
         RenderSemanticModel::Journey(model) => {
             assert_eq!(model.title.as_deref(), Some("Typed Journey"));
             assert_eq!(model.acc_title.as_deref(), Some("Journey accTitle"));
@@ -2649,8 +2574,8 @@ req_login - verifies -> api
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "requirement");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "requirement");
+    match parsed.model() {
         RenderSemanticModel::Requirement(model) => {
             assert_eq!(model.acc_title.as_deref(), Some("Requirement accTitle"));
             assert_eq!(
@@ -2740,8 +2665,8 @@ Target,Done,2.5
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "sankey");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "sankey");
+    match parsed.model() {
         RenderSemanticModel::Sankey(model) => {
             assert_eq!(model.graph.nodes.len(), 3);
             assert_eq!(model.graph.nodes[0].id, "Source");
@@ -2782,9 +2707,7 @@ Target,Done,2.5
 #[test]
 fn parse_sankey_exposes_config_defaults_and_overrides() {
     let engine = Engine::new();
-    let default = block_on(engine.parse_metadata("sankey\nA,B,1", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let default = block_on(engine.parse_metadata("sankey\nA,B,1")).unwrap();
     let sankey = &default.effective_config.as_value()["sankey"];
     assert_eq!(sankey["nodeWidth"], json!(10));
     assert_eq!(sankey["nodePadding"], json!(12));
@@ -2796,9 +2719,7 @@ fn parse_sankey_exposes_config_defaults_and_overrides() {
         r##"%%{init: {"sankey": {"nodeWidth": 24, "nodePadding": 18, "labelStyle": "outlined", "nodeColors": {"A": "#112233"}}}}%%
 sankey
 A,B,1"##,
-        ParseOptions::default(),
     ))
-    .unwrap()
     .unwrap();
     let sankey = &configured.effective_config.as_value()["sankey"];
     assert_eq!(sankey["nodeWidth"], json!(24));
@@ -2830,8 +2751,8 @@ graticule polygon
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "radar");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "radar");
+    match parsed.model() {
         RenderSemanticModel::Radar(model) => {
             assert_eq!(model.title.as_deref(), Some("Typed Radar"));
             assert_eq!(model.acc_title.as_deref(), Some("Radar accTitle"));
@@ -2893,8 +2814,8 @@ showInfo
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "info");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "info");
+    match parsed.model() {
         RenderSemanticModel::Info(model) => {
             assert!(model.show_info);
         }
@@ -2927,8 +2848,8 @@ CUSTOMER {
         .unwrap()
         .unwrap();
 
-    assert_eq!(parsed.meta.diagram_type, "er");
-    match parsed.model {
+    assert_eq!(parsed.metadata().diagram_type, "er");
+    match parsed.model() {
         RenderSemanticModel::Er(model) => {
             assert_eq!(model.acc_title.as_deref(), Some("ER accTitle"));
             assert_eq!(model.acc_descr.as_deref(), Some("ER accDescription"));
@@ -2993,7 +2914,7 @@ A[Start] --> B[End]
         .unwrap()
         .unwrap();
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Flowchart(model) => {
             assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
             assert_eq!(model.acc_descr.as_deref(), Some("line1\nline2"));
@@ -3014,7 +2935,7 @@ Alice->Bob:Hello"#;
         .unwrap()
         .unwrap();
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Sequence(model) => {
             assert_eq!(model.title.as_deref(), Some("<b>t</b>"));
             assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
@@ -3035,7 +2956,7 @@ accDescr: <script>alert(1)</script><b>d</b>
         .unwrap()
         .unwrap();
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Treemap(model) => {
             assert_eq!(model.title.as_deref(), Some("<b>t</b>"));
             assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
@@ -3121,7 +3042,7 @@ fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload
     );
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("architecture", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("architecture", source)
         .expect("editor recovery should remain available")
         .expect("Architecture should expose editor facts");
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);

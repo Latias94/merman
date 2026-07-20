@@ -217,11 +217,7 @@ fn evaluate_fixture(
     report.pass(CapabilityStage::Source);
 
     let metadata = match renderer.parse_metadata_sync(&source) {
-        Ok(Some(metadata)) => metadata,
-        Ok(None) => {
-            report.fail(CapabilityStage::Detected, "no diagram detected");
-            return report;
-        }
+        Ok(metadata) => metadata,
         Err(error) => {
             report.fail(CapabilityStage::Detected, error.to_string());
             return report;

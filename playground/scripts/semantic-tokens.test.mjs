@@ -4,10 +4,21 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { MERMAN_ABI_VERSION } from "@mermanjs/web/editor";
 
 const root = path.resolve(import.meta.dirname, "..");
+const TEST_WORKER_PROTOCOL = 2;
+const TEST_LEGEND_DIGEST = "sha256:test-generated-token-descriptor";
+const TEST_LEGEND = Object.freeze({
+  tokenTypes: Object.freeze(["string", "namespace"]),
+  tokenModifiers: Object.freeze(["payload", "entity"]),
+});
+const TEST_LANGUAGE_IDENTITY = Object.freeze({
+  legend: TEST_LEGEND,
+  legendDigest: TEST_LEGEND_DIGEST,
+});
 
-function loadTypeScriptModule(relativePath) {
+function loadTypeScriptModule(relativePath, options = {}) {
   const cache = new Map();
   return load(path.join(root, relativePath));
 
@@ -35,12 +46,19 @@ function loadTypeScriptModule(relativePath) {
       Uint32Array,
       clearTimeout,
       console,
+      ...options.globals,
       module,
       exports: module.exports,
       require(specifier) {
+        if (options.externalModules?.[specifier]) {
+          return options.externalModules[specifier];
+        }
         if (specifier.startsWith(".")) {
           const resolved = path.resolve(path.dirname(sourcePath), specifier);
           return load(path.extname(resolved) ? resolved : `${resolved}.ts`);
+        }
+        if (specifier === "@mermanjs/web/editor") {
+          return { MERMAN_ABI_VERSION };
         }
         throw new Error(
           `unexpected runtime import while testing ${relativePath}: ${specifier}`,
@@ -53,74 +71,15 @@ function loadTypeScriptModule(relativePath) {
   }
 }
 
-test("semantic token encoding follows the Rust-provided legend", () => {
-  const { encodeSemanticTokensForLegend } = loadTypeScriptModule(
-    "src/lib/mermaid-language.ts",
-  );
-  const data = encodeSemanticTokensForLegend(
-    [
-      {
-        line: 0,
-        start: 3,
-        length: 5,
-        tokenType: "namespace",
-        tokenModifier: "entity",
-      },
-    ],
-    {
-      tokenTypes: ["string", "namespace"],
-      tokenModifiers: ["payload", "entity"],
-    },
-  );
-
-  assert.deepEqual([...data], [0, 3, 5, 1, 2]);
-});
-
-test("semantic token encoding rejects unknown Rust token names", () => {
-  const { encodeSemanticTokensForLegend } = loadTypeScriptModule(
-    "src/lib/mermaid-language.ts",
-  );
-  assert.throws(
-    () =>
-      encodeSemanticTokensForLegend(
-        [
-          {
-            line: 0,
-            start: 0,
-            length: 4,
-            tokenType: "future-token",
-            tokenModifier: "entity",
-          },
-        ],
-        {
-          tokenTypes: ["namespace"],
-          tokenModifiers: ["entity"],
-        },
-      ),
-    /unknown semantic token type/i,
-  );
-});
-
-test("Monaco providers await the document client and advertise its immutable legend", async () => {
+test("Monaco publishes planner-packed semantic tokens without transport projection", async () => {
   const { registerMermaidLanguage } = loadTypeScriptModule(
     "src/lib/mermaid-language.ts",
   );
   let semanticProvider;
-  const legend = {
-    tokenTypes: ["string", "namespace"],
-    tokenModifiers: ["payload", "entity"],
-  };
+  const packed = new Uint32Array([0, 0, 4, 1, 2]);
   const client = fakeLanguageClient(({ query }) => {
     assert.equal(query.kind, "semanticTokens");
-    return [
-      {
-        line: 0,
-        start: 0,
-        length: 4,
-        tokenType: "namespace",
-        tokenModifier: "entity",
-      },
-    ];
+    return packed;
   });
 
   const registration = registerMermaidLanguage(
@@ -130,19 +89,186 @@ test("Monaco providers await the document client and advertise its immutable leg
       },
     }),
     client,
-    legend,
+    TEST_LANGUAGE_IDENTITY,
   );
 
-  assert.deepEqual(semanticProvider.getLegend(), legend);
+  assert.deepEqual(semanticProvider.getLegend(), TEST_LEGEND);
   const result = await semanticProvider.provideDocumentSemanticTokens(
     fakeModel("flowchart TD", 7),
     undefined,
     uncancelledToken(),
   );
 
-  assert.deepEqual([...result.data], [0, 0, 4, 1, 2]);
+  assert.equal(result.data, packed);
   registration.dispose();
   assert.equal(client.disposed, true);
+});
+
+test("worker owns one native editor session across document updates and queries", async () => {
+  const scope = new FakeWorkerScope();
+  const calls = [];
+  const session = {
+    version: 1,
+    uri: "file:///merman/playground.mmd",
+    update(source, version) {
+      calls.push(["update", source, version]);
+      this.version = version;
+    },
+    diagnostics() {
+      calls.push(["diagnostics"]);
+      return { version: 1, diagnostics: [] };
+    },
+    diagramDetection() {
+      return { status: "unavailable" };
+    },
+    codeActions() {
+      return [];
+    },
+    completions(position) {
+      calls.push(["completions", position]);
+      return { isIncomplete: false, items: [] };
+    },
+    hover() {
+      return null;
+    },
+    documentSymbols() {
+      return [];
+    },
+    workspaceSymbols() {
+      return [];
+    },
+    definition() {
+      return null;
+    },
+    references() {
+      return [];
+    },
+    prepareRename() {
+      return null;
+    },
+    rename(_position, newName) {
+      if (newName === "bad name") {
+        throw {
+          version: 1,
+          ok: false,
+          code: 1,
+          code_name: "MERMAN_INVALID_ARGUMENT",
+          message: "Rename target must be a valid Mermaid identifier.",
+        };
+      }
+      return null;
+    },
+    semanticTokens() {
+      calls.push(["semanticTokens"]);
+      return new Uint32Array([0, 0, 4, 0, 0]);
+    },
+    dispose() {
+      calls.push(["dispose"]);
+    },
+  };
+  const editorApi = {
+    MERMAN_ABI_VERSION,
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST: TEST_LEGEND_DIGEST,
+    SEMANTIC_TOKEN_MODIFIER_LSP_NAMES: TEST_LEGEND.tokenModifiers,
+    SEMANTIC_TOKEN_TYPE_LSP_NAMES: TEST_LEGEND.tokenTypes,
+    abiVersion: () => MERMAN_ABI_VERSION,
+    async initMerman() {},
+    editorSemanticTokenDescriptor: () => ({ digest: TEST_LEGEND_DIGEST }),
+    createEditorSession(source, version, uri) {
+      calls.push(["create", source, version, uri]);
+      session.version = version;
+      session.uri = uri;
+      return session;
+    },
+  };
+
+  loadTypeScriptModule("src/editor/merman-language.worker.ts", {
+    externalModules: { "@mermanjs/web/editor": editorApi },
+    globals: { self: scope },
+  });
+
+  await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "initialize",
+    requestId: 1,
+  });
+  await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "didOpen",
+    requestId: 2,
+    document: snapshot(1, "flowchart TD\nA-->B"),
+  });
+  await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "didChange",
+    requestId: 3,
+    document: snapshot(2, "flowchart TD\nA-->C"),
+  });
+  const diagnostics = await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "query",
+    requestId: 4,
+    uri: session.uri,
+    version: session.version,
+    legendDigest: TEST_LEGEND_DIGEST,
+    query: { kind: "diagnostics" },
+  });
+  const tokens = await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "query",
+    requestId: 5,
+    uri: session.uri,
+    version: session.version,
+    legendDigest: TEST_LEGEND_DIGEST,
+    query: { kind: "semanticTokens" },
+  });
+
+  assert.deepEqual(calls.slice(0, 3), [
+    ["create", "flowchart TD\nA-->B", 1, "file:///merman/playground.mmd"],
+    ["update", "flowchart TD\nA-->C", 2],
+    ["diagnostics"],
+  ]);
+  assert.deepEqual(diagnostics.result, { version: 1, diagnostics: [] });
+  assert.deepEqual([...tokens.result], [0, 0, 4, 0, 0]);
+
+  const failedRename = await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "query",
+    requestId: 6,
+    uri: session.uri,
+    version: session.version,
+    legendDigest: TEST_LEGEND_DIGEST,
+    query: {
+      kind: "rename",
+      position: { line: 1, character: 0 },
+      newName: "bad name",
+    },
+  });
+  assert.equal(failedRename.type, "error");
+  assert.equal(failedRename.code, "OPERATION_REJECTED");
+  assert.equal(failedRename.nativeCode, "MERMAN_INVALID_ARGUMENT");
+  assert.match(failedRename.message, /valid Mermaid identifier/i);
+  assert.match(failedRename.detail, /MERMAN_INVALID_ARGUMENT/);
+
+  const diagnosticsAfterFailure = await scope.request({
+    protocol: TEST_WORKER_PROTOCOL,
+    type: "query",
+    requestId: 7,
+    uri: session.uri,
+    version: session.version,
+    legendDigest: TEST_LEGEND_DIGEST,
+    query: { kind: "diagnostics" },
+  });
+  assert.equal(diagnosticsAfterFailure.type, "queryResult");
+  assert.deepEqual(diagnosticsAfterFailure.result, {
+    version: 1,
+    diagnostics: [],
+  });
+
+  scope.dispatch({ protocol: TEST_WORKER_PROTOCOL, type: "dispose" });
+  await Promise.resolve();
+  assert.equal(calls.at(-1)[0], "dispose");
+  assert.equal(scope.closed, true);
 });
 
 test("managed document changes explicitly refresh semantic tokens after didChange", async () => {
@@ -169,7 +295,7 @@ test("managed document changes explicitly refresh semantic tokens after didChang
       },
     }),
     client,
-    { tokenTypes: ["namespace"], tokenModifiers: ["entity"] },
+    TEST_LANGUAGE_IDENTITY,
   );
   let refreshes = 0;
   const refreshListener = semanticProvider.onDidChange(() => {
@@ -212,6 +338,7 @@ test("rename rejects a workspace edit targeting an unmanaged URI", async () => {
     };
   });
   const model = fakeModel("flowchart TD\nA", 3);
+  let requestRejection;
 
   const registration = registerMermaidLanguage(
     fakeMonaco({
@@ -220,7 +347,12 @@ test("rename rejects a workspace edit targeting an unmanaged URI", async () => {
       },
     }),
     client,
-    { tokenTypes: ["namespace"], tokenModifiers: ["entity"] },
+    TEST_LANGUAGE_IDENTITY,
+    {
+      onRequestRejected: (rejection) => {
+        requestRejection = rejection;
+      },
+    },
   );
   const result = await renameProvider.provideRenameEdits(
     model,
@@ -231,14 +363,21 @@ test("rename rejects a workspace edit targeting an unmanaged URI", async () => {
 
   assert.equal(result.edits.length, 0);
   assert.match(result.rejectReason, /current document/i);
+  assert.equal(requestRejection.detail, null);
+  assert.equal(
+    requestRejection.message,
+    "Rename is limited to the current document; received an edit for file:///elsewhere.mmd.",
+  );
+  assert.equal(requestRejection.nativeCode, null);
+  assert.equal(requestRejection.operation, "rename");
   registration.dispose();
 });
 
 test("worker client discards a response after the managed document version changes", async () => {
-  const { createMermanLanguageWorkerClient, StaleDocumentError } =
+  const { createMermanLanguageWorkerClient, StaleLanguageSnapshotError } =
     loadTypeScriptModule("src/editor/worker-client.ts");
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
 
@@ -249,17 +388,20 @@ test("worker client discards a response after the managed document version chang
   const change = client.changeDocument(snapshot(2, "flowchart TD\nA-->B"));
   worker.respond(queryMessage, { diagnostics: [] });
 
-  await assert.rejects(query, (error) => error instanceof StaleDocumentError);
+  await assert.rejects(
+    query,
+    (error) => error instanceof StaleLanguageSnapshotError,
+  );
   await acknowledgeDocument(worker, change);
   client.dispose();
 });
 
-test("worker client cancellation rejects immediately and sends an explicit cancel", async () => {
+test("worker cancellation suppresses publication without claiming to interrupt synchronous WASM", async () => {
   const { createMermanLanguageWorkerClient } = loadTypeScriptModule(
     "src/editor/worker-client.ts",
   );
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
   const cancellation = cancellableToken();
@@ -273,7 +415,32 @@ test("worker client cancellation rejects immediately and sends an explicit cance
   cancellation.cancel();
 
   await assert.rejects(query, (error) => error?.name === "AbortError");
-  assert.equal(worker.take("cancel").requestId, queryMessage.requestId);
+  worker.respond(queryMessage, { diagnostics: [] });
+  assert.equal(worker.messages.some((message) => message.type === "cancel"), false);
+  assert.equal(worker.terminated, false);
+  client.dispose();
+});
+
+test("worker client discards a result carrying an obsolete legend digest", async () => {
+  const { createMermanLanguageWorkerClient, StaleLanguageSnapshotError } =
+    loadTypeScriptModule("src/editor/worker-client.ts");
+  const worker = new FakeWorker();
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
+  await initializeClient(worker, client);
+  await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
+
+  const query = client.query(snapshot(1, "flowchart TD"), {
+    kind: "semanticTokens",
+  });
+  const queryMessage = await worker.takeEventually("query");
+  worker.respond(queryMessage, new Uint32Array([0, 0, 4, 0, 0]), {
+    legendDigest: "sha256:obsolete",
+  });
+
+  await assert.rejects(
+    query,
+    (error) => error instanceof StaleLanguageSnapshotError,
+  );
   client.dispose();
 });
 
@@ -282,7 +449,7 @@ test("worker client does not send a query canceled while awaiting didChange", as
     "src/editor/worker-client.ts",
   );
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
   const next = snapshot(2, "flowchart TD\nA-->B");
@@ -300,12 +467,92 @@ test("worker client does not send a query canceled while awaiting didChange", as
   client.dispose();
 });
 
+test("worker client keeps operation rejection local and preserves native detail", async () => {
+  const { createMermanLanguageWorkerClient, EditorWorkerProtocolError } =
+    loadTypeScriptModule("src/editor/worker-client.ts");
+  const worker = new FakeWorker();
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
+  const document = snapshot(1, "flowchart TD\nA-->B");
+  await initializeClient(worker, client);
+  await acknowledgeDocument(worker, client.openDocument(document));
+
+  const rename = client.query(document, {
+    kind: "rename",
+    position: { line: 1, character: 0 },
+    newName: "bad name",
+  });
+  const renameRequest = await worker.takeEventually("query");
+  const nativeDetail = JSON.stringify({
+    code_name: "MERMAN_INVALID_ARGUMENT",
+    message: "Rename target must be a valid Mermaid identifier.",
+  });
+  worker.fail(
+    renameRequest,
+    "OPERATION_REJECTED",
+    "Rename target must be a valid Mermaid identifier.",
+    nativeDetail,
+    "MERMAN_INVALID_ARGUMENT",
+  );
+
+  await assert.rejects(rename, (error) => {
+    assert.ok(error instanceof EditorWorkerProtocolError);
+    assert.equal(error.code, "OPERATION_REJECTED");
+    assert.equal(error.detail, nativeDetail);
+    assert.equal(error.nativeCode, "MERMAN_INVALID_ARGUMENT");
+    return true;
+  });
+  assert.equal(worker.terminated, false);
+
+  const diagnostics = client.query(document, { kind: "diagnostics" });
+  const diagnosticsRequest = await worker.takeEventually("query");
+  worker.respond(diagnosticsRequest, { version: 1, diagnostics: [] });
+  assert.deepEqual(await diagnostics, { version: 1, diagnostics: [] });
+  assert.equal(worker.terminated, false);
+  client.dispose();
+});
+
+test("worker client exposes QUERY_FAILED without corrupting later queries", async () => {
+  const { createMermanLanguageWorkerClient, EditorWorkerProtocolError } =
+    loadTypeScriptModule("src/editor/worker-client.ts");
+  const worker = new FakeWorker();
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
+  const document = snapshot(1, "flowchart TD\nA-->B");
+  await initializeClient(worker, client);
+  await acknowledgeDocument(worker, client.openDocument(document));
+
+  const failed = client.query(document, {
+    kind: "hover",
+    position: { line: 1, character: 0 },
+  });
+  const failedRequest = await worker.takeEventually("query");
+  worker.fail(
+    failedRequest,
+    "QUERY_FAILED",
+    "Native editor query failed.",
+    '{"code_name":"MERMAN_INTERNAL_ERROR"}',
+    "MERMAN_INTERNAL_ERROR",
+  );
+  await assert.rejects(failed, (error) => {
+    assert.ok(error instanceof EditorWorkerProtocolError);
+    assert.equal(error.code, "QUERY_FAILED");
+    assert.equal(error.nativeCode, "MERMAN_INTERNAL_ERROR");
+    return true;
+  });
+  assert.equal(worker.terminated, false);
+
+  const diagnostics = client.query(document, { kind: "diagnostics" });
+  const diagnosticsRequest = await worker.takeEventually("query");
+  worker.respond(diagnosticsRequest, { version: 1, diagnostics: [] });
+  assert.deepEqual(await diagnostics, { version: 1, diagnostics: [] });
+  client.dispose();
+});
+
 test("worker client poisons every pending request on a malformed dedicated response", async () => {
   const { createMermanLanguageWorkerClient } = loadTypeScriptModule(
     "src/editor/worker-client.ts",
   );
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
   const query = client.query(snapshot(1, "flowchart TD"), {
@@ -314,7 +561,11 @@ test("worker client poisons every pending request on a malformed dedicated respo
   await worker.takeEventually("query");
 
   worker.emit("message", {
-    data: { protocol: 1, type: "result", requestId: "not-a-request-id" },
+    data: {
+      protocol: TEST_WORKER_PROTOCOL,
+      type: "result",
+      requestId: "not-a-request-id",
+    },
   });
 
   const outcome = await Promise.race([
@@ -336,7 +587,7 @@ test("document synchronization failure poisons the inconsistent worker session",
     "src/editor/worker-client.ts",
   );
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
 
@@ -358,7 +609,7 @@ test("a synchronous postMessage failure removes pending state and poisons the se
     "src/editor/worker-client.ts",
   );
   const worker = new FakeWorker();
-  const client = createMermanLanguageWorkerClient(worker);
+  const client = createMermanLanguageWorkerClient(worker, TEST_LEGEND_DIGEST);
   await initializeClient(worker, client);
   await acknowledgeDocument(worker, client.openDocument(snapshot(1, "flowchart TD")));
   worker.throwOnType = "query";
@@ -500,25 +751,36 @@ class FakeWorker {
     return this.take(type);
   }
 
-  respond(request, result) {
+  respond(request, result, overrides = {}) {
+    const snapshotIdentity = request.type === "query"
+      ? {
+          uri: request.uri,
+          version: request.version,
+          legendDigest: request.legendDigest,
+        }
+      : {};
     this.emit("message", {
       data: {
-        protocol: 1,
-        type: "result",
+        protocol: TEST_WORKER_PROTOCOL,
+        type: request.type === "query" ? "queryResult" : "result",
         requestId: request.requestId,
+        ...snapshotIdentity,
+        ...overrides,
         result,
       },
     });
   }
 
-  fail(request, code, message) {
+  fail(request, code, message, detail = null, nativeCode = null) {
     this.emit("message", {
       data: {
-        protocol: 1,
+        protocol: TEST_WORKER_PROTOCOL,
         type: "error",
         requestId: request.requestId,
         code,
         message,
+        detail,
+        nativeCode,
       },
     });
   }
@@ -530,17 +792,59 @@ class FakeWorker {
   }
 }
 
+class FakeWorkerScope {
+  constructor() {
+    this.listeners = [];
+    this.messages = [];
+    this.closed = false;
+  }
+
+  addEventListener(type, listener) {
+    assert.equal(type, "message");
+    this.listeners.push(listener);
+  }
+
+  postMessage(message) {
+    this.messages.push(message);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  dispatch(data) {
+    for (const listener of this.listeners) {
+      listener({ data });
+    }
+  }
+
+  async request(data) {
+    this.dispatch(data);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const index = this.messages.findIndex(
+        (message) => message.requestId === data.requestId,
+      );
+      if (index >= 0) {
+        return this.messages.splice(index, 1)[0];
+      }
+      await Promise.resolve();
+    }
+    assert.fail(`worker did not respond to request ${data.requestId}`);
+  }
+}
+
 async function initializeClient(worker, client) {
   const initializing = client.initialize();
   const request = worker.take("initialize");
   worker.emit("message", {
     data: {
-      protocol: 1,
+      protocol: TEST_WORKER_PROTOCOL,
       type: "ready",
       requestId: request.requestId,
-      nativeAbi: 2,
+      nativeAbi: MERMAN_ABI_VERSION,
       editorSchema: 1,
-      legend: { tokenTypes: ["namespace"], tokenModifiers: ["entity"] },
+      legendDigest: TEST_LEGEND_DIGEST,
+      legend: TEST_LEGEND,
     },
   });
   return initializing;

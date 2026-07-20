@@ -104,16 +104,37 @@ other = terminal("b") ;
 "#;
 
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(text)
         .unwrap()
         .expect("railroad parses");
 
-    assert_eq!(parsed.diagram.meta.diagram_type, "railroad");
-    assert_eq!(parsed.diagram.model["type"], json!("railroad"));
-    assert_eq!(parsed.diagram.model["title"], json!("Simple Grammar"));
-    assert_eq!(parsed.diagram.model["rules"][0]["name"], json!("rule"));
+    assert_eq!(parsed.metadata().diagram_type, "railroad");
     assert_eq!(
-        parsed.diagram.model["rules"][0]["definition"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["type"],
+        json!("railroad")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["title"],
+        json!("Simple Grammar")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rules"][0]["name"],
+        json!("rule")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rules"][0]["definition"],
         json!({
             "type": "sequence",
             "elements": [
@@ -129,7 +150,7 @@ other = terminal("b") ;
         })
     );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("railroad should expose editor facts");
     };
     assert!(
@@ -343,13 +364,16 @@ fn parse_railroad_peg_prefix_suffix_any_and_editor_facts() {
 rule <- &"a" !"b" . other? ;
 "#;
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(text)
         .unwrap()
         .expect("railroad peg parses");
 
-    assert_eq!(parsed.diagram.meta.diagram_type, "railroadPeg");
+    assert_eq!(parsed.metadata().diagram_type, "railroadPeg");
     assert_eq!(
-        parsed.diagram.model["rules"][0]["definition"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rules"][0]["definition"],
         json!({
             "type": "sequence",
             "elements": [
@@ -361,7 +385,7 @@ rule <- &"a" !"b" . other? ;
         })
     );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("railroad PEG should expose editor facts");
     };
     assert!(facts.symbols.iter().any(|symbol| {
@@ -384,9 +408,9 @@ fn parse_railroad_variants_expose_typed_render_models() {
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, diagram_type);
-        assert!(parsed.model.supports_diagram_type(diagram_type));
-        let RenderSemanticModel::Railroad(model) = parsed.model else {
+        assert_eq!(parsed.metadata().diagram_type, diagram_type);
+        assert!(parsed.model().supports_diagram_type(diagram_type));
+        let RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model for {diagram_type}");
         };
         assert_eq!(model.rules.len(), 1);
@@ -403,10 +427,7 @@ fn railroad_detection_is_case_insensitive_but_semantic_headers_are_exact() {
         ("railroadAbnf", "RAILROAD-ABNF-BETA\nrule = \"a\" ;\n"),
         ("railroadPeg", "RAILROAD-PEG-BETA\nrule <- \"a\" ;\n"),
     ] {
-        let metadata = engine
-            .parse_metadata_sync(source, ParseOptions::strict())
-            .unwrap()
-            .expect("case-insensitive detector should select the railroad family");
+        let metadata = engine.parse_metadata_sync(source).unwrap();
         assert_eq!(metadata.diagram_type, expected_type);
 
         let error = engine

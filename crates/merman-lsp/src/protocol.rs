@@ -3,6 +3,7 @@ use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, semantic_token_descriptor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -62,9 +63,16 @@ impl ConfigSchemaResponse {
 }
 
 pub fn experimental_capabilities() -> serde_json::Value {
+    let editor_language = semantic_token_descriptor();
     json!({
         "merman": {
             "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
+            "editorLanguage": {
+                "schemaVersion": editor_language.schema_version,
+                "descriptorDigest": SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+                "packedEncoding": editor_language.packed.encoding,
+                "wordsPerToken": editor_language.packed.words_per_token
+            },
             "requests": {
                 "ruleCatalog": RULE_CATALOG_METHOD,
                 "configSchema": CONFIG_SCHEMA_METHOD
@@ -172,17 +180,6 @@ fn analysis_options_schema(
                         "type": "object",
                         "additionalProperties": true,
                         "description": "Mermaid site configuration forwarded to the shared parser/config layer."
-                    },
-                    "parse": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "properties": {
-                            "suppress_errors": {
-                                "type": "boolean",
-                                "default": false,
-                                "description": "Parse leniently when true."
-                            }
-                        }
                     },
                     "resources": {
                         "type": "object",
@@ -312,6 +309,7 @@ mod tests {
     #[test]
     fn experimental_capability_advertises_rule_catalog_request() {
         let capabilities = experimental_capabilities();
+        let descriptor = semantic_token_descriptor();
 
         assert_eq!(
             capabilities["merman"]["requests"]["ruleCatalog"],
@@ -324,6 +322,15 @@ mod tests {
         assert_eq!(
             capabilities["merman"]["schemaVersion"],
             EXPERIMENTAL_SCHEMA_VERSION
+        );
+        assert_eq!(
+            capabilities["merman"]["editorLanguage"],
+            serde_json::json!({
+                "schemaVersion": descriptor.schema_version,
+                "descriptorDigest": descriptor.digest,
+                "packedEncoding": descriptor.packed.encoding,
+                "wordsPerToken": descriptor.packed.words_per_token,
+            })
         );
     }
 
@@ -370,6 +377,11 @@ mod tests {
             response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["max_source_bytes"]
                 ["default"],
             json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
+        );
+        assert!(
+            response.schema["$defs"]["analysisOptions"]["properties"]
+                .get("parse")
+                .is_none()
         );
         assert_eq!(
             response.schema["allOf"][0],

@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-07-18
+- Amended: 2026-07-20 (disposable editor document session)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `2`, editor/analysis/facts schema `1`
 
 ## Context
@@ -159,11 +160,14 @@ loader. Merman language intelligence runs in a dedicated module Worker using the
 diagram catalog, analysis, and `merman-editor-core`, but excludes SVG rendering, ASCII, host
 capabilities, and ELK.
 
-The editor Worker owns one document URI and monotonically increasing version. `didOpen`,
-`didChange`, query, cancellation, protocol validation, and disposal cross its typed channel.
-Diagnostics, completion, hover, code actions, symbols, definition, references, rename, and semantic
-tokens are projections of Rust `merman-editor-core`, not TypeScript syntax heuristics. Results with
-stale document versions are discarded. Protocol or result-shape mismatch fails closed.
+The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
+`didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,
+detection, completion, hover, code actions, symbols, definition, references, rename, and semantic
+tokens are projections of the same Rust `merman-editor-core` snapshot, not TypeScript syntax
+heuristics. A generated descriptor owns the Monaco legend and WASM returns its validated packed
+token plan. Results with stale document versions or descriptor digests are discarded. Cancelling a
+client wait does not claim to interrupt synchronous WASM execution; the completed stale result is
+ignored. Protocol or result-shape mismatch fails closed.
 
 The native browser ABI remains `2`; editor diagnostics and shared analysis/facts remain schema `1`.
 These numbers describe different contracts and do not advance together.
@@ -181,14 +185,18 @@ those facts. Source-prefix and regular-expression classification are not fallbac
 
 ### 8. Public Package And Internal Runtime Boundaries
 
-`@mermanjs/web` remains a stateless browser binding package. Its lifecycle functions initialize a
-realm-local wasm-bindgen module, but the Playground runtime store, Render Coordinator, iframe
-protocols, benchmark controller, and application retry policy are product code above the package.
+`@mermanjs/web` remains an operation-oriented browser binding package. Its lifecycle functions
+initialize a realm-local wasm-bindgen module, and its editor-capable surfaces expose one narrow,
+explicitly disposable analyzed-document session. The Playground runtime store, Render Coordinator,
+iframe protocols, benchmark controller, and application retry policy remain product code above the
+package.
 
 `@mermanjs/web/editor` is a public capability-specific subpath backed by `browser-editor`.
 `@mermanjs/web/full` remains the explicit full surface, and the default import remains
-`browser-full`. A reusable public engine/session factory is deferred until benchmark evidence shows
-that construction cost and consumer ownership justify a new stable API.
+`browser-full`. `createEditorSession()` is admitted because a versioned editor document has explicit
+ownership and otherwise rebuilds the same analyzed snapshot for every language query. A reusable
+render engine or general runtime factory remains deferred until benchmark evidence shows that its
+construction cost and consumer ownership justify a new stable API.
 
 ### 9. Deployment Cache Headers Remain A Hosting Concern
 

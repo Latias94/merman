@@ -1,4 +1,4 @@
-#import "@preview/merman:0.1.0": mermaid, mermaid-result
+#import "@preview/merman:0.2.0": mermaid, mermaid-result
 
 #let invalid-source = ""
 

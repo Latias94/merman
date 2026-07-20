@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -65,7 +65,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
@@ -92,6 +92,10 @@ jobs:
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Use validated release metadata
         id: version
@@ -141,7 +145,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
 
       - name: Build Android native libraries
         env:
@@ -202,10 +206,15 @@ jobs:
           dart format --set-exit-if-changed lib example
           dart pub publish --dry-run
 
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
       - name: Package Flutter release artifact
         run: |
           set -euo pipefail
           tar -czf "$RUNNER_TEMP/merman-flutter-package.tar.gz" -C platforms/flutter .
+          tar -tzf "$RUNNER_TEMP/merman-flutter-package.tar.gz" | grep -Fx './LICENSE'
+          tar -tzf "$RUNNER_TEMP/merman-flutter-package.tar.gz" | grep -Fx './THIRD_PARTY_NOTICES.md'
 
       - name: Upload Flutter package artifact
         uses: actions/upload-artifact@v6

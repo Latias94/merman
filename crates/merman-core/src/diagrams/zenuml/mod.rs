@@ -26,12 +26,12 @@ struct ZenumlSemanticSource {
     first_diagnostic: Option<ast::SyntaxDiagnostic>,
 }
 
-pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = parse_semantic_source(code, meta)?;
     model::render_model_to_compat_json(&source.model, meta)
 }
 
-pub fn parse_zenuml_model_for_render(
+pub(crate) fn parse_zenuml_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ZenumlDiagramRenderModel> {
@@ -41,14 +41,29 @@ pub fn parse_zenuml_model_for_render(
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_semantic_source(code, meta)?;
-    let value = model::render_model_to_compat_json(&source.model, meta)?;
-    Ok((value, source.editor_facts))
-}
-
-pub(crate) fn parse_zenuml_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_semantic_source(code).editor_facts
+) -> crate::family::CombinedSemanticParse {
+    let source = construct_semantic_source(code);
+    let construction = match &source.first_diagnostic {
+        Some(diagnostic) => Err(crate::family::CombinedSemanticFailure::new(
+            Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                diagnostic.message.clone(),
+                diagnostic.span,
+            ),
+            source.editor_facts,
+        )),
+        None => Ok(source),
+    };
+    crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| {
+            (
+                model::render_model_to_compat_json(&source.model, meta),
+                source.editor_facts,
+            )
+        },
+        crate::family::CombinedSemanticFailure::into_parts,
+    )
 }
 
 fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
@@ -132,7 +147,11 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("unterminated accDescr block"));
 
-        let facts = parse_zenuml_editor_facts("zenuml\naccDescr {\n  incomplete\n", &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_zenuml_json_and_editor_facts,
+            "zenuml\naccDescr {\n  incomplete\n",
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(
             facts

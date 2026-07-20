@@ -404,91 +404,75 @@ struct Token {
     selection: SourceSpan,
 }
 
-pub fn parse_railroad(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ir)
 }
 
-pub fn parse_railroad_ebnf(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_ebnf(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ebnf)
 }
 
-pub fn parse_railroad_abnf(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_abnf(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Abnf)
 }
 
-pub fn parse_railroad_peg(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_peg(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
-pub fn parse_railroad_model_for_render(
+pub(crate) fn parse_railroad_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RailroadDiagramRenderModel> {
     parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ir)
 }
 
-pub fn parse_railroad_ebnf_model_for_render(
+pub(crate) fn parse_railroad_ebnf_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RailroadDiagramRenderModel> {
     parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ebnf)
 }
 
-pub fn parse_railroad_abnf_model_for_render(
+pub(crate) fn parse_railroad_abnf_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RailroadDiagramRenderModel> {
     parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Abnf)
 }
 
-pub fn parse_railroad_peg_model_for_render(
+pub(crate) fn parse_railroad_peg_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RailroadDiagramRenderModel> {
     parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Peg)
 }
 
-pub fn parse_railroad_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Ir)
-}
-
-pub fn parse_railroad_ebnf_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf)
-}
-
-pub fn parse_railroad_abnf_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf)
-}
-
-pub fn parse_railroad_peg_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Peg)
-}
-
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
+) -> crate::family::CombinedSemanticParse {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir)
 }
 
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
+) -> crate::family::CombinedSemanticParse {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf)
 }
 
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
+) -> crate::family::CombinedSemanticParse {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf)
 }
 
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
+) -> crate::family::CombinedSemanticParse {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
@@ -564,26 +548,19 @@ fn parse_railroad_model_for_render_dialect(
     Ok(parse_railroad_semantic_source(code, meta, dialect)?.into_render_model(meta))
 }
 
-fn parse_railroad_editor_facts_for_dialect(
-    code: &str,
-    meta: &ParseMetadata,
-    dialect: RailroadDialect,
-) -> EditorSemanticFacts {
-    match construct_railroad_semantic_source(code, meta, dialect) {
-        Ok(source) => source.editor_facts(),
-        Err(failure) => *failure.editor_facts,
-    }
-}
-
 fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_railroad_semantic_source(code, meta, dialect)?;
-    let editor_facts = source.editor_facts();
-    let model = source.into_compat_json(meta)?;
-    Ok((model, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_railroad_semantic_source(code, meta, dialect),
+        |source| {
+            let editor_facts = source.editor_facts();
+            (source.into_compat_json(meta), editor_facts)
+        },
+        |failure| (*failure.error, *failure.editor_facts),
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -2837,6 +2814,16 @@ mod tests {
         }
     }
 
+    fn combined_editor_facts(source: &str, dialect: RailroadDialect) -> EditorSemanticFacts {
+        let parser: crate::family::CombinedSemanticParser = match dialect {
+            RailroadDialect::Ir => parse_railroad_json_and_editor_facts,
+            RailroadDialect::Ebnf => parse_railroad_ebnf_json_and_editor_facts,
+            RailroadDialect::Abnf => parse_railroad_abnf_json_and_editor_facts,
+            RailroadDialect::Peg => parse_railroad_peg_json_and_editor_facts,
+        };
+        crate::family::test_support::editor_facts(parser, source, &meta(dialect))
+    }
+
     fn exact_lexeme<'a>(
         facts: &'a EditorSemanticFacts,
         source: &str,
@@ -2931,13 +2918,13 @@ mod tests {
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
-            let crate::RenderSemanticModel::Railroad(model) = typed.model else {
+            let crate::RenderSemanticModel::Railroad(model) = typed.model() else {
                 panic!("expected Railroad render model for {diagram_type}");
             };
 
-            assert_eq!(typed.meta.diagram_type, diagram_type);
+            assert_eq!(typed.metadata().diagram_type, diagram_type);
             assert_eq!(
-                render_model_to_compat_json(&model, &typed.meta).unwrap(),
+                render_model_to_compat_json(model, typed.metadata()).unwrap(),
                 compat.model
             );
         }
@@ -2992,7 +2979,7 @@ mod tests {
             parse_railroad_semantic_source(source, &meta(dialect), dialect).unwrap_or_else(
                 |error| panic!("{} fixture failed: {error}", dialect.diagram_type()),
             );
-            let facts = parse_railroad_editor_facts_for_dialect(source, &meta(dialect), dialect);
+            let facts = combined_editor_facts(source, dialect);
 
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
             assert_eq!(facts.lexeme_failure(), None);
@@ -3076,7 +3063,7 @@ mod tests {
             assert!(parse_railroad_semantic_source(source, &meta(dialect), dialect).is_err());
 
             reset_railroad_syntax_construction_count();
-            let facts = parse_railroad_editor_facts_for_dialect(source, &meta(dialect), dialect);
+            let facts = combined_editor_facts(source, dialect);
             assert_eq!(railroad_syntax_construction_count(), 1);
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
             assert_eq!(facts.lexeme_failure(), None);
@@ -3106,11 +3093,7 @@ mod tests {
     #[test]
     fn unterminated_string_keeps_confirmed_delimiter_and_unicode_content() {
         let source = concat!("railroad-beta\r\n", "entry = terminal(\"未闭合 🤓",);
-        let facts = parse_railroad_editor_facts_for_dialect(
-            source,
-            &meta(RailroadDialect::Ir),
-            RailroadDialect::Ir,
-        );
+        let facts = combined_editor_facts(source, RailroadDialect::Ir);
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);

@@ -24,12 +24,12 @@ fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
     )
     .map_err(|error| format!("parse failed: {error}"))?
     .ok_or_else(|| "no diagram detected".to_string())?;
-    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         return Err("expected Flowchart render model".to_string());
     };
     layout_swimlane_typed(
         model,
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &FixedTextMeasurer,
         None,
     )

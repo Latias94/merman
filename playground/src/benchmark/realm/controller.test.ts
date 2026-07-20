@@ -385,6 +385,7 @@ function failureResponse(request: BenchmarkSampleRequest, sequence: number) {
     resourceError: null,
     stage: "render",
     message: "render failed",
+    detail: null,
     version: "test-version",
   };
 }

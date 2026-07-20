@@ -229,7 +229,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 }
             };
 
-            let diagram_type = parsed.meta.diagram_type.clone();
+            let diagram_type = parsed.metadata().diagram_type.clone();
             let session = environment.begin_session().expect("begin render session");
             let artifact = match family::prepare(parsed, &layout_opts, session) {
                 Ok(v) => v,

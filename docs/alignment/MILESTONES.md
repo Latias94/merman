@@ -85,33 +85,33 @@ Exit criteria:
 - Any remaining strict diffs are documented in diagram-specific strict-gap notes (e.g.
   `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md`).
 
-### M5: ZenUML compatibility (headless)
+### M5: ZenUML external-lane admission (complete for the pinned source)
 
 Goal:
 
-- Expand practical ZenUML support for headless consumers while keeping Mermaid parity gates green.
+- Keep the family-owned ZenUML grammar, semantic/editor facts, typed layout, native SVG, and
+  external browser comparison lane aligned to the admitted source while keeping Mermaid parity
+  gates green.
 
 Constraints:
 
-- ZenUML is an external diagram upstream and is rendered via browser-only `@zenuml/core`.
-- `merman` does not maintain upstream SVG baselines for ZenUML; it is snapshot-gated only.
+- ZenUML is an external diagram upstream. The exact plugin graph is tested in an opaque browser
+  realm, while the local headless path emits strict-validated native SVG.
+- `merman` does not claim Mermaid upstream SVG baselines for ZenUML; the external lane owns its
+  source-backed evidence separately.
 
-Planned steps:
+Pinned-source evidence:
 
-1. Import a small batch of examples from `repo-ref/mermaid/docs/syntax/zenuml.md` into
-   `fixtures/zenuml/`.
-2. Extend the translator in `crates/merman-core/src/diagrams/zenuml.rs` incrementally.
-3. Gate changes on:
-   - semantic snapshots (`fixtures/zenuml/*.golden.json`)
-   - layout snapshots (`fixtures/zenuml/*.layout.golden.json`)
+1. Family-owned parsing and semantic/editor facts live under
+   `crates/merman-core/src/diagrams/zenuml/`.
+2. Typed layout and SVG are covered by `crates/merman/tests/zenuml_typed_render.rs`.
+3. External browser admission is recorded by the ZenUML probes under `tools/upstreams/` and is
+   kept outside the built-in Mermaid SVG matrix.
 
 Exit criteria:
 
-- ZenUML fixtures cover at least:
-  - basic messages (`A->B: msg`, `A-->B: msg`)
-  - titles and accessibility directives
-  - at least one control-flow feature (e.g. loop/alt) *or* an explicit ADR explaining why it is
-    deferred.
+- The pinned ZenUML source passes parser, semantic/editor, typed-layout, native-SVG, and external
+  browser admission evidence. Future Core upgrades must repeat that workflow.
 
 ## Gap backlog
 

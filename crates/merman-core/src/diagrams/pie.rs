@@ -6,7 +6,7 @@ use crate::diagrams::langium_common::{
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -64,19 +64,19 @@ struct PieSemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
-pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
     pie_output_to_json(parse_pie_semantic_source(code, meta)?.output, meta)
 }
 
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let PieSemanticSource {
-        output,
-        editor_facts,
-    } = parse_pie_semantic_source(code, meta)?;
-    Ok((pie_output_to_json(output, meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_pie_semantic_source(code, meta),
+        |source| (pie_output_to_json(source.output, meta), source.editor_facts),
+        family::CombinedSemanticFailure::into_parts,
+    )
 }
 
 fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Result<Value> {
@@ -104,7 +104,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-pub fn parse_pie_model_for_render(
+pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PieDiagramRenderModel> {
@@ -118,70 +118,14 @@ pub fn parse_pie_model_for_render(
     }
 }
 
-pub fn parse_pie_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_pie_editor_source(code)
-}
-
-fn parse_pie_editor_source(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let PieHeader::Body(body) = pie_body_start(code) else {
-        return facts;
-    };
-    let mut offset = body.offset;
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
-    if let Some(span) = body.show_data_span {
-        lexemes.keyword(span);
-        push_show_data_editor_fact(&mut facts, span);
-    }
-    let mut parsed_sections = Vec::new();
-
-    while offset < code.len() {
-        match parse_pie_statement(code, offset) {
-            PieStatement::Common(parsed) => {
-                lexemes.extend(parsed.lexemes.clone());
-                push_langium_common_editor_fact(&mut facts, &parsed.fact, "pie");
-                if let Some(diagnostic) = &parsed.diagnostic {
-                    push_langium_common_recovery(&mut facts, diagnostic);
-                }
-                offset += parsed.consumed;
-            }
-            PieStatement::Section {
-                section,
-                next_offset,
-            } => {
-                lexemes.extend(section.lexemes.clone());
-                push_pie_section_editor_fact(&mut facts, &section);
-                parsed_sections.push(section);
-                offset = next_offset;
-            }
-            PieStatement::Empty { next_offset } => offset = next_offset,
-            PieStatement::Unexpected {
-                span, next_offset, ..
-            } => {
-                facts.mark_recovered_from_parse_error("unexpected pie statement", Some(span));
-                offset = next_offset;
-            }
-        }
-    }
-
-    for section in parsed_sections {
-        if section.value < 0.0 {
-            facts.mark_recovered_from_parse_error(
-                format!(
-                    "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                    section.label, section.value
-                ),
-                Some(section.value_span),
-            );
-        }
-    }
-
-    lexemes.attach(code, &mut facts);
-    facts
-}
-
 fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
+    construct_pie_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
+}
+
+fn construct_pie_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("pie");
 
@@ -210,16 +154,20 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
         lexemes.keyword(span);
         push_show_data_editor_fact(&mut editor_facts, span);
     }
+    let mut first_error = None;
 
     while offset < code.len() {
         match parse_pie_statement(code, offset) {
             PieStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
-                    return Err(Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
-                        diagnostic.message.clone(),
-                        diagnostic.span.start,
-                    ));
+                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    first_error.get_or_insert_with(|| {
+                        Error::diagram_parse_insertion_point(
+                            meta.diagram_type.clone(),
+                            diagnostic.message.clone(),
+                            diagnostic.span.start,
+                        )
+                    });
                 }
                 lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "pie");
@@ -236,11 +184,20 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
                 offset = next_offset;
             }
             PieStatement::Empty { next_offset } => offset = next_offset,
-            PieStatement::Unexpected { text, .. } => {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!("unexpected pie statement: {text}"),
-                ));
+            PieStatement::Unexpected {
+                text,
+                span,
+                next_offset,
+            } => {
+                editor_facts
+                    .mark_recovered_from_parse_error("unexpected pie statement", Some(span));
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unexpected pie statement: {text}"),
+                    )
+                });
+                offset = next_offset;
             }
         }
     }
@@ -249,14 +206,15 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
     let mut seen = HashSet::new();
     for section in parsed_sections {
         if section.value < 0.0 {
-            return Err(Error::diagram_parse_exact(
-                meta.diagram_type.clone(),
-                format!(
-                    "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                    section.label, section.value
-                ),
-                section.value_span,
-            ));
+            let message = format!(
+                "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
+                section.label, section.value
+            );
+            editor_facts.mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
+            first_error.get_or_insert_with(|| {
+                Error::diagram_parse_exact(meta.diagram_type.clone(), message, section.value_span)
+            });
+            continue;
         }
         if seen.insert(section.label.clone()) {
             sections.push(PieRenderSection {
@@ -268,6 +226,10 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
 
     let common = LangiumCommonDbFields::from_facts(&common);
     lexemes.attach(code, &mut editor_facts);
+
+    if let Some(error) = first_error {
+        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+    }
 
     Ok(PieSemanticSource {
         output: PieParseOutput::Model(PieDiagramRenderModel {
@@ -631,7 +593,11 @@ pie showData
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
 
-        let facts = parse_pie_editor_facts(source, &metadata());
+        let facts = crate::family::test_support::editor_facts(
+            parse_pie_json_and_editor_facts,
+            source,
+            &metadata(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "negative"));
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
@@ -673,7 +639,11 @@ pie showData
                 .contains("unexpected pie statement: showData")
         );
 
-        let facts = parse_pie_editor_facts(source, &metadata());
+        let facts = crate::family::test_support::editor_facts(
+            parse_pie_json_and_editor_facts,
+            source,
+            &metadata(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(
             !facts

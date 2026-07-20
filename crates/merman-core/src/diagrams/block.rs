@@ -687,13 +687,13 @@ struct BlockParseFailure {
 }
 
 impl BlockParseFailure {
-    fn into_editor_facts(self) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = *self.editor_facts;
         facts.mark_recovered_from_parse_error(
             format!("block parser recovered after parse error: {}", self.error),
             Some(self.span),
         );
-        facts
+        (*self.error, facts)
     }
 }
 
@@ -750,7 +750,7 @@ fn construct_block_semantic_source(
     Ok(BlockSemanticSource { db, editor_facts })
 }
 
-pub fn parse_block_model_for_render(
+pub(crate) fn parse_block_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<BlockDiagramRenderModel> {
@@ -997,18 +997,18 @@ fn push_block_id_list(
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let model = block_db_to_render_model(&source.db);
-    let json = render_model_to_compat_json(&model, meta)?;
-    Ok((json, source.editor_facts))
-}
-
-pub fn parse_block_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_block_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_block_semantic_source(code, meta),
+        |source| {
+            let model = block_db_to_render_model(&source.db);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        BlockParseFailure::into_error_and_editor_facts,
+    )
 }
 
 struct NodeDelims {
@@ -2354,7 +2354,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(&source.db);
     render_model_to_compat_json(&model, meta)
@@ -2465,8 +2465,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "block");
-        match parsed.model {
+        assert_eq!(parsed.metadata().diagram_type, "block");
+        match parsed.model() {
             RenderSemanticModel::Block(model) => {
                 let a = model
                     .blocks_flat
@@ -2496,7 +2496,7 @@ mod tests {
     }
 
     #[test]
-    fn block_combined_parse_constructs_once_and_matches_standalone_projections() {
+    fn block_combined_parse_constructs_once_and_preserves_projections() {
         let text = r#"block-beta
 columns 2
 A["Alpha"] --"calls"--> B["Beta"]
@@ -2508,8 +2508,10 @@ C<["Route"]>(left,down)
         let meta = meta();
 
         reset_block_syntax_construction_count();
-        let (combined_json, combined_facts) =
-            parse_block_json_and_editor_facts(text, &meta).unwrap();
+        let (combined_json, combined_facts) = crate::family::test_support::into_result(
+            parse_block_json_and_editor_facts(text, &meta),
+        )
+        .unwrap();
         assert_eq!(
             block_syntax_construction_count(),
             1,
@@ -2517,7 +2519,7 @@ C<["Route"]>(left,down)
         );
 
         assert_eq!(combined_json, parse_block(text, &meta).unwrap());
-        assert_eq!(combined_facts, parse_block_editor_facts(text, &meta));
+        assert!(!combined_facts.symbols.is_empty());
         let typed = parse_block_model_for_render(text, &meta).unwrap();
         assert_eq!(
             render_model_to_compat_json(&typed, &meta).unwrap(),
@@ -2562,7 +2564,11 @@ classDef important fill:red
 class A,B important
 C<["Route"]>(left,down)
 "#;
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         for (name, detail) in [
             ("Alpha", "block label"),
@@ -2605,7 +2611,11 @@ C<["Route"]>(left,down)
             "  space:2\r\n",
         );
         parse_block(text, &meta()).expect("grammar-surface fixture must stay render-compatible");
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
@@ -2698,7 +2708,11 @@ C<["Route"]>(left,down)
         };
         assert_eq!(diagnostic.span(), Some(invalid_span));
 
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.lexemes().iter().all(|lexeme| {
@@ -2725,7 +2739,11 @@ C<["Route"]>(left,down)
     fn block_recovery_keeps_an_incomplete_labeled_edge_prefix() {
         let text = "block\nA o-- \"label\"\nB[\"later\"]\n";
         parse_block(text, &meta()).expect_err("strict parsing must reject incomplete labeled edge");
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
@@ -2757,7 +2775,11 @@ C<["Route"]>(left,down)
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 
         reset_block_syntax_construction_count();
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(block_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.diagnostics.iter().any(|diagnostic| {
@@ -2787,7 +2809,11 @@ C<["Route"]>(left,down)
             ParseDiagnosticSpanKind::InsertionPoint
         );
 
-        let facts = parse_block_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.diagnostics.iter().any(|diagnostic| {
             diagnostic.span == Some(eof) && diagnostic.message.contains("expected end")
@@ -2823,7 +2849,7 @@ C<["Route"]>(left,down)
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        match parsed.model {
+        match parsed.model() {
             RenderSemanticModel::Block(model) => {
                 assert_eq!(model.blocks_flat.len(), DEPTH + 2);
                 assert_eq!(model.blocks_flat[0].id, "root");

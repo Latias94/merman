@@ -36,14 +36,8 @@ export interface ResourceOptions {
   profile?:
     | "interactive"
     | "typst-package"
-    | "typst_package"
-    | "typst"
     | "trusted-native"
-    | "trusted_native"
-    | "trusted"
-    | "unbounded-for-trusted-input"
-    | "unbounded_for_trusted_input"
-    | "unbounded";
+    | "unbounded-for-trusted-input";
   max_source_bytes?: number;
   max_svg_bytes?: number;
   max_flowchart_nodes?: number;
@@ -60,9 +54,9 @@ export interface ResourceOptions {
 
 export interface SvgOptions {
   diagram_id?: string;
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
+  pipeline?: "parity" | "readable" | "resvg-safe";
   scoped_css?: string;
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  css_override_policy?: "preserve" | "strip-existing-important";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
 }
@@ -95,8 +89,8 @@ export interface HostThemeRolesOptions {
 }
 
 export interface HostThemeOutputOptions {
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  pipeline?: "parity" | "readable" | "resvg-safe";
+  css_override_policy?: "preserve" | "strip-existing-important";
   root_background?: "none" | "canvas" | string;
   drop_native_duplicate_fallbacks?: boolean;
   scoped_css?: string;
@@ -110,7 +104,6 @@ export interface HostThemeOptions {
   roles?: HostThemeRolesOptions;
   series_palette?: string[];
   output?: HostThemeOutputOptions;
-  themeVariables?: Record<string, unknown>;
   theme_variables?: Record<string, unknown>;
   site_config?: MermaidSiteConfig;
 }
@@ -578,9 +571,7 @@ export interface EditorTextEdit {
 export type EditorSemanticFactSource =
   | "unavailable"
   | "parser_complete"
-  | "parser_complete_degraded_spans"
-  | "parser_recovered"
-  | "parser_recovered_degraded_spans";
+  | "parser_recovered";
 
 export type EditorCompletionItemKind = "keyword" | "variable" | "class" | "snippet";
 
@@ -732,17 +723,93 @@ export interface EditorSemanticTokenLegend {
   tokenModifiers: string[];
 }
 
-export interface EditorSemanticToken {
-  line: number;
-  start: number;
-  length: number;
-  tokenType: string;
-  tokenModifier: string;
-  factSource: EditorSemanticFactSource;
+export type EditorSemanticTokenDescriptor =
+  typeof import("./generated/token-descriptor.js").SEMANTIC_TOKEN_DESCRIPTOR;
+
+export interface BrowserEditorSession {
+  readonly version: number;
+  readonly uri: string;
+  update(source: string, version: number): void;
+  diagnostics(): EditorDiagnosticsResult;
+  diagramDetection(): DiagramDetectionFacts;
+  codeActions(): EditorCodeAction[];
+  completions(position: EditorPosition): EditorCompletionList;
+  hover(position: EditorPosition): EditorHover | null;
+  documentSymbols(): EditorDocumentSymbol[];
+  workspaceSymbols(query: string): EditorSymbolInformation[];
+  definition(position: EditorPosition): EditorLocation | null;
+  references(position: EditorPosition, includeDeclaration?: boolean): EditorLocation[];
+  prepareRename(position: EditorPosition): EditorPrepareRename | null;
+  rename(position: EditorPosition, newName: string): EditorWorkspaceEdit | null;
+  semanticTokens(): Uint32Array;
+  dispose(): void;
+}
+
+export interface WasmEditorSessionBinding {
+  readonly version: number;
+  readonly uri: string;
+  update(source: string, version: number): void;
+  diagnostics(): EditorDiagnosticsResult;
+  diagramDetection(): DiagramDetectionFacts;
+  codeActions(): EditorCodeAction[];
+  completions(line: number, character: number): EditorCompletionList;
+  hover(line: number, character: number): EditorHover | null;
+  documentSymbols(): EditorDocumentSymbol[];
+  workspaceSymbols(query: string): EditorSymbolInformation[];
+  definition(line: number, character: number): EditorLocation | null;
+  references(
+    line: number,
+    character: number,
+    includeDeclaration: boolean
+  ): EditorLocation[];
+  prepareRename(line: number, character: number): EditorPrepareRename | null;
+  rename(
+    line: number,
+    character: number,
+    newName: string
+  ): EditorWorkspaceEdit | null;
+  semanticTokens(): Uint32Array;
+  free(): void;
+}
+
+export interface WasmEditorSessionConstructor {
+  new (
+    source: string,
+    version: number,
+    uri?: string | null,
+    optionsJson?: string | null
+  ): WasmEditorSessionBinding;
+}
+
+export interface WasmSemanticTokenDescriptor {
+  schemaVersion: number;
+  digest: string;
+  tokenTypes: Array<{
+    id: string;
+    code: number;
+    lspName: string;
+    lspIndex: number;
+  }>;
+  modifiers: Array<{
+    id: string;
+    index: number;
+    bit: number;
+    lspName: string;
+    lspIndex: number;
+  }>;
+  packed: {
+    encoding: string;
+    wordWidthBits: number;
+    recordWidth: number;
+    fieldOrder: string[];
+  };
+  validTypeCodeMax: number;
+  validModifierMask: number;
 }
 
 export interface MermanWasmModule {
   default: (input?: unknown) => Promise<unknown>;
+  EditorSession?: WasmEditorSessionConstructor;
   abiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
@@ -778,6 +845,11 @@ export interface MermanWasmModule {
     optionsJson?: string | null,
     uri?: string | null
   ) => EditorDiagnosticsResult;
+  editorDiagramDetection?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => DiagramDetectionFacts;
   editorCodeActions?: (
     source: string,
     optionsJson?: string | null,
@@ -838,12 +910,12 @@ export interface MermanWasmModule {
     uri?: string | null,
     optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
-  editorSemanticTokenLegend?: () => EditorSemanticTokenLegend;
+  editorSemanticTokenDescriptor?: () => WasmSemanticTokenDescriptor;
   editorSemanticTokens?: (
     source: string,
     uri?: string | null,
     optionsJson?: string | null
-  ) => EditorSemanticToken[];
+  ) => Uint32Array;
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   bindingCapabilities: () => BindingCapabilities;

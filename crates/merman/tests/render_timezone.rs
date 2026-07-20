@@ -68,7 +68,7 @@ fn assert_new_york_winter_semantics() {
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Gantt")
         .expect("detect Gantt");
-    let RenderSemanticModel::Gantt(model) = parsed.model else {
+    let RenderSemanticModel::Gantt(model) = parsed.model() else {
         panic!("expected Gantt semantic model");
     };
     assert_eq!(model.tasks[0].start_ms, 1_768_453_200_000);
@@ -77,7 +77,7 @@ fn assert_new_york_winter_semantics() {
         .parse_diagram_for_render_model_sync(GAP_SOURCE, ParseOptions::strict())
         .expect("parse DST gap Gantt")
         .expect("detect DST gap Gantt");
-    let RenderSemanticModel::Gantt(gap_model) = gap.model else {
+    let RenderSemanticModel::Gantt(gap_model) = gap.model() else {
         panic!("expected Gantt semantic model");
     };
     assert_eq!(

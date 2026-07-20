@@ -1,182 +1,109 @@
-# merman Python Package
+# Merman For Python
 
-Experimental Python bindings for Merman through UniFFI.
+[![PyPI](https://img.shields.io/pypi/v/merman)](https://pypi.org/project/merman/)
+[![Python](https://img.shields.io/pypi/pyversions/merman)](https://pypi.org/project/merman/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Merman renders Mermaid diagrams without a browser. It can parse Mermaid source, return semantic
-JSON, compute layout JSON, and render SVG through a headless Rust engine. See the
-[project README](https://github.com/Latias94/merman),
-[Python binding notes](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md),
-and [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
-for the main library contract.
+Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-## Compatibility And Release Notes
+> **Alpha:** Python and native APIs may break before the stable release. The package currently targets UniFFI ABI `2`; install the Python wheel and native library as one artifact rather than mixing releases. The source-tree README describes `Unreleased`, while each PyPI artifact preserves the documentation for that published version.
 
-This package tracks UniFFI ABI 2 and is regenerated from the `merman-uniffi` cdylib. The
-published PyPI page shows this README together with the metadata links in `pyproject.toml`, so the
-package page can point directly to the binding docs, issues, and changelog.
+## Install
 
-`MermanReusableEngine` exposes the reusable render path, and `MermanTextMeasurer` lets Python
-hosts provide a callback when they need host-owned text measurement. `ascii_capabilities()` reports
-ASCII support grades and summary fallback metadata; `diagram_family_capabilities()` reports the
-complete detector/parser/editor/header/config/render family catalog. `analyze_document_json()` and
-`analyze_document_facts_json()` expose Markdown/MDX-aware diagnostics and facts.
+Install the current prerelease from PyPI:
 
-For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
+```sh
+python -m pip install --pre merman
+```
 
-## API
+Published wheels currently target CPython-compatible Python `3.9+` on macOS universal2, manylinux x86_64, and Windows x86_64. Other platforms must build the UniFFI library locally.
+
+## Render A Diagram
 
 ```python
 import merman
 
 engine = merman.MermanEngine()
-merman.require_abi_version(engine.abi_version())
-print(engine.package_version())
+abi_version = engine.abi_version()
+if abi_version != 2:
+    raise RuntimeError(f"expected Merman ABI 2, got {abi_version}")
 
 source = "flowchart TD\nA[Hello] --> B[World]"
 svg = engine.render_svg(source, None)
-ascii_text = engine.render_ascii(source, None)
-semantic_json = engine.parse_json(source, None)
-layout_json = engine.layout_json(source, None)
-validation = engine.validate(source, None)
-document_json = engine.analyze_document_json("```mermaid\n" + source + "\n```", None, "file:///tmp/example.md")
-document_facts_json = engine.analyze_document_facts_json(
-    "```mermaid\n" + source + "\n```",
-    None,
-    "file:///tmp/example.md",
-)
-diagrams = engine.supported_diagrams()
-ascii_capabilities = engine.ascii_capabilities()
-themes = engine.supported_themes()
-host_presets = engine.supported_host_theme_presets()
-family_capabilities = engine.diagram_family_capabilities()
-
-class Measurer(merman.MermanTextMeasurer):
-    def measure(self, request):
-        print(request.phase)
-        width = max(len(request.text) * 8.0, 1.0)
-        if request.operation == merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH:
-            return merman.MermanTextMeasureResult(
-                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
-                width=0.0,
-                height=0.0,
-                length=width,
-                line_count=0,
-                bbox_left=None,
-                bbox_right=None,
-                raw_width=None,
-            )
-        if request.operation not in {
-            merman.MermanTextMeasurementOperation.MEASURE,
-            merman.MermanTextMeasurementOperation.WRAPPED,
-            merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
-        }:
-            return None
-        return merman.MermanTextMeasureResult(
-            result_kind=merman.MermanTextMeasurementResultKind.METRICS,
-            width=width,
-            height=max(request.line_height, 1.0),
-            length=0.0,
-            line_count=1,
-            bbox_left=None,
-            bbox_right=None,
-            raw_width=None,
-        )
-
-reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
-assert "Hello" in reusable.render_svg(source)
-
-reusable = engine.reusable_engine(None)
-document_json = reusable.analyze_document_json(
-    "```mermaid\n" + source + "\n```",
-    "file:///tmp/example.md",
-)
-reusable.set_text_measurer(Measurer())
-assert "Hello" in reusable.render_svg(source)
-reusable.clear_text_measurer()
-
-try:
-    engine.render_svg(source, "{")
-except merman.MermanError.Binding as error:
-    print(error.code_name, error.message)
+print(svg[:4])  # <svg
 ```
 
-The callback receives a routing phase and exact operation. A handled record must set the matching
-`MermanTextMeasurementResultKind`; scalar width/height operations use `length`. Return `None` when
-the exact primitive is unsupported. Wrong-kind or invalid records fall back and are not inferred
-from default-valued fields.
-ABI 2 exposes 19 exact operations with contiguous codes `0..18`. `RAW_B_BOX_HEIGHT` (18) measures
-the height from a direct SVG `<text>.getBBox()` probe and returns a non-negative length.
-`CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` (17) returns a signed length for Architecture's
-`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
-`CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; it cannot substitute for the
-middle-baseline operation, and both y-offset operations may return a finite negative value.
+The same engine exposes `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog.
 
-`options_json` is optional. Pass `None` for defaults, or a JSON string with `parse`, `layout`, and
-`svg` options. The shared schema is documented in
-[`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+## Reuse An Engine
+
+Use a reusable engine when calls share one options document:
+
+```python
+reusable = engine.reusable_engine('{"svg":{"pipeline":"readable"}}')
+svg = reusable.render_svg(source)
+facts = reusable.analyze_document_facts_json(
+    "```mermaid\n" + source + "\n```",
+    "file:///workspace/README.md",
+)
+```
+
+`options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants.
+
+Diagnostics and parser-facts payloads use schema `1`, independently of UniFFI ABI `2`. The current facts v1 contract is parser-only; consumers of the removed alpha TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
 
 ## Text Measurement
 
-The current Python package is generated through UniFFI and uses merman's built-in headless text
-measurer by default. This is suitable for CLI tools, documentation builds, tests, and server-side
-batch rendering.
+Merman owns a deterministic vendored text measurer by default. Keep it for servers, CLIs, CI, and documentation builds.
 
-If a Python GUI, browser automation host, or WebView application needs geometry that matches its
-own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
-call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
-restore the engine's original built-in measurer. Inspect `request.phase` for routing and
-`request.operation` for the exact primitive. Returning `None`, a wrong-kind/invalid result, or
-raising a callback exception uses the operation's named vendored fallback for that request. See
-[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
+GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer` and install it with `reusable_engine_with_text_measurer(...)` or `set_text_measurer(...)`; `clear_text_measurer()` restores the built-in measurer. ABI 2 exposes 19 exact measurement operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and callback exceptions fall back for that operation.
 
-## Generate Locally
+Use a real font API from the surface that displays the SVG rather than estimating width from character counts. Keep callbacks fast, and do not re-enter or replace the measurer on the same reusable engine while a callback is active. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md) documents every operation and fallback; the repository's [Python smoke example](https://github.com/Latias94/merman/blob/main/platforms/python/merman/examples/smoke.py) exercises all generated callback shapes for contract testing.
 
-This directory intentionally does not commit generated binding source or native libraries. Generate
-them from a local `merman-uniffi` cdylib:
+The generated callback is `measure(self, request)`, not `measure_text`. One-shot calls pass
+`options_json` as their second argument; reusable calls inherit options from construction and accept
+only the source. The bindgen test executes the linked smoke example against a freshly generated
+module and its matching native library, so it is the authoritative copy-paste reference.
 
-```bash
+## Output And Platform Limits
+
+- SVG may contain styles, markers, and `foreignObject` HTML labels; the final viewer must support the selected SVG pipeline.
+- All APIs are synchronous. Run expensive rendering outside a GUI event loop.
+- Wheels bundle a platform-specific native library and are not portable across operating systems or CPU families.
+- Merman targets structural and semantic Mermaid compatibility; browser font rendering and DOM measurements can still differ unless the host provides matching metrics.
+
+Query `diagram_family_capabilities()` and `ascii_capabilities()` at runtime instead of assuming that every build profile or output format supports every family.
+
+## Local Development
+
+Generate bindings and the adjacent native library from this checkout:
+
+```sh
 cargo build -p merman-uniffi --features bindgen-smoke
 cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- \
   --package-dir platforms/python/merman
-```
-
-The generator writes:
-
-- `src/merman/merman_uniffi.py`
-- `src/merman/merman_uniffi.dll` on Windows
-- `src/merman/libmerman_uniffi.so` on Linux
-- `src/merman/libmerman_uniffi.dylib` on macOS
-
-The native library must sit beside the generated module because UniFFI's Python loader resolves the
-library relative to the generated file.
-
-After generation, a local smoke can import the package by putting `src` on `PYTHONPATH`:
-
-```bash
-PYTHONPATH=platforms/python/merman/src python -c "import merman; print(merman.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
-```
-
-Or run the example script:
-
-```bash
 PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 ```
 
-This smoke asserts ABI 2, all 19 generated operation variants, the `RAW_B_BOX_HEIGHT` result, and a
-distinct signed `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` callback result.
+Build and install-smoke a platform wheel with:
 
-Build a local platform wheel and run an install smoke:
-
-```bash
+```sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
-The wheel is platform-specific because it bundles `merman-uniffi` as a native `.so`, `.dylib`, or
-`.dll`. Tag releases run `release-python.yml`, attach platform wheels to the GitHub Release, and
-publish the `merman` distribution to PyPI when Trusted Publishing is configured.
+## Documentation And Releases
 
-## License
+- [Python binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
+- [Package changelog](https://github.com/Latias94/merman/blob/main/platforms/python/merman/CHANGELOG.md)
+- [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- [Issue tracker](https://github.com/Latias94/merman/issues)
+- [Source repository](https://github.com/Latias94/merman)
 
-This package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full license
-texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
-[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+PyPI is the supported registry channel for the Python package. Release wheels are also attached to the corresponding GitHub release; this README does not imply support for platforms without a listed wheel.
+
+## License And Notices
+
+This package is available under MIT or Apache-2.0. The installed distribution carries the exact
+release license, notices, and upstream texts under its `.dist-info/licenses/` directory. Online
+copies live in the repository's [Python package directory](https://github.com/Latias94/merman/tree/main/platforms/python/merman).

@@ -696,13 +696,17 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
-        let RenderSemanticModel::Timeline(model) = &parsed.model else {
+        let RenderSemanticModel::Timeline(model) = parsed.model() else {
             panic!("expected timeline render model");
         };
         let session = RenderEnvironment::parity().begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_timeline_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .expect("layout ok")
+        layout_timeline_diagram_typed(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            &measurer,
+        )
+        .expect("layout ok")
     }
 
     #[test]

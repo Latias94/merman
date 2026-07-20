@@ -1,24 +1,66 @@
 # Rendering Security
 
 Merman is a headless Mermaid renderer. It parses Mermaid source, applies Merman's Mermaid-aligned
-sanitization rules, and returns SVG or raster output. Hosts still decide how that output is used:
-downloaded as a file, rasterized, inserted into a browser DOM, or shown in an editor webview.
+sanitization rules, and returns SVG, raster-image, or vector-PDF output. Hosts still decide how that
+output is used: downloaded as a file, rasterized, inserted into a browser DOM, or shown in an
+editor webview.
 
 ## Safe Defaults
 
 Default rendering keeps Mermaid-compatible strict behavior: labels and tooltips are sanitized,
 unsafe URL schemes are blocked unless the caller intentionally uses loose Mermaid security behavior,
-and renderer output does not execute callbacks.
+and returned output carries no Mermaid `bindFunctions` execution hook. A host text-measurement
+callback, when configured, still runs synchronously inside the render operation.
+
+`securityLevel` is a sanitization policy in Merman. It is not an execution sandbox. In particular,
+Mermaid's browser renderer wraps `securityLevel: "sandbox"` output in a sandboxed iframe; Merman is
+headless and does not create an iframe, process sandbox, origin boundary, or content-security policy.
+Merman currently applies its strict sanitization path to `sandbox`, `strict`, and `antiscript` text,
+but the host must establish any required browser or process isolation itself. Do not interpret a
+Merman `sandbox` setting as equivalent to Mermaid's iframe boundary.
 
 For export and raster workflows, prefer the resvg-safe SVG pipeline or a raster output API when the
 consumer is not a browser DOM:
 
 ```rust
-use merman::svg::pipeline::SvgPipeline;
+use merman::render::{ResvgCompatibleSvg, SvgPipeline};
 ```
 
-The resvg-safe pipeline is designed for SVG-to-raster tools. It is not a general sanitizer for
-arbitrary user-supplied SVG.
+The resvg-safe preset always runs after custom draft postprocessors. It tokenizes CSS, removes
+active SVG/SMIL content and unsafe attributes, parses the final XML, and returns the sealed
+`ResvgCompatibleSvg` type used by low-level PNG/JPG/PDF APIs. It is designed for non-browser SVG
+consumers, not as a browser DOM sanitizer for arbitrary user-supplied SVG.
+
+## Output Resource Boundaries
+
+Output type determines the relevant allocation policy:
+
+- SVG remains vector markup and has no global width or height cap. Normal source, model, label, and
+  SVG-byte limits still apply before output is returned.
+- PNG/JPG use `RasterOptions`. The default plan limits each side to 4096 pixels and the final image
+  to 16,777,216 pixels before allocating the output pixmap. Fit and scale are part of the same
+  preflight.
+- PDF uses independent `PdfOptions`. Vector page dimensions do not consume the PNG/JPG pixel
+  budget. Localized filter images retained by the PDF default to a 33,554,432 aggregate-pixel
+  limit, and Merman lowers filter sampling when necessary. This is not a byte-exact upper bound on
+  every transient allocation made by third-party conversion backends.
+- PNG/JPG and PDF both bound embedded data-URL bytes before `usvg` parses them, then preflight
+  embedded PNG/JPEG/GIF/WebP dimensions from image headers. Defaults allow 16 MiB and 16,777,216
+  intrinsic pixels per image, with 32 MiB and 33,554,432 pixels in aggregate.
+- Both conversion paths also bound recursive SVG work such as isolation depth, filter primitives,
+  subroots, and nested SVG images before entering `resvg` or `krilla-svg`. The sealed XML tree and
+  the resolved `usvg` tree have a non-optional backend depth cap (256 on native, 64 on WebAssembly),
+  so an unbounded resource profile cannot bypass third-party recursion safety. Native preparation
+  and encoding run on a bounded 8 MiB worker stack.
+
+These limits are deliberately not one switch. Unbounding PNG/JPG output does not unbound PDF
+filters or image decoding, and unbounding PDF filters does not disable parser or render resource
+profiles. No unbounded option disables the recursive-backend capability cap. Keep each budget
+enabled at an untrusted boundary and fit preview images to their actual display size.
+
+See [Raster And PDF Output](../rendering/RASTER_OUTPUT.md) for the exact option types and residual
+allocator boundary, and [Threat Model](THREAT_MODEL.md) for source/model/render limits. These limits
+reduce denial-of-service exposure; they do not replace an operating-system quota for hostile input.
 
 ## Browser And Webview DOM Insertion
 
@@ -35,8 +77,20 @@ DOM. The web helper entry points that mount SVG into an element apply the same p
 insertion. VS Code preview uses the generated policy copy so the extension does not drift from the
 browser package.
 
+That helper deliberately accepts only self-contained DOM output: same-document fragment references
+and narrowly validated inline raster data URLs. It rejects HTTP(S), protocol-relative, root-relative,
+and document-relative URLs in links, images, styles, and resource references. A valid diagram that
+intentionally uses an external link or image can therefore be rejected. Use this helper for closed
+preview surfaces; for external-resource diagrams, either embed/rewrite the resources, keep the SVG
+as a download, or build a host-specific policy with an explicit URL allowlist, CSP, and isolation
+model. Do not silently weaken the shared helper and continue describing it as the same policy.
+
 If an application bypasses these wrappers and inserts `renderSvg()` output directly with
 `innerHTML`, the application owns that DOM trust decision.
+
+Neither `assertSafeSvgForDom()` nor strict sanitization creates Mermaid's sandboxed iframe. A host
+that needs origin isolation must insert the validated result into a host-owned sandboxed iframe or
+another equivalent isolation boundary.
 
 ## Loose Security Settings
 
@@ -52,6 +106,12 @@ Hosts should:
 - use `assertSafeSvgForDom()` or the VS Code preview policy before DOM insertion;
 - avoid postprocessing that reintroduces scripts, event handlers, external loads, or unsafe links;
 - prefer raster or resvg-safe output for downloads in environments that cannot inspect SVG safety;
+- keep PNG/JPG, PDF-filter, and embedded-image budgets independent and enabled for untrusted input;
+- use `RasterOptions::with_fit_to` for previews instead of rasterizing an intrinsic oversized SVG;
+- bound source/model/render work with an appropriate `RenderResourceProfile` and apply host process
+  memory/time quotas at hostile boundaries;
+- treat host text measurement as synchronous untrusted work: bound input and caches, avoid UI-thread
+  deadlocks, and follow the [host measurement lifecycle](../bindings/HOST_TEXT_MEASUREMENT.md);
 - run `node scripts/check-svg-safety-policy.mjs` when changing the shared policy.
 
 For parser and sanitizer design context, see `docs/adr/0020-sanitization-and-security-level.md`,

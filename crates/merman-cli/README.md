@@ -52,21 +52,38 @@ When `-o` is omitted, top-level mode writes `<input>.svg` for file input and `ou
 The output format is inferred from the output extension unless `-e, --outputFormat, --format` is
 provided.
 
+## Command Surfaces
+
+The top-level command is an `mmdc` replacement and a strict superset. Existing calls such as
+`merman-cli -i input.mmd -o output.svg` do not need any Merman-specific flag. Optional native
+controls make resource policy and browserless behavior explicit without changing that common path.
+
+| Surface | Contract | Help groups |
+| --- | --- | --- |
+| Top-level compatible export | Common `mmdc` input, output, theme, config, Markdown, icon-pack, and PDF-fit workflows under the `merman-cli` command name. | `mmdc-compatible export`, `Markdown batch export`, `Mermaid configuration`, `Accepted browser compatibility flags`, `Icon packs` |
+| Optional Merman superset | Renderer selection plus independently scoped PNG/JPG, vector-PDF, embedded-image, and aggregate-memory budgets. | `Merman renderer controls`, `Merman raster controls`, `Merman PDF controls`, `Merman embedded-image controls`, `Merman resource controls` |
+| `render` subcommand | An explicit Rust-native surface for selecting SVG/PNG/JPG/PDF/ASCII/Unicode output and developer-oriented controls. | `Render input and output` plus the applicable Merman control groups |
+
+`Deterministic rendering` and `Text output` are additional Merman groups shared where their options
+apply. Run `merman-cli --help` or `merman-cli render --help` for the exact current surface.
+
 ## Output Formats
 
 | Format | Top-level extension | Status |
 |---|---|---|
 | SVG | `.svg` | Default, browserless renderer |
 | PNG | `.png` | Rust raster output |
-| PDF | `.pdf` | Rust PDF output through SVG conversion |
+| PDF | `.pdf` | Rust vector PDF output through SVG conversion |
 | JPG/JPEG | `.jpg`, `.jpeg` | Rust extension beyond upstream `mmdc` |
 | ASCII | `.txt`, `.ascii` | Rust extension, enabled by default |
 | Unicode | `.txt`, `.ascii` | Rust extension, enabled by default |
 
-SVG output uses the Mermaid-parity contract. PNG, JPG, and PDF output use the export contract: the
-CLI applies the `resvg-safe` SVG pipeline before raster/PDF conversion so strict headless renderers
-do not have to understand Mermaid HTML labels in `<foreignObject>`. If you need SVG bytes with the
-same export-safe cleanup, request it explicitly with `--svg-pipeline resvg-safe`.
+SVG output uses the Mermaid-parity contract. PNG, JPG, and PDF use the export contract: the CLI
+applies the `resvg-safe` SVG pipeline before conversion so strict headless consumers do not have to
+understand Mermaid HTML labels in `<foreignObject>`. PNG/JPG and PDF deliberately use different
+sizing policies: PNG/JPG allocate a bounded pixmap, while PDF retains vector geometry and only
+budgets localized filter bitmaps and embedded raster images. If you need SVG bytes with the same
+export-safe cleanup, request it explicitly with `--svg-pipeline resvg-safe`.
 
 Examples:
 
@@ -235,9 +252,11 @@ recommendations, and the default `core` profile does not enable Merman authoring
 
 ## Common Options
 
+`--help` keeps compatible and Merman-specific controls in the groups described above.
+
 - `-t, --theme <theme>` sets the Mermaid theme.
 - `-w, --width <width>` and `-H, --height <height>` configure viewport-sensitive layouts.
-- `-b, --backgroundColor <color>` sets SVG/raster background color.
+- `-b, --backgroundColor <color>` sets SVG/PNG/JPG/PDF background color.
 - `-c, --configFile <file>` loads a Mermaid JSON object configuration file.
 - `-C, --cssFile <file>` injects CSS into SVG output before export.
 - `-I, --svgId <id>` sets the root SVG id and marker id prefix.
@@ -245,9 +264,27 @@ recommendations, and the default `core` profile does not enable Merman authoring
 - `--raster-fit-width <px>` and `--raster-fit-height <px>` fit PNG/JPG output to a
   browser-like preview box before applying `--scale`.
 - `--raster-max-width <px>`, `--raster-max-height <px>`, and `--raster-max-pixels <n>` set the
-  PNG/JPG pixmap budget. Defaults are `8192 x 8192` and `8192*8192` total pixels.
+  PNG/JPG pixmap budget. Defaults are 4096 pixels per side and 16,777,216 total pixels.
 - `--raster-unbounded` disables the PNG/JPG pixmap budget for trusted oversized exports.
-- `-f, --pdfFit` uses a chart-sized PDF page instead of the top-level default Letter-sized page.
+- `--pdf-filter-scale <n>` sets localized SVG-filter sampling for vector PDF output; the default is
+  `4`.
+- `--pdf-max-filter-pixels <n>` sets the aggregate PDF filter bitmap budget; the default is
+  `33,554,432` pixels.
+- `--pdf-filter-unbounded` disables only the PDF filter bitmap budget for trusted input.
+- `--embedded-image-max-pixels <n>` and `--embedded-image-max-total-pixels <n>` set embedded image
+  decode budgets used by PNG/JPG and PDF. Defaults are `16,777,216` per image and `33,554,432`
+  total pixels.
+- `--embedded-images-unbounded` disables only embedded raster image decode budgets for trusted
+  input.
+- `--encoding-memory-budget-mib <mib>` bounds aggregate in-flight image encoding memory for
+  Markdown jobs; the default is `512` MiB. Scheduling weights include the native SVG backend's
+  bounded 8 MiB worker stack.
+- `-f, --pdfFit` (alias `--pdf-fit`) replaces the top-level 612-by-792-point fixed page with CSS
+  viewport sizing. The responsive chart width is limited by `--width` (800 CSS pixels by default),
+  then converted at 72 PDF points per 96 CSS pixels while preserving aspect ratio.
+- When a PNG/JPG request is automatically constrained, the CLI prints its requested and final
+  pixel dimensions to stderr. It similarly reports any automatic reduction in PDF filter sampling;
+  `--quiet` suppresses both informational messages.
 - `-q, --quiet` suppresses non-error logs.
 - Runtime failures use categorized exit statuses: `1` for render/runtime failures, `2` for
   invalid input/config/output CLI contracts, and `3` for direct I/O failures. Broken stdout pipes
@@ -263,9 +300,9 @@ recommendations, and the default `core` profile does not enable Merman authoring
   local-time parsing and rendering.
 - `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 
-## SVG Input Rasterization
+## SVG Input Export
 
-`merman-cli render --format png|jpg|pdf` can rasterize existing SVG input when the input starts with
+`merman-cli render --format png|jpg|pdf` can convert existing SVG input when the input starts with
 `<svg`. Treat raw SVG files as trusted input: this mode is for converting SVGs you already chose to
 process, not for accepting arbitrary uploaded SVG from untrusted users.
 
@@ -273,17 +310,21 @@ process, not for accepting arbitrary uploaded SVG from untrusted users.
 merman-cli render --format png --out diagram.png diagram.svg
 ```
 
-Raw SVG input uses a separate raster boundary from Mermaid source rendering. The CLI applies
-merman's `resvg`-safe SVG cleanup before CLI background/CSS postprocessing, then the raster/PDF
-converter applies its normal safety cleanup and size limits before conversion.
+Raw SVG input uses a separate export boundary from Mermaid source rendering. The CLI applies
+Merman's `resvg`-safe SVG cleanup before CLI background/CSS postprocessing, then prepares the
+format-specific allocation plan before conversion.
 
 Large Mermaid SVGs can be valid and still unsafe to rasterize at their intrinsic viewBox size.
 Browsers usually paint the vector SVG inside a visible container; they do not have to allocate one
 full-size pixmap up front. For preview-like PNG/JPG output, pass `--raster-fit-width` and/or
 `--raster-fit-height` plus `--scale` for device-pixel ratio. For export-like output, the default
-pixmap budget prevents accidental oversized allocations. PDF export uses the same intrinsic SVG
-size budget before vector conversion. Use `--raster-unbounded` only when that memory or conversion
-cost is intentional.
+pixmap budget prevents accidental oversized allocations. SVG itself has no global width or height
+cap, and vector PDF pages do not share the PNG/JPG pixel budget. PDF instead applies the independent
+filter and embedded-image budgets listed above. Each `--*-unbounded` flag disables only its named
+resource boundary and should be used only when that cost is intentional. Resvg-safe SVG, PNG/JPG,
+and PDF also retain a non-optional recursive-tree capability: 256 resolved levels on native builds
+and 64 on WebAssembly. Raw SVG output remains available for valid diagrams beyond that backend
+boundary.
 
 ## Compatibility Notes
 
@@ -293,9 +334,11 @@ For script compatibility with `mmdc`, `--puppeteerConfigFile` is accepted, the r
 exist, and its contents must be valid JSON. The parsed values are intentionally ignored because this
 renderer has no Puppeteer runtime to configure.
 
-PDF output is generated through Rust SVG conversion rather than Chromium print-to-PDF, so it is not
-intended to be pixel-identical to browser PDF output. The top-level default approximates the
-upstream default page behavior; `--pdfFit` emits a chart-sized page.
+PDF output is generated through Rust vector SVG conversion rather than Chromium print-to-PDF, so it
+is not intended to be pixel-identical to browser PDF output. The top-level default uses a
+612-by-792-point Letter approximation. `--pdfFit` follows the upstream CSS viewport concept: it
+uses the responsive SVG width inside the configured CSS-pixel container and converts CSS pixels to
+PDF points at the standard 96-to-72 ratio.
 
 The repository tracks the detailed `mmdc` compatibility matrix in
 `docs/alignment/CLI_COMPATIBILITY.md`. For migration, replace the command name with

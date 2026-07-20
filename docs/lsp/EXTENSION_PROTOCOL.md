@@ -170,8 +170,8 @@ Response. The JSON below is abbreviated; implementations return the complete
 ```
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
-`workspace/didChangeConfiguration`: `lint`, `parse.suppress_errors`, `resources.max_source_bytes`,
-`site_config`, `fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
+`workspace/didChangeConfiguration`: `lint`, `resources.max_source_bytes`, `site_config`,
+`fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
 `additionalProperties` so alpha clients are not broken by future options. Clients should use it for
 settings completion, settings validation hints, and profile/rule pickers, then use
 `merman/ruleCatalog` for the richer rule explanations and evidence metadata.
@@ -185,3 +185,7 @@ settings completion, settings validation hints, and profile/rule pickers, then u
 - Runtime lint configuration should flow through initialization options or
   `workspace/didChangeConfiguration`; the server then republishes diagnostics and refreshes semantic
   tokens when the client advertises refresh support.
+
+Analysis always retains family parse failures in its closed snapshot. The removed
+`parse.suppress_errors` analysis setting is not an ignored compatibility field; clients must remove
+it. Lenient parsing remains available only on parse, render, and ASCII operation options.

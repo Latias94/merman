@@ -90,7 +90,7 @@ Bindings accept the same profile through `host_theme`:
 native SVG text and generated fallback text are both visible. It is off by default because repeated
 labels can be intentional in unrelated nodes.
 
-`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `themeVariables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
+`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `theme_variables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
 
 ## Design Notes
 

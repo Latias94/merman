@@ -12,16 +12,16 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    assert_eq!(parsed.meta.diagram_type, "venn");
+    assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let layout = {
-        let RenderSemanticModel::Venn(model) = &parsed.model else {
+        let RenderSemanticModel::Venn(model) = parsed.model() else {
             panic!("expected Venn render model");
         };
         layout_venn_diagram_typed(
             model,
-            parsed.meta.title.as_deref(),
-            parsed.meta.effective_config.as_value(),
+            parsed.metadata().title.as_deref(),
+            parsed.metadata().effective_config.as_value(),
         )
         .expect("layout ok")
     };
@@ -126,7 +126,7 @@ union A,B
         )
         .expect("parse ok")
         .expect("diagram detected");
-    assert_eq!(parsed.meta.diagram_type, "venn");
+    assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
     assert_eq!(

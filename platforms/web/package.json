@@ -120,6 +120,8 @@
   },
   "files": [
     "LICENSE",
+    "THIRD_PARTY_LICENSES",
+    "THIRD_PARTY_NOTICES.md",
     "dist",
     "pkg",
     "src",

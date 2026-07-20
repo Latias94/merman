@@ -8,6 +8,11 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - about.toml
+      - deny.toml
+      - "LICENSE-*"
+      - THIRD_PARTY_NOTICES.md
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
@@ -16,6 +21,11 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - about.toml
+      - deny.toml
+      - "LICENSE-*"
+      - THIRD_PARTY_NOTICES.md
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
@@ -52,3 +62,26 @@ jobs:
 
       - name: Audit Rust dependencies
         run: cargo audit --file "${{ matrix.lockfile }}"
+
+  cargo-dependency-policy:
+    name: cargo-deny dependency policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.1
+
+      - name: Verify dependency advisories, bans, licenses, and sources
+        run: cargo deny check advisories bans licenses sources
+
+      - name: Verify checked-in Rust dependency notices
+        run: python3 scripts/generate-rust-license-report.py --check

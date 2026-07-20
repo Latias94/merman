@@ -7,6 +7,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
     editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
+    family,
 };
 use serde_json::{Map, Value, json};
 
@@ -430,76 +431,6 @@ fn apply_radar_statement(
     }
 }
 
-fn parse_radar_editor_source(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let body = match radar_body_start(code) {
-        Ok(Some(body)) => body,
-        Ok(None) => return facts,
-        Err(error) => {
-            return ensure_editor_recovery_from_error(
-                facts,
-                &error,
-                editor_recovery_fallback_span(code),
-            );
-        }
-    };
-    let mut offset = body.offset;
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
-    if let Some(span) = body.colon_span {
-        lexemes.delimiter(span);
-    }
-    let mut axes = Vec::new();
-    let mut curves = Vec::new();
-    let mut options = Vec::new();
-
-    while offset < code.len() {
-        if let Some(parsed) = parse_langium_common(code, offset) {
-            lexemes.extend(parsed.lexemes.clone());
-            push_langium_common_editor_fact(&mut facts, &parsed.fact, "radar");
-            if let Some(diagnostic) = &parsed.diagnostic {
-                push_langium_common_recovery(&mut facts, diagnostic);
-            }
-            offset += parsed.consumed;
-            continue;
-        }
-
-        let (stmt, stmt_start, next_offset) = radar_statement_at(code, offset);
-        offset = next_offset;
-        if stmt.is_empty() {
-            continue;
-        }
-        match parse_radar_statement(&stmt, stmt_start) {
-            Ok(parsed) => {
-                lexemes.extend(parsed.lexemes);
-                push_radar_statement_facts(&mut facts, &parsed.event);
-                apply_radar_statement(parsed.event, &mut axes, &mut curves, &mut options);
-            }
-            Err(message) => {
-                let invalid = stmt.trim_end();
-                facts.mark_recovered_from_parse_error(
-                    message,
-                    Some(SourceSpan::new(stmt_start, stmt_start + invalid.len())),
-                );
-            }
-        }
-    }
-
-    lexemes.attach(code, &mut facts);
-    let mut db = RadarDb::new();
-    db.set_axes(axes);
-    if let Err(error) = db.set_curves(curves) {
-        facts =
-            ensure_editor_recovery_from_error(facts, &error, editor_recovery_fallback_span(code));
-    }
-    db.set_options(options);
-    facts
-}
-
-pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_radar_editor_source(code)
-}
-
 fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {
     if entries.is_empty() {
         return Ok(Vec::new());
@@ -538,7 +469,7 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
         .collect()
 }
 
-pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_radar_semantic_source(code, meta)?
         .db
         .map(RadarDb::into_render_model)
@@ -549,15 +480,24 @@ pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let RadarSemanticSource { db, editor_facts } = parse_radar_semantic_source(code, meta)?;
-    let model = db
-        .map(RadarDb::into_render_model)
-        .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_radar_semantic_source(code, meta),
+        |source| {
+            let model = source
+                .db
+                .map(RadarDb::into_render_model)
+                .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_radar_model_for_render(
+pub(crate) fn parse_radar_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RadarDiagramRenderModel> {
@@ -594,14 +534,28 @@ pub(crate) fn render_model_to_compat_json(
 
 #[inline]
 fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<RadarSemanticSource> {
+    construct_radar_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
+}
+
+#[inline]
+fn construct_radar_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("radar");
 
-    let Some(body) = radar_body_start(code)? else {
-        return Ok(RadarSemanticSource {
-            db: None,
-            editor_facts: EditorSemanticFacts::new(),
-        });
+    let body = match radar_body_start(code) {
+        Ok(Some(body)) => body,
+        Ok(None) => {
+            return Ok(RadarSemanticSource {
+                db: None,
+                editor_facts: EditorSemanticFacts::new(),
+            });
+        }
+        Err(error) => {
+            return Err(radar_parse_failure(error, EditorSemanticFacts::new(), code));
+        }
     };
     let mut offset = body.offset;
 
@@ -615,15 +569,19 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
     if let Some(span) = body.colon_span {
         lexemes.delimiter(span);
     }
+    let mut first_error = None;
 
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
-            if let Some(diagnostic) = parsed.diagnostic {
-                return Err(Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
-                    diagnostic.message,
-                    diagnostic.span.start,
-                ));
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut editor_facts, diagnostic);
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        diagnostic.message.clone(),
+                        diagnostic.span.start,
+                    )
+                });
             }
             lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "radar");
@@ -638,11 +596,26 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
             continue;
         }
 
-        let parsed = parse_radar_statement(&statement, statement_start)
-            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?;
-        lexemes.extend(parsed.lexemes);
-        push_radar_statement_facts(&mut editor_facts, &parsed.event);
-        apply_radar_statement(parsed.event, &mut axes, &mut curves, &mut options);
+        match parse_radar_statement(&statement, statement_start) {
+            Ok(parsed) => {
+                lexemes.extend(parsed.lexemes);
+                push_radar_statement_facts(&mut editor_facts, &parsed.event);
+                apply_radar_statement(parsed.event, &mut axes, &mut curves, &mut options);
+            }
+            Err(message) => {
+                let invalid = statement.trim_end();
+                editor_facts.mark_recovered_from_parse_error(
+                    message.clone(),
+                    Some(SourceSpan::new(
+                        statement_start,
+                        statement_start + invalid.len(),
+                    )),
+                );
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback("radar".to_string(), message)
+                });
+            }
+        }
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
@@ -651,14 +624,40 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
     db.acc_title = common.acc_title;
     db.acc_descr = common.acc_descr;
     db.set_axes(axes);
-    db.set_curves(curves)?;
+    if let Err(error) = db.set_curves(curves) {
+        editor_facts = ensure_editor_recovery_from_error(
+            editor_facts,
+            &error,
+            editor_recovery_fallback_span(code),
+        );
+        if first_error.is_none() {
+            first_error = Some(error);
+        }
+    }
     db.set_options(options);
     lexemes.attach(code, &mut editor_facts);
+
+    if let Some(error) = first_error {
+        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+    }
 
     Ok(RadarSemanticSource {
         db: Some(db),
         editor_facts,
     })
+}
+
+fn radar_parse_failure(
+    error: Error,
+    editor_facts: EditorSemanticFacts,
+    code: &str,
+) -> family::CombinedSemanticFailure {
+    let editor_facts = ensure_editor_recovery_from_error(
+        editor_facts,
+        &error,
+        editor_recovery_fallback_span(code),
+    );
+    family::CombinedSemanticFailure::new(error, editor_facts)
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -1513,7 +1512,7 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
             "ticks 5\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .unwrap();
 
@@ -1592,7 +1591,7 @@ curve
             "axis B\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .unwrap();
         let invalid = "curve C{.5}";
@@ -1627,7 +1626,7 @@ curve
         assert_eq!(diagnostic.span(), Some(expected_span));
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("radar", text)
             .unwrap()
             .expect("radar editor recovery facts");
         assert_eq!(

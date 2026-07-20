@@ -62,15 +62,20 @@ workspace release, with platform-specific spelling only where the registry requi
 
 ## Preflight
 
-Run the manual release preflight before tagging:
+Validate the repository-owned release contract before dispatching anything:
 
 ```bash
-gh workflow run release-preflight.yml -f version=<version> -f source_ref=main
+python3 scripts/verify-release-surfaces.py
+python3 scripts/test_release_workflow_security.py
+python3 scripts/release-status.py --version <version> --view maintainer
 ```
 
-Wait for the run to complete and inspect failed jobs before tagging. Do not treat a local build as a
-substitute for preflight, because preflight covers registry-independent package dry-runs, platform
-artifacts, VSIX packaging, Flutter dry-run publishing, and WASM size gates.
+Then use the exact `release-preflight.yml` dispatch command from `docs/release/RELEASING.md`. That
+document and the verified workflow files own release inputs and commands; do not copy a parallel
+command matrix into this skill. Wait for the run to complete and inspect failed jobs before tagging.
+Do not treat a local build as a substitute for preflight, because preflight covers
+registry-independent package dry-runs, platform artifacts, VSIX packaging, Flutter dry-run
+publishing, and WASM size gates.
 
 Completion criterion: `release-preflight.yml` is green for the exact version and source ref that
 will be tagged.
@@ -86,19 +91,18 @@ git push origin v<version>
 
 Watch the tag-triggered workflows first:
 
-- `release.yml` creates the GitHub Release and CLI/LSP artifacts.
+- `release.yml` is cargo-dist output for both user-facing executables declared in
+  `dist-workspace.toml`: CLI and LSP archives, installers, and checksums. Regenerate and inspect the
+  cargo-dist manifest when that package list or target matrix changes.
 - `release-crates.yml` publishes crates.io packages in dependency order.
 - `release-flutter.yml` publishes to pub.dev from the tag-triggered run.
 
-After the GitHub Release exists, dispatch the platform workflows from the tag:
-
-```bash
-gh workflow run release-python.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version> -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version>
-gh workflow run release-apple.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version>
-gh workflow run release-web.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version> -f publish_to_npm=true
-gh workflow run vscode-extension.yml -f source_ref=refs/tags/v<version>
-```
+After the GitHub Release exists, use the exact platform dispatch commands from
+`docs/release/RELEASING.md`. The Python, Android, Apple, Web, VS Code, and Homebrew workflows have
+different publication semantics and must not be inferred from a stale copy here. In particular,
+`vscode-extension.yml` currently produces verified GitHub Actions VSIX artifacts; it does not
+publish to Marketplace. The standalone LSP assets attached to the GitHub Release come from
+cargo-dist, independently of VSIX packaging.
 
 Completion criterion: every intended release workflow has a successful latest run for the target
 version, and skipped jobs are expected by channel rules rather than accidental.
@@ -107,8 +111,9 @@ version, and skipped jobs are expected by channel rules rather than accidental.
 
 Verify the published state, not only workflow success:
 
-- GitHub Release is not draft, has the intended prerelease/stable state, and contains expected CLI,
-  LSP, source, checksum, Python wheel, Android AAR, and Apple XCFramework assets when those surfaces
+- GitHub Release is not draft, has the intended prerelease/stable state, and contains the expected
+  cargo-dist CLI and LSP archives, installers, and checksums for every configured target. It has
+  Python wheels, Android AAR, and Apple XCFramework assets only when their separate upload workflows
   are part of the release.
 - crates.io shows the published Rust crate versions.
 - npm shows `@mermanjs/web@<version>` and the correct dist-tag: `alpha`, `beta`, `rc`, or `latest`.
@@ -116,6 +121,10 @@ Verify the published state, not only workflow success:
 - VS Code workflow artifacts exist; Marketplace publishing is not enabled unless a separate release
   decision added it.
 - `main` CI is green after any release-workflow fixes.
+
+Use `scripts/release-status.py` with the maintainer and public views documented in
+`docs/release/RELEASING.md`; do not replace its contract with hand-written `gh`/registry assumptions
+inside this skill.
 
 Completion criterion: registries and GitHub Release state agree with the workflow matrix, and the
 working tree is clean or only contains explicitly reported unrelated user changes.

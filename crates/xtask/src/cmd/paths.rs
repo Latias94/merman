@@ -29,6 +29,10 @@ pub(crate) fn target_root() -> PathBuf {
     workspace_root().join("target")
 }
 
+pub(crate) fn wasm_build_target_root() -> PathBuf {
+    target_root().join("wasm-build")
+}
+
 pub(crate) fn mermaid_repo_root() -> PathBuf {
     repo_ref_root().join("mermaid")
 }

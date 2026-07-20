@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -54,7 +54,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
@@ -346,6 +346,23 @@ jobs:
         run: |
           python -m pip install --upgrade twine
           python -m twine check wheels/merman-*.whl
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          for wheel in sorted(Path("wheels").glob("merman-*.whl")):
+              with ZipFile(wheel) as archive:
+                  names = archive.namelist()
+                  required_suffixes = (
+                      ".dist-info/licenses/LICENSE",
+                      ".dist-info/licenses/THIRD_PARTY_NOTICES.md",
+                  )
+                  for suffix in required_suffixes:
+                      if not any(name.endswith(suffix) for name in names):
+                          raise SystemExit(f"{wheel} is missing {suffix}")
+                  if not any(".dist-info/licenses/THIRD_PARTY_LICENSES/" in name for name in names):
+                      raise SystemExit(f"{wheel} is missing third-party license texts")
+          PY
 
   github-release:
     needs:

@@ -1,7 +1,7 @@
 # Web WASM Playground
 
 Status: Closed
-Last updated: 2026-07-18
+Last updated: 2026-07-20
 
 ## Purpose
 
@@ -36,7 +36,8 @@ merman-core / merman-analysis / merman-editor-core / merman-render
 
 The package boundary is deliberately narrower than the application boundary:
 
-- `@mermanjs/web` exposes stateless browser binding operations and capability metadata.
+- `@mermanjs/web` exposes browser binding operations, explicit disposable editor document
+  sessions, and capability metadata.
 - `@mermanjs/web/editor` exposes the full family catalog and parser-backed language intelligence
   through `browser-editor`; it does not contain SVG, ASCII, host, or ELK capabilities.
 - The Playground owns loading/retry policy, BFCache behavior, the latest-wins render coordinator,
@@ -104,10 +105,16 @@ suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is
 The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
 worker and the Merman language Worker are local module workers; no CDN loader is used.
 
-The Merman Worker imports `@mermanjs/web/editor`, owns one document URI/version, and projects
-`merman-editor-core` diagnostics, completions, hover, code actions, symbols, definition,
-references, rename, and semantic tokens. Stale/cancelled requests are discarded and protocol or
-schema mismatch fails closed. TypeScript syntax heuristics are not a fallback language service.
+The Merman Worker imports `@mermanjs/web/editor` and owns one disposable `BrowserEditorSession`.
+`didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
+newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
+completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all
+read that same snapshot. One generated descriptor supplies Monaco's legend; WASM returns the
+already validated packed token sequence.
+Stale results are discarded and protocol, version, descriptor-digest, or result-shape mismatch
+fails closed. Cancelling a client wait does not claim to interrupt a synchronous WASM call: the
+Worker finishes that call and its versioned result is ignored. TypeScript syntax heuristics are not
+a fallback language service.
 
 This is VS Code-like language analysis over the shared Rust editor core, not a browser-hosted LSP
 process. LSP transport concerns remain in `merman-lsp`; editor behavior is shared below both
@@ -116,7 +123,7 @@ adapters.
 ## Examples And Detection
 
 `playground/examples/manifest.json` selects one or more fixture-backed examples for every full
-profile logical family. The current teaching catalog contains 70 examples across the exact
+profile logical family. The current teaching catalog contains 78 examples across the exact
 35-family set. `xtask` proves source provenance, canonical detection, Mermaid `11.16.0` baseline,
 and generated output freshness. The gallery searches generated titles, categories, aliases, syntax
 ids, and family types.

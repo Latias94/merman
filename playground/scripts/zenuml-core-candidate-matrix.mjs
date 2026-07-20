@@ -12,12 +12,19 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { chromium } from "playwright";
 import ts from "typescript";
+
+import { loadVerifiedBrowserAdmissionEvidence } from "./zenuml-browser-admission.mjs";
+
+const requireBrowserTestTool = createRequire(
+  new URL("../tests/package.json", import.meta.url)
+);
+const { chromium } = requireBrowserTestTool("playwright");
 
 const scriptPath = fileURLToPath(import.meta.url);
 const playgroundRoot = path.resolve(path.dirname(scriptPath), "..");
@@ -57,6 +64,12 @@ const FIXTURE_COUNT_ADMISSION_SUMMARIES = Object.freeze({
     "Oracle and candidate renderToSvg SHA-256 values agree across the complete corpus in the same Chromium process.",
   "strict-inline-artifact":
     "Every candidate native SVG passes the same strict inline publication policy used by the Playground.",
+});
+const BROWSER_ADMISSION_SUMMARIES = Object.freeze({
+  "execution-isolation":
+    "Desktop and mobile Chromium prove opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
+  security:
+    "Desktop and mobile Chromium prove ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
 });
 const attestationArtifactSchemaVersion = 1;
 const maxAttestationArtifactBytes = 64 * 1024;
@@ -383,6 +396,7 @@ const inlineValidatorSources = await Promise.all(
   }))
 );
 const assertSafeSvgWithMessagePrefix = await loadInlineSvgValidator();
+const browserAdmission = await loadVerifiedBrowserAdmissionEvidence(workspaceRoot);
 
 if (!online) {
   const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
@@ -393,9 +407,11 @@ if (!online) {
     sources,
     zenuml,
     attestationArtifacts,
+    browserAdmission,
     inlineValidatorSources,
   });
   verifyAdmissionFixtureCounts(admission, evidence.corpus.fixtureCount);
+  verifyAdmissionBrowserEvidence(admission, evidence);
   process.exit(0);
 }
 
@@ -472,7 +488,7 @@ try {
   );
 
   const evidence = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     harness: "playground/scripts/zenuml-core-candidate-matrix.mjs",
     harnessSha256,
     command: "npm run verify:zenuml-candidate",
@@ -510,6 +526,11 @@ try {
       svgAgreementCount: renderAgreementCount,
     },
     strictInlineSvg,
+    executionIsolation: browserEvidenceSummary(
+      browserAdmission,
+      "execution-isolation"
+    ),
+    security: browserEvidenceSummary(browserAdmission, "security"),
     resource: {
       measurementScope: "runtime-entry",
       runtimeEntryDeltaBytes:
@@ -527,10 +548,13 @@ try {
     sources,
     zenuml,
     attestationArtifacts,
+    browserAdmission,
     inlineValidatorSources,
   });
   synchronizeAdmissionFixtureCounts(admission, evidence.corpus.fixtureCount);
+  synchronizeAdmissionBrowserEvidence(admission, evidence);
   verifyAdmissionFixtureCounts(admission, evidence.corpus.fixtureCount);
+  verifyAdmissionBrowserEvidence(admission, evidence);
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
   if (writeMode) {
     for (const artifact of attestationArtifacts.values()) {
@@ -1149,12 +1173,38 @@ function packageEvidence(materialized, supplyChain) {
   };
 }
 
+function browserEvidenceSummary(browserEvidence, category) {
+  return {
+    ...browserEvidence.summaries[category],
+    artifactSha256: browserEvidence.sha256,
+  };
+}
+
 function synchronizeAdmissionFixtureCounts(admission, fixtureCount) {
   for (const entry of admission.matrix) {
     const summary = FIXTURE_COUNT_ADMISSION_SUMMARIES[entry.gate];
     if (!summary) continue;
     entry.evidence.fixtureCount = fixtureCount;
     entry.evidence.summary = summary;
+  }
+}
+
+function synchronizeAdmissionBrowserEvidence(admission, evidence) {
+  for (const [gate, field] of [
+    ["execution-isolation", "executionIsolation"],
+    ["security", "security"],
+  ]) {
+    const entry = admission.matrix.find((candidate) => candidate.gate === gate);
+    assert(entry, `ZenUML admission has no ${gate} gate`);
+    entry.evidence = {
+      kind: "artifact",
+      reference: `tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#${field}`,
+      summary: BROWSER_ADMISSION_SUMMARIES[gate],
+      projectCount: evidence[field].projectCount,
+      probeCount: evidence[field].probeCount,
+      observationCount: evidence[field].observationCount,
+      passedObservationCount: evidence[field].passedObservationCount,
+    };
   }
 }
 
@@ -1169,15 +1219,35 @@ function verifyAdmissionFixtureCounts(admission, fixtureCount) {
   }
 }
 
+function verifyAdmissionBrowserEvidence(admission, evidence) {
+  for (const [gate, field] of [
+    ["execution-isolation", "executionIsolation"],
+    ["security", "security"],
+  ]) {
+    const entry = admission.matrix.find((candidate) => candidate.gate === gate);
+    assert(entry, `ZenUML admission has no ${gate} gate`);
+    assert.deepEqual(entry.evidence, {
+      kind: "artifact",
+      reference: `tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#${field}`,
+      summary: BROWSER_ADMISSION_SUMMARIES[gate],
+      projectCount: evidence[field].projectCount,
+      probeCount: evidence[field].probeCount,
+      observationCount: evidence[field].observationCount,
+      passedObservationCount: evidence[field].passedObservationCount,
+    });
+  }
+}
+
 function verifyEvidence(evidence, context) {
   const {
     harnessSha256: expectedHarness,
     sources,
     zenuml,
     attestationArtifacts,
+    browserAdmission,
     inlineValidatorSources,
   } = context;
-  assert.equal(evidence.schemaVersion, 4);
+  assert.equal(evidence.schemaVersion, 5);
   assert.equal(evidence.harness, "playground/scripts/zenuml-core-candidate-matrix.mjs");
   assert.equal(evidence.harnessSha256, expectedHarness);
   assert.equal(evidence.command, "npm run verify:zenuml-candidate");
@@ -1258,6 +1328,14 @@ function verifyEvidence(evidence, context) {
   assert.deepEqual(
     evidence.strictInlineSvg.validatorSources,
     inlineValidatorSources
+  );
+  assert.deepEqual(
+    evidence.executionIsolation,
+    browserEvidenceSummary(browserAdmission, "execution-isolation")
+  );
+  assert.deepEqual(
+    evidence.security,
+    browserEvidenceSummary(browserAdmission, "security")
   );
   const expectedDelta =
     evidence.candidate.runtimeEntryBytes - evidence.oracle.runtimeEntryBytes;

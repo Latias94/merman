@@ -38,8 +38,17 @@ jobs:
       - name: Verify release surface contract
         run: python3 scripts/verify-release-surfaces.py
 
+      - name: Verify third-party source and license contract
+        run: python3 scripts/verify-third-party-licenses.py
+
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Verify Cargo package legal materials
+        run: python3 scripts/verify_crate_package_legal_materials.py
+
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_publish.py
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_publish.py
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -123,6 +132,16 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: false
+
+      - name: Verify generated architecture contracts
+        if: matrix.parity
+        run: |
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
+          cargo run --locked -p xtask -- verify-playground-example-catalog
+          python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
@@ -226,20 +245,23 @@ jobs:
           "${typst_root}/typst" --version
 
       - name: Test Typst plugin crate
-        run: cargo test -p merman-typst-plugin
+        run: cargo test --locked -p merman-typst-plugin
 
       - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
 
-      - name: Check Typst wasm ABI and size
-        run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+      - name: Check Typst WASM ABI, imports, and behavior
+        run: |
+          artifact="target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm"
+          cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm "${artifact}"
+          cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm "${artifact}"
 
       - name: Smoke Typst package
         shell: bash
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst "${typst_bin}"
+          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
 
       - name: Upload Typst package smoke artifacts
         if: failure()
@@ -276,10 +298,16 @@ jobs:
         uses: taiki-e/install-action@wasm-tools
 
       - name: Check WASM size budgets
-        run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
+
+      - name: Check Typst WASM ABI, imports, and behavior
+        run: |
+          artifact="target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm"
+          cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm "${artifact}"
+          cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm "${artifact}"
 
       - name: Download Typst compatibility version
         shell: bash
@@ -301,7 +329,7 @@ jobs:
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
-          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --tests-only --typst "${typst_bin}"
+          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --tests-only --typst "${typst_bin}"
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
@@ -399,11 +427,16 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      ANDROID_NDK_VERSION: "26.3.11579264"
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: |
+          echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
+          echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -419,18 +452,18 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: "9.4.1"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
         shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
         run: |
           set -euo pipefail
           sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
@@ -459,7 +492,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-linux-hw-accel: false
-          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path gradle
+          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke
 
   python-uniffi-wheel:
     name: python-uniffi-wheel

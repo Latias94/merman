@@ -1,5 +1,6 @@
 use crate::MermaidConfig;
-use ryu_js::Buffer;
+use crate::theme_color::{self, ColorAdjustment, ColorError};
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -18,239 +19,376 @@ pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
     "redux-dark-color",
 ];
 
-// Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.16.0.
-static UPSTREAM_THEME_VARIABLES: OnceLock<Value> = OnceLock::new();
+const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 
+// Generated from the content-pinned Mermaid runtime by `xtask gen-theme-snapshot`.
+static GENERATED_THEME_ARTIFACT: OnceLock<GeneratedThemeArtifact> = OnceLock::new();
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GeneratedThemeArtifact {
+    schema_version: u32,
+    provenance: GeneratedThemeProvenance,
+    themes: Map<String, Value>,
+    dark_mode_true: Map<String, Value>,
+    oracle_cases: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GeneratedThemeProvenance {
+    generator: String,
+    mermaid_version: String,
+    mermaid_package_sha256: String,
+    mermaid_source_tag: String,
+    mermaid_source_commit: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeProgramKind {
+    Default,
+    Base,
+    Dark,
+    Forest,
+    Neutral,
+    Extended,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeDependencyGraph {
+    None,
+    Default,
+    Base,
+    Dark,
+    Forest,
+    Neutral,
+    DarkenedScale,
+    DarkenedScaleAndGit,
+    DynamicGit,
+}
+
+/// Pure-Rust execution contract for one pinned Mermaid theme class.
+///
+/// The generated artifact owns exact release snapshots; this descriptor owns the operations and
+/// input dependencies needed between the four `ThemeResolution` stages.
 #[derive(Debug, Clone, Copy)]
-struct Rgb01 {
-    r: f64,
-    g: f64,
-    b: f64,
+struct ThemeProgram {
+    name: &'static str,
+    kind: ThemeProgramKind,
+    dependencies: ThemeDependencyGraph,
+    evaluated_color_inputs: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Hsl {
-    h_deg: f64,
-    s_pct: f64,
-    l_pct: f64,
-}
+const DEFAULT_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "cScale0",
+    "cScale1",
+    "git0",
+    "git1",
+    "quadrant1Fill",
+];
+const DARK_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "background",
+    "cScale0",
+    "cScale1",
+    "quadrant1Fill",
+];
+const FOREST_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "tertiaryColor",
+    "cScale0",
+    "cScale1",
+    "git0",
+    "git1",
+    "quadrant1Fill",
+];
+const NEUTRAL_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "border1",
+    "cScale0",
+    "cScale1",
+    "quadrant1Fill",
+];
+const BASE_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "tertiaryColor",
+    "background",
+    "cScale0",
+    "cScale1",
+    "git0",
+    "git1",
+    "quadrant1Fill",
+];
+const REDUX_COLOR_INPUTS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "tertiaryColor",
+    "background",
+    "git0",
+    "git1",
+    "quadrant1Fill",
+];
 
-fn round_1e10(v: f64) -> f64 {
-    let v = (v * 1e10).round() / 1e10;
-    if v == -0.0 { 0.0 } else { v }
-}
+const THEME_PROGRAMS: &[ThemeProgram] = &[
+    ThemeProgram::new(
+        "default",
+        ThemeProgramKind::Default,
+        ThemeDependencyGraph::Default,
+        DEFAULT_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "base",
+        ThemeProgramKind::Base,
+        ThemeDependencyGraph::Base,
+        BASE_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "dark",
+        ThemeProgramKind::Dark,
+        ThemeDependencyGraph::Dark,
+        DARK_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "forest",
+        ThemeProgramKind::Forest,
+        ThemeDependencyGraph::Forest,
+        FOREST_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "neutral",
+        ThemeProgramKind::Neutral,
+        ThemeDependencyGraph::Neutral,
+        NEUTRAL_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "neo",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::None,
+        BASE_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "neo-dark",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::DarkenedScale,
+        BASE_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "redux",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::None,
+        REDUX_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "redux-dark",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::DarkenedScaleAndGit,
+        BASE_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "redux-color",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::None,
+        BASE_COLOR_INPUTS,
+    ),
+    ThemeProgram::new(
+        "redux-dark-color",
+        ThemeProgramKind::Extended,
+        ThemeDependencyGraph::DynamicGit,
+        BASE_COLOR_INPUTS,
+    ),
+];
 
-fn fmt_js_1e10(v: f64) -> String {
-    let v = round_1e10(v);
-    let mut b = Buffer::new();
-    b.format_finite(v).to_string()
-}
-
-fn round_hsl_1e10(mut hsl: Hsl) -> Hsl {
-    // Match Mermaid's base theme output: wrap using remainder without forcing positive hue.
-    // (JS `%` keeps the sign, so negative hues remain negative.)
-    hsl.h_deg = round_1e10(hsl.h_deg) % 360.0;
-    hsl.s_pct = round_1e10(hsl.s_pct).clamp(0.0, 100.0);
-    hsl.l_pct = round_1e10(hsl.l_pct).clamp(0.0, 100.0);
-    hsl
-}
-
-fn parse_hex_rgb01(s: &str) -> Option<Rgb01> {
-    let s = s.trim();
-    let hex = s.strip_prefix('#')?;
-    let (r, g, b) = match hex.len() {
-        3 => {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-            (r, g, b)
+impl ThemeProgram {
+    const fn new(
+        name: &'static str,
+        kind: ThemeProgramKind,
+        dependencies: ThemeDependencyGraph,
+        evaluated_color_inputs: &'static [&'static str],
+    ) -> Self {
+        Self {
+            name,
+            kind,
+            dependencies,
+            evaluated_color_inputs,
         }
-        6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            (r, g, b)
-        }
-        _ => return None,
-    };
-    Some(Rgb01 {
-        r: (r as f64) / 255.0,
-        g: (g as f64) / 255.0,
-        b: (b as f64) / 255.0,
-    })
-}
-
-fn rgb01_to_hex(rgb: Rgb01) -> String {
-    let r = (rgb.r.clamp(0.0, 1.0) * 255.0).round() as i64;
-    let g = (rgb.g.clamp(0.0, 1.0) * 255.0).round() as i64;
-    let b = (rgb.b.clamp(0.0, 1.0) * 255.0).round() as i64;
-    format!(
-        "#{:02x}{:02x}{:02x}",
-        r.clamp(0, 255),
-        g.clamp(0, 255),
-        b.clamp(0, 255)
-    )
-}
-
-fn invert_rgb01_to_hex(rgb: Rgb01) -> String {
-    rgb01_to_hex(Rgb01 {
-        r: 1.0 - rgb.r,
-        g: 1.0 - rgb.g,
-        b: 1.0 - rgb.b,
-    })
-}
-
-fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
-    let r = rgb.r;
-    let g = rgb.g;
-    let b = rgb.b;
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let l = (max + min) / 2.0;
-
-    if max == min {
-        return round_hsl_1e10(Hsl {
-            h_deg: 0.0,
-            s_pct: 0.0,
-            l_pct: l * 100.0,
-        });
     }
 
-    let d = max - min;
-    let s = if l > 0.5 {
-        d / (2.0 - max - min)
-    } else {
-        d / (max + min)
-    };
-    let mut h = if max == r {
-        (g - b) / d + if g < b { 6.0 } else { 0.0 }
-    } else if max == g {
-        (b - r) / d + 2.0
-    } else {
-        (r - g) / d + 4.0
-    };
-    h /= 6.0;
-
-    round_hsl_1e10(Hsl {
-        h_deg: h * 360.0,
-        s_pct: s * 100.0,
-        l_pct: l * 100.0,
-    })
-}
-
-fn parse_hsl_color(s: &str) -> Option<Hsl> {
-    let body = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-    let mut parts = body.split(',').map(str::trim);
-    let h = parts.next()?.parse::<f64>().ok()?;
-    let s = parts.next()?.strip_suffix('%')?.parse::<f64>().ok()?;
-    let l = parts.next()?.strip_suffix('%')?.parse::<f64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some(round_hsl_1e10(Hsl {
-        h_deg: h,
-        s_pct: s,
-        l_pct: l,
-    }))
-}
-
-fn parse_color_hsl(s: &str) -> Option<Hsl> {
-    parse_hex_rgb01(s)
-        .map(rgb01_to_hsl)
-        .or_else(|| parse_hsl_color(s))
-}
-
-fn adjust_hsl(mut hsl: Hsl, h_delta: f64, s_delta: f64, l_delta: f64) -> Hsl {
-    hsl.h_deg = (hsl.h_deg + h_delta) % 360.0;
-    hsl.s_pct = (hsl.s_pct + s_delta).clamp(0.0, 100.0);
-    hsl.l_pct = (hsl.l_pct + l_delta).clamp(0.0, 100.0);
-    round_hsl_1e10(hsl)
-}
-
-fn fmt_hsl(hsl: Hsl) -> String {
-    format!(
-        "hsl({}, {}%, {}%)",
-        fmt_js_1e10(hsl.h_deg),
-        fmt_js_1e10(hsl.s_pct),
-        fmt_js_1e10(hsl.l_pct)
-    )
-}
-
-fn hsl_to_rgb01(hsl: Hsl) -> Rgb01 {
-    let h = (hsl.h_deg / 360.0) % 1.0;
-    let s = (hsl.s_pct / 100.0).clamp(0.0, 1.0);
-    let l = (hsl.l_pct / 100.0).clamp(0.0, 1.0);
-
-    if s == 0.0 {
-        return Rgb01 { r: l, g: l, b: l };
+    fn resolve(requested: &str) -> &'static Self {
+        THEME_PROGRAMS
+            .iter()
+            .find(|program| program.name == requested)
+            .unwrap_or(&THEME_PROGRAMS[0])
     }
 
-    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
-        if t < 0.0 {
-            t += 1.0;
-        }
-        if t > 1.0 {
-            t -= 1.0;
-        }
-        if t < 1.0 / 6.0 {
-            return p + (q - p) * 6.0 * t;
-        }
-        if t < 1.0 / 2.0 {
-            return q;
-        }
-        if t < 2.0 / 3.0 {
-            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
-        }
-        p
+    fn default_snapshot(self) -> &'static Map<String, Value> {
+        generated_theme_artifact()
+            .themes
+            .get(self.name)
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("generated theme artifact is missing `{}`", self.name))
     }
 
-    let q = if l < 0.5 {
-        l * (1.0 + s)
-    } else {
-        l + s - l * s
-    };
-    let p = 2.0 * l - q;
-    Rgb01 {
-        r: hue_to_rgb(p, q, h + 1.0 / 3.0),
-        g: hue_to_rgb(p, q, h),
-        b: hue_to_rgb(p, q, h - 1.0 / 3.0),
+    fn dark_mode_snapshot(self) -> &'static Map<String, Value> {
+        generated_theme_artifact()
+            .dark_mode_true
+            .get(self.name)
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| {
+                panic!(
+                    "generated theme artifact is missing darkMode=true `{}`",
+                    self.name
+                )
+            })
     }
-}
 
-fn invert_rgb01_to_rgb_string(rgb: Rgb01) -> String {
-    let r = round_1e10((1.0 - rgb.r) * 255.0);
-    let g = round_1e10((1.0 - rgb.g) * 255.0);
-    let b = round_1e10((1.0 - rgb.b) * 255.0);
-    format!(
-        "rgb({}, {}, {})",
-        fmt_js_1e10(r),
-        fmt_js_1e10(g),
-        fmt_js_1e10(b)
-    )
+    fn calculation_snapshot(self, explicit: &Map<String, Value>) -> &'static Map<String, Value> {
+        if explicit.get("darkMode").is_some_and(is_js_truthy) {
+            self.dark_mode_snapshot()
+        } else {
+            self.default_snapshot()
+        }
+    }
+
+    fn exact_snapshot(self, explicit: &Map<String, Value>) -> Option<&'static Map<String, Value>> {
+        if explicit
+            .keys()
+            .all(|key| matches!(key.as_str(), "darkMode" | "fontFamily" | "fontSize"))
+        {
+            Some(self.calculation_snapshot(explicit))
+        } else {
+            None
+        }
+    }
+
+    fn normalize_overrides(self, raw: Map<String, Value>) -> Map<String, Value> {
+        let defaults = self.default_snapshot();
+        raw.into_iter()
+            .filter(|(key, value)| assign_with_depth_accepts_theme_value(defaults.get(key), value))
+            .collect()
+    }
+
+    fn validate_evaluated_inputs(self, explicit: &Map<String, Value>) -> Result<(), ColorError> {
+        for key in self.evaluated_color_inputs {
+            let Some(value) = explicit.get(*key) else {
+                continue;
+            };
+            if value.is_null() {
+                continue;
+            }
+            let Value::String(color) = value else {
+                return Err(ColorError::UnsupportedFormat {
+                    input: value.to_string(),
+                });
+            };
+            theme_color::ThemeColor::parse(color)?;
+        }
+        Ok(())
+    }
+
+    fn execute(self, config: &mut MermaidConfig) -> Result<(), ColorError> {
+        match self.kind {
+            ThemeProgramKind::Default => apply_default_theme_defaults(config),
+            ThemeProgramKind::Base => apply_base_theme_defaults(config),
+            ThemeProgramKind::Dark => apply_dark_theme_defaults(config),
+            ThemeProgramKind::Forest => apply_forest_theme_defaults(config),
+            ThemeProgramKind::Neutral => apply_neutral_theme_defaults(config),
+            ThemeProgramKind::Extended => apply_snapshot_theme_defaults(config, self.name),
+        }
+    }
+
+    fn apply_dependency_graph(
+        self,
+        explicit: &Map<String, Value>,
+        calculated: &mut Map<String, Value>,
+    ) -> Result<(), ColorError> {
+        match self.dependencies {
+            ThemeDependencyGraph::None => Ok(()),
+            ThemeDependencyGraph::Default => apply_default_theme_dependencies(explicit, calculated),
+            ThemeDependencyGraph::Base => apply_base_theme_dependencies(explicit, calculated),
+            ThemeDependencyGraph::Dark => apply_dark_theme_dependencies(explicit, calculated),
+            ThemeDependencyGraph::Forest => apply_forest_theme_dependencies(explicit, calculated),
+            ThemeDependencyGraph::Neutral => apply_neutral_theme_dependencies(explicit, calculated),
+            ThemeDependencyGraph::DarkenedScale => {
+                apply_darkened_scale_dependencies(explicit, calculated)
+            }
+            ThemeDependencyGraph::DarkenedScaleAndGit => {
+                apply_darkened_scale_dependencies(explicit, calculated)?;
+                apply_dynamic_git_dependencies(explicit, calculated)
+            }
+            ThemeDependencyGraph::DynamicGit => {
+                apply_dynamic_git_dependencies(explicit, calculated)
+            }
+        }
+    }
 }
 
 fn get_truthy_string(map: &Map<String, Value>, key: &str) -> Option<String> {
     map.get(key)
         .and_then(|v| v.as_str())
-        .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
 }
 
+fn is_js_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64().is_some_and(|value| value != 0.0),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
+fn assign_with_depth_accepts_theme_value(default: Option<&Value>, source: &Value) -> bool {
+    let source_is_non_null_object = matches!(source, Value::Array(_) | Value::Object(_));
+    let source_is_object = matches!(source, Value::Null | Value::Array(_) | Value::Object(_));
+    let default_is_object = default
+        .is_some_and(|value| matches!(value, Value::Null | Value::Array(_) | Value::Object(_)));
+
+    // Mermaid's site-config merge reaches themeVariables with depth=1. Non-null objects recurse
+    // once (and therefore retain nested nulls); dissimilar object/scalar values do not clobber.
+    source_is_non_null_object && (default.is_none() || default_is_object)
+        || !source_is_object && !default_is_object
+}
+
+fn required_color(map: &Map<String, Value>, key: &str) -> Result<String, ColorError> {
+    get_truthy_string(map, key).ok_or_else(|| ColorError::UnsupportedFormat {
+        input: map
+            .get(key)
+            .map(Value::to_string)
+            .unwrap_or_else(|| format!("missing theme color `{key}`")),
+    })
+}
+
+fn value_is_missing(map: &Map<String, Value>, key: &str) -> bool {
+    map.get(key).is_none_or(|value| !is_js_truthy(value))
+}
+
 fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
-    let is_missing = match map.get(key) {
-        None => true,
-        Some(Value::Null) => true,
-        Some(Value::String(s)) => s.trim().is_empty(),
-        _ => false,
-    };
-    if is_missing {
+    if value_is_missing(map, key) {
         map.insert(key.to_string(), value);
     }
 }
 
 fn set_string_if_missing(map: &mut Map<String, Value>, key: &str, value: impl Into<String>) {
     set_if_missing(map, key, Value::String(value.into()));
+}
+
+fn set_string_if_missing_with(
+    map: &mut Map<String, Value>,
+    key: &str,
+    value: impl FnOnce() -> Result<String, ColorError>,
+) -> Result<(), ColorError> {
+    if value_is_missing(map, key) {
+        map.insert(key.to_string(), Value::String(value()?));
+    }
+    Ok(())
 }
 
 fn set_finite_number_if_missing(map: &mut Map<String, Value>, key: &str, value: f64) {
@@ -270,47 +408,6 @@ fn set_derived_string_unless_explicit(
     }
 }
 
-fn adjust_color_hsl_string(
-    color: &str,
-    h_delta: f64,
-    s_delta: f64,
-    l_delta: f64,
-) -> Option<String> {
-    parse_color_hsl(color).map(|hsl| fmt_hsl(adjust_hsl(hsl, h_delta, s_delta, l_delta)))
-}
-
-fn darken_color_hsl_string(color: &str, amount: f64) -> Option<String> {
-    adjust_color_hsl_string(color, 0.0, 0.0, -amount)
-}
-
-fn invert_color_hex_string(color: &str) -> Option<String> {
-    parse_hex_rgb01(color).map(invert_rgb01_to_hex)
-}
-
-fn invert_color_css_string(color: &str) -> Option<String> {
-    let rgb = parse_hex_rgb01(color).or_else(|| parse_hsl_color(color).map(hsl_to_rgb01))?;
-    let inv = Rgb01 {
-        r: 1.0 - rgb.r,
-        g: 1.0 - rgb.g,
-        b: 1.0 - rgb.b,
-    };
-    let components = [
-        round_1e10(inv.r * 255.0),
-        round_1e10(inv.g * 255.0),
-        round_1e10(inv.b * 255.0),
-    ];
-    if components.iter().all(|v| (v - v.round()).abs() < 1e-10) {
-        Some(rgb01_to_hex(inv))
-    } else {
-        Some(format!(
-            "rgb({}, {}, {})",
-            fmt_js_1e10(components[0]),
-            fmt_js_1e10(components[1]),
-            fmt_js_1e10(components[2])
-        ))
-    }
-}
-
 fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     match config.as_value().get("themeVariables") {
         Some(Value::Object(m)) => m.clone(),
@@ -318,18 +415,43 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     }
 }
 
-fn upstream_theme_variables() -> &'static Map<String, Value> {
-    UPSTREAM_THEME_VARIABLES
-        .get_or_init(|| {
+fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
+    GENERATED_THEME_ARTIFACT.get_or_init(|| {
+        let artifact: GeneratedThemeArtifact =
             serde_json::from_str(include_str!("generated/theme_variables_11_16_0.json"))
-                .expect("generated Mermaid theme variable snapshot JSON is valid")
-        })
-        .as_object()
-        .expect("generated Mermaid theme variable snapshot root is an object")
-}
-
-fn upstream_theme_snapshot(theme: &str) -> Option<&'static Map<String, Value>> {
-    upstream_theme_variables().get(theme)?.as_object()
+                .expect("generated Mermaid theme artifact JSON is valid");
+        assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
+        assert_eq!(
+            artifact.provenance.mermaid_version,
+            crate::baseline::PINNED_MERMAID_BASELINE_VERSION
+        );
+        assert_eq!(
+            artifact.provenance.mermaid_source_tag,
+            crate::baseline::PINNED_MERMAID_BASELINE_TAG
+        );
+        assert_eq!(
+            artifact.provenance.generator,
+            "cargo run -p xtask -- gen-theme-snapshot"
+        );
+        assert_eq!(artifact.provenance.mermaid_source_commit.len(), 40);
+        assert_eq!(artifact.provenance.mermaid_package_sha256.len(), 64);
+        assert_eq!(artifact.oracle_cases.len(), THEME_PROGRAMS.len() * 5 + 11);
+        for program in THEME_PROGRAMS {
+            assert!(
+                artifact
+                    .themes
+                    .get(program.name)
+                    .is_some_and(Value::is_object)
+            );
+            assert!(
+                artifact
+                    .dark_mode_true
+                    .get(program.name)
+                    .is_some_and(Value::is_object)
+            );
+        }
+        artifact
+    })
 }
 
 fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map<String, Value>) {
@@ -352,13 +474,18 @@ fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map
     }
 }
 
-fn finish_theme_defaults(config: &mut MermaidConfig, theme: &str, tv: Map<String, Value>) {
+fn finish_theme_defaults(
+    config: &mut MermaidConfig,
+    theme: &str,
+    tv: Map<String, Value>,
+) -> Result<(), ColorError> {
     let explicit = theme_variables_map(config);
-    let resolution = ThemeResolution::new(theme, explicit, tv);
+    let resolution = ThemeResolution::new(theme, explicit, tv)?;
     config.set_value(
         "themeVariables",
         Value::Object(resolution.into_resolved_variables()),
     );
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,9 +547,14 @@ struct ThemeResolution {
 }
 
 impl ThemeResolution {
-    fn new(theme: &str, explicit: Map<String, Value>, calculated: Map<String, Value>) -> Self {
+    fn new(
+        theme: &str,
+        explicit: Map<String, Value>,
+        calculated: Map<String, Value>,
+    ) -> Result<Self, ColorError> {
+        let program = ThemeProgram::resolve(theme);
         let has_user_theme_variables = !explicit.is_empty();
-        let default_variables = upstream_theme_snapshot(theme).cloned().unwrap_or_default();
+        let default_variables = program.default_snapshot().clone();
         let default_snapshot = ThemeStageSnapshot::from_variables(
             ThemeResolutionStage::DefaultSnapshot,
             default_variables,
@@ -439,19 +571,32 @@ impl ThemeResolution {
             ThemeValueOrigin::Calculated,
         );
 
-        if !has_user_theme_variables || is_font_family_only_override(&explicit) {
-            // The generated snapshot is the exact no-override result of getThemeVariables().
-            // fontFamily is not an input to updateColors(), so a font-only override takes this
-            // complete snapshot and is replayed below without running a divergent color pass.
-            calculated_snapshot = default_snapshot.clone();
-            calculated_snapshot.stage = ThemeResolutionStage::Calculated;
-        } else if let Some(snapshot) = upstream_theme_snapshot(theme) {
+        if let Some(snapshot) = program.exact_snapshot(&explicit) {
+            // Generated snapshots are exact calculation-stage results for branch-only inputs.
+            // Typography inputs do not affect updateColors() and are replayed below.
+            calculated_snapshot = ThemeStageSnapshot::from_variables(
+                ThemeResolutionStage::Calculated,
+                snapshot.clone(),
+                ThemeValueOrigin::Calculated,
+            );
+        } else {
+            let snapshot = program.calculation_snapshot(&explicit);
             merge_theme_variable_defaults(&mut calculated_snapshot.variables, snapshot);
             for key in snapshot.keys() {
                 calculated_snapshot
                     .origins
                     .entry(key.clone())
                     .or_insert(ThemeValueOrigin::DefaultSnapshot);
+            }
+
+            let before_dependencies = calculated_snapshot.variables.clone();
+            program.apply_dependency_graph(&explicit, &mut calculated_snapshot.variables)?;
+            for (key, value) in &calculated_snapshot.variables {
+                if before_dependencies.get(key) != Some(value) {
+                    calculated_snapshot
+                        .origins
+                        .insert(key.clone(), ThemeValueOrigin::Calculated);
+                }
             }
         }
 
@@ -472,12 +617,12 @@ impl ThemeResolution {
         }
         explicit_replay.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
 
-        Self {
+        Ok(Self {
             default_snapshot,
             overrides_applied,
             calculated: calculated_snapshot,
             explicit_replay,
-        }
+        })
     }
 
     fn into_resolved_variables(self) -> Map<String, Value> {
@@ -498,10 +643,6 @@ impl ThemeResolution {
         );
         self.explicit_replay.variables
     }
-}
-
-fn is_font_family_only_override(explicit: &Map<String, Value>) -> bool {
-    explicit.len() == 1 && explicit.contains_key("fontFamily")
 }
 
 fn restore_default_baseline_palette(
@@ -545,13 +686,11 @@ fn mermaid_default_font_family() -> Value {
     Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string())
 }
 
-fn mk_border_hsl(hsl: Hsl, dark_mode: bool) -> String {
-    fmt_hsl(adjust_hsl(
-        hsl,
-        0.0,
-        -40.0,
-        if dark_mode { 10.0 } else { -10.0 },
-    ))
+fn mk_border(color: &str, dark_mode: bool) -> Result<String, ColorError> {
+    theme_color::adjust(
+        color,
+        ColorAdjustment::hsl(0.0, -40.0, if dark_mode { 10.0 } else { -10.0 }),
+    )
 }
 
 fn ensure_gradient_theme_defaults(tv: &mut Map<String, Value>) {
@@ -604,85 +743,595 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
     tv.insert("xyChart".to_string(), Value::Object(xy));
 }
 
-pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
-    let theme = config.get_str("theme").unwrap_or("default").to_string();
-    match theme.as_str() {
-        "default" => apply_default_theme_defaults(config),
-        "base" => apply_base_theme_defaults(config),
-        "dark" => apply_dark_theme_defaults(config),
-        "forest" => apply_forest_theme_defaults(config),
-        "neutral" => apply_neutral_theme_defaults(config),
-        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color" => {
-            apply_snapshot_theme_defaults(config, &theme)
+fn apply_quadrant_theme_defaults(
+    tv: &mut Map<String, Value>,
+    fill_base: &str,
+    text_base: &str,
+    border_base: &str,
+) -> Result<(), ColorError> {
+    set_string_if_missing(tv, "quadrant1Fill", fill_base);
+    for (key, adjustment) in [
+        ("quadrant2Fill", 5.0),
+        ("quadrant3Fill", 10.0),
+        ("quadrant4Fill", 15.0),
+    ] {
+        set_string_if_missing(
+            tv,
+            key,
+            theme_color::adjust(
+                fill_base,
+                ColorAdjustment::rgb(adjustment, adjustment, adjustment),
+            )?,
+        );
+    }
+
+    set_string_if_missing(tv, "quadrant1TextFill", text_base);
+    for (key, adjustment) in [
+        ("quadrant2TextFill", -5.0),
+        ("quadrant3TextFill", -10.0),
+        ("quadrant4TextFill", -15.0),
+    ] {
+        set_string_if_missing(
+            tv,
+            key,
+            theme_color::adjust(
+                text_base,
+                ColorAdjustment::rgb(adjustment, adjustment, adjustment),
+            )?,
+        );
+    }
+
+    // Upstream omits the amount argument. Khroma therefore preserves the hue and saturation but
+    // serializes the lightness as NaN. Evaluate this even when the point color is explicit: the
+    // JavaScript expression computes it during updateColors() before replaying explicit values.
+    let quadrant1_fill = required_color(tv, "quadrant1Fill")?;
+    let point_fill = if theme_color::is_dark(&quadrant1_fill)? {
+        theme_color::lighten(&quadrant1_fill, f64::NAN)?
+    } else {
+        theme_color::darken(&quadrant1_fill, f64::NAN)?
+    };
+    set_string_if_missing(tv, "quadrantPointFill", point_fill);
+
+    for key in [
+        "quadrantPointTextFill",
+        "quadrantXAxisTextFill",
+        "quadrantYAxisTextFill",
+        "quadrantTitleFill",
+    ] {
+        set_string_if_missing(tv, key, text_base);
+    }
+    for key in [
+        "quadrantInternalBorderStrokeFill",
+        "quadrantExternalBorderStrokeFill",
+    ] {
+        set_string_if_missing(tv, key, border_base);
+    }
+    Ok(())
+}
+
+fn apply_current_quadrant_theme_defaults(tv: &mut Map<String, Value>) -> Result<(), ColorError> {
+    let fill_base = required_color(tv, "primaryColor")?;
+    let text_base = required_color(tv, "primaryTextColor")?;
+    let border_base = required_color(tv, "primaryBorderColor")?;
+    apply_quadrant_theme_defaults(tv, &fill_base, &text_base, &border_base)
+}
+
+fn discard_non_explicit_quadrant_snapshot_values(
+    tv: &mut Map<String, Value>,
+    explicit: &Map<String, Value>,
+) {
+    for key in [
+        "quadrant1Fill",
+        "quadrant2Fill",
+        "quadrant3Fill",
+        "quadrant4Fill",
+        "quadrant1TextFill",
+        "quadrant2TextFill",
+        "quadrant3TextFill",
+        "quadrant4TextFill",
+        "quadrantPointFill",
+        "quadrantPointTextFill",
+        "quadrantXAxisTextFill",
+        "quadrantYAxisTextFill",
+        "quadrantInternalBorderStrokeFill",
+        "quadrantExternalBorderStrokeFill",
+        "quadrantTitleFill",
+    ] {
+        if !explicit.contains_key(key) {
+            tv.remove(key);
         }
-        _ => apply_default_theme_defaults(config),
     }
 }
 
-fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
+#[derive(Debug, Clone, Copy)]
+enum ColorTransform {
+    Darken(f64),
+    Lighten(f64),
+}
+
+impl ColorTransform {
+    fn apply(self, color: &str) -> Result<String, ColorError> {
+        match self {
+            Self::Darken(amount) => theme_color::darken(color, amount),
+            Self::Lighten(amount) => theme_color::lighten(color, amount),
+        }
+    }
+}
+
+fn validate_explicit_git_transforms(
+    tv: &Map<String, Value>,
+    explicit: &Map<String, Value>,
+    transform: ColorTransform,
+) -> Result<(), ColorError> {
+    for index in 0..8 {
+        let key = format!("git{index}");
+        if explicit.contains_key(&key) {
+            transform.apply(&required_color(tv, &key)?)?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_single_pass_git_palette(
+    tv: &mut Map<String, Value>,
+    explicit: &Map<String, Value>,
+    bases: [String; 8],
+    transform: ColorTransform,
+) -> Result<(), ColorError> {
+    for (index, base) in bases.into_iter().enumerate() {
+        let git_key = format!("git{index}");
+        let source = if explicit.contains_key(&git_key) {
+            required_color(tv, &git_key)?
+        } else {
+            base
+        };
+        let transformed = transform.apply(&source)?;
+        if !explicit.contains_key(&git_key) {
+            tv.insert(git_key, Value::String(transformed.clone()));
+        }
+
+        let inverse_key = format!("gitInv{index}");
+        if !explicit.contains_key(&inverse_key) {
+            tv.insert(
+                inverse_key,
+                Value::String(theme_color::invert(&transformed)?),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn calculated_or_fallback_value(
+    explicit: &Map<String, Value>,
+    key: &str,
+    fallback: Value,
+) -> Value {
+    explicit
+        .get(key)
+        .filter(|value| is_js_truthy(value))
+        .cloned()
+        .unwrap_or(fallback)
+}
+
+fn apply_scale_label_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+    fallback: Value,
+) {
+    let scale_label = calculated_or_fallback_value(explicit, "scaleLabelColor", fallback);
+    tv.insert("scaleLabelColor".to_string(), scale_label.clone());
+    for index in 0..12 {
+        let key = format!("cScaleLabel{index}");
+        if !explicit.contains_key(&key) {
+            tv.insert(key, scale_label.clone());
+        }
+    }
+}
+
+fn apply_default_theme_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let primary = required_color(tv, "primaryColor")?;
+    set_derived_string_unless_explicit(
+        tv,
+        explicit,
+        "rowOdd",
+        theme_color::lighten(&primary, 75.0)?,
+    );
+    set_derived_string_unless_explicit(
+        tv,
+        explicit,
+        "rowEven",
+        theme_color::lighten(&primary, 1.0)?,
+    );
+    Ok(())
+}
+
+fn apply_base_theme_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
+    let main_bkg = required_color(tv, "mainBkg")?;
+    let (row_odd, row_even) = if dark_mode {
+        (
+            theme_color::darken(&main_bkg, 5.0)?,
+            theme_color::darken(&main_bkg, 10.0)?,
+        )
+    } else {
+        (
+            theme_color::lighten(&main_bkg, 75.0)?,
+            theme_color::lighten(&main_bkg, 5.0)?,
+        )
+    };
+    set_derived_string_unless_explicit(tv, explicit, "rowOdd", row_odd);
+    set_derived_string_unless_explicit(tv, explicit, "rowEven", row_even);
+
+    let multiplier = if dark_mode { -4.0 } else { -1.0 };
+    for index in 0..5 {
+        set_derived_string_unless_explicit(
+            tv,
+            explicit,
+            &format!("surface{index}"),
+            theme_color::adjust(
+                &main_bkg,
+                ColorAdjustment::hsl(180.0, -15.0, multiplier * (5 + index * 3) as f64),
+            )?,
+        );
+        set_derived_string_unless_explicit(
+            tv,
+            explicit,
+            &format!("surfacePeer{index}"),
+            theme_color::adjust(
+                &main_bkg,
+                ColorAdjustment::hsl(180.0, -15.0, multiplier * (8 + index * 3) as f64),
+            )?,
+        );
+    }
+
+    let label_text = tv
+        .get("labelTextColor")
+        .cloned()
+        .unwrap_or_else(|| Value::String(if dark_mode { "#eee" } else { "#333" }.to_string()));
+    apply_scale_label_dependencies(explicit, tv, label_text);
+    Ok(())
+}
+
+fn apply_dark_theme_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let fallback = if tv.get("darkMode").is_some_and(is_js_truthy) {
+        Value::String("black".to_string())
+    } else {
+        tv.get("labelTextColor")
+            .cloned()
+            .unwrap_or_else(|| Value::String("lightgrey".to_string()))
+    };
+    apply_scale_label_dependencies(explicit, tv, fallback);
+    Ok(())
+}
+
+fn git_palette_bases(tv: &Map<String, Value>) -> Result<[String; 8], ColorError> {
+    let primary = required_color(tv, "primaryColor")?;
+    Ok([
+        primary.clone(),
+        required_color(tv, "secondaryColor")?,
+        required_color(tv, "tertiaryColor")?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(-30.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(-60.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(-90.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+    ])
+}
+
+fn apply_dynamic_git_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let transform = if tv.get("darkMode").is_some_and(is_js_truthy) {
+        ColorTransform::Lighten(25.0)
+    } else {
+        ColorTransform::Darken(25.0)
+    };
+    apply_single_pass_git_palette(tv, explicit, git_palette_bases(tv)?, transform)
+}
+
+fn apply_forest_theme_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    // Forest constructs `mainBkg` independently from `primaryColor`; overriding the latter must
+    // not retarget ER striping. An explicit `mainBkg` still participates in the update pass.
+    let main_bkg = if explicit.contains_key("mainBkg") {
+        required_color(tv, "mainBkg")?
+    } else {
+        required_color(
+            ThemeProgram::resolve("forest").default_snapshot(),
+            "mainBkg",
+        )?
+    };
+    set_derived_string_unless_explicit(
+        tv,
+        explicit,
+        "rowOdd",
+        theme_color::lighten(&main_bkg, 75.0)?,
+    );
+    set_derived_string_unless_explicit(
+        tv,
+        explicit,
+        "rowEven",
+        theme_color::lighten(&main_bkg, 20.0)?,
+    );
+    apply_dynamic_git_dependencies(explicit, tv)
+}
+
+fn apply_neutral_theme_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
+    for index in 0..12 {
+        let scale = required_color(tv, &format!("cScale{index}"))?;
+        let peer = if dark_mode {
+            theme_color::lighten(&scale, 10.0)?
+        } else {
+            theme_color::darken(&scale, 10.0)?
+        };
+        set_derived_string_unless_explicit(tv, explicit, &format!("cScalePeer{index}"), peer);
+        set_derived_string_unless_explicit(
+            tv,
+            explicit,
+            &format!("cScaleInv{index}"),
+            theme_color::invert(&scale)?,
+        );
+    }
+
+    let fallback = if dark_mode {
+        Value::String("black".to_string())
+    } else {
+        tv.get("labelTextColor")
+            .cloned()
+            .unwrap_or_else(|| Value::String("#333".to_string()))
+    };
+    let scale_label = calculated_or_fallback_value(explicit, "scaleLabelColor", fallback);
+    tv.insert("scaleLabelColor".to_string(), scale_label.clone());
+    let scale_one = tv
+        .get("cScale1")
+        .cloned()
+        .unwrap_or_else(|| Value::String("#F4F4F4".to_string()));
+    for index in 0..12 {
+        let key = format!("cScaleLabel{index}");
+        if !explicit.contains_key(&key) {
+            tv.insert(
+                key,
+                if matches!(index, 0 | 2) {
+                    scale_one.clone()
+                } else {
+                    scale_label.clone()
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+fn darkened_scale_bases(tv: &Map<String, Value>) -> Result<[String; 12], ColorError> {
+    let primary = required_color(tv, "primaryColor")?;
+    Ok([
+        primary.clone(),
+        required_color(tv, "secondaryColor")?,
+        required_color(tv, "tertiaryColor")?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(30.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(90.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(150.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(210.0, 0.0, 150.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(270.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(300.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary, ColorAdjustment::hsl(330.0, 0.0, 0.0))?,
+    ])
+}
+
+fn apply_darkened_scale_dependencies(
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
+    let transform = ColorTransform::Darken(if dark_mode { 75.0 } else { 25.0 });
+    let bases = darkened_scale_bases(tv)?;
+
+    for (index, base) in bases.into_iter().enumerate() {
+        let scale_key = format!("cScale{index}");
+        let source = get_truthy_string(explicit, &scale_key).unwrap_or(base);
+        let scale = transform.apply(&source)?;
+        if !explicit.contains_key(&scale_key) {
+            tv.insert(scale_key, Value::String(scale.clone()));
+        }
+        set_derived_string_unless_explicit(
+            tv,
+            explicit,
+            &format!("cScaleInv{index}"),
+            theme_color::invert(&scale)?,
+        );
+        let peer = if dark_mode {
+            theme_color::lighten(&scale, 10.0)?
+        } else {
+            theme_color::darken(&scale, 10.0)?
+        };
+        set_derived_string_unless_explicit(tv, explicit, &format!("cScalePeer{index}"), peer);
+    }
+
+    let label_text = tv
+        .get("labelTextColor")
+        .cloned()
+        .unwrap_or_else(|| Value::String("#e0dfdf".to_string()));
+    apply_scale_label_dependencies(explicit, tv, label_text);
+    Ok(())
+}
+
+fn validate_explicit_operation(
+    tv: &Map<String, Value>,
+    explicit: &Map<String, Value>,
+    key: &str,
+    operation: impl FnOnce(&str) -> Result<String, ColorError>,
+) -> Result<(), ColorError> {
+    if explicit.contains_key(key) {
+        operation(&required_color(tv, key)?)?;
+    }
+    Ok(())
+}
+
+fn replay_extended_theme_khroma_operations(
+    theme: &str,
+    explicit: &Map<String, Value>,
+    tv: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
+    match theme {
+        "neo" | "redux" | "redux-color" => {
+            for key in ["secondaryColor", "tertiaryColor"] {
+                validate_explicit_operation(tv, explicit, key, |color| {
+                    mk_border(color, dark_mode)
+                })?;
+            }
+        }
+        "neo-dark" => {
+            validate_explicit_operation(tv, explicit, "secondaryColor", |color| {
+                theme_color::darken(color, 10.0)
+            })?;
+            validate_explicit_operation(tv, explicit, "tertiaryColor", |color| {
+                theme_color::darken(color, if dark_mode { 75.0 } else { 25.0 })
+            })?;
+        }
+        _ => {}
+    }
+
+    let scale_policy = match theme {
+        "neo" | "neo-dark" | "redux-dark" => Some(Some(ColorTransform::Darken(if dark_mode {
+            75.0
+        } else {
+            25.0
+        }))),
+        "redux-color" | "redux-dark-color" => Some(None),
+        _ => None,
+    };
+    if let Some(transform) = scale_policy {
+        for index in 0..2 {
+            let scale_key = format!("cScale{index}");
+            if !explicit.contains_key(&scale_key) {
+                continue;
+            }
+            let source = required_color(tv, &scale_key)?;
+            let calculated = match transform {
+                Some(transform) => transform.apply(&source)?,
+                None => source,
+            };
+
+            let inverse_key = format!("cScaleInv{index}");
+            if !explicit.contains_key(&inverse_key) {
+                tv.insert(
+                    inverse_key,
+                    Value::String(theme_color::invert(&calculated)?),
+                );
+            }
+            let peer_key = format!("cScalePeer{index}");
+            if !explicit.contains_key(&peer_key) {
+                let peer = if dark_mode {
+                    theme_color::lighten(&calculated, 10.0)?
+                } else {
+                    theme_color::darken(&calculated, 10.0)?
+                };
+                tv.insert(peer_key, Value::String(peer));
+            }
+            if theme == "redux-dark-color" {
+                let label_key = format!("cScaleLabel{index}");
+                if !explicit.contains_key(&label_key) {
+                    tv.insert(
+                        label_key,
+                        Value::String(theme_color::darken(&calculated, 75.0)?),
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
+    let requested = config.get_str("theme").unwrap_or("default").to_string();
+    let program = *ThemeProgram::resolve(&requested);
+    let raw = theme_variables_map(config);
+    program.validate_evaluated_inputs(&raw)?;
+    let explicit = program.normalize_overrides(raw);
+    config.set_value("themeVariables", Value::Object(explicit));
+    program.execute(config)
+}
+
+fn apply_snapshot_theme_defaults(
+    config: &mut MermaidConfig,
+    theme: &str,
+) -> Result<(), ColorError> {
     let tv = theme_variables_map(config);
     if tv.is_empty() {
-        finish_theme_defaults(config, theme, tv);
-        return;
+        return finish_theme_defaults(config, theme, tv);
     }
 
     let explicit = tv.clone();
     let mut resolved = tv;
-    if let Some(snapshot) = upstream_theme_snapshot(theme) {
-        merge_theme_variable_defaults(&mut resolved, snapshot);
-    }
-    apply_extended_theme_visible_derivations(theme, &explicit, &mut resolved);
-    finish_theme_defaults(config, theme, resolved);
+    let program = ThemeProgram::resolve(theme);
+    merge_theme_variable_defaults(&mut resolved, program.calculation_snapshot(&explicit));
+    apply_extended_theme_visible_derivations(theme, &explicit, &mut resolved)?;
+    finish_theme_defaults(config, theme, resolved)
 }
 
 fn apply_extended_theme_visible_derivations(
     theme: &str,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
-) {
+) -> Result<(), ColorError> {
     if !matches!(
         theme,
         "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
     ) {
-        return;
+        return Ok(());
     }
+
+    replay_extended_theme_khroma_operations(theme, explicit, tv)?;
 
     // Mermaid's extended themes run `calculate(overrides)`: copy user base variables, update
     // derived colors, then re-apply explicit user keys. Keep generated snapshots as the default
     // source of truth, but recompute visible derived keys that current renderers consume.
-    if let Some(primary) = get_truthy_string(tv, "primaryColor") {
-        if explicit.contains_key("primaryColor") {
-            set_derived_string_unless_explicit(tv, explicit, "nodeBkg", primary.clone());
-            set_derived_string_unless_explicit(tv, explicit, "tagLabelBackground", primary.clone());
-        }
+    if explicit.contains_key("primaryColor") {
+        let primary = required_color(tv, "primaryColor")?;
+        set_derived_string_unless_explicit(tv, explicit, "nodeBkg", primary.clone());
+        set_derived_string_unless_explicit(tv, explicit, "tagLabelBackground", primary.clone());
 
-        if explicit.contains_key("primaryColor")
-            && matches!(theme, "neo" | "redux" | "redux-color")
+        if matches!(theme, "neo" | "redux" | "redux-color")
             && !explicit.contains_key("secondaryColor")
-            && let Some(secondary) = adjust_color_hsl_string(&primary, -120.0, 0.0, 0.0)
         {
+            let secondary = theme_color::adjust(&primary, ColorAdjustment::hsl(-120.0, 0.0, 0.0))?;
             tv.insert("secondaryColor".to_string(), Value::String(secondary));
         }
     }
 
-    if let Some(background) = get_truthy_string(tv, "background") {
-        if explicit.contains_key("background")
-            && !explicit.contains_key("lineColor")
-            && let Some(line_color) = invert_color_hex_string(&background)
-        {
+    if explicit.contains_key("background") {
+        let background = required_color(tv, "background")?;
+        if !explicit.contains_key("lineColor") {
+            let line_color = theme_color::invert(&background)?;
             tv.insert("lineColor".to_string(), Value::String(line_color));
         }
-        if explicit.contains_key("background")
-            && !explicit.contains_key("arrowheadColor")
-            && let Some(arrowhead_color) = invert_color_hex_string(&background)
-        {
+        if !explicit.contains_key("arrowheadColor") {
+            let arrowhead_color = theme_color::invert(&background)?;
             tv.insert("arrowheadColor".to_string(), Value::String(arrowhead_color));
         }
     }
 
-    if let Some(line_color) = get_truthy_string(tv, "lineColor")
-        && (explicit.contains_key("lineColor") || explicit.contains_key("background"))
-    {
+    if explicit.contains_key("lineColor") || explicit.contains_key("background") {
+        let line_color = required_color(tv, "lineColor")?;
         for key in [
             "defaultLinkColor",
             "archEdgeColor",
@@ -695,15 +1344,11 @@ fn apply_extended_theme_visible_derivations(
         }
     }
 
-    if let Some(secondary) = get_truthy_string(tv, "secondaryColor")
-        && (explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor"))
-    {
-        let dark_mode = tv
-            .get("darkMode")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+    if explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor") {
+        let secondary = required_color(tv, "secondaryColor")?;
+        let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
         let label_background = if dark_mode {
-            darken_color_hsl_string(&secondary, 30.0).unwrap_or_else(|| secondary.clone())
+            theme_color::darken(&secondary, 30.0)?
         } else {
             secondary.clone()
         };
@@ -717,9 +1362,8 @@ fn apply_extended_theme_visible_derivations(
         }
     }
 
-    if let Some(main_bkg) = get_truthy_string(tv, "mainBkg")
-        && explicit.contains_key("mainBkg")
-    {
+    if explicit.contains_key("mainBkg") {
+        let main_bkg = required_color(tv, "mainBkg")?;
         for key in [
             "actorBkg",
             "labelBoxBkgColor",
@@ -733,98 +1377,51 @@ fn apply_extended_theme_visible_derivations(
 
     if explicit.contains_key("primaryColor")
         && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
-        && let Some(primary) = get_truthy_string(tv, "primaryColor")
     {
-        for key in ["requirementBackground", "pie1", "quadrant1Fill"] {
+        let primary = required_color(tv, "primaryColor")?;
+        for key in ["requirementBackground", "pie1"] {
             set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
         }
-    }
-
-    if matches!(theme, "redux-dark" | "redux-dark-color")
-        && (explicit.contains_key("primaryColor")
-            || explicit.contains_key("secondaryColor")
-            || explicit.contains_key("tertiaryColor"))
-    {
-        derive_redux_dark_git_palette(explicit, tv);
     }
 
     for i in 0..8 {
         let git_key = format!("git{i}");
         let git_inv_key = format!("gitInv{i}");
-        if explicit.contains_key(&git_key)
-            && !explicit.contains_key(&git_inv_key)
-            && let Some(git) = get_truthy_string(tv, &git_key)
-            && let Some(inv) = invert_color_css_string(&git)
-        {
+        if explicit.contains_key(&git_key) && !explicit.contains_key(&git_inv_key) {
+            let git = required_color(tv, &git_key)?;
+            let inv = theme_color::invert(&git)?;
             tv.insert(git_inv_key, Value::String(inv));
         }
     }
+
+    discard_non_explicit_quadrant_snapshot_values(tv, explicit);
+    let quadrant_fill_base = if matches!(theme, "neo" | "redux" | "redux-color") {
+        "#ECECFE".to_string()
+    } else {
+        required_color(tv, "primaryColor")?
+    };
+    let quadrant_text_base = required_color(tv, "primaryTextColor")?;
+    let quadrant_border_base = required_color(tv, "primaryBorderColor")?;
+    apply_quadrant_theme_defaults(
+        tv,
+        &quadrant_fill_base,
+        &quadrant_text_base,
+        &quadrant_border_base,
+    )?;
+    Ok(())
 }
 
-fn derive_redux_dark_git_palette(explicit: &Map<String, Value>, tv: &mut Map<String, Value>) {
-    let Some(primary) = get_truthy_string(tv, "primaryColor") else {
-        return;
-    };
-    let Some(secondary) = get_truthy_string(tv, "secondaryColor") else {
-        return;
-    };
-    let Some(tertiary) = get_truthy_string(tv, "tertiaryColor") else {
-        return;
-    };
-
-    let bases = [
-        Some(primary.clone()),
-        Some(secondary),
-        Some(tertiary),
-        adjust_color_hsl_string(&primary, -30.0, 0.0, 0.0),
-        adjust_color_hsl_string(&primary, -60.0, 0.0, 0.0),
-        adjust_color_hsl_string(&primary, -90.0, 0.0, 0.0),
-        adjust_color_hsl_string(&primary, 60.0, 0.0, 0.0),
-        adjust_color_hsl_string(&primary, 120.0, 0.0, 0.0),
-    ];
-
-    for (i, base) in bases.into_iter().enumerate() {
-        let Some(base) = base else {
-            continue;
-        };
-        let git_key = format!("git{i}");
-        if !explicit.contains_key(&git_key)
-            && let Some(git) = darken_color_hsl_string(&base, 25.0)
-        {
-            tv.insert(git_key.clone(), Value::String(git));
-        }
-        let git_inv_key = format!("gitInv{i}");
-        if !explicit.contains_key(&git_inv_key)
-            && let Some(git) = get_truthy_string(tv, &git_key)
-            && let Some(inv) = invert_color_css_string(&git)
-        {
-            tv.insert(git_inv_key, Value::String(inv));
-        }
-    }
-}
-
-fn apply_default_theme_defaults(config: &mut MermaidConfig) {
+fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
+    let explicit_theme_variables = tv.clone();
 
     // Mermaid 11.16.0: `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
     let default_primary = "#ECECFF";
     let default_secondary = "#ffffde";
-    let default_primary_hsl = parse_hex_rgb01(default_primary)
-        .map(rgb01_to_hsl)
-        .unwrap_or(Hsl {
-            h_deg: 240.0,
-            s_pct: 100.0,
-            l_pct: 96.2745098039,
-        });
-    let default_secondary_hsl = parse_hex_rgb01(default_secondary)
-        .map(rgb01_to_hsl)
-        .unwrap_or(Hsl {
-            h_deg: 60.0,
-            s_pct: 100.0,
-            l_pct: 93.5294117647,
-        });
-    let default_tertiary_hsl = adjust_hsl(default_primary_hsl, -160.0, 0.0, 0.0);
+    let default_tertiary =
+        theme_color::adjust(default_primary, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
+    let default_primary_border = mk_border(default_primary, false)?;
 
     set_if_missing(&mut tv, "background", Value::String("white".to_string()));
     set_if_missing(
@@ -840,23 +1437,23 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "tertiaryColor",
-        Value::String(fmt_hsl(default_tertiary_hsl)),
+        Value::String(default_tertiary.clone()),
     );
 
     set_if_missing(
         &mut tv,
         "primaryBorderColor",
-        Value::String(mk_border_hsl(default_primary_hsl, false)),
+        Value::String(default_primary_border.clone()),
     );
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(mk_border_hsl(default_secondary_hsl, false)),
+        Value::String(mk_border(default_secondary, false)?),
     );
     set_if_missing(
         &mut tv,
         "tertiaryBorderColor",
-        Value::String(mk_border_hsl(default_tertiary_hsl, false)),
+        Value::String(mk_border(&default_tertiary, false)?),
     );
 
     set_if_missing(
@@ -872,9 +1469,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "tertiaryTextColor",
-        Value::String(invert_rgb01_to_rgb_string(hsl_to_rgb01(
-            default_tertiary_hsl,
-        ))),
+        Value::String(theme_color::invert(&default_tertiary)?),
     );
 
     set_if_missing(
@@ -1000,10 +1595,11 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         "sequenceNumberColor",
         Value::String("white".to_string()),
     );
-    let rect_bkg_color = get_truthy_string(&tv, "tertiaryColor")
-        .map(Value::String)
-        .unwrap_or_else(|| Value::String(fmt_hsl(default_tertiary_hsl)));
-    set_if_missing(&mut tv, "rectBkgColor", rect_bkg_color);
+    set_if_missing(
+        &mut tv,
+        "rectBkgColor",
+        Value::String(default_tertiary.clone()),
+    );
 
     // Gantt chart surfaces.
     for (key, value) in [
@@ -1034,10 +1630,14 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     }
 
     // C4 and architecture defaults.
-    let primary_border_color = get_truthy_string(&tv, "primaryBorderColor")
-        .unwrap_or_else(|| mk_border_hsl(default_primary_hsl, false));
-    let secondary_border_color = get_truthy_string(&tv, "secondaryBorderColor")
-        .unwrap_or_else(|| mk_border_hsl(default_secondary_hsl, false));
+    let primary_border_color = match get_truthy_string(&tv, "primaryBorderColor") {
+        Some(color) => color,
+        None => mk_border(default_primary, false)?,
+    };
+    let secondary_border_color = match get_truthy_string(&tv, "secondaryBorderColor") {
+        Some(color) => color,
+        None => mk_border(default_secondary, false)?,
+    };
     set_if_missing(
         &mut tv,
         "personBorder",
@@ -1066,12 +1666,12 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "rowOdd",
-        Value::String(fmt_hsl(adjust_hsl(default_primary_hsl, 0.0, 0.0, 75.0))),
+        Value::String(theme_color::lighten(default_primary, 75.0)?),
     );
     set_if_missing(
         &mut tv,
         "rowEven",
-        Value::String(fmt_hsl(adjust_hsl(default_primary_hsl, 0.0, 0.0, 1.0))),
+        Value::String(theme_color::lighten(default_primary, 1.0)?),
     );
     set_if_missing(
         &mut tv,
@@ -1148,60 +1748,56 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| default_primary.to_string());
     let secondary_color =
         get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary.to_string());
-    let primary_hsl = parse_hex_rgb01(&primary_color)
-        .map(rgb01_to_hsl)
-        .or_else(|| parse_hsl_color(&primary_color))
-        .unwrap_or(default_primary_hsl);
-    let secondary_hsl = parse_hex_rgb01(&secondary_color)
-        .map(rgb01_to_hsl)
-        .or_else(|| parse_hsl_color(&secondary_color))
-        .unwrap_or(default_secondary_hsl);
-    let tertiary_hsl = get_truthy_string(&tv, "tertiaryColor")
-        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
-        .or_else(|| get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hsl_color(&s)))
-        .unwrap_or(default_tertiary_hsl);
-    let c_scales: [Hsl; 12] = [
-        primary_hsl,
-        secondary_hsl,
-        tertiary_hsl,
-        adjust_hsl(primary_hsl, 30.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 60.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 90.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 120.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 150.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 210.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 270.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 300.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 330.0, 0.0, 0.0),
-    ]
-    .map(|base| adjust_hsl(base, 0.0, 0.0, -10.0));
+    // The constructor's first update already materializes every tertiary-derived fallback. The
+    // calculate pass therefore replays an explicit tertiary token without evaluating it.
+    let tertiary_color = default_tertiary.clone();
+    let c_scale_bases = [
+        primary_color.clone(),
+        secondary_color.clone(),
+        tertiary_color.clone(),
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(30.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(90.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(150.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(210.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(270.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(300.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(330.0, 0.0, 0.0))?,
+    ];
+    let mut c_scales = Vec::with_capacity(c_scale_bases.len());
+    for base in c_scale_bases {
+        c_scales.push(theme_color::darken(&base, 10.0)?);
+    }
 
     for (i, v) in c_scales.iter().enumerate() {
-        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(fmt_hsl(*v)));
+        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(v.clone()));
     }
     set_if_missing(
         &mut tv,
         "cScalePeer1",
-        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -45.0))),
+        Value::String(theme_color::darken(&secondary_color, 45.0)?),
     );
     set_if_missing(
         &mut tv,
         "cScalePeer2",
-        Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
+        Value::String(theme_color::darken(&tertiary_color, 40.0)?),
     );
-    for (i, fallback_c_hsl) in c_scales.iter().enumerate() {
-        let c_hsl = get_truthy_string(&tv, &format!("cScale{i}"))
-            .and_then(|value| parse_color_hsl(&value))
-            .unwrap_or(*fallback_c_hsl);
+    for (i, fallback_color) in c_scales.iter().enumerate() {
+        let color =
+            get_truthy_string(&tv, &format!("cScale{i}")).unwrap_or_else(|| fallback_color.clone());
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
+            Value::String(theme_color::darken(&color, 25.0)?),
         );
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
+            Value::String(theme_color::adjust(
+                &color,
+                ColorAdjustment::hsl(180.0, 0.0, 0.0),
+            )?),
         );
         if i == 0 || i == 3 {
             set_if_missing(
@@ -1224,44 +1820,62 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
 
     // Journey and pie color defaults.
     for (key, value) in [
-        ("fillType0", fmt_hsl(primary_hsl)),
-        ("fillType1", fmt_hsl(secondary_hsl)),
+        ("fillType0", primary_color.clone()),
+        ("fillType1", secondary_color.clone()),
         (
             "fillType2",
-            fmt_hsl(adjust_hsl(primary_hsl, 64.0, 0.0, 0.0)),
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
         ),
         (
             "fillType3",
-            fmt_hsl(adjust_hsl(secondary_hsl, 64.0, 0.0, 0.0)),
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
         ),
         (
             "fillType4",
-            fmt_hsl(adjust_hsl(primary_hsl, -64.0, 0.0, 0.0)),
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
         ),
         (
             "fillType5",
-            fmt_hsl(adjust_hsl(secondary_hsl, -64.0, 0.0, 0.0)),
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
         ),
         (
             "fillType6",
-            fmt_hsl(adjust_hsl(primary_hsl, 128.0, 0.0, 0.0)),
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
         ),
         (
             "fillType7",
-            fmt_hsl(adjust_hsl(secondary_hsl, 128.0, 0.0, 0.0)),
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
         ),
-        ("pie1", primary_color),
-        ("pie2", secondary_color),
-        ("pie3", fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
-        ("pie4", fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, -10.0))),
-        ("pie5", fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -30.0))),
-        ("pie6", fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -20.0))),
-        ("pie7", fmt_hsl(adjust_hsl(primary_hsl, 60.0, 0.0, -20.0))),
-        ("pie8", fmt_hsl(adjust_hsl(primary_hsl, -60.0, 0.0, -40.0))),
-        ("pie9", fmt_hsl(adjust_hsl(primary_hsl, 120.0, 0.0, -40.0))),
-        ("pie10", fmt_hsl(adjust_hsl(primary_hsl, 60.0, 0.0, -40.0))),
-        ("pie11", fmt_hsl(adjust_hsl(primary_hsl, -90.0, 0.0, -40.0))),
-        ("pie12", fmt_hsl(adjust_hsl(primary_hsl, 120.0, 0.0, -30.0))),
+        ("pie1", primary_color.clone()),
+        ("pie2", secondary_color.clone()),
+        ("pie3", theme_color::darken(&tertiary_color, 40.0)?),
+        ("pie4", theme_color::darken(&primary_color, 10.0)?),
+        ("pie5", theme_color::darken(&secondary_color, 30.0)?),
+        ("pie6", theme_color::darken(&tertiary_color, 20.0)?),
+        (
+            "pie7",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, -20.0))?,
+        ),
+        (
+            "pie8",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-60.0, 0.0, -40.0))?,
+        ),
+        (
+            "pie9",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, -40.0))?,
+        ),
+        (
+            "pie10",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, -40.0))?,
+        ),
+        (
+            "pie11",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-90.0, 0.0, -40.0))?,
+        ),
+        (
+            "pie12",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, -30.0))?,
+        ),
     ] {
         set_if_missing(&mut tv, key, Value::String(value));
     }
@@ -1368,10 +1982,13 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3",
     );
 
-    finish_theme_defaults(config, "default", tv);
+    apply_quadrant_theme_defaults(&mut tv, default_primary, "#131300", &default_primary_border)?;
+    validate_explicit_git_transforms(&tv, &explicit_theme_variables, ColorTransform::Darken(25.0))?;
+
+    finish_theme_defaults(config, "default", tv)
 }
 
-fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
+fn apply_dark_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
 
     // Mermaid 11.16.0: `theme-dark` color scale seeds.
@@ -1392,11 +2009,10 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "primaryColor", "#1f2020");
     if get_truthy_string(&tv, "primaryTextColor").is_none()
         && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
-        && let Some(rgb) = parse_hex_rgb01(&primary_color)
     {
         tv.insert(
             "primaryTextColor".to_string(),
-            Value::String(invert_rgb01_to_hex(rgb)),
+            Value::String(theme_color::invert(&primary_color)?),
         );
     }
     set_string_if_missing(&mut tv, "textColor", "#ccc");
@@ -1414,18 +2030,11 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
 
     let primary_color =
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#1f2020".to_string());
-    let primary_hsl = parse_hex_rgb01(&primary_color)
-        .map(rgb01_to_hsl)
-        .unwrap_or(Hsl {
-            h_deg: 180.0,
-            s_pct: 1.5873015873,
-            l_pct: 12.3529411765,
-        });
-    let secondary_hsl = adjust_hsl(primary_hsl, 0.0, 0.0, 16.0);
+    let default_secondary_color = theme_color::lighten(&primary_color, 16.0)?;
     set_if_missing(
         &mut tv,
         "secondaryColor",
-        Value::String(fmt_hsl(secondary_hsl)),
+        Value::String(default_secondary_color.clone()),
     );
     set_if_missing(
         &mut tv,
@@ -1435,33 +2044,36 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(mk_border_hsl(secondary_hsl, false)),
+        Value::String(mk_border(&default_secondary_color, false)?),
     );
-    let tertiary_hsl = adjust_hsl(primary_hsl, -160.0, 0.0, 0.0);
-    set_string_if_missing(&mut tv, "tertiaryColor", fmt_hsl(tertiary_hsl));
+    let default_tertiary_color =
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
+    set_string_if_missing(&mut tv, "tertiaryColor", default_tertiary_color.clone());
     set_string_if_missing(
         &mut tv,
         "tertiaryBorderColor",
-        mk_border_hsl(tertiary_hsl, false),
+        mk_border(&default_tertiary_color, false)?,
     );
     set_string_if_missing(
         &mut tv,
         "secondaryTextColor",
-        invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)),
+        theme_color::invert(&default_secondary_color)?,
     );
     set_string_if_missing(
         &mut tv,
         "tertiaryTextColor",
-        invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)),
+        theme_color::invert(&default_tertiary_color)?,
     );
     ensure_gradient_theme_defaults(&mut tv);
 
     let secondary_color =
-        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| fmt_hsl(secondary_hsl));
-    let secondary_text_color = get_truthy_string(&tv, "secondaryTextColor")
-        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)));
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary_color.clone());
+    let secondary_text_color = match get_truthy_string(&tv, "secondaryTextColor") {
+        Some(color) => color,
+        None => theme_color::invert(&secondary_color)?,
+    };
     let tertiary_color =
-        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| fmt_hsl(tertiary_hsl));
+        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| default_tertiary_color.clone());
     let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#333".to_string());
     let primary_text_color =
         get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#e0dfdf".to_string());
@@ -1472,8 +2084,42 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         .unwrap_or_else(|| "rgba(255, 255, 255, 0.25)".to_string());
     let primary_border_color =
         get_truthy_string(&tv, "primaryBorderColor").unwrap_or_else(|| "#cccccc".to_string());
-    let secondary_border_color = get_truthy_string(&tv, "secondaryBorderColor")
-        .unwrap_or_else(|| mk_border_hsl(secondary_hsl, false));
+    let secondary_border_color = match get_truthy_string(&tv, "secondaryBorderColor") {
+        Some(color) => color,
+        None => mk_border(&secondary_color, false)?,
+    };
+
+    // theme-dark updates Journey colors unconditionally before replaying explicit values.
+    for (key, color) in [
+        ("fillType0", primary_color.clone()),
+        ("fillType1", secondary_color.clone()),
+        (
+            "fillType2",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType3",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType4",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType5",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType6",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType7",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
+        ),
+    ] {
+        tv.insert(key.to_string(), Value::String(color));
+    }
 
     set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
     set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
@@ -1529,7 +2175,11 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "excludeBkgColor",
         "hsl(50, 26.087%, 38.2352941176%)",
     );
-    set_string_if_missing(&mut tv, "taskBorderColor", "rgba(255, 255, 255, 70)");
+    set_string_if_missing(
+        &mut tv,
+        "taskBorderColor",
+        theme_color::rgba(255.0, 255.0, 255.0, 70.0)?,
+    );
     set_string_if_missing(
         &mut tv,
         "taskBkgColor",
@@ -1543,7 +2193,11 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "taskTextLightColor", "lightgrey");
     set_string_if_missing(&mut tv, "taskTextOutsideColor", "lightgrey");
     set_string_if_missing(&mut tv, "taskTextClickableColor", "#003163");
-    set_string_if_missing(&mut tv, "activeTaskBorderColor", "rgba(255, 255, 255, 50)");
+    set_string_if_missing(
+        &mut tv,
+        "activeTaskBorderColor",
+        theme_color::rgba(255.0, 255.0, 255.0, 50.0)?,
+    );
     set_string_if_missing(&mut tv, "activeTaskBkgColor", "#81B1DB");
     set_string_if_missing(&mut tv, "gridColor", "lightgrey");
     set_string_if_missing(&mut tv, "doneTaskBkgColor", "lightgrey");
@@ -1573,7 +2227,7 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "stateLabelColor", primary_text_color.clone());
     set_string_if_missing(&mut tv, "stateBkg", primary_color.clone());
     set_string_if_missing(&mut tv, "labelBackgroundColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "compositeBackground", background);
+    set_string_if_missing(&mut tv, "compositeBackground", background.clone());
     set_string_if_missing(&mut tv, "altBackground", "#555");
     set_string_if_missing(&mut tv, "compositeTitleBackground", primary_color.clone());
     let composite_border =
@@ -1581,8 +2235,18 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "compositeBorder", composite_border);
     set_string_if_missing(&mut tv, "innerEndBackground", primary_border_color.clone());
     set_string_if_missing(&mut tv, "specialStateColor", "#f4f4f4");
-    set_string_if_missing(&mut tv, "attributeBackgroundColorOdd", "hsl(0, 0%, 32%)");
-    set_string_if_missing(&mut tv, "attributeBackgroundColorEven", "hsl(0, 0%, 22%)");
+    set_string_if_missing_with(&mut tv, "emSwimlaneBackgroundOdd", || {
+        theme_color::lighten(&background, 5.0)
+    })?;
+    set_string_if_missing_with(&mut tv, "emSwimlaneBackgroundStroke", || {
+        theme_color::lighten(&background, 12.0)
+    })?;
+    set_string_if_missing_with(&mut tv, "attributeBackgroundColorOdd", || {
+        theme_color::lighten(&background, 12.0)
+    })?;
+    set_string_if_missing_with(&mut tv, "attributeBackgroundColorEven", || {
+        theme_color::lighten(&background, 2.0)
+    })?;
     set_string_if_missing(&mut tv, "noteFontWeight", "normal");
     set_string_if_missing(&mut tv, "fontWeight", "normal");
     set_string_if_missing(
@@ -1612,25 +2276,20 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         };
         set_if_missing(&mut tv, &c_scale_key, Value::String(default_scale));
 
-        let Some(c_scale) = get_truthy_string(&tv, &c_scale_key) else {
-            continue;
-        };
-        let Some(hsl) = parse_color_hsl(&c_scale) else {
-            continue;
-        };
+        let c_scale = required_color(&tv, &c_scale_key)?;
 
         // `theme-dark` peers: `lighten(cScale, 10)`.
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(hsl, 0.0, 0.0, 10.0))),
+            Value::String(theme_color::lighten(&c_scale, 10.0)?),
         );
 
         // `theme-dark` inverted scale: `invert(cScale)`.
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(invert_color_css_string(&c_scale).unwrap_or_else(|| c_scale.clone())),
+            Value::String(theme_color::invert(&c_scale)?),
         );
 
         // `theme-dark` label scale: `scaleLabelColor`.
@@ -1666,11 +2325,12 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22",
     );
+    apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "dark", tv);
+    finish_theme_defaults(config, "dark", tv)
 }
 
-fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
+fn apply_forest_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
     let explicit_theme_variables = tv.clone();
 
@@ -1717,27 +2377,16 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         Value::String("#552222".to_string()),
     );
 
-    let Some(primary_color) = get_truthy_string(&tv, "primaryColor") else {
-        finish_theme_defaults(config, "forest", tv);
-        return;
-    };
-    let Some(primary_rgb) = parse_hex_rgb01(&primary_color) else {
-        finish_theme_defaults(config, "forest", tv);
-        return;
-    };
-    let primary_hsl = rgb01_to_hsl(primary_rgb);
+    let primary_color = required_color(&tv, "primaryColor")?;
     if get_truthy_string(&tv, "primaryTextColor").is_none() {
         tv.insert(
             "primaryTextColor".to_string(),
-            Value::String(invert_rgb01_to_hex(primary_rgb)),
+            Value::String(theme_color::invert(&primary_color)?),
         );
     }
 
     let secondary_color =
         get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| "#cdffb2".to_string());
-    let secondary_hsl = parse_hex_rgb01(&secondary_color)
-        .map(rgb01_to_hsl)
-        .unwrap_or(primary_hsl);
 
     // `theme-forest` diagram-facing surfaces.
     // Source: `theme-forest.js` constructor + `updateColors()`.
@@ -1750,12 +2399,12 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "rowOdd",
-        Value::String(fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, 75.0))),
+        Value::String(theme_color::lighten(&primary_color, 75.0)?),
     );
     set_if_missing(
         &mut tv,
         "rowEven",
-        Value::String(fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, 20.0))),
+        Value::String(theme_color::lighten(&primary_color, 20.0)?),
     );
 
     // `invert('white')` in `khroma` ends up as a pure black in Mermaid's serialized SVG output.
@@ -1782,39 +2431,34 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     );
 
     // mkBorder(...) helper (shared across themes).
-    let dark_mode = tv
-        .get("darkMode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
     set_if_missing(
         &mut tv,
         "primaryBorderColor",
-        Value::String(mk_border_hsl(primary_hsl, dark_mode)),
+        Value::String(mk_border(&primary_color, dark_mode)?),
     );
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(mk_border_hsl(secondary_hsl, dark_mode)),
+        Value::String(mk_border(&secondary_color, dark_mode)?),
     );
     ensure_gradient_theme_defaults(&mut tv);
 
     // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
-    let tertiary_hsl = if let Some(v) =
-        get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
-    {
-        v
+    let tertiary_color = if let Some(color) = get_truthy_string(&tv, "tertiaryColor") {
+        color
     } else {
-        adjust_hsl(primary_hsl, 0.0, 0.0, 10.0)
+        theme_color::lighten(&primary_color, 10.0)?
     };
     set_if_missing(
         &mut tv,
         "tertiaryColor",
-        Value::String(fmt_hsl(tertiary_hsl)),
+        Value::String(tertiary_color.clone()),
     );
     set_if_missing(
         &mut tv,
         "tertiaryBorderColor",
-        Value::String(mk_border_hsl(tertiary_hsl, dark_mode)),
+        Value::String(mk_border(&tertiary_color, dark_mode)?),
     );
 
     // `theme-forest` ends up using black label text (via `actorTextColor`).
@@ -1835,54 +2479,59 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     // - derive from base colors / hue shifts
     // - darken each `cScale*` by 10
     // - `cScalePeer1/2` use special darken amounts, others are darken(`cScale*`, 25)
-    let c_scales: [Hsl; 12] = [
-        primary_hsl,
-        secondary_hsl,
-        tertiary_hsl,
-        adjust_hsl(primary_hsl, 30.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 60.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 90.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 120.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 150.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 210.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 270.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 300.0, 0.0, 0.0),
-        adjust_hsl(primary_hsl, 330.0, 0.0, 0.0),
-    ]
-    .map(|base| adjust_hsl(base, 0.0, 0.0, -10.0));
+    let c_scale_bases = [
+        primary_color.clone(),
+        secondary_color.clone(),
+        tertiary_color.clone(),
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(30.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(90.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(150.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(210.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(270.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(300.0, 0.0, 0.0))?,
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(330.0, 0.0, 0.0))?,
+    ];
+    let mut c_scales = Vec::with_capacity(c_scale_bases.len());
+    for base in c_scale_bases {
+        c_scales.push(theme_color::darken(&base, 10.0)?);
+    }
 
     for (i, v) in c_scales.iter().enumerate() {
-        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(fmt_hsl(*v)));
+        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(v.clone()));
     }
 
     set_if_missing(
         &mut tv,
         "cScalePeer1",
-        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -45.0))),
+        Value::String(theme_color::darken(&secondary_color, 45.0)?),
     );
     set_if_missing(
         &mut tv,
         "cScalePeer2",
-        Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
+        Value::String(theme_color::darken(&tertiary_color, 40.0)?),
     );
 
-    for (i, fallback_c_hsl) in c_scales.iter().enumerate() {
+    for (i, fallback_color) in c_scales.iter().enumerate() {
         let c_scale_key = format!("cScale{i}");
-        let mut c_hsl = get_truthy_string(&tv, &c_scale_key)
-            .and_then(|value| parse_color_hsl(&value))
-            .unwrap_or(*fallback_c_hsl);
+        let mut color =
+            get_truthy_string(&tv, &c_scale_key).unwrap_or_else(|| fallback_color.clone());
         if explicit_theme_variables.contains_key(&c_scale_key) {
-            c_hsl = adjust_hsl(c_hsl, 0.0, 0.0, -10.0);
+            color = theme_color::darken(&color, 10.0)?;
         }
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
+            Value::String(theme_color::darken(&color, 25.0)?),
         );
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
+            Value::String(theme_color::adjust(
+                &color,
+                ColorAdjustment::hsl(180.0, 0.0, 0.0),
+            )?),
         );
         set_if_missing(
             &mut tv,
@@ -1897,11 +2546,12 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "#CDE498,#FF6B6B,#A0D2DB,#D7BDE2,#F0F0F0,#FFC3A0,#7FD8BE,#FF9A8B,#FAF3E0,#FFF176",
     );
+    apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "forest", tv);
+    finish_theme_defaults(config, "forest", tv)
 }
 
-fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
+fn apply_neutral_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
 
     // `theme-neutral` constructor defaults.
@@ -1912,11 +2562,10 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "fontSize", "16px");
     if get_truthy_string(&tv, "primaryTextColor").is_none()
         && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
-        && let Some(rgb) = parse_hex_rgb01(&primary_color)
     {
         tv.insert(
             "primaryTextColor".to_string(),
-            Value::String(invert_rgb01_to_hex(rgb)),
+            Value::String(theme_color::invert(&primary_color)?),
         );
     }
 
@@ -1929,70 +2578,63 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
 
     let primary_color =
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#eee".to_string());
-    let primary_hsl = parse_hex_rgb01(&primary_color)
-        .map(rgb01_to_hsl)
-        .unwrap_or(Hsl {
-            h_deg: 0.0,
-            s_pct: 0.0,
-            l_pct: 93.3333333333,
-        });
     let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
-    let secondary_hsl = parse_hex_rgb01(&contrast)
-        .map(rgb01_to_hsl)
-        .map(|hsl| adjust_hsl(hsl, 0.0, 0.0, 55.0))
-        .unwrap_or(Hsl {
-            h_deg: 0.0,
-            s_pct: 0.0,
-            l_pct: 98.9215686275,
-        });
-    let tertiary_hsl = adjust_hsl(primary_hsl, -160.0, 0.0, 0.0);
+    let default_secondary_color = theme_color::lighten(&contrast, 55.0)?;
+    let default_tertiary_color =
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
     set_if_missing(
         &mut tv,
         "secondaryColor",
-        Value::String(fmt_hsl(secondary_hsl)),
+        Value::String(default_secondary_color.clone()),
     );
-    set_string_if_missing(&mut tv, "tertiaryColor", fmt_hsl(tertiary_hsl));
+    set_string_if_missing(&mut tv, "tertiaryColor", default_tertiary_color.clone());
     set_if_missing(
         &mut tv,
         "primaryBorderColor",
-        Value::String(mk_border_hsl(primary_hsl, false)),
+        Value::String(mk_border(&primary_color, false)?),
     );
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(mk_border_hsl(secondary_hsl, false)),
+        Value::String(mk_border(&default_secondary_color, false)?),
     );
     set_string_if_missing(
         &mut tv,
         "tertiaryBorderColor",
-        mk_border_hsl(tertiary_hsl, false),
+        mk_border(&default_tertiary_color, false)?,
     );
     set_string_if_missing(
         &mut tv,
         "secondaryTextColor",
-        invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)),
+        theme_color::invert(&default_secondary_color)?,
     );
     set_string_if_missing(
         &mut tv,
         "tertiaryTextColor",
-        invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)),
+        theme_color::invert(&default_tertiary_color)?,
     );
     ensure_gradient_theme_defaults(&mut tv);
 
     let secondary_color =
-        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| fmt_hsl(secondary_hsl));
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary_color.clone());
     let tertiary_color =
-        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| fmt_hsl(tertiary_hsl));
-    let secondary_text_color = get_truthy_string(&tv, "secondaryTextColor")
-        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)));
-    let tertiary_text_color = get_truthy_string(&tv, "tertiaryTextColor")
-        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)));
+        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| default_tertiary_color.clone());
+    let secondary_text_color = match get_truthy_string(&tv, "secondaryTextColor") {
+        Some(color) => color,
+        None => theme_color::invert(&secondary_color)?,
+    };
+    let tertiary_text_color = match get_truthy_string(&tv, "tertiaryTextColor") {
+        Some(color) => color,
+        None => theme_color::invert(&tertiary_color)?,
+    };
     let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#ffffff".to_string());
     let primary_text_color =
         get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#111111".to_string());
     let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#000000".to_string());
-    let primary_border_color = get_truthy_string(&tv, "primaryBorderColor")
-        .unwrap_or_else(|| mk_border_hsl(primary_hsl, false));
+    let primary_border_color = match get_truthy_string(&tv, "primaryBorderColor") {
+        Some(color) => color,
+        None => mk_border(&primary_color, false)?,
+    };
     let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
 
     set_string_if_missing(&mut tv, "textColor", "#000000");
@@ -2000,6 +2642,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
     set_string_if_missing(&mut tv, "lineColor", "#666");
     set_string_if_missing(&mut tv, "border1", "#999");
+    let border1 = required_color(&tv, "border1")?;
     set_string_if_missing(&mut tv, "border2", contrast.clone());
     set_string_if_missing(&mut tv, "note", "#ffa");
     set_string_if_missing(&mut tv, "text", "#333");
@@ -2021,15 +2664,25 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "edgeLabelBackground", "white");
     set_string_if_missing(&mut tv, "classText", primary_text_color.clone());
 
-    // Sequence and note colors.
-    set_string_if_missing(&mut tv, "actorBorder", "hsl(0, 0%, 83%)");
+    // Sequence and note colors. Neutral assigns the border transforms unconditionally.
+    let actor_border = theme_color::lighten(&border1, 23.0)?;
+    tv.insert(
+        "actorBorder".to_string(),
+        Value::String(actor_border.clone()),
+    );
     set_string_if_missing(&mut tv, "actorBkg", primary_color.clone());
     set_string_if_missing(&mut tv, "actorTextColor", "#333");
-    set_string_if_missing(&mut tv, "actorLineColor", "hsl(0, 0%, 83%)");
+    tv.insert(
+        "actorLineColor".to_string(),
+        Value::String(actor_border.clone()),
+    );
     set_string_if_missing(&mut tv, "signalColor", "#333");
     set_string_if_missing(&mut tv, "signalTextColor", "#333");
     set_string_if_missing(&mut tv, "labelBoxBkgColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "labelBoxBorderColor", "hsl(0, 0%, 83%)");
+    tv.insert(
+        "labelBoxBorderColor".to_string(),
+        Value::String(actor_border),
+    );
     set_string_if_missing(&mut tv, "labelTextColor", "#333");
     set_string_if_missing(&mut tv, "loopTextColor", "#333");
     set_string_if_missing(&mut tv, "noteBorderColor", "#999");
@@ -2057,7 +2710,10 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "hsl(0, 0%, 34.1176470588%)",
     );
     set_string_if_missing(&mut tv, "activeTaskBkgColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "gridColor", "hsl(0, 0%, 90%)");
+    tv.insert(
+        "gridColor".to_string(),
+        Value::String(theme_color::lighten(&border1, 30.0)?),
+    );
     set_string_if_missing(&mut tv, "doneTaskBkgColor", "#bbb");
     set_string_if_missing(&mut tv, "doneTaskBorderColor", "#666");
     set_string_if_missing(&mut tv, "critBkgColor", "#d42");
@@ -2106,6 +2762,37 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "drop-shadow( 1px 2px 2px rgba(185,185,185,1))",
     );
 
+    for (key, color) in [
+        ("fillType0", primary_color.clone()),
+        ("fillType1", secondary_color.clone()),
+        (
+            "fillType2",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType3",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType4",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType5",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType6",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
+        ),
+        (
+            "fillType7",
+            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
+        ),
+    ] {
+        tv.insert(key.to_string(), Value::String(color));
+    }
+
     set_string_if_missing(&mut tv, "scaleLabelColor", "#333");
     let scale_label_color =
         get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "#333".to_string());
@@ -2114,25 +2801,20 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         let c_scale_key = format!("cScale{i}");
         set_if_missing(&mut tv, &c_scale_key, Value::String((*c_hex).to_string()));
 
-        let Some(c_scale) = get_truthy_string(&tv, &c_scale_key) else {
-            continue;
-        };
-        let Some(hsl) = parse_color_hsl(&c_scale) else {
-            continue;
-        };
+        let c_scale = required_color(&tv, &c_scale_key)?;
 
         // `theme-neutral` peers: `darken(cScale, 10)` (darkMode defaults to false).
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(hsl, 0.0, 0.0, -10.0))),
+            Value::String(theme_color::darken(&c_scale, 10.0)?),
         );
 
         // `theme-neutral` inverted scale: `invert(cScale)`.
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(invert_color_css_string(&c_scale).unwrap_or_else(|| c_scale.clone())),
+            Value::String(theme_color::invert(&c_scale)?),
         );
 
         // `theme-neutral` label scale: `scaleLabelColor`, with special-cased indices.
@@ -2176,18 +2858,16 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "#EEE,#6BB8E4,#8ACB88,#C7ACD6,#E8DCC2,#FFB2A8,#FFF380,#7E8D91,#FFD8B1,#FAF3E0",
     );
+    apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "neutral", tv);
+    finish_theme_defaults(config, "neutral", tv)
 }
 
-fn apply_base_theme_defaults(config: &mut MermaidConfig) {
+fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
     let explicit_theme_variables = tv.clone();
 
-    let dark_mode = tv
-        .get("darkMode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
     let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#f4f4f4".to_string());
     let primary_color =
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#fff4dd".to_string());
@@ -2212,73 +2892,47 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let primary_text_color = get_truthy_string(&tv, "primaryTextColor")
         .unwrap_or_else(|| if dark_mode { "#eee" } else { "#333" }.to_string());
 
-    let primary_hsl = parse_hex_rgb01(&primary_color)
-        .map(rgb01_to_hsl)
-        .unwrap_or(Hsl {
-            h_deg: 0.0,
-            s_pct: 0.0,
-            l_pct: 100.0,
-        });
-
-    let secondary_hsl = if let Some(v) =
-        get_truthy_string(&tv, "secondaryColor").and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
-    {
-        v
+    let secondary_color = if let Some(color) = get_truthy_string(&tv, "secondaryColor") {
+        color
     } else {
-        adjust_hsl(primary_hsl, -120.0, 0.0, 0.0)
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(-120.0, 0.0, 0.0))?
     };
     set_if_missing(
         &mut tv,
         "secondaryColor",
-        Value::String(fmt_hsl(secondary_hsl)),
+        Value::String(secondary_color.clone()),
     );
 
-    let tertiary_hsl = if let Some(v) =
-        get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
-    {
-        v
+    let tertiary_color = if let Some(color) = get_truthy_string(&tv, "tertiaryColor") {
+        color
     } else {
-        adjust_hsl(primary_hsl, 180.0, 0.0, 5.0)
+        theme_color::adjust(&primary_color, ColorAdjustment::hsl(180.0, 0.0, 5.0))?
     };
     set_if_missing(
         &mut tv,
         "tertiaryColor",
-        Value::String(fmt_hsl(tertiary_hsl)),
+        Value::String(tertiary_color.clone()),
     );
 
-    let primary_border_hsl = if get_truthy_string(&tv, "primaryBorderColor").is_some() {
-        None
-    } else {
-        Some(mk_border_hsl(primary_hsl, dark_mode))
-    };
-    if let Some(color) = primary_border_hsl {
+    if get_truthy_string(&tv, "primaryBorderColor").is_none() {
+        let color = mk_border(&primary_color, dark_mode)?;
         tv.insert("primaryBorderColor".to_string(), Value::String(color));
     }
 
-    let secondary_border_hsl = if get_truthy_string(&tv, "secondaryBorderColor").is_some() {
-        None
-    } else {
-        Some(mk_border_hsl(secondary_hsl, dark_mode))
-    };
-    if let Some(color) = secondary_border_hsl {
+    if get_truthy_string(&tv, "secondaryBorderColor").is_none() {
+        let color = mk_border(&secondary_color, dark_mode)?;
         tv.insert("secondaryBorderColor".to_string(), Value::String(color));
     }
 
-    let tertiary_border_hsl = if get_truthy_string(&tv, "tertiaryBorderColor").is_some() {
-        None
-    } else {
-        Some(mk_border_hsl(tertiary_hsl, dark_mode))
-    };
-    if let Some(color) = tertiary_border_hsl {
+    if get_truthy_string(&tv, "tertiaryBorderColor").is_none() {
+        let color = mk_border(&tertiary_color, dark_mode)?;
         tv.insert("tertiaryBorderColor".to_string(), Value::String(color));
     }
 
-    if get_truthy_string(&tv, "lineColor").is_none()
-        && let Some(bg_rgb) = parse_hex_rgb01(&background)
-    {
+    if get_truthy_string(&tv, "lineColor").is_none() {
         tv.insert(
             "lineColor".to_string(),
-            Value::String(invert_rgb01_to_hex(bg_rgb)),
+            Value::String(theme_color::invert(&background)?),
         );
     }
     let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "#333333".to_string());
@@ -2294,8 +2948,6 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "primaryBorderColor").unwrap_or_else(|| "#9370DB".to_string());
     let tertiary_border_color =
         get_truthy_string(&tv, "tertiaryBorderColor").unwrap_or_else(|| "#aaaa33".to_string());
-    let tertiary_color = get_truthy_string(&tv, "tertiaryColor")
-        .unwrap_or_else(|| "hsl(80, 100%, 96.2745098039%)".to_string());
     ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
@@ -2310,10 +2962,9 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(&mut tv, "nodeTextColor", Value::String(primary_text_color));
 
     if get_truthy_string(&tv, "tertiaryTextColor").is_none() {
-        let rgb = hsl_to_rgb01(tertiary_hsl);
         tv.insert(
             "tertiaryTextColor".to_string(),
-            Value::String(invert_rgb01_to_rgb_string(rgb)),
+            Value::String(theme_color::invert(&tertiary_color)?),
         );
     }
     let tertiary_text_color =
@@ -2325,14 +2976,19 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     );
 
     if get_truthy_string(&tv, "edgeLabelBackground").is_none() {
-        let mut v = secondary_hsl;
-        if dark_mode {
-            v = adjust_hsl(v, 0.0, 0.0, -30.0);
-        }
-        tv.insert("edgeLabelBackground".to_string(), Value::String(fmt_hsl(v)));
+        let color = if dark_mode {
+            theme_color::darken(&secondary_color, 30.0)?
+        } else {
+            secondary_color.clone()
+        };
+        tv.insert("edgeLabelBackground".to_string(), Value::String(color));
     }
 
-    set_if_missing(&mut tv, "errorBkgColor", Value::String(tertiary_color));
+    set_if_missing(
+        &mut tv,
+        "errorBkgColor",
+        Value::String(tertiary_color.clone()),
+    );
     set_if_missing(
         &mut tv,
         "errorTextColor",
@@ -2343,21 +2999,48 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     // Mermaid's base theme derives these from `primaryColor` and then darkens them.
     let darken_amount = if dark_mode { 75.0 } else { 25.0 };
     for (key, base) in [
-        ("cScale0", primary_hsl),
-        ("cScale1", secondary_hsl),
-        ("cScale2", tertiary_hsl),
-        ("cScale3", adjust_hsl(primary_hsl, 30.0, 0.0, 0.0)),
-        ("cScale4", adjust_hsl(primary_hsl, 60.0, 0.0, 0.0)),
-        ("cScale5", adjust_hsl(primary_hsl, 90.0, 0.0, 0.0)),
-        ("cScale6", adjust_hsl(primary_hsl, 120.0, 0.0, 0.0)),
-        ("cScale7", adjust_hsl(primary_hsl, 150.0, 0.0, 0.0)),
-        ("cScale8", adjust_hsl(primary_hsl, 210.0, 0.0, 150.0)),
-        ("cScale9", adjust_hsl(primary_hsl, 270.0, 0.0, 0.0)),
-        ("cScale10", adjust_hsl(primary_hsl, 300.0, 0.0, 0.0)),
-        ("cScale11", adjust_hsl(primary_hsl, 330.0, 0.0, 0.0)),
+        ("cScale0", primary_color.clone()),
+        ("cScale1", secondary_color.clone()),
+        ("cScale2", tertiary_color.clone()),
+        (
+            "cScale3",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(30.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale4",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale5",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(90.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale6",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale7",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(150.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale8",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(210.0, 0.0, 150.0))?,
+        ),
+        (
+            "cScale9",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(270.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale10",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(300.0, 0.0, 0.0))?,
+        ),
+        (
+            "cScale11",
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(330.0, 0.0, 0.0))?,
+        ),
     ] {
-        let v = adjust_hsl(base, 0.0, 0.0, -darken_amount);
-        set_if_missing(&mut tv, key, Value::String(fmt_hsl(v)));
+        let color = theme_color::darken(&base, darken_amount)?;
+        set_if_missing(&mut tv, key, Value::String(color));
     }
 
     // Derived scale fields must use the value that survived the override stage. In particular,
@@ -2367,29 +3050,20 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         .unwrap_or_else(|| if dark_mode { "black" } else { "#333" }.to_string());
     for i in 0..12 {
         let key = format!("cScale{i}");
-        let Some(color) = get_truthy_string(&tv, &key) else {
-            continue;
-        };
-        let Some(mut hsl) = parse_color_hsl(&color) else {
-            continue;
-        };
+        let mut color = required_color(&tv, &key)?;
         if explicit_theme_variables.contains_key(&key) {
-            hsl = adjust_hsl(hsl, 0.0, 0.0, -darken_amount);
+            color = theme_color::darken(&color, darken_amount)?;
         }
         let peer = if dark_mode {
-            adjust_hsl(hsl, 0.0, 0.0, 10.0)
+            theme_color::lighten(&color, 10.0)?
         } else {
-            adjust_hsl(hsl, 0.0, 0.0, -10.0)
+            theme_color::darken(&color, 10.0)?
         };
-        set_if_missing(
-            &mut tv,
-            &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(peer)),
-        );
+        set_if_missing(&mut tv, &format!("cScalePeer{i}"), Value::String(peer));
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(invert_color_css_string(&fmt_hsl(hsl)).unwrap_or_else(|| fmt_hsl(hsl))),
+            Value::String(theme_color::invert(&color)?),
         );
         set_if_missing(
             &mut tv,
@@ -2426,8 +3100,28 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
     );
+    apply_single_pass_git_palette(
+        &mut tv,
+        &explicit_theme_variables,
+        [
+            primary_color.clone(),
+            secondary_color.clone(),
+            tertiary_color.clone(),
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-30.0, 0.0, 0.0))?,
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-60.0, 0.0, 0.0))?,
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-90.0, 0.0, 0.0))?,
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
+            theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
+        ],
+        if dark_mode {
+            ColorTransform::Lighten(25.0)
+        } else {
+            ColorTransform::Darken(25.0)
+        },
+    )?;
+    apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "base", tv);
+    finish_theme_defaults(config, "base", tv)
 }
 
 #[cfg(test)]
@@ -2457,56 +3151,119 @@ mod tests {
 
     #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
-        fn assert_contains_snapshot_keys(
-            actual: &Map<String, Value>,
-            expected: &Map<String, Value>,
-        ) {
-            for (key, expected_value) in expected {
-                let Some(actual_value) = actual.get(key) else {
-                    panic!("missing snapshot theme variable key {key}");
-                };
-                if let (Some(actual_map), Some(expected_map)) =
-                    (actual_value.as_object(), expected_value.as_object())
-                {
-                    assert_contains_snapshot_keys(actual_map, expected_map);
-                }
-            }
-        }
-
         for &theme in SUPPORTED_THEME_NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme
             }));
-            apply_theme_defaults(&mut cfg);
+            apply_theme_defaults(&mut cfg).unwrap();
 
             let actual = cfg
                 .as_value()
                 .get("themeVariables")
                 .and_then(|v| v.as_object())
                 .unwrap();
-            let expected = upstream_theme_snapshot(theme).unwrap();
+            let expected = ThemeProgram::resolve(theme).default_snapshot();
 
-            assert_contains_snapshot_keys(actual, expected);
+            assert_eq!(actual, expected, "theme {theme}");
         }
     }
 
     #[test]
+    fn dark_mode_branch_matches_generated_mermaid_oracle_for_every_theme() {
+        for &theme in SUPPORTED_THEME_NAMES {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": { "darkMode": true }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let actual = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+            let expected = ThemeProgram::resolve(theme).dark_mode_snapshot();
+            assert_eq!(actual, expected, "theme {theme}");
+        }
+    }
+
+    #[test]
+    fn generated_mermaid_oracle_locks_override_value_semantics() {
+        fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+            path.split('.')
+                .try_fold(root, |value, key| value.as_object()?.get(key))
+        }
+
+        let mut mismatches = Vec::new();
+        for case in &generated_theme_artifact().oracle_cases {
+            let id = case.get("id").and_then(Value::as_str).unwrap();
+            let theme = case.get("theme").and_then(Value::as_str).unwrap();
+            let overrides = case.get("overrides").cloned().unwrap();
+            let expected_status = case.get("status").and_then(Value::as_str).unwrap();
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": overrides
+            }));
+            let result = apply_theme_defaults(&mut config);
+
+            if expected_status == "error" {
+                if result.is_ok() {
+                    mismatches.push(format!("{theme}/{id}: expected an error"));
+                }
+                continue;
+            }
+            if let Err(error) = result {
+                mismatches.push(format!("{theme}/{id}: unexpected error: {error}"));
+                continue;
+            }
+
+            let actual = config.as_value().get("themeVariables").unwrap();
+            let selected = case.get("selected").and_then(Value::as_object).unwrap();
+            for (path, expected) in selected {
+                let state = expected.get("state").and_then(Value::as_str).unwrap();
+                let actual_value = value_at_path(actual, path);
+                match state {
+                    "missing" if actual_value.is_some() => mismatches.push(format!(
+                        "{theme}/{id}/{path}: expected missing, found {}",
+                        actual_value.unwrap()
+                    )),
+                    "value" if actual_value != expected.get("value") => mismatches.push(format!(
+                        "{theme}/{id}/{path}: expected {}, found {}",
+                        expected.get("value").unwrap(),
+                        actual_value
+                            .map(Value::to_string)
+                            .unwrap_or_else(|| "missing".to_string())
+                    )),
+                    "missing" | "value" => {}
+                    other => mismatches
+                        .push(format!("{theme}/{id}/{path}: unknown oracle state {other}")),
+                }
+            }
+        }
+
+        assert!(
+            mismatches.is_empty(),
+            "Mermaid theme oracle mismatches:\n{}",
+            mismatches.join("\n")
+        );
+    }
+
+    #[test]
     fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
-        for theme in ["default", "dark", "forest", "neutral", "base"] {
+        for &theme in SUPPORTED_THEME_NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
                     "fontFamily": "Inter, sans-serif"
                 }
             }));
-            apply_theme_defaults(&mut cfg);
+            apply_theme_defaults(&mut cfg).unwrap();
 
             let actual = cfg
                 .as_value()
                 .get("themeVariables")
                 .and_then(Value::as_object)
                 .unwrap();
-            let expected = upstream_theme_snapshot(theme).unwrap();
+            let expected = ThemeProgram::resolve(theme).default_snapshot();
 
             for key in [
                 "cScale0",
@@ -2570,7 +3327,7 @@ mod tests {
                     "cScale0": "#abcdef"
                 }
             }));
-            apply_theme_defaults(&mut cfg);
+            apply_theme_defaults(&mut cfg).unwrap();
             let actual = cfg
                 .as_value()
                 .get("themeVariables")
@@ -2592,6 +3349,76 @@ mod tests {
                 Some(expected_inverse),
                 "theme {theme} must derive cScaleInv0 from the override stage"
             );
+        }
+    }
+
+    #[test]
+    fn extended_theme_scale_override_replays_after_source_ordered_derivations() {
+        // Oracle: Mermaid 11.16.0 getThemeVariables({ cScale0: '#abcdef' }). Theme names do not
+        // imply darkMode; only an explicit darkMode value changes the scale transform branch.
+        let cases = [
+            (
+                "neo",
+                "hsl(210, 68%, 45.3921568627%)",
+                "rgb(191.1000000002, 113.7500000001, 36.4)",
+                "#333",
+            ),
+            (
+                "neo-dark",
+                "hsl(210, 68%, 45.3921568627%)",
+                "rgb(191.1000000002, 113.7500000001, 36.4)",
+                "#e0dfdf",
+            ),
+            (
+                "redux",
+                "hsl(0, 0%, 65%)",
+                "rgb(63.75, 63.75, 63.75)",
+                "#28253D",
+            ),
+            (
+                "redux-dark",
+                "hsl(210, 68%, 45.3921568627%)",
+                "rgb(191.1000000002, 113.7500000001, 36.4)",
+                "#e0dfdf",
+            ),
+            (
+                "redux-color",
+                "hsl(210, 68%, 70.3921568627%)",
+                "#543210",
+                "#28253D",
+            ),
+            (
+                "redux-dark-color",
+                "hsl(210, 68%, 70.3921568627%)",
+                "#543210",
+                "hsl(210, 68%, 5.3921568627%)",
+            ),
+        ];
+
+        for (theme, expected_peer, expected_inverse, expected_label) in cases {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": { "cScale0": "#abcdef" }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let variables = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+
+            for (key, expected) in [
+                ("cScale0", "#abcdef"),
+                ("cScalePeer0", expected_peer),
+                ("cScaleInv0", expected_inverse),
+                ("cScaleLabel0", expected_label),
+            ] {
+                assert_eq!(
+                    variables.get(key).and_then(Value::as_str),
+                    Some(expected),
+                    "theme {theme} has incorrect {key}"
+                );
+            }
         }
     }
 
@@ -2633,7 +3460,7 @@ mod tests {
                     "primaryColor": "#123456"
                 }
             }));
-            apply_theme_defaults(&mut cfg);
+            apply_theme_defaults(&mut cfg).unwrap();
             let actual = cfg
                 .as_value()
                 .get("themeVariables")
@@ -2655,6 +3482,419 @@ mod tests {
     }
 
     #[test]
+    fn quadrant_primary_override_matches_mermaid_11_16_theme_lifecycles() {
+        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
+        let cases = [
+            ("default", "#ECECFF", "#f1f1ff", "hsl(240, 100%, NaN%)"),
+            (
+                "dark",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            (
+                "forest",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            (
+                "neutral",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            (
+                "base",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            ("neo", "#ECECFE", "#f1f1ff", "hsl(240, 90%, NaN%)"),
+            (
+                "neo-dark",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            ("redux", "#ECECFE", "#f1f1ff", "hsl(240, 90%, NaN%)"),
+            (
+                "redux-dark",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+            ("redux-color", "#ECECFE", "#f1f1ff", "hsl(240, 90%, NaN%)"),
+            (
+                "redux-dark-color",
+                "#123456",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+            ),
+        ];
+
+        for (theme, expected_q1, expected_q2, expected_point) in cases {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": { "primaryColor": "#123456" }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let variables = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+
+            for (key, expected) in [
+                ("quadrant1Fill", expected_q1),
+                ("quadrant2Fill", expected_q2),
+                ("quadrantPointFill", expected_point),
+            ] {
+                assert_eq!(
+                    variables.get(key).and_then(Value::as_str),
+                    Some(expected),
+                    "theme {theme} has incorrect {key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn quadrant_partial_and_text_overrides_match_mermaid_11_16_replay_order() {
+        let mut config = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": {
+                "primaryTextColor": "#123456",
+                "quadrant1Fill": "rgba(18, 52, 86, 0.5)",
+                "quadrant2Fill": "#abcdef"
+            }
+        }));
+        apply_theme_defaults(&mut config).unwrap();
+        let variables = config
+            .as_value()
+            .get("themeVariables")
+            .and_then(Value::as_object)
+            .unwrap();
+
+        for (key, expected) in [
+            ("quadrant1Fill", "rgba(18, 52, 86, 0.5)"),
+            ("quadrant2Fill", "#abcdef"),
+            ("quadrant3Fill", "#fffee7"),
+            ("quadrant1TextFill", "#123456"),
+            ("quadrant2TextFill", "#0d2f51"),
+            ("quadrantPointFill", "hsla(210, 65.3846153846%, NaN%, 0.5)"),
+        ] {
+            assert_eq!(variables.get(key).and_then(Value::as_str), Some(expected));
+        }
+
+        let mut default_config = MermaidConfig::from_value(json!({
+            "theme": "default",
+            "themeVariables": { "primaryTextColor": "#123456" }
+        }));
+        apply_theme_defaults(&mut default_config).unwrap();
+        assert_eq!(
+            default_config.get_str("themeVariables.quadrant1TextFill"),
+            Some("#131300")
+        );
+    }
+
+    #[test]
+    fn quadrant_accepts_khroma_named_rgb_and_alpha_colors() {
+        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
+        let cases = [
+            (
+                "rebeccapurple",
+                "#6b389e",
+                "hsl(270, 50%, NaN%)",
+                "hsl(270, 10%, 30%)",
+            ),
+            (
+                "rgb(18, 52, 86)",
+                "#17395b",
+                "hsl(210, 65.3846153846%, NaN%)",
+                "hsl(210, 25.3846153846%, 10.3921568627%)",
+            ),
+            (
+                "rgba(18, 52, 86, 0.5)",
+                "rgba(23, 57, 91, 0.5)",
+                "hsla(210, 65.3846153846%, NaN%, 0.5)",
+                "hsla(210, 25.3846153846%, 10.3921568627%, 0.5)",
+            ),
+        ];
+
+        for (primary, expected_q2, expected_point, expected_border) in cases {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": { "primaryColor": primary }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let variables = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+
+            for (key, expected) in [
+                ("quadrant2Fill", expected_q2),
+                ("quadrantPointFill", expected_point),
+                ("quadrantInternalBorderStrokeFill", expected_border),
+            ] {
+                assert_eq!(
+                    variables.get(key).and_then(Value::as_str),
+                    Some(expected),
+                    "primaryColor {primary} has incorrect {key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_color_timing_matches_mermaid_11_16_initialize_matrix() {
+        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()` using
+        // `not-a-color` for each field independently. Fields absent from `errors` are deliberate
+        // pass-through values at theme-calculation time and must not be validated early.
+        let keys = [
+            "primaryColor",
+            "secondaryColor",
+            "tertiaryColor",
+            "background",
+            "primaryBorderColor",
+            "secondaryBorderColor",
+            "tertiaryBorderColor",
+            "border1",
+            "cScale0",
+            "cScale1",
+            "git0",
+            "git1",
+            "gitInv0",
+            "pie1",
+            "pie3",
+            "quadrant1Fill",
+        ];
+        let cases: [(&str, &[&str]); 11] = [
+            (
+                "default",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "dark",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "forest",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "neutral",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "border1",
+                    "cScale0",
+                    "cScale1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "base",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "neo",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "neo-dark",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "redux",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "redux-dark",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "redux-color",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+            (
+                "redux-dark-color",
+                &[
+                    "primaryColor",
+                    "secondaryColor",
+                    "tertiaryColor",
+                    "background",
+                    "cScale0",
+                    "cScale1",
+                    "git0",
+                    "git1",
+                    "quadrant1Fill",
+                ],
+            ),
+        ];
+
+        let mut mismatches = Vec::new();
+        for (theme, error_keys) in cases {
+            for key in keys {
+                let mut config = MermaidConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": { (key): "not-a-color" }
+                }));
+                let actual_error = apply_theme_defaults(&mut config).is_err();
+                let expected_error = error_keys.contains(&key);
+                if actual_error != expected_error {
+                    mismatches.push(format!(
+                        "{theme}.{key}: expected error={expected_error}, actual={actual_error}"
+                    ));
+                }
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "invalid-color timing mismatches:\n{}",
+            mismatches.join("\n")
+        );
+    }
+
+    #[test]
+    fn invalid_theme_colors_fail_at_direct_and_site_config_operation_boundaries() {
+        let mut config = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "not-a-color" }
+        }));
+        assert!(matches!(
+            apply_theme_defaults(&mut config),
+            Err(ColorError::UnsupportedFormat { .. })
+        ));
+
+        let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "not-a-color" }
+        })));
+        assert!(matches!(
+            engine.parse_metadata_sync("flowchart TD\n  A"),
+            Err(crate::Error::ThemeColor(
+                ColorError::UnsupportedFormat { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "full-config")]
+    fn invalid_frontmatter_theme_color_fails_at_parse_operation_boundary() {
+        let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "secure": [
+                "secure",
+                "securityLevel",
+                "startOnLoad",
+                "maxTextSize",
+                "suppressErrorRendering",
+                "maxEdges"
+            ]
+        })));
+        let source = r#"---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: not-a-color
+---
+flowchart TD
+  A
+"#;
+
+        assert!(matches!(
+            engine.parse_metadata_sync(source),
+            Err(crate::Error::ThemeColor(
+                ColorError::UnsupportedFormat { .. }
+            ))
+        ));
+    }
+
+    #[test]
     fn theme_resolution_records_stage_and_final_value_provenance() {
         let explicit = json!({
             "fontFamily": "Inter, sans-serif",
@@ -2672,7 +3912,7 @@ mod tests {
         .unwrap()
         .clone();
 
-        let resolution = ThemeResolution::new("default", explicit, calculated);
+        let resolution = ThemeResolution::new("default", explicit, calculated).unwrap();
 
         assert_eq!(
             resolution.default_snapshot.stage,
@@ -2709,7 +3949,7 @@ mod tests {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "default"
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2775,7 +4015,7 @@ mod tests {
                 }
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2813,7 +4053,7 @@ mod tests {
                 "pieOuterStrokeWidth": "5px"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2834,7 +4074,7 @@ mod tests {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "unknown"
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2867,7 +4107,7 @@ mod tests {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme
             }));
-            apply_theme_defaults(&mut cfg);
+            apply_theme_defaults(&mut cfg).unwrap();
 
             let tv = cfg
                 .as_value()
@@ -2897,7 +4137,7 @@ mod tests {
                 "nodeBorder": "#abcdef"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2927,7 +4167,7 @@ mod tests {
                 "primaryColor": "#123456"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -2972,7 +4212,7 @@ mod tests {
                 "edgeLabelBackground": "#fedcba"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3000,7 +4240,7 @@ mod tests {
                 "mainBkg": "#101112"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3049,7 +4289,7 @@ mod tests {
                 "primaryColor": "#123456"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3093,7 +4333,7 @@ mod tests {
                 "gitInv1": "#222222"
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3117,7 +4357,7 @@ mod tests {
                 "darkMode": true
             }
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3176,7 +4416,7 @@ mod tests {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "forest"
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3216,7 +4456,7 @@ mod tests {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "dark"
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()
@@ -3275,7 +4515,7 @@ mod tests {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "neutral"
         }));
-        apply_theme_defaults(&mut cfg);
+        apply_theme_defaults(&mut cfg).unwrap();
 
         let tv = cfg
             .as_value()

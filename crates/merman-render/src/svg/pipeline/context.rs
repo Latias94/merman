@@ -34,8 +34,8 @@ impl SvgPostprocessMetadata {
         }
     }
 
-    /// Supplies the closed family identity required by family-specific built-in passes.
-    pub fn with_family_kind(mut self, family_kind: RenderFamilyKind) -> Self {
+    /// Supplies the renderer-owned family identity required by family-specific built-in passes.
+    pub(crate) fn with_family_kind(mut self, family_kind: RenderFamilyKind) -> Self {
         self.family_kind = Some(family_kind);
         self
     }

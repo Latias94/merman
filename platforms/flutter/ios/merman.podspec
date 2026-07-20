@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
     exposes it to Dart FFI via DynamicLibrary.process().
   DESC
   s.homepage         = 'https://github.com/Latias94/merman'
-  s.license          = { :type => 'MIT' }
+  s.license          = { :type => 'MIT OR Apache-2.0', :file => '../LICENSE' }
   s.author           = { 'Merman' => 'https://github.com/Latias94/merman' }
   s.source           = { :path => '.' }
 

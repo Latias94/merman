@@ -1,3 +1,6 @@
+use super::wasm_module_surface::{
+    LoadedWasmModule, WasmExport, WasmImport, WasmModuleLoadError, WasmSurfaceProfile,
+};
 use crate::XtaskError;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,6 +26,13 @@ impl Profile {
             Self::Typst => "typst-wasm",
         }
     }
+
+    const fn surface_profile(self) -> WasmSurfaceProfile {
+        match self {
+            Self::PureWasm => WasmSurfaceProfile::PureWasm,
+            Self::Typst => WasmSurfaceProfile::Typst,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +47,6 @@ enum CheckKind {
 struct ProfileBudgetOptions {
     check: Option<CheckKind>,
     profile: Option<Profile>,
-    wat_file: Option<PathBuf>,
     wasm_file: Option<PathBuf>,
     tree_file: Option<PathBuf>,
     package: Option<String>,
@@ -48,33 +57,21 @@ struct ProfileBudgetOptions {
     extra_forbidden: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct WasmImport {
-    module: String,
-    name: String,
-    raw: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct WasmExport {
-    name: String,
-    kind: ExportKind,
-    raw: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExportKind {
-    Function,
-    Memory,
-    Other,
-}
-
 pub(crate) fn profile_budget(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_options(args)?;
     let check = options.check.ok_or(XtaskError::Usage)?;
     let profile = options.profile.ok_or(XtaskError::Usage)?;
 
     let mut failures = Vec::new();
+    let wasm = if matches!(
+        check,
+        CheckKind::Imports | CheckKind::Exports | CheckKind::Wasm
+    ) {
+        let wasm_file = options.wasm_file.as_deref().ok_or(XtaskError::Usage)?;
+        Some(load_wasm_module(wasm_file)?)
+    } else {
+        None
+    };
 
     if matches!(check, CheckKind::Deps) {
         let tree = load_cargo_tree(&options)?;
@@ -84,18 +81,16 @@ pub(crate) fn profile_budget(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if matches!(check, CheckKind::Imports | CheckKind::Wasm) {
-        let wat = load_wat(&options)?;
-        let imports = parse_imports(&wat);
-        let import_failures = check_imports(profile, &imports);
-        print_import_report(profile, &imports, &import_failures);
+        let surface = wasm.as_ref().expect("WASM checks load a module").surface();
+        let import_failures = surface.validate_imports(profile.surface_profile());
+        print_import_report(profile, surface.imports(), &import_failures);
         failures.extend(import_failures);
     }
 
     if matches!(check, CheckKind::Exports | CheckKind::Wasm) {
-        let wat = load_wat(&options)?;
-        let exports = parse_exports(&wat);
-        let export_failures = check_exports(profile, &exports);
-        print_export_report(profile, &exports, &export_failures);
+        let surface = wasm.as_ref().expect("WASM checks load a module").surface();
+        let export_failures = surface.validate_exports(profile.surface_profile());
+        print_export_report(profile, surface.exports(), &export_failures);
         failures.extend(export_failures);
     }
 
@@ -143,10 +138,6 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
                 let raw = iter.next().ok_or(XtaskError::Usage)?;
                 options.profile = Some(Profile::parse(&raw)?);
             }
-            "--wat-file" => {
-                let path = iter.next().ok_or(XtaskError::Usage)?;
-                options.wat_file = Some(PathBuf::from(path));
-            }
             "--wasm" => {
                 let path = iter.next().ok_or(XtaskError::Usage)?;
                 options.wasm_file = Some(PathBuf::from(path));
@@ -191,7 +182,7 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
             }
         }
         Some(CheckKind::Imports | CheckKind::Exports | CheckKind::Wasm) => {
-            if options.wat_file.is_some() == options.wasm_file.is_some() {
+            if options.wasm_file.is_none() {
                 print_usage();
                 return Err(XtaskError::Usage);
             }
@@ -225,15 +216,9 @@ fn print_usage() {
     println!(
         "  --package <name> [--target <triple>] [--no-default-features] [--features <features>] [--depth <n>]"
     );
-}
-
-fn load_wat(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
-    if let Some(path) = options.wat_file.as_deref() {
-        return crate::util::read_text(path);
-    }
-
-    let wasm_file = options.wasm_file.as_deref().ok_or(XtaskError::Usage)?;
-    wasm_tools_print(wasm_file)
+    println!();
+    println!("WebAssembly input:");
+    println!("  --wasm <module.wasm>");
 }
 
 fn load_cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
@@ -242,6 +227,19 @@ fn load_cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError>
     }
 
     cargo_tree(options)
+}
+
+fn load_wasm_module(path: &Path) -> Result<LoadedWasmModule, XtaskError> {
+    LoadedWasmModule::from_file(path).map_err(|error| match error {
+        WasmModuleLoadError::Read { path, source } => XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        },
+        WasmModuleLoadError::Compile { path, message } => XtaskError::ProfileBudgetFailed(format!(
+            "failed to load WebAssembly module {}: {message}",
+            path.display()
+        )),
+    })
 }
 
 fn cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
@@ -284,31 +282,6 @@ fn cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
 
     String::from_utf8(output.stdout).map_err(|source| {
         XtaskError::ProfileBudgetFailed(format!("cargo tree output was not UTF-8: {source}"))
-    })
-}
-
-fn wasm_tools_print(wasm_file: &Path) -> Result<String, XtaskError> {
-    let output = Command::new("wasm-tools")
-        .arg("print")
-        .arg(wasm_file)
-        .current_dir(crate::cmd::workspace_root())
-        .output()
-        .map_err(|source| {
-            XtaskError::ProfileBudgetFailed(format!("failed to spawn wasm-tools: {source}"))
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(XtaskError::ProfileBudgetFailed(format!(
-            "wasm-tools print {} exited with {}: {}",
-            wasm_file.display(),
-            output.status,
-            stderr.trim()
-        )));
-    }
-
-    String::from_utf8(output.stdout).map_err(|source| {
-        XtaskError::ProfileBudgetFailed(format!("wasm-tools output was not UTF-8: {source}"))
     })
 }
 
@@ -369,152 +342,6 @@ fn cargo_tree_line_payload(line: &str) -> &str {
     })
 }
 
-fn parse_imports(wat: &str) -> Vec<WasmImport> {
-    wat.lines()
-        .filter(|line| line.trim_start().starts_with("(import "))
-        .filter_map(|line| {
-            let fields = quoted_fields(line);
-            let [module, name, ..] = fields.as_slice() else {
-                return None;
-            };
-            Some(WasmImport {
-                module: module.clone(),
-                name: name.clone(),
-                raw: line.trim().to_string(),
-            })
-        })
-        .collect()
-}
-
-fn parse_exports(wat: &str) -> Vec<WasmExport> {
-    wat.lines()
-        .filter(|line| line.trim_start().starts_with("(export "))
-        .filter_map(|line| {
-            let fields = quoted_fields(line);
-            let name = fields.first()?.clone();
-            let kind = if line.contains("(memory ") {
-                ExportKind::Memory
-            } else if line.contains("(func ") {
-                ExportKind::Function
-            } else {
-                ExportKind::Other
-            };
-            Some(WasmExport {
-                name,
-                kind,
-                raw: line.trim().to_string(),
-            })
-        })
-        .collect()
-}
-
-fn quoted_fields(line: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut chars = line.chars();
-
-    while let Some(ch) = chars.next() {
-        if ch != '"' {
-            continue;
-        }
-
-        let mut value = String::new();
-        let mut escaped = false;
-        for ch in chars.by_ref() {
-            if escaped {
-                value.push(ch);
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-                continue;
-            }
-            if ch == '"' {
-                break;
-            }
-            value.push(ch);
-        }
-        fields.push(value);
-    }
-
-    fields
-}
-
-fn check_imports(profile: Profile, imports: &[WasmImport]) -> Vec<String> {
-    imports
-        .iter()
-        .filter_map(|import| match profile {
-            Profile::PureWasm => Some(format!(
-                "pure-wasm profile forbids import {}::{} ({})",
-                import.module, import.name, import.raw
-            )),
-            Profile::Typst => check_typst_import(import),
-        })
-        .collect()
-}
-
-fn check_typst_import(import: &WasmImport) -> Option<String> {
-    let allowed = import.module == "typst_env"
-        && matches!(
-            import.name.as_str(),
-            "wasm_minimal_protocol_write_args_to_buffer"
-                | "wasm_minimal_protocol_send_result_to_host"
-        );
-
-    if allowed {
-        None
-    } else if forbidden_import_reason(import).is_some() {
-        Some(format!(
-            "typst-wasm profile forbids import {}::{} ({})",
-            import.module, import.name, import.raw
-        ))
-    } else {
-        Some(format!(
-            "typst-wasm profile only allows wasm-minimal-protocol imports, found {}::{} ({})",
-            import.module, import.name, import.raw
-        ))
-    }
-}
-
-fn forbidden_import_reason(import: &WasmImport) -> Option<&'static str> {
-    let raw = import.raw.as_str();
-    let haystacks = [import.module.as_str(), import.name.as_str(), raw];
-    let forbidden = [
-        "__wbindgen_placeholder__",
-        "__wbindgen_externref_xform__",
-        "wasm-bindgen",
-        "wasm_bindgen",
-        "js_sys",
-        "wasi_snapshot_preview1",
-        "getRandomValues",
-        "crypto",
-        "Date",
-        "performance",
-        "console",
-    ];
-
-    forbidden
-        .iter()
-        .copied()
-        .find(|needle| haystacks.iter().any(|haystack| haystack.contains(needle)))
-}
-
-fn check_exports(profile: Profile, exports: &[WasmExport]) -> Vec<String> {
-    match profile {
-        Profile::PureWasm => Vec::new(),
-        Profile::Typst => {
-            let has_memory = exports
-                .iter()
-                .any(|export| export.kind == ExportKind::Memory && export.name == "memory");
-            if has_memory {
-                Vec::new()
-            } else {
-                vec!["typst-wasm profile requires an exported memory named `memory`".to_string()]
-            }
-        }
-    }
-}
-
 fn print_dep_report(profile: Profile, failures: &[String]) {
     println!(
         "profile-budget deps profile={} failures={}",
@@ -534,7 +361,7 @@ fn print_import_report(profile: Profile, imports: &[WasmImport], failures: &[Str
         failures.len()
     );
     for import in imports {
-        println!("  import {}::{}", import.module, import.name);
+        println!("  import {}::{}", import.module(), import.name());
     }
 }
 
@@ -546,7 +373,7 @@ fn print_export_report(profile: Profile, exports: &[WasmExport], failures: &[Str
         failures.len()
     );
     for export in exports {
-        println!("  export {:?} {}", export.kind, export.name);
+        println!("  export {:?} {}", export.ty(), export.name());
     }
 }
 
@@ -567,22 +394,6 @@ fn print_size_report(wasm_file: &Path) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn typst_profile_accepts_minimal_protocol_imports_and_memory_export() {
-        let wat = r#"
-  (import "typst_env" "wasm_minimal_protocol_write_args_to_buffer" (func (;0;) (param i32)))
-  (import "typst_env" "wasm_minimal_protocol_send_result_to_host" (func (;1;) (param i32 i32)))
-  (export "memory" (memory 0))
-  (export "render_svg" (func 2))
-"#;
-
-        let imports = parse_imports(wat);
-        let exports = parse_exports(wat);
-
-        assert!(check_imports(Profile::Typst, &imports).is_empty());
-        assert!(check_exports(Profile::Typst, &exports).is_empty());
-    }
 
     #[test]
     fn pure_profile_rejects_forbidden_dependencies() {
@@ -625,53 +436,5 @@ merman-core v0.7.0
 "#;
 
         assert!(check_deps(Profile::PureWasm, tree, &[]).is_empty());
-    }
-
-    #[test]
-    fn pure_profile_rejects_any_import() {
-        let wat = r#"
-  (import "__wbindgen_placeholder__" "__wbg_crypto_getRandomValues" (func (;0;)))
-"#;
-
-        let failures = check_imports(Profile::PureWasm, &parse_imports(wat));
-
-        assert_eq!(failures.len(), 1);
-        assert!(failures[0].contains("pure-wasm profile forbids import"));
-        assert!(failures[0].contains("__wbindgen_placeholder__"));
-    }
-
-    #[test]
-    fn typst_profile_rejects_browser_and_wasi_imports() {
-        let wat = r#"
-  (import "__wbindgen_placeholder__" "__wbg_Date_now" (func (;0;)))
-  (import "wasi_snapshot_preview1" "fd_write" (func (;1;)))
-"#;
-
-        let failures = check_imports(Profile::Typst, &parse_imports(wat));
-
-        assert_eq!(failures.len(), 2);
-        assert!(failures[0].contains("typst-wasm profile forbids import"));
-        assert!(failures[1].contains("wasi_snapshot_preview1"));
-    }
-
-    #[test]
-    fn typst_profile_requires_exported_memory() {
-        let wat = r#"
-  (export "render_svg" (func 2))
-"#;
-
-        let failures = check_exports(Profile::Typst, &parse_exports(wat));
-
-        assert_eq!(
-            failures,
-            vec!["typst-wasm profile requires an exported memory named `memory`"]
-        );
-    }
-
-    #[test]
-    fn quoted_fields_handles_escaped_quotes() {
-        let fields = quoted_fields(r#"(import "m\"odule" "name" (func 0))"#);
-
-        assert_eq!(fields, vec!["m\"odule", "name"]);
     }
 }

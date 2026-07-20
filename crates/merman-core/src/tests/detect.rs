@@ -7,9 +7,7 @@ use std::fmt::Write;
 #[test]
 fn full_build_detects_mindmap() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("mindmap\n  root", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("mindmap\n  root")).unwrap();
     assert_eq!(res.diagram_type, "mindmap");
 }
 
@@ -17,8 +15,7 @@ fn full_build_detects_mindmap() {
 #[test]
 fn tiny_build_does_not_detect_mindmap() {
     let engine = Engine::new();
-    let err =
-        block_on(engine.parse_metadata("mindmap\n  root", ParseOptions::default())).unwrap_err();
+    let err = block_on(engine.parse_metadata("mindmap\n  root")).unwrap_err();
     assert!(
         err.to_string()
             .contains("No diagram type detected matching given configuration")
@@ -29,9 +26,7 @@ fn tiny_build_does_not_detect_mindmap() {
 #[test]
 fn full_build_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-elk");
     assert_eq!(res.effective_config.get_str("layout"), Some("elk"));
 }
@@ -40,9 +35,7 @@ fn full_build_detects_flowchart_elk_and_sets_layout() {
 #[test]
 fn tiny_build_flowchart_elk_falls_back_to_flowchart_v2() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-v2");
     assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
 }
@@ -73,9 +66,7 @@ fn class_diagram_detection_keeps_runtime_default_absent_when_site_config_is_merg
     let text = r#"classDiagram
 class Class1
 "#;
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "class");
 }
 
@@ -90,9 +81,7 @@ fn class_diagram_detection_respects_explicit_wrapper_renderer() {
     let text = r#"classDiagram
 class Class1
 "#;
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "classDiagram");
 }
 
@@ -107,9 +96,7 @@ fn class_diagram_detection_respects_explicit_dagre_d3_renderer() {
     let text = r#"classDiagram
 class Class1
 "#;
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "class");
 }
 
@@ -121,10 +108,7 @@ fn class_diagram_detection_does_not_treat_renderer_as_root_layout() {
         cfg
     });
 
-    let res =
-        block_on(engine.parse_metadata("classDiagram\nclass Class1\n", ParseOptions::default()))
-            .unwrap()
-            .unwrap();
+    let res = block_on(engine.parse_metadata("classDiagram\nclass Class1\n")).unwrap();
 
     assert_eq!(res.diagram_type, "class");
     assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
@@ -141,18 +125,14 @@ fn state_diagram_detection_respects_non_default_renderer() {
     let text = r#"stateDiagram
 [*] --> Still
 "#;
-    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata(text)).unwrap();
     assert_eq!(res.diagram_type, "state");
 }
 
 #[test]
 fn detects_tree_view_beta_as_tree_view() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("treeView-beta\n\"Root\"", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("treeView-beta\n\"Root\"")).unwrap();
     assert_eq!(res.diagram_type, "treeView");
 }
 
@@ -160,10 +140,7 @@ fn detects_tree_view_beta_as_tree_view() {
 fn detects_ishikawa_headers_as_ishikawa() {
     let engine = Engine::new();
     for header in ["ishikawa", "ishikawa-beta", "ISHIKAWA-BETA"] {
-        let res =
-            block_on(engine.parse_metadata(&format!("{header}\nProblem"), ParseOptions::default()))
-                .unwrap()
-                .unwrap();
+        let res = block_on(engine.parse_metadata(&format!("{header}\nProblem"))).unwrap();
         assert_eq!(res.diagram_type, "ishikawa");
     }
 }
@@ -171,19 +148,14 @@ fn detects_ishikawa_headers_as_ishikawa() {
 #[test]
 fn detects_eventmodeling_as_eventmodeling() {
     let engine = Engine::new();
-    let res =
-        block_on(engine.parse_metadata("eventmodeling\ntf 01 evt Start", ParseOptions::default()))
-            .unwrap()
-            .unwrap();
+    let res = block_on(engine.parse_metadata("eventmodeling\ntf 01 evt Start")).unwrap();
     assert_eq!(res.diagram_type, "eventmodeling");
 }
 
 #[test]
 fn detects_venn_beta_as_venn() {
     let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("venn-beta\nset A", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let res = block_on(engine.parse_metadata("venn-beta\nset A")).unwrap();
     assert_eq!(res.diagram_type, "venn");
 }
 
@@ -200,10 +172,7 @@ fn detects_11_16_new_family_headers_for_metadata() {
         ("railroad-peg-beta\nrule <- term", "railroadPeg"),
         ("wardley-beta\ncomponent A", "wardley"),
     ] {
-        let res = engine
-            .parse_metadata_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let res = engine.parse_metadata_sync(source).unwrap();
         assert_eq!(res.diagram_type, expected_type, "source: {source:?}");
     }
 }
@@ -237,14 +206,11 @@ fn detects_11_16_new_family_headers_with_upstream_boundaries() {
 fn kanban_detector_and_known_type_parser_preserve_distinct_upstream_case_rules() {
     let engine = Engine::new();
 
-    let detected = engine
-        .parse_metadata_sync("kanban\nTodo[Todo]\n", ParseOptions::strict())
-        .unwrap()
-        .unwrap();
+    let detected = engine.parse_metadata_sync("kanban\nTodo[Todo]\n").unwrap();
     assert_eq!(detected.diagram_type, "kanban");
 
     let detection_error = engine
-        .parse_metadata_sync("KaNbAn\nTodo[Todo]\n", ParseOptions::strict())
+        .parse_metadata_sync("KaNbAn\nTodo[Todo]\n")
         .unwrap_err();
     assert!(
         detection_error
@@ -264,19 +230,15 @@ fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
     let engine = Engine::new();
 
     let anchored = engine
-        .parse_metadata_sync("  C4Context\nPerson(a, \"A\")", ParseOptions::strict())
-        .unwrap()
+        .parse_metadata_sync("  C4Context\nPerson(a, \"A\")")
         .unwrap();
     assert_eq!(anchored.diagram_type, "c4");
 
-    let ungrouped_anywhere = engine
-        .parse_metadata_sync("kanban\nC4Container", ParseOptions::strict())
-        .unwrap()
-        .unwrap();
+    let ungrouped_anywhere = engine.parse_metadata_sync("kanban\nC4Container").unwrap();
     assert_eq!(ungrouped_anywhere.diagram_type, "c4");
 
     let err = engine
-        .parse_metadata_sync("not a diagram C4Context", ParseOptions::strict())
+        .parse_metadata_sync("not a diagram C4Context")
         .unwrap_err();
     assert!(
         err.to_string()
@@ -451,10 +413,7 @@ fn auto_detect_common_headers_with_deep_config_small_stack() {
                 ("treemap\n\"A\": 1\n", "treemap"),
                 ("C4Context\nPerson(a, \"A\")\n", "c4"),
             ] {
-                let meta = engine
-                    .parse_metadata_sync(source, ParseOptions::strict())
-                    .expect("parse succeeds")
-                    .expect("diagram detected");
+                let meta = engine.parse_metadata_sync(source).expect("parse succeeds");
                 assert_eq!(meta.diagram_type, expected_type);
             }
         })

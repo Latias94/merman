@@ -263,8 +263,17 @@ flowchart TD
         !svg.contains("fill: #123456"),
         "diagram-level themeCSS should stay filtered out: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("valid Zed SVG XML");
+    let host_css = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("style")
+                && node.attribute("data-merman-postprocess") == Some("scoped-css")
+        })
+        .and_then(|node| node.text())
+        .expect("scoped host CSS");
     assert!(
-        svg.contains("#zed-contract-css .node rect { stroke: #0ea5e9; }"),
+        host_css.contains("#zed-contract-css .node rect") && host_css.contains("stroke: #0ea5e9"),
         "expected scoped host CSS to remain in control: {svg}"
     );
     assert!(

@@ -1,3 +1,5 @@
+/*! Merman VS Code extension: see LICENSE and THIRD_PARTY_NOTICES.md in the packaged extension. */
+
 import * as vscode from "vscode";
 import { LanguageClient, State, StateChangeEvent } from "vscode-languageclient/node";
 
@@ -26,6 +28,7 @@ import {
 } from "./language-intelligence.js";
 import { ensureLanguageServerOutputChannel } from "./language-server-output.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
+import { assertLanguageServerEditorContract } from "./semantic-token-contract.js";
 import { registerPreview } from "./preview.js";
 import { runRestartLanguageServerCommand } from "./restart-command.js";
 import { runServerBackedCommand } from "./server-backed-command.js";
@@ -230,6 +233,9 @@ async function startClient(
     failedTooltip: "Merman language server failed to start.",
     isCurrentGeneration: isCurrentLifecycleGeneration,
     wireClient: wireClientStatus,
+    validateClient: (activeClient) => {
+      assertLanguageServerEditorContract(activeClient.initializeResult);
+    },
     updateStatus: updateStatusBar,
     pushConfiguration,
     assignClient: (activeClient) => {

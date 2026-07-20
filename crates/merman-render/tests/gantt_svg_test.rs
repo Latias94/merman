@@ -38,13 +38,13 @@ fn layout_gantt_from_text_with_measurer(
     )
     .expect("parse ok")
     .expect("diagram detected");
-    let RenderSemanticModel::Gantt(model) = &parsed.model else {
+    let RenderSemanticModel::Gantt(model) = parsed.model() else {
         panic!("expected Gantt render model");
     };
 
     layout_gantt_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         measurer,
         container_width,
     )

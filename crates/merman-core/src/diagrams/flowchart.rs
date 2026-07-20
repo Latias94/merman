@@ -12,7 +12,34 @@ use crate::{
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
+
+#[cfg(test)]
+thread_local! {
+    static FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_flowchart_token_trace_construction_count() {
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_token_trace_construction_count() -> usize {
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.get()
+}
+
+#[cfg(test)]
+pub(crate) fn reset_flowchart_accessibility_scan_count() {
+    accessibility::reset_flowchart_accessibility_scan_count();
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_accessibility_scan_count() -> usize {
+    accessibility::flowchart_accessibility_scan_count()
+}
 
 lalrpop_util::lalrpop_mod!(
     #[allow(
@@ -58,7 +85,9 @@ pub(crate) use ast::{
 pub(crate) use lexeme::FlowchartLexemeComponent;
 pub(crate) use tokens::{DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-use accessibility::extract_flowchart_accessibility_statements;
+use accessibility::{
+    FlowchartAccessibilityScan, FlowchartAccessibilityStatement, scan_flowchart_accessibility,
+};
 use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
@@ -96,7 +125,7 @@ struct FlowchartSemanticSource {
     warning_facts: Vec<DiagramWarningFact>,
 }
 
-pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)?;
     render_model_to_compat_json(&model, meta)
 }
@@ -104,21 +133,43 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let original_code = code;
-    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
-    let (ast, lexemes) = parse_flowchart_ast_with_editor_lexemes(&code, meta)?;
-    let mut facts = editor_facts_from_flowchart_ast(&ast);
-    facts.replace_family_lexemes(lexemes);
-    collect_accessibility_directive_prefixes(original_code, &mut facts);
-    collect_expected_syntax_from_tokens(&code, &mut facts);
-    let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
-        .into_render_model(meta)?;
-    let model = render_model_to_compat_json(&model, meta)?;
-    Ok((model, facts))
+) -> crate::family::CombinedSemanticParse {
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        statements: accessibility_statements,
+    } = scan_flowchart_accessibility(code);
+    let trace = construct_flowchart_token_trace(&code, &accessibility_statements);
+    let construction = match parse_flowchart_ast_from_trace(&trace) {
+        Ok(ast) => Ok((ast, trace)),
+        Err(error) => {
+            let facts =
+                flowchart_recovery_facts(&code, trace, &accessibility_statements, error.as_ref());
+            let error = Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+            );
+            Err(crate::family::CombinedSemanticFailure::new(error, facts))
+        }
+    };
+    crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |(ast, trace)| {
+            let mut facts = editor_facts_from_flowchart_ast(&ast);
+            collect_accessibility_directive_prefixes(&accessibility_statements, &mut facts);
+            collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts);
+            facts.replace_family_lexemes(trace.lexemes);
+            let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)
+                .and_then(|source| source.into_render_model(meta))
+                .and_then(|model| render_model_to_compat_json(&model, meta));
+            (model, facts)
+        },
+        crate::family::CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_flowchart_model_for_render(
+pub(crate) fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartModel> {
@@ -158,41 +209,16 @@ pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
     public_pinned_shape_names()
 }
 
-pub fn parse_flowchart_editor_facts(
-    code: &str,
-    _meta: &ParseMetadata,
-) -> Result<EditorSemanticFacts> {
-    let original_code = code;
-    let code = mask_flowchart_editor_parse_input(code);
-    match try_parse_flowchart_ast_with_editor_lexemes(&code) {
-        Ok((ast, lexemes)) => {
-            let mut facts = editor_facts_from_flowchart_ast(&ast);
-            facts.replace_family_lexemes(lexemes);
-            collect_accessibility_directive_prefixes(original_code, &mut facts);
-            collect_expected_syntax_from_tokens(&code, &mut facts);
-            Ok(facts)
-        }
-        Err(error) => {
-            let span = lalrpop_recovery_span(error.as_ref(), code.len());
-            let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
-            collect_accessibility_directive_prefixes(original_code, &mut facts);
-            facts.mark_recovered_from_parse_error(
-                format!(
-                    "flowchart parser recovered after parse error: {}",
-                    format_lalrpop_parse_error(error.as_ref())
-                ),
-                Some(span),
-            );
-            Ok(facts)
-        }
-    }
-}
-
 fn parse_flowchart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartSemanticSource> {
-    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        ..
+    } = scan_flowchart_accessibility(code);
     let ast = parse_flowchart_ast(&code, meta)?;
     parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)
 }
@@ -286,17 +312,6 @@ fn parse_flowchart_semantic_source_from_ast(
     })
 }
 
-fn flowchart_parser_input_and_accessibility(
-    code: &str,
-) -> (String, Option<String>, Option<String>) {
-    let (_, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
-    let mut bytes = code.as_bytes().to_vec();
-    mask_accessibility_statements(code, &mut bytes);
-    let code = String::from_utf8(bytes)
-        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into());
-    (code, acc_title, acc_descr)
-}
-
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
     flowchart_grammar::FlowchartAstParser::new()
         .parse(Lexer::new(code))
@@ -308,52 +323,93 @@ fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst>
         })
 }
 
-fn parse_flowchart_ast_with_editor_lexemes(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<(FlowchartAst, crate::editor::EditorLexemeBatchResult)> {
-    try_parse_flowchart_ast_with_editor_lexemes(code).map_err(|error| {
-        Error::diagram_parse_diagnostic(
-            meta.diagram_type.clone(),
-            lalrpop_parse_diagnostic(error.as_ref(), code.len()),
-        )
-    })
-}
-
 type FlowchartAstParseError = lalrpop_util::ParseError<usize, Tok, LexError>;
-type FlowchartEditorParseResult = std::result::Result<
-    (FlowchartAst, crate::editor::EditorLexemeBatchResult),
-    Box<FlowchartAstParseError>,
->;
+type FlowchartToken = (usize, Tok, usize);
+type FlowchartLexerItem = std::result::Result<FlowchartToken, LexError>;
 
-fn try_parse_flowchart_ast_with_editor_lexemes(code: &str) -> FlowchartEditorParseResult {
-    let mut journal = EditorLexemeJournal::family_lexer(code);
-    let lexer = FlowchartLexemeLexer {
-        inner: Lexer::new(code),
-        journal: &mut journal,
-    };
-    let parsed = flowchart_grammar::FlowchartAstParser::new()
-        .parse(lexer)
-        .map_err(Box::new);
-    let lexemes = journal.finish();
-    parsed.map(|ast| (ast, lexemes))
+enum FlowchartTracedItem {
+    Token(FlowchartToken),
+    RecoveredToken {
+        token: FlowchartToken,
+        strict_error: LexError,
+    },
+    LexerError(LexError),
 }
 
-struct FlowchartLexemeLexer<'input, 'journal> {
-    inner: Lexer<'input>,
-    journal: &'journal mut EditorLexemeJournal<'input>,
+struct FlowchartTokenTrace {
+    items: Vec<FlowchartTracedItem>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
-impl Iterator for FlowchartLexemeLexer<'_, '_> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.inner.next()?;
-        if let Ok((start, token, end)) = &result {
-            record_flowchart_lexeme(self.journal, token, *start, *end);
-        }
-        Some(result)
+impl FlowchartTokenTrace {
+    fn parser_items(&self) -> impl Iterator<Item = FlowchartLexerItem> + '_ {
+        self.items.iter().map(|item| match item {
+            FlowchartTracedItem::Token(token) => Ok(token.clone()),
+            FlowchartTracedItem::RecoveredToken { strict_error, .. }
+            | FlowchartTracedItem::LexerError(strict_error) => Err(strict_error.clone()),
+        })
     }
+
+    fn editor_tokens(&self) -> impl Iterator<Item = &FlowchartToken> {
+        self.items.iter().filter_map(|item| match item {
+            FlowchartTracedItem::Token(token)
+            | FlowchartTracedItem::RecoveredToken { token, .. } => Some(token),
+            FlowchartTracedItem::LexerError(_) => None,
+        })
+    }
+}
+
+fn construct_flowchart_token_trace(
+    code: &str,
+    accessibility_statements: &[FlowchartAccessibilityStatement],
+) -> FlowchartTokenTrace {
+    #[cfg(test)]
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.set(
+        FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT
+            .get()
+            .saturating_add(1),
+    );
+
+    let mut journal = EditorLexemeJournal::family_lexer(code);
+    for component in accessibility_statements
+        .iter()
+        .flat_map(|statement| statement.lexemes.iter())
+    {
+        journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
+    }
+    let mut items = Vec::new();
+    for item in Lexer::recovering(code) {
+        match item {
+            Ok(mut token @ (start, _, end)) => {
+                record_flowchart_lexeme(&mut journal, &token.1, start, end);
+                let strict_error = match &mut token.1 {
+                    Tok::NodeLabel(label) => label.recovery_error.take(),
+                    _ => None,
+                };
+                items.push(match strict_error {
+                    Some(strict_error) => FlowchartTracedItem::RecoveredToken {
+                        token,
+                        strict_error,
+                    },
+                    None => FlowchartTracedItem::Token(token),
+                });
+            }
+            Err(error) => items.push(FlowchartTracedItem::LexerError(error)),
+        }
+    }
+
+    FlowchartTokenTrace {
+        items,
+        lexemes: journal.finish(),
+    }
+}
+
+fn parse_flowchart_ast_from_trace(
+    trace: &FlowchartTokenTrace,
+) -> std::result::Result<FlowchartAst, Box<FlowchartAstParseError>> {
+    flowchart_grammar::FlowchartAstParser::new()
+        .parse(trace.parser_items())
+        .map_err(Box::new)
 }
 
 fn record_flowchart_lexeme(
@@ -440,180 +496,53 @@ fn flowchart_warning_facts(
     ]
 }
 
-fn mask_flowchart_editor_parse_input(code: &str) -> String {
-    let mut bytes = code.as_bytes().to_vec();
-
-    if let Some((start, end)) = frontmatter_range(code) {
-        mask_range_preserving_newlines(&mut bytes, start, end);
-    }
-    mask_directives(code, &mut bytes);
-    mask_mermaid_comment_lines(code, &mut bytes);
-    mask_accessibility_statements(code, &mut bytes);
-
-    String::from_utf8(bytes).unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into())
-}
-
-fn frontmatter_range(code: &str) -> Option<(usize, usize)> {
-    let after_marker = code.strip_prefix("---")?;
-    let open_line_end = after_marker.find('\n')?;
-    if !after_marker[..open_line_end].trim().is_empty() {
-        return None;
-    }
-
-    let body_start = 3 + open_line_end + 1;
-    let body = &code[body_start..];
-    let mut offset = 0usize;
-    for line in body.split_inclusive('\n') {
-        if line.trim_end_matches(['\r', '\n']).trim() == "---" {
-            return Some((0, body_start + offset + line.len()));
-        }
-        offset += line.len();
-    }
-
-    None
-}
-
-fn mask_directives(code: &str, bytes: &mut [u8]) {
-    let mut pos = 0usize;
-    while let Some(rel) = code[pos..].find("%%{") {
-        let start = pos + rel;
-        let after_start = start + 3;
-        let end = code[after_start..]
-            .find("}%%")
-            .map_or(code.len(), |rel_end| after_start + rel_end + 3);
-        mask_range_preserving_newlines(bytes, start, end);
-        pos = end;
-    }
-}
-
-fn mask_mermaid_comment_lines(code: &str, bytes: &mut [u8]) {
-    let mut start = 0usize;
-    for line in code.split_inclusive('\n') {
-        let end = start + line.len();
-        let trimmed = line.trim_start();
-        if let Some(after_marker) = trimmed.strip_prefix("%%") {
-            let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
-            if !after_marker.starts_with('{') && has_comment_body {
-                mask_range_preserving_newlines(bytes, start, end);
-            }
-        }
-        start = end;
-    }
-}
-
-fn mask_accessibility_statements(code: &str, bytes: &mut [u8]) {
-    let mut start = 0usize;
-    while start < code.len() {
-        let end = next_line_end(code, start);
-        let line = &code[start..end];
-        let trimmed = line.trim_start();
-
-        if is_accessibility_title_line(trimmed) {
-            mask_range_preserving_newlines(bytes, start, end);
-            start = end;
-            continue;
-        }
-
-        if let Some(is_block) = accessibility_description_line_kind(trimmed) {
-            let mut block_end = end;
-            if is_block && !trimmed.contains('}') {
-                while block_end < code.len() {
-                    let next_end = next_line_end(code, block_end);
-                    let next_line = &code[block_end..next_end];
-                    block_end = next_end;
-                    if next_line.contains('}') {
-                        break;
-                    }
-                }
-            }
-            mask_range_preserving_newlines(bytes, start, block_end);
-            start = block_end;
-            continue;
-        }
-
-        start = end;
-    }
-}
-
-fn is_accessibility_title_line(trimmed: &str) -> bool {
-    trimmed
-        .strip_prefix("accTitle")
-        .is_some_and(|rest| rest.trim_start().starts_with(':'))
-}
-
-fn accessibility_description_line_kind(trimmed: &str) -> Option<bool> {
-    for prefix in ["accDescription", "accDescr"] {
-        let Some(rest) = trimmed.strip_prefix(prefix) else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        if rest.starts_with(':') {
-            return Some(false);
-        }
-        if rest.starts_with('{') {
-            return Some(true);
-        }
-    }
-    None
-}
-
-fn next_line_end(code: &str, start: usize) -> usize {
-    code[start..]
-        .find('\n')
-        .map_or(code.len(), |relative| start + relative + 1)
-}
-
-fn mask_range_preserving_newlines(bytes: &mut [u8], start: usize, end: usize) {
-    for byte in &mut bytes[start..end] {
-        if *byte != b'\n' && *byte != b'\r' {
-            *byte = b' ';
-        }
-    }
-}
-
 fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     collect_editor_facts_from_statements(&ast.statements, &mut facts);
     facts
 }
 
-fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
+fn recover_flowchart_editor_facts_from_tokens(
+    code: &str,
+    trace: FlowchartTokenTrace,
+) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
-    let mut lexer = Lexer::recovering(code);
-    let mut journal = EditorLexemeJournal::family_recovery(code);
-    let mut last_position = lexer.position();
-
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        if let Ok((start, token, end)) = result {
-            record_flowchart_lexeme(&mut journal, &token, start, end);
-            collector.accept(code, token, start, end, &mut facts);
-        } else if current_position == last_position {
-            break;
-        }
-        last_position = current_position;
+    for (start, token, end) in trace.editor_tokens() {
+        collector.accept(code, token, *start, *end, &mut facts);
     }
     collector.finish(code.len(), &mut facts);
-    facts.replace_family_lexemes(journal.finish());
+    facts.replace_family_lexemes(trace.lexemes);
 
     facts
 }
 
-fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
-    let mut lexer = Lexer::new(code);
-    let mut last_position = lexer.position();
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        let Ok((start, token, end)) = result else {
-            if current_position == last_position {
-                break;
-            }
-            last_position = current_position;
-            continue;
-        };
+fn flowchart_recovery_facts(
+    parser_code: &str,
+    trace: FlowchartTokenTrace,
+    accessibility_statements: &[FlowchartAccessibilityStatement],
+    error: &FlowchartAstParseError,
+) -> EditorSemanticFacts {
+    let span = lalrpop_recovery_span(error, parser_code.len());
+    let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace);
+    collect_accessibility_directive_prefixes(accessibility_statements, &mut facts);
+    facts.mark_recovered_from_parse_error(
+        format!(
+            "flowchart parser recovered after parse error: {}",
+            format_lalrpop_parse_error(error)
+        ),
+        Some(span),
+    );
+    facts
+}
 
+fn collect_expected_syntax_from_tokens<'a>(
+    code: &str,
+    tokens: impl Iterator<Item = &'a FlowchartToken>,
+    facts: &mut EditorSemanticFacts,
+) {
+    for (start, token, end) in tokens {
         match token {
             Tok::NodeLabel(label) => {
                 if let Some(trigger_span) = label.trigger_span {
@@ -621,18 +550,17 @@ fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFac
                 }
             }
             Tok::ShapeData(_) => {
-                push_flowchart_shape_value_expected_syntax(code, start, end, facts)
+                push_flowchart_shape_value_expected_syntax(code, *start, *end, facts)
             }
             Tok::DirectionStmt(stmt) => push_flowchart_direction_value_expected_syntax(
                 code,
-                start,
-                end,
+                *start,
+                *end,
                 &stmt.direction,
                 facts,
             ),
             _ => {}
         }
-        last_position = current_position;
     }
 }
 
@@ -651,7 +579,7 @@ impl FlowchartRecoveryFactCollector {
     fn accept(
         &mut self,
         code: &str,
-        token: Tok,
+        token: &Tok,
         start: usize,
         end: usize,
         facts: &mut EditorSemanticFacts,
@@ -664,7 +592,7 @@ impl FlowchartRecoveryFactCollector {
             Other,
         }
 
-        let token_kind = match &token {
+        let token_kind = match token {
             Tok::Arrow(_) => TokenKind::Arrow,
             Tok::EdgeLabel(_) => TokenKind::EdgeLabel,
             Tok::Id(_) => TokenKind::Id,
@@ -729,7 +657,7 @@ impl FlowchartRecoveryFactCollector {
 
 fn collect_editor_fact_from_token(
     code: &str,
-    token: Tok,
+    token: &Tok,
     start: usize,
     end: usize,
     facts: &mut EditorSemanticFacts,
@@ -737,7 +665,7 @@ fn collect_editor_fact_from_token(
     match token {
         Tok::Id(id) => push_flowchart_token_symbol(facts, id, start, end),
         Tok::SubgraphHeader(header) => {
-            push_flowchart_header_symbol(facts, &header);
+            push_flowchart_header_symbol(facts, header);
         }
         Tok::NodeLabel(label) => {
             if let Some(trigger_span) = label.trigger_span {
@@ -752,13 +680,13 @@ fn collect_editor_fact_from_token(
         }
         Tok::EdgeLabel(label) => push_flowchart_labeled_payload_symbol(
             facts,
-            &label,
+            label,
             Some(SourceSpan::new(start, end)),
             "flowchart edge label",
         ),
-        Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, &stmt),
-        Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, &stmt),
-        Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, &stmt),
+        Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
+        Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
+        Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
         Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
         Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
         Tok::KwGraph
@@ -1140,30 +1068,15 @@ fn shape_value_expected_span(code: &str, start: usize, end: usize) -> Option<Sou
     None
 }
 
-fn collect_accessibility_directive_prefixes(code: &str, facts: &mut EditorSemanticFacts) {
-    for line in code.lines() {
-        let trimmed = line.trim_start();
-        if is_accessibility_title_line(trimmed) {
-            facts.push_directive_prefix("accTitle");
-            continue;
-        }
-        if let Some(prefix) = accessibility_description_prefix(trimmed) {
-            facts.push_directive_prefix(prefix);
+fn collect_accessibility_directive_prefixes(
+    statements: &[FlowchartAccessibilityStatement],
+    facts: &mut EditorSemanticFacts,
+) {
+    for statement in statements {
+        if statement.complete {
+            facts.push_directive_prefix(statement.directive.prefix());
         }
     }
-}
-
-fn accessibility_description_prefix(trimmed: &str) -> Option<&'static str> {
-    for prefix in ["accDescription", "accDescr"] {
-        let Some(rest) = trimmed.strip_prefix(prefix) else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        if rest.starts_with(':') || rest.starts_with('{') {
-            return Some(prefix);
-        }
-    }
-    None
 }
 
 fn shape_key_boundary(body: &str, pos: usize) -> bool {
@@ -1273,7 +1186,7 @@ fn push_flowchart_header_symbol(facts: &mut EditorSemanticFacts, header: &Subgra
 
 fn push_flowchart_token_symbol(
     facts: &mut EditorSemanticFacts,
-    id: String,
+    id: &str,
     start: usize,
     end: usize,
 ) {
@@ -1282,7 +1195,7 @@ fn push_flowchart_token_symbol(
     }
     let span = crate::SourceSpan::new(start, end);
     facts.push_symbol(EditorSemanticSymbol::new(
-        id,
+        id.to_string(),
         Some("flowchart node".to_string()),
         EditorSemanticKind::Module,
         span,

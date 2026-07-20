@@ -159,17 +159,8 @@ impl DocumentStore {
         }
 
         let analyzer = Analyzer::with_options(options);
-        if change.affects_snapshots() {
-            self.replace_analyzer(analyzer);
-        } else {
-            self.set_diagnostic_analyzer(analyzer);
-        }
+        self.replace_analyzer(analyzer);
         change
-    }
-
-    fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
-        self.analyzer = analyzer;
-        self.advance_diagnostic_generation();
     }
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
@@ -196,20 +187,52 @@ impl DocumentStore {
         DocumentEpoch(self.next_document_epoch)
     }
 
-    pub fn diagnostic_context(&self, uri: &Url) -> Option<DiagnosticContext> {
-        self.documents.get(uri).map(|record| {
-            DiagnosticContext::new(
+    pub fn diagnostic_context_for_snapshot(
+        &self,
+        context: SnapshotContext,
+    ) -> Option<DiagnosticContext> {
+        self.is_snapshot_context_current(&context)
+            .then(|| DiagnosticContext::from_snapshot(context, self.diagnostic_generation))
+    }
+
+    pub fn unavailable_diagnostic_context(&self, uri: &Url) -> Option<DiagnosticContext> {
+        let record = self.documents.get(uri)?;
+        record.document.has_unavailable_source().then(|| {
+            DiagnosticContext::unavailable(
                 record.document.clone(),
-                self.analyzer.clone(),
                 self.diagnostic_generation,
                 record.epoch,
             )
         })
     }
 
+    #[cfg(test)]
+    pub fn diagnostic_context(&mut self, uri: &Url) -> Option<DiagnosticContext> {
+        if let Some(context) = self.unavailable_diagnostic_context(uri) {
+            return Some(context);
+        }
+        let context = self.snapshot_context(uri)?;
+        self.diagnostic_context_for_snapshot(context)
+    }
+
     pub fn is_diagnostic_context_current(&self, context: &DiagnosticContext) -> bool {
-        self.diagnostic_generation == context.generation
-            && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
+        if self.diagnostic_generation != context.generation() {
+            return false;
+        }
+
+        match context {
+            DiagnosticContext::Snapshot { context, .. } => {
+                self.is_snapshot_context_current(context)
+            }
+            DiagnosticContext::Unavailable {
+                document,
+                document_epoch,
+                ..
+            } => {
+                document.has_unavailable_source()
+                    && self.is_document_epoch_current(&document.uri, *document_epoch)
+            }
+        }
     }
 
     pub fn upsert_text(
@@ -559,18 +582,8 @@ impl DocumentStore {
         self.semantic_tokens_state.remove(uri);
     }
 
-    pub(crate) fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
-        self.documents
-            .values()
-            .map(|record| {
-                DiagnosticContext::new(
-                    record.document.clone(),
-                    self.analyzer.clone(),
-                    self.diagnostic_generation,
-                    record.epoch,
-                )
-            })
-            .collect()
+    pub(crate) fn document_uris(&self) -> Vec<Url> {
+        self.documents.keys().cloned().collect()
     }
 
     #[cfg(test)]
@@ -717,10 +730,10 @@ impl DocumentStore {
         }
 
         self.diagnostic_state.insert(
-            context.document.uri.clone(),
+            context.uri().clone(),
             StoredDiagnosticState {
-                generation: context.generation,
-                document_epoch: context.document_epoch,
+                generation: context.generation(),
+                document_epoch: context.document_epoch(),
                 state,
             },
         );
@@ -817,7 +830,7 @@ impl SnapshotBuildRequest {
     }
 
     pub fn build(&self) -> Arc<DocumentSnapshot> {
-        let snapshot = DocumentWorkspace::build_snapshot_with_shared_text(
+        let snapshot = DocumentWorkspace::build_analyzed_snapshot_with_shared_text(
             &self.analyzer,
             self.document.uri.as_str(),
             self.document.version,
@@ -832,25 +845,76 @@ impl SnapshotBuildRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct DiagnosticContext {
-    pub document: StoredDocument,
-    pub analyzer: Analyzer,
-    generation: DiagnosticGeneration,
-    document_epoch: DocumentEpoch,
+pub enum DiagnosticContext {
+    Snapshot {
+        context: SnapshotContext,
+        generation: DiagnosticGeneration,
+    },
+    Unavailable {
+        document: StoredDocument,
+        generation: DiagnosticGeneration,
+        document_epoch: DocumentEpoch,
+    },
 }
 
 impl DiagnosticContext {
-    fn new(
+    fn from_snapshot(context: SnapshotContext, generation: DiagnosticGeneration) -> Self {
+        Self::Snapshot {
+            context,
+            generation,
+        }
+    }
+
+    fn unavailable(
         document: StoredDocument,
-        analyzer: Analyzer,
         generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
     ) -> Self {
-        Self {
+        Self::Unavailable {
             document,
-            analyzer,
             generation,
             document_epoch,
+        }
+    }
+
+    pub fn snapshot(&self) -> Option<&Arc<DocumentSnapshot>> {
+        match self {
+            Self::Snapshot { context, .. } => Some(&context.snapshot),
+            Self::Unavailable { .. } => None,
+        }
+    }
+
+    pub fn unavailable_document(&self) -> Option<&StoredDocument> {
+        match self {
+            Self::Snapshot { .. } => None,
+            Self::Unavailable { document, .. } => Some(document),
+        }
+    }
+
+    pub fn uri(&self) -> &Url {
+        match self {
+            Self::Snapshot { context, .. } => &context.snapshot.uri,
+            Self::Unavailable { document, .. } => &document.uri,
+        }
+    }
+
+    pub fn version(&self) -> i32 {
+        match self {
+            Self::Snapshot { context, .. } => context.snapshot.version,
+            Self::Unavailable { document, .. } => document.version,
+        }
+    }
+
+    fn generation(&self) -> DiagnosticGeneration {
+        match self {
+            Self::Snapshot { generation, .. } | Self::Unavailable { generation, .. } => *generation,
+        }
+    }
+
+    fn document_epoch(&self) -> DocumentEpoch {
+        match self {
+            Self::Snapshot { context, .. } => context.document_epoch,
+            Self::Unavailable { document_epoch, .. } => *document_epoch,
         }
     }
 }
@@ -867,7 +931,7 @@ impl AnalyzerConfigurationChange {
         !matches!(self, Self::Unchanged)
     }
 
-    pub fn affects_snapshots(self) -> bool {
+    pub fn requires_semantic_tokens_refresh(self) -> bool {
         matches!(self, Self::SnapshotAffecting)
     }
 }

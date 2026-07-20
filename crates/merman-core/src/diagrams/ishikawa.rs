@@ -91,7 +91,7 @@ impl IshikawaSemanticSource {
     }
 }
 
-pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
     construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_compat_json(meta)
@@ -100,11 +100,15 @@ pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source =
-        construct_ishikawa_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let editor_facts = source.editor_facts();
-    Ok((source.into_compat_json(meta)?, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_ishikawa_semantic_source(code, meta),
+        |source| {
+            let editor_facts = source.editor_facts();
+            (source.into_compat_json(meta), editor_facts)
+        },
+        IshikawaParseFailure::into_error_and_editor_facts,
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -153,7 +157,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-pub fn parse_ishikawa_model_for_render(
+pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<IshikawaDiagramRenderModel> {
@@ -162,16 +166,9 @@ pub fn parse_ishikawa_model_for_render(
         .into_render_model(meta))
 }
 
-pub fn parse_ishikawa_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_ishikawa_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts(),
-        Err(failure) => failure.into_editor_facts(),
-    }
-}
-
 impl IshikawaParseFailure {
-    fn into_editor_facts(self) -> EditorSemanticFacts {
-        *self.editor_facts
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
+        (*self.error, *self.editor_facts)
     }
 }
 
@@ -517,7 +514,7 @@ mod tests {
     use crate::{
         EditorExpectedSyntaxKind, EditorLexemeProducerKind, EditorSemanticCompleteness,
         EditorSemanticKind, EditorSemanticRole, Engine, MermaidConfig, ParseDiagnosticSpanKind,
-        ParseMetadata, ParseOptions, SourceSpan,
+        ParseMetadata, SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
@@ -598,11 +595,13 @@ Cause B
     fn combined_parse_constructs_syntax_once_and_preserves_all_projections() {
         let text = "ishikawa-beta Problem\r\n  Cause A\r\n    Cause A1\r\n  Cause B\r\n";
         let expected_json = parse_ishikawa(text, &meta()).unwrap();
-        let expected_facts = parse_ishikawa_editor_facts(text, &meta());
         let expected_model = parse_ishikawa_model_for_render(text, &meta()).unwrap();
 
         reset_ishikawa_syntax_construction_count();
-        let (json, facts) = parse_ishikawa_json_and_editor_facts(text, &meta()).unwrap();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_ishikawa_json_and_editor_facts(text, &meta()),
+        )
+        .unwrap();
 
         assert_eq!(ishikawa_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
@@ -610,7 +609,6 @@ Cause B
             render_model_to_compat_json(&expected_model, &meta()).unwrap(),
             expected_json
         );
-        assert_eq!(facts, expected_facts);
         assert_eq!(
             json["root"],
             serde_json::to_value(&expected_model.root).unwrap()
@@ -648,7 +646,11 @@ Cause B
             assert_eq!(diagnostic.span_kind(), span_kind);
 
             reset_ishikawa_syntax_construction_count();
-            let facts = parse_ishikawa_editor_facts(text, &meta());
+            let facts = crate::family::test_support::editor_facts(
+                parse_ishikawa_json_and_editor_facts,
+                text,
+                &meta(),
+            );
             assert_eq!(ishikawa_syntax_construction_count(), 1);
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
             assert_eq!(facts.diagnostics.len(), 1);
@@ -694,7 +696,7 @@ Cause A
   Subcause A1
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text)
             .unwrap()
             .expect("ishikawa editor facts");
 
@@ -743,7 +745,7 @@ Cause A
         let engine = Engine::new();
         let text = "ishikawa Problem\n  Cause\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text)
             .unwrap()
             .expect("ishikawa editor facts");
 
@@ -764,7 +766,7 @@ Cause A
     fn ishikawa_line_parser_emits_crlf_and_unicode_lexemes() {
         let source = "  ishikawa-beta 主要问题\r\n    原因一\r\n\t子原因\r\n";
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", source)
             .unwrap()
             .expect("ishikawa facts");
 
@@ -791,7 +793,7 @@ Cause A
     fn ishikawa_recovery_keeps_lexemes_after_an_invalid_leading_statement() {
         let source = "not-ishikawa\r\nishikawa-beta Problem\r\n  Later cause\r\n";
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", source)
             .unwrap()
             .expect("ishikawa recovery facts");
 

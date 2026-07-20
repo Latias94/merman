@@ -975,70 +975,70 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
         .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
 
+    if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare
+        && node_img.is_some_and(|s| !s.trim().is_empty())
+    {
+        let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
+        let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
+        let aspect_ratio = if asset_h > 0.0 {
+            asset_w / asset_h
+        } else {
+            1.0
+        };
+        let image_width = if node_asset_height.is_some() {
+            asset_h * aspect_ratio
+        } else {
+            asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
+        };
+        let image_height = if aspect_ratio != 0.0 {
+            image_width / aspect_ratio
+        } else {
+            asset_h
+        };
+        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+        let label_padding = if has_label { 8.0 } else { 0.0 };
+        let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
+        let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+        return (
+            image_width.max(label_bbox_w),
+            image_height + label_padding + label_bbox_h,
+        );
+    }
+
     if matches!(
         resolved_shape,
-        crate::flowchart::FlowchartShape::ImageSquare
-            | crate::flowchart::FlowchartShape::Icon
+        crate::flowchart::FlowchartShape::Icon
             | crate::flowchart::FlowchartShape::IconCircle
             | crate::flowchart::FlowchartShape::IconRounded
             | crate::flowchart::FlowchartShape::IconSquare
-    ) && (node_icon.is_some() || node_img.is_some())
-    {
-        if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare {
-            if node_img.is_some_and(|s| !s.trim().is_empty()) {
-                let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
-                let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
-                let aspect_ratio = if asset_h > 0.0 {
-                    asset_w / asset_h
-                } else {
-                    1.0
-                };
-                let image_width = if node_asset_height.is_some() {
-                    asset_h * aspect_ratio
-                } else {
-                    asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
-                };
-                let image_height = if aspect_ratio != 0.0 {
-                    image_width / aspect_ratio
-                } else {
-                    asset_h
-                };
-                let has_label = metrics.width > 0.0 && metrics.height > 0.0;
-                let label_padding = if has_label { 8.0 } else { 0.0 };
-                let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
-                let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
-                return (
-                    image_width.max(label_bbox_w),
-                    image_height + label_padding + label_bbox_h,
-                );
+    ) {
+        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+        let label_padding = if has_label { 8.0 } else { 0.0 };
+        let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
+        let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+
+        let asset_h = node_asset_height.unwrap_or(48.0);
+        let asset_w = node_asset_width.unwrap_or(48.0);
+        let icon_size = asset_h.max(asset_w);
+        let has_icon = node_icon.is_some_and(|icon| !icon.trim().is_empty());
+        let icon_outer_size = match resolved_shape {
+            crate::flowchart::FlowchartShape::IconCircle => {
+                let icon_bbox_size = if has_icon { icon_size } else { 0.0 };
+                icon_bbox_size * std::f64::consts::SQRT_2 + 40.0
             }
-        } else if node_icon.is_some_and(|s| !s.trim().is_empty()) {
-            let has_label = metrics.width > 0.0 && metrics.height > 0.0;
-            let label_padding = if has_label { 8.0 } else { 0.0 };
-            let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
-            let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+            crate::flowchart::FlowchartShape::IconRounded
+            | crate::flowchart::FlowchartShape::IconSquare => icon_size + padding,
+            crate::flowchart::FlowchartShape::Icon => icon_size,
+            _ => unreachable!("the icon branch excludes non-icon shapes"),
+        };
 
-            let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
-            let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
-            let icon_size = asset_h.max(asset_w);
-            let icon_outer_size = match resolved_shape {
-                crate::flowchart::FlowchartShape::IconCircle => {
-                    icon_size * std::f64::consts::SQRT_2 + 40.0
-                }
-                crate::flowchart::FlowchartShape::IconRounded
-                | crate::flowchart::FlowchartShape::IconSquare => icon_size + padding,
-                crate::flowchart::FlowchartShape::Icon => icon_size,
-                _ => unreachable!("the icon branch excludes non-icon shapes"),
-            };
+        let outer_w = icon_outer_size.max(label_bbox_w);
+        let outer_h = icon_outer_size + label_padding + label_bbox_h;
 
-            let outer_w = icon_outer_size.max(label_bbox_w);
-            let outer_h = icon_outer_size + label_padding + label_bbox_h;
-
-            // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
-            // change the node's outer bbox.
-            let _ = node_pos;
-            return (outer_w, outer_h);
-        }
+        // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
+        // change the node's outer bbox.
+        let _ = node_pos;
+        return (outer_w, outer_h);
     }
 
     // Mermaid `forkJoin.ts` inflates the Dagre node dimensions by `state.padding / 2` after

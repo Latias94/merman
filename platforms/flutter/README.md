@@ -1,218 +1,137 @@
-# merman Flutter/Dart FFI
+# Merman For Flutter And Dart
 
-Flutter package for the canonical `merman-ffi` C ABI. The public package name is `merman`.
+[![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Merman renders Mermaid diagrams without a browser. It can parse Mermaid source, return semantic
-JSON, compute layout JSON, and render SVG through a headless Rust engine. See the
-[project README](https://github.com/Latias94/merman),
-[FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), and
-[diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
-for the main library contract.
+Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin wraps Merman's native Rust engine with Dart FFI and bundles the required libraries for supported Flutter platforms.
 
-The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, diagnostics
-analysis, validation, and metadata. On Flutter targets, the plugin also carries the native
-`merman-ffi` library, so application code normally opens the engine with `Merman.open()` and does
-not pass a dynamic library path.
+> **Alpha:** Dart and native APIs may break before the stable release. The package currently targets C ABI version `2`; install the Dart wrapper and bundled native artifacts from the same package release. The source-tree README describes `Unreleased`, while each pub.dev archive preserves the documentation for that published version.
 
-## Compatibility And Release Notes
+## Install
 
-This package tracks C ABI version 2. The Dart wrapper checks ABI and struct sizes before it opens
-the native library, so stale generated code or mismatched native artifacts fail fast at startup.
+Use the current 0.8 prerelease line from pub.dev:
 
-For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md) and the shared
-[`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
-guide. The pub.dev page also surfaces the repository, issue tracker, documentation, and topic
-metadata from `pubspec.yaml`.
+```yaml
+dependencies:
+  merman: ">=0.8.0-alpha.3 <0.9.0"
+```
 
-## Supported Flutter Platforms
+Then fetch packages with `flutter pub get`.
 
-- Android: bundled `libmerman_ffi.so` slices under `android/src/main/jniLibs`.
-- iOS: bundled `MermanFFI.xcframework`, linked as a dynamic framework so Dart FFI can use
-  `DynamicLibrary.process()` without shipping the much larger Rust static archive.
-- macOS: bundled `Libraries/libmerman_ffi.dylib` for CocoaPods and `MermanFFI.xcframework` for
-  Swift Package Manager.
-- Windows: bundled `merman_ffi.dll`, installed into the Flutter app bundle by CMake.
-- Linux: bundled `linux/lib/<arch>/libmerman_ffi.so`, installed into the Flutter app bundle by CMake.
-
-## API
+## Render A Diagram
 
 ```dart
 import 'package:merman/merman.dart';
 
-final merman = Merman.open();
+final engine = Merman.open();
 final source = 'flowchart TD\nA[Hello] --> B[World]';
-final version = merman.packageVersion;
+final svg = engine.renderSvg(source);
+print(svg.substring(0, 4)); // <svg
+```
 
-final svg = merman.renderSvg(
+The same engine exposes SVG and terminal output, semantic and layout maps, validation, diagram/document diagnostics, parser facts, themes, lint metadata, ASCII support grades, and diagram-family capabilities.
+
+`optionsJson` follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md):
+
+```dart
+final svg = engine.renderSvg(
   source,
   optionsJson: '{"svg":{"pipeline":"readable"}}',
 );
-final semantic = merman.parseJson(source);
-final layout = merman.layoutJson(source);
-final analysis = merman.analyzeJson(source);
-final documentAnalysis = merman.analyzeDocumentJson(
-  '```mermaid\n$source\n```',
-  uri: 'file:///tmp/example.md',
-);
-final documentFacts = merman.analyzeDocumentFactsJson(
-  '```mermaid\n$source\n```',
-  uri: 'file:///tmp/example.md',
-);
-final ascii = merman.renderAscii(source);
-final validation = merman.validate(source);
-final diagrams = merman.supportedDiagrams();
-final lintRules = merman.lintRuleCatalog();
-final themes = merman.supportedThemes();
-final hostThemePresets = merman.supportedHostThemePresets();
-
-try {
-  merman.renderSvg(source, optionsJson: '{');
-} on MermanException catch (error) {
-  print('${error.codeName}: ${error.message}');
-}
 ```
 
-`optionsJson` follows the shared schema in
-[`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
-Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
-profiles, origins, configurability, and fixability for editor settings or LSP integrations.
+## Supported Platforms
 
-## Rendering SVG In Flutter
+| Platform | Packaged native artifact |
+| --- | --- |
+| Android | `arm64-v8a` and `x86_64` shared libraries |
+| iOS | Dynamic `MermanFFI.xcframework` |
+| macOS | Universal dylib for CocoaPods and XCFramework for SwiftPM |
+| Linux | x86_64 or aarch64 shared library, depending on the release artifact |
+| Windows | x86_64 DLL |
 
-`Merman.renderSvg` returns SVG text; this package does not prescribe a Flutter widget. For highest
-visual fidelity, render the SVG in a browser-capable surface such as `webview_flutter`:
+Flutter Web is not supported because this package uses `dart:ffi`; use [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) for browsers. Native artifact availability is release-specific, so verify the package archive for the target architecture before deployment.
 
-```dart
-final svg = Merman.open().renderSvg(source);
-final controller = WebViewController()
-  ..setJavaScriptMode(JavaScriptMode.unrestricted)
-  ..loadHtmlString('''
-<!doctype html>
-<html>
-<body style="margin:0;background:white">
-$svg
-</body>
-</html>
-''');
-```
+## SVG Display
 
-Mermaid-like SVG can include `<style>`, `<marker>`, and `<foreignObject>`. Those elements are valid
-parts of the output: styles preserve theme behavior, markers draw arrowheads, and foreign objects
-carry HTML labels. Native Flutter SVG widgets and some rasterizers may ignore or partially support
-those elements, so diagrams can lose arrowheads, labels, or styling outside a WebView.
+`renderSvg` returns SVG text and does not prescribe a widget. Mermaid-compatible output may contain `<style>`, `<marker>`, and `<foreignObject>` elements. A WebView provides the closest browser behavior; native SVG widgets can omit HTML labels, markers, or CSS features.
 
-Do not blindly strip those tags in application code. Instead, select an explicit SVG pipeline for
-the target renderer:
+Select the output contract deliberately:
 
 ```dart
-final browserSvg = merman.renderSvg(source); // default parity output
-final readableSvg = merman.renderSvg(
+final paritySvg = engine.renderSvg(source);
+final readableSvg = engine.renderSvg(
   source,
   optionsJson: '{"svg":{"pipeline":"readable"}}',
 );
-final resvgSafeSvg = merman.renderSvg(
+final strictSvg = engine.renderSvg(
   source,
   optionsJson: '{"svg":{"pipeline":"resvg-safe"}}',
 );
 ```
 
-Use the default parity output for WebView/browser display, `readable` when a renderer needs text
-fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF export paths.
+Use the default for browser/WebView parity, `readable` for text fallbacks, and `resvg-safe` for stricter SVG or raster consumers.
 
-For repeated calls or host font measurement, use `MermanReusableEngine` and install a
-`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
-vendored metrics for that request.
-Handled results must set `MermanTextMeasurementResultKind` to the shape required by
-`request.operation`; scalar width/height primitives use the unified `length` field. A wrong kind is
-invalid and falls back instead of being inferred from whichever fields happen to be non-zero.
-ABI 2 exposes 19 exact operations with contiguous codes `0..18`. `rawBBoxHeight` (18) measures the
-height from a direct SVG `<text>.getBBox()` probe and returns a non-negative length.
-`createTextMiddleBBoxYOffset` (17) returns a signed length for Architecture's
-`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
-`createTextBBoxYOffset` remains the ordinary createText probe; it cannot substitute for the
-middle-baseline operation, and both y-offset operations may return a finite negative value.
-The document-analysis APIs are available both on `Merman` and `MermanReusableEngine` as raw JSON
-and decoded map helpers. Pass the full Markdown/MDX-like document source and a document URI; the URI
-selects the same document parsing behavior used by the C ABI and the other platform wrappers.
+## Reusable Engines And Text Measurement
 
-For accurate preview geometry, measure with the same surface that will display the SVG: a WebView
-DOM/canvas cache for `webview_flutter`, or Flutter paragraph/text layout APIs for Flutter-native
-text. The current Dart callback is isolate-local, so create the reusable engine, set the measurer,
-render, and close it on the same isolate. See
-[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi).
-For HTML-like labels, cache the natural no-wrap width first and only apply `maxWidth` when wrapping
-is actually needed. If a WebView or platform text API cannot answer synchronously from the current
-isolate, return `null` for that request and let merman's vendored metrics handle it.
-Do not call back into the same `MermanReusableEngine` from a measurer; the wrapper reports
-`DART_ENGINE_REENTERED`. Calling `close()` during an active native call defers native handle and
-callback disposal until the call returns, and any later reusable-engine call reports
-`DART_ENGINE_CLOSED`. If the measurer throws, that request falls back instead of poisoning the native
-engine, but the host should still log the exception.
+Use `MermanReusableEngine` for repeated calls with shared options. It owns a native handle and must be closed:
 
-## Local Dart Smoke
+```dart
+final reusable = engine.reusableEngine();
+try {
+  final svg = reusable.renderSvg(source);
+} finally {
+  reusable.close();
+}
+```
 
-Raw `dart run` does not execute Flutter's platform packaging step, so the smoke example accepts an
-explicit native library path for local development:
+Merman owns a deterministic vendored text measurer by default. Server-like Dart workloads, tests, and documentation builds should normally keep it. Flutter previews can call `setTextMeasurer` when layout must match the final Flutter or WebView font stack.
 
-```bash
+ABI 2 exposes 19 exact operations (`0..18`) and requires the tagged `MermanTextMeasurementResultKind` associated with `request.operation`. Return `null` when the current isolate cannot answer an operation synchronously and faithfully. Invalid results and callback exceptions fall back for that operation.
+
+The callback is isolate-local. Create, measure, render, and close the reusable engine on the same isolate; do not call back into that engine from its measurer. Calling `close()` during a callback defers native disposal until the call returns. See the [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for operation shapes and cache guidance.
+
+## Analysis Contract
+
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `1`. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
+
+Document analysis accepts the full Markdown/MDX-like source and a URI:
+
+```dart
+final facts = engine.analyzeDocumentFactsJson(
+  '```mermaid\n$source\n```',
+  uri: 'file:///workspace/README.md',
+);
+```
+
+All native calls are synchronous. Run rendering outside latency-sensitive UI work, and query `diagramFamilyCapabilities()` or `asciiCapabilities()` rather than assuming every output supports every family.
+
+## Local Development
+
+Run the Dart smoke against a locally built native library:
+
+```sh
 cargo build -p merman-ffi
 cd platforms/flutter
 dart pub get
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-The smoke asserts ABI 2, all 19 operation codes, the `rawBBoxHeight` result, and the distinct signed
-`createTextMiddleBBoxYOffset` result.
+Use `.so` on Linux and `.dll` on Windows. Flutter applications normally call `Merman.open()` without a path. Native artifact assembly and packaging commands are documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
 
-Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
-Windows. In Flutter applications, use `Merman.open()` without a path.
+## Documentation And Releases
 
-## Building Native Artifacts For The Flutter Package
+- [Package changelog](CHANGELOG.md)
+- [Flutter/Dart binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
+- [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- [Issue tracker](https://github.com/Latias94/merman/issues)
+- [Source repository](https://github.com/Latias94/merman)
 
-Android slices are built from the shared Android script and copied into the Flutter package:
+pub.dev is the supported registry channel for this package. CocoaPods and SwiftPM files inside the plugin are Flutter integration details, not a separately published Dart package.
 
-```bash
-python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
-mkdir -p platforms/flutter/android/src/main/jniLibs
-cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
-```
+## License And Notices
 
-iOS uses a Flutter-specific dynamic framework XCFramework:
-
-```bash
-bash platforms/flutter/build-ios.sh
-```
-
-Desktop artifacts are built with:
-
-```bash
-bash platforms/flutter/build-desktop.sh --host
-```
-
-For release packaging, use `--all` on macOS with `cargo-zigbuild` and `zig` installed. This creates
-the macOS universal dylib, the macOS SwiftPM XCFramework, plus Linux x86_64/aarch64 and Windows
-x86_64 artifacts.
-
-## Apple Swift Package Manager
-
-The Flutter plugin supports Swift Package Manager on iOS and macOS through:
-
-- `ios/merman/Package.swift`
-- `macos/merman/Package.swift`
-
-These manifests are used by Flutter's SwiftPM integration. CocoaPods remains supported through the
-existing `ios/merman.podspec` and `macos/merman.podspec` files.
-
-## Packaging Smoke
-
-To verify Android plugin packaging through a temporary Flutter app:
-
-```bash
-python3 platforms/flutter/tool/android-smoke.py
-```
-
-## License
-
-This Flutter package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full
-license texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
-[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+This package is available under MIT or Apache-2.0. See [`LICENSE`](LICENSE),
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and
+[`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/) in the pub package.

@@ -136,6 +136,9 @@ impl ParseDiagnostic {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    ThemeColor(#[from] crate::theme_color::ColorError),
+
+    #[error(transparent)]
     InvalidLocalTimeZone(#[from] crate::time::LocalTimeZoneError),
 
     #[error(transparent)]

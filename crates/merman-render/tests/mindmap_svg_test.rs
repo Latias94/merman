@@ -36,12 +36,16 @@ fn layout_mindmap_typed(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> MindmapDiagramLayout {
-    let RenderSemanticModel::Mindmap(model) = &parsed.model else {
+    let RenderSemanticModel::Mindmap(model) = parsed.model() else {
         panic!("expected mindmap render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_mindmap_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("layout ok")
+    layout_mindmap_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("layout ok")
 }
 
 fn deep_mindmap_chain(depth: usize) -> String {

@@ -469,11 +469,7 @@ impl<'a> VennCursor<'a> {
     }
 }
 
-pub fn parse_venn_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_venn_parse_outcome(code, meta).source.editor_facts
-}
-
-pub fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = parse_venn_semantic_source(code, meta)?;
     render_model_to_compat_json(&source.model, meta)
 }
@@ -481,13 +477,31 @@ pub fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_venn_semantic_source(code, meta)?;
-    let compat = render_model_to_compat_json(&source.model, meta)?;
-    Ok((compat, source.editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    let VennParseOutcome {
+        source,
+        first_error,
+    } = construct_venn_parse_outcome(code, meta);
+    let construction = match first_error {
+        Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+            error,
+            source.editor_facts,
+        )),
+        None => Ok(source),
+    };
+    crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| {
+            (
+                render_model_to_compat_json(&source.model, meta),
+                source.editor_facts,
+            )
+        },
+        crate::family::CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_venn_model_for_render(
+pub(crate) fn parse_venn_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<VennDiagramRenderModel> {
@@ -1591,7 +1605,7 @@ style A fill:#ff6b6b, color:#101010
 style A,B fill:#00ffcc, color:#003333
 "##;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("venn", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("venn", text)
             .unwrap()
             .unwrap();
 
@@ -1678,7 +1692,7 @@ style A,B fill:#00ffcc, color:#003333
     }
 
     #[test]
-    fn venn_combined_parse_constructs_once_and_matches_standalone_entrypoints() {
+    fn venn_combined_parse_constructs_once_and_preserves_projections() {
         let text = r##"venn-beta
 title "Product overlap"
 set "Frontend Team"["Frontend"]:.5
@@ -1691,7 +1705,8 @@ style "Frontend Team",Backend fill:rgba(255, 0, 128, 0.5), color:#101010
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
         let (combined_json, combined_editor) =
-            parse_venn_json_and_editor_facts(text, &meta).unwrap();
+            crate::family::test_support::into_result(parse_venn_json_and_editor_facts(text, &meta))
+                .unwrap();
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("venn"),
             1,
@@ -1699,7 +1714,7 @@ style "Frontend Team",Backend fill:rgba(255, 0, 128, 0.5), color:#101010
         );
 
         assert_eq!(combined_json, parse_venn(text, &meta).unwrap());
-        assert_eq!(combined_editor, parse_venn_editor_facts(text, &meta));
+        assert!(!combined_editor.symbols.is_empty());
     }
 
     #[test]
@@ -1732,7 +1747,11 @@ style A,B fill:#ff6b6b, color:red
     #[test]
     fn venn_editor_projection_preserves_quoted_and_numeric_token_spans() {
         let text = "venn-beta\nset \"Frontend Team\"[\"Core\"]:.5\ntext \"Frontend Team\" 42\n";
-        let facts = parse_venn_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_venn_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         let set_raw_start = text.find("\"Frontend Team\"").unwrap();
         let set = facts
@@ -1780,7 +1799,11 @@ style A,B fill:#ff6b6b, color:red
             crate::ParseDiagnosticSpanKind::Exact
         );
 
-        let facts = parse_venn_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_venn_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(
             facts.symbols.iter().any(|symbol| {
@@ -1803,7 +1826,11 @@ style A,B fill:#ff6b6b, color:red
         );
         let invalid = "union A,";
         let invalid_start = text.find(invalid).unwrap();
-        let facts = parse_venn_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_venn_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         let has_lexeme = |needle: &str, kind: crate::EditorLexemeKind| {
             let start = text.find(needle).unwrap();
@@ -1863,8 +1890,8 @@ style A,B fill:#ff6b6b, color:red
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "venn");
-        let RenderSemanticModel::Venn(model) = parsed.model else {
+        assert_eq!(parsed.metadata().diagram_type, "venn");
+        let RenderSemanticModel::Venn(model) = parsed.model() else {
             panic!("expected Venn render model");
         };
         assert_eq!(model.subsets.len(), 3);

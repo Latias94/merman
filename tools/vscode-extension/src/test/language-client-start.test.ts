@@ -34,6 +34,7 @@ describe("language client startup cleanup", () => {
       failedTooltip: "Merman language server failed to start.",
       isCurrentGeneration: () => true,
       wireClient: () => {},
+      validateClient: () => {},
       updateStatus: () => {},
       pushConfiguration: async () => {
         pushCalls += 1;
@@ -65,6 +66,7 @@ describe("language client startup cleanup", () => {
           failedTooltip: "Merman language server failed to start.",
           isCurrentGeneration: () => true,
           wireClient: () => {},
+          validateClient: () => {},
           updateStatus: () => {},
           pushConfiguration: async () => {},
           assignClient: (activeClient) => {
@@ -107,6 +109,7 @@ describe("language client startup cleanup", () => {
           failedTooltip: "Merman language server failed to start.",
           isCurrentGeneration: () => true,
           wireClient: () => {},
+          validateClient: () => {},
           updateStatus: () => {},
           pushConfiguration: async () => {
             throw new Error("configuration push exploded");
@@ -136,6 +139,42 @@ describe("language client startup cleanup", () => {
     ]);
   });
 
+  it("stops before configuration when the initialized editor contract is incompatible", async () => {
+    const client = new FakeLanguageClient();
+    let pushCalls = 0;
+    const errors: string[] = [];
+
+    await assert.rejects(
+      () =>
+        startLanguageClientWithCleanup({
+          client,
+          generation: 1,
+          startingTooltip: "Starting language server",
+          failedTooltip: "Merman language server failed to start.",
+          isCurrentGeneration: () => true,
+          wireClient: () => {},
+          validateClient: () => {
+            throw new Error("stale editor descriptor");
+          },
+          updateStatus: () => {},
+          pushConfiguration: async () => {
+            pushCalls += 1;
+          },
+          assignClient: () => {},
+          clearClientIfCurrent: () => {},
+          showStartError: (message) => errors.push(message),
+        }),
+      /stale editor descriptor/,
+    );
+
+    assert.equal(client.startCalls, 1);
+    assert.equal(client.stopCalls, 1);
+    assert.equal(pushCalls, 0);
+    assert.deepEqual(errors, [
+      "Merman language server failed to start: stale editor descriptor",
+    ]);
+  });
+
   it("stops without assigning when the lifecycle generation changes during startup", async () => {
     const client = new FakeLanguageClient();
     let assigned = false;
@@ -147,6 +186,7 @@ describe("language client startup cleanup", () => {
       failedTooltip: "Merman language server failed to start.",
       isCurrentGeneration: () => false,
       wireClient: () => {},
+      validateClient: () => {},
       updateStatus: () => {},
       pushConfiguration: async () => {
         throw new Error("must not push stale configuration");
@@ -176,6 +216,7 @@ describe("language client startup cleanup", () => {
       failedTooltip: "Merman language server failed to start.",
       isCurrentGeneration: () => isCurrent,
       wireClient: () => {},
+      validateClient: () => {},
       updateStatus: () => {},
       pushConfiguration: async () => {
         isCurrent = false;

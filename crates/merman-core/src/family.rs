@@ -6,15 +6,165 @@
 use crate::baseline::BaselineRegistryProfile;
 use crate::detect::DetectorFn;
 use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
-use crate::{EditorSemanticFacts, MermaidConfig, ParseMetadata, Result};
+use crate::{EditorSemanticFacts, Error, MermaidConfig, ParseMetadata, Result};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::OnceLock;
 
-pub(crate) type EditorSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<EditorSemanticFacts>;
 pub(crate) type CombinedSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<(Value, EditorSemanticFacts)>;
+    fn(code: &str, meta: &ParseMetadata) -> CombinedSemanticParse;
+
+/// Closed result of one family semantic construction.
+///
+/// A failed construction still owns the parser-derived editor facts produced before the error.
+/// This prevents callers from invoking a second recovery parser over the same source.
+pub(crate) struct CombinedSemanticParse {
+    model: Result<Value>,
+    editor_facts: EditorSemanticFacts,
+}
+
+/// Closed failure handoff produced after a family has retained its recovery journal.
+pub(crate) struct CombinedSemanticFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+    recovery_parser: Option<&'static str>,
+}
+
+impl CombinedSemanticFailure {
+    pub(crate) fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            recovery_parser: None,
+        }
+    }
+
+    pub(crate) fn parser_recovery(
+        parser: &'static str,
+        error: Error,
+        editor_facts: EditorSemanticFacts,
+    ) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            recovery_parser: Some(parser),
+        }
+    }
+
+    pub(crate) fn replace_family_lexemes(&mut self, batch: crate::editor::EditorLexemeBatchResult) {
+        self.editor_facts.replace_family_lexemes(batch);
+    }
+
+    pub(crate) fn into_parts(mut self) -> (Error, EditorSemanticFacts) {
+        if let Some(parser) = self.recovery_parser.take() {
+            let (message, span) = match self.error.as_ref() {
+                Error::DiagramParse { diagnostic, .. } => {
+                    (diagnostic.message().to_string(), diagnostic.span())
+                }
+                error => (error.to_string(), None),
+            };
+            self.editor_facts.mark_recovered_from_parse_error(
+                format!("{parser} parser recovered after parse error: {message}"),
+                span,
+            );
+        }
+        (*self.error, *self.editor_facts)
+    }
+
+    pub(crate) fn into_error(self) -> Error {
+        *self.error
+    }
+}
+
+#[cfg(test)]
+mod combined_semantic_failure_tests {
+    use super::*;
+    use crate::{EditorSemanticDiagnosticKind, ParseDiagnosticSpanKind, SourceSpan};
+
+    #[test]
+    fn parser_recovery_preserves_the_strict_error_and_exact_editor_diagnostic() {
+        let span = SourceSpan::new(17, 29);
+        let failure = CombinedSemanticFailure::parser_recovery(
+            "quadrant chart",
+            Error::diagram_parse_exact("quadrantChart", "expected point coordinates", span),
+            EditorSemanticFacts::new(),
+        );
+
+        let (error, facts) = failure.into_parts();
+        let Error::DiagramParse {
+            diagram_type,
+            diagnostic,
+        } = error
+        else {
+            panic!("expected diagram parse error");
+        };
+        assert_eq!(diagram_type, "quadrantChart");
+        assert_eq!(diagnostic.message(), "expected point coordinates");
+        assert_eq!(diagnostic.span(), Some(span));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(
+            facts.diagnostics[0].message,
+            "quadrant chart parser recovered after parse error: expected point coordinates"
+        );
+        assert_eq!(facts.diagnostics[0].span, Some(span));
+        assert_eq!(
+            facts.diagnostics[0].kind,
+            EditorSemanticDiagnosticKind::ParserRecovery
+        );
+    }
+}
+
+impl CombinedSemanticParse {
+    pub(crate) fn from_construction<S, F>(
+        construction: std::result::Result<S, F>,
+        success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts),
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> Self {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts) = success(source);
+                Self {
+                    model,
+                    editor_facts,
+                }
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                Self {
+                    model: Err(error),
+                    editor_facts,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (Result<Value>, EditorSemanticFacts) {
+        (self.model, self.editor_facts)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::{CombinedSemanticParse, CombinedSemanticParser};
+    use crate::{EditorSemanticFacts, Error, ParseMetadata};
+    use serde_json::Value;
+
+    pub(crate) fn into_result(
+        parsed: CombinedSemanticParse,
+    ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
+        let (model, editor_facts) = parsed.into_parts();
+        model.map(|model| (model, editor_facts))
+    }
+
+    pub(crate) fn editor_facts(
+        parser: CombinedSemanticParser,
+        code: &str,
+        meta: &ParseMetadata,
+    ) -> EditorSemanticFacts {
+        parser(code, meta).into_parts().1
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct DetectorFact {
@@ -40,12 +190,6 @@ pub(crate) struct RenderParserFact {
     pub(crate) metadata_id: Option<&'static str>,
     pub(crate) model_kind: &'static str,
     pub(crate) parser: BuiltInRenderSemanticParser,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct EditorParserFact {
-    pub(crate) id: &'static str,
-    pub(crate) parser: EditorSemanticParser,
 }
 
 #[derive(Clone, Copy)]
@@ -113,31 +257,177 @@ impl DiagramFamilyId {
     }
 }
 
-pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<DetectorFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .filter_map(|(_, variant)| {
-                variant.detector.map(|ordered| {
-                    (
-                        ordered.order,
-                        DetectorFact {
-                            id: variant.id,
-                            detector: ordered.value,
-                        },
-                    )
+struct FamilyCatalogProjection {
+    detector_facts: Vec<DetectorFact>,
+    fast_detect_keyword_facts: Vec<FastDetectKeywordFact>,
+    semantic_parser_facts: Vec<SemanticParserFact>,
+    render_parser_facts: Vec<RenderParserFact>,
+    combined_parser_facts: Vec<CombinedParserFact>,
+    #[cfg(test)]
+    supported_diagram_facts: Vec<SupportedDiagramFact>,
+    supported_diagram_metadata_ids: Vec<&'static str>,
+    diagram_header_facts: Vec<DiagramHeaderFact>,
+    diagram_family_capabilities: Vec<DiagramFamilyCapability>,
+}
+
+impl FamilyCatalogProjection {
+    fn build(profile: BaselineRegistryProfile) -> Self {
+        let mut detector_facts = Vec::<(u16, DetectorFact)>::new();
+        let mut fast_detect_keyword_facts = Vec::<(u16, FastDetectKeywordFact)>::new();
+        let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
+        let mut render_parser_facts = Vec::<(u16, RenderParserFact)>::new();
+        let mut combined_parser_facts = Vec::<(u16, CombinedParserFact)>::new();
+        let mut metadata_facts = Vec::<(u16, &'static str)>::new();
+        let mut diagram_header_facts = Vec::<(u16, DiagramHeaderFact)>::new();
+        let mut diagram_family_capabilities = Vec::<(u16, DiagramFamilyCapability)>::new();
+
+        for (family, variant) in variants_for_profile(profile) {
+            if let Some(ordered) = variant.detector {
+                detector_facts.push((
+                    ordered.order,
+                    DetectorFact {
+                        id: variant.id,
+                        detector: ordered.value,
+                    },
+                ));
+            }
+            for keyword in variant.fast_keywords {
+                fast_detect_keyword_facts.push((
+                    keyword.order,
+                    FastDetectKeywordFact {
+                        keyword: keyword.keyword,
+                        id: variant.id,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.semantic {
+                semantic_parser_facts.push((
+                    ordered.order,
+                    SemanticParserFact {
+                        id: variant.id,
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.typed_render {
+                render_parser_facts.push((
+                    ordered.order,
+                    RenderParserFact {
+                        id: variant.id,
+                        metadata_id: variant.metadata.map(|metadata| metadata.id),
+                        model_kind: variant
+                            .render_model_kind
+                            .expect("typed render variants declare their model kind"),
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.combined {
+                combined_parser_facts.push((
+                    ordered.order,
+                    CombinedParserFact {
+                        id: variant.id,
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some((order, id)) = variant
+                .metadata
+                .and_then(|metadata| metadata.order.map(|order| (order, metadata.id)))
+            {
+                metadata_facts.push((order, id));
+            }
+            for header in variant.headers {
+                diagram_header_facts.push((
+                    header.order,
+                    DiagramHeaderFact {
+                        diagram_type: variant.id,
+                        label: header.label,
+                        detail: header.detail,
+                        full_only: variant.profile == VariantProfile::FullOnly,
+                    },
+                ));
+            }
+            diagram_family_capabilities.push((
+                variant.catalog_order,
+                DiagramFamilyCapability {
+                    diagram_type: variant.id,
+                    logical_family_kind: family.logical_kind,
+                    metadata_id: variant.metadata.map(|metadata| metadata.id),
+                    render_model_kind: variant.render_model_kind,
+                    has_detector: variant.detector.is_some(),
+                    has_semantic_parser: variant.semantic.is_some(),
+                    has_editor_parser: variant.combined.is_some(),
+                    has_combined_parser: variant.combined.is_some(),
+                    has_render_parser: variant.typed_render.is_some(),
+                    has_header: !variant.headers.is_empty(),
+                    config_namespace: family.config.map(|config| config.namespace),
+                },
+            ));
+        }
+
+        let detector_facts = ordered_values(detector_facts);
+        let fast_detect_keyword_facts = ordered_values(fast_detect_keyword_facts);
+        let semantic_parser_facts = ordered_values(semantic_parser_facts);
+        let render_parser_facts = ordered_values(render_parser_facts);
+        let combined_parser_facts = ordered_values(combined_parser_facts);
+        let metadata_facts = ordered_values(metadata_facts);
+        let diagram_header_facts = ordered_values(diagram_header_facts);
+        let diagram_family_capabilities = ordered_values(diagram_family_capabilities);
+        let supported_diagram_facts = metadata_facts
+            .into_iter()
+            .filter_map(|metadata_id| {
+                let render_parser_ids = render_parser_facts
+                    .iter()
+                    .filter_map(|fact| (fact.metadata_id == Some(metadata_id)).then_some(fact.id))
+                    .collect::<Vec<_>>();
+                (!render_parser_ids.is_empty()).then_some(SupportedDiagramFact {
+                    metadata_id,
+                    render_parser_ids,
                 })
             })
+            .collect::<Vec<_>>();
+        let supported_diagram_metadata_ids = supported_diagram_facts
+            .iter()
+            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
+            .map(|fact| fact.metadata_id)
             .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
 
-    static TINY: OnceLock<Vec<DetectorFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<DetectorFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
+        Self {
+            detector_facts,
+            fast_detect_keyword_facts,
+            semantic_parser_facts,
+            render_parser_facts,
+            combined_parser_facts,
+            #[cfg(test)]
+            supported_diagram_facts,
+            supported_diagram_metadata_ids,
+            diagram_header_facts,
+            diagram_family_capabilities,
+        }
     }
+}
+
+fn ordered_values<T>(mut values: Vec<(u16, T)>) -> Vec<T> {
+    values.sort_by_key(|(order, _)| *order);
+    values.into_iter().map(|(_, value)| value).collect()
+}
+
+fn family_catalog_projection(profile: BaselineRegistryProfile) -> &'static FamilyCatalogProjection {
+    static TINY: OnceLock<FamilyCatalogProjection> = OnceLock::new();
+    static FULL: OnceLock<FamilyCatalogProjection> = OnceLock::new();
+    match profile {
+        BaselineRegistryProfile::Tiny => {
+            TINY.get_or_init(|| FamilyCatalogProjection::build(profile))
+        }
+        BaselineRegistryProfile::Full => {
+            FULL.get_or_init(|| FamilyCatalogProjection::build(profile))
+        }
+    }
+}
+
+pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
+    family_catalog_projection(profile).detector_facts.as_slice()
 }
 
 pub(crate) fn fast_detect_by_leading_keyword(
@@ -176,126 +466,23 @@ pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
 pub(crate) fn semantic_parser_facts(
     profile: BaselineRegistryProfile,
 ) -> &'static [SemanticParserFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<SemanticParserFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .filter_map(|(_, variant)| {
-                variant.semantic.map(|ordered| {
-                    (
-                        ordered.order,
-                        SemanticParserFact {
-                            id: variant.id,
-                            parser: ordered.value,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY: OnceLock<Vec<SemanticParserFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<SemanticParserFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
-    }
+    family_catalog_projection(profile)
+        .semantic_parser_facts
+        .as_slice()
 }
 
 pub(crate) fn render_parser_facts(profile: BaselineRegistryProfile) -> &'static [RenderParserFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<RenderParserFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .filter_map(|(_, variant)| {
-                variant.typed_render.map(|ordered| {
-                    (
-                        ordered.order,
-                        RenderParserFact {
-                            id: variant.id,
-                            metadata_id: variant.metadata.map(|metadata| metadata.id),
-                            model_kind: variant
-                                .render_model_kind
-                                .expect("typed render variants declare their model kind"),
-                            parser: ordered.value,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY: OnceLock<Vec<RenderParserFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<RenderParserFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
-    }
-}
-
-pub(crate) fn editor_parser_facts(profile: BaselineRegistryProfile) -> &'static [EditorParserFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<EditorParserFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .filter_map(|(_, variant)| {
-                variant.editor.map(|ordered| {
-                    (
-                        ordered.order,
-                        EditorParserFact {
-                            id: variant.id,
-                            parser: ordered.value,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY: OnceLock<Vec<EditorParserFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<EditorParserFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
-    }
+    family_catalog_projection(profile)
+        .render_parser_facts
+        .as_slice()
 }
 
 pub(crate) fn combined_parser_facts(
     profile: BaselineRegistryProfile,
 ) -> &'static [CombinedParserFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<CombinedParserFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .filter_map(|(_, variant)| {
-                variant.combined.map(|ordered| {
-                    (
-                        ordered.order,
-                        CombinedParserFact {
-                            id: variant.id,
-                            parser: ordered.value,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY: OnceLock<Vec<CombinedParserFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<CombinedParserFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
-    }
-}
-
-pub(crate) fn editor_parser(
-    profile: BaselineRegistryProfile,
-    diagram_type: &str,
-) -> Option<EditorSemanticParser> {
-    editor_parser_facts(profile)
-        .iter()
-        .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
+    family_catalog_projection(profile)
+        .combined_parser_facts
+        .as_slice()
 }
 
 pub(crate) fn combined_parser(
@@ -307,182 +494,43 @@ pub(crate) fn combined_parser(
         .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
 }
 
+#[cfg(test)]
 pub(crate) fn supported_diagram_facts(
     profile: BaselineRegistryProfile,
 ) -> &'static [SupportedDiagramFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<SupportedDiagramFact> {
-        let variants: Vec<_> = variants_for_profile(profile).collect();
-        let render_facts = render_parser_facts(profile);
-        let mut metadata: Vec<_> = variants
-            .iter()
-            .filter_map(|(_, variant)| {
-                variant
-                    .metadata
-                    .and_then(|metadata| metadata.order.map(|order| (order, metadata.id)))
-            })
-            .collect();
-        metadata.sort_by_key(|(order, _)| *order);
-        metadata
-            .into_iter()
-            .filter_map(|(_, metadata_id)| {
-                let render_parser_ids: Vec<_> = render_facts
-                    .iter()
-                    .filter_map(|fact| (fact.metadata_id == Some(metadata_id)).then_some(fact.id))
-                    .collect();
-                (!render_parser_ids.is_empty()).then_some(SupportedDiagramFact {
-                    metadata_id,
-                    render_parser_ids,
-                })
-            })
-            .collect()
-    }
-
-    static TINY_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
-    static FULL_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
+    family_catalog_projection(profile)
+        .supported_diagram_facts
+        .as_slice()
 }
 
 pub(crate) fn supported_diagram_metadata_ids(
     profile: BaselineRegistryProfile,
 ) -> &'static [&'static str] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<&'static str> {
-        supported_diagram_facts(profile)
-            .iter()
-            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
-            .map(|fact| fact.metadata_id)
-            .collect()
-    }
-
-    static TINY_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-    static FULL_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_IDS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_IDS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
+    family_catalog_projection(profile)
+        .supported_diagram_metadata_ids
+        .as_slice()
 }
 
 pub(crate) fn diagram_header_facts(
     profile: BaselineRegistryProfile,
 ) -> &'static [DiagramHeaderFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramHeaderFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .flat_map(|(_, variant)| {
-                variant.headers.iter().map(move |header| {
-                    (
-                        header.order,
-                        DiagramHeaderFact {
-                            diagram_type: variant.id,
-                            label: header.label,
-                            detail: header.detail,
-                            full_only: variant.profile == VariantProfile::FullOnly,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
-    static FULL_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
+    family_catalog_projection(profile)
+        .diagram_header_facts
+        .as_slice()
 }
 
 pub(crate) fn diagram_family_capabilities(
     profile: BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramFamilyCapability> {
-        let mut capabilities: Vec<_> = variants_for_profile(profile)
-            .map(|(family, variant)| {
-                (
-                    variant.catalog_order,
-                    DiagramFamilyCapability {
-                        diagram_type: variant.id,
-                        logical_family_kind: family.logical_kind,
-                        metadata_id: variant.metadata.map(|metadata| metadata.id),
-                        render_model_kind: variant.render_model_kind,
-                        has_detector: variant.detector.is_some(),
-                        has_semantic_parser: variant.semantic.is_some(),
-                        has_editor_parser: variant.editor.is_some(),
-                        has_combined_parser: variant.combined.is_some(),
-                        has_render_parser: variant.typed_render.is_some(),
-                        has_header: !variant.headers.is_empty(),
-                        config_namespace: family.config.map(|config| config.namespace),
-                    },
-                )
-            })
-            .collect();
-        capabilities.sort_by_key(|(order, _)| *order);
-        capabilities.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
-    static FULL_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_CAPABILITIES
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_CAPABILITIES
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
+    family_catalog_projection(profile)
+        .diagram_family_capabilities
+        .as_slice()
 }
 
 fn fast_detect_keyword_facts(profile: BaselineRegistryProfile) -> &'static [FastDetectKeywordFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<FastDetectKeywordFact> {
-        let mut facts: Vec<_> = variants_for_profile(profile)
-            .flat_map(|(_, variant)| {
-                variant.fast_keywords.iter().map(move |keyword| {
-                    (
-                        keyword.order,
-                        FastDetectKeywordFact {
-                            keyword: keyword.keyword,
-                            id: variant.id,
-                        },
-                    )
-                })
-            })
-            .collect();
-        facts.sort_by_key(|(order, _)| *order);
-        facts.into_iter().map(|(_, fact)| fact).collect()
-    }
-
-    static TINY: OnceLock<Vec<FastDetectKeywordFact>> = OnceLock::new();
-    static FULL: OnceLock<Vec<FastDetectKeywordFact>> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY.get_or_init(|| build(profile)).as_slice(),
-        BaselineRegistryProfile::Full => FULL.get_or_init(|| build(profile)).as_slice(),
-    }
-}
-
-pub(crate) fn diagram_type_supported_in_profile(
-    profile: BaselineRegistryProfile,
-    diagram_type: &str,
-) -> bool {
-    find_variant(diagram_type).is_none_or(|(_, variant)| variant.profile.includes(profile))
+    family_catalog_projection(profile)
+        .fast_detect_keyword_facts
+        .as_slice()
 }
 
 pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
@@ -500,6 +548,10 @@ pub(crate) fn render_model_kind_supports_diagram_type(
 
 pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
     diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
+}
+
+pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
+    find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
 
 pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
@@ -539,131 +591,6 @@ pub(crate) fn apply_diagram_type_config_effects(
     }
 }
 
-macro_rules! infallible_editor_adapter {
-    ($name:ident, $parser:path) => {
-        fn $name(code: &str, meta: &ParseMetadata) -> Result<EditorSemanticFacts> {
-            Ok($parser(code, meta))
-        }
-    };
-}
-
-infallible_editor_adapter!(
-    editor_sequence,
-    crate::diagrams::sequence::parse_sequence_editor_facts
-);
-infallible_editor_adapter!(
-    editor_state,
-    crate::diagrams::state::parse_state_editor_facts
-);
-infallible_editor_adapter!(
-    editor_class,
-    crate::diagrams::class::parse_class_editor_facts
-);
-infallible_editor_adapter!(editor_er, crate::diagrams::er::parse_er_editor_facts);
-infallible_editor_adapter!(
-    editor_mindmap,
-    crate::diagrams::mindmap::parse_mindmap_editor_facts
-);
-infallible_editor_adapter!(
-    editor_gantt,
-    crate::diagrams::gantt::parse_gantt_editor_facts
-);
-infallible_editor_adapter!(
-    editor_architecture,
-    crate::diagrams::architecture::parse_architecture_editor_facts
-);
-infallible_editor_adapter!(
-    editor_block,
-    crate::diagrams::block::parse_block_editor_facts
-);
-infallible_editor_adapter!(editor_c4, crate::diagrams::c4::parse_c4_editor_facts);
-infallible_editor_adapter!(
-    editor_cynefin,
-    crate::diagrams::cynefin::parse_cynefin_editor_facts
-);
-infallible_editor_adapter!(
-    editor_git_graph,
-    crate::diagrams::git_graph::parse_git_graph_editor_facts
-);
-infallible_editor_adapter!(
-    editor_kanban,
-    crate::diagrams::kanban::parse_kanban_editor_facts
-);
-infallible_editor_adapter!(
-    editor_ishikawa,
-    crate::diagrams::ishikawa::parse_ishikawa_editor_facts
-);
-infallible_editor_adapter!(
-    editor_journey,
-    crate::diagrams::journey::parse_journey_editor_facts
-);
-infallible_editor_adapter!(editor_info, crate::diagrams::info::parse_info_editor_facts);
-infallible_editor_adapter!(
-    editor_timeline,
-    crate::diagrams::timeline::parse_timeline_editor_facts
-);
-infallible_editor_adapter!(editor_pie, crate::diagrams::pie::parse_pie_editor_facts);
-infallible_editor_adapter!(
-    editor_packet,
-    crate::diagrams::packet::parse_packet_editor_facts
-);
-infallible_editor_adapter!(
-    editor_sankey,
-    crate::diagrams::sankey::parse_sankey_editor_facts
-);
-infallible_editor_adapter!(
-    editor_tree_view,
-    crate::diagrams::tree_view::parse_tree_view_editor_facts
-);
-infallible_editor_adapter!(
-    editor_eventmodeling,
-    crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts
-);
-infallible_editor_adapter!(
-    editor_quadrant_chart,
-    crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts
-);
-infallible_editor_adapter!(
-    editor_railroad,
-    crate::diagrams::railroad::parse_railroad_editor_facts
-);
-infallible_editor_adapter!(
-    editor_railroad_ebnf,
-    crate::diagrams::railroad::parse_railroad_ebnf_editor_facts
-);
-infallible_editor_adapter!(
-    editor_railroad_abnf,
-    crate::diagrams::railroad::parse_railroad_abnf_editor_facts
-);
-infallible_editor_adapter!(
-    editor_railroad_peg,
-    crate::diagrams::railroad::parse_railroad_peg_editor_facts
-);
-infallible_editor_adapter!(
-    editor_radar,
-    crate::diagrams::radar::parse_radar_editor_facts
-);
-infallible_editor_adapter!(
-    editor_treemap,
-    crate::diagrams::treemap::parse_treemap_editor_facts
-);
-infallible_editor_adapter!(
-    editor_requirement,
-    crate::diagrams::requirement::parse_requirement_editor_facts
-);
-infallible_editor_adapter!(editor_venn, crate::diagrams::venn::parse_venn_editor_facts);
-infallible_editor_adapter!(
-    editor_wardley,
-    crate::diagrams::wardley::parse_wardley_editor_facts
-);
-infallible_editor_adapter!(
-    editor_xychart,
-    crate::diagrams::xychart::parse_xychart_editor_facts
-);
-infallible_editor_adapter!(
-    editor_zenuml,
-    crate::diagrams::zenuml::parse_zenuml_editor_facts
-);
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
         fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel> {
@@ -926,7 +853,6 @@ struct FamilyVariantDefinition {
     detector: Option<Ordered<DetectorFn>>,
     fast_keywords: &'static [FastKeywordDefinition],
     semantic: Option<Ordered<DiagramSemanticParser>>,
-    editor: Option<Ordered<EditorSemanticParser>>,
     combined: Option<Ordered<CombinedSemanticParser>>,
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,
@@ -961,7 +887,6 @@ macro_rules! variant {
         detector: $detector:expr,
         fast: $fast:expr,
         semantic: $semantic:expr,
-        editor: $editor:expr,
         combined: $combined:expr,
         typed: $typed:expr,
         render_kind: $render_kind:expr,
@@ -978,7 +903,6 @@ macro_rules! variant {
             detector: $detector,
             fast_keywords: $fast,
             semantic: $semantic,
-            editor: $editor,
             combined: $combined,
             typed_render: $typed,
             render_model_kind: $render_kind,
@@ -1177,7 +1101,6 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(0, crate::detect::detector_error)),
     fast: &[],
     semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
-    editor: None,
     combined: None,
     typed: Some(ordered(38, render_error)),
     render_kind: Some("error"),
@@ -1196,7 +1119,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
         fast: &[],
         semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
-        editor: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_editor_facts)),
         combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(7, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1213,7 +1135,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
         fast: &[],
         semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
-        editor: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_editor_facts)),
         combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(5, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1230,7 +1151,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
         fast: &[],
         semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
-        editor: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_editor_facts)),
         combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(6, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1249,7 +1169,6 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
     fast: &[],
     semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
-    editor: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_editor_facts)),
     combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
     typed: Some(ordered(39, render_flowchart)),
     render_kind: Some("flowchart"),
@@ -1267,7 +1186,6 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(3, crate::detect::detector_mindmap)),
     fast: FAST_MINDMAP,
     semantic: Some(ordered(22, crate::diagrams::mindmap::parse_mindmap)),
-    editor: Some(ordered(11, editor_mindmap)),
     combined: Some(ordered(5, crate::diagrams::mindmap::parse_mindmap_json_and_editor_facts)),
     typed: Some(ordered(0, render_mindmap)),
     render_kind: Some("mindmap"),
@@ -1285,7 +1203,6 @@ const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(4, crate::detect::detector_architecture)),
     fast: FAST_ARCHITECTURE,
     semantic: Some(ordered(27, crate::diagrams::architecture::parse_architecture)),
-    editor: Some(ordered(13, editor_architecture)),
     combined: Some(ordered(4, crate::diagrams::architecture::parse_architecture_json_and_editor_facts)),
     typed: Some(ordered(16, render_architecture)),
     render_kind: Some("architecture"),
@@ -1303,7 +1220,6 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(5, crate::detect::detector_zenuml)),
     fast: &[],
     semantic: Some(ordered(15, crate::diagrams::zenuml::parse_zenuml)),
-    editor: Some(ordered(38, editor_zenuml)),
     combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
     typed: Some(ordered(3, render_zenuml)),
     render_kind: Some("zenuml"),
@@ -1321,7 +1237,6 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(15, crate::detect::detector_sequence)),
     fast: FAST_SEQUENCE,
     semantic: Some(ordered(8, crate::diagrams::sequence::parse_sequence)),
-    editor: Some(ordered(4, editor_sequence)),
     combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
     typed: Some(ordered(4, render_sequence)),
     render_kind: Some("sequence"),
@@ -1339,7 +1254,6 @@ const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(6, crate::detect::detector_c4)),
     fast: &[],
     semantic: Some(ordered(6, crate::diagrams::c4::parse_c4)),
-    editor: Some(ordered(15, editor_c4)),
     combined: Some(ordered(28, crate::diagrams::c4::parse_c4_json_and_editor_facts)),
     typed: Some(ordered(10, render_c4)),
     render_kind: Some("c4"),
@@ -1357,7 +1271,6 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(7, crate::detect::detector_kanban)),
     fast: &[],
     semantic: Some(ordered(26, crate::diagrams::kanban::parse_kanban)),
-    editor: Some(ordered(18, editor_kanban)),
     combined: Some(ordered(29, crate::diagrams::kanban::parse_kanban_json_and_editor_facts)),
     typed: Some(ordered(17, render_kanban)),
     render_kind: Some("kanban"),
@@ -1376,7 +1289,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(8, crate::detect::detector_class_v2)),
         fast: &[],
         semantic: Some(ordered(16, crate::diagrams::class::parse_class)),
-        editor: Some(ordered(7, editor_class)),
         combined: Some(ordered(20, crate::diagrams::class::parse_class_json_and_editor_facts)),
         typed: Some(ordered(8, render_class)),
         render_kind: Some("class"),
@@ -1393,7 +1305,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
         fast: &[],
         semantic: Some(ordered(17, crate::diagrams::class::parse_class)),
-        editor: Some(ordered(8, editor_class)),
         combined: Some(ordered(21, crate::diagrams::class::parse_class_json_and_editor_facts)),
         typed: Some(ordered(9, render_class)),
         render_kind: Some("class"),
@@ -1413,7 +1324,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(10, crate::detect::detector_er)),
         fast: FAST_ER,
         semantic: Some(ordered(18, crate::diagrams::er::parse_er)),
-        editor: Some(ordered(9, editor_er)),
         combined: Some(ordered(17, crate::diagrams::er::parse_er_json_and_editor_facts)),
         typed: Some(ordered(29, render_er)),
         render_kind: Some("er"),
@@ -1430,7 +1340,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: None,
         fast: &[],
         semantic: Some(ordered(19, crate::diagrams::er::parse_er)),
-        editor: Some(ordered(10, editor_er)),
         combined: Some(ordered(18, crate::diagrams::er::parse_er_json_and_editor_facts)),
         typed: Some(ordered(30, render_er)),
         render_kind: Some("er"),
@@ -1449,7 +1358,6 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(11, crate::detect::detector_gantt)),
     fast: FAST_GANTT,
     semantic: Some(ordered(23, crate::diagrams::gantt::parse_gantt)),
-    editor: Some(ordered(12, editor_gantt)),
     combined: Some(ordered(30, crate::diagrams::gantt::parse_gantt_json_and_editor_facts)),
     typed: Some(ordered(18, render_gantt)),
     render_kind: Some("gantt"),
@@ -1467,7 +1375,6 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(12, crate::detect::detector_info)),
     fast: &[],
     semantic: Some(ordered(4, crate::diagrams::info::parse_info)),
-    editor: Some(ordered(21, editor_info)),
     combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
     typed: Some(ordered(26, render_info)),
     render_kind: Some("info"),
@@ -1485,7 +1392,6 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(13, crate::detect::detector_pie)),
     fast: &[],
     semantic: Some(ordered(5, crate::diagrams::pie::parse_pie)),
-    editor: Some(ordered(23, editor_pie)),
     combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
     typed: Some(ordered(19, render_pie)),
     render_kind: Some("pie"),
@@ -1503,7 +1409,6 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(14, crate::detect::detector_requirement)),
     fast: &[],
     semantic: Some(ordered(7, crate::diagrams::requirement::parse_requirement)),
-    editor: Some(ordered(35, editor_requirement)),
     combined: Some(ordered(31, crate::diagrams::requirement::parse_requirement_json_and_editor_facts)),
     typed: Some(ordered(23, render_requirement)),
     render_kind: Some("requirement"),
@@ -1521,7 +1426,6 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(19, crate::detect::detector_timeline)),
     fast: FAST_TIMELINE,
     semantic: Some(ordered(24, crate::diagrams::timeline::parse_timeline)),
-    editor: Some(ordered(22, editor_timeline)),
     combined: Some(ordered(32, crate::diagrams::timeline::parse_timeline_json_and_editor_facts)),
     typed: Some(ordered(21, render_timeline)),
     render_kind: Some("timeline"),
@@ -1539,7 +1443,6 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
     fast: FAST_GIT_GRAPH,
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
-    editor: Some(ordered(17, editor_git_graph)),
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
@@ -1558,7 +1461,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(21, crate::detect::detector_state_v2)),
         fast: &[],
         semantic: Some(ordered(20, crate::diagrams::state::parse_state)),
-        editor: Some(ordered(5, editor_state)),
         combined: Some(ordered(26, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(1, render_state)),
         render_kind: Some("state"),
@@ -1575,7 +1477,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
         fast: &[],
         semantic: Some(ordered(21, crate::diagrams::state::parse_state)),
-        editor: Some(ordered(6, editor_state)),
         combined: Some(ordered(27, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(2, render_state)),
         render_kind: Some("state"),
@@ -1594,7 +1495,6 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(23, crate::detect::detector_journey)),
     fast: FAST_JOURNEY,
     semantic: Some(ordered(25, crate::diagrams::journey::parse_journey)),
-    editor: Some(ordered(20, editor_journey)),
     combined: Some(ordered(33, crate::diagrams::journey::parse_journey_json_and_editor_facts)),
     typed: Some(ordered(22, render_journey)),
     render_kind: Some("journey"),
@@ -1612,7 +1512,6 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(24, crate::detect::detector_quadrant)),
     fast: FAST_QUADRANT,
     semantic: Some(ordered(30, crate::diagrams::quadrant_chart::parse_quadrant_chart)),
-    editor: Some(ordered(28, editor_quadrant_chart)),
     combined: Some(ordered(34, crate::diagrams::quadrant_chart::parse_quadrant_chart_json_and_editor_facts)),
     typed: Some(ordered(31, render_quadrant_chart)),
     render_kind: Some("quadrantChart"),
@@ -1630,7 +1529,6 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(25, crate::detect::detector_sankey)),
     fast: &[],
     semantic: Some(ordered(38, crate::diagrams::sankey::parse_sankey)),
-    editor: Some(ordered(25, editor_sankey)),
     combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
     typed: Some(ordered(24, render_sankey)),
     render_kind: Some("sankey"),
@@ -1648,7 +1546,6 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(26, crate::detect::detector_packet)),
     fast: FAST_PACKET,
     semantic: Some(ordered(31, crate::diagrams::packet::parse_packet)),
-    editor: Some(ordered(24, editor_packet)),
     combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
     typed: Some(ordered(20, render_packet)),
     render_kind: Some("packet"),
@@ -1666,7 +1563,6 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(27, crate::detect::detector_xychart)),
     fast: FAST_XYCHART,
     semantic: Some(ordered(39, crate::diagrams::xychart::parse_xychart)),
-    editor: Some(ordered(37, editor_xychart)),
     combined: Some(ordered(38, crate::diagrams::xychart::parse_xychart_json_and_editor_facts)),
     typed: Some(ordered(32, render_xychart)),
     render_kind: Some("xychart"),
@@ -1684,7 +1580,6 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(28, crate::detect::detector_block)),
     fast: &[],
     semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
-    editor: Some(ordered(14, editor_block)),
     combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
     typed: Some(ordered(28, render_block)),
     render_kind: Some("block"),
@@ -1702,7 +1597,6 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
     fast: FAST_EVENTMODELING,
     semantic: Some(ordered(35, crate::diagrams::eventmodeling::parse_eventmodeling)),
-    editor: Some(ordered(27, editor_eventmodeling)),
     combined: Some(ordered(22, crate::diagrams::eventmodeling::parse_eventmodeling_json_and_editor_facts)),
     typed: Some(ordered(36, render_eventmodeling)),
     render_kind: Some("eventmodeling"),
@@ -1720,7 +1614,6 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(30, crate::detect::detector_tree_view)),
     fast: FAST_TREE_VIEW,
     semantic: Some(ordered(33, crate::diagrams::tree_view::parse_tree_view)),
-    editor: Some(ordered(26, editor_tree_view)),
     combined: Some(ordered(23, crate::diagrams::tree_view::parse_tree_view_json_and_editor_facts)),
     typed: Some(ordered(34, render_tree_view)),
     render_kind: Some("treeView"),
@@ -1738,7 +1631,6 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(31, crate::detect::detector_radar)),
     fast: &[],
     semantic: Some(ordered(32, crate::diagrams::radar::parse_radar)),
-    editor: Some(ordered(33, editor_radar)),
     combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
     typed: Some(ordered(25, render_radar)),
     render_kind: Some("radar"),
@@ -1756,7 +1648,6 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(32, crate::detect::detector_ishikawa)),
     fast: FAST_ISHIKAWA,
     semantic: Some(ordered(34, crate::diagrams::ishikawa::parse_ishikawa)),
-    editor: Some(ordered(19, editor_ishikawa)),
     combined: Some(ordered(24, crate::diagrams::ishikawa::parse_ishikawa_json_and_editor_facts)),
     typed: Some(ordered(35, render_ishikawa)),
     render_kind: Some("ishikawa"),
@@ -1774,7 +1665,6 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(33, crate::detect::detector_treemap)),
     fast: &[],
     semantic: Some(ordered(36, crate::diagrams::treemap::parse_treemap)),
-    editor: Some(ordered(34, editor_treemap)),
     combined: Some(ordered(25, crate::diagrams::treemap::parse_treemap_json_and_editor_facts)),
     typed: Some(ordered(27, render_treemap)),
     render_kind: Some("treemap"),
@@ -1793,7 +1683,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(34, crate::detect::detector_railroad)),
         fast: &[],
         semantic: Some(ordered(11, crate::diagrams::railroad::parse_railroad)),
-        editor: Some(ordered(29, editor_railroad)),
         combined: Some(ordered(6, crate::diagrams::railroad::parse_railroad_json_and_editor_facts)),
         typed: Some(ordered(12, render_railroad)),
         render_kind: Some("railroad"),
@@ -1810,7 +1699,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
         fast: &[],
         semantic: Some(ordered(12, crate::diagrams::railroad::parse_railroad_ebnf)),
-        editor: Some(ordered(30, editor_railroad_ebnf)),
         combined: Some(ordered(7, crate::diagrams::railroad::parse_railroad_ebnf_json_and_editor_facts)),
         typed: Some(ordered(13, render_railroad_ebnf)),
         render_kind: Some("railroad"),
@@ -1827,7 +1715,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
         fast: &[],
         semantic: Some(ordered(13, crate::diagrams::railroad::parse_railroad_abnf)),
-        editor: Some(ordered(31, editor_railroad_abnf)),
         combined: Some(ordered(8, crate::diagrams::railroad::parse_railroad_abnf_json_and_editor_facts)),
         typed: Some(ordered(14, render_railroad_abnf)),
         render_kind: Some("railroad"),
@@ -1844,7 +1731,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
         fast: &[],
         semantic: Some(ordered(14, crate::diagrams::railroad::parse_railroad_peg)),
-        editor: Some(ordered(32, editor_railroad_peg)),
         combined: Some(ordered(9, crate::diagrams::railroad::parse_railroad_peg_json_and_editor_facts)),
         typed: Some(ordered(15, render_railroad_peg)),
         render_kind: Some("railroad"),
@@ -1863,7 +1749,6 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(38, crate::detect::detector_venn)),
     fast: &[],
     semantic: Some(ordered(37, crate::diagrams::venn::parse_venn)),
-    editor: Some(ordered(36, editor_venn)),
     combined: Some(ordered(35, crate::diagrams::venn::parse_venn_json_and_editor_facts)),
     typed: Some(ordered(37, render_venn)),
     render_kind: Some("venn"),
@@ -1881,7 +1766,6 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(39, crate::detect::detector_wardley)),
     fast: &[],
     semantic: Some(ordered(40, crate::diagrams::wardley::parse_wardley)),
-    editor: Some(ordered(39, editor_wardley)),
     combined: Some(ordered(39, crate::diagrams::wardley::parse_wardley_json_and_editor_facts)),
     typed: Some(ordered(40, render_wardley)),
     render_kind: Some("wardley"),
@@ -1899,7 +1783,6 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     detector: Some(ordered(40, crate::detect::detector_cynefin)),
     fast: &[],
     semantic: Some(ordered(10, crate::diagrams::cynefin::parse_cynefin)),
-    editor: Some(ordered(16, editor_cynefin)),
     combined: Some(ordered(13, crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts)),
     typed: Some(ordered(11, render_cynefin)),
     render_kind: Some("cynefin"),
@@ -2177,13 +2060,23 @@ mod catalog_tests {
     use std::collections::BTreeSet;
 
     #[test]
+    fn public_metadata_ids_are_catalog_owned_instead_of_derived_from_family_names() {
+        assert_eq!(diagram_type_metadata_id("flowchart-v2"), Some("flowchart"));
+        assert_eq!(diagram_type_metadata_id("gitGraph"), Some("gitgraph"));
+        assert_eq!(
+            diagram_type_metadata_id("quadrantChart"),
+            Some("quadrantchart")
+        );
+        assert_eq!(diagram_type_metadata_id("treeView"), Some("treeView"));
+    }
+
+    #[test]
     fn catalog_ids_orders_and_family_policy_are_internally_consistent() {
         let mut ids = BTreeSet::new();
         let mut catalog_orders = BTreeSet::new();
         let mut detector_orders = BTreeSet::new();
         let mut fast_orders = BTreeSet::new();
         let mut semantic_orders = BTreeSet::new();
-        let mut editor_orders = BTreeSet::new();
         let mut combined_orders = BTreeSet::new();
         let mut render_orders = BTreeSet::new();
         let mut metadata_orders = BTreeSet::new();
@@ -2214,14 +2107,8 @@ mod catalog_tests {
                     variant.id
                 );
                 assert!(
-                    variant.editor.is_none() || variant.semantic.is_some(),
-                    "{} editor facts require family semantics",
-                    variant.id
-                );
-                assert!(
-                    variant.combined.is_none()
-                        || (variant.semantic.is_some() && variant.editor.is_some()),
-                    "{} combined parsing requires semantic and editor adapters",
+                    variant.combined.is_none() || variant.semantic.is_some(),
+                    "{} combined parsing requires a semantic adapter",
                     variant.id
                 );
 
@@ -2233,9 +2120,6 @@ mod catalog_tests {
                 }
                 if let Some(fact) = variant.semantic {
                     assert!(semantic_orders.insert(fact.order));
-                }
-                if let Some(fact) = variant.editor {
-                    assert!(editor_orders.insert(fact.order));
                 }
                 if let Some(fact) = variant.combined {
                     assert!(combined_orders.insert(fact.order));

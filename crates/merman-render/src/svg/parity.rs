@@ -85,7 +85,7 @@ use util::{
     escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into,
     fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
     json_stringify_points_into, normalize_css_font_family, scoped_svg_id, scoped_svg_url,
-    theme_color,
+    theme_token,
 };
 
 #[derive(Debug, Clone)]

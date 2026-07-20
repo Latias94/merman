@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 
 import merman
@@ -181,6 +182,29 @@ def main() -> None:
     if "layout" not in layout_json:
         raise RuntimeError("layout JSON smoke failed")
 
+    document_source = "# Example\n\n```mermaid\n" + source + "\n```\n"
+    document_json = json.loads(
+        engine.analyze_document_json(
+            document_source,
+            None,
+            "file:///tmp/example.md",
+        )
+    )
+    if document_json["source"]["kind"] != "markdown" or not document_json["valid"]:
+        raise RuntimeError("document analysis smoke failed")
+    document_facts_json = json.loads(
+        engine.analyze_document_facts_json(
+            document_source,
+            None,
+            "file:///tmp/example.md",
+        )
+    )
+    if (
+        document_facts_json["source"]["kind"] != "markdown"
+        or document_facts_json["diagrams"][0]["source_id"] != "mermaid-fence-1"
+    ):
+        raise RuntimeError("document facts smoke failed")
+
     validation = engine.validate(source, None)
     if not validation.valid or validation.code_name != "MERMAN_OK":
         raise RuntimeError("validation smoke failed")
@@ -290,6 +314,16 @@ def main() -> None:
 
     setter_measurer = Measurer()
     reusable = engine.reusable_engine(None)
+    reusable_document_json = json.loads(
+        reusable.analyze_document_json(document_source, "file:///tmp/example.md")
+    )
+    if reusable_document_json["source"]["kind"] != "markdown":
+        raise RuntimeError("reusable document analysis smoke failed")
+    reusable_document_facts_json = json.loads(
+        reusable.analyze_document_facts_json(document_source, "file:///tmp/example.md")
+    )
+    if reusable_document_facts_json["source"]["kind"] != "markdown":
+        raise RuntimeError("reusable document facts smoke failed")
     reusable.set_text_measurer(setter_measurer)
     if "Hello" not in reusable.render_svg(source):
         raise RuntimeError("set text measurer smoke failed")
@@ -312,6 +346,18 @@ def main() -> None:
     failing.set_text_measurer(Measurer())
     if "Hello" not in failing.render_svg(source):
         raise RuntimeError("text measurer recovery smoke failed")
+
+    try:
+        engine.render_svg(source, "{")
+    except merman.MermanError.Binding as error:
+        if (
+            error.code != 3
+            or error.code_name != "MERMAN_OPTIONS_JSON_ERROR"
+            or "invalid options_json" not in error.message
+        ):
+            raise
+    else:
+        raise RuntimeError("invalid options_json did not raise MermanError.Binding")
 
     print("merman Python UniFFI smoke passed")
 

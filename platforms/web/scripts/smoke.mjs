@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,12 @@ import {
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
+const tokenEquivalenceEvidence = JSON.parse(
+  await readFile(
+    path.join(repoRoot, "editor-language", "token-equivalence-v1.json"),
+    "utf8"
+  )
+);
 const args = process.argv.slice(2);
 const fullSurface = surfaces.find((surface) => surface.entry === "full");
 if (!fullSurface) {
@@ -148,6 +155,10 @@ class FakeMeasureElement {
     this.attributes.delete(name);
   }
 
+  getAttributeNames() {
+    return [...this.attributes.keys()];
+  }
+
   inheritedAttribute(name) {
     return this.attributes.get(name) ?? this.parentElement?.inheritedAttribute?.(name);
   }
@@ -156,6 +167,13 @@ class FakeMeasureElement {
     child.parentElement = this;
     this.children.push(child);
     return child;
+  }
+
+  replaceChildren(...children) {
+    this.children = [];
+    for (const child of children) {
+      this.appendChild(child);
+    }
   }
 
   remove() {
@@ -223,6 +241,8 @@ class FakeMeasureElement {
 
 assert.equal(api.isMermanInitialized(), true);
 assert.equal(api.abiVersion(), textMeasurementAbi.MERMAN_ABI_VERSION);
+assert.equal(api.MERMAN_ABI_VERSION, textMeasurementAbi.MERMAN_ABI_VERSION);
+assert.equal(Object.isFrozen(api.UNAVAILABLE_DIAGRAM_DETECTION), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
@@ -494,7 +514,7 @@ if (capabilities.analysis) {
     });
   }
 
-  const degradedSequenceFacts = api.analysisFacts(
+  const mappedSequenceFacts = api.analysisFacts(
     [
       "---",
       "title: quoted",
@@ -506,12 +526,12 @@ if (capabilities.analysis) {
     ].join("\n"),
     deterministicTime
   );
-  assert.equal(degradedSequenceFacts.valid, true);
+  assert.equal(mappedSequenceFacts.valid, true);
   assert.equal(
-    degradedSequenceFacts.diagrams[0].syntax.fact_source,
-    "parser_complete_degraded_spans"
+    mappedSequenceFacts.diagrams[0].syntax.fact_source,
+    "parser_complete"
   );
-  assert.equal(degradedSequenceFacts.diagrams[0].syntax.source_mapped_spans, false);
+  assert.equal(mappedSequenceFacts.diagrams[0].syntax.source_mapped_spans, true);
 
   const markdownFacts = api.analyzeDocumentFacts(
     "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
@@ -964,8 +984,26 @@ function assertEditorLanguageSurface(enabled) {
       assert.equal(typeof api[apiName], "undefined");
       assert.equal(typeof exportedWasmModule[apiName], "undefined");
     }
+    assert.equal(typeof exportedWasmModule.EditorSession, "undefined");
     return;
   }
+
+  assert.equal(typeof exportedWasmModule.EditorSession, "function");
+  const editorSession = api.createEditorSession(
+    editorSource,
+    1,
+    editorUri,
+    deterministicTime
+  );
+  assert.equal(editorSession.version, 1);
+  assert.equal(editorSession.uri, editorUri);
+  assert.equal(Array.isArray(editorSession.diagnostics().diagnostics), true);
+  editorSession.update("flowchart TD\nA-->B\nB-->C\n", 2);
+  assert.equal(editorSession.version, 2);
+  assert.ok(editorSession.semanticTokens() instanceof Uint32Array);
+  editorSession.dispose();
+  editorSession.dispose();
+  assert.throws(() => editorSession.diagnostics(), /editor session is disposed/i);
 
   const completions = api.editorCompletions(
     "flowchart TD\nA-->B\nC-->\n",
@@ -1066,17 +1104,102 @@ function assertEditorLanguageSurface(enabled) {
     assert.match(error.message, messagePattern);
   }
 
-  const legend = api.editorSemanticTokenLegend();
-  assert.ok(legend.tokenTypes.length > 0);
+  assert.deepEqual(
+    api.editorDiagramDetection(
+      "flowchart TD\nA[unterminated\n",
+      undefined,
+      editorUri
+    ),
+    {
+      status: "available",
+      validity: "recoverable-invalid",
+      diagramType: "flowchart",
+      syntaxId: "flowchart-v2",
+      effectiveLayoutId: "dagre",
+    }
+  );
+
+  const descriptor = api.editorSemanticTokenDescriptor();
+  const descriptorCopy = api.editorSemanticTokenDescriptor();
+  assert.notEqual(descriptorCopy, descriptor);
+  assert.notEqual(descriptorCopy.tokenTypes, descriptor.tokenTypes);
+  assert.notEqual(descriptorCopy.modifiers, descriptor.modifiers);
+  assert.notEqual(descriptorCopy.packed, descriptor.packed);
+  assert.notEqual(descriptorCopy.packed.fieldOrder, descriptor.packed.fieldOrder);
+  assert.notEqual(descriptorCopy.overlayPrecedence, descriptor.overlayPrecedence);
+  descriptorCopy.tokenTypes[0].id = "mutated";
+  descriptorCopy.packed.fieldOrder[0] = "mutated";
+  const descriptorAfterMutation = api.editorSemanticTokenDescriptor();
+  assert.equal(descriptorAfterMutation.tokenTypes[0].id, descriptor.tokenTypes[0].id);
+  assert.equal(
+    descriptorAfterMutation.packed.fieldOrder[0],
+    descriptor.packed.fieldOrder[0]
+  );
+  assert.equal(descriptor.digest, api.SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
+  assert.equal(tokenEquivalenceEvidence.schema_version, descriptor.schemaVersion);
+  assert.equal(
+    tokenEquivalenceEvidence.descriptor_digest,
+    api.SEMANTIC_TOKEN_DESCRIPTOR_DIGEST
+  );
+  assert.equal(tokenEquivalenceEvidence.packed_encoding, descriptor.packed.encoding);
+  assert.equal(
+    tokenEquivalenceEvidence.words_per_token,
+    api.SEMANTIC_TOKEN_RECORD_WIDTH
+  );
+  assert.deepEqual(
+    descriptor.tokenTypeLspNames,
+    api.SEMANTIC_TOKEN_TYPE_LSP_NAMES
+  );
   const semanticTokens = api.editorSemanticTokens(
     "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
     editorUri
   );
   assert.ok(semanticTokens.length > 0);
-  assert.ok(semanticTokens.every((token) => legend.tokenTypes.includes(token.tokenType)));
+  assert.ok(semanticTokens instanceof Uint32Array);
+  assert.equal(semanticTokens.length % api.SEMANTIC_TOKEN_RECORD_WIDTH, 0);
+  for (
+    let offset = 0;
+    offset < semanticTokens.length;
+    offset += api.SEMANTIC_TOKEN_RECORD_WIDTH
+  ) {
+    assert.ok(semanticTokens[offset + 2] > 0);
+    assert.ok(semanticTokens[offset + 3] <= api.SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX);
+    assert.equal(
+      semanticTokens[offset + 4] & ~api.SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
+      0
+    );
+  }
+
+  assert.equal(tokenEquivalenceEvidence.family_cases.length, 35);
+  assert.equal(tokenEquivalenceEvidence.recovery_cases.length, 1);
+  for (const tokenCase of [
+    ...tokenEquivalenceEvidence.family_cases,
+    ...tokenEquivalenceEvidence.recovery_cases,
+  ]) {
+    const uri = `file:///token-equivalence/${tokenCase.id}.mmd`;
+    const actual = api.editorSemanticTokens(tokenCase.source, uri);
+    assert.ok(actual instanceof Uint32Array, `${tokenCase.id} packed transport type`);
+    assert.deepEqual(
+      Array.from(actual),
+      tokenCase.packed_words,
+      `${tokenCase.id} packed semantic tokens`
+    );
+    assert.equal(
+      sha256(JSON.stringify(Array.from(actual))),
+      tokenCase.packed_sha256,
+      `${tokenCase.id} packed digest`
+    );
+    const detection = api.editorDiagramDetection(tokenCase.source, undefined, uri);
+    assert.equal(detection.status, "available", `${tokenCase.id} detection status`);
+    assert.equal(detection.validity, tokenCase.detection_validity);
+    assert.equal(detection.diagramType, tokenCase.family);
+    assert.equal(detection.syntaxId, tokenCase.syntax_id);
+    assert.equal(detection.effectiveLayoutId, tokenCase.effective_layout_id);
+  }
 
   for (const apiName of [
     "editorDiagnostics",
+    "editorDiagramDetection",
     "editorCodeActions",
     "editorCompletions",
     "editorHover",
@@ -1086,11 +1209,15 @@ function assertEditorLanguageSurface(enabled) {
     "editorReferences",
     "editorPrepareRename",
     "editorRename",
-    "editorSemanticTokenLegend",
+    "editorSemanticTokenDescriptor",
     "editorSemanticTokens",
   ]) {
     assert.equal(typeof exportedWasmModule[apiName], "function");
   }
+}
+
+function sha256(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function assertUnsupportedFormat(run) {

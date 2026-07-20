@@ -17,7 +17,7 @@ pub use render_model::{
     StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
-pub use parse::{parse_state, parse_state_editor_facts, parse_state_model_for_render};
+pub(crate) use parse::{parse_state, parse_state_model_for_render};
 
 pub(crate) use parse::parse_state_json_and_editor_facts;
 #[cfg(test)]
@@ -820,9 +820,11 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             let body_start = self.pos;
             let tail = &self.input.as_bytes()[self.pos..];
             let Some(end_rel) = tail.iter().position(|&b| b == b'}') else {
-                return Some(Err(LexError::new(
-                    "Unterminated accDescr block; missing '}'",
-                )));
+                self.pos = self.input.len();
+                self.record_keyword_value(start, self.pos, "accDescr", None);
+                // Mermaid's Jison lexer consumes this exclusive-state tail at EOF without
+                // returning a semantic token. Resume at EOF so the parser sees an empty diagram.
+                return None;
             };
             let body = self.input[body_start..body_start + end_rel].to_string();
             self.pos = body_start + end_rel + 1;
@@ -1338,6 +1340,9 @@ impl Iterator for Lexer<'_, '_> {
 
         if let Some(acc) = self.lex_accessibility() {
             return Some(self.emit_result(acc));
+        }
+        if self.pos >= self.input.len() {
+            return self.next();
         }
 
         if !matches!(self.mode(), Mode::State | Mode::StateId)

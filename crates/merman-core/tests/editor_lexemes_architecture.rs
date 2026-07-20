@@ -1,6 +1,4 @@
-use merman_core::{
-    EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, ParseOptions,
-};
+use merman_core::{EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine};
 
 #[test]
 fn architecture_trace_emits_exact_grammar_lexemes_across_crlf_and_unicode() {
@@ -14,7 +12,7 @@ fn architecture_trace_emits_exact_grammar_lexemes_across_crlf_and_unicode() {
         "align row db hub\r\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("architecture", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("architecture", source)
         .expect("architecture editor parse")
         .expect("architecture editor facts");
 
@@ -56,7 +54,7 @@ fn architecture_recovery_preserves_confirmed_prefix_and_later_statement_lexemes(
         "service after(server)[After]\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("architecture", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("architecture", source)
         .expect("architecture editor recovery")
         .expect("architecture recovery facts");
 

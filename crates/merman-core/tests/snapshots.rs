@@ -64,9 +64,8 @@ fn newly_cataloged_host_options_change_effective_security_policy() {
         let path = fixtures_root().join(relative);
         let source = std::fs::read_to_string(&path).expect("read fixture host-option source");
         let default_metadata = base
-            .parse_metadata_sync(&source, ParseOptions::strict())
-            .unwrap_or_else(|error| panic!("parse {relative} without context: {error}"))
-            .unwrap_or_else(|| panic!("detect {relative} without context"));
+            .parse_metadata_sync(&source)
+            .unwrap_or_else(|error| panic!("parse {relative} without context: {error}"));
         assert_eq!(
             default_metadata.effective_config.get_str("securityLevel"),
             Some("strict"),
@@ -74,9 +73,8 @@ fn newly_cataloged_host_options_change_effective_security_policy() {
         );
 
         let contextual_metadata = engine_for_fixture(&base, &path)
-            .parse_metadata_sync(&source, ParseOptions::strict())
-            .unwrap_or_else(|error| panic!("parse {relative} with render context: {error}"))
-            .unwrap_or_else(|| panic!("detect {relative} with render context"));
+            .parse_metadata_sync(&source)
+            .unwrap_or_else(|error| panic!("parse {relative} with render context: {error}"));
         assert_eq!(
             contextual_metadata
                 .effective_config

@@ -18,6 +18,15 @@ test("checked-in Web descriptor has one valid closed surface graph", () => {
     ["core", "render", "render-only", "ascii", "editor", "full"],
   );
 
+  const bridge = webSurfaceDescriptor.presets.find(
+    ({ name }) => name === "browser-bridge",
+  );
+  assert.deepEqual(bridge?.features, []);
+  assert.deepEqual(
+    Object.values(bridge?.capabilities ?? {}),
+    Array(8).fill(false),
+  );
+
   const editor = webSurfaceDescriptor.presets.find(
     ({ name }) => name === "browser-editor",
   );

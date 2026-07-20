@@ -242,7 +242,7 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
       "success": "#34d399"
     },
     "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
-    "themeVariables": {
+    "theme_variables": {
       "nodeBorder": "#38bdf8"
     },
     "output": {
@@ -256,7 +256,7 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
 ```
 
 `host_theme.appearance` accepts `light` or `dark`. `host_theme.output.pipeline` accepts `parity`,
-`readable`, `resvg-safe`, or `resvg_safe`. `host_theme.output.root_background` accepts `none`,
+`readable`, or `resvg-safe`. `host_theme.output.root_background` accepts `none`,
 `canvas`, or a single CSS declaration value. `host_theme.output.drop_native_duplicate_fallbacks`
 opts into removing fallback groups whose text duplicates native `<text>` after readable or
 `resvg-safe` fallback generation. It is off by default because repeated labels can be intentional in
@@ -264,31 +264,35 @@ unrelated nodes. An empty `{ "host_theme": {} }` is a no-op and does not force M
 
 `host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`,
-`themeVariables`, `site_config`, and `output` fields override the preset. Host theme presets are
+`theme_variables`, `site_config`, and `output` fields override the preset. Host theme presets are
 separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the
 stable preset list through `supported_host_theme_presets` / `supportedHostThemePresets`-style
 metadata helpers.
 
 Merge precedence is Mermaid defaults, then `host_theme` derived config, then explicit
-`host_theme.themeVariables` / `host_theme.site_config`, then top-level `site_config`, then diagram
+`host_theme.theme_variables` / `host_theme.site_config`, then top-level `site_config`, then diagram
 directives. Explicit `svg.*` options override profile output options.
 
 ## Parse Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `parse.suppress_errors` | boolean | `false` | Enables lenient parsing when true. |
+| `parse.suppress_errors` | boolean | `false` | Enables lenient parse, render, and ASCII operations when true. It is not an analysis option. |
 
 ## Analysis Consumers
 
 Diagnostics-first analysis, validation projection, CLI linting, Markdown/MDX scanning, and future
-LSP adapters use the same `options_json` envelope. Analysis consumers should honor options that
-affect parsing, deterministic time, Mermaid site config, and resource limits:
+LSP adapters use the same `options_json` envelope. Analysis consumers honor options that affect
+deterministic time, Mermaid site config, and resource limits while retaining family parse failures
+in the closed analysis snapshot:
 
 - `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
 - `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
-- `parse.*` for parser strictness;
 - `resources.*` for source and model budgets.
+
+`parse.suppress_errors` is deliberately excluded from analysis. It remains a top-level shared
+binding option for parse, render, and ASCII operations, and is rejected inside `analysis` or
+`merman` analysis wrappers.
 
 Render-only options such as `layout.*`, `svg.*`, and host text-measurement settings should not be
 required for the default analyzer. Layout-backed or render-backed diagnostics may opt into those
@@ -360,8 +364,9 @@ pixel/PDF limits; disabling raster limits does not disable source, layout, label
 | `resources.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
 | `resources.max_label_bytes` | positive integer | profile value | Aggregate Flowchart ids, labels, subgraph titles, and tooltips. |
 
-`interactive` is the default for binding surfaces. `typst-package` is tighter and is injected by the
-Typst plugin when the caller does not provide `resources`. `trusted-native` is intended for CLI or
+`interactive` is the default for binding surfaces. `typst-package` is tighter and is enforced by
+the Typst plugin for every call; caller-provided `resources` values are replaced at that transport
+boundary. `trusted-native` is intended for CLI or
 controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
 not a browser or server default.
 
@@ -370,9 +375,9 @@ not a browser or server default.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
-| `svg.pipeline` | string | `parity` | `parity`, `readable`, `resvg-safe`, or `resvg_safe`. |
+| `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
-| `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
+| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 

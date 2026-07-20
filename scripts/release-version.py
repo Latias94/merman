@@ -10,33 +10,21 @@ import sys
 import tomllib
 from pathlib import Path
 
+try:
+    from scripts.release_version import parse_release_version
+except ModuleNotFoundError:
+    from release_version import parse_release_version
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def semver_to_pep440(version: str) -> str:
-    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-([0-9A-Za-z.-]+))?", version)
-    if not match:
-        raise ValueError(f"unsupported SemVer release version: {version!r}")
-
-    base, prerelease = match.groups()
-    if prerelease is None:
-        return base
-
-    pre_match = re.fullmatch(r"(alpha|beta|rc)\.(\d+)", prerelease)
-    if not pre_match:
-        raise ValueError(f"unsupported prerelease for PyPI version: {version!r}")
-
-    label, number = pre_match.groups()
-    pep440_label = {"alpha": "a", "beta": "b", "rc": "rc"}[label]
-    return f"{base}{pep440_label}{number}"
+    return parse_release_version(version).to_pep440()
 
 
 def semver_to_vscode_manifest_version(version: str) -> str:
-    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?", version)
-    if not match:
-        raise ValueError(f"unsupported SemVer release version: {version!r}")
-    return match.group(1)
+    return parse_release_version(version).to_vscode_manifest()
 
 
 def cargo_workspace_version() -> str:
@@ -75,13 +63,14 @@ def android_version() -> str:
 
 
 def check_versions(version: str) -> int:
+    release = parse_release_version(version)
     expected = {
-        "Cargo workspace": version,
-        "Flutter pubspec": version,
-        "Web package": version,
-        "VS Code extension": semver_to_vscode_manifest_version(version),
-        "Android package": version,
-        "Python package": semver_to_pep440(version),
+        "Cargo workspace": release.canonical,
+        "Flutter pubspec": release.canonical,
+        "Web package": release.canonical,
+        "VS Code extension": release.to_vscode_manifest(),
+        "Android package": release.canonical,
+        "Python package": release.to_pep440(),
     }
     actual = {
         "Cargo workspace": cargo_workspace_version(),
@@ -113,14 +102,18 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     args = parser.parse_args()
 
-    if args.command == "pep440":
-        print(semver_to_pep440(args.version))
-        return 0
-    if args.command == "vscode":
-        print(semver_to_vscode_manifest_version(args.version))
-        return 0
-    if args.command == "check":
-        return check_versions(args.version)
+    try:
+        if args.command == "pep440":
+            print(semver_to_pep440(args.version))
+            return 0
+        if args.command == "vscode":
+            print(semver_to_vscode_manifest_version(args.version))
+            return 0
+        if args.command == "check":
+            return check_versions(args.version)
+    except (OSError, KeyError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     raise AssertionError(args.command)
 
 

@@ -3,6 +3,7 @@ import type {
   AsciiDiagramType,
   DiagramFamilyCapability,
   DiagramType,
+  EditorSemanticTokenDescriptor,
   HostThemePresetName,
   LintRuleCatalogEntry,
   MermanWasmLoader,
@@ -19,6 +20,7 @@ export interface MermanRuntimeState {
   asciiCapabilitiesCache: AsciiCapability[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
   diagramMetadataBySyntaxIdCache: ReadonlyMap<string, DiagramType | null> | null;
+  editorSemanticTokenDescriptorCache: EditorSemanticTokenDescriptor | null;
   lintRuleCatalogCache: LintRuleCatalogEntry[] | null;
   supportedHostThemePresetsCache: HostThemePresetName[] | null;
   supportedThemesCache: ThemeName[] | null;
@@ -38,6 +40,7 @@ export function createMermanRuntimeState(
     asciiCapabilitiesCache: null,
     diagramFamilyCapabilitiesCache: null,
     diagramMetadataBySyntaxIdCache: null,
+    editorSemanticTokenDescriptorCache: null,
     lintRuleCatalogCache: null,
     supportedHostThemePresetsCache: null,
     supportedThemesCache: null,

@@ -12,10 +12,10 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartModel, XtaskError> {
-    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         return Err(XtaskError::DebugSvgFailed(format!(
             "expected Flowchart render model, got {}",
-            parsed.model.kind()
+            parsed.model().kind()
         )));
     };
     Ok(model)
@@ -32,19 +32,19 @@ fn layout_flowchart_render_model(
         .map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))?;
 
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.meta.diagram_type == "flowchart-elk"
-        || parsed.meta.effective_config.get_str("layout") == Some("elk");
+    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
+        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
     let layout = if uses_elk {
         merman_render::flowchart::elk::layout_flowchart_elk_typed(
             model,
-            &parsed.meta.effective_config,
+            &parsed.metadata().effective_config,
             &measurer,
             session.math_renderer(),
         )
     } else {
         merman_render::flowchart::layout_flowchart_typed(
             model,
-            &parsed.meta.effective_config,
+            &parsed.metadata().effective_config,
             &measurer,
             session.math_renderer(),
         )
@@ -1618,10 +1618,10 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     let layout = layout_flowchart_render_model(&parsed, &session)?;
 
     println!("fixture: {}", fixture_path.display());
-    if let Some(title) = parsed.meta.title.as_deref() {
+    if let Some(title) = parsed.metadata().title.as_deref() {
         println!("title: {}", title);
     }
-    println!("diagram_type: {}", parsed.meta.diagram_type);
+    println!("diagram_type: {}", parsed.metadata().diagram_type);
     println!("text_measurer: {}", text_measurer);
     println!();
 
@@ -1840,7 +1840,7 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
     let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
         model,
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &measurer,
         None,
     )
@@ -1920,7 +1920,7 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     };
 
     println!("fixture: {}", fixture_path.display());
-    println!("diagram_type: {}", parsed.meta.diagram_type);
+    println!("diagram_type: {}", parsed.metadata().diagram_type);
     println!(
         "phase: {:?}",
         phase.unwrap_or(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)

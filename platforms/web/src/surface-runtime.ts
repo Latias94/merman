@@ -76,11 +76,22 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
     ) => withState(() => root.analyzeDocumentFacts(source, options, uri)),
     validate: (source: string, options?: root.SvgBindingOptions | string) =>
       withState(() => root.validate(source, options)),
+    createEditorSession: (
+      source: string,
+      version: number,
+      uri?: string,
+      options?: root.SvgBindingOptions | string
+    ) => withState(() => root.createEditorSession(source, version, uri, options)),
     editorDiagnostics: (
       source: string,
       options?: root.SvgBindingOptions | string,
       uri?: string
     ) => withState(() => root.editorDiagnostics(source, options, uri)),
+    editorDiagramDetection: (
+      source: string,
+      options?: root.SvgBindingOptions | string,
+      uri?: string
+    ) => withState(() => root.editorDiagramDetection(source, options, uri)),
     editorCodeActions: (
       source: string,
       options?: root.SvgBindingOptions | string,
@@ -138,7 +149,7 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
       uri?: string,
       options?: root.SvgBindingOptions | string
     ) => withState(() => root.editorRename(source, position, newName, uri, options)),
-    editorSemanticTokenLegend: () => withState(root.editorSemanticTokenLegend),
+    editorSemanticTokenDescriptor: () => withState(root.editorSemanticTokenDescriptor),
     editorSemanticTokens: (
       source: string,
       uri?: string,

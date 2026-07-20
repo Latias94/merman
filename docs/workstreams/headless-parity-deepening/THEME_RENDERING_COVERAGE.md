@@ -61,7 +61,7 @@ Status terms:
 | Treemap | `treemap/styles.ts` | Covered | `treemap.*` options and title/text theme fallbacks drive section, leaf, label, value, and title CSS. |
 | XYChart | none | Inline, render-path covered | Mermaid 11.15 has no dedicated provider. Visible theme behavior comes from `xyChart` theme config and inline renderer attributes; the custom-theme render-path smoke now covers background, title, axes, ticks, labels, and plot palette. |
 | Error | none | Shared/error renderer | Not maintained as a full upstream SVG baseline family. No diagram-specific style provider exists in 11.15. |
-| ZenUML | external plugin compatibility | Boundary | Local support is a headless Sequence compatibility subset, not Mermaid browser-plugin CSS parity. |
+| ZenUML | external plugin plus family-owned renderer | Covered in separate lanes | Local theme/topology comes from the typed ZenUML renderer; the exact admitted browser plugin graph is exercised separately and publishes only strictly validated native SVG. |
 
 Families that were outside the original Mermaid 11.15 HPD-080 matrix were admitted later through
 the Mermaid 11.16 source-backed family workflow. The generated capability catalog and per-family

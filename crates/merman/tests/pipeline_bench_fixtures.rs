@@ -54,9 +54,8 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             .unwrap_or_else(|err| panic!("{name}: read {}: {err}", path.display()));
 
         let metadata = engine
-            .parse_metadata_sync(&input, parse_options)
-            .unwrap_or_else(|err| panic!("{name}: metadata parse failed: {err}"))
-            .unwrap_or_else(|| panic!("{name}: metadata parser returned no diagram"));
+            .parse_metadata_sync(&input)
+            .unwrap_or_else(|err| panic!("{name}: metadata parse failed: {err}"));
 
         engine
             .parse_diagram_with_type_sync(&metadata.diagram_type, &input, parse_options)
@@ -84,7 +83,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
         assert!(
             !svg.is_empty(),
             "{name}: render returned an empty SVG for {:?}",
-            parsed.meta.diagram_type
+            parsed.metadata().diagram_type
         );
         assert_no_empty_style_elements(&name, &svg);
     }

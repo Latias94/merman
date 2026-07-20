@@ -22,13 +22,15 @@ const SLSA_ATTESTATION_PREDICATE: &str = "https://slsa.dev/provenance/v1";
 const ATTESTATION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const MAX_ATTESTATION_ARTIFACT_BYTES: u64 = 64 * 1024;
 const MAX_ATTESTATION_PAYLOAD_BYTES: usize = 32 * 1024;
-const ZENUML_ADMISSION_GATES: [&str; 7] = [
+const ZENUML_ADMISSION_GATES: [&str; 9] = [
     "plugin-contract",
     "corpus",
     "semantic",
     "render",
     "strict-inline-artifact",
     "execution-isolation",
+    "security",
+    "dependency-isolation",
     "resource",
 ];
 
@@ -1264,10 +1266,20 @@ fn verify_workspace_graph(
 
 fn verify_admission(
     root: &Path,
+    mermaid_release: &PackageReference,
+    plugin: &PackageReference,
     behavior: &BehaviorSource,
     failures: &mut Vec<String>,
 ) -> Result<(), XtaskError> {
     let evidence = read_json(&root.join(&behavior.admission_evidence))?;
+    let expected_plugin = format!("{}@{}", plugin.package, plugin.version);
+    if evidence.get("mermaidRelease").and_then(JsonValue::as_str)
+        != Some(mermaid_release.version.as_str())
+        || evidence.get("plugin").and_then(JsonValue::as_str) != Some(expected_plugin.as_str())
+    {
+        failures
+            .push("ZenUML admission host graph does not match the reference bundle".to_string());
+    }
     if evidence.get("decision").and_then(JsonValue::as_str) != Some(behavior.decision.as_str()) {
         failures.push("ZenUML admission decision does not match the reference bundle".to_string());
     }
@@ -1291,17 +1303,363 @@ fn verify_admission(
     }
     validate_admission_matrix(&evidence, &behavior.decision, failures);
     validate_admission_deltas(&evidence, failures);
-    if evidence
-        .get("excludedLatestMajor")
-        .and_then(|value| value.get("version"))
-        .and_then(JsonValue::as_str)
-        != Some(behavior.latest_stable.version.as_str())
-    {
-        failures
-            .push("ZenUML latest stable major is not recorded as a separate admission".to_string());
-    }
+    verify_deferred_major_admission(root, mermaid_release, plugin, behavior, &evidence, failures)?;
     verify_candidate_evidence(root, behavior, &evidence, failures)?;
     Ok(())
+}
+
+fn verify_deferred_major_admission(
+    root: &Path,
+    mermaid_release: &PackageReference,
+    plugin: &PackageReference,
+    behavior: &BehaviorSource,
+    admission: &JsonValue,
+    failures: &mut Vec<String>,
+) -> Result<(), XtaskError> {
+    let excluded = admission.get("excludedLatestMajor");
+    let artifact_path = excluded
+        .and_then(|value| value.get("artifact"))
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let expected_sha256 = excluded
+        .and_then(|value| value.get("artifactSha256"))
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    if !is_owned_relative_path(artifact_path) || !crate::util::is_canonical_sha256(expected_sha256)
+    {
+        failures.push(
+            "ZenUML latest stable major must name a digest-bound separate admission artifact"
+                .to_string(),
+        );
+        return Ok(());
+    }
+
+    let artifact_file = root.join(artifact_path);
+    let artifact_text =
+        fs::read_to_string(&artifact_file).map_err(|source| XtaskError::ReadFile {
+            path: artifact_file.display().to_string(),
+            source,
+        })?;
+    if crate::util::sha256_hex(artifact_text.as_bytes()) != expected_sha256 {
+        failures.push("ZenUML deferred-major admission artifact digest drift".to_string());
+    }
+    let artifact: JsonValue = serde_json::from_str(&artifact_text)?;
+    validate_deferred_major_admission(
+        mermaid_release,
+        plugin,
+        behavior,
+        admission,
+        &artifact,
+        failures,
+    );
+    Ok(())
+}
+
+fn validate_deferred_major_admission(
+    mermaid_release: &PackageReference,
+    plugin: &PackageReference,
+    behavior: &BehaviorSource,
+    admission: &JsonValue,
+    artifact: &JsonValue,
+    failures: &mut Vec<String>,
+) {
+    let excluded = admission.get("excludedLatestMajor");
+    let latest = &behavior.latest_stable;
+    if excluded
+        .and_then(|value| value.get("version"))
+        .and_then(JsonValue::as_str)
+        != Some(latest.version.as_str())
+        || excluded
+            .and_then(|value| value.get("commit"))
+            .and_then(JsonValue::as_str)
+            != Some(latest.source.commit.as_str())
+        || excluded
+            .and_then(|value| value.get("reason"))
+            .and_then(JsonValue::as_str)
+            .is_none_or(|value| value.trim().is_empty())
+        || excluded
+            .and_then(|value| value.get("nextAdmission"))
+            .and_then(JsonValue::as_str)
+            != Some("separate-major-zenuml-v4")
+    {
+        failures.push(
+            "ZenUML latest stable major is not bound to the separate admission decision"
+                .to_string(),
+        );
+    }
+
+    if artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
+        || artifact.get("artifactKind").and_then(JsonValue::as_str)
+            != Some("zenuml-core-major-admission")
+        || artifact.get("status").and_then(JsonValue::as_str) != Some("deferred")
+        || artifact.get("decision").and_then(JsonValue::as_str)
+            != Some("deferred-incompatible-major")
+        || artifact.get("generatedFrom").and_then(JsonValue::as_str) != Some(BUNDLE_RELATIVE_PATH)
+    {
+        failures.push(
+            "ZenUML deferred-major artifact has an invalid schema, status, or decision".to_string(),
+        );
+    }
+
+    let package = artifact.get("latestStable");
+    for (field, expected) in [
+        ("package", latest.package.as_str()),
+        ("version", latest.version.as_str()),
+        ("integrity", latest.integrity.as_str()),
+        ("tarballUrl", latest.tarball_url.as_str()),
+        ("attestationUrl", latest.attestation_url.as_str()),
+    ] {
+        if package
+            .and_then(|value| value.get(field))
+            .and_then(JsonValue::as_str)
+            != Some(expected)
+        {
+            failures.push(format!(
+                "ZenUML deferred-major artifact latestStable.{field} provenance drift"
+            ));
+        }
+    }
+    if package
+        .and_then(|value| value.get("publishGitHead"))
+        .and_then(JsonValue::as_str)
+        != latest.publish_git_head.as_deref()
+    {
+        failures.push(
+            "ZenUML deferred-major artifact latestStable.publishGitHead provenance drift"
+                .to_string(),
+        );
+    }
+    let source = package.and_then(|value| value.get("source"));
+    for (field, expected) in [
+        ("repository", latest.source.repository.as_str()),
+        ("reference", latest.source.reference.as_str()),
+        ("commit", latest.source.commit.as_str()),
+    ] {
+        if source
+            .and_then(|value| value.get(field))
+            .and_then(JsonValue::as_str)
+            != Some(expected)
+        {
+            failures.push(format!(
+                "ZenUML deferred-major artifact latestStable.source.{field} provenance drift"
+            ));
+        }
+    }
+    let checkout_matches = match latest.source.checkout_path.as_deref() {
+        Some(expected) => {
+            source
+                .and_then(|value| value.get("checkoutPath"))
+                .and_then(JsonValue::as_str)
+                == Some(expected)
+        }
+        None => source.and_then(|value| value.get("checkoutPath")) == Some(&JsonValue::Null),
+    };
+    let package_path_matches = match latest.source.package_path.as_deref() {
+        Some(expected) => {
+            source
+                .and_then(|value| value.get("packagePath"))
+                .and_then(JsonValue::as_str)
+                == Some(expected)
+        }
+        None => source.and_then(|value| value.get("packagePath")) == Some(&JsonValue::Null),
+    };
+    let surfaces = package
+        .and_then(|value| value.get("requiredSurfaces"))
+        .and_then(JsonValue::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .collect::<Vec<_>>()
+        });
+    let expected_surfaces = latest
+        .required_surfaces
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if !checkout_matches
+        || !package_path_matches
+        || surfaces.as_deref() != Some(expected_surfaces.as_slice())
+    {
+        failures.push(
+            "ZenUML deferred-major artifact source materialization/surface contract drift"
+                .to_string(),
+        );
+    }
+
+    let selected = selected_behavior_source(behavior);
+    let host = artifact.get("hostGraph");
+    let expected_plugin = format!("{}@{}", plugin.package, plugin.version);
+    if host
+        .and_then(|value| value.get("mermaidRelease"))
+        .and_then(JsonValue::as_str)
+        != Some(mermaid_release.version.as_str())
+        || host
+            .and_then(|value| value.get("plugin"))
+            .and_then(JsonValue::as_str)
+            != Some(expected_plugin.as_str())
+        || host
+            .and_then(|value| value.get("pluginDeclaredRange"))
+            .and_then(JsonValue::as_str)
+            != Some(behavior.declared_range.as_str())
+        || host
+            .and_then(|value| value.get("mermaidWorkspaceRange"))
+            .and_then(JsonValue::as_str)
+            != Some(behavior.workspace_range.as_str())
+        || host
+            .and_then(|value| value.get("selectedVersion"))
+            .and_then(JsonValue::as_str)
+            != Some(behavior.selected_version.as_str())
+        || host
+            .and_then(|value| value.get("selectedCommit"))
+            .and_then(JsonValue::as_str)
+            != selected.map(|value| value.source.commit.as_str())
+        || host
+            .and_then(|value| value.get("latestStableSatisfiesPluginRange"))
+            .and_then(JsonValue::as_bool)
+            != Some(false)
+        || host
+            .and_then(|value| value.get("latestStableSatisfiesWorkspaceRange"))
+            .and_then(JsonValue::as_bool)
+            != Some(false)
+    {
+        failures.push(
+            "ZenUML deferred-major host graph does not derive from the selected reference graph"
+                .to_string(),
+        );
+    }
+
+    let selected_major = selected
+        .and_then(|value| parse_numeric_semver(&value.version))
+        .map(|version| version.0);
+    let latest_major = parse_numeric_semver(&latest.version).map(|version| version.0);
+    let plugin_range_major = caret_range_major(&behavior.declared_range);
+    let workspace_range_major = caret_range_major(&behavior.workspace_range);
+    if selected_major.is_none()
+        || latest_major.is_none()
+        || latest_major <= selected_major
+        || plugin_range_major != selected_major
+        || workspace_range_major != selected_major
+    {
+        failures.push(
+            "ZenUML deferred-major decision must be backed by an incompatible numeric major"
+                .to_string(),
+        );
+    }
+
+    let impact = artifact.get("selectionImpact");
+    for field in [
+        "selectedGraphChanged",
+        "parserPorted",
+        "semanticPorted",
+        "editorLspPorted",
+        "rendererPorted",
+        "playgroundRuntimeChanged",
+    ] {
+        if impact
+            .and_then(|value| value.get(field))
+            .and_then(JsonValue::as_bool)
+            != Some(false)
+        {
+            failures.push(format!(
+                "ZenUML deferred-major artifact must not claim completed {field} work"
+            ));
+        }
+    }
+    if impact
+        .and_then(|value| value.get("cargoFeatureDecision"))
+        .and_then(JsonValue::as_str)
+        != Some("not-evaluated-until-admission")
+        || artifact
+            .get("reason")
+            .and_then(JsonValue::as_str)
+            .is_none_or(|value| {
+                value.trim().is_empty()
+                    || !value.contains(&behavior.declared_range)
+                    || !value.contains(&behavior.workspace_range)
+                    || !value.contains(&latest.version)
+            })
+    {
+        failures.push(
+            "ZenUML deferred-major artifact must retain a no-feature/no-port rationale".to_string(),
+        );
+    }
+
+    validate_deferred_major_delta_inventory(artifact, failures);
+}
+
+fn caret_range_major(value: &str) -> Option<u64> {
+    parse_numeric_semver(value.strip_prefix('^')?).map(|version| version.0)
+}
+
+fn validate_deferred_major_delta_inventory(artifact: &JsonValue, failures: &mut Vec<String>) {
+    let expected_areas = BTreeSet::from([
+        "grammar-and-recovery",
+        "semantic-and-model",
+        "editor-and-lsp",
+        "render-and-geometry",
+        "browser-runtime-and-security",
+        "feature-and-release-surface",
+    ]);
+    let Some(deltas) = artifact
+        .get("behaviorDeltaInventory")
+        .and_then(JsonValue::as_array)
+    else {
+        failures.push("ZenUML deferred-major artifact has no behavior delta inventory".to_string());
+        return;
+    };
+    let mut actual_areas = BTreeSet::new();
+    for delta in deltas {
+        let area = delta
+            .get("area")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default();
+        if !actual_areas.insert(area) {
+            failures.push(format!(
+                "ZenUML deferred-major behavior delta area {area:?} is empty or duplicated"
+            ));
+        }
+        for field in ["source", "classification", "owner", "summary"] {
+            if delta
+                .get(field)
+                .and_then(JsonValue::as_str)
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                failures.push(format!(
+                    "ZenUML deferred-major behavior delta {area:?} is missing {field}"
+                ));
+            }
+        }
+        if delta
+            .get("owner")
+            .and_then(JsonValue::as_str)
+            .is_none_or(|owner| !owner.starts_with("future-major-admission/"))
+        {
+            failures.push(format!(
+                "ZenUML deferred-major behavior delta {area:?} has no future admission owner"
+            ));
+        }
+        let required = delta.get("evidenceRequired").and_then(JsonValue::as_array);
+        let evidence = required
+            .into_iter()
+            .flatten()
+            .filter_map(JsonValue::as_str)
+            .collect::<Vec<_>>();
+        let unique = evidence.iter().copied().collect::<BTreeSet<_>>();
+        if evidence.len() < 2
+            || evidence.len() != unique.len()
+            || evidence.iter().any(|value| value.trim().is_empty())
+        {
+            failures.push(format!(
+                "ZenUML deferred-major behavior delta {area:?} has incomplete evidence requirements"
+            ));
+        }
+    }
+    if actual_areas != expected_areas {
+        failures.push(format!(
+            "ZenUML deferred-major behavior areas must be exactly {expected_areas:?}, found {actual_areas:?}"
+        ));
+    }
 }
 
 fn validate_admission_deltas(admission: &JsonValue, failures: &mut Vec<String>) {
@@ -1425,8 +1783,8 @@ fn verify_candidate_evidence(
             );
         }
     }
-    if evidence.get("schemaVersion").and_then(JsonValue::as_u64) != Some(4) {
-        failures.push("ZenUML candidate evidence schemaVersion must be 4".to_string());
+    if evidence.get("schemaVersion").and_then(JsonValue::as_u64) != Some(5) {
+        failures.push("ZenUML candidate evidence schemaVersion must be 5".to_string());
     }
     if evidence
         .get("command")
@@ -1512,6 +1870,7 @@ fn verify_candidate_evidence(
     }
     verify_candidate_topology_and_deltas(&evidence, failures);
     verify_candidate_strict_inline_artifact(root, &evidence, fixture_count, failures)?;
+    verify_candidate_browser_admission(root, admission, &evidence, failures)?;
     for pointer in [
         "/pluginContract/candidateSatisfiesDeclaredRange",
         "/pluginContract/candidateSatisfiesWorkspaceRange",
@@ -2104,7 +2463,7 @@ fn verify_candidate_strict_inline_artifact(
         || strict_names.len() != fixtures.len()
         || strict_names != corpus_names
         || svg_bytes.len() != fixtures.len()
-        || svg_bytes.iter().any(|bytes| *bytes == 0)
+        || svg_bytes.contains(&0)
         || recorded_total != Some(total_svg_bytes)
         || recorded_max != svg_bytes.iter().copied().max()
         || fixtures.iter().any(|fixture| {
@@ -2163,6 +2522,297 @@ fn verify_candidate_strict_inline_artifact(
         }
     }
     Ok(())
+}
+
+fn verify_candidate_browser_admission(
+    root: &Path,
+    admission: &JsonValue,
+    candidate: &JsonValue,
+    failures: &mut Vec<String>,
+) -> Result<(), XtaskError> {
+    let fields = [
+        ("execution-isolation", "executionIsolation"),
+        ("security", "security"),
+    ];
+    let artifact_path = candidate
+        .pointer("/executionIsolation/artifact")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let contract_path = candidate
+        .pointer("/executionIsolation/probeContract")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let artifact_sha256 = candidate
+        .pointer("/executionIsolation/artifactSha256")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    if !is_owned_relative_path(artifact_path)
+        || !is_owned_relative_path(contract_path)
+        || !crate::util::is_canonical_sha256(artifact_sha256)
+        || fields.iter().any(|(_, field)| {
+            candidate
+                .pointer(&format!("/{field}/artifact"))
+                .and_then(JsonValue::as_str)
+                != Some(artifact_path)
+                || candidate
+                    .pointer(&format!("/{field}/probeContract"))
+                    .and_then(JsonValue::as_str)
+                    != Some(contract_path)
+                || candidate
+                    .pointer(&format!("/{field}/artifactSha256"))
+                    .and_then(JsonValue::as_str)
+                    != Some(artifact_sha256)
+        })
+    {
+        failures.push(
+            "ZenUML browser admission summaries must share one owned artifact and probe contract"
+                .to_string(),
+        );
+        return Ok(());
+    }
+
+    let artifact_file = root.join(artifact_path);
+    let artifact_text =
+        fs::read_to_string(&artifact_file).map_err(|source| XtaskError::ReadFile {
+            path: artifact_file.display().to_string(),
+            source,
+        })?;
+    let artifact: JsonValue = serde_json::from_str(&artifact_text)?;
+    if crate::util::sha256_hex(artifact_text.as_bytes()) != artifact_sha256
+        || artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
+        || artifact.get("generatedBy").and_then(JsonValue::as_str)
+            != Some("playground/scripts/zenuml-browser-admission.mjs")
+        || artifact.get("command").and_then(JsonValue::as_str)
+            != Some("npm run test:zenuml-browser-admission")
+    {
+        failures.push(
+            "ZenUML browser admission artifact is non-canonical, stale, or has an invalid contract"
+                .to_string(),
+        );
+    }
+
+    let contract_file = root.join(contract_path);
+    let contract_text =
+        fs::read_to_string(&contract_file).map_err(|source| XtaskError::ReadFile {
+            path: contract_file.display().to_string(),
+            source,
+        })?;
+    let contract: JsonValue = serde_json::from_str(&contract_text)?;
+    let contract_sha256 = crate::util::sha256_hex(contract_text.as_bytes());
+    if contract.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
+        || artifact
+            .pointer("/probeContract/path")
+            .and_then(JsonValue::as_str)
+            != Some(contract_path)
+        || artifact
+            .pointer("/probeContract/sha256")
+            .and_then(JsonValue::as_str)
+            != Some(contract_sha256.as_str())
+    {
+        failures.push(
+            "ZenUML browser admission probe contract is non-canonical, stale, or unbound"
+                .to_string(),
+        );
+    }
+
+    verify_browser_admission_sources(root, &artifact, failures)?;
+    let projects = contract.get("projects").and_then(JsonValue::as_array);
+    if projects.is_none_or(Vec::is_empty) || artifact.get("projects") != contract.get("projects") {
+        failures.push(
+            "ZenUML browser admission projects must derive from the non-empty probe contract"
+                .to_string(),
+        );
+    }
+    for (gate, field) in fields {
+        let required = contract
+            .pointer(&format!("/categories/{gate}"))
+            .and_then(JsonValue::as_array);
+        let observed = artifact.get(field);
+        verify_browser_admission_category(gate, projects, required, observed, failures);
+        verify_browser_admission_summary(admission, candidate, gate, field, observed, failures);
+    }
+    Ok(())
+}
+
+fn verify_browser_admission_sources(
+    root: &Path,
+    artifact: &JsonValue,
+    failures: &mut Vec<String>,
+) -> Result<(), XtaskError> {
+    let sources = artifact.get("sourceFiles").and_then(JsonValue::as_array);
+    let required = BTreeSet::from([
+        "playground/scripts/zenuml-admission-reporter.mjs",
+        "playground/scripts/zenuml-browser-admission.mjs",
+        "playground/src/benchmark/realm/controller.ts",
+        "playground/src/runtime/realm/browser-realm-channel.ts",
+        "playground/src/runtime/realm/opaque-realm-document.ts",
+        "playground/tests/benchmark.realm.spec.ts",
+    ]);
+    let mut paths = Vec::new();
+    for source in sources.into_iter().flatten() {
+        let path = source
+            .get("path")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default();
+        let expected = source
+            .get("sha256")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default();
+        paths.push(path);
+        if !is_owned_relative_path(path)
+            || !crate::util::is_canonical_sha256(expected)
+            || file_sha256(&root.join(path))? != expected
+        {
+            failures.push(format!(
+                "ZenUML browser admission source digest drift at {path}"
+            ));
+        }
+    }
+    let actual = paths.iter().copied().collect::<BTreeSet<_>>();
+    let mut sorted = paths.clone();
+    sorted.sort_unstable();
+    if paths.is_empty()
+        || paths != sorted
+        || actual.len() != paths.len()
+        || !required.is_subset(&actual)
+    {
+        failures.push(
+            "ZenUML browser admission must bind a sorted unique set of security-critical sources"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn verify_browser_admission_category(
+    gate: &str,
+    projects: Option<&Vec<JsonValue>>,
+    required: Option<&Vec<JsonValue>>,
+    observed: Option<&JsonValue>,
+    failures: &mut Vec<String>,
+) {
+    let project_count = projects.and_then(|values| u64::try_from(values.len()).ok());
+    let probe_count = required.and_then(|values| u64::try_from(values.len()).ok());
+    let observations = observed
+        .and_then(|value| value.get("probes"))
+        .and_then(JsonValue::as_array);
+    let expected_observation_count = project_count.zip(probe_count).map(|(a, b)| a * b);
+    let mut actual_observation_count = 0u64;
+    let valid_probes = required
+        .zip(observations)
+        .is_some_and(|(required, observations)| {
+            required.len() == observations.len()
+                && required
+                    .iter()
+                    .zip(observations)
+                    .all(|(required, observed)| {
+                        if observed.get("id") != required.get("id")
+                            || observed.get("description") != required.get("description")
+                        {
+                            return false;
+                        }
+                        let probe_observations =
+                            observed.get("observations").and_then(JsonValue::as_array);
+                        actual_observation_count += probe_observations
+                            .and_then(|values| u64::try_from(values.len()).ok())
+                            .unwrap_or_default();
+                        probe_observations.zip(projects).is_some_and(
+                            |(probe_observations, projects)| {
+                                probe_observations.len() == projects.len()
+                                    && probe_observations.iter().zip(projects).all(
+                                        |(observation, project)| {
+                                            observation.get("project") == Some(project)
+                                                && observation
+                                                    .get("passed")
+                                                    .and_then(JsonValue::as_bool)
+                                                    == Some(true)
+                                                && observation.get("observed")
+                                                    == observation.get("expected")
+                                                && observation
+                                                    .get("testTitle")
+                                                    .and_then(JsonValue::as_str)
+                                                    .is_some_and(|title| {
+                                                        !title.trim().is_empty()
+                                                            && title.trim() == title
+                                                    })
+                                        },
+                                    )
+                            },
+                        )
+                    })
+        });
+    if project_count.is_none_or(|count| count == 0)
+        || probe_count.is_none_or(|count| count == 0)
+        || !valid_probes
+        || Some(actual_observation_count) != expected_observation_count
+        || observed
+            .and_then(|value| value.get("projectCount"))
+            .and_then(JsonValue::as_u64)
+            != project_count
+        || observed
+            .and_then(|value| value.get("probeCount"))
+            .and_then(JsonValue::as_u64)
+            != probe_count
+        || observed
+            .and_then(|value| value.get("observationCount"))
+            .and_then(JsonValue::as_u64)
+            != expected_observation_count
+        || observed
+            .and_then(|value| value.get("passedObservationCount"))
+            .and_then(JsonValue::as_u64)
+            != expected_observation_count
+    {
+        failures.push(format!(
+            "ZenUML {gate} evidence must contain every passing probe observation for every project"
+        ));
+    }
+}
+
+fn verify_browser_admission_summary(
+    admission: &JsonValue,
+    candidate: &JsonValue,
+    gate: &str,
+    field: &str,
+    artifact_category: Option<&JsonValue>,
+    failures: &mut Vec<String>,
+) {
+    let summary = candidate.get(field);
+    let matrix_evidence = admission
+        .get("matrix")
+        .and_then(JsonValue::as_array)
+        .and_then(|matrix| {
+            matrix
+                .iter()
+                .find(|entry| entry.get("gate").and_then(JsonValue::as_str) == Some(gate))
+        })
+        .and_then(|entry| entry.get("evidence"));
+    let expected_reference = format!("tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#{field}");
+    let count_fields = [
+        "projectCount",
+        "probeCount",
+        "observationCount",
+        "passedObservationCount",
+    ];
+    if summary.is_none()
+        || matrix_evidence
+            .and_then(|value| value.get("kind"))
+            .and_then(JsonValue::as_str)
+            != Some("artifact")
+        || matrix_evidence
+            .and_then(|value| value.get("reference"))
+            .and_then(JsonValue::as_str)
+            != Some(expected_reference.as_str())
+        || count_fields.iter().any(|field| {
+            summary.and_then(|value| value.get(field))
+                != artifact_category.and_then(|value| value.get(field))
+                || matrix_evidence.and_then(|value| value.get(field))
+                    != summary.and_then(|value| value.get(field))
+        })
+    {
+        failures.push(format!(
+            "ZenUML {gate} admission summary is not derived from executable browser evidence"
+        ));
+    }
 }
 
 fn verify_candidate_resource_evidence(evidence: &JsonValue, failures: &mut Vec<String>) {
@@ -2249,7 +2899,13 @@ fn verify_repository_state(
         .ok_or_else(|| XtaskError::MermaidReference("missing ZenUML reference".to_string()))?;
     let selected = selected_behavior_source(&zenuml.behavior_source)
         .ok_or_else(|| XtaskError::MermaidReference("invalid ZenUML selection".to_string()))?;
-    verify_admission(root, &zenuml.behavior_source, &mut failures)?;
+    verify_admission(
+        root,
+        &bundle.release,
+        &zenuml.plugin,
+        &zenuml.behavior_source,
+        &mut failures,
+    )?;
 
     let layout_refs = bundle.external_layouts.iter().collect::<Vec<_>>();
     let mut playground_direct = vec![&bundle.release, &zenuml.plugin];
@@ -2581,6 +3237,224 @@ mod tests {
             failures
                 .iter()
                 .any(|failure| failure.contains("admission gates must be exactly"))
+        );
+    }
+
+    #[test]
+    fn admission_rejects_a_missing_security_gate() {
+        let statuses = retained_oracle_statuses()
+            .into_iter()
+            .filter(|(gate, _)| *gate != "security")
+            .collect::<Vec<_>>();
+        let admission = admission_with_statuses(&statuses);
+        let mut failures = Vec::new();
+
+        validate_admission_matrix(&admission, "oracle-retained", &mut failures);
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("admission gates must be exactly"))
+        );
+    }
+
+    #[test]
+    fn browser_admission_rejects_failed_or_missing_probe_observations() {
+        let projects = serde_json::json!(["chromium-desktop", "chromium-mobile"]);
+        let required = serde_json::json!([
+            {
+                "id": "opaque-origin",
+                "description": "The realm has an opaque origin."
+            }
+        ]);
+        let failed = serde_json::json!({
+            "projectCount": 2,
+            "probeCount": 1,
+            "observationCount": 2,
+            "passedObservationCount": 2,
+            "probes": [
+                {
+                    "id": "opaque-origin",
+                    "description": "The realm has an opaque origin.",
+                    "observations": [
+                        {
+                            "project": "chromium-desktop",
+                            "testTitle": "opaque realm",
+                            "expected": true,
+                            "observed": false,
+                            "passed": false
+                        },
+                        {
+                            "project": "chromium-mobile",
+                            "testTitle": "opaque realm",
+                            "expected": true,
+                            "observed": true,
+                            "passed": true
+                        }
+                    ]
+                }
+            ]
+        });
+        let missing = serde_json::json!({
+            "projectCount": 2,
+            "probeCount": 1,
+            "observationCount": 2,
+            "passedObservationCount": 2,
+            "probes": [
+                {
+                    "id": "opaque-origin",
+                    "description": "The realm has an opaque origin.",
+                    "observations": [
+                        {
+                            "project": "chromium-desktop",
+                            "testTitle": "opaque realm",
+                            "expected": true,
+                            "observed": true,
+                            "passed": true
+                        }
+                    ]
+                }
+            ]
+        });
+
+        for observed in [&failed, &missing] {
+            let mut failures = Vec::new();
+            verify_browser_admission_category(
+                "security",
+                projects.as_array(),
+                required.as_array(),
+                Some(observed),
+                &mut failures,
+            );
+            assert!(failures.iter().any(|failure| {
+                failure.contains("every passing probe observation for every project")
+            }));
+        }
+    }
+
+    #[test]
+    fn deferred_major_semantics_reject_provenance_range_status_and_inventory_drift() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let zenuml = bundle
+            .external_diagrams
+            .iter()
+            .find(|diagram| diagram.id == "zenuml")
+            .expect("ZenUML reference");
+        let admission = read_json(&root.join(&zenuml.behavior_source.admission_evidence))
+            .expect("load admission");
+        let artifact_path = admission
+            .pointer("/excludedLatestMajor/artifact")
+            .and_then(JsonValue::as_str)
+            .expect("deferred artifact path");
+        let artifact = read_json(&root.join(artifact_path)).expect("load deferred artifact");
+        let cases = [
+            (
+                "/latestStable/source/commit",
+                serde_json::json!("0000000000000000000000000000000000000000"),
+                "source.commit provenance drift",
+            ),
+            (
+                "/hostGraph/pluginDeclaredRange",
+                serde_json::json!("^4.0.0"),
+                "host graph does not derive",
+            ),
+            (
+                "/status",
+                serde_json::json!("admitted"),
+                "invalid schema, status, or decision",
+            ),
+            (
+                "/behaviorDeltaInventory",
+                serde_json::json!([]),
+                "behavior areas must be exactly",
+            ),
+        ];
+
+        for (pointer, replacement, expected_failure) in cases {
+            let mut mutated = artifact.clone();
+            *mutated.pointer_mut(pointer).expect("fixture pointer") = replacement;
+            let mut failures = Vec::new();
+            validate_deferred_major_admission(
+                &bundle.release,
+                &zenuml.plugin,
+                &zenuml.behavior_source,
+                &admission,
+                &mutated,
+                &mut failures,
+            );
+            assert!(
+                failures
+                    .iter()
+                    .any(|failure| failure.contains(expected_failure)),
+                "{pointer} produced {failures:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn deferred_major_artifact_fails_closed_when_missing_or_mutated() {
+        let repository_root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&repository_root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let zenuml = bundle
+            .external_diagrams
+            .iter()
+            .find(|diagram| diagram.id == "zenuml")
+            .expect("ZenUML reference");
+        let admission =
+            read_json(&repository_root.join(&zenuml.behavior_source.admission_evidence))
+                .expect("load admission");
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let mut missing_admission = admission.clone();
+        *missing_admission
+            .pointer_mut("/excludedLatestMajor/artifact")
+            .expect("artifact pointer") = serde_json::json!("missing.json");
+
+        let error = verify_deferred_major_admission(
+            temporary.path(),
+            &bundle.release,
+            &zenuml.plugin,
+            &zenuml.behavior_source,
+            &missing_admission,
+            &mut Vec::new(),
+        )
+        .expect_err("missing deferred artifact must fail");
+        assert!(error.to_string().contains("missing.json"));
+
+        let artifact_path = admission
+            .pointer("/excludedLatestMajor/artifact")
+            .and_then(JsonValue::as_str)
+            .expect("artifact path");
+        let destination = temporary.path().join(artifact_path);
+        fs::create_dir_all(destination.parent().expect("artifact parent"))
+            .expect("create artifact parent");
+        let mut artifact =
+            read_json(&repository_root.join(artifact_path)).expect("load deferred artifact");
+        *artifact.pointer_mut("/status").expect("status pointer") = serde_json::json!("admitted");
+        fs::write(
+            &destination,
+            serde_json::to_vec_pretty(&artifact).expect("serialize artifact"),
+        )
+        .expect("write mutated artifact");
+        let mut failures = Vec::new();
+        verify_deferred_major_admission(
+            temporary.path(),
+            &bundle.release,
+            &zenuml.plugin,
+            &zenuml.behavior_source,
+            &admission,
+            &mut failures,
+        )
+        .expect("mutated JSON remains readable");
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("artifact digest drift"))
+        );
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("invalid schema, status, or decision"))
         );
     }
 

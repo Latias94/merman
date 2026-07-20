@@ -270,7 +270,7 @@ fn mindmap_editor_facts_preserve_parser_node_spans() {
     let engine = Engine::new();
     let text = "mindmap root(Root Node)\n  child1(Child 1)\n  :::hot\n  ::icon(bomb)\n  child2\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text)
         .unwrap()
         .expect("mindmap editor facts");
 
@@ -386,7 +386,7 @@ fn mindmap_parser_emits_exact_crlf_unicode_multiline_lexemes() {
         "  %% global comment\r\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("mindmap", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", source)
         .expect("mindmap editor parse")
         .expect("mindmap editor facts");
 
@@ -484,32 +484,44 @@ fn mindmap_unquoted_multiline_nodes_continue_until_the_shape_delimiter() {
         "    child[Later child]\n",
     );
     let parsed = Engine::new()
-        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(source)
         .expect("unquoted multiline mindmap parses")
         .expect("mindmap model");
 
-    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "root");
     assert_eq!(
-        parsed.diagram.model["rootNode"]["descr"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["nodeId"],
+        "root"
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["descr"],
         "\n    Multi-line root\n    with Unicode 🤓\n  "
     );
     assert_eq!(
-        parsed.diagram.model["rootNode"]["children"][0]["nodeId"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["children"][0]["nodeId"],
         "child"
     );
-    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "[");
-    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "]");
+    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "[");
+    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "]");
     assert_mindmap_lexeme(
-        &facts,
+        facts,
         source,
         EditorLexemeKind::String,
         "\n    Multi-line root\n    with Unicode 🤓\n  ",
     );
-    assert_mindmap_lexemes_are_exact(source, &facts);
+    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
@@ -521,57 +533,78 @@ fn mindmap_bare_markdown_continuation_stays_open_across_same_indent_content() {
         "      child[Later child]\n",
     );
     let parsed = Engine::new()
-        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(source)
         .expect("bare markdown mindmap parses")
         .expect("mindmap model");
 
-    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "id1");
     assert_eq!(
-        parsed.diagram.model["rootNode"]["descr"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["nodeId"],
+        "id1"
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["descr"],
         "`**Start** with\n    a same-indent second line`"
     );
     assert_eq!(
-        parsed.diagram.model["rootNode"]["children"][0]["nodeId"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["children"][0]["nodeId"],
         "child"
     );
-    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
     assert_mindmap_lexeme(
-        &facts,
+        facts,
         source,
         EditorLexemeKind::String,
         "`**Start** with\n    a same-indent second line`",
     );
-    assert_mindmap_lexemes_are_exact(source, &facts);
+    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
 fn mindmap_unmatched_bare_backtick_does_not_hide_the_shape_closing_delimiter() {
     let source = "mindmap\n  root[Use ` unmatched marker]\n";
     let parsed = Engine::new()
-        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(source)
         .expect("mindmap node with unmatched bare backtick parses")
         .expect("mindmap model");
 
-    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "root");
     assert_eq!(
-        parsed.diagram.model["rootNode"]["descr"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["nodeId"],
+        "root"
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["rootNode"]["descr"],
         "Use ` unmatched marker"
     );
-    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "]");
+    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "]");
     assert_mindmap_lexeme(
-        &facts,
+        facts,
         source,
         EditorLexemeKind::String,
         "Use ` unmatched marker",
     );
-    assert_mindmap_lexemes_are_exact(source, &facts);
+    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
@@ -592,7 +625,7 @@ fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
     assert!(error.to_string().contains("unterminated node delimiter"));
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("mindmap", source, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", source)
         .expect("mindmap recovery parse")
         .expect("mindmap recovery facts");
 
@@ -632,7 +665,6 @@ fn mindmap_recovery_constructs_one_parser_outcome() {
         .parse_editor_semantic_facts_with_type_sync(
             "mindmap",
             "mindmap\n root\n  broken[unterminated\n  after\n",
-            ParseOptions::strict(),
         )
         .expect("mindmap recovery parse")
         .expect("mindmap recovery facts");
@@ -646,7 +678,7 @@ fn mindmap_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "mindmap\nroot\n child[unterminated";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text)
         .unwrap()
         .expect("mindmap editor facts");
 
@@ -665,7 +697,7 @@ fn mindmap_editor_facts_preserve_prior_symbols_when_later_node_is_invalid() {
     let engine = Engine::new();
     let text = "mindmap\nroot\n child1\n child2[broken]]\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text)
         .unwrap()
         .expect("mindmap editor facts");
 
@@ -698,7 +730,7 @@ fn mindmap_editor_facts_report_database_validation_errors() {
     assert_eq!(diagnostic.span(), Some(expected_span));
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text)
         .unwrap()
         .expect("mindmap editor recovery facts");
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
@@ -718,7 +750,7 @@ fn mindmap_editor_facts_report_invalid_header() {
     let start = text.find(invalid).unwrap();
     let expected_span = SourceSpan::new(start, start + invalid.len());
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text)
         .unwrap()
         .expect("mindmap editor recovery facts");
 
@@ -866,7 +898,7 @@ root
         .unwrap()
         .unwrap();
 
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Mindmap(model) => {
             assert_eq!(model.nodes[0].look, "neo");
             assert_eq!(model.nodes[1].look, "neo");
@@ -902,7 +934,7 @@ fn mindmap_deep_chain_semantic_and_render_model_use_heap_traversal() {
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    match parsed.model {
+    match parsed.model() {
         RenderSemanticModel::Mindmap(model) => {
             assert_eq!(model.nodes.len(), DEPTH);
             assert_eq!(model.edges.len(), DEPTH - 1);

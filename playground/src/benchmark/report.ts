@@ -25,8 +25,10 @@ import {
   REALM_PROTOCOL_VERSION,
   type CompareRenderPayload,
 } from "../runtime/realm/channel-protocol.ts";
+import { BENCHMARK_REPORT_SCHEMA_VERSION } from "./report-schema.ts";
+import { projectError } from "../runtime/error-projection.ts";
 
-export const BENCHMARK_REPORT_SCHEMA_VERSION = 4 as const;
+export { BENCHMARK_REPORT_SCHEMA_VERSION } from "./report-schema.ts";
 
 export interface BenchmarkReportIntervals extends BenchmarkDerivedIntervals {
   readonly firstPublishableSvgMs: number | null;
@@ -132,6 +134,7 @@ export interface BenchmarkRecordedFailure extends BenchmarkRecordedSampleBase {
 }
 
 export interface BenchmarkRecordedFailureDetail {
+  readonly detail: string | null;
   readonly kind: "realm" | "transport";
   readonly message: string;
   readonly stage: string;
@@ -234,6 +237,7 @@ export function projectBenchmarkRealmSample(
     parentPublication: null,
     version: result.version,
     failure: Object.freeze({
+      detail: result.detail,
       kind: "realm",
       message: result.message,
       stage: result.stage,
@@ -255,6 +259,7 @@ export function projectBenchmarkTransportFailure(
   stage = "transport",
   realmCreation: BenchmarkRealmCreationEvidence | null = null
 ): BenchmarkRecordedFailure {
+  const projection = projectError(error);
   return Object.freeze({
     ...metadata,
     outcome: "failure",
@@ -273,8 +278,9 @@ export function projectBenchmarkTransportFailure(
     version: null,
     svgBytes: null,
     failure: Object.freeze({
+      detail: projection.detail,
       kind: "transport",
-      message: boundedErrorMessage(error),
+      message: projection.summary,
       stage,
     }),
   });
@@ -452,11 +458,6 @@ function emptyIntervalRecord<T>(): Record<BenchmarkIntervalName, T | null> {
   return Object.fromEntries(
     BENCHMARK_INTERVAL_NAMES.map((name) => [name, null])
   ) as Record<BenchmarkIntervalName, T | null>;
-}
-
-function boundedErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 8_192);
 }
 
 function browserDownloadDependencies(): BenchmarkReportDownloadDependencies {

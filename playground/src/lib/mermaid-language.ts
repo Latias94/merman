@@ -6,7 +6,6 @@ import type {
   EditorDocumentSymbol,
   EditorLocation,
   EditorRange,
-  EditorSemanticToken,
   EditorSemanticTokenLegend,
   EditorSymbolKind,
   EditorWorkspaceEdit,
@@ -15,10 +14,12 @@ import type {
   EditorDocumentSnapshot,
   EditorWorkerQuery,
 } from "@/src/editor/protocol";
-import type {
-  EditorCancellationToken,
-  MermanLanguageWorkerClient,
-} from "@/src/editor/worker-client";
+import {
+  EditorWorkerProtocolError,
+  type EditorCancellationToken,
+  type EditorLanguageIdentity,
+  type MermanLanguageWorkerClient,
+} from "../editor/worker-client";
 
 export const MERMAID_LANGUAGE_ID = "mermaid";
 export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
@@ -31,6 +32,22 @@ export type MermaidSemanticTokenLegend = EditorSemanticTokenLegend;
 export interface MermaidLanguageRegistration extends IDisposable {
   bindModel(model: editor.ITextModel): Promise<IDisposable>;
 }
+
+export interface MermaidLanguageRequestRejection {
+  readonly detail: string | null;
+  readonly message: string;
+  readonly nativeCode: string | null;
+  readonly operation: "rename";
+}
+
+export interface MermaidLanguageCallbacks {
+  readonly onRequestRejected?: (
+    rejection: MermaidLanguageRequestRejection
+  ) => void;
+  readonly onUnavailable?: (error: Error) => void;
+}
+
+const configuredMonacoInstances = new WeakSet<object>();
 
 const mermaidLanguageConfig: languages.LanguageConfiguration = {
   comments: { lineComment: "%%" },
@@ -51,35 +68,53 @@ const mermaidLanguageConfig: languages.LanguageConfiguration = {
 export function registerMermaidLanguage(
   monaco: typeof import("monaco-editor"),
   client: MermanLanguageWorkerClient,
-  legend: MermaidSemanticTokenLegend
+  identity: EditorLanguageIdentity,
+  callbacks: MermaidLanguageCallbacks = {}
 ): MermaidLanguageRegistration {
+  ensureMermaidLanguageRegistered(monaco);
   const disposables: IDisposable[] = [];
   const modelBindings = new Set<IDisposable>();
   const semanticListeners = new Set<() => void>();
   let managedModel: editor.ITextModel | null = null;
   let disposed = false;
-
-  if (
-    !monaco.languages
-      .getLanguages()
-      .some((language) => language.id === MERMAID_LANGUAGE_ID)
-  ) {
-    // Monaco 0.55 keeps language IDs for the realm lifetime and returns no handle.
-    monaco.languages.register({ id: MERMAID_LANGUAGE_ID });
-  }
-  disposables.push(
-    monaco.languages.setLanguageConfiguration(
-      MERMAID_LANGUAGE_ID,
-      mermaidLanguageConfig
-    )
-  );
+  let unavailable = false;
+  const notifyUnavailable = (error: unknown) => {
+    if (disposed || unavailable || isExpectedDiscard(error)) return;
+    unavailable = true;
+    if (managedModel && !managedModel.isDisposed()) {
+      clearMermaidMarkers(monaco, managedModel);
+    }
+    const failure = error instanceof Error ? error : new Error(String(error));
+    console.error("Merman editor language worker failed", failure);
+    callbacks.onUnavailable?.(failure);
+  };
+  const rejectRename = (
+    message: string,
+    detail: string | null = null,
+    nativeCode: string | null = null
+  ) => {
+    callbacks.onRequestRejected?.({
+      detail,
+      message,
+      nativeCode,
+      operation: "rename",
+    });
+    const nativeCodeSuffix = nativeCode ? ` (${nativeCode})` : "";
+    return { edits: [], rejectReason: `${message}${nativeCodeSuffix}` };
+  };
+  const query = <Query extends EditorWorkerQuery, Fallback>(
+    model: editor.ITextModel,
+    request: Query,
+    token: EditorCancellationToken | undefined,
+    fallback: Fallback
+  ) => queryOr(client, model, request, token, fallback, notifyUnavailable);
+  const legend = identity.legend;
 
   disposables.push(
     monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
       triggerCharacters: [" ", "\n", "-", "@", ":"],
       async provideCompletionItems(model, position, _context, token) {
-        const completions = await queryOr(
-          client,
+        const completions = await query(
           model,
           {
             kind: "completions",
@@ -102,8 +137,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerHoverProvider(MERMAID_LANGUAGE_ID, {
       async provideHover(model, position, token) {
-        const hover = await queryOr(
-          client,
+        const hover = await query(
           model,
           { kind: "hover", position: toEditorPosition(position) },
           token,
@@ -121,8 +155,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerCodeActionProvider(MERMAID_LANGUAGE_ID, {
       async provideCodeActions(model, _range, context, token) {
-        const actions = await queryOr(
-          client,
+        const actions = await query(
           model,
           { kind: "codeActions" },
           token,
@@ -147,8 +180,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerDocumentSymbolProvider(MERMAID_LANGUAGE_ID, {
       async provideDocumentSymbols(model, token) {
-        const symbols = await queryOr(
-          client,
+        const symbols = await query(
           model,
           { kind: "documentSymbols" },
           token,
@@ -164,8 +196,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerDefinitionProvider(MERMAID_LANGUAGE_ID, {
       async provideDefinition(model, position, token) {
-        const location = await queryOr(
-          client,
+        const location = await query(
           model,
           { kind: "definition", position: toEditorPosition(position) },
           token,
@@ -181,8 +212,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerReferenceProvider(MERMAID_LANGUAGE_ID, {
       async provideReferences(model, position, context, token) {
-        const locations = await queryOr(
-          client,
+        const locations = await query(
           model,
           {
             kind: "references",
@@ -202,8 +232,7 @@ export function registerMermaidLanguage(
   disposables.push(
     monaco.languages.registerRenameProvider(MERMAID_LANGUAGE_ID, {
       async resolveRenameLocation(model, position, token) {
-        const prepare = await queryOr(
-          client,
+        const prepare = await query(
           model,
           { kind: "prepareRename", position: toEditorPosition(position) },
           token,
@@ -217,25 +246,38 @@ export function registerMermaidLanguage(
           : null;
       },
       async provideRenameEdits(model, position, newName, token) {
-        const edit = await queryOr(
-          client,
-          model,
-          {
-            kind: "rename",
-            position: toEditorPosition(position),
-            newName,
-          },
-          token,
-          null
-        );
+        let edit: EditorWorkspaceEdit | null;
+        try {
+          edit = await client.query(
+            snapshotForModel(model),
+            {
+              kind: "rename",
+              position: toEditorPosition(position),
+              newName,
+            },
+            token
+          );
+        } catch (error) {
+          if (isExpectedDiscard(error)) {
+            return { edits: [], rejectReason: "Rename request was canceled." };
+          }
+          if (isRequestLocalWorkerError(error)) {
+            return rejectRename(error.message, error.detail, error.nativeCode);
+          }
+          notifyUnavailable(error);
+          return {
+            edits: [],
+            rejectReason: "Mermaid language tools are unavailable.",
+          };
+        }
         if (!edit) {
-          return { edits: [], rejectReason: "No Mermaid symbol at cursor." };
+          return rejectRename("No Mermaid symbol at cursor.");
         }
         try {
           return toMonacoWorkspaceEdit(monaco, model, edit);
         } catch (error) {
           if (error instanceof UnmanagedDocumentEditError) {
-            return { edits: [], rejectReason: error.message };
+            return rejectRename(error.message);
           }
           throw error;
         }
@@ -253,15 +295,14 @@ export function registerMermaidLanguage(
           return { dispose: () => semanticListeners.delete(listener) };
         },
         async provideDocumentSemanticTokens(model, _lastResultId, token) {
-          const tokens = await queryOr(
-            client,
+          const tokens = await query(
             model,
             { kind: "semanticTokens" },
             token,
-            []
+            new Uint32Array()
           );
           return {
-            data: encodeSemanticTokensForLegend(tokens, legend),
+            data: tokens,
             resultId: undefined,
           };
         },
@@ -292,8 +333,7 @@ export function registerMermaidLanguage(
       let bindingDisposed = false;
       const publishDiagnostics = async () => {
         const current = snapshotForModel(model);
-        const result = await queryOr(
-          client,
+        const result = await query(
           model,
           { kind: "diagnostics" },
           undefined,
@@ -312,16 +352,16 @@ export function registerMermaidLanguage(
         if (diagnosticTimer !== null) clearTimeout(diagnosticTimer);
         diagnosticTimer = setTimeout(() => {
           diagnosticTimer = null;
-          void publishDiagnostics().catch(reportEditorWorkerFailure);
+          void publishDiagnostics().catch(notifyUnavailable);
         }, DIAGNOSTIC_DELAY_MS);
       };
       const contentListener = model.onDidChangeContent(() => {
         try {
           void client
             .changeDocument(snapshotForModel(model))
-            .catch(reportEditorWorkerFailure);
+            .catch(notifyUnavailable);
         } catch (error) {
-          reportEditorWorkerFailure(error);
+          notifyUnavailable(error);
         }
         for (const listener of semanticListeners) listener();
         scheduleDiagnostics();
@@ -339,7 +379,7 @@ export function registerMermaidLanguage(
       };
       modelBindings.add(binding);
       for (const listener of semanticListeners) listener();
-      void publishDiagnostics().catch(reportEditorWorkerFailure);
+      void publishDiagnostics().catch(notifyUnavailable);
       return binding;
     },
     dispose() {
@@ -353,57 +393,23 @@ export function registerMermaidLanguage(
   };
 }
 
-export function encodeSemanticTokensForLegend(
-  tokens: EditorSemanticToken[],
-  legend: MermaidSemanticTokenLegend
-): Uint32Array {
-  const data: number[] = [];
-  let previousLine = 0;
-  let previousStart = 0;
-  const sorted = [...tokens].sort(
-    (left, right) =>
-      left.line - right.line ||
-      left.start - right.start ||
-      left.length - right.length
-  );
-
-  for (const token of sorted) {
-    const tokenType = legend.tokenTypes.indexOf(token.tokenType);
-    const modifierIndex = legend.tokenModifiers.indexOf(token.tokenModifier);
-    if (tokenType < 0) {
-      throw new SemanticTokenContractError(
-        `Unknown semantic token type from Rust: ${token.tokenType}.`
-      );
-    }
-    if (modifierIndex < 0) {
-      throw new SemanticTokenContractError(
-        `Unknown semantic token modifier from Rust: ${token.tokenModifier}.`
-      );
-    }
-    if (
-      !Number.isSafeInteger(token.line) ||
-      !Number.isSafeInteger(token.start) ||
-      !Number.isSafeInteger(token.length) ||
-      token.line < 0 ||
-      token.start < 0 ||
-      token.length <= 0
-    ) {
-      throw new SemanticTokenContractError("Rust returned an invalid semantic token range.");
-    }
-    const deltaLine = token.line - previousLine;
-    const deltaStart = deltaLine === 0 ? token.start - previousStart : token.start;
-    if (deltaLine < 0 || deltaStart < 0) {
-      throw new SemanticTokenContractError(
-        "Rust returned semantic tokens that cannot be delta encoded."
-      );
-    }
-
-    data.push(deltaLine, deltaStart, token.length, tokenType, 1 << modifierIndex);
-    previousLine = token.line;
-    previousStart = token.start;
+export function ensureMermaidLanguageRegistered(
+  monaco: typeof import("monaco-editor")
+): void {
+  if (configuredMonacoInstances.has(monaco)) return;
+  if (
+    !monaco.languages
+      .getLanguages()
+      .some((language) => language.id === MERMAID_LANGUAGE_ID)
+  ) {
+    // Monaco keeps language IDs for the realm lifetime and returns no handle.
+    monaco.languages.register({ id: MERMAID_LANGUAGE_ID });
   }
-
-  return new Uint32Array(data);
+  monaco.languages.setLanguageConfiguration(
+    MERMAID_LANGUAGE_ID,
+    mermaidLanguageConfig
+  );
+  configuredMonacoInstances.add(monaco);
 }
 
 async function queryOr<Query extends EditorWorkerQuery, Fallback>(
@@ -411,14 +417,26 @@ async function queryOr<Query extends EditorWorkerQuery, Fallback>(
   model: editor.ITextModel,
   query: Query,
   token: EditorCancellationToken | undefined,
-  fallback: Fallback
+  fallback: Fallback,
+  onFailure: (error: unknown) => void
 ) {
   try {
     return await client.query(snapshotForModel(model), query, token);
   } catch (error) {
     if (isExpectedDiscard(error)) return fallback;
-    throw error;
+    if (isRequestLocalWorkerError(error)) return fallback;
+    onFailure(error);
+    return fallback;
   }
+}
+
+function isRequestLocalWorkerError(
+  error: unknown
+): error is EditorWorkerProtocolError {
+  return (
+    error instanceof EditorWorkerProtocolError &&
+    error.code === "OPERATION_REJECTED"
+  );
 }
 
 function snapshotForModel(model: editor.ITextModel): EditorDocumentSnapshot {
@@ -712,15 +730,8 @@ function symbolKind(
 function isExpectedDiscard(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (error.name === "AbortError" || error.name === "StaleDocumentError")
+    (error.name === "AbortError" || error.name === "StaleLanguageSnapshotError")
   );
 }
 
-function reportEditorWorkerFailure(error: unknown): void {
-  if (!isExpectedDiscard(error)) {
-    console.error("Merman editor language worker failed", error);
-  }
-}
-
 class UnmanagedDocumentEditError extends Error {}
-class SemanticTokenContractError extends Error {}

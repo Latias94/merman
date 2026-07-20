@@ -1,17 +1,21 @@
 mod builtin;
 mod context;
+mod final_validation;
+mod policy;
 mod preset;
 
 pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub use builtin::{
-    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
+    RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
+    ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub use preset::{SvgPipelinePreset, resvg_safe_svg};
+pub use policy::SvgOutputPolicy;
+pub use preset::SvgPipelinePreset;
 
 use crate::environment::RenderSession;
+use crate::resources::ResourceLimitPhase;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -27,10 +31,46 @@ pub trait SvgPostprocessor: Send + Sync {
     ) -> Result<Cow<'a, str>>;
 }
 
+/// SVG that has passed the terminal resvg compatibility finalizer.
+///
+/// The inner string cannot be constructed directly. Custom postprocessors operate on an SVG draft
+/// before finalization and therefore cannot claim this type.
+///
+/// ```compile_fail
+/// use merman_render::svg::ResvgCompatibleSvg;
+///
+/// let forged = ResvgCompatibleSvg { svg: "<svg/>".to_string() };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResvgCompatibleSvg {
+    svg: String,
+}
+
+impl ResvgCompatibleSvg {
+    fn finalized(svg: String) -> Self {
+        Self { svg }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.svg
+    }
+
+    pub fn into_string(self) -> String {
+        self.svg
+    }
+}
+
+impl AsRef<str> for ResvgCompatibleSvg {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 #[derive(Clone)]
 pub struct SvgPipeline {
     preset: SvgPipelinePreset,
     postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
+    drop_native_duplicate_fallbacks: bool,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -44,6 +84,10 @@ impl fmt::Debug for SvgPipeline {
         f.debug_struct("SvgPipeline")
             .field("preset", &self.preset)
             .field("postprocessors", &names)
+            .field(
+                "drop_native_duplicate_fallbacks",
+                &self.drop_native_duplicate_fallbacks,
+            )
             .finish()
     }
 }
@@ -71,11 +115,27 @@ impl SvgPipeline {
         Self {
             preset,
             postprocessors: Vec::new(),
+            drop_native_duplicate_fallbacks: false,
         }
     }
 
     pub fn preset(&self) -> SvgPipelinePreset {
         self.preset
+    }
+
+    /// Keeps every configured draft transformation while replacing the terminal output contract.
+    pub fn with_preset(mut self, preset: SvgPipelinePreset) -> Self {
+        self.preset = preset;
+        self
+    }
+
+    pub fn into_resvg_safe(self) -> Self {
+        self.with_preset(SvgPipelinePreset::ResvgSafe)
+    }
+
+    pub fn with_drop_native_duplicate_fallbacks(mut self, drop: bool) -> Self {
+        self.drop_native_duplicate_fallbacks = drop;
+        self
     }
 
     pub fn with_postprocessor<P>(mut self, postprocessor: P) -> Self
@@ -118,7 +178,10 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
-        let mut current = preset::apply_preset_cow(self.preset, svg, metadata, session);
+        let mut current = svg;
+        session
+            .resource_limits()
+            .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
             let ctx = SvgPostprocessContext::new(
@@ -131,9 +194,28 @@ impl SvgPipeline {
             current = postprocessor
                 .process(current, &ctx)
                 .map_err(|err| Error::svg_postprocess(postprocessor.name(), err.to_string()))?;
+            session
+                .resource_limits()
+                .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         }
 
-        Ok(current)
+        let finalized = preset::apply_preset_cow(
+            self.preset,
+            current,
+            metadata,
+            session,
+            self.drop_native_duplicate_fallbacks,
+        );
+        session
+            .resource_limits()
+            .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        if self.preset == SvgPipelinePreset::ResvgSafe {
+            final_validation::validate_resvg_compatible_svg(
+                finalized.as_ref(),
+                session.resource_limits(),
+            )?;
+        }
+        Ok(finalized)
     }
 
     pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
@@ -166,6 +248,54 @@ impl SvgPipeline {
             .process_cow_with_metadata(Cow::Owned(svg), metadata, session)?
             .into_owned())
     }
+
+    pub fn process_resvg_compatible(
+        &self,
+        svg: &str,
+        session: &RenderSession,
+    ) -> Result<ResvgCompatibleSvg> {
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        self.process_resvg_compatible_with_metadata(svg, &metadata, session)
+    }
+
+    pub fn process_resvg_compatible_with_metadata(
+        &self,
+        svg: &str,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Result<ResvgCompatibleSvg> {
+        self.ensure_resvg_safe_contract()?;
+        Ok(ResvgCompatibleSvg::finalized(
+            self.process_to_string_with_metadata(svg, metadata, session)?,
+        ))
+    }
+
+    pub fn process_owned_resvg_compatible_with_metadata(
+        &self,
+        svg: String,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Result<ResvgCompatibleSvg> {
+        self.ensure_resvg_safe_contract()?;
+        Ok(ResvgCompatibleSvg::finalized(
+            self.process_owned_to_string_with_metadata(svg, metadata, session)?,
+        ))
+    }
+
+    fn ensure_resvg_safe_contract(&self) -> Result<()> {
+        if self.preset != SvgPipelinePreset::ResvgSafe {
+            return Err(Error::svg_postprocess(
+                "resvg-finalize",
+                "ResvgCompatibleSvg requires the resvg-safe terminal preset",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Finalizes arbitrary SVG for resvg/raster consumption without a family capability.
+pub fn finalize_resvg_svg(svg: &str, session: &RenderSession) -> Result<ResvgCompatibleSvg> {
+    SvgPipeline::resvg_safe().process_resvg_compatible(svg, session)
 }
 
 #[cfg(test)]
@@ -267,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_postprocessors_run_after_builtin_preset_in_order() {
+    fn custom_postprocessors_run_before_builtin_finalizer_in_order() {
         let svg = r#"<svg><foreignObject width="10" height="10"><div><p>Hello</p></div></foreignObject></svg>"#;
         let pipeline = SvgPipeline::readable()
             .with_postprocessor(AppendPass("first"))
@@ -276,11 +406,84 @@ mod tests {
 
         let out = pipeline.process_to_string(svg, &session).unwrap();
 
-        let fallback = out.find("data-merman-foreignobject").unwrap();
         let first = out.find("<!--0:first:Readable").unwrap();
         let second = out.find("<!--1:second:Readable").unwrap();
-        assert!(fallback < first);
         assert!(first < second);
+        assert!(out.contains("data-merman-foreignobject"));
+    }
+
+    #[test]
+    fn custom_postprocessor_output_is_cleaned_by_resvg_finalizer() {
+        struct InjectActiveContent;
+
+        impl SvgPostprocessor for InjectActiveContent {
+            fn name(&self) -> &'static str {
+                "inject-active-content"
+            }
+
+            fn process<'a>(
+                &self,
+                svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(Cow::Owned(svg.replace(
+                    "</svg>",
+                    r#"<script>alert(1)</script><rect animation="spin 1s"/></svg>"#,
+                )))
+            }
+        }
+
+        let session = render_session();
+        let output = SvgPipeline::resvg_safe()
+            .with_postprocessor(InjectActiveContent)
+            .process_resvg_compatible("<svg></svg>", &session)
+            .unwrap();
+
+        assert!(!output.as_str().contains("script"));
+        assert!(!output.as_str().contains("animation"));
+    }
+
+    #[test]
+    fn expanded_draft_is_budgeted_before_terminal_xml_validation() {
+        struct ExpandDraft;
+
+        impl SvgPostprocessor for ExpandDraft {
+            fn name(&self) -> &'static str {
+                "expand-draft"
+            }
+
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(Cow::Owned(format!("<svg>{}</svg>", "x".repeat(128))))
+            }
+        }
+
+        let session = crate::environment::RenderEnvironment::parity()
+            .with_resource_limits(crate::resources::RenderResourceLimits {
+                max_svg_bytes: Some(64),
+                ..crate::resources::RenderResourceLimits::unbounded_for_trusted_input()
+            })
+            .begin_session()
+            .unwrap();
+        let error = SvgPipeline::resvg_safe()
+            .with_postprocessor(ExpandDraft)
+            .process_resvg_compatible("<svg/>", &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("max_svg_bytes"), "{error}");
+    }
+
+    #[test]
+    fn non_resvg_pipeline_cannot_construct_resvg_compatible_svg() {
+        let session = render_session();
+        let error = SvgPipeline::parity()
+            .process_resvg_compatible("<svg/>", &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("resvg-safe terminal preset"));
     }
 
     #[test]

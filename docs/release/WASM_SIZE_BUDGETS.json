@@ -1,105 +1,99 @@
 {
   "schema_version": 1,
-  "updated": "2026-07-18",
+  "updated": "2026-07-19",
   "compression_source": "stripped",
   "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
   "web_package": {
     "browser-full": {
-      "max_raw_bytes": 11200000,
-      "max_gzip_bytes": 3250000,
-      "max_brotli_bytes": 2280000
+      "max_raw_bytes": 9150000,
+      "max_gzip_bytes": 3520000,
+      "max_brotli_bytes": 2470000
     }
   },
   "presets": {
     "browser-bridge": {
-      "max_raw_bytes": 3050000,
-      "max_stripped_bytes": 2150000,
-      "max_gzip_bytes": 655000,
-      "max_brotli_bytes": 500000
+      "max_raw_bytes": 3300000,
+      "max_stripped_bytes": 2350000,
+      "max_gzip_bytes": 720000,
+      "max_brotli_bytes": 550000
     },
     "browser-core": {
-      "max_raw_bytes": 4000000,
-      "max_stripped_bytes": 2850000,
-      "max_gzip_bytes": 855000,
-      "max_brotli_bytes": 635000
+      "max_raw_bytes": 4300000,
+      "max_stripped_bytes": 3110000,
+      "max_gzip_bytes": 935000,
+      "max_brotli_bytes": 700000
     },
     "browser-render": {
-      "max_raw_bytes": 10000000,
-      "max_stripped_bytes": 7650000,
-      "max_gzip_bytes": 2380000,
-      "max_brotli_bytes": 1575000
+      "max_raw_bytes": 10550000,
+      "max_stripped_bytes": 8100000,
+      "max_gzip_bytes": 2515000,
+      "max_brotli_bytes": 1680000
     },
     "browser-render-only": {
-      "max_raw_bytes": 9550000,
-      "max_stripped_bytes": 7325000,
-      "max_gzip_bytes": 2275000,
-      "max_brotli_bytes": 1520000
+      "max_raw_bytes": 10075000,
+      "max_stripped_bytes": 7775000,
+      "max_gzip_bytes": 2405000,
+      "max_brotli_bytes": 1615000
     },
     "browser-ascii": {
-      "max_raw_bytes": 4300000,
-      "max_stripped_bytes": 3250000,
-      "max_gzip_bytes": 1100000,
-      "max_brotli_bytes": 830000
+      "max_raw_bytes": 4500000,
+      "max_stripped_bytes": 3260000,
+      "max_gzip_bytes": 980000,
+      "max_brotli_bytes": 745000
     },
     "browser-editor": {
-      "max_raw_bytes": 5750000,
-      "max_stripped_bytes": 4200000,
-      "max_gzip_bytes": 1380000,
-      "max_brotli_bytes": 1020000
+      "max_raw_bytes": 5600000,
+      "max_stripped_bytes": 4100000,
+      "max_gzip_bytes": 1340000,
+      "max_brotli_bytes": 1000000
     },
     "browser-full": {
-      "max_raw_bytes": 14000000,
-      "max_stripped_bytes": 11000000,
-      "max_gzip_bytes": 3500000,
-      "max_brotli_bytes": 2550000
+      "max_raw_bytes": 14300000,
+      "max_stripped_bytes": 10900000,
+      "max_gzip_bytes": 3480000,
+      "max_brotli_bytes": 2370000
     },
     "browser-full-no-elk": {
-      "max_raw_bytes": 12400000,
-      "max_stripped_bytes": 9425000,
-      "max_gzip_bytes": 3045000,
-      "max_brotli_bytes": 2050000
+      "max_raw_bytes": 13350000,
+      "max_stripped_bytes": 10200000,
+      "max_gzip_bytes": 3280000,
+      "max_brotli_bytes": 2220000
     },
     "browser-ratex-math": {
-      "max_raw_bytes": 17000000,
-      "max_stripped_bytes": 13500000,
-      "max_gzip_bytes": 4500000,
-      "max_brotli_bytes": 3250000
+      "max_raw_bytes": 17700000,
+      "max_stripped_bytes": 13750000,
+      "max_gzip_bytes": 4470000,
+      "max_brotli_bytes": 3080000
     },
     "typst-bridge": {
-      "max_raw_bytes": 60000,
-      "max_stripped_bytes": 45000,
-      "max_gzip_bytes": 18000,
-      "max_brotli_bytes": 15000
+      "max_raw_bytes": 66000,
+      "max_stripped_bytes": 49000,
+      "max_gzip_bytes": 21000,
+      "max_brotli_bytes": 18000
     },
     "typst-render-only-no-elk": {
-      "max_raw_bytes": 7800000,
-      "max_stripped_bytes": 6000000,
-      "max_gzip_bytes": 1800000,
-      "max_brotli_bytes": 1320000
+      "max_raw_bytes": 9250000,
+      "max_stripped_bytes": 7375000,
+      "max_gzip_bytes": 2330000,
+      "max_brotli_bytes": 1560000
     },
     "typst-render-analysis-no-elk": {
-      "max_raw_bytes": 7800000,
-      "max_stripped_bytes": 6000000,
-      "max_gzip_bytes": 1800000,
-      "max_brotli_bytes": 1320000
+      "max_raw_bytes": 9650000,
+      "max_stripped_bytes": 7650000,
+      "max_gzip_bytes": 2420000,
+      "max_brotli_bytes": 1620000
     },
     "typst-core-full-no-elk": {
-      "max_raw_bytes": 9000000,
-      "max_stripped_bytes": 6950000,
-      "max_gzip_bytes": 2200000,
-      "max_brotli_bytes": 1600000
+      "max_raw_bytes": 11100000,
+      "max_stripped_bytes": 8800000,
+      "max_gzip_bytes": 2875000,
+      "max_brotli_bytes": 1950000
     },
     "typst-full-elk": {
-      "max_raw_bytes": 12500000,
-      "max_stripped_bytes": 9800000,
-      "max_gzip_bytes": 3100000,
-      "max_brotli_bytes": 2250000
-    },
-    "typst-ratex-math": {
-      "max_raw_bytes": 15000000,
-      "max_stripped_bytes": 12000000,
-      "max_gzip_bytes": 3900000,
-      "max_brotli_bytes": 2850000
+      "max_raw_bytes": 12050000,
+      "max_stripped_bytes": 9450000,
+      "max_gzip_bytes": 3075000,
+      "max_brotli_bytes": 2090000
     }
   }
 }

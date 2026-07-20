@@ -4,18 +4,7 @@ import {
   assertSafeSvgForDom,
   bindingCapabilities,
   createBrowserTextMeasurementSession,
-  detectDiagramFacts,
-  editorCodeActions,
-  editorCompletions,
-  editorDefinition,
-  editorDiagnostics,
-  editorDocumentSymbols,
-  editorHover,
-  editorPrepareRename,
-  editorReferences,
-  editorRename,
-  editorSemanticTokenLegend,
-  editorSemanticTokens,
+  editorDiagramDetection,
   initMerman,
   isMermanInitialized,
   layoutJson,
@@ -28,34 +17,24 @@ import {
   selectedRegistryProfile,
   supportedDiagrams,
   supportedThemes,
+  UNAVAILABLE_DIAGRAM_DETECTION,
   validate,
-  type DiagramDetectionFacts,
   type HostTextMeasurer,
   type MermanWasmModule,
-  type SvgBindingOptions,
 } from "@mermanjs/web";
 import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 
-import { diagramFontStack } from "../lib/diagram-font.ts";
 import {
   DEFAULT_MERMAID_CONFIG,
   sourceWithConfig,
 } from "../lib/mermaid-config.ts";
+import { configuredMermanOperationInput } from "./merman-operation-input.ts";
+import { projectError } from "./error-projection.ts";
 import type {
   MermanDomainFacade,
-  MermanRenderOptions,
   MermanRuntimeDependencies,
   MermanSession,
 } from "./merman-core.ts";
-
-const PLAYGROUND_DOCUMENT_URI = "file:///merman/playground.mmd";
-const UNAVAILABLE_DIAGRAM_DETECTION: DiagramDetectionFacts = Object.freeze({
-  status: "unavailable",
-  validity: "unknown",
-  diagramType: null,
-  syntaxId: null,
-  effectiveLayoutId: null,
-});
 
 export const mermanBrowserDependencies: MermanRuntimeDependencies = {
   createSession,
@@ -93,68 +72,23 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       code,
       theme = "default",
       configJson = DEFAULT_MERMAID_CONFIG,
-      options
+      options,
     ) {
       try {
-        return detectDiagramFacts(
-          configuredSource(code, theme, configJson, options),
-          bindingOptionsForRender(options)
+        const input = configuredMermanOperationInput(
+          code,
+          theme,
+          configJson,
+          options,
+        );
+        return editorDiagramDetection(
+          input.source,
+          input.bindingOptions,
+          "file:///merman/playground.mmd",
         );
       } catch {
         return UNAVAILABLE_DIAGRAM_DETECTION;
       }
-    },
-
-    editorCodeActions(code) {
-      return editorCodeActions(code, undefined, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorCompletions(code, position) {
-      return editorCompletions(code, position, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorDefinition(code, position) {
-      return editorDefinition(code, position, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorDiagnostics(code) {
-      return editorDiagnostics(code, undefined, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorDocumentSymbols(code) {
-      return editorDocumentSymbols(code, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorHover(code, position) {
-      return editorHover(code, position, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorPrepareRename(code, position) {
-      return editorPrepareRename(code, position, PLAYGROUND_DOCUMENT_URI);
-    },
-
-    editorReferences(code, position, includeDeclaration) {
-      return editorReferences(
-        code,
-        position,
-        includeDeclaration,
-        PLAYGROUND_DOCUMENT_URI
-      );
-    },
-
-    editorRename(code, position, newName) {
-      return editorRename(
-        code,
-        position,
-        newName,
-        PLAYGROUND_DOCUMENT_URI
-      );
-    },
-
-    editorSemanticTokenLegend,
-
-    editorSemanticTokens(code) {
-      return editorSemanticTokens(code, PLAYGROUND_DOCUMENT_URI);
     },
 
     getAsciiCapabilities: asciiCapabilities,
@@ -166,111 +100,90 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       code,
       theme = "default",
       configJson = DEFAULT_MERMAID_CONFIG,
-      options
+      options,
     ) {
-      const source = configuredSource(code, theme, configJson, options);
-      const bindingOptions = bindingOptionsForRender(options);
+      const input = configuredMermanOperationInput(
+        code,
+        theme,
+        configJson,
+        options,
+      );
       return options?.textMeasurementMode === "browser"
-        ? layoutJsonWithTextMeasurer(source, measureText, bindingOptions)
-        : layoutJson(source, bindingOptions);
+        ? layoutJsonWithTextMeasurer(
+            input.source,
+            measureText,
+            input.bindingOptions,
+          )
+        : layoutJson(input.source, input.bindingOptions);
     },
 
     parseJson(
       code,
       theme = "default",
       configJson = DEFAULT_MERMAID_CONFIG,
-      options
+      options,
     ) {
-      return parseJson(
-        configuredSource(code, theme, configJson, options),
-        bindingOptionsForRender(options)
+      const input = configuredMermanOperationInput(
+        code,
+        theme,
+        configJson,
+        options,
       );
+      return parseJson(input.source, input.bindingOptions);
     },
 
     registryProfile: selectedRegistryProfile,
 
-    render(
-      code,
-      theme,
-      configJson = DEFAULT_MERMAID_CONFIG,
-      options
-    ) {
+    render(code, theme, configJson = DEFAULT_MERMAID_CONFIG, options) {
       const startedAt = performance.now();
       try {
-        const source = configuredSource(code, theme, configJson, options);
-        const bindingOptions = bindingOptionsForRender(options);
+        const input = configuredMermanOperationInput(
+          code,
+          theme,
+          configJson,
+          options,
+        );
         const svg =
           options?.textMeasurementMode === "browser"
-            ? renderSvgWithTextMeasurer(source, measureText, bindingOptions)
-            : renderSvg(source, bindingOptions);
+            ? renderSvgWithTextMeasurer(
+                input.source,
+                measureText,
+                input.bindingOptions,
+              )
+            : renderSvg(input.source, input.bindingOptions);
         assertSafeSvgForDom(svg);
         return {
           error: null,
           renderTime: performance.now() - startedAt,
+          status: "success",
           svg,
         };
       } catch (error) {
         return {
-          error: error instanceof Error ? error.message : String(error),
+          error: projectError(error),
           renderTime: 0,
+          status: "failure",
           svg: null,
         };
       }
     },
 
-    renderAscii(
-      code,
-      theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
-    ) {
+    renderAscii(code, theme = "default", configJson = DEFAULT_MERMAID_CONFIG) {
       try {
-        return renderAscii(sourceWithConfig(code, theme, configJson));
-      } catch {
-        return null;
+        return {
+          ascii: renderAscii(sourceWithConfig(code, theme, configJson)),
+          error: null,
+          status: "success",
+        };
+      } catch (error) {
+        return {
+          ascii: null,
+          error: projectError(error),
+          status: "failure",
+        };
       }
     },
 
     validate,
   };
-}
-
-function configuredSource(
-  code: string,
-  theme: string,
-  configJson: string,
-  options: MermanRenderOptions | undefined
-): string {
-  return sourceWithConfig(
-    code,
-    options?.hostThemePreset ? "default" : theme,
-    configJson
-  );
-}
-
-function bindingOptionsForRender(
-  options: MermanRenderOptions | undefined
-): SvgBindingOptions | undefined {
-  const fontFamily = options?.diagramFont
-    ? diagramFontStack(options.diagramFont)
-    : undefined;
-  if (!options?.pipeline && !options?.hostThemePreset && !fontFamily) {
-    return undefined;
-  }
-
-  const bindingOptions: SvgBindingOptions = {};
-  if (options?.hostThemePreset) {
-    bindingOptions.host_theme = {
-      preset: options.hostThemePreset,
-      ...(fontFamily ? { font_family: fontFamily } : {}),
-    };
-  } else if (fontFamily) {
-    bindingOptions.site_config = {
-      fontFamily,
-      themeVariables: { fontFamily },
-    };
-  }
-  if (options?.pipeline) {
-    bindingOptions.svg = { pipeline: options.pipeline };
-  }
-  return bindingOptions;
 }

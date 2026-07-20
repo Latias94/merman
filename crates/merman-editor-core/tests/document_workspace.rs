@@ -1,5 +1,7 @@
 use merman_analysis::{AnalysisOptions, Analyzer, FenceMarker, FenceTextIndexSource, SourceKind};
-use merman_editor_core::{DocumentKind, DocumentUri, DocumentWorkspace, Position};
+use merman_editor_core::{
+    DiagramDetectionValidity, DocumentKind, DocumentUri, DocumentWorkspace, Position,
+};
 use std::sync::Arc;
 
 #[test]
@@ -28,6 +30,29 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
             .text_index
             .has_directive_prefix("classDef")
     );
+}
+
+#[test]
+fn recovered_flowchart_keeps_available_detection_in_the_shared_analysis_bundle() {
+    let analyzed = DocumentWorkspace::build_analyzed_snapshot_with_shared_text(
+        &Analyzer::new(),
+        "file:///tmp/incomplete.mmd",
+        4,
+        Arc::from("flowchart TD\nA[unterminated\n"),
+        DocumentKind::Diagram,
+    );
+    let detection = analyzed
+        .detection()
+        .expect("recovery should preserve trusted diagram identity");
+
+    assert!(!analyzed.payload().valid);
+    assert_eq!(
+        detection.validity,
+        DiagramDetectionValidity::RecoverableInvalid
+    );
+    assert_eq!(detection.diagram_type, "flowchart");
+    assert_eq!(detection.syntax_id, "flowchart-v2");
+    assert_eq!(detection.effective_layout_id, "dagre");
 }
 
 #[test]

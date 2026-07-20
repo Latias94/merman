@@ -2,9 +2,7 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use std::str::FromStr as _;
-
-use roughr::Color;
+use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
 
 pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
@@ -42,7 +40,7 @@ pub(super) fn normalize_css_font_family(font_family: &str) -> String {
     crate::config::normalize_css_font_family(font_family)
 }
 
-pub(super) fn theme_color(
+pub(super) fn theme_token(
     effective_config: &serde_json::Value,
     key: &str,
     fallback: &str,
@@ -125,7 +123,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn color(&self, key: &str, fallback: &str) -> String {
-        theme_color(self.effective_config, key, fallback)
+        theme_token(self.effective_config, key, fallback)
     }
 
     pub(super) fn theme_name(&self) -> String {
@@ -160,15 +158,38 @@ impl<'a> SvgTheme<'a> {
     }
 }
 
-pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> Option<String> {
-    let color = Color::from_str(color.trim()).ok()?;
-    Some(format!(
-        "rgba({}, {}, {}, {})",
-        color.red,
-        color.green,
-        color.blue,
-        fmt(opacity)
-    ))
+pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
+    let color = ThemeColor::parse(color.trim())?;
+    let faded = rgba(
+        color.channel(ColorChannel::Red),
+        color.channel(ColorChannel::Green),
+        color.channel(ColorChannel::Blue),
+        opacity,
+    )?;
+    Ok(faded)
+}
+
+pub(in crate::svg::parity) fn cssom_color_value(value: &str) -> String {
+    let value = value.trim();
+    let Ok(color) = ThemeColor::parse(value) else {
+        // Preserve CSS variables and browser-supported syntaxes outside Khroma's parser surface.
+        return value.to_string();
+    };
+
+    if color.source_format() == ColorSourceFormat::Keyword {
+        return value.to_ascii_lowercase();
+    }
+
+    let red = color.channel(ColorChannel::Red).round() as i64;
+    let green = color.channel(ColorChannel::Green).round() as i64;
+    let blue = color.channel(ColorChannel::Blue).round() as i64;
+    let alpha = color.channel(ColorChannel::Alpha);
+    if alpha < 1.0 {
+        let alpha = (alpha * 1000.0).round() / 1000.0;
+        format!("rgba({red}, {green}, {blue}, {})", fmt(alpha))
+    } else {
+        format!("rgb({red}, {green}, {blue})")
+    }
 }
 
 pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
@@ -643,16 +664,44 @@ mod tests {
     }
 
     #[test]
-    fn css_rgba_fade_parses_css_colors() {
+    fn css_rgba_fade_matches_khroma_color_semantics() {
         assert_eq!(
-            css_rgba_fade("#8090a0", 0.5).as_deref(),
-            Some("rgba(128, 144, 160, 0.5)")
+            css_rgba_fade("#8090a0", 0.5).expect("valid hex color"),
+            "rgba(128, 144, 160, 0.5)"
         );
         assert_eq!(
-            css_rgba_fade("hsl(80, 100%, 96.2745098039%)", 0.5).as_deref(),
-            Some("rgba(249, 255, 236, 0.5)")
+            css_rgba_fade("rebeccapurple", 0.5).expect("valid named color"),
+            "rgba(102, 51, 153, 0.5)"
         );
-        assert!(css_rgba_fade("var(--not-runtime-resolved)", 0.5).is_none());
+        assert_eq!(
+            css_rgba_fade("rgb(20% 40% 60% / 25%)", 0.2).expect("valid modern RGB color"),
+            "rgba(51, 102, 153, 0.2)"
+        );
+        assert_eq!(
+            css_rgba_fade("hsl(80, 100%, 96%)", 0.5).expect("valid HSL color"),
+            "rgba(248.2, 255, 234.6, 0.5)"
+        );
+        assert_eq!(
+            css_rgba_fade("#8090a080", 0.5).expect("valid alpha hex color"),
+            "rgba(128, 144, 160, 0.5)"
+        );
+    }
+
+    #[test]
+    fn css_rgba_fade_rejects_unsupported_css_color() {
+        let error = css_rgba_fade("var(--not-runtime-resolved)", 0.5)
+            .expect_err("unresolved CSS variables are not khroma colors");
+
+        assert!(error.to_string().contains("var(--not-runtime-resolved)"));
+    }
+
+    #[test]
+    fn cssom_color_value_matches_browser_serialization_boundaries() {
+        assert_eq!(cssom_color_value("#8090a0"), "rgb(128, 144, 160)");
+        assert_eq!(cssom_color_value("hsl(80 100% 96%)"), "rgb(248, 255, 235)");
+        assert_eq!(cssom_color_value("#8090a080"), "rgba(128, 144, 160, 0.502)");
+        assert_eq!(cssom_color_value("ReBeccAPurple"), "rebeccapurple");
+        assert_eq!(cssom_color_value("var(--MyColor)"), "var(--MyColor)");
     }
 
     #[test]

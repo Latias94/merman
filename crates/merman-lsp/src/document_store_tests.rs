@@ -996,7 +996,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_and_tokens() {
+fn diagnostic_only_analyzer_update_stales_all_snapshot_derived_state() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1024,15 +1024,10 @@ fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_an
         ),
     );
 
-    assert!(store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_snapshot_context_current(&snapshot_context));
     assert!(!store.is_diagnostic_context_current(&diagnostic_context));
-    assert!(store.has_snapshot(&uri));
-    assert_eq!(
-        store
-            .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
-        Some("tokens-1")
-    );
+    assert!(!store.has_snapshot(&uri));
+    assert!(store.semantic_tokens_state(&uri).is_none());
 }
 
 #[test]
@@ -1222,7 +1217,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
+fn diagnostic_only_analyzer_update_rebuilds_the_analysis_bundle() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1263,18 +1258,14 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
         ),
     );
 
-    assert!(store.has_snapshot(&uri));
-    assert_eq!(
-        store
-            .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
-        Some("tokens-1")
-    );
-    let cached = store
+    assert!(!store.has_snapshot(&uri));
+    assert!(store.semantic_tokens_state(&uri).is_none());
+    let rebuilt = store
         .snapshot(&uri)
-        .expect("expected cached snapshot after diagnostic-only update");
+        .expect("expected rebuilt snapshot after diagnostic-only update");
+    assert!(!std::sync::Arc::ptr_eq(&snapshot, &rebuilt));
     assert_eq!(
-        cached.fences[0].diagram_type.as_deref(),
+        rebuilt.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
     );
 }
@@ -1675,8 +1666,8 @@ fn zenuml_documents_use_parser_facts() {
         concat!(
             "zenuml\n",
             "title Login Flow\n",
-            "accTitle Login accessibility title\n",
-            "accDescr Login accessibility description\n",
+            "accTitle: Login accessibility title\n",
+            "accDescr: Login accessibility description\n",
             "Alice\n",
             "Bob\n",
             "A as API\n",
@@ -1702,9 +1693,8 @@ fn zenuml_documents_use_parser_facts() {
         "Login accessibility description",
         "API",
         "Login",
-        "SyncMessage()",
+        "SyncMessage",
         "result",
-        "Session(with, params)",
     ] {
         assert!(
             index

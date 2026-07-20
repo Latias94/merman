@@ -109,29 +109,36 @@ python3 scripts/verify-platform-bindings.py --build-android-slices
 Runtime smoke for JNI callback exception cleanup requires an Android device or emulator:
 
 ```bash
-python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path "<gradle-install-dir>/bin/gradle"
+python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke
 ```
 
-To verify the standalone Android library module with native slices and Gradle 9.x:
+To build and verify the standalone Android AAR with the pinned NDK and Gradle Wrapper:
 
 ```bash
-python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
-"<gradle-install-dir>/bin/gradle" -p platforms/android assembleRelease
+python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
+```
+
+The helper discovers an installed JDK 17 without changing the parent shell. Use `--java-home`
+only for a nonstandard JDK installation. To verify the complete staged Maven publication after the
+Gradle publish task, including POM metadata, hashes, AAR contents, Kotlin sources, Dokka API pages,
+and Gradle documentation variants:
+
+```bash
+platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository
+python3 scripts/verify-platform-bindings.py --verify-android-maven
 ```
 
 The platform gate can run the same AAR packaging check after building native slices:
 
 ```bash
-python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build --gradle-path "<gradle-install-dir>/bin/gradle"
+python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build
 ```
 
-`--gradle-path` accepts either the Gradle executable path or the Gradle `bin` directory. You can
-also set `MERMAN_GRADLE` instead of passing the parameter. Windows users can still run the existing
-PowerShell scripts if that is more convenient.
+The platform gate resolves the checked-in Wrapper by default. `--gradle-path` and
+`MERMAN_GRADLE` remain available when a controlled environment deliberately supplies Gradle.
 
 ## Follow-On Packaging
 
-- Build every supported Android ABI in CI.
-- Add AAR publishing metadata once the release repository target is chosen.
+- Configure Central Portal credentials and signing only after a Maven publication target is chosen.
 - Keep the emulator smoke enabled in CI and expand device coverage when the Android release matrix
   grows.

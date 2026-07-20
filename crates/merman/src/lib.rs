@@ -20,7 +20,8 @@
 //! | Render Mermaid-like SVG | `render` | `merman::render::HeadlessRenderer` |
 //! | Prepare SVG for `usvg` / `resvg` / raster export | `render` | `HeadlessRenderer::render_svg_resvg_safe_sync` |
 //! | Render terminal-friendly text | `ascii` | `merman::ascii::HeadlessAsciiRenderer` |
-//! | Render PNG, JPG, or PDF from Rust | `raster` | `HeadlessRenderer::render_png_sync` and `render::raster::RasterOptions` |
+//! | Render PNG or JPG from Rust | `raster` | `HeadlessRenderer::render_png_sync` and `render::raster::RasterOptions` |
+//! | Render a vector PDF from Rust | `raster` | `HeadlessRenderer::render_pdf_with_options_sync` and `render::raster::PdfOptions` |
 //!
 //! If you already know the diagram type, use the `*_with_type_sync` methods on
 //! [`Engine`] to skip detection. If you need lower-level layout or SVG pipeline
@@ -31,8 +32,8 @@
 //!
 //! - `render`: layout plus SVG rendering through `merman::render`.
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
-//! - `raster`: PNG/JPG/PDF output through `merman::render::raster`; this implies
-//!   `render`.
+//! - `raster`: PNG/JPG raster images and vector PDF output through
+//!   `merman::render::raster`; this implies `render`.
 //! - `ratex-math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `render`.
 //!
@@ -96,13 +97,24 @@
 //! classDiagram, erDiagram, stateDiagram, xychart, mindmap, treeView,
 //! timeline, gantt, journey, kanban, packet, and gitGraph.
 //!
-//! # Raster output
+//! # SVG, raster, and PDF output
 //!
-//! The `raster` feature renders SVG through the `resvg`-safe pipeline before
-//! conversion. PNG and JPG use a default pixmap budget to avoid accidental huge
-//! allocations from very large Mermaid `viewBox` values. For UI previews, pass a
-//! visible target box through `RasterOptions::with_fit_to` and use
-//! `RasterOptions::with_scale` for device-pixel ratio.
+//! SVG output remains vector markup: Merman does not rasterize it and does not impose a global
+//! width/height cap on the SVG root. The normal source, layout, and SVG-byte resource budgets
+//! still apply before an SVG is returned.
+//!
+//! PNG and JPG are pixel outputs. Their `RasterOptions` plan the final pixmap before allocation,
+//! with default 8192-by-8192 side limits and an 8192-squared pixel limit. Use
+//! `RasterOptions::with_fit_to` for a preview-sized target and `RasterOptions::with_scale` for
+//! device-pixel ratio. Embedded raster images are checked from their headers before decoding as
+//! well.
+//!
+//! PDF is a vector output with an independent `PdfOptions` policy. The default
+//! `PdfPagePolicy::FitSvg` uses the SVG's intrinsic page size and is not constrained by the
+//! PNG/JPG pixmap budget. PDF filters may create localized bitmaps and embedded raster images have
+//! their own default budgets; configure those through `PdfOptions` when needed. Use
+//! `PdfPagePolicy::FitCssWidth` to model the CSS-pixel viewport used by browser-style `--pdfFit`
+//! exports.
 
 pub use merman_core::*;
 

@@ -6,6 +6,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
     ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 
 use super::db::{MindmapDb, MindmapParseConfig};
@@ -31,7 +32,7 @@ pub(crate) fn mindmap_syntax_construction_count() -> usize {
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)?;
     super::render_model_to_compat_json(&model, meta)
 }
@@ -39,15 +40,21 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_mindmap_semantic_source(code, meta)?;
-    let editor_facts = source.editor_facts.clone();
-    let model = source.into_render_model(meta)?;
-    let model = super::render_model_to_compat_json(&model, meta)?;
-    Ok((model, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_mindmap_semantic_source(code, meta),
+        |source| {
+            let editor_facts = source.editor_facts.clone();
+            let model = source
+                .into_render_model(meta)
+                .and_then(|model| super::render_model_to_compat_json(&model, meta));
+            (model, editor_facts)
+        },
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_mindmap_model_for_render(
+pub(crate) fn parse_mindmap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<MindmapDiagramRenderModel> {
@@ -75,38 +82,17 @@ impl MindmapSemanticSource {
     }
 }
 
-struct MindmapSemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl MindmapSemanticFailure {
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("mindmap parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
-}
-
 fn parse_mindmap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<MindmapSemanticSource> {
-    construct_mindmap_semantic_source(code, meta).map_err(|failure| *failure.error)
+    construct_mindmap_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
 fn construct_mindmap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<MindmapSemanticSource, MindmapSemanticFailure> {
+) -> std::result::Result<MindmapSemanticSource, CombinedSemanticFailure> {
     #[cfg(all(test, feature = "full"))]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -119,19 +105,21 @@ fn construct_mindmap_semantic_source(
     editor_facts.replace_family_lexemes(lexemes.finish());
 
     if let Some(error) = first_error {
-        return Err(MindmapSemanticFailure {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        });
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "mindmap",
+            error,
+            editor_facts,
+        ));
     }
 
     let db = match mindmap_db_from_events(parsed.events, meta) {
         Ok(db) => db,
         Err(error) => {
-            return Err(MindmapSemanticFailure {
-                error: Box::new(error),
-                editor_facts: Box::new(editor_facts),
-            });
+            return Err(CombinedSemanticFailure::parser_recovery(
+                "mindmap",
+                error,
+                editor_facts,
+            ));
         }
     };
     Ok(MindmapSemanticSource { db, editor_facts })
@@ -173,13 +161,6 @@ fn mindmap_db_from_events(
     }
 
     Ok(db)
-}
-
-pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_mindmap_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
 }
 
 #[derive(Debug, Clone)]

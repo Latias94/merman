@@ -2,6 +2,7 @@ use crate::diagrams::scan::strip_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    family::{CombinedSemanticFailure, CombinedSemanticParse},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -652,10 +653,6 @@ fn trimmed_statement_with_offset(raw: &str, raw_start: usize) -> (&str, usize) {
     (line.trim(), raw_start + leading)
 }
 
-pub fn parse_architecture_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse::parse_recovering_editor_facts(code, meta)
-}
-
 fn is_architecture_reserved_id(id: &str) -> bool {
     matches!(
         id,
@@ -671,16 +668,19 @@ fn architecture_reserved_id_message(id: &str) -> String {
     format!("reserved architecture keyword [{id}] cannot be used as an id")
 }
 
-pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse::parse_semantic_source(code, meta)?.compat_json(meta))
 }
 
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse::parse_semantic_source(code, meta)?;
-    Ok((source.compat_json(meta), source.editor_facts()))
+) -> CombinedSemanticParse {
+    CombinedSemanticParse::from_construction(
+        parse::parse_combined_semantic_source(code, meta),
+        |source| (Ok(source.compat_json(meta)), source.editor_facts()),
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -889,7 +889,7 @@ pub struct ArchitectureRenderLayoutHint {
     pub members: Vec<String>,
 }
 
-pub fn parse_architecture_model_for_render(
+pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ArchitectureDiagramRenderModel> {
@@ -961,7 +961,7 @@ mod tests {
             .expect("typed architecture parse should succeed")
             .expect("architecture should be detected");
 
-        assert_eq!(parsed.model.kind(), "architecture");
+        assert_eq!(parsed.model().kind(), "architecture");
     }
 
     #[test]
@@ -1103,7 +1103,11 @@ mod tests {
             ] {
                 let text = format!("architecture-beta\n  {entity} {reserved}{suffix}\n");
                 let offset = text.rfind(reserved).unwrap();
-                let facts = parse_architecture_editor_facts(&text, &test_meta());
+                let facts = crate::family::test_support::editor_facts(
+                    parse_architecture_json_and_editor_facts,
+                    &text,
+                    &test_meta(),
+                );
 
                 assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
                 assert_eq!(facts.diagnostics.len(), 1);
@@ -1137,7 +1141,11 @@ mod tests {
             ),
         ] {
             let offset = text.rfind(reserved).unwrap();
-            let facts = parse_architecture_editor_facts(text, &test_meta());
+            let facts = crate::family::test_support::editor_facts(
+                parse_architecture_json_and_editor_facts,
+                text,
+                &test_meta(),
+            );
 
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
             assert_eq!(facts.diagnostics.len(), 1);
@@ -1295,7 +1303,11 @@ service caption(server)[\"title %% kept\"]\n",
     #[test]
     fn architecture_editor_payload_spans_point_to_values_when_values_match_keywords() {
         let text = "architecture-beta\n  title title\n  accTitle: accTitle\n  accDescr: accDescr\n";
-        let facts = parse_architecture_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         for (detail, name, needle) in [
             ("architecture title", "title", "title title"),
@@ -1340,7 +1352,11 @@ service caption(server)[\"title %% kept\"]\n",
             "accDescr: \"Description %% ignored\n",
         );
         let model = parse(text);
-        let facts = parse_architecture_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         assert_eq!(model["title"], "\"Title");
         assert_eq!(model["accTitle"], "\"Accessible");
@@ -1442,7 +1458,11 @@ service caption(server)[\"title %% kept\"]\n",
     #[test]
     fn architecture_align_editor_facts_preserve_spans() {
         let text = "architecture-beta\n  service rowspan(server)[Rowspan]\n  service columnar(server)[Columnar]\n  align row rowspan columnar\n";
-        let facts = parse_architecture_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         let row_start = text.find("align row").unwrap() + "align ".len();
         assert_eq!(
@@ -1700,12 +1720,18 @@ group child(cloud)[Child] in root\n";
     fn architecture_parse_pipeline_returns_combined_json_and_editor_projection() {
         let text = "architecture-beta\nservice api(server)[API]\n";
         let parsed = Engine::new()
-            .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+            .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.diagram.model["services"][0]["id"], "api");
-        let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        assert_eq!(
+            parsed
+                .outcome()
+                .parsed_model()
+                .expect("expected parsed snapshot")["services"][0]["id"],
+            "api"
+        );
+        let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
             panic!("Architecture should return parser-backed editor facts");
         };
         assert!(facts.symbols.iter().any(|symbol| {
@@ -1736,24 +1762,29 @@ group child(cloud)[Child] in root\n";
             .parse_diagram_sync(text, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let combined = engine
-            .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let combined = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
 
-        assert_eq!(combined.diagram.model, plain.model);
-        assert_eq!(combined.diagram.model["type"], "custom-architecture");
+        assert_eq!(
+            combined
+                .outcome()
+                .parsed_model()
+                .expect("expected parsed snapshot"),
+            &plain.model
+        );
+        assert_eq!(
+            combined
+                .outcome()
+                .parsed_model()
+                .expect("expected parsed snapshot")["type"],
+            "custom-architecture"
+        );
         assert!(matches!(
-            combined.editor_facts,
+            combined.editor_facts(),
             ParsedEditorFacts::Unavailable
         ));
         assert!(
             engine
-                .parse_editor_semantic_facts_with_type_sync(
-                    "architecture",
-                    text,
-                    ParseOptions::strict(),
-                )
+                .parse_editor_semantic_facts_with_type_sync("architecture", text,)
                 .unwrap()
                 .is_none()
         );
@@ -1771,10 +1802,10 @@ group child(cloud)[Child] in root\n";
             "service api(server)[API]\n",
         );
         let parsed = Engine::new()
-            .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+            .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
-        let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
             panic!("Architecture should return parser-backed editor facts");
         };
         let api = facts
@@ -1801,10 +1832,10 @@ group child(cloud)[Child] in root\n";
             "service api(server)[\"Gateway \u{7f51}\u{5173}\"]\r\n",
         );
         let parsed = Engine::new()
-            .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+            .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
-        let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
             panic!("Architecture should return parser-backed editor facts");
         };
         let payload = facts
@@ -1838,10 +1869,10 @@ group child(cloud)[Child] in root\n";
             "service after(database)[After]\n",
         );
         let parsed = Engine::new()
-            .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+            .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
-        let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
             panic!("Architecture should return parser-backed editor facts");
         };
         let after = facts
@@ -1905,7 +1936,11 @@ group root(cloud)[Root]\n";
     #[test]
     fn architecture_multiline_acc_descr_projects_complete_payload_span() {
         let text = "architecture-beta\naccDescr {\n  First   line\n\n  Second line\n}\n";
-        let facts = parse_architecture_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
         let payload = facts
             .symbols
             .iter()
@@ -1950,7 +1985,11 @@ group root(cloud)[Root]\n";
 
         for (text, name, detail) in cases {
             assert!(parse_architecture(text, &test_meta()).is_err());
-            let facts = parse_architecture_editor_facts(text, &test_meta());
+            let facts = crate::family::test_support::editor_facts(
+                parse_architecture_json_and_editor_facts,
+                text,
+                &test_meta(),
+            );
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
             assert!(
                 facts.symbols.iter().any(|symbol| {
@@ -1982,7 +2021,11 @@ group root(cloud)[Root]\n";
         };
 
         assert_eq!(json_diagnostic, typed_diagnostic);
-        let facts = parse_architecture_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.diagnostics[0].message, json_diagnostic.message());
         assert_eq!(facts.diagnostics[0].span, json_diagnostic.span());

@@ -51,7 +51,7 @@ Alice->>Bob: Hello
 Note over Alice,Bob: Review
 details Alice: {"owner": "platform"}"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -144,7 +144,7 @@ fn parse_sequence_editor_box_payload_reuses_db_color_semantics() {
         "end\n",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -175,7 +175,7 @@ accTitle: Title
 accDescr: accDescr
 Alice->>Bob: Alice"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -211,7 +211,7 @@ sequenceDiagram
 participant Alice
 Alice->>Bob: Hello"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -242,7 +242,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
         "Alice->>Bob: Hello",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -268,7 +268,7 @@ sequenceDiagram
 participant Alice
 Alice->>Bob: Hello"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -297,7 +297,7 @@ fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
         "Alice->>Bob: Hello",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -330,7 +330,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
         "顧客->>サーバー: こんにちは",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -364,7 +364,7 @@ fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
         "サーバー-->>顧客: 完了\r\n",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -397,7 +397,7 @@ fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_f
     );
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -427,7 +427,7 @@ fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -442,7 +442,7 @@ fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
     let text = "sequenceDiagram\nparticipant Alice\nparticipant Bob @{\nAlice->>Bob: Hello\n";
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -467,7 +467,7 @@ fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
     let text = "sequenceDiagram\nparticipant Alice\n<\nparticipant Bob\nAlice->>Bob: Hello\n";
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -503,7 +503,7 @@ fn parse_sequence_strict_failure_and_editor_recovery_share_exact_lexer_span() {
     let invalid_start = text.find('<').unwrap();
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence recovery facts");
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);

@@ -825,14 +825,12 @@ mod tests {
     }
 
     type JsonParser = fn(&str, &ParseMetadata) -> Result<Value>;
-    type EditorParser = fn(&str, &ParseMetadata) -> EditorSemanticFacts;
-
     struct FamilyCase {
         id: &'static str,
         header: &'static str,
         tail: &'static str,
         parser: JsonParser,
-        editor: EditorParser,
+        combined: crate::family::CombinedSemanticParser,
         retains_title: bool,
     }
 
@@ -843,7 +841,7 @@ mod tests {
                 header: "architecture-beta",
                 tail: "service api\r\n",
                 parser: crate::diagrams::architecture::parse_architecture,
-                editor: crate::diagrams::architecture::parse_architecture_editor_facts,
+                combined: crate::diagrams::architecture::parse_architecture_json_and_editor_facts,
                 retains_title: true,
             },
             FamilyCase {
@@ -851,7 +849,7 @@ mod tests {
                 header: "cynefin-beta",
                 tail: "clear\r\n",
                 parser: crate::diagrams::cynefin::parse_cynefin,
-                editor: crate::diagrams::cynefin::parse_cynefin_editor_facts,
+                combined: crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts,
                 retains_title: true,
             },
             FamilyCase {
@@ -859,7 +857,7 @@ mod tests {
                 header: "gitGraph",
                 tail: "commit id: \"c1\"\r\n",
                 parser: crate::diagrams::git_graph::parse_git_graph,
-                editor: crate::diagrams::git_graph::parse_git_graph_editor_facts,
+                combined: crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts,
                 retains_title: true,
             },
             FamilyCase {
@@ -867,7 +865,7 @@ mod tests {
                 header: "info showInfo",
                 tail: "",
                 parser: crate::diagrams::info::parse_info,
-                editor: crate::diagrams::info::parse_info_editor_facts,
+                combined: crate::diagrams::info::parse_info_json_and_editor_facts,
                 retains_title: false,
             },
             FamilyCase {
@@ -875,7 +873,7 @@ mod tests {
                 header: "packet",
                 tail: "0-7: \"byte\"\r\n",
                 parser: crate::diagrams::packet::parse_packet,
-                editor: crate::diagrams::packet::parse_packet_editor_facts,
+                combined: crate::diagrams::packet::parse_packet_json_and_editor_facts,
                 retains_title: true,
             },
             FamilyCase {
@@ -883,7 +881,7 @@ mod tests {
                 header: "pie showData",
                 tail: "\"A\": 1\r\n",
                 parser: crate::diagrams::pie::parse_pie,
-                editor: crate::diagrams::pie::parse_pie_editor_facts,
+                combined: crate::diagrams::pie::parse_pie_json_and_editor_facts,
                 retains_title: true,
             },
             FamilyCase {
@@ -891,7 +889,7 @@ mod tests {
                 header: "radar-beta",
                 tail: "axis a\r\ncurve c { 1 }\r\n",
                 parser: crate::diagrams::radar::parse_radar,
-                editor: crate::diagrams::radar::parse_radar_editor_facts,
+                combined: crate::diagrams::radar::parse_radar_json_and_editor_facts,
                 retains_title: true,
             },
         ]
@@ -938,7 +936,7 @@ mod tests {
                 );
             }
 
-            let editor = (case.editor)(&source, &meta);
+            let editor = crate::family::test_support::editor_facts(case.combined, &source, &meta);
             assert_eq!(
                 editor.completeness,
                 EditorSemanticCompleteness::Complete,
@@ -1049,7 +1047,7 @@ mod tests {
                 Some(SourceSpan::new(source.len(), source.len()))
             );
 
-            let editor = (case.editor)(&source, &meta);
+            let editor = crate::family::test_support::editor_facts(case.combined, &source, &meta);
             assert_eq!(editor.completeness, EditorSemanticCompleteness::Recovered);
             assert!(
                 editor

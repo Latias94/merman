@@ -22,8 +22,8 @@ export function ViewportControls({
       <ArtifactIconButton label={t("preview.zoomOut")} onClick={controller.zoomOut}>
         <ZoomOut className="size-4" />
       </ArtifactIconButton>
-      <span className="w-12 text-center text-xs tabular-nums text-muted-foreground">
-        {Math.round(controller.zoom * 100)}%
+      <span className="w-16 text-center text-xs tabular-nums text-muted-foreground">
+        {formatZoomPercent(controller.zoom)}
       </span>
       <ArtifactIconButton label={t("preview.zoomIn")} onClick={controller.zoomIn}>
         <ZoomIn className="size-4" />
@@ -36,6 +36,13 @@ export function ViewportControls({
       </ArtifactIconButton>
     </div>
   );
+}
+
+function formatZoomPercent(zoom: number): string {
+  const percent = zoom * 100;
+  if (percent >= 10) return `${Math.round(percent)}%`;
+  if (percent >= 1) return `${Number(percent.toFixed(1))}%`;
+  return `${Number(percent.toPrecision(2))}%`;
 }
 
 export function SvgSourceEditor({

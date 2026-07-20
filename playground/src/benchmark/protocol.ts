@@ -19,7 +19,7 @@ import {
   type BenchmarkTraceMark,
 } from "./trace.ts";
 
-export const BENCHMARK_PROTOCOL_VERSION = 1 as const;
+export const BENCHMARK_PROTOCOL_VERSION = 2 as const;
 
 export type BenchmarkSampleRole = "measured" | "warmup";
 
@@ -103,6 +103,7 @@ export interface BenchmarkSampleSuccess extends BenchmarkSampleResponseBase {
 }
 
 export interface BenchmarkSampleFailure extends BenchmarkSampleResponseBase {
+  readonly detail: string | null;
   readonly message: string;
   readonly stage: BenchmarkFailureStage;
   readonly trace: BenchmarkRawTrace | null;
@@ -265,7 +266,7 @@ export function validateBenchmarkSampleResponse(
   if (type === "benchmark-sample-success") {
     assertExactKeys(message, [...commonKeys, "svg"]);
   } else if (type === "benchmark-sample-failure") {
-    assertExactKeys(message, [...commonKeys, "stage", "message"]);
+    assertExactKeys(message, [...commonKeys, "stage", "message", "detail"]);
   } else {
     throw new RealmProtocolError("Benchmark response type is invalid.");
   }
@@ -329,6 +330,11 @@ export function validateBenchmarkSampleResponse(
   }
   const failureMessage = expectString(message.message, "message");
   assertByteBudget(failureMessage, REALM_BUDGETS.errorBytes, "message");
+  const failureDetail = expectNullableBoundedString(
+    message.detail,
+    "detail",
+    REALM_BUDGETS.errorBytes
+  );
   const failureStage = message.stage as BenchmarkFailureStage;
   const trace =
     message.trace === null
@@ -372,6 +378,7 @@ export function validateBenchmarkSampleResponse(
     resourceError,
     stage: failureStage,
     message: failureMessage,
+    detail: failureDetail,
     version,
   });
 }

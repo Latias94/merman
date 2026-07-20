@@ -5,8 +5,10 @@ Baseline: pinned Mermaid `11.16.0`
 Last updated: 2026-07-17
 
 The filename is retained for stable links. The Mermaid 11.16 family-admission work is complete:
-the executable inventory contains 35 primary SVG families and one compatibility-only family,
-`zenuml`. There is no family-level intermediate admission queue.
+the executable inventory contains 35 primary SVG families plus the external-renderer family
+`zenuml`. ZenUML owns a complete local parser/semantic/editor/headless path but remains a distinct
+external comparison lane because Mermaid registers its browser renderer from a companion package.
+There is no family-level intermediate admission queue.
 
 ## Completed Admission Contract
 
@@ -35,7 +37,7 @@ Each primary family entered the matrix only after all of these gates were satisf
 | `cynefin` | Primary | Source-backed domain geometry with bounded browser text-measurement behavior |
 | `wardley` | Primary | Full map semantics/editor facts, typed geometry, ten Cypress fixtures, and parity/root gates |
 | `error` | Primary | Suppressed parse failures and direct `error` input converge on one typed layout/SVG family path |
-| `zenuml` | Compatibility-only | Conservative translation to Sequence; browser-only `@zenuml/core` SVG parity is not claimed |
+| `zenuml` | External comparison lane | Grammar-derived semantic/editor model, typed local layout/SVG, admitted ZenUML Core behavior source, and strict native-SVG browser plugin evidence |
 
 ## Residual Boundary
 

@@ -66,8 +66,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .map(|d| d.style.clone())
         .unwrap_or_default();
 
-    let node_border_color = config.theme_color("nodeBorder", "#9370DB");
-    let node_fill_color = config.theme_color("mainBkg", "#ECECFF");
+    let node_border_color = config.theme_token("nodeBorder", "#9370DB");
+    let node_fill_color = config.theme_token("mainBkg", "#ECECFF");
 
     FlowchartRenderConfig {
         font_family,

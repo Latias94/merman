@@ -241,10 +241,10 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            if !snapshot_selector_accepts(&diagram, parsed.meta.diagram_type.as_str()) {
+            if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
                 continue;
             }
-            let diagram_type = parsed.meta.diagram_type.clone();
+            let diagram_type = parsed.metadata().diagram_type.clone();
 
             let session = match environment.begin_session() {
                 Ok(session) => session,
@@ -527,7 +527,9 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 enum GeneratedArtifactCheck {
     DefaultConfig,
     DompurifyDefaults,
+    EditorTokenDescriptor,
     PlaygroundExampleCatalog,
+    ThemeSnapshot,
     TextMeasurementAbi,
     WebDiagramCatalog,
 }
@@ -544,11 +546,17 @@ fn verify_web_diagram_catalog_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::WebDiagramCatalog]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 5] {
+fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::ThemeSnapshot]
+}
+
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 7] {
     [
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
+        GeneratedArtifactCheck::EditorTokenDescriptor,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
+        GeneratedArtifactCheck::ThemeSnapshot,
         GeneratedArtifactCheck::TextMeasurementAbi,
         GeneratedArtifactCheck::WebDiagramCatalog,
     ]
@@ -559,7 +567,9 @@ impl GeneratedArtifactCheck {
         match self {
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
+            GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
+            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
             GeneratedArtifactCheck::TextMeasurementAbi => "text-measurement ABI",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
@@ -611,9 +621,13 @@ fn verify_generated_artifact_check(
     match check {
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
+        GeneratedArtifactCheck::EditorTokenDescriptor => {
+            super::verify_editor_token_descriptor_artifacts()
+        }
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
+        GeneratedArtifactCheck::ThemeSnapshot => verify_theme_snapshot_artifact(tmp_dir),
         GeneratedArtifactCheck::TextMeasurementAbi => {
             super::verify_text_measurement_abi_artifacts()
         }
@@ -665,6 +679,21 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
     Ok(None)
 }
 
+fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
+    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_0.json");
+    let actual = tmp_dir.join("theme_variables_11_16_0.actual.json");
+    super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
+    let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
+    let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;
+    if expected_json != actual_json {
+        return Ok(Some(format!(
+            "Mermaid theme snapshot mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({})",
+            expected.display()
+        )));
+    }
+    Ok(None)
+}
+
 fn verify_web_diagram_catalog_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected = PathBuf::from("platforms/web/src/generated/diagram-catalog.ts");
     let actual = tmp_dir.join("diagram-catalog.actual.ts");
@@ -686,6 +715,11 @@ pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError>
 
 pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_dompurify_defaults_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_theme_snapshot_checks();
     verify_generated_artifact_checks(args, &checks)
 }
 
@@ -913,7 +947,7 @@ mod tests {
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
         fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
         snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
-        verify_dompurify_defaults_checks, verify_generated_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks, verify_theme_snapshot_checks,
         verify_web_diagram_catalog_checks,
     };
     use crate::cmd::is_parser_only_fixture;
@@ -934,7 +968,9 @@ mod tests {
             [
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
+                GeneratedArtifactCheck::EditorTokenDescriptor,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
+                GeneratedArtifactCheck::ThemeSnapshot,
                 GeneratedArtifactCheck::TextMeasurementAbi,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
@@ -948,8 +984,20 @@ mod tests {
             "dompurify defaults"
         );
         assert_eq!(
+            GeneratedArtifactCheck::EditorTokenDescriptor.label(),
+            "editor token descriptor"
+        );
+        assert_eq!(
             GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
             "Playground example catalog"
+        );
+        assert_eq!(
+            verify_theme_snapshot_checks(),
+            [GeneratedArtifactCheck::ThemeSnapshot]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::ThemeSnapshot.label(),
+            "Mermaid theme snapshot"
         );
         assert_eq!(
             GeneratedArtifactCheck::TextMeasurementAbi.label(),

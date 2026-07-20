@@ -219,7 +219,7 @@ fn run_parse(
             .engine
             .parse_diagram_for_render_model_sync(black_box(case.source), case.parse_options)?
             .ok_or("no Mermaid diagram detected")?;
-        Ok(parsed.model.kind().len())
+        Ok(parsed.model().kind().len())
     })
 }
 

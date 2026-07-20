@@ -121,9 +121,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .params(
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
-                    "parse": {
-                        "suppress_errors": true
-                    }
+                    "site_config": { "theme": "dark" }
                 }),
             })
             .unwrap(),

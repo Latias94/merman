@@ -1,6 +1,6 @@
 use merman_core::{
     EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticFacts,
-    Engine, ParseOptions,
+    Engine,
 };
 
 struct CompleteCase {
@@ -129,11 +129,7 @@ fn structured_langium_families_emit_exact_parser_lexemes() {
     let engine = Engine::new();
     for case in cases {
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                case.family,
-                case.source,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync(case.family, case.source)
             .unwrap_or_else(|error| panic!("{} editor parse failed: {error}", case.family))
             .unwrap_or_else(|| panic!("{} editor facts unavailable", case.family));
 
@@ -184,7 +180,7 @@ fn structured_langium_recovery_keeps_tokens_after_a_malformed_middle_line() {
     let engine = Engine::new();
     for (family, source, before, after) in cases {
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(family, source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync(family, source)
             .unwrap_or_else(|error| panic!("{family} recovery failed: {error}"))
             .unwrap_or_else(|| panic!("{family} editor facts unavailable"));
 

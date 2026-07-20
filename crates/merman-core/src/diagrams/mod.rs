@@ -1,3 +1,23 @@
+//! Public data models for Mermaid diagram families.
+//!
+//! Built-in family constructors are intentionally crate-private. External callers must parse
+//! through [`crate::Engine`], which owns preprocessing, detection, configuration, and the closed
+//! [`crate::DiagramParseSnapshot`] contract. This prevents callers from constructing metadata by
+//! hand and invoking a semantic, render-model, or editor-facts parser independently.
+//!
+//! ```compile_fail,E0603
+//! use merman_core::diagrams::flowchart::parse_flowchart;
+//! ```
+//!
+//! Built-in parser pointers are not exposed through the public registry either:
+//!
+//! ```compile_fail,E0624
+//! use merman_core::DiagramRegistry;
+//!
+//! let registry = DiagramRegistry::for_pinned_mermaid_baseline();
+//! let _parser = registry.get("flowchart-v2");
+//! ```
+
 pub mod architecture;
 pub mod block;
 pub mod c4;

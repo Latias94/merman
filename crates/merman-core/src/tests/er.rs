@@ -803,7 +803,7 @@ classDef important fill:#f9f
 style ORDER fill:#eee
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("er editor facts");
 
@@ -884,7 +884,7 @@ PLACE {
 }
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("er editor facts");
 
@@ -928,7 +928,7 @@ fn parse_er_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("er editor facts");
 
@@ -942,7 +942,7 @@ fn parse_er_editor_facts_record_expected_id_list_spans() {
     let engine = Engine::new();
     let text = "erDiagram\nclassDef pink fill:#f9f\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("er editor facts");
 
@@ -972,7 +972,7 @@ fn parse_er_editor_facts_preserve_every_crlf_unicode_occurrence_span() {
         "class 顧客 important\r\n",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("ER editor facts");
 
@@ -1041,7 +1041,7 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
     crate::diagrams::er::reset_er_syntax_construction_count();
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("er", text)
         .unwrap()
         .expect("ER recovery facts");
 

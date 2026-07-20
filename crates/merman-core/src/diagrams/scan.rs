@@ -4,23 +4,45 @@ pub(crate) fn strip_line_ending(segment: &str) -> &str {
 }
 
 pub(crate) struct LineCursor<'a> {
+    source: &'a str,
     segments: std::str::SplitInclusive<'a, char>,
+    same_line_remainder: Option<(usize, usize)>,
     offset: usize,
 }
 
 impl<'a> LineCursor<'a> {
     pub(crate) fn new(code: &'a str) -> Self {
         Self {
+            source: code,
             segments: code.split_inclusive('\n'),
+            same_line_remainder: None,
             offset: 0,
         }
     }
 
     pub(crate) fn next_line(&mut self) -> Option<(&'a str, usize)> {
+        if let Some((start, end)) = self.same_line_remainder.take() {
+            return Some((strip_line_ending(&self.source[start..end]), start));
+        }
         let segment = self.segments.next()?;
         let line_start = self.offset;
         self.offset += segment.len();
         Some((strip_line_ending(segment), line_start))
+    }
+
+    /// Replays the unconsumed suffix of the current physical line before advancing to the next.
+    ///
+    /// Stateful lexers resume their default mode immediately after a closing delimiter. Manual
+    /// line parsers use this operation to preserve the same source-backed behavior without
+    /// rescanning or manufacturing a synthetic line.
+    pub(crate) fn resume_same_line_at(&mut self, start: usize) {
+        debug_assert!(self.same_line_remainder.is_none());
+        debug_assert!(start <= self.source.len());
+        debug_assert!(self.source.is_char_boundary(start));
+        let end = self.source[start..]
+            .find('\n')
+            .map_or(self.source.len(), |relative| start + relative);
+        self.same_line_remainder = Some((start, end));
     }
 
     pub(crate) fn offset(&self) -> usize {
@@ -125,6 +147,23 @@ mod tests {
         assert_eq!(cursor.offset(), "alpha\r\n".len());
         assert_eq!(cursor.next_line(), Some(("\u{03b2}eta", "alpha\r\n".len())));
         assert_eq!(cursor.offset(), "alpha\r\n\u{03b2}eta".len());
+        assert_eq!(cursor.next_line(), None);
+    }
+
+    #[test]
+    fn line_cursor_replays_a_utf8_same_line_remainder_before_the_next_line() {
+        let source = "first } \u{03b2}eta\r\nnext";
+        let mut cursor = LineCursor::new(source);
+
+        assert_eq!(cursor.next_line(), Some(("first } \u{03b2}eta", 0)));
+        let remainder_start = source.find('\u{03b2}').unwrap();
+        cursor.resume_same_line_at(remainder_start);
+
+        assert_eq!(cursor.next_line(), Some(("\u{03b2}eta", remainder_start)));
+        assert_eq!(
+            cursor.next_line(),
+            Some(("next", "first } \u{03b2}eta\r\n".len()))
+        );
         assert_eq!(cursor.next_line(), None);
     }
 

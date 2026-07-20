@@ -1,16 +1,19 @@
 use crate::{binding_error_to_js, document_uri};
+#[cfg(test)]
+use merman_analysis::AnalysisPayload;
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, AnalyzedDiagram, Analyzer, EditorSymbolKind,
-    FenceTextIndexSource, SourceDescriptor, Summary,
+    AnalysisOptions, Analyzer, EditorSymbolKind, FenceTextIndexSource, SourceDescriptor, Summary,
 };
 use merman_bindings_core::{BindingError, BindingStatus};
+#[cfg(test)]
+use merman_editor_core::analysis_payload_to_diagnostics;
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, EditorDiagnostic, EditorDocumentSymbol, EditorHover,
-    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, FenceSnapshot,
-    Position, Range, RenameError, SemanticToken, SemanticTokenKind, SemanticTokenLegend,
-    SemanticTokenModifier, analysis_payload_to_diagnostics, code_actions_from_fixes,
-    completion_for_snapshot, document_symbols, goto_definition, hover, prepare_rename, references,
-    rename, semantic_token_legend, semantic_tokens_for_snapshot, workspace_symbols,
+    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentKind, DocumentSnapshot,
+    DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
+    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
+    RenameError, SemanticTokenDescriptor, code_actions_from_fixes, completion_for_snapshot,
+    document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
+    references, rename, semantic_token_descriptor, workspace_symbols,
 };
 use serde::Serialize;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
@@ -26,23 +29,167 @@ struct WasmEditorDiagnostics {
     diagnostics: Vec<EditorDiagnostic>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmEditorDiagramDetection {
+    status: &'static str,
+    validity: &'static str,
+    diagram_type: Option<String>,
+    syntax_id: Option<String>,
+    effective_layout_id: Option<String>,
+}
+
+impl From<Option<&EditorDiagramDetection>> for WasmEditorDiagramDetection {
+    fn from(value: Option<&EditorDiagramDetection>) -> Self {
+        match value {
+            Some(value) => Self {
+                status: "available",
+                validity: match value.validity {
+                    DiagramDetectionValidity::Valid => "valid",
+                    DiagramDetectionValidity::RecoverableInvalid => "recoverable-invalid",
+                },
+                diagram_type: Some(value.diagram_type.clone()),
+                syntax_id: Some(value.syntax_id.clone()),
+                effective_layout_id: Some(value.effective_layout_id.clone()),
+            },
+            None => Self {
+                status: "unavailable",
+                validity: "unknown",
+                diagram_type: None,
+                syntax_id: None,
+                effective_layout_id: None,
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
 struct EditorDocumentContext {
     options_json: String,
-    payload: AnalysisPayload,
-    snapshot: DocumentSnapshot,
+    analyzed: AnalyzedDocumentSnapshot,
 }
 
 impl EditorDocumentContext {
     fn matches(&self, source: &str, uri: &str, options_json: &str) -> bool {
-        self.snapshot.text.as_ref() == source
-            && self.snapshot.uri.as_str() == uri
+        self.analyzed.text.as_ref() == source
+            && self.analyzed.uri.as_str() == uri
             && self.options_json == options_json
     }
 }
 
+#[wasm_bindgen(js_name = EditorSession)]
+pub struct WasmEditorSession {
+    version: i32,
+    context: Arc<EditorDocumentContext>,
+}
+
+#[wasm_bindgen(js_class = EditorSession)]
+impl WasmEditorSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        source: &str,
+        version: i32,
+        uri: Option<String>,
+        options_json: Option<String>,
+    ) -> Result<WasmEditorSession, JsValue> {
+        validate_editor_session_version(version, None)?;
+        let uri = editor_uri(uri);
+        let context =
+            build_editor_document_context(source, &uri, version, options_json.as_deref())?;
+        Ok(Self { version, context })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn version(&self) -> i32 {
+        self.version
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn uri(&self) -> String {
+        self.context.analyzed.uri.as_str().to_string()
+    }
+
+    pub fn update(&mut self, source: &str, version: i32) -> Result<(), JsValue> {
+        validate_editor_session_version(version, Some(self.version))?;
+        let uri = self.context.analyzed.uri.as_str().to_string();
+        let options_json = self.context.options_json.clone();
+        self.context = build_editor_document_context(
+            source,
+            &uri,
+            version,
+            (!options_json.is_empty()).then_some(options_json.as_str()),
+        )?;
+        self.version = version;
+        Ok(())
+    }
+
+    pub fn diagnostics(&self) -> Result<JsValue, JsValue> {
+        diagnostics_for_context(&self.context)
+    }
+
+    #[wasm_bindgen(js_name = diagramDetection)]
+    pub fn diagram_detection(&self) -> Result<JsValue, JsValue> {
+        diagram_detection_for_context(&self.context)
+    }
+
+    #[wasm_bindgen(js_name = codeActions)]
+    pub fn code_actions(&self) -> Result<JsValue, JsValue> {
+        code_actions_for_context(&self.context)
+    }
+
+    pub fn completions(&self, line: usize, character: usize) -> Result<JsValue, JsValue> {
+        completions_for_context(&self.context, line, character)
+    }
+
+    pub fn hover(&self, line: usize, character: usize) -> Result<JsValue, JsValue> {
+        hover_for_context(&self.context, line, character)
+    }
+
+    #[wasm_bindgen(js_name = documentSymbols)]
+    pub fn document_symbols(&self) -> Result<JsValue, JsValue> {
+        document_symbols_for_context(&self.context)
+    }
+
+    #[wasm_bindgen(js_name = workspaceSymbols)]
+    pub fn workspace_symbols(&self, query: &str) -> Result<JsValue, JsValue> {
+        workspace_symbols_for_context(&self.context, query)
+    }
+
+    pub fn definition(&self, line: usize, character: usize) -> Result<JsValue, JsValue> {
+        definition_for_context(&self.context, line, character)
+    }
+
+    pub fn references(
+        &self,
+        line: usize,
+        character: usize,
+        include_declaration: bool,
+    ) -> Result<JsValue, JsValue> {
+        references_for_context(&self.context, line, character, include_declaration)
+    }
+
+    #[wasm_bindgen(js_name = prepareRename)]
+    pub fn prepare_rename(&self, line: usize, character: usize) -> Result<JsValue, JsValue> {
+        prepare_rename_for_context(&self.context, line, character)
+    }
+
+    pub fn rename(
+        &self,
+        line: usize,
+        character: usize,
+        new_name: &str,
+    ) -> Result<JsValue, JsValue> {
+        rename_for_context(&self.context, line, character, new_name)
+    }
+
+    #[wasm_bindgen(js_name = semanticTokens)]
+    pub fn semantic_tokens(&self) -> Result<Vec<u32>, JsValue> {
+        semantic_tokens_for_context(&self.context)
+    }
+}
+
 thread_local! {
-    static EDITOR_DOCUMENT_CONTEXT_CACHE: RefCell<Option<EditorDocumentContext>> =
+    static EDITOR_DOCUMENT_CONTEXT_CACHE: RefCell<Option<Arc<EditorDocumentContext>>> =
         const { RefCell::new(None) };
 }
 
@@ -219,48 +366,78 @@ struct WasmCodeAction {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WasmSemanticTokenLegend {
-    token_types: Vec<&'static str>,
-    token_modifiers: Vec<&'static str>,
-}
-
-impl From<SemanticTokenLegend> for WasmSemanticTokenLegend {
-    fn from(value: SemanticTokenLegend) -> Self {
-        Self {
-            token_types: value
-                .token_types
-                .into_iter()
-                .map(semantic_token_kind_name)
-                .collect(),
-            token_modifiers: value
-                .token_modifiers
-                .into_iter()
-                .map(semantic_token_modifier_name)
-                .collect(),
-        }
-    }
+struct WasmSemanticTokenKindDescriptor {
+    id: &'static str,
+    code: u32,
+    lsp_name: &'static str,
+    lsp_index: u32,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WasmSemanticToken {
-    line: u32,
-    start: u32,
-    length: u32,
-    token_type: &'static str,
-    token_modifier: &'static str,
-    fact_source: &'static str,
+struct WasmSemanticTokenModifierDescriptor {
+    id: &'static str,
+    index: u32,
+    bit: u32,
+    lsp_name: &'static str,
+    lsp_index: u32,
 }
 
-impl From<SemanticToken> for WasmSemanticToken {
-    fn from(value: SemanticToken) -> Self {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmSemanticTokenPackedDescriptor {
+    encoding: &'static str,
+    word_width_bits: u32,
+    record_width: usize,
+    field_order: &'static [&'static str],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmSemanticTokenDescriptor {
+    schema_version: u32,
+    digest: &'static str,
+    token_types: Vec<WasmSemanticTokenKindDescriptor>,
+    modifiers: Vec<WasmSemanticTokenModifierDescriptor>,
+    packed: WasmSemanticTokenPackedDescriptor,
+    valid_type_code_max: u32,
+    valid_modifier_mask: u32,
+}
+
+impl From<&'static SemanticTokenDescriptor> for WasmSemanticTokenDescriptor {
+    fn from(value: &'static SemanticTokenDescriptor) -> Self {
         Self {
-            line: value.line,
-            start: value.start,
-            length: value.length,
-            token_type: semantic_token_kind_name(value.kind),
-            token_modifier: semantic_token_modifier_name(value.modifier),
-            fact_source: fact_source_name(value.fact_source),
+            schema_version: value.schema_version,
+            digest: value.digest,
+            token_types: value
+                .token_kinds
+                .iter()
+                .map(|token| WasmSemanticTokenKindDescriptor {
+                    id: token.id,
+                    code: token.kind.code(),
+                    lsp_name: token.lsp_name,
+                    lsp_index: token.lsp_index,
+                })
+                .collect(),
+            modifiers: value
+                .modifiers
+                .iter()
+                .map(|modifier| WasmSemanticTokenModifierDescriptor {
+                    id: modifier.id,
+                    index: modifier.modifier.index(),
+                    bit: modifier.bit,
+                    lsp_name: modifier.lsp_name,
+                    lsp_index: modifier.lsp_index,
+                })
+                .collect(),
+            packed: WasmSemanticTokenPackedDescriptor {
+                encoding: value.packed.encoding,
+                word_width_bits: value.packed.word_width_bits,
+                record_width: value.packed.words_per_token,
+                field_order: value.packed.field_order,
+            },
+            valid_type_code_max: value.valid_type_code_max,
+            valid_modifier_mask: value.valid_modifier_mask,
         }
     }
 }
@@ -272,16 +449,36 @@ pub fn editor_diagnostics(
     uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let uri = editor_uri(uri);
-    let payload = editor_analysis_payload(source, options_json.as_deref(), &uri)?;
-    let diagnostics = analysis_payload_to_diagnostics(&payload);
+    let context = editor_document_context(source, Some(uri), options_json.as_deref())?;
+    diagnostics_for_context(&context)
+}
+
+fn diagnostics_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
+    let payload = context.analyzed.payload();
     let response = WasmEditorDiagnostics {
         version: payload.version,
         valid: payload.valid,
         summary: payload.summary,
-        source: payload.source,
-        diagnostics,
+        source: payload.source.clone(),
+        diagnostics: context.analyzed.diagnostics().to_vec(),
     };
     js_value(&response)
+}
+
+#[wasm_bindgen(js_name = editorDiagramDetection)]
+pub fn editor_diagram_detection(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    diagram_detection_for_context(&context)
+}
+
+fn diagram_detection_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
+    js_value(&WasmEditorDiagramDetection::from(
+        context.analyzed.detection(),
+    ))
 }
 
 #[wasm_bindgen(js_name = editorCodeActions)]
@@ -291,9 +488,16 @@ pub fn editor_code_actions(
     uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let uri = editor_uri(uri);
-    let payload = editor_analysis_payload(source, options_json.as_deref(), &uri)?;
-    let diagnostics = analysis_payload_to_diagnostics(&payload);
-    js_value(&code_actions_for_diagnostics(&diagnostics, &uri))
+    let context = editor_document_context(source, Some(uri.clone()), options_json.as_deref())?;
+    code_actions_for_context(&context)
+}
+
+fn code_actions_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
+    let uri = context.analyzed.uri.as_str();
+    js_value(&code_actions_for_diagnostics(
+        context.analyzed.diagnostics(),
+        uri,
+    ))
 }
 
 #[wasm_bindgen(js_name = editorCompletions)]
@@ -304,9 +508,17 @@ pub fn editor_completions(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    completions_for_context(&context, line, character)
+}
+
+fn completions_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+) -> Result<JsValue, JsValue> {
     js_value(&completion_for_snapshot(
-        &snapshot,
+        context.analyzed.document(),
         Position::new(line, character),
     ))
 }
@@ -319,8 +531,18 @@ pub fn editor_hover(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    js_value(&hover(&snapshot, Position::new(line, character)).map(WasmHover::from))
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    hover_for_context(&context, line, character)
+}
+
+fn hover_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+) -> Result<JsValue, JsValue> {
+    js_value(
+        &hover(context.analyzed.document(), Position::new(line, character)).map(WasmHover::from),
+    )
 }
 
 #[wasm_bindgen(js_name = editorDocumentSymbols)]
@@ -329,8 +551,12 @@ pub fn editor_document_symbols(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    let symbols = document_symbols(&snapshot)
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    document_symbols_for_context(&context)
+}
+
+fn document_symbols_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
+    let symbols = document_symbols(context.analyzed.document())
         .into_iter()
         .map(WasmDocumentSymbol::from)
         .collect::<Vec<_>>();
@@ -344,8 +570,15 @@ pub fn editor_workspace_symbols(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    let symbols = workspace_symbols(&snapshot, query)
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    workspace_symbols_for_context(&context, query)
+}
+
+fn workspace_symbols_for_context(
+    context: &EditorDocumentContext,
+    query: &str,
+) -> Result<JsValue, JsValue> {
+    let symbols = workspace_symbols(context.analyzed.document(), query)
         .into_iter()
         .map(WasmSymbolInformation::from)
         .collect::<Vec<_>>();
@@ -360,8 +593,19 @@ pub fn editor_definition(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    js_value(&goto_definition(&snapshot, Position::new(line, character)).map(WasmLocation::from))
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    definition_for_context(&context, line, character)
+}
+
+fn definition_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+) -> Result<JsValue, JsValue> {
+    js_value(
+        &goto_definition(context.analyzed.document(), Position::new(line, character))
+            .map(WasmLocation::from),
+    )
 }
 
 #[wasm_bindgen(js_name = editorReferences)]
@@ -373,9 +617,18 @@ pub fn editor_references(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    references_for_context(&context, line, character, include_declaration)
+}
+
+fn references_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+    include_declaration: bool,
+) -> Result<JsValue, JsValue> {
     let locations = references(
-        &snapshot,
+        context.analyzed.document(),
         Position::new(line, character),
         include_declaration,
     )
@@ -394,9 +647,18 @@ pub fn editor_prepare_rename(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    prepare_rename_for_context(&context, line, character)
+}
+
+fn prepare_rename_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+) -> Result<JsValue, JsValue> {
     js_value(
-        &prepare_rename(&snapshot, Position::new(line, character)).map(WasmPrepareRename::from),
+        &prepare_rename(context.analyzed.document(), Position::new(line, character))
+            .map(WasmPrepareRename::from),
     )
 }
 
@@ -409,16 +671,31 @@ pub fn editor_rename(
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    match rename(&snapshot, Position::new(line, character), new_name) {
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    rename_for_context(&context, line, character, new_name)
+}
+
+fn rename_for_context(
+    context: &EditorDocumentContext,
+    line: usize,
+    character: usize,
+    new_name: &str,
+) -> Result<JsValue, JsValue> {
+    match rename(
+        context.analyzed.document(),
+        Position::new(line, character),
+        new_name,
+    ) {
         Ok(edit) => js_value(&edit.map(WasmWorkspaceEdit::from)),
         Err(err) => Err(rename_error_to_js(err)),
     }
 }
 
-#[wasm_bindgen(js_name = editorSemanticTokenLegend)]
-pub fn editor_semantic_token_legend() -> Result<JsValue, JsValue> {
-    js_value(&WasmSemanticTokenLegend::from(semantic_token_legend()))
+#[wasm_bindgen(js_name = editorSemanticTokenDescriptor)]
+pub fn editor_semantic_token_descriptor() -> Result<JsValue, JsValue> {
+    js_value(&WasmSemanticTokenDescriptor::from(
+        semantic_token_descriptor(),
+    ))
 }
 
 #[wasm_bindgen(js_name = editorSemanticTokens)]
@@ -426,13 +703,24 @@ pub fn editor_semantic_tokens(
     source: &str,
     uri: Option<String>,
     options_json: Option<String>,
-) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
-    let tokens = semantic_tokens_for_snapshot(&snapshot)
-        .into_iter()
-        .map(WasmSemanticToken::from)
-        .collect::<Vec<_>>();
-    js_value(&tokens)
+) -> Result<Vec<u32>, JsValue> {
+    let context = editor_document_context(source, uri, options_json.as_deref())?;
+    semantic_tokens_for_context(&context)
+}
+
+fn semantic_tokens_for_context(context: &EditorDocumentContext) -> Result<Vec<u32>, JsValue> {
+    packed_semantic_tokens_for_snapshot(context.analyzed.document())
+}
+
+fn packed_semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Result<Vec<u32>, JsValue> {
+    plan_semantic_tokens_for_snapshot(snapshot)
+        .map(|plan| plan.packed().to_vec())
+        .map_err(|error| {
+            binding_error_to_js(BindingError::new(
+                BindingStatus::InternalError,
+                error.to_string(),
+            ))
+        })
 }
 
 fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
@@ -445,31 +733,45 @@ fn editor_uri(uri: Option<String>) -> String {
     document_uri(uri)
 }
 
-fn editor_snapshot(
-    source: &str,
-    uri: Option<String>,
-    options_json: Option<&str>,
-) -> Result<DocumentSnapshot, JsValue> {
-    Ok(editor_document_context(source, uri, options_json)?.snapshot)
+fn validate_editor_session_version(version: i32, previous: Option<i32>) -> Result<(), JsValue> {
+    if version <= 0 {
+        return Err(binding_error_to_js(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "editor document version must be positive",
+        )));
+    }
+    if previous.is_some_and(|previous| version <= previous) {
+        return Err(binding_error_to_js(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "editor document version must increase",
+        )));
+    }
+    Ok(())
 }
 
 fn document_kind_for_uri(uri: &str) -> DocumentKind {
     DocumentKind::from_path(uri.split(['?', '#']).next().unwrap_or(uri))
 }
 
+#[cfg(test)]
 fn editor_analysis_payload(
     source: &str,
     options_json: Option<&str>,
     uri: &str,
 ) -> Result<AnalysisPayload, JsValue> {
-    Ok(editor_document_context(source, Some(uri.to_string()), options_json)?.payload)
+    Ok(
+        editor_document_context(source, Some(uri.to_string()), options_json)?
+            .analyzed
+            .payload()
+            .clone(),
+    )
 }
 
 fn editor_document_context(
     source: &str,
     uri: Option<String>,
     options_json: Option<&str>,
-) -> Result<EditorDocumentContext, JsValue> {
+) -> Result<Arc<EditorDocumentContext>, JsValue> {
     let uri = editor_uri(uri);
     let options_json_key = editor_options_cache_key(options_json);
     EDITOR_DOCUMENT_CONTEXT_CACHE.with(|cache| {
@@ -478,11 +780,11 @@ fn editor_document_context(
             .as_ref()
             .filter(|context| context.matches(source, &uri, options_json_key))
         {
-            return Ok(context.clone());
+            return Ok(Arc::clone(context));
         }
 
-        let context = build_editor_document_context(source, &uri, options_json)?;
-        *cache = Some(context.clone());
+        let context = build_editor_document_context(source, &uri, 1, options_json)?;
+        *cache = Some(Arc::clone(&context));
         Ok(context)
     })
 }
@@ -490,52 +792,25 @@ fn editor_document_context(
 fn build_editor_document_context(
     source: &str,
     uri: &str,
+    version: i32,
     options_json: Option<&str>,
-) -> Result<EditorDocumentContext, JsValue> {
+) -> Result<Arc<EditorDocumentContext>, JsValue> {
     let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
     let analyzer = Analyzer::with_options(options);
     let kind = document_kind_for_uri(uri);
-    let descriptor = source_descriptor_for_kind(kind, uri);
     let text = Arc::<str>::from(source);
     record_editor_document_context_build();
-    let analysis =
-        merman_analysis::analyze_document_result_shared(Arc::clone(&text), &analyzer, descriptor);
-    let payload = analysis.payload().clone();
-    let snapshot = DocumentSnapshot {
-        uri: uri.to_string().into(),
-        version: 1,
-        kind,
-        source: payload.source.clone(),
+    let analyzed = DocumentWorkspace::build_analyzed_snapshot_with_shared_text(
+        &analyzer,
+        uri.to_string(),
+        version,
         text,
-        source_map: analysis.source_map().clone(),
-        fences: analysis
-            .diagrams()
-            .iter()
-            .map(editor_fence_snapshot)
-            .collect(),
-    };
-    Ok(EditorDocumentContext {
+        kind,
+    );
+    Ok(Arc::new(EditorDocumentContext {
         options_json: editor_options_cache_key(options_json).to_string(),
-        payload,
-        snapshot,
-    })
-}
-
-fn editor_fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
-    FenceSnapshot {
-        source_id: diagram.source_id.clone(),
-        index: diagram.index,
-        source: diagram.source.clone(),
-        start: diagram.start,
-        body_start: diagram.body_start,
-        body_end: diagram.body_end,
-        end: diagram.end,
-        text: diagram.text.clone(),
-        fence_delimiter: diagram.fence_delimiter,
-        fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
-        diagram_type: diagram.syntax.diagram_type.clone(),
-        text_index: diagram.syntax.text_index.clone(),
-    }
+        analyzed,
+    }))
 }
 
 fn editor_options_cache_key(options_json: Option<&str>) -> &str {
@@ -567,15 +842,6 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
     })?;
     merman_analysis::analysis_options_from_json_value(&value)
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
-}
-
-fn source_descriptor_for_kind(kind: DocumentKind, uri: &str) -> SourceDescriptor {
-    let source_kind = match kind {
-        DocumentKind::Diagram => merman_analysis::SourceKind::Diagram,
-        DocumentKind::Markdown => merman_analysis::SourceKind::Markdown,
-        DocumentKind::Mdx => merman_analysis::SourceKind::Mdx,
-    };
-    merman_analysis::source_descriptor_for_kind(Some(uri), source_kind)
 }
 
 fn code_actions_for_diagnostics(
@@ -641,27 +907,6 @@ fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
     }
 }
 
-fn semantic_token_kind_name(kind: SemanticTokenKind) -> &'static str {
-    match kind {
-        SemanticTokenKind::Namespace => "namespace",
-        SemanticTokenKind::Class => "class",
-        SemanticTokenKind::Struct => "struct",
-        SemanticTokenKind::Variable => "variable",
-        SemanticTokenKind::Property => "property",
-        SemanticTokenKind::Event => "event",
-        SemanticTokenKind::Function => "function",
-        SemanticTokenKind::String => "string",
-    }
-}
-
-fn semantic_token_modifier_name(modifier: SemanticTokenModifier) -> &'static str {
-    match modifier {
-        SemanticTokenModifier::Entity => "entity",
-        SemanticTokenModifier::Outline => "outline",
-        SemanticTokenModifier::Payload => "payload",
-    }
-}
-
 fn rename_error_to_js(err: RenameError) -> JsValue {
     binding_error_to_js(BindingError::new(
         BindingStatus::InvalidArgument,
@@ -688,28 +933,38 @@ mod tests {
     fn editor_language_helpers_cover_browser_editor_surface() {
         reset_editor_document_context_cache_for_tests();
 
-        let completion_snapshot = editor_snapshot(
+        let completion_context = editor_document_context(
             "flowchart TD\nA-->B\nC-->\n",
             Some("file:///tmp/example.mmd".to_string()),
             None,
         )
         .unwrap();
-        let completions = completion_for_snapshot(&completion_snapshot, Position::new(2, 4));
+        let completions =
+            completion_for_snapshot(completion_context.analyzed.document(), Position::new(2, 4));
         assert!(completions.items.iter().any(|item| item.label == "B"));
 
-        let reference_snapshot = editor_snapshot(
+        let reference_context = editor_document_context(
             "flowchart TD\nA-->B\nA-->C\n",
             Some("file:///tmp/example.mmd".to_string()),
             None,
         )
         .unwrap();
         assert_eq!(
-            references(&reference_snapshot, Position::new(1, 0), true)
-                .unwrap()
-                .len(),
+            references(
+                reference_context.analyzed.document(),
+                Position::new(1, 0),
+                true,
+            )
+            .unwrap()
+            .len(),
             2
         );
-        assert!(!semantic_tokens_for_snapshot(&reference_snapshot).is_empty());
+        assert!(
+            !plan_semantic_tokens_for_snapshot(reference_context.analyzed.document())
+                .unwrap()
+                .packed()
+                .is_empty()
+        );
 
         let payload =
             editor_analysis_payload("flowchart TD\nA-->\n", None, "file:///tmp/example.mmd")
@@ -731,9 +986,14 @@ mod tests {
         let payload = editor_analysis_payload(source, None, uri).unwrap();
         assert_eq!(editor_document_context_builds_for_tests(), 1);
 
-        let snapshot = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
+        let context = editor_document_context(source, Some(uri.to_string()), None).unwrap();
         assert_eq!(editor_document_context_builds_for_tests(), 1);
-        assert!(!semantic_tokens_for_snapshot(&snapshot).is_empty());
+        assert!(
+            !plan_semantic_tokens_for_snapshot(context.analyzed.document())
+                .unwrap()
+                .packed()
+                .is_empty()
+        );
 
         let repeated_payload = editor_analysis_payload(source, Some(" \n "), uri).unwrap();
         assert_eq!(repeated_payload, payload);
@@ -748,22 +1008,155 @@ mod tests {
         let source = "flowchart TD\nA-->B\n";
         let updated_source = "flowchart TD\nA-->C\n";
 
-        let first = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
+        let first = editor_document_context(source, Some(uri.to_string()), None).unwrap();
         assert_eq!(editor_document_context_builds_for_tests(), 1);
 
-        let repeated = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
-        assert_eq!(repeated.text, first.text);
+        let repeated = editor_document_context(source, Some(uri.to_string()), None).unwrap();
+        assert!(Arc::ptr_eq(&repeated, &first));
         assert_eq!(editor_document_context_builds_for_tests(), 1);
 
-        let updated = editor_snapshot(updated_source, Some(uri.to_string()), None).unwrap();
-        assert_eq!(updated.text.as_ref(), updated_source);
+        let updated = editor_document_context(updated_source, Some(uri.to_string()), None).unwrap();
+        assert!(!Arc::ptr_eq(&updated, &first));
+        assert_eq!(updated.analyzed.text.as_ref(), updated_source);
         assert_eq!(editor_document_context_builds_for_tests(), 2);
 
         let other_uri = "file:///tmp/other.mmd";
-        let other_document = editor_snapshot(updated_source, Some(other_uri.to_string()), None)
-            .expect("uri change rebuilds cached context");
-        assert_eq!(other_document.uri.as_str(), other_uri);
+        let other_document =
+            editor_document_context(updated_source, Some(other_uri.to_string()), None)
+                .expect("uri change rebuilds cached context");
+        assert_eq!(other_document.analyzed.uri.as_str(), other_uri);
+        assert!(!Arc::ptr_eq(&other_document, &updated));
         assert_eq!(editor_document_context_builds_for_tests(), 3);
+    }
+
+    #[test]
+    fn editor_session_moves_source_transfer_to_open_and_change() {
+        reset_editor_document_context_cache_for_tests();
+        let uri = "file:///tmp/session.mmd";
+        let mut session =
+            WasmEditorSession::new("flowchart TD\nA-->B\n", 1, Some(uri.to_string()), None)
+                .expect("open editor session");
+
+        assert_eq!(session.version(), 1);
+        assert_eq!(session.uri(), uri);
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+        assert!(
+            !plan_semantic_tokens_for_snapshot(session.context.analyzed.document())
+                .expect("session semantic tokens")
+                .packed()
+                .is_empty()
+        );
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+
+        session
+            .update("flowchart TD\nA-->C\n", 2)
+            .expect("change editor session");
+        assert_eq!(session.version(), 2);
+        assert_eq!(
+            session.context.analyzed.text.as_ref(),
+            "flowchart TD\nA-->C\n"
+        );
+        assert_eq!(editor_document_context_builds_for_tests(), 2);
+    }
+
+    #[test]
+    fn wasm_semantic_tokens_are_the_exact_planner_packed_sequence() {
+        let context = editor_document_context(
+            "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+            Some("file:///tmp/example.mmd".to_string()),
+            None,
+        )
+        .expect("editor snapshot");
+        let snapshot = context.analyzed.document();
+        let expected = merman_editor_core::plan_semantic_tokens_for_snapshot(snapshot)
+            .expect("validated token plan");
+
+        let actual =
+            packed_semantic_tokens_for_snapshot(snapshot).expect("WASM semantic token transport");
+
+        assert_eq!(actual, expected.packed());
+        assert_eq!(
+            actual.len() % merman_editor_core::SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
+            0
+        );
+    }
+
+    #[test]
+    fn incomplete_flowchart_detection_comes_from_the_shared_analyzed_snapshot() {
+        reset_editor_document_context_cache_for_tests();
+        let context = editor_document_context(
+            "flowchart TD\nA[unterminated\n",
+            Some("file:///tmp/incomplete.mmd".to_string()),
+            None,
+        )
+        .expect("shared editor analysis");
+        let detection = context
+            .analyzed
+            .detection()
+            .expect("recoverable diagram detection");
+
+        assert_eq!(
+            detection.validity,
+            DiagramDetectionValidity::RecoverableInvalid
+        );
+        assert_eq!(detection.diagram_type, "flowchart");
+        assert_eq!(detection.syntax_id, "flowchart-v2");
+        assert_eq!(detection.effective_layout_id, "dagre");
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+    }
+
+    #[test]
+    fn all_family_editor_queries_share_one_analyzed_snapshot() {
+        let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../../../playground/examples/manifest.json"))
+                .expect("playground example manifest");
+        let baselines = manifest["examples"]
+            .as_array()
+            .expect("example list")
+            .iter()
+            .filter(|example| example["evidence"]["role"] == "family-baseline")
+            .collect::<Vec<_>>();
+        assert_eq!(baselines.len(), 35);
+
+        for example in baselines {
+            let family = example["diagramType"].as_str().expect("diagram family");
+            let fixture = example["fixture"].as_str().expect("fixture path");
+            let source = std::fs::read_to_string(repository_root.join(fixture))
+                .unwrap_or_else(|error| panic!("read {family} fixture {fixture}: {error}"));
+            let uri = format!("file:///tmp/{family}.mmd");
+            reset_editor_document_context_cache_for_tests();
+
+            let context = editor_document_context(&source, Some(uri.clone()), None)
+                .unwrap_or_else(|_| panic!("analyze {family}"));
+            let detection = context
+                .analyzed
+                .detection()
+                .unwrap_or_else(|| panic!("detect {family}"));
+            assert_eq!(detection.diagram_type, family, "{family} detection");
+            let diagnostics = context.analyzed.diagnostics();
+            let _ = code_actions_for_diagnostics(diagnostics, &uri);
+            let snapshot = context.analyzed.document();
+            let header_character = source
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .encode_utf16()
+                .count();
+            let _ = completion_for_snapshot(snapshot, Position::new(0, header_character));
+            let _ = hover(snapshot, Position::new(0, 0));
+            let _ = document_symbols(snapshot);
+            let _ = prepare_rename(snapshot, Position::new(0, 0));
+            let _ = rename(snapshot, Position::new(0, 0), "RenamedNode");
+            let plan = plan_semantic_tokens_for_snapshot(snapshot)
+                .unwrap_or_else(|error| panic!("plan {family} tokens: {error}"));
+            assert!(!plan.packed().is_empty(), "{family} packed tokens");
+            assert_eq!(
+                editor_document_context_builds_for_tests(),
+                1,
+                "{family} editor capabilities rebuilt the analyzed snapshot"
+            );
+        }
     }
 
     #[test]

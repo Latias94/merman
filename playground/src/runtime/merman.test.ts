@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createMermanRuntime,
   installMermanDocumentLifecycle,
+  MermanRuntimeError,
   type MermanDomainFacade,
   type MermanDocumentLifecycleTarget,
   type MermanRequestCache,
@@ -11,6 +12,7 @@ import {
   type MermanRuntimeDependencies,
   type MermanSession,
 } from "./merman-core.ts";
+import { configuredMermanOperationInput } from "./merman-operation-input.ts";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -34,7 +36,7 @@ function facade(version = "test"): MermanDomainFacade {
 
 function session(
   value = facade(),
-  onDispose: () => void = () => undefined
+  onDispose: () => void = () => undefined,
 ): MermanSession {
   return { dispose: onDispose, facade: value };
 }
@@ -47,7 +49,7 @@ function readyResponse(): Response {
 }
 
 function dependencies(
-  overrides: Partial<MermanRuntimeDependencies> = {}
+  overrides: Partial<MermanRuntimeDependencies> = {},
 ): MermanRuntimeDependencies {
   return {
     createSession: () => session(),
@@ -60,6 +62,29 @@ function dependencies(
     ...overrides,
   };
 }
+
+test("freezes one configured input for detection, parse, layout, and render", () => {
+  const input = configuredMermanOperationInput(
+    "flowchart TD\n  A --> B\n",
+    "forest",
+    '{"layout":"elk"}',
+    { diagramFont: "arial", pipeline: "resvg-safe" },
+  );
+
+  assert.equal(Object.isFrozen(input), true);
+  assert.match(
+    input.source,
+    /%%\{init: \{"layout":"elk","theme":"forest"\}\}%%/,
+  );
+  assert.match(input.source, /flowchart TD/);
+  assert.deepEqual(input.bindingOptions, {
+    site_config: {
+      fontFamily: "Arial, Helvetica, sans-serif",
+      themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+    },
+    svg: { pipeline: "resvg-safe" },
+  });
+});
 
 test("coalesces callers and starts module import and WASM fetch together", async () => {
   const moduleResult = deferred<unknown>();
@@ -80,7 +105,7 @@ test("coalesces callers and starts module import and WASM fetch together", async
         calls.push("import");
         return moduleResult.promise;
       },
-    })
+    }),
   );
 
   const callers = Array.from({ length: 6 }, () => runtime.ensureReady());
@@ -113,7 +138,7 @@ test("retries a compile failure with one reload response", async () => {
           throw new WebAssembly.CompileError("bad cached bytes");
         }
       },
-    })
+    }),
   );
 
   await runtime.ensureReady();
@@ -133,7 +158,7 @@ test("keeps the second compile failure as a staged error", async () => {
       initialize: async () => {
         throw new WebAssembly.CompileError("still invalid");
       },
-    })
+    }),
   );
 
   await assert.rejects(runtime.ensureReady(), /still invalid/);
@@ -150,7 +175,7 @@ test("marks dynamic import failure as reload-required", async () => {
       loadModule: async () => {
         throw new Error("chunk unavailable");
       },
-    })
+    }),
   );
 
   await assert.rejects(runtime.ensureReady(), /chunk unavailable/);
@@ -173,16 +198,25 @@ test("preserves structured binding failure details", async () => {
           message: "Runtime initialization failed.",
         };
       },
-    })
+    }),
   );
 
-  await assert.rejects(runtime.ensureReady());
+  const firstFailure = await runtime.ensureReady().catch((error) => error);
   const state = runtime.store.getState();
   assert.equal(state.status, "error");
   if (state.status !== "error") return;
   assert.equal(state.error.message, "Runtime initialization failed.");
   assert.match(state.error.detail ?? "", /MERMAN_INTERNAL_ERROR/);
   assert.doesNotMatch(state.error.message, /\[object Object\]/);
+
+  const repeatedFailure = await runtime.ensureReady().catch((error) => error);
+  for (const failure of [firstFailure, repeatedFailure]) {
+    assert.ok(failure instanceof MermanRuntimeError);
+    assert.equal(failure.stage, "module-import");
+    assert.equal(failure.recovery, "reload");
+    assert.equal(failure.message, "Runtime initialization failed.");
+    assert.match(failure.detail ?? "", /MERMAN_INTERNAL_ERROR/);
+  }
 });
 
 test("aborts the sibling WASM fetch when module import fails", async () => {
@@ -199,7 +233,7 @@ test("aborts the sibling WASM fetch when module import fails", async () => {
       loadModule: async () => {
         throw new Error("chunk unavailable");
       },
-    })
+    }),
   );
 
   await assert.rejects(runtime.ensureReady(), /chunk unavailable/);
@@ -221,7 +255,7 @@ test("rejects invalid responses before initialization", async () => {
       initialize: async () => {
         initializeCalls += 1;
       },
-    })
+    }),
   );
 
   await assert.rejects(runtime.ensureReady(), /application\/wasm/);
@@ -235,7 +269,7 @@ test("classifies an HTTP failure before initialization", async () => {
   const runtime = createMermanRuntime(
     dependencies({
       fetchWasm: async () => new Response(null, { status: 404 }),
-    })
+    }),
   );
 
   await assert.rejects(runtime.ensureReady(), /HTTP 404/);
@@ -252,7 +286,7 @@ test("discards late completion and disposes its unpublished session", async () =
     dependencies({
       createSession: () => session(facade(), () => (sessionDisposals += 1)),
       initialize: () => initialization.promise,
-    })
+    }),
   );
 
   const pending = runtime.ensureReady();
@@ -287,7 +321,7 @@ test("retry preserves an already ready session", async () => {
   const runtime = createMermanRuntime(
     dependencies({
       createSession: () => session(value, () => (sessionDisposals += 1)),
-    })
+    }),
   );
 
   assert.equal(await runtime.ensureReady(), value);
@@ -301,7 +335,7 @@ test("preserves ready session through BFCache and disposes on final exit", async
   const runtime = createMermanRuntime(
     dependencies({
       createSession: () => session(facade(), () => (sessionDisposals += 1)),
-    })
+    }),
   );
   const target = new FakeLifecycleTarget();
   const remove = installMermanDocumentLifecycle(runtime, target);

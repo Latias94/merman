@@ -2,8 +2,13 @@ import {
   createMermanRuntimeState,
   currentMermanRuntimeState,
   type MermanRuntimeState,
+  withMermanRuntimeState,
 } from "./runtime-state.js";
 import { assertSafeSvgForDom } from "./svg-safety.js";
+import {
+  validatePackedSemanticTokens,
+  validateSemanticTokenDescriptor,
+} from "./editor-semantic-tokens.js";
 
 import {
   isAsciiDiagramType,
@@ -30,6 +35,7 @@ import type {
   AnalysisFactsResult,
   AnalysisResult,
   AsciiBindingOptions,
+  BrowserEditorSession,
   BrowserTextMeasurementSession,
   CommonBindingOptions,
   DiagramDetectionFacts,
@@ -41,8 +47,7 @@ import type {
   EditorLocation,
   EditorPosition,
   EditorPrepareRename,
-  EditorSemanticToken,
-  EditorSemanticTokenLegend,
+  EditorSemanticTokenDescriptor,
   EditorSymbolInformation,
   EditorWorkspaceEdit,
   HostTextMeasureRequest,
@@ -52,7 +57,9 @@ import type {
   MermanInitInput,
   MermanWasmModule,
   SvgBindingOptions,
+  UnavailableDiagramDetectionFacts,
   ValidationResult,
+  WasmEditorSessionBinding,
 } from "./public-types.js";
 
 export {
@@ -79,6 +86,20 @@ export {
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";
+export { MERMAN_ABI_VERSION } from "./generated/text-measurement-abi.js";
+export {
+  SEMANTIC_TOKEN_DESCRIPTOR,
+  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
+  SEMANTIC_TOKEN_RECORD_WIDTH,
+  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
+  SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
+  SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
+} from "./generated/token-descriptor.js";
+export type {
+  SemanticTokenModifierIndex,
+  SemanticTokenTypeCode,
+} from "./generated/token-descriptor.js";
 export { assertSafeSvgForDom } from "./svg-safety.js";
 
 const defaultRuntimeState = createMermanRuntimeState(defaultLoader);
@@ -204,6 +225,9 @@ interface BrowserTextMeasureProbes {
   wrappedText: SVGTextElement;
   formattedTextGroup: SVGGElement;
   formattedText: SVGTextElement;
+  mermaidDimensionsSvg: SVGSVGElement;
+  mermaidDimensionsText: SVGTextElement;
+  mermaidDimensionsTspan: SVGTSpanElement;
   canvasContext?: CanvasRenderingContext2D | null;
 }
 
@@ -257,7 +281,7 @@ function measureWithBrowserProbes(
     case "create-text-middle-bbox-y-offset":
       return { kind: "length", length: svgCreateTextBBoxYOffset(probes, request, true) };
     case "mermaid-calculate-text-dimensions":
-      return mermaidCalculateTextDimensions(request);
+      return mermaidCalculateTextDimensions(probes, request);
     case "canvas-measure-text-width":
       return canvasTextWidth(probes, request);
     case "simple-bbox-height":
@@ -307,12 +331,14 @@ function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResul
 }
 
 function mermaidCalculateTextDimensions(
+  probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest
 ): HostTextMetricsResult {
-  const svg = document.createElementNS(SVG_NAMESPACE, "svg") as SVGSVGElement;
-  const text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan") as SVGTSpanElement;
+  const text = probes.mermaidDimensionsText;
+  const tspan = probes.mermaidDimensionsTspan;
 
+  resetElement(text);
+  resetElement(tspan);
   text.setAttribute("x", "0");
   text.setAttribute("y", "0");
   text.style.textAnchor = "start";
@@ -322,22 +348,23 @@ function mermaidCalculateTextDimensions(
   tspan.setAttribute("x", "0");
   tspan.textContent = request.text;
   text.appendChild(tspan);
-  svg.appendChild(text);
-  document.body.appendChild(svg);
+  const bbox = text.getBBox();
+  if (bbox.width === 0 && bbox.height === 0) {
+    throw new Error("svg element not in render tree");
+  }
+  return {
+    kind: "metrics",
+    width: Math.max(0, bbox.width),
+    height: Math.max(0, bbox.height),
+    line_count: 1,
+  };
+}
 
-  try {
-    const bbox = text.getBBox();
-    if (bbox.width === 0 && bbox.height === 0) {
-      throw new Error("svg element not in render tree");
-    }
-    return {
-      kind: "metrics",
-      width: Math.max(0, bbox.width),
-      height: Math.max(0, bbox.height),
-      line_count: 1,
-    };
-  } finally {
-    svg.remove();
+function resetElement(element: SVGElement): void {
+  element.replaceChildren();
+  element.style.cssText = "";
+  for (const attributeName of element.getAttributeNames()) {
+    element.removeAttribute(attributeName);
   }
 }
 
@@ -652,6 +679,7 @@ function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
 
   let html: HTMLDivElement | null = null;
   let svg: SVGSVGElement | null = null;
+  let mermaidDimensionsSvg: SVGSVGElement | null = null;
 
   try {
     html = document.createElement("div");
@@ -697,6 +725,36 @@ function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
     svg.appendChild(formattedTextGroup);
     document.body.appendChild(svg);
 
+    mermaidDimensionsSvg = document.createElementNS(
+      SVG_NAMESPACE,
+      "svg"
+    ) as SVGSVGElement;
+    mermaidDimensionsSvg.setAttribute("aria-hidden", "true");
+    mermaidDimensionsSvg.setAttribute(
+      "data-merman-text-measure-probe",
+      "mermaid-dimensions"
+    );
+    mermaidDimensionsSvg.setAttribute("width", "0");
+    mermaidDimensionsSvg.setAttribute("height", "0");
+    Object.assign(mermaidDimensionsSvg.style, {
+      position: "fixed",
+      left: "-10000px",
+      top: "-10000px",
+      visibility: "hidden",
+      overflow: "visible",
+    });
+    const mermaidDimensionsText = document.createElementNS(
+      SVG_NAMESPACE,
+      "text"
+    ) as SVGTextElement;
+    const mermaidDimensionsTspan = document.createElementNS(
+      SVG_NAMESPACE,
+      "tspan"
+    ) as SVGTSpanElement;
+    mermaidDimensionsText.appendChild(mermaidDimensionsTspan);
+    mermaidDimensionsSvg.appendChild(mermaidDimensionsText);
+    document.body.appendChild(mermaidDimensionsSvg);
+
     return {
       html,
       svg,
@@ -706,8 +764,12 @@ function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
       wrappedText,
       formattedTextGroup,
       formattedText,
+      mermaidDimensionsSvg,
+      mermaidDimensionsText,
+      mermaidDimensionsTspan,
     };
   } catch (error) {
+    removeTextMeasureProbe(mermaidDimensionsSvg);
     removeTextMeasureProbe(svg);
     removeTextMeasureProbe(html);
     throw error;
@@ -716,6 +778,7 @@ function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
 
 function disposeTextMeasureProbes(probes: BrowserTextMeasureProbes): void {
   probes.canvasContext = null;
+  removeTextMeasureProbe(probes.mermaidDimensionsSvg);
   removeTextMeasureProbe(probes.svg);
   removeTextMeasureProbe(probes.html);
 }
@@ -811,7 +874,7 @@ export function analysisFacts(
   return facts(source, encodeOptions(options));
 }
 
-const unavailableDiagramDetectionFacts: DiagramDetectionFacts = Object.freeze({
+export const UNAVAILABLE_DIAGRAM_DETECTION: UnavailableDiagramDetectionFacts = Object.freeze({
   status: "unavailable",
   validity: "unknown",
   diagramType: null,
@@ -830,17 +893,17 @@ export function detectDiagramFacts(
       facts.version !== 1 ||
       typeof facts.valid !== "boolean"
     ) {
-      return unavailableDiagramDetectionFacts;
+      return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
     const diagrams = facts.diagrams;
     if (!Array.isArray(diagrams) || diagrams.length !== 1 || !isRecord(diagrams[0])) {
-      return unavailableDiagramDetectionFacts;
+      return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
     const syntax = diagrams[0].syntax;
     if (!isRecord(syntax)) {
-      return unavailableDiagramDetectionFacts;
+      return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
     const syntaxId = syntax.diagram_type;
@@ -851,12 +914,12 @@ export function detectDiagramFacts(
       typeof effectiveLayoutId !== "string" ||
       effectiveLayoutId.trim().length === 0
     ) {
-      return unavailableDiagramDetectionFacts;
+      return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
     const diagramType = diagramMetadataBySyntaxId().get(syntaxId);
     if (diagramType == null) {
-      return unavailableDiagramDetectionFacts;
+      return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
     return Object.freeze({
@@ -867,7 +930,7 @@ export function detectDiagramFacts(
       effectiveLayoutId,
     });
   } catch {
-    return unavailableDiagramDetectionFacts;
+    return UNAVAILABLE_DIAGRAM_DETECTION;
   }
 }
 
@@ -899,6 +962,128 @@ export function validate(source: string, options?: SvgBindingOptions | string): 
   return getMerman().validate(source, encodeOptions(options));
 }
 
+export function createEditorSession(
+  source: string,
+  version: number,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): BrowserEditorSession {
+  const runtimeState = currentMermanRuntimeState(defaultRuntimeState);
+  const EditorSession = requireEditorLanguage(
+    "createEditorSession",
+    getMerman().EditorSession
+  );
+  const native = new EditorSession(source, version, uri, encodeOptions(options));
+  return new BrowserEditorSessionImpl(native, runtimeState);
+}
+
+class BrowserEditorSessionImpl implements BrowserEditorSession {
+  private native: WasmEditorSessionBinding | null;
+
+  constructor(
+    native: WasmEditorSessionBinding,
+    private readonly runtimeState: MermanRuntimeState
+  ) {
+    this.native = native;
+  }
+
+  get version(): number {
+    return this.withNative((native) => native.version);
+  }
+
+  get uri(): string {
+    return this.withNative((native) => native.uri);
+  }
+
+  update(source: string, version: number): void {
+    this.withNative((native) => native.update(source, version));
+  }
+
+  diagnostics(): EditorDiagnosticsResult {
+    return this.withNative((native) => native.diagnostics());
+  }
+
+  diagramDetection(): DiagramDetectionFacts {
+    return this.withNative((native) =>
+      validateEditorDiagramDetection(native.diagramDetection())
+    );
+  }
+
+  codeActions(): EditorCodeAction[] {
+    return this.withNative((native) => native.codeActions());
+  }
+
+  completions(position: EditorPosition): EditorCompletionList {
+    return this.withNative((native) =>
+      native.completions(position.line, position.character)
+    );
+  }
+
+  hover(position: EditorPosition): EditorHover | null {
+    return this.withNative((native) => native.hover(position.line, position.character));
+  }
+
+  documentSymbols(): EditorDocumentSymbol[] {
+    return this.withNative((native) => native.documentSymbols());
+  }
+
+  workspaceSymbols(query: string): EditorSymbolInformation[] {
+    return this.withNative((native) => native.workspaceSymbols(query));
+  }
+
+  definition(position: EditorPosition): EditorLocation | null {
+    return this.withNative((native) =>
+      native.definition(position.line, position.character)
+    );
+  }
+
+  references(
+    position: EditorPosition,
+    includeDeclaration = true
+  ): EditorLocation[] {
+    return this.withNative((native) =>
+      native.references(position.line, position.character, includeDeclaration)
+    );
+  }
+
+  prepareRename(position: EditorPosition): EditorPrepareRename | null {
+    return this.withNative((native) =>
+      native.prepareRename(position.line, position.character)
+    );
+  }
+
+  rename(
+    position: EditorPosition,
+    newName: string
+  ): EditorWorkspaceEdit | null {
+    return this.withNative((native) =>
+      native.rename(position.line, position.character, newName)
+    );
+  }
+
+  semanticTokens(): Uint32Array {
+    return this.withNative((native) => {
+      cachedEditorSemanticTokenDescriptor();
+      return validatePackedSemanticTokens(native.semanticTokens());
+    });
+  }
+
+  dispose(): void {
+    const native = this.native;
+    if (!native) return;
+    this.native = null;
+    withMermanRuntimeState(this.runtimeState, () => native.free());
+  }
+
+  private withNative<T>(run: (native: WasmEditorSessionBinding) => T): T {
+    const native = this.native;
+    if (!native) {
+      throw new Error("Merman editor session is disposed.");
+    }
+    return withMermanRuntimeState(this.runtimeState, () => run(native));
+  }
+}
+
 export function editorDiagnostics(
   source: string,
   options?: SvgBindingOptions | string,
@@ -906,6 +1091,18 @@ export function editorDiagnostics(
 ): EditorDiagnosticsResult {
   const diagnostics = requireEditorLanguage("editorDiagnostics", getMerman().editorDiagnostics);
   return diagnostics(source, encodeOptions(options), uri);
+}
+
+export function editorDiagramDetection(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): DiagramDetectionFacts {
+  const detection = requireEditorLanguage(
+    "editorDiagramDetection",
+    getMerman().editorDiagramDetection
+  );
+  return validateEditorDiagramDetection(detection(source, encodeOptions(options), uri));
 }
 
 export function editorCodeActions(
@@ -1004,21 +1201,48 @@ export function editorRename(
   return rename(source, position.line, position.character, newName, uri, encodeOptions(options));
 }
 
-export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
-  const legend = requireEditorLanguage(
-    "editorSemanticTokenLegend",
-    getMerman().editorSemanticTokenLegend
+export function editorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
+  return cloneSemanticTokenDescriptor(cachedEditorSemanticTokenDescriptor());
+}
+
+function cachedEditorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (state.editorSemanticTokenDescriptorCache) {
+    return state.editorSemanticTokenDescriptorCache;
+  }
+  const descriptor = requireEditorLanguage(
+    "editorSemanticTokenDescriptor",
+    getMerman().editorSemanticTokenDescriptor
   );
-  return legend();
+  state.editorSemanticTokenDescriptorCache = validateSemanticTokenDescriptor(descriptor());
+  return state.editorSemanticTokenDescriptorCache;
+}
+
+function cloneSemanticTokenDescriptor(
+  descriptor: EditorSemanticTokenDescriptor
+): EditorSemanticTokenDescriptor {
+  return {
+    ...descriptor,
+    tokenTypes: descriptor.tokenTypes.map((tokenType) => ({ ...tokenType })),
+    modifiers: descriptor.modifiers.map((modifier) => ({ ...modifier })),
+    packed: {
+      ...descriptor.packed,
+      fieldOrder: [...descriptor.packed.fieldOrder],
+    },
+    overlayPrecedence: descriptor.overlayPrecedence.map((entry) => ({ ...entry })),
+    tokenTypeLspNames: [...descriptor.tokenTypeLspNames],
+    modifierLspNames: [...descriptor.modifierLspNames],
+  } as unknown as EditorSemanticTokenDescriptor;
 }
 
 export function editorSemanticTokens(
   source: string,
   uri?: string,
   options?: SvgBindingOptions | string
-): EditorSemanticToken[] {
+): Uint32Array {
+  cachedEditorSemanticTokenDescriptor();
   const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);
-  return tokens(source, uri, encodeOptions(options));
+  return validatePackedSemanticTokens(tokens(source, uri, encodeOptions(options)));
 }
 
 export function bindingCapabilities(): BindingCapabilities {
@@ -1409,7 +1633,9 @@ function requireEditorLanguage<T>(
 
 function hasEditorLanguageBindings(merman: MermanWasmModule): boolean {
   return (
+    typeof merman.EditorSession === "function" &&
     typeof merman.editorDiagnostics === "function" &&
+    typeof merman.editorDiagramDetection === "function" &&
     typeof merman.editorCodeActions === "function" &&
     typeof merman.editorCompletions === "function" &&
     typeof merman.editorHover === "function" &&
@@ -1419,7 +1645,41 @@ function hasEditorLanguageBindings(merman: MermanWasmModule): boolean {
     typeof merman.editorReferences === "function" &&
     typeof merman.editorPrepareRename === "function" &&
     typeof merman.editorRename === "function" &&
-    typeof merman.editorSemanticTokenLegend === "function" &&
+    typeof merman.editorSemanticTokenDescriptor === "function" &&
     typeof merman.editorSemanticTokens === "function"
   );
+}
+
+function validateEditorDiagramDetection(value: unknown): DiagramDetectionFacts {
+  if (!isRecord(value)) {
+    throw new Error("Merman returned an invalid editor diagram detection result.");
+  }
+  if (
+    value.status === "unavailable" &&
+    value.validity === "unknown" &&
+    value.diagramType === null &&
+    value.syntaxId === null &&
+    value.effectiveLayoutId === null
+  ) {
+    return UNAVAILABLE_DIAGRAM_DETECTION;
+  }
+  if (
+    value.status !== "available" ||
+    (value.validity !== "valid" && value.validity !== "recoverable-invalid") ||
+    typeof value.diagramType !== "string" ||
+    !isDiagramType(value.diagramType) ||
+    typeof value.syntaxId !== "string" ||
+    value.syntaxId.trim().length === 0 ||
+    typeof value.effectiveLayoutId !== "string" ||
+    value.effectiveLayoutId.trim().length === 0
+  ) {
+    throw new Error("Merman returned an invalid editor diagram detection result.");
+  }
+  return Object.freeze({
+    status: value.status,
+    validity: value.validity,
+    diagramType: value.diagramType,
+    syntaxId: value.syntaxId,
+    effectiveLayoutId: value.effectiveLayoutId,
+  });
 }

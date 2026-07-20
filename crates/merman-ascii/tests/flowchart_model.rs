@@ -13,7 +13,7 @@ fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
 
-    render_model(&parsed.model, options)
+    render_model(parsed.model(), options)
 }
 
 fn parse_flowchart_error(input: &str) -> String {

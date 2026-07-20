@@ -16,7 +16,10 @@ import {
   collectWasmInputEntries,
   currentWasmBuildToolVersions,
 } from "./input-manifest.mjs";
-import { acquireOutputLock } from "./output-lock.mjs";
+import {
+  acquireOutputLock,
+  acquireWorkspaceWasmBuildLock,
+} from "./output-lock.mjs";
 import {
   cleanupOutputStage,
   createOutputStage,
@@ -100,7 +103,12 @@ export function buildWasm({ outputDir, preset }) {
     });
     const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
 
-    run("wasm-pack", wasmPackArgs(preset, stageRoot));
+    const releaseBuildLock = acquireWorkspaceWasmBuildLock(repositoryRoot);
+    try {
+      run("wasm-pack", wasmPackArgs(preset, stageRoot));
+    } finally {
+      releaseBuildLock();
+    }
     writePackageMetadata(stageRoot);
     cleanPackageOutput(stageRoot);
     writePresetManifest(preset, stageRoot);

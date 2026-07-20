@@ -1,10 +1,11 @@
-use super::{AnalysisOptions, Analyzer, ParsedAnalysisDiagram};
+use super::{AnalysisOptions, Analyzer};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
 };
 use merman_core::{
-    EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
+    EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, ParsedEditorFacts,
+    SourceSpan,
 };
 use serde_json::json;
 
@@ -54,6 +55,25 @@ fn analysis_facts_project_canonical_effective_layout() {
             Some(effective_layout),
             "{source}"
         );
+    }
+}
+
+#[test]
+fn parse_failures_retain_operation_effective_layout() {
+    for (source, diagram_type, layout) in [
+        ("flowchart-elk TD\nA[unterminated\n", "flowchart-elk", "elk"),
+        ("swimlane-beta LR\nA[unterminated\n", "swimlane", "swimlane"),
+        (
+            "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[unterminated\n",
+            "flowchart-v2",
+            "elk",
+        ),
+    ] {
+        let payload = Analyzer::new().analyze_facts(source);
+        assert!(!payload.valid, "{source}");
+        let syntax = &payload.diagrams[0].syntax;
+        assert_eq!(syntax.diagram_type.as_deref(), Some(diagram_type));
+        assert_eq!(syntax.effective_layout.as_deref(), Some(layout));
     }
 }
 
@@ -220,7 +240,8 @@ fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
     let local = analyzer.analyze_parsed_diagram(
         source,
         &source_map,
-        ParsedAnalysisDiagram::Diagnostics(malformed_flowchart_parsed_diagram()),
+        malformed_flowchart_parsed_diagram(),
+        ParsedEditorFacts::Unavailable,
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
@@ -245,28 +266,10 @@ fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
 fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
     let analyzer = Analyzer::new();
     let source = "---\nconfig: [\n---\nflowchart TD\nA-->B\n";
-    let source_map = SourceMap::new(source);
-    let local = analyzer.analyze_parsed_diagram(
-        source,
-        &source_map,
-        ParsedAnalysisDiagram::Diagnostics(ParsedDiagram {
-            meta: ParseMetadata {
-                diagram_type: "flowchart-v2".to_string(),
-                config: MermaidConfig::default(),
-                effective_config: MermaidConfig::default(),
-                title: None,
-            },
-            model: json!({
-                "type": "flowchart-v2",
-                "nodes": []
-            }),
-        }),
-        Vec::new(),
-        super::AnalysisMode::RichFacts,
-    );
+    let result = analyzer.analyze_result(source);
 
-    let diagnostic = local
-        .diagnostics
+    let diagnostic = result
+        .diagnostics()
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::INVALID_FRONT_MATTER_YAML_RULE_ID)
         .expect("editor facts preprocess diagnostic");
@@ -283,7 +286,8 @@ fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
     let local = analyzer.analyze_parsed_diagram(
         source,
         &source_map,
-        ParsedAnalysisDiagram::Diagnostics(malformed_flowchart_parsed_diagram()),
+        malformed_flowchart_parsed_diagram(),
+        ParsedEditorFacts::Unavailable,
         Vec::new(),
         super::AnalysisMode::Diagnostics,
     );

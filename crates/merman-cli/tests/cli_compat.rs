@@ -175,9 +175,12 @@ fn cli_help_groups_top_level_surfaces() {
     for heading in [
         "mmdc-compatible export:",
         "Markdown batch export:",
-        "Raster and PDF export:",
+        "Merman raster controls:",
+        "Merman PDF controls:",
+        "Merman embedded-image controls:",
+        "Merman resource controls:",
         "Mermaid configuration:",
-        "Rust renderer controls:",
+        "Merman renderer controls:",
         "Accepted browser compatibility flags:",
     ] {
         assert!(
@@ -193,6 +196,13 @@ fn cli_help_groups_top_level_surfaces() {
         "--configFile",
         "--cssFile",
         "--pdfFit",
+        "--pdf-filter-scale",
+        "--pdf-max-filter-image-pixels",
+        "--embedded-image-max-bytes",
+        "--embedded-image-max-total-bytes",
+        "--embedded-image-max-pixels",
+        "--embedded-image-max-total-pixels",
+        "--encoding-parallel-budget-mib",
         "--iconPacks",
         "--iconPacksNamesAndUrls",
     ] {
@@ -269,6 +279,37 @@ fn cli_rejects_non_positive_numeric_options() {
         ("--raster-max-width", "0", "expected a positive integer"),
         ("--raster-max-height", "0", "expected a positive integer"),
         ("--raster-max-pixels", "0", "expected a positive integer"),
+        ("--pdf-filter-scale", "0", "expected a positive number"),
+        (
+            "--pdf-max-filter-image-pixels",
+            "0",
+            "expected a positive integer",
+        ),
+        (
+            "--embedded-image-max-bytes",
+            "0",
+            "expected a positive integer",
+        ),
+        (
+            "--embedded-image-max-total-bytes",
+            "0",
+            "expected a positive integer",
+        ),
+        (
+            "--embedded-image-max-pixels",
+            "0",
+            "expected a positive integer",
+        ),
+        (
+            "--embedded-image-max-total-pixels",
+            "0",
+            "expected a positive integer",
+        ),
+        (
+            "--encoding-parallel-budget-mib",
+            "0",
+            "expected a positive integer",
+        ),
     ] {
         let output = Command::new(exe)
             .args(["-i", "-", "-o", "-", flag, value])
@@ -947,6 +988,60 @@ fn cli_rejects_conflicting_raster_unbounded_and_limits() {
 }
 
 #[test]
+fn cli_rejects_conflicting_pdf_filter_budget_options() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .stdin(Stdio::null())
+        .args([
+            "render",
+            "--format",
+            "pdf",
+            "--pdf-filter-images-unbounded",
+            "--pdf-max-filter-image-pixels",
+            "128",
+            "-",
+        ])
+        .output()
+        .expect("run cli");
+
+    assert!(!output.status.success(), "expected PDF filter conflict");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--pdf-filter-images-unbounded")
+            && stderr.contains("--pdf-max-filter-image-pixels")
+            && (stderr.contains("cannot be combined") || stderr.contains("cannot be used with")),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn cli_rejects_conflicting_embedded_image_budget_options() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .stdin(Stdio::null())
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--embedded-images-unbounded",
+            "--embedded-image-max-pixels",
+            "128",
+            "-",
+        ])
+        .output()
+        .expect("run cli");
+
+    assert!(!output.status.success(), "expected embedded image conflict");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--embedded-images-unbounded")
+            && stderr.contains("--embedded-image-max-pixels")
+            && (stderr.contains("cannot be combined") || stderr.contains("cannot be used with")),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
 fn completion_subcommand_generates_bash_script() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
@@ -1319,7 +1414,21 @@ fn top_level_rejects_unknown_output_format() {
 fn top_level_pdf_fit_controls_page_size() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.mmd");
-    fs::write(&input, "flowchart LR\nA-->B\n").expect("write input");
+    fs::write(
+        &input,
+        r#"---
+config:
+  xyChart:
+    width: 9000
+    height: 9000
+---
+xychart-beta
+  x-axis [a, b]
+  y-axis 0 --> 10
+  line [1, 9]
+"#,
+    )
+    .expect("write input");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
     Command::new(exe)
@@ -1347,6 +1456,10 @@ fn top_level_pdf_fit_controls_page_size() {
     assert_ne!(
         default_media_box, fit_media_box,
         "--pdfFit should produce a chart-sized page distinct from default PDF output"
+    );
+    assert_eq!(
+        fit_media_box, "0 0 600 600",
+        "--pdfFit should match mmdc's 800 CSS pixel viewport converted to PDF points"
     );
 }
 

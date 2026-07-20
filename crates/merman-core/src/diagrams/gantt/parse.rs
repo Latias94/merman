@@ -3,7 +3,7 @@ use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan,
-    editor::EditorLexemeJournal,
+    editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 #[cfg(test)]
 use std::cell::Cell;
@@ -293,13 +293,6 @@ struct ClickCallParts<'a> {
     args: Option<SpannedText<'a>>,
 }
 
-pub fn parse_gantt_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_gantt_semantic_source(code, _meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
-}
-
 fn parse_gantt_keyword_arg_spanned<'a>(
     line: &'a str,
     line_start: usize,
@@ -423,6 +416,12 @@ impl GanttAccDescrBlock {
             self.accept_continuation_line(line, line_start);
         }
         self
+    }
+
+    fn resume_after_closing_brace(&self, cursor: &mut LineCursor<'_>) {
+        if self.complete {
+            cursor.resume_same_line_at(self.statement_end);
+        }
     }
 
     fn value(&self) -> &str {
@@ -785,7 +784,7 @@ impl<'a> SpannedText<'a> {
     }
 }
 
-pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
@@ -793,7 +792,7 @@ pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     super::render_model_to_compat_json(&model, meta)
 }
 
-pub fn parse_gantt_model_for_render(
+pub(crate) fn parse_gantt_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GanttDiagramRenderModel> {
@@ -806,16 +805,19 @@ pub fn parse_gantt_model_for_render(
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let GanttSemanticSource { db, editor_facts } = parse_gantt_semantic_source(code, meta)?;
-    let json = match db {
-        Some(db) => {
-            let model = gantt_db_to_render_model(db)?;
-            super::render_model_to_compat_json(&model, meta)?
-        }
-        None => json!({}),
-    };
-    Ok((json, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_gantt_semantic_source(code, meta),
+        |GanttSemanticSource { db, editor_facts }| {
+            let model = match db {
+                Some(db) => gantt_db_to_render_model(db)
+                    .and_then(|model| super::render_model_to_compat_json(&model, meta)),
+                None => Ok(json!({})),
+            };
+            (model, editor_facts)
+        },
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
 struct GanttSemanticSource {
@@ -823,35 +825,14 @@ struct GanttSemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
-struct GanttSemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl GanttSemanticFailure {
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("gantt parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
-}
-
 fn parse_gantt_semantic_source(code: &str, meta: &ParseMetadata) -> Result<GanttSemanticSource> {
-    construct_gantt_semantic_source(code, meta).map_err(|failure| *failure.error)
+    construct_gantt_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
 
 fn construct_gantt_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<GanttSemanticSource, GanttSemanticFailure> {
+) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
     #[cfg(test)]
     GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -864,7 +845,7 @@ fn construct_gantt_semantic_source(
             Ok(source)
         }
         Err(mut failure) => {
-            failure.editor_facts.replace_family_lexemes(lexemes);
+            failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
     }
@@ -874,7 +855,7 @@ fn parse_gantt_semantic_source_with_lexemes(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<GanttSemanticSource, GanttSemanticFailure> {
+) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
     let mut db = GanttDb::default();
     db.clear();
     db.set_security_level(meta.effective_config.get_str("securityLevel"));
@@ -954,10 +935,11 @@ fn parse_gantt_semantic_source_with_lexemes(
     }
 
     if let Some(error) = first_error {
-        return Err(GanttSemanticFailure {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        });
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "gantt",
+            error,
+            editor_facts,
+        ));
     }
 
     if !header_seen {
@@ -968,10 +950,11 @@ fn parse_gantt_semantic_source_with_lexemes(
     }
 
     if let Err(error) = db.finalize_tasks() {
-        return Err(GanttSemanticFailure {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        });
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "gantt",
+            error,
+            editor_facts,
+        ));
     }
     Ok(GanttSemanticSource {
         db: Some(db),
@@ -1630,14 +1613,16 @@ fn parse_gantt_statement(
     if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
         facts.push_directive_prefix("accDescr");
         let block = block.consume_remaining(cursor);
+        block.resume_after_closing_brace(cursor);
         db.set_acc_descr(block.value());
         block.emit_lexemes(lexemes);
         block.emit_symbol(facts);
         if !block.is_complete() {
-            facts.mark_recovered_from_parse_error(
-                "gantt parser recovered from unterminated accDescr block",
-                Some(block.statement_span()),
-            );
+            return Err(Error::diagram_parse_insertion_point(
+                "gantt".to_string(),
+                "unterminated accDescr block",
+                block.statement_span().end,
+            ));
         }
         return Ok(());
     }

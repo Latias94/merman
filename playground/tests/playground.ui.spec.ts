@@ -18,7 +18,7 @@ test("manual tabs preserve the editor model, selection, and undo history", async
 
   const source = "flowchart LR\n  A --> B";
   await replaceEditorSource(page, source);
-  const editor = page.getByRole("textbox", { name: "Editor content" }).first();
+  const editor = page.getByRole("textbox", { name: "Mermaid source" });
   await editor.focus();
   await page.keyboard.press("Shift+ArrowLeft");
 
@@ -73,17 +73,19 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
   await expect(dialog).toBeVisible();
   await expect(search).toBeFocused();
   await expect(
-    dialog.getByRole("button", { name: "All", exact: true })
+    dialog.getByRole("button", { name: "All", exact: true }),
   ).toBeVisible();
 
   await page.keyboard.press("Shift+Tab");
   await expect
     .poll(() =>
-      dialog.evaluate((element) => element.contains(document.activeElement))
+      dialog.evaluate((element) => element.contains(document.activeElement)),
     )
     .toBe(true);
 
-  const accessibility = await new AxeBuilder({ page }).include('[role="dialog"]').analyze();
+  const accessibility = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
   expect(accessibility.violations).toEqual([]);
 
   await page.keyboard.press("Escape");
@@ -92,7 +94,10 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
   errors.assertNone();
 });
 
-test("preview tabs use manual keyboard activation", async ({ page, isMobile }) => {
+test("preview tabs use manual keyboard activation", async ({
+  page,
+  isMobile,
+}) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   if (isMobile) {

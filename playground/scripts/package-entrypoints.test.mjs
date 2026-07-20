@@ -33,3 +33,82 @@ test("dev, build, and test fail closed on both consumed WASM surfaces", () => {
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
 });
+
+test("browser test tooling is isolated from the companion runtime tree", async () => {
+  const testsRoot = path.resolve(import.meta.dirname, "..", "tests");
+  const browserTestsPackageJson = JSON.parse(
+    await readFile(path.join(testsRoot, "package.json"), "utf8")
+  );
+  const browserTestsNpmrc = await readFile(
+    path.join(testsRoot, ".npmrc"),
+    "utf8"
+  );
+  const runtimeLock = JSON.parse(
+    await readFile(path.resolve(import.meta.dirname, "..", "package-lock.json"), "utf8")
+  );
+  const browserTestsLock = JSON.parse(
+    await readFile(path.join(testsRoot, "package-lock.json"), "utf8")
+  );
+
+  for (const dependency of [
+    "@axe-core/playwright",
+    "@playwright/test",
+    "playwright",
+    "playwright-core",
+  ]) {
+    assert.equal(packageJson.dependencies?.[dependency], undefined);
+    assert.equal(packageJson.devDependencies?.[dependency], undefined);
+  }
+
+  assert.equal(browserTestsPackageJson.private, true);
+  assert.equal(
+    browserTestsPackageJson.packageManager,
+    packageJson.packageManager
+  );
+  assert.deepEqual(browserTestsPackageJson.engines, packageJson.engines);
+  assert.equal(
+    browserTestsPackageJson.devDependencies["@axe-core/playwright"],
+    "4.12.1"
+  );
+  assert.equal(
+    browserTestsPackageJson.devDependencies["@playwright/test"],
+    "1.61.1"
+  );
+  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.61.1");
+  assert.equal(browserTestsPackageJson.dependencies?.["@zenuml/core"], undefined);
+  assert.equal(
+    browserTestsPackageJson.dependencies?.["@mermaid-js/mermaid-zenuml"],
+    undefined
+  );
+  assert.match(browserTestsNpmrc, /^ignore-scripts=true$/mu);
+  assert.match(packageJson.scripts["test:browser:typecheck"], /--prefix tests/u);
+  assert.match(packageJson.scripts["test:browser:chromium"], /--prefix tests/u);
+  assert.match(packageJson.scripts["test:browser:smoke:built"], /--prefix tests/u);
+
+  for (const packagePath of [
+    "node_modules/@playwright/test",
+    "node_modules/playwright",
+    "node_modules/playwright-core",
+  ]) {
+    assert.equal(runtimeLock.packages[packagePath], undefined);
+  }
+  assert.equal(
+    browserTestsLock.packages["node_modules/@playwright/test"].version,
+    "1.61.1"
+  );
+  assert.equal(
+    browserTestsLock.packages["node_modules/playwright"].version,
+    "1.61.1"
+  );
+  assert.equal(
+    browserTestsLock.packages["node_modules/playwright-core"].version,
+    "1.61.1"
+  );
+  for (const packagePath of [
+    "node_modules/@mermaid-js/mermaid-zenuml",
+    "node_modules/@zenuml/core",
+    "node_modules/mermaid",
+  ]) {
+    assert.equal(browserTestsLock.packages[packagePath], undefined);
+  }
+});

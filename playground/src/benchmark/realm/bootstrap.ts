@@ -45,6 +45,10 @@ import {
   createBenchmarkStageWatchdog,
   type BenchmarkStageWatchdog,
 } from "./stage-watchdog.ts";
+import {
+  projectError,
+  type ErrorProjection,
+} from "../../runtime/error-projection.ts";
 export type BenchmarkAdapterLoader = (
   engine: BenchmarkEngine
 ) => Promise<BenchmarkEngineAdapter>;
@@ -238,7 +242,7 @@ function servePort(
       protocol: REALM_PROTOCOL_VERSION,
       ...identity,
       sequence: outgoingSequence,
-      message: boundedErrorMessage(error),
+      message: projectError(error).summary,
     });
     queueMicrotask(close);
   };
@@ -364,6 +368,7 @@ async function executeSample(
         request,
         "environment",
         "Benchmark realm is not visible.",
+        null,
         null,
         [],
         null,
@@ -501,11 +506,13 @@ async function executeSample(
         : error instanceof BenchmarkEngineError || error instanceof SampleStageError
         ? error.stage
         : stage;
+    const projection = engineErrorProjection(error);
     return {
       response: failureResponse(
         request,
         failureStage,
-        boundedErrorMessage(error),
+        projection.summary,
+        projection.detail,
         evidence.trace,
         evidence.resources,
         evidence.resourceError,
@@ -520,6 +527,7 @@ function failureResponse(
   request: BenchmarkSampleRequest,
   stage: BenchmarkFailureStage,
   message: string,
+  detail: string | null,
   trace: ReturnType<BenchmarkTraceRecorder["finish"]> | null,
   resources: readonly BenchmarkResourceObservation[],
   resourceError: string | null,
@@ -541,6 +549,7 @@ function failureResponse(
     resourceError,
     stage,
     message,
+    detail,
     version,
   };
 }
@@ -615,7 +624,7 @@ function finishEvidence(
     resources = collectResourceObservations(t0);
   } catch (error) {
     resources = Object.freeze([]);
-    resourceError = boundedErrorMessage(error);
+    resourceError = projectError(error).summary;
   }
   const trace = failure ? recorder.finishFailure() : recorder.finish();
   return Object.freeze({ resourceError, resources, trace });
@@ -678,11 +687,14 @@ function nextAnimationFrame(): Promise<void> {
 }
 
 class SampleStageError extends Error {
+  readonly error: ErrorProjection;
   readonly stage: BenchmarkFailureStage;
 
   constructor(stage: BenchmarkFailureStage, cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause));
+    const projection = projectError(cause);
+    super(projection.summary);
     this.name = "SampleStageError";
+    this.error = projection;
     this.stage = stage;
   }
 }
@@ -696,7 +708,12 @@ class SampleTimeoutError extends Error {
   }
 }
 
-function boundedErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, Math.floor(REALM_BUDGETS.errorBytes / 4));
+function engineErrorProjection(error: unknown): ErrorProjection {
+  if (
+    error instanceof BenchmarkEngineError ||
+    error instanceof SampleStageError
+  ) {
+    return error.error;
+  }
+  return projectError(error);
 }

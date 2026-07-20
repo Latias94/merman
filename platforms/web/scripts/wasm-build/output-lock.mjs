@@ -22,8 +22,33 @@ export function outputLockDirectory(outputRoot) {
   );
 }
 
+export function workspaceWasmBuildLockDirectory(
+  repositoryRoot,
+  { cargoTargetDirectory = process.env.CARGO_TARGET_DIR } = {},
+) {
+  const targetRoot = cargoTargetDirectory
+    ? path.resolve(repositoryRoot, cargoTargetDirectory)
+    : path.join(path.resolve(repositoryRoot), "target");
+  return path.join(targetRoot, ".merman-wasm-build.lock");
+}
+
+export function acquireWorkspaceWasmBuildLock(repositoryRoot, options = {}) {
+  const { cargoTargetDirectory, ...lockOptions } = options;
+  return acquireDirectoryLock(
+    workspaceWasmBuildLockDirectory(repositoryRoot, { cargoTargetDirectory }),
+    lockOptions,
+  );
+}
+
 export function acquireOutputLock(
   outputRoot,
+  options = {},
+) {
+  return acquireDirectoryLock(outputLockDirectory(outputRoot), options);
+}
+
+export function acquireDirectoryLock(
+  lockDirectory,
   {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     pollMs = DEFAULT_POLL_MS,
@@ -32,7 +57,6 @@ export function acquireOutputLock(
     processAlive = isProcessAlive,
   } = {},
 ) {
-  const lockDirectory = outputLockDirectory(outputRoot);
   const ownerPath = path.join(lockDirectory, "owner.json");
   const deadline = now() + timeoutMs;
   const token = randomUUID();

@@ -1,10 +1,10 @@
 use super::super::*;
 use crate::kanban::{KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX};
 
-fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).kanban();
+    let theme = PresentationTheme::new(effective_config).kanban()?;
     let mut out = parts.css_prefix;
     let root_rule = parts.root_rule;
 
@@ -80,7 +80,7 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
         id
     );
     out.push_str(&root_rule);
-    out
+    Ok(out)
 }
 
 fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
@@ -128,7 +128,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 root_chrome,
             )?;
 
-    let css = kanban_css(diagram_id, effective_config);
+    let css = kanban_css(diagram_id, effective_config)?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     let render_settings = crate::kanban::KanbanConfigView::new(effective_config).render_settings();
     let data_look = render_settings.look;
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn kanban_css_includes_upstream_theme_rules() {
-        let css = kanban_css("k", &serde_json::json!({}));
+        let css = kanban_css("k", &serde_json::json!({})).unwrap();
 
         assert!(
             css.contains(

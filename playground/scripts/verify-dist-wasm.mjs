@@ -4,17 +4,20 @@
  *
  * Override: SKIP_VERIFY_DIST_WASM=1
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  BENCHMARK_ADAPTER_FORBIDDEN_SOURCES,
   BENCHMARK_SOURCES,
-  MERMAN_WASM_SHIM_IMPORT,
   inspectBenchmarkSourceBoundaries,
 } from "./benchmark-build-graph.mjs";
-import { verifyHtmlCsp } from "./csp-policy.mjs";
+import {
+  createExpectedCspPolicies,
+  verifyHtmlCsp,
+} from "./csp-policy.mjs";
+import { loadOpaqueRealmCspHashes } from "./opaque-realm-csp.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -23,6 +26,18 @@ const INDEX_HTML = path.join(DIST, "index.html");
 const BENCHMARK_HTML = path.join(DIST, "benchmark.html");
 const MANIFEST_FILE = path.join(DIST, ".vite", "manifest.json");
 const ASSETS = path.join(DIST, "assets");
+const BENCHMARK_MERMAN_ENGINE_SOURCE = path.join(
+  ROOT,
+  ".runtime",
+  "benchmark-merman-engine.js",
+);
+const BENCHMARK_MERMAN_ENGINE_MANIFEST = path.join(
+  ROOT,
+  ".runtime",
+  "benchmark-merman-engine.json",
+);
+const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(ROOT);
+const expectedCspPolicies = createExpectedCspPolicies(opaqueRealmCspHashes);
 
 const MERMAN_WASM_SHIM_SOURCE = "../platforms/web/pkg/merman_wasm.js";
 const MERMAN_WASM_BINARY_SOURCE =
@@ -103,7 +118,8 @@ const manifest = loadBuildManifest();
 verifyOwnedEditorWorkers();
 const indexEntry = requireManifestEntry(manifest, "index.html");
 const benchmarkEntry = requireManifestEntry(manifest, "benchmark.html");
-const benchmarkSourceBoundaries = loadBenchmarkSourceBoundaries();
+loadBenchmarkSourceBoundaries();
+const benchmarkMermanEngine = loadBenchmarkMermanEngineIdentity();
 const wasmModule = requireManifestModule(manifest, MERMAN_WASM_BINARY_SOURCE);
 const shimModule = requireManifestModule(manifest, MERMAN_WASM_SHIM_SOURCE);
 const wasm = path.join(DIST, wasmModule.chunk.file);
@@ -115,7 +131,7 @@ for (const [fileName, html] of [
   ["index.html", indexHtml],
   ["benchmark.html", benchmarkHtml],
 ]) {
-  const violations = verifyHtmlCsp(fileName, html);
+  const violations = verifyHtmlCsp(fileName, html, expectedCspPolicies);
   if (violations.length > 0) {
     fail([
       `  ${fileName} violates the production CSP contract:`,
@@ -189,20 +205,11 @@ const benchmarkDynamicRoots = [...benchmarkStatic].flatMap(
   (key) => manifest[key].dynamicImports ?? [],
 );
 const uniqueBenchmarkDynamicRoots = new Set(benchmarkDynamicRoots);
-if (
-  uniqueBenchmarkDynamicRoots.size !== 1 ||
-  [...uniqueBenchmarkDynamicRoots].some(
-    (key) =>
-      !hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanAdapter),
-  )
-) {
-  fail(["  Trusted Benchmark must expose exactly one Merman adapter root."]);
+if (uniqueBenchmarkDynamicRoots.size !== 0) {
+  fail([
+    `  Benchmark realm must receive a verified engine artifact instead of importing dynamic roots: ${formatManifestKeys(uniqueBenchmarkDynamicRoots)}`,
+  ]);
 }
-const benchmarkDynamic = collectManifestClosure(
-  manifest,
-  uniqueBenchmarkDynamicRoots,
-  true,
-);
 const eagerReferenceChunks = new Set(
   [...indexReachable, ...benchmarkStatic].filter((key) =>
     isReferenceEngineModule(key, manifest[key])
@@ -233,72 +240,57 @@ if (benchmarkEagerEngineChunks.length > 0) {
   ]);
 }
 
-const benchmarkAdapters = Object.entries(manifest)
-  .filter(([key, chunk]) => isBenchmarkAdapter(key, chunk))
-  .map(([key]) => key);
-if (
-  benchmarkAdapters.length !== 1 ||
-  benchmarkAdapters.some((key) => !benchmarkDynamic.has(key))
-) {
-  fail(["  Trusted Benchmark must dynamically reach exactly one engine adapter."]);
-}
-
-const benchmarkMermanAdapter = benchmarkAdapters.find((key) =>
-  hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanAdapter),
+const indexDynamicRoots = new Set(
+  [...indexStatic].flatMap((key) => manifest[key].dynamicImports ?? []),
 );
-if (!benchmarkMermanAdapter) {
-  fail(["  Trusted Benchmark Merman adapter identity is incomplete."]);
-}
-
-const mermanAdapterDynamicRoots = [
-  ...new Set(manifest[benchmarkMermanAdapter].dynamicImports ?? []),
-];
-const mermanShimRoots = mermanAdapterDynamicRoots.filter((key) =>
-  hasManifestSource(key, manifest[key], MERMAN_WASM_SHIM_SOURCE),
+const mermanArtifactRoots = [...indexDynamicRoots].filter((key) =>
+  hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanArtifact),
 );
-const mermanFacadeRoots = mermanAdapterDynamicRoots.filter(
-  (key) => !mermanShimRoots.includes(key),
-);
-if (
-  benchmarkSourceBoundaries.directMermanDynamicImports.length !== 2 ||
-  mermanAdapterDynamicRoots.length !== 2 ||
-  mermanShimRoots.length !== 1 ||
-  mermanFacadeRoots.length !== 1
-) {
+if (mermanArtifactRoots.length !== 1) {
   fail([
-    `  Merman adapter source imports ${MERMAN_WASM_SHIM_IMPORT} and the Web root facade, but its manifest must expose exactly one dynamic root for each.`,
+    `  Parent application must expose exactly one Merman benchmark engine-artifact root, found ${mermanArtifactRoots.length}.`,
   ]);
 }
-const [mermanWebFacadeRoot] = mermanFacadeRoots;
-if (benchmarkStatic.has(mermanWebFacadeRoot)) {
+const [mermanArtifactRoot] = mermanArtifactRoots;
+const mermanArtifactClosure = collectManifestClosure(
+  manifest,
+  [mermanArtifactRoot],
+  false,
+);
+if (benchmarkStatic.has(mermanArtifactRoot)) {
+  fail(["  Benchmark realm statically reaches the parent-owned Merman engine artifact."]);
+}
+const forbiddenMermanArtifactChunks = [...mermanArtifactClosure].filter(
+  (key) =>
+    isBenchmarkAdapter(key, manifest[key]) ||
+    isMermaidPackageModule(key, manifest[key]) ||
+    hasManifestSource(key, manifest[key], MERMAN_WASM_SHIM_SOURCE),
+);
+if (forbiddenMermanArtifactChunks.length > 0) {
   fail([
-    `  Benchmark bootstrap can statically reach the @mermanjs/web root facade: ${mermanWebFacadeRoot}`,
+    `  Merman engine-artifact module reaches executable engine modules outside its verified source payload: ${forbiddenMermanArtifactChunks.join(", ")}`,
   ]);
 }
-
-const benchmarkMermanClosure = collectLazyOperationClosure(
-  manifest,
-  [benchmarkMermanAdapter],
+const wasmAssetOwners = [...mermanArtifactClosure].filter((key) =>
+  (manifest[key].assets ?? []).includes(wasmModule.chunk.file),
 );
-verifyAdapterManifestBoundary(
-  "Merman",
-  benchmarkMermanClosure,
-  manifest,
-  indexEntry.key,
-);
-if (
-  [...benchmarkMermanClosure].some((key) =>
-    isMermaidPackageModule(key, manifest[key]),
-  )
-) {
-  fail(["  Merman benchmark adapter can reach the Mermaid engine."]);
+if (wasmAssetOwners.length !== 1) {
+  fail([
+    `  Merman engine-artifact module must own exactly one WASM resource URL, found ${wasmAssetOwners.length}.`,
+  ]);
 }
-if (
-  ![...benchmarkMermanClosure].some((key) =>
-    isMermanEngineModule(key, manifest[key]),
-  )
-) {
-  fail(["  Trusted Benchmark adapter does not reach the local Merman engine."]);
+const artifactOutput = readFileSync(
+  path.join(DIST, manifest[mermanArtifactRoot].file),
+  "utf8",
+);
+if (!artifactOutput.includes("__mermanEngineArtifact")) {
+  fail(["  Merman engine-artifact output does not embed the verified engine source."]);
+}
+const artifactClosureSource = [...mermanArtifactClosure]
+  .map((key) => readFileSync(path.join(DIST, manifest[key].file), "utf8"))
+  .join("\n");
+if (!artifactClosureSource.includes(benchmarkMermanEngine.sha256)) {
+  fail(["  Merman engine-artifact output does not retain its generated SHA-256 identity."]);
 }
 
 const wasmName = path.basename(wasm);
@@ -365,6 +357,34 @@ function loadBenchmarkSourceBoundaries() {
   return result;
 }
 
+function loadBenchmarkMermanEngineIdentity() {
+  if (
+    !isNonEmptyFile(BENCHMARK_MERMAN_ENGINE_SOURCE) ||
+    !isNonEmptyFile(BENCHMARK_MERMAN_ENGINE_MANIFEST)
+  ) {
+    fail([
+      "  Missing generated Merman benchmark engine artifact. Run `npm run prepare:browser-runtime`.",
+    ]);
+  }
+  const source = readFileSync(BENCHMARK_MERMAN_ENGINE_SOURCE, "utf8");
+  let identity;
+  try {
+    identity = JSON.parse(readFileSync(BENCHMARK_MERMAN_ENGINE_MANIFEST, "utf8"));
+  } catch (error) {
+    fail([`  Invalid Merman benchmark engine manifest: ${errorMessage(error)}`]);
+  }
+  const sha256 = createHash("sha256").update(source).digest("hex");
+  if (
+    identity?.schemaVersion !== 1 ||
+    identity.id !== "benchmark-merman" ||
+    identity.bytes !== Buffer.byteLength(source) ||
+    identity.sha256 !== sha256
+  ) {
+    fail(["  Generated Merman benchmark engine identity does not match its source bytes."]);
+  }
+  return identity;
+}
+
 function requireManifestEntry(manifest, source) {
   const matches = Object.entries(manifest).filter(
     ([key, chunk]) => (key === source || chunk.src === source) && chunk.isEntry === true
@@ -408,27 +428,6 @@ function collectManifestClosure(manifest, roots, includeDynamicImports) {
   return visited;
 }
 
-function collectLazyOperationClosure(manifest, roots) {
-  const visited = new Set();
-  const pending = [...roots];
-  while (pending.length > 0) {
-    const key = pending.pop();
-    if (visited.has(key)) continue;
-    const chunk = manifest[key];
-    if (!chunk) {
-      fail([`  Vite manifest references an unknown chunk: ${key}`]);
-    }
-    visited.add(key);
-    pending.push(...(chunk.imports ?? []));
-    // A dynamic adapter may import its already-evaluated HTML entry chunk.
-    // Dynamic expressions owned by that entry are not executed by the adapter.
-    if (chunk.isEntry !== true) {
-      pending.push(...(chunk.dynamicImports ?? []));
-    }
-  }
-  return visited;
-}
-
 function verifyHtmlStaticClosure(label, assets, closure, manifest) {
   const staticFiles = new Set(
     [...closure].map((key) => manifest[key].file),
@@ -439,23 +438,6 @@ function verifyHtmlStaticClosure(label, assets, closure, manifest) {
   if (unexpectedAssets.length > 0) {
     fail([
       `  ${label} loads executable assets outside its static manifest closure: ${unexpectedAssets.join(", ")}`,
-    ]);
-  }
-}
-
-function verifyAdapterManifestBoundary(
-  label,
-  closure,
-  manifest,
-  indexEntryKey,
-) {
-  const forbiddenEntries = [indexEntryKey].filter((key) => closure.has(key));
-  const forbiddenSources = [...closure].filter((key) =>
-    BENCHMARK_ADAPTER_FORBIDDEN_SOURCES.has(manifestSource(key, manifest[key])),
-  );
-  if (forbiddenEntries.length > 0 || forbiddenSources.length > 0) {
-    fail([
-      `  ${label} benchmark adapter reaches parent-owned modules: ${formatManifestKeys(new Set([...forbiddenEntries, ...forbiddenSources]))}`,
     ]);
   }
 }

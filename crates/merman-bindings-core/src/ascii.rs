@@ -33,7 +33,6 @@ fn build_ascii_renderer(
     options: &crate::common::BindingOptions,
 ) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
-        .analysis
         .parse
         .as_ref()
         .and_then(|parse| parse.suppress_errors)
@@ -271,13 +270,12 @@ mod tests {
     }
 
     #[test]
-    fn shared_parse_options_are_stored_under_analysis_options() {
+    fn shared_parse_options_are_stored_as_operation_options() {
         let options =
             crate::common::parse_options(br#"{ "parse": { "suppress_errors": true } }"#).unwrap();
 
         assert_eq!(
             options
-                .analysis
                 .parse
                 .as_ref()
                 .and_then(|parse| parse.suppress_errors),

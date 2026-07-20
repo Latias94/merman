@@ -48,10 +48,8 @@ mod tests {
 flowchart TD
   A --> B
 "##,
-                merman::ParseOptions::default(),
             )
-            .expect("parse succeeds")
-            .expect("diagram detected");
+            .expect("parse succeeds");
 
         assert_eq!(
             meta.effective_config.get_str("themeVariables.primaryColor"),

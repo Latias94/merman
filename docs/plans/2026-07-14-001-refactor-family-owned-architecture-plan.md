@@ -53,7 +53,7 @@ The verification layer compounds the risk: all current per-family compare comman
 
 - R1. Every admitted built-in family must have one successful semantic construction that owns grammar interpretation, DB mutation order, validation, and source-backed spans.
 - R2. Compatibility JSON, typed render models, and editor facts must be projections of family-owned semantics; recoverable editor parsing may use a partial path, but it must share the family's tokens and grammar facts rather than implement a second successful grammar.
-- R3. Diagram family facts must be the single built-in catalog for detector order, aliases, registry profile, semantic parser, editor parser, typed render parser, render metadata, and authoring headers.
+- R3. Diagram family facts must be the single built-in catalog for detector order, aliases, registry profile, semantic parser, closed combined semantic/editor construction, typed render parser, render metadata, and authoring headers. There is no independent built-in editor parser registry.
 - R4. Families that import Mermaid's Langium `common.langium` must consume one span-rich common syntax module for title, accessibility title, and inline or block accessibility description behavior.
 - R5. Parser-backed analysis must never synthesize body symbols from a generic text scan. Empty, unknown, unsupported, and failed inputs must expose honest absence or registered recovery facts while source-start diagram-header completion remains available independently.
 
@@ -77,7 +77,7 @@ The verification layer compounds the risk: all current per-family compare comman
 - AE2. An incomplete Architecture statement yields registered recovered editor facts and a precise diagnostic without running a separate editor-only grammar or generic body scan.
 - AE3. `packet` with a multiline `accDescr { ... }` parses successfully, preserves all lines in compatibility JSON and the typed render model, and exposes the payload span through editor facts.
 - AE4. Architecture, Cynefin, GitGraph, Info, Packet, Pie, and Radar agree on upstream `common.langium` behavior for inline values, multiline blocks, comments, CRLF input, empty values, and unterminated-block recovery. Wardley is either an explicit unsupported capability during this migration or a separately admitted family with its own source-backed evidence; it is never an accidental adapter.
-- AE5. Every admitted family and alias has an explicit editor adapter in Diagram Family Facts for its selected profile. A custom parser without editor capability returns visible unavailability rather than guessed symbols.
+- AE5. Every admitted family and alias with editor capability has a combined semantic/editor construction in Diagram Family Facts for its selected profile. A custom parser without that built-in capability returns visible unavailability rather than guessed symbols.
 - AE6. Empty source still offers diagram-header authoring choices, but malformed unknown source and parser failure never manufacture node identifiers, document symbols, references, or semantic tokens from body text.
 - AE7. A built-in render request cannot pair a Packet semantic model with a Pie layout. Alias and feature-gated variants reach the correct family-owned adapter, the error family uses its dedicated renderer, and a registered custom semantic parser without a render family returns explicit unavailable layout/SVG capability.
 - AE8. Layout JSON requested through the public high-level API is projected from the canonical typed layout; it does not invoke the removed JSON layout dispatcher.
@@ -113,7 +113,7 @@ The verification layer compounds the risk: all current per-family compare comman
 
 ### Key Technical Decisions
 
-- KTD1. **Deepen the existing family-facts seam instead of creating another registry.** A single built-in family definition will project the detector, JSON parser, editor parser, typed parser, alias/profile, header, and metadata registries. Custom registries remain explicit overlays with visible capability gaps.
+- KTD1. **Deepen the existing family-facts seam instead of creating another registry.** A single built-in family definition will project detector, JSON parser, combined semantic/editor construction, typed parser, alias/profile, header, and metadata facts. Custom registries remain explicit overlays with visible capability gaps; no independent editor registry exists.
 - KTD2. **Prove family ownership with Architecture before generalizing it.** Architecture already has a DB with ordering and validation state plus three duplicated interpretation paths. Its family semantic source becomes the tracer for successful construction, projection, and recoverable editor facts.
 - KTD3. **Model Mermaid common syntax narrowly.** The shared span-rich module covers only families that import upstream `common.langium`; Sequence, C4, ZenUML, and other grammars keep their source-specific title and accessibility syntax.
 - KTD4. **Remove semantic guessing rather than renaming it.** `TextScan` body parsing is deleted. Parser-unavailable states become explicit, and source-start header completion reads static family facts without claiming body semantics.
@@ -287,14 +287,14 @@ Profile selection is observable and testable. Family-specific browser residuals 
 - **Requirements:** R2, R3, R13; AE5.
 - **Dependencies:** U2.
 - **Files:** Modify `crates/merman-core/src/family.rs`, `crates/merman-core/src/diagram/mod.rs`, `crates/merman-core/src/parse_pipeline.rs`, `crates/merman-core/src/lib.rs`, `crates/merman-core/src/tests/registry.rs`, and `crates/merman-core/src/tests/misc.rs`.
-- **Approach:** Define one declarative record per logical built-in family, with diagram ids, aliases, feature-gated variants, and profile membership stored as data. Project per-id detector, semantic, editor, typed-render, metadata, model-kind, header, and config-side-effect entries from that record. Normalize built-in editor adapters to a fallible function type, build the existing public registries from the projections, and retain only the existing custom semantic/render registries as explicit overlays. A custom parser without a built-in editor adapter reports unavailable editor capability; this refactor does not invent a custom editor registry without a current consumer. The Parse Pipeline looks up an editor adapter through the family interface and keeps only preprocessing, source mapping, finishing, timing, and error policy.
+- **Approach:** Define one declarative record per logical built-in family, with diagram ids, aliases, feature-gated variants, and profile membership stored as data. Project per-id detector, semantic, combined semantic/editor, typed-render, metadata, model-kind, header, and config-side-effect entries from that record. Each combined construction returns a closed outcome containing the semantic model or original error plus same-construction editor facts. Retain only the existing custom semantic/render registries as explicit overlays. A custom parser without a built-in combined construction reports unavailable editor capability; this refactor does not invent a custom editor registry without a current consumer. The Parse Pipeline invokes the combined construction once and keeps only preprocessing, source mapping, finishing, timing, and error policy.
 - **Execution note:** Start with a failing full/tiny registry gate that compares detected, semantic, editor, and typed-render capability sets. Include aliases and deliberate no-capability states.
 - **Patterns to follow:** Existing projections in `crates/merman-core/src/family.rs`; detector ordering rules in `crates/merman-core/src/detect/mod.rs`; custom parser tests in `crates/merman-core/src/tests/misc.rs`.
 - **Test scenarios:**
   - Full and tiny profiles expose the intended detector, semantic, editor, render, metadata, and header facts for every built-in id and alias.
   - Flowchart aliases, state/class/ER aliases, Railroad variants, ZenUML/Sequence sharing, and feature-gated Architecture/Mindmap resolve to the correct family behavior.
-  - A custom semantic parser with no built-in editor adapter returns explicit unavailable capability and cannot accidentally inherit editor facts from an alias or another family.
-  - Removing any admitted editor adapter causes a registry test failure before analysis can fall back.
+  - A custom semantic parser with no built-in combined construction returns explicit unavailable capability and cannot accidentally inherit editor facts from an alias or another family.
+  - Removing any admitted combined construction causes a registry test failure before analysis can lose parser-backed editor facts.
 - **Verification:** Registry and parse-pipeline tests prove there is one built-in catalog and no family id match remains in editor orchestration.
 
 ### U4. Add span-rich Langium common facts and fix Packet multiline accessibility

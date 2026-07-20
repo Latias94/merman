@@ -35,7 +35,7 @@ where
 }
 
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
-    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected Flowchart render model");
     };
     model
@@ -51,15 +51,15 @@ fn layout_flowchart_render_model(
         .resource_limits()
         .check_flowchart_complexity(model)?;
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.meta.diagram_type == "flowchart-elk"
-        || parsed.meta.effective_config.get_str("layout") == Some("elk");
+    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
+        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
 
     if uses_elk {
         #[cfg(feature = "elk-layout")]
         {
             return merman_render::flowchart::elk::layout_flowchart_elk_typed(
                 model,
-                &parsed.meta.effective_config,
+                &parsed.metadata().effective_config,
                 &measurer,
                 session.math_renderer(),
             );
@@ -67,14 +67,14 @@ fn layout_flowchart_render_model(
         #[cfg(not(feature = "elk-layout"))]
         {
             return Err(merman_render::Error::UnsupportedDiagram {
-                diagram_type: parsed.meta.diagram_type.clone(),
+                diagram_type: parsed.metadata().diagram_type.clone(),
             });
         }
     }
 
     layout_flowchart_typed(
         model,
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &measurer,
         session.math_renderer(),
     )
@@ -156,6 +156,33 @@ fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
     let unknown_icon = r#"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg>"#;
 
     assert!(svg.contains(unknown_icon), "{svg}");
+}
+
+#[test]
+fn flowchart_icon_shapes_without_icon_assets_render_source_defined_frames() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart LR
+I@{ shape: icon, label: "Plain" }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let id_prefix = "merman-flowchart-I-";
+    assert!(
+        document.descendants().any(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with(id_prefix))
+                && node.attribute("class") == Some("icon-shape default")
+        }),
+        "missing source-defined icon frame: {svg}"
+    );
+    assert!(
+        !svg.contains("<tspan x=\"0\" y=\"0\">?</tspan>"),
+        "an absent icon asset is not an unknown registered icon: {svg}"
+    );
 }
 
 #[test]
@@ -612,7 +639,7 @@ fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+    assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
 }
 
 #[test]

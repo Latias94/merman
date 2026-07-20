@@ -1,6 +1,8 @@
-use crate::code_actions::code_actions_for_params_with_encoding;
+use crate::code_actions::code_actions_for_snapshot_with_encoding;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
-use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
+use crate::diagnostics::{
+    analysis_payload_to_versioned_diagnostics, editor_diagnostics_to_versioned_diagnostics,
+};
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
     DocumentSyncError, SemanticTokensState, SnapshotContext, StoredDocument,
@@ -27,11 +29,11 @@ use crate::structure::{
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, Analyzer, SourceKind, document::analyze_document,
-    options_json::analysis_options_from_json_value, source_descriptor_for_kind,
-    source_discarded_after_limit_change_diagnostic, source_limit_diagnostic_for_len,
+    AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
+    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic,
+    source_limit_diagnostic_for_len,
 };
-use merman_editor_core::DocumentKind;
+use merman_editor_core::{DocumentKind, TokenPlanError};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -190,7 +192,26 @@ impl MermanLanguageServer {
         .await
     }
 
-    fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
+    async fn diagnostic_context_for_uri(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+    ) -> Result<Option<DiagnosticContext>> {
+        if let Some(context) = snapshot_context::snapshot_context_for_uri(
+            &self.store,
+            uri,
+            SnapshotContextKind::Diagnostics,
+        )
+        .await?
+        {
+            let store = self.store.lock().await;
+            return Ok(store.diagnostic_context_for_snapshot(context));
+        }
+
+        let store = self.store.lock().await;
+        Ok(store.unavailable_diagnostic_context(uri))
+    }
+
+    fn unavailable_diagnostics_for_document(document: &StoredDocument) -> Vec<Diagnostic> {
         let source = source_descriptor_for_document(&document.uri, document.kind);
         let payload = if let Some(resource_limit) = document.resource_limit {
             AnalysisPayload::new(
@@ -211,9 +232,22 @@ impl MermanLanguageServer {
         } else if let Some(sync_error) = document.sync_error {
             return vec![document_sync_error_diagnostic(sync_error, document.version)];
         } else {
-            analyze_document(document.text.as_ref(), analyzer, source)
+            return Vec::new();
         };
         analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
+    }
+
+    fn diagnostics_for_context(context: &DiagnosticContext) -> Vec<Diagnostic> {
+        match context.snapshot() {
+            Some(snapshot) => editor_diagnostics_to_versioned_diagnostics(
+                snapshot.diagnostics(),
+                &snapshot.uri,
+                snapshot.version,
+            ),
+            None => context
+                .unavailable_document()
+                .map_or_else(Vec::new, Self::unavailable_diagnostics_for_document),
+        }
     }
 
     fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
@@ -256,7 +290,7 @@ impl MermanLanguageServer {
         &self,
         context: &DiagnosticContext,
     ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
-        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
+        let diagnostics = Self::diagnostics_for_context(context);
         let store = self.store.lock().await;
         store
             .is_diagnostic_context_current(context)
@@ -272,10 +306,8 @@ impl MermanLanguageServer {
                 return Ok((context, diagnostics));
             }
 
-            let Some(latest_context) = ({
-                let store = self.store.lock().await;
-                store.diagnostic_context(&context.document.uri)
-            }) else {
+            let uri = context.uri().clone();
+            let Some(latest_context) = self.diagnostic_context_for_uri(&uri).await? else {
                 return Ok((context, Vec::new()));
             };
             context = latest_context;
@@ -302,9 +334,12 @@ impl MermanLanguageServer {
             return;
         }
 
-        let context = {
-            let store = self.store.lock().await;
-            store.diagnostic_context(uri)
+        let context = match self.diagnostic_context_for_uri(uri).await {
+            Ok(context) => context,
+            Err(error) => {
+                tracing::debug!(%uri, %error, "diagnostic snapshot changed before publication");
+                return;
+            }
         };
 
         let Some(context) = context else {
@@ -317,11 +352,7 @@ impl MermanLanguageServer {
     async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
         if let Some(diagnostics) = self.diagnostics_for_current_context(context).await {
             self.client
-                .publish_diagnostics(
-                    context.document.uri.clone(),
-                    diagnostics,
-                    Some(context.document.version),
-                )
+                .publish_diagnostics(context.uri().clone(), diagnostics, Some(context.version()))
                 .await;
         }
     }
@@ -468,13 +499,13 @@ impl MermanLanguageServer {
             return;
         }
 
-        let contexts = {
+        let uris = {
             let store = self.store.lock().await;
-            store.diagnostic_contexts()
+            store.document_uris()
         };
 
-        for context in contexts {
-            self.publish_current_diagnostics(&context).await;
+        for uri in uris {
+            self.publish_for_uri(&uri).await;
         }
     }
 }
@@ -580,7 +611,7 @@ impl LanguageServer for MermanLanguageServer {
         if change.affects_diagnostics() {
             self.republish_all().await;
         }
-        if change.affects_snapshots()
+        if change.requires_semantic_tokens_refresh()
             && self
                 .semantic_tokens_refresh_supported
                 .load(Ordering::Relaxed)
@@ -601,9 +632,9 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri;
         let previous_result_id = params.previous_result_id.as_deref();
-        let (context, cached) = {
+        let cached = {
             let store = self.store.lock().await;
-            (store.diagnostic_context(&uri), store.diagnostic_state(&uri))
+            store.diagnostic_state(&uri)
         };
         if let Some(cached) = cached {
             return Ok(Self::document_diagnostic_report(
@@ -613,7 +644,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         }
 
-        let Some(context) = context else {
+        let Some(context) = self.diagnostic_context_for_uri(&uri).await? else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
@@ -654,21 +685,32 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        let current_document_version = {
-            let store = self.store.lock().await;
-            store
-                .get(&params.text_document.uri)
-                .map(|document| document.version)
+        let uri = params.text_document.uri.clone();
+        let Some(snapshot_context) = snapshot_context::snapshot_context_for_uri(
+            &self.store,
+            &uri,
+            SnapshotContextKind::CodeActions,
+        )
+        .await?
+        else {
+            return Ok(None);
         };
         let workspace_edit_encoding = WorkspaceEditEncoding::from_document_changes_support(
             self.workspace_edit_document_changes_supported
                 .load(Ordering::Relaxed),
         );
-        Ok(code_actions_for_params_with_encoding(
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot_context.snapshot,
             &params,
-            current_document_version,
             workspace_edit_encoding,
-        ))
+        );
+        snapshot_context::ensure_snapshot_current(
+            &self.store,
+            &snapshot_context,
+            SnapshotContextKind::CodeActions,
+        )
+        .await?;
+        Ok(actions)
     }
 
     async fn semantic_tokens_full(
@@ -683,7 +725,8 @@ impl LanguageServer for MermanLanguageServer {
         };
         let snapshot = &snapshot_context.snapshot;
 
-        let mut tokens = semantic_tokens_for_snapshot(snapshot);
+        let mut tokens = semantic_tokens_for_snapshot(snapshot)
+            .map_err(|error| semantic_token_planning_error(snapshot, error))?;
         let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
         tokens.result_id = Some(result_id.clone());
         self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
@@ -703,7 +746,8 @@ impl LanguageServer for MermanLanguageServer {
         };
         let snapshot = &snapshot_context.snapshot;
 
-        let current_tokens = semantic_tokens_for_snapshot(snapshot);
+        let current_tokens = semantic_tokens_for_snapshot(snapshot)
+            .map_err(|error| semantic_token_planning_error(snapshot, error))?;
         let current_result_id = semantic_tokens_result_id(snapshot, &current_tokens.data);
         let previous = {
             let store = self.store.lock().await;
@@ -742,7 +786,9 @@ impl LanguageServer for MermanLanguageServer {
         let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
         };
-        let result = semantic_tokens_for_snapshot_range(&snapshot_context.snapshot, params.range);
+        let snapshot = &snapshot_context.snapshot;
+        let result = semantic_tokens_for_snapshot_range(snapshot, params.range)
+            .map_err(|error| semantic_token_planning_error(snapshot, error))?;
         snapshot_context::ensure_snapshot_current(
             &self.store,
             &snapshot_context,
@@ -879,6 +925,25 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
     let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "diagnostic document changed while recomputing".into();
     error
+}
+
+fn semantic_token_planning_error(
+    snapshot: &DocumentSnapshot,
+    error: TokenPlanError,
+) -> tower_lsp::jsonrpc::Error {
+    tracing::error!(
+        uri = %snapshot.uri,
+        version = snapshot.version,
+        %error,
+        "semantic token planning failed"
+    );
+    let mut response = tower_lsp::jsonrpc::Error::internal_error();
+    response.message = "semantic token planning failed".into();
+    response.data = Some(serde_json::json!({
+        "code": "merman.lsp.semantic_token_planning_failed",
+        "detail": error.to_string(),
+    }));
+    response
 }
 
 fn document_sync_error_diagnostic(

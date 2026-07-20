@@ -267,8 +267,8 @@
   ],
   "playground": {
     "workspace": "playground",
-    "packageJsonSha256": "3944737768b6d4aa78424fc67293c42da4ae6ad61762e6e6178e3954c16c19a1",
-    "packageLockSha256": "215e4a74baffd290ac514bcfc70f64c9580fa2e84c87df118b57e9631651d42c"
+    "packageJsonSha256": "6cfbedda18250692d33afee2dcc3cf22195e7ef4a4bbebb61dcd4be2d1eccab2",
+    "packageLockSha256": "190e76ea33649e051f76fb03341fd69cf637c8ba5f401fc392b1b4e6da516685"
   },
   "referenceCli": {
     "package": {
@@ -310,12 +310,6 @@
         "package": "fsevents@2.3.3",
         "action": "ignored",
         "reason": "Optional native watcher; no runtime artifact is required."
-      },
-      {
-        "workspace": "playground",
-        "package": "fsevents@2.3.2",
-        "action": "ignored",
-        "reason": "Optional nested native watcher; no runtime artifact is required."
       },
       {
         "workspace": "tools/mermaid-cli",

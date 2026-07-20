@@ -297,25 +297,36 @@ fn recovered_gantt_editor_diagnostic_is_deduplicated_with_the_parse_error() {
 }
 
 #[test]
-fn recovered_mindmap_editor_diagnostic_is_projected() {
+fn recovered_mindmap_editor_diagnostic_is_merged_into_the_primary_error() {
     let source = "mindmap\nroot\n child[unterminated";
     let payload = analyze(source);
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
-    assert_eq!(payload.summary.warnings, 1);
+    assert_eq!(payload.summary.warnings, 0);
     let diagnostic = payload
         .diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-        .expect("recovered editor diagnostic");
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .expect("primary parse diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
     assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("mindmap"));
     assert!(diagnostic.message.contains("unterminated node delimiter"));
     assert_eq!(
         diagnostic.span.as_ref().map(|span| span.byte_start),
         source.find("child")
+    );
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser recovery produced the same syntax problem")
+    }));
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
     );
 }
 

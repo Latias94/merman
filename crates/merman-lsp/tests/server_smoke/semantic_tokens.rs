@@ -286,9 +286,7 @@ async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_con
         .params(
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
-                    "parse": {
-                        "suppress_errors": true
-                    }
+                    "site_config": { "theme": "dark" }
                 }),
             })
             .unwrap(),

@@ -9,7 +9,7 @@ use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use std::path::PathBuf;
 
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
-    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected Flowchart render model");
     };
     model
@@ -25,15 +25,15 @@ fn layout_flowchart_render_model(
         .resource_limits()
         .check_flowchart_complexity(model)?;
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.meta.diagram_type == "flowchart-elk"
-        || parsed.meta.effective_config.get_str("layout") == Some("elk");
+    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
+        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
 
     if uses_elk {
         #[cfg(feature = "elk-layout")]
         {
             return merman_render::flowchart::elk::layout_flowchart_elk_typed(
                 model,
-                &parsed.meta.effective_config,
+                &parsed.metadata().effective_config,
                 &measurer,
                 session.math_renderer(),
             );
@@ -41,14 +41,14 @@ fn layout_flowchart_render_model(
         #[cfg(not(feature = "elk-layout"))]
         {
             return Err(Error::UnsupportedDiagram {
-                diagram_type: parsed.meta.diagram_type.clone(),
+                diagram_type: parsed.metadata().diagram_type.clone(),
             });
         }
     }
 
     layout_flowchart_typed(
         model,
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &measurer,
         session.math_renderer(),
     )
@@ -140,7 +140,7 @@ fn flowchart_dagre_preserves_operation_computed_length_precision() {
     );
     let layout = layout_flowchart_typed(
         flowchart_model(&parsed),
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &NonLatticeComputedLengthMeasurer,
         None,
     )
@@ -162,7 +162,7 @@ fn flowchart_elk_preserves_operation_computed_length_precision() {
     );
     let graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
         flowchart_model(&parsed),
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &NonLatticeComputedLengthMeasurer,
         None,
     )
@@ -1933,7 +1933,7 @@ fn flowchart_layout_rejects_unknown_shape_instead_of_using_a_rectangle() {
 
     let error = layout_flowchart_typed(
         &model,
-        &parsed.meta.effective_config,
+        &parsed.metadata().effective_config,
         &measurer,
         session.math_renderer(),
     )

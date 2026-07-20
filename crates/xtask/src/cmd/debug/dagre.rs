@@ -78,17 +78,17 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
             }
             Err(err) => return Err(XtaskError::DebugSvgFailed(format!("parse failed: {err}"))),
         };
-    let RenderSemanticModel::State(model) = &parsed.model else {
+    let RenderSemanticModel::State(model) = parsed.model() else {
         return Err(XtaskError::DebugSvgFailed(format!(
             "expected State render model, got {}",
-            parsed.model.kind()
+            parsed.model().kind()
         )));
     };
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
     let mut g = merman_render::state::debug_build_state_diagram_dagre_graph(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(format!("build dagre graph failed: {e}")))?;

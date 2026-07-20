@@ -9,7 +9,7 @@ mod code_actions;
 mod completion;
 mod context;
 mod diagnostics;
-mod semantic_tokens;
+mod generated;
 mod snapshot;
 mod structure;
 mod token_planner;
@@ -29,12 +29,14 @@ pub use diagnostics::{
     DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
 };
-pub use merman_analysis::FenceTextIndexSource;
-pub use semantic_tokens::{
-    SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    semantic_token_legend, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
-    token_modifier_index, token_type_index,
+pub use generated::{
+    PlannedTokenKind, PlannedTokenModifier, SEMANTIC_TOKEN_DESCRIPTOR,
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
+    SEMANTIC_TOKEN_VALID_MODIFIER_MASK, SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
+    SemanticTokenDescriptor, SemanticTokenKindDescriptor, SemanticTokenModifierDescriptor,
+    SemanticTokenPackedDescriptor, TokenOverlayKind, semantic_token_descriptor,
 };
+pub use merman_analysis::FenceTextIndexSource;
 pub use snapshot::{DocumentSnapshot, FenceSnapshot};
 pub use structure::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
@@ -44,8 +46,9 @@ pub use structure::{
     workspace_symbols, workspace_symbols_for_snapshots,
 };
 pub use token_planner::{
-    PlannedToken, PlannedTokenKind, PlannedTokenModifier, SemanticTokenPlan, TokenPlanError,
-    plan_semantic_tokens_for_snapshot, planned_token_modifier_index, planned_token_type_index,
+    PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
 };
 pub use types::{DocumentKind, DocumentUri, Position, Range};
-pub use workspace::DocumentWorkspace;
+pub use workspace::{
+    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentWorkspace, EditorDiagramDetection,
+};

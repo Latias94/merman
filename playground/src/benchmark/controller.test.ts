@@ -516,6 +516,7 @@ function realmFailure(input: BenchmarkSampleInput): BenchmarkSampleFailure {
     version: `test-${input.engine}`,
     stage: "render",
     message: "render failed",
+    detail: null,
   };
 }
 

@@ -62,6 +62,7 @@ import type {
 } from "@/src/benchmark/controller";
 import type {
   BenchmarkIntervalName,
+  BenchmarkRecordedFailure,
   BenchmarkRecordedSample,
   BenchmarkReport,
 } from "@/src/benchmark/report";
@@ -79,6 +80,10 @@ import {
 } from "@/src/runtime/use-merman-runtime";
 import { REALM_BUDGETS } from "@/src/runtime/realm/channel-protocol";
 import { PLAYGROUND_RENDER_VIEWPORT } from "@/src/runtime/render-viewport";
+import {
+  projectError,
+  type ErrorProjection,
+} from "@/src/runtime/error-projection";
 
 const ITERATION_OPTIONS = [2, 4, 6, 10, 20] as const;
 const COLD_METRICS = [
@@ -144,7 +149,7 @@ export function BenchDialog() {
     () => document.visibilityState === "visible"
   );
   const [runFingerprint, setRunFingerprint] = useState<string | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<ErrorProjection | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const fingerprint = useMemo(
@@ -237,7 +242,7 @@ export function BenchDialog() {
       },
     };
     void benchmarkController.run(request).catch((error: unknown) => {
-      setRunError(error instanceof Error ? error.message : String(error));
+      setRunError(projectError(error));
     });
   }, [
     code,
@@ -332,12 +337,12 @@ export function BenchDialog() {
             )}
 
             {runError && (
-              <div
-                role="alert"
-                className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
-              >
-                {runError}
-              </div>
+              <BenchmarkFailureNotice
+                detail={runError.detail}
+                engine="Benchmark"
+                message={runError.summary}
+                stage="controller"
+              />
             )}
           </div>
         </ScrollArea>
@@ -568,7 +573,9 @@ function ReportView({ report }: { report: BenchmarkReport }) {
   const merman = report.aggregates?.engines.merman[metric] ?? null;
   const mermaid = report.aggregates?.engines.mermaid[metric] ?? null;
   const ratio = report.aggregates?.ratios[metric] ?? null;
-  const failures = report.samples.filter((sample) => sample.outcome === "failure");
+  const failures = report.samples.filter(
+    (sample): sample is BenchmarkRecordedFailure => sample.outcome === "failure"
+  );
 
   return (
     <>
@@ -593,10 +600,12 @@ function ReportView({ report }: { report: BenchmarkReport }) {
           </div>
         </div>
         {report.terminalError && (
-          <div className="border-destructive/40 bg-destructive/10 rounded-md border px-3 py-2 text-sm">
-            <span className="font-medium">{report.terminalError.stage}: </span>
-            {report.terminalError.message}
-          </div>
+          <BenchmarkFailureNotice
+            detail={report.terminalError.detail}
+            engine="Benchmark"
+            message={report.terminalError.message}
+            stage={report.terminalError.stage}
+          />
         )}
       </section>
 
@@ -646,6 +655,32 @@ function ReportView({ report }: { report: BenchmarkReport }) {
       )}
 
       <Separator />
+
+      {failures.length > 0 && (
+        <section className="space-y-2" aria-labelledby="benchmark-failures-title">
+          <div>
+            <h3 id="benchmark-failures-title" className="text-sm font-semibold">
+              {t("bench.failureEvidence")}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("bench.failureEvidenceDescription")}
+            </p>
+          </div>
+          <div className="space-y-2">
+            {failures.map((sample) => (
+              <BenchmarkFailureNotice
+                key={sample.requestId}
+                detail={sample.failure.detail}
+                engine={engineLabel(sample.engine)}
+                message={sample.failure.message}
+                stage={sample.failure.stage}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {failures.length > 0 && <Separator />}
 
       <section className="grid gap-3 text-xs sm:grid-cols-4">
         <EvidenceFact label={t("bench.runId")} value={report.run.id} />
@@ -850,6 +885,45 @@ function RawSampleRow({ sample }: { sample: BenchmarkRecordedSample }) {
         </pre>
       )}
     </details>
+  );
+}
+
+function BenchmarkFailureNotice({
+  detail,
+  engine,
+  message,
+  stage,
+}: {
+  detail: string | null;
+  engine: string;
+  message: string;
+  stage: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="alert"
+      className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm"
+      data-merman-benchmark-error-engine={engine}
+      data-merman-benchmark-error-stage={stage}
+    >
+      <p className="font-medium text-destructive">
+        {engine} · <span className="font-mono text-xs">{stage}</span>
+      </p>
+      <p className="mt-1 break-words font-mono text-xs text-foreground">
+        {message}
+      </p>
+      {detail && (
+        <details className="mt-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">
+            {t("preview.errorDetails")}
+          </summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono">
+            {detail}
+          </pre>
+        </details>
+      )}
+    </div>
   );
 }
 

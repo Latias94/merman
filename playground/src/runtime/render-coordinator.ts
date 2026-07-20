@@ -1,5 +1,8 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { DiagramDetectionFacts } from "@mermanjs/web";
+import {
+  UNAVAILABLE_DIAGRAM_DETECTION,
+  type DiagramDetectionFacts,
+} from "@mermanjs/web";
 
 import type {
   MermanDomainFacade,
@@ -17,7 +20,7 @@ import type {
   CompareFailureStage,
   RealmViewport,
 } from "./realm/channel-protocol.ts";
-import { projectError } from "./error-projection.ts";
+import { projectError, type ErrorProjection } from "./error-projection.ts";
 
 export interface RenderCoordinatorInput {
   readonly configJson: string;
@@ -42,6 +45,7 @@ export interface FrozenRenderSnapshot {
 
 export interface MermanRenderSuccess {
   readonly ascii: string | null;
+  readonly asciiError: ErrorProjection | null;
   readonly engine: "merman";
   readonly presentedAt: number | null;
   readonly renderTimeMs: number;
@@ -212,14 +216,6 @@ const EMPTY_STATE: RenderCoordinatorState = Object.freeze({
   status: "empty",
   actionsEnabled: false,
 });
-const UNAVAILABLE_DETECTION: DiagramDetectionFacts = Object.freeze({
-  status: "unavailable",
-  validity: "unknown",
-  diagramType: null,
-  syntaxId: null,
-  effectiveLayoutId: null,
-});
-
 export function createRenderCoordinator({
   compare,
   compareViewport,
@@ -486,7 +482,7 @@ function detectDiagram(
       snapshot.options
     );
   } catch {
-    return UNAVAILABLE_DETECTION;
+    return UNAVAILABLE_DIAGRAM_DETECTION;
   }
 }
 
@@ -501,6 +497,7 @@ function renderCompare(
       status: "failure",
       stage: "presentation",
       message: "Compare viewport is unavailable.",
+      detail: null,
     });
   }
   return compare
@@ -540,8 +537,8 @@ function renderMerman(
   } catch (error) {
     return mermanFailure("render", error);
   }
-  if (!result.svg) {
-    return mermanFailure("render", result.error ?? "Merman render failed.");
+  if (result.status === "failure") {
+    return projectedMermanFailure("render", result.error);
   }
   try {
     validateSvg(result.svg);
@@ -551,6 +548,7 @@ function renderMerman(
   const diagramType =
     detection.status === "available" ? detection.diagramType : null;
   let ascii: string | null = null;
+  let asciiError: ErrorProjection | null = null;
   try {
     if (
       diagramType &&
@@ -558,20 +556,27 @@ function renderMerman(
         .getAsciiSupportedDiagrams()
         .some((candidate) => candidate === diagramType)
     ) {
-      ascii = facade.renderAscii(
+      const asciiResult = facade.renderAscii(
         snapshot.source,
         snapshot.theme,
         snapshot.configJson
       );
+      if (asciiResult.status === "success") {
+        ascii = asciiResult.ascii;
+      } else {
+        asciiError = asciiResult.error;
+      }
     }
-  } catch {
+  } catch (error) {
     ascii = null;
+    asciiError = projectError(error);
   }
   return {
     status: "success",
     engine: "merman",
     svg: result.svg,
     ascii,
+    asciiError,
     renderTimeMs: result.renderTime,
     presentedAt: null,
   };
@@ -696,6 +701,19 @@ function mermanFailure(
     stage,
     message: projection.summary,
     detail: projection.detail,
+  };
+}
+
+function projectedMermanFailure(
+  stage: MermanRenderFailure["stage"],
+  error: ErrorProjection
+): MermanRenderFailure {
+  return {
+    status: "failure",
+    engine: "merman",
+    stage,
+    message: error.summary,
+    detail: error.detail,
   };
 }
 

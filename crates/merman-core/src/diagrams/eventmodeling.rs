@@ -69,7 +69,7 @@ impl EventModelingDiagramRenderModel {
     }
 }
 
-pub fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
     construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_compat_json(meta)
@@ -78,11 +78,15 @@ pub fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source =
-        construct_eventmodeling_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let editor_facts = source.editor_facts();
-    Ok((source.into_compat_json(meta)?, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_eventmodeling_semantic_source(code, meta),
+        |source| {
+            let editor_facts = source.editor_facts();
+            (source.into_compat_json(meta), editor_facts)
+        },
+        EventModelingParseFailure::into_error_and_editor_facts,
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -99,20 +103,13 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-pub fn parse_eventmodeling_model_for_render(
+pub(crate) fn parse_eventmodeling_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<EventModelingDiagramRenderModel> {
     Ok(construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_render_model(meta))
-}
-
-pub fn parse_eventmodeling_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_eventmodeling_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts(),
-        Err(failure) => failure.into_editor_facts(),
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -377,7 +374,7 @@ impl EventModelingSemanticSource {
 }
 
 impl EventModelingParseFailure {
-    fn into_editor_facts(self) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
         let mut facts = *self.editor_facts;
         facts.mark_recovered_from_parse_error(
             format!(
@@ -386,7 +383,7 @@ impl EventModelingParseFailure {
             ),
             Some(self.span),
         );
-        facts
+        (*self.error, facts)
     }
 }
 
@@ -1745,7 +1742,7 @@ mod tests {
     use super::*;
     use crate::{
         EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseMetadata, ParseOptions,
+        ParseDiagnosticSpanKind, ParseMetadata,
     };
 
     fn meta() -> ParseMetadata {
@@ -1837,11 +1834,13 @@ data ItemAddedData {
             "}\r\n",
         );
         let expected_json = parse_eventmodeling(text, &meta()).unwrap();
-        let expected_facts = parse_eventmodeling_editor_facts(text, &meta());
         let expected_model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
 
         reset_eventmodeling_syntax_construction_count();
-        let (json, facts) = parse_eventmodeling_json_and_editor_facts(text, &meta()).unwrap();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_eventmodeling_json_and_editor_facts(text, &meta()),
+        )
+        .unwrap();
 
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
@@ -1849,7 +1848,6 @@ data ItemAddedData {
             render_model_to_compat_json(&expected_model, &meta()).unwrap(),
             expected_json
         );
-        assert_eq!(facts, expected_facts);
         assert_eq!(
             json["frames"],
             serde_json::to_value(&expected_model.frames).unwrap()
@@ -1878,8 +1876,10 @@ data ItemAddedData {
             let block_start = text.find('{').expect("opening brace");
             let block_end = text.rfind('}').expect("closing brace") + 1;
 
-            let (json, facts) = parse_eventmodeling_json_and_editor_facts(&text, &meta())
-                .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
+            let (json, facts) = crate::family::test_support::into_result(
+                parse_eventmodeling_json_and_editor_facts(&text, &meta()),
+            )
+            .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
             let typed = parse_eventmodeling_model_for_render(&text, &meta())
                 .expect("typed projection accepts the same block");
             let block = facts
@@ -1919,7 +1919,11 @@ data ItemAddedData {
         );
 
         reset_eventmodeling_syntax_construction_count();
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "01"));
@@ -1943,11 +1947,7 @@ data ItemAddedData {
 }
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "eventmodeling",
-                text,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("eventmodeling", text)
             .unwrap()
             .unwrap();
 
@@ -2020,7 +2020,11 @@ gwt 002
         assert_eq!(model.frames.len(), 2);
         assert_eq!(model.data_entities.len(), 1);
 
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.diagnostics.is_empty());
@@ -2067,7 +2071,11 @@ gwt 002
             "    evt CartUpdated\r\n",
         );
         parse_eventmodeling(text, &meta()).expect("complete grammar fixture must render");
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
@@ -2178,7 +2186,11 @@ gwt 002
         };
         assert_eq!(diagnostic.span(), Some(invalid_span));
 
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.lexemes().iter().all(|lexeme| {
@@ -2212,7 +2224,11 @@ gwt 002
             "entity After\r\n",
         );
         parse_eventmodeling(text, &meta()).expect("C-style comments are hidden family grammar");
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
@@ -2268,7 +2284,11 @@ gwt 002
             ParseDiagnosticSpanKind::InsertionPoint
         );
 
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
         let comment = facts
@@ -2330,7 +2350,11 @@ gwt 02
 "#;
 
         parse_eventmodeling(text, &meta()).unwrap();
-        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         for expected in [
             "event can only receive input from a command",

@@ -2,6 +2,8 @@ import { bindSurfaceRuntime } from "../surface-runtime.js";
 import type { MermanWasmModule } from "../index.js";
 export type * from "../index.js";
 export {
+  MERMAN_ABI_VERSION,
+  UNAVAILABLE_DIAGRAM_DETECTION,
   SUPPORTED_THEMES,
   SUPPORTED_HOST_THEME_PRESETS,
   SUPPORTED_DIAGRAMS,
@@ -19,6 +21,13 @@ export {
   encodeOptions,
   assertSafeSvgForDom,
   createBrowserTextMeasurementSession,
+  SEMANTIC_TOKEN_DESCRIPTOR,
+  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
+  SEMANTIC_TOKEN_RECORD_WIDTH,
+  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
+  SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
+  SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
 } from "../index.js";
 
 function surfaceLoader(): Promise<MermanWasmModule> {
@@ -60,7 +69,9 @@ export const {
   renderAscii,
   asciiSupportedDiagrams,
   asciiCapabilities,
+  createEditorSession,
   editorDiagnostics,
+  editorDiagramDetection,
   editorCodeActions,
   editorCompletions,
   editorHover,
@@ -70,6 +81,6 @@ export const {
   editorReferences,
   editorPrepareRename,
   editorRename,
-  editorSemanticTokenLegend,
+  editorSemanticTokenDescriptor,
   editorSemanticTokens,
 } = runtime;

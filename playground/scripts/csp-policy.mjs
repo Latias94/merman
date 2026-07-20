@@ -9,20 +9,45 @@ const COMMON_DIRECTIVES = Object.freeze({
   "form-action": ["'none'"],
 });
 
-export const EXPECTED_CSP_POLICIES = Object.freeze({
-  "index.html": Object.freeze({
-    ...COMMON_DIRECTIVES,
-    "script-src": ["'self'", "'wasm-unsafe-eval'"],
-    "worker-src": ["'self'"],
-    "frame-src": ["'self'"],
-  }),
-  "benchmark.html": Object.freeze({
-    ...COMMON_DIRECTIVES,
-    "script-src": ["'self'", "blob:", "'wasm-unsafe-eval'"],
-    "worker-src": ["'none'"],
-    "frame-src": ["'none'"],
-  }),
-});
+export function isCspHash(value) {
+  return (
+    typeof value === "string" &&
+    /^sha256-[A-Za-z0-9+/]+={0,2}$/u.test(value)
+  );
+}
+
+export function createExpectedCspPolicies(hashes) {
+  const indexHashes = quotedHashes(hashes["index.html"], "index.html", 2);
+  const benchmarkHashes = quotedHashes(
+    hashes["benchmark.html"],
+    "benchmark.html",
+    0,
+  );
+  return Object.freeze({
+    "index.html": Object.freeze({
+      ...COMMON_DIRECTIVES,
+      "script-src": [
+        "'self'",
+        "blob:",
+        ...indexHashes,
+        "'wasm-unsafe-eval'",
+      ],
+      "worker-src": ["'self'"],
+      "frame-src": ["'self'"],
+    }),
+    "benchmark.html": Object.freeze({
+      ...COMMON_DIRECTIVES,
+      "script-src": [
+        "'self'",
+        "blob:",
+        ...benchmarkHashes,
+        "'wasm-unsafe-eval'",
+      ],
+      "worker-src": ["'none'"],
+      "frame-src": ["'none'"],
+    }),
+  });
+}
 
 export class CspContractError extends Error {
   constructor(message) {
@@ -81,8 +106,8 @@ export function extractMetaCsp(html) {
   return policies[0];
 }
 
-export function verifyHtmlCsp(fileName, html) {
-  const expected = EXPECTED_CSP_POLICIES[fileName];
+export function verifyHtmlCsp(fileName, html, expectedPolicies) {
+  const expected = expectedPolicies[fileName];
   if (!expected) {
     return [`No CSP contract is defined for ${fileName}.`];
   }
@@ -115,6 +140,20 @@ export function verifyHtmlCsp(fileName, html) {
     }
   }
   return violations;
+}
+
+function quotedHashes(hashes, fileName, expectedCount) {
+  if (
+    !Array.isArray(hashes) ||
+    hashes.length !== expectedCount ||
+    new Set(hashes).size !== hashes.length ||
+    hashes.some((hash) => !isCspHash(hash))
+  ) {
+    throw new CspContractError(
+      `${fileName} has an invalid opaque-realm hash set.`,
+    );
+  }
+  return hashes.map((hash) => `'${hash}'`);
 }
 
 function parseHtmlAttributes(tag) {

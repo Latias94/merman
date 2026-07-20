@@ -831,20 +831,44 @@ pub(super) fn parse_semantic_source(
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
-pub(super) fn parse_recovering_editor_facts(
+pub(super) fn parse_combined_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> EditorSemanticFacts {
+) -> std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure> {
     let trace = match parse_trace(code, meta, ArchitectureParseMode::Recovering) {
         Ok(trace) => trace,
         Err(error) => {
             let mut facts = EditorSemanticFacts::new();
-            push_recovery_error(&mut facts, error);
-            return facts;
+            push_recovery_error(&mut facts, &error);
+            return Err(crate::family::CombinedSemanticFailure::new(error, facts));
         }
     };
-    let validation_error = trace.build_db().err();
-    trace.editor_facts(code, validation_error)
+    let syntax_error = trace.entries.iter().find_map(|entry| {
+        entry
+            .diagnostic
+            .clone()
+            .map(|diagnostic| Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                diagnostic,
+            })
+    });
+    let db = trace.build_db();
+    let editor_facts = trace.editor_facts(code, db.as_ref().err());
+
+    if let Some(error) = syntax_error {
+        return Err(crate::family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        ));
+    }
+
+    match db {
+        Ok(db) => Ok(ArchitectureSemanticSource { db, editor_facts }),
+        Err(error) => Err(crate::family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )),
+    }
 }
 
 fn parse_trace(
@@ -1142,9 +1166,13 @@ fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {
     }
 }
 
-fn push_recovery_error(facts: &mut EditorSemanticFacts, error: Error) {
-    let diagnostic = take_parse_diagnostic(error);
-    facts.mark_recovered_from_parse_error(diagnostic.message(), diagnostic.span());
+fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
+    match error {
+        Error::DiagramParse { diagnostic, .. } => {
+            facts.mark_recovered_from_parse_error(diagnostic.message(), diagnostic.span());
+        }
+        other => facts.mark_recovered_from_parse_error(other.to_string(), None),
+    }
 }
 
 impl ArchitectureTrace {
@@ -1222,7 +1250,7 @@ impl ArchitectureTrace {
         Ok(db)
     }
 
-    fn editor_facts(&self, source: &str, validation_error: Option<Error>) -> EditorSemanticFacts {
+    fn editor_facts(&self, source: &str, validation_error: Option<&Error>) -> EditorSemanticFacts {
         let mut facts = EditorSemanticFacts::new();
         for entry in &self.entries {
             debug_assert!(entry.span.start <= entry.span.end);

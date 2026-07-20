@@ -4,6 +4,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
     ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
@@ -327,52 +328,15 @@ struct XyChartParseOutcome {
 impl XyChartParseOutcome {
     fn into_strict_result(
         self,
-    ) -> std::result::Result<XyChartSemanticSource, XyChartSemanticFailure> {
+    ) -> std::result::Result<XyChartSemanticSource, CombinedSemanticFailure> {
         match self.first_error {
-            Some(error) => Err(XyChartSemanticFailure::new(error, self.source.editor_facts)),
+            Some(error) => Err(CombinedSemanticFailure::parser_recovery(
+                "xychart",
+                error,
+                self.source.editor_facts,
+            )),
             None => Ok(self.source),
         }
-    }
-
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        match self.first_error.take() {
-            Some(error) => {
-                XyChartSemanticFailure::new(error, self.source.editor_facts).into_editor_facts()
-            }
-            None => self.source.editor_facts,
-        }
-    }
-}
-
-struct XyChartSemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl XyChartSemanticFailure {
-    fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
-        Self {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        }
-    }
-
-    fn into_error(self) -> Error {
-        *self.error
-    }
-
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("xychart parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
     }
 }
 
@@ -832,6 +796,21 @@ fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChar
 
     let syntax = split_statements_spanned(code);
     let mut lexemes = EditorLexemeJournal::family_parser(code);
+    if let Some(unterminated) = syntax.unterminated_accessibility {
+        push_xychart_lexeme(
+            &mut lexemes,
+            EditorLexemeKind::Keyword,
+            unterminated.keyword,
+        );
+        push_xychart_lexeme(
+            &mut lexemes,
+            EditorLexemeKind::Delimiter,
+            unterminated.opening,
+        );
+        if let Some(content) = unterminated.content {
+            push_xychart_lexeme(&mut lexemes, EditorLexemeKind::String, content);
+        }
+    }
     for comment in syntax.comments {
         push_xychart_lexeme(&mut lexemes, EditorLexemeKind::Comment, comment);
     }
@@ -979,10 +958,10 @@ fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChar
     }
 }
 
-pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_xychart_semantic_source(code, meta)
         .into_strict_result()
-        .map_err(XyChartSemanticFailure::into_error)?;
+        .map_err(CombinedSemanticFailure::into_error)?;
     let Some(model) = source.model else {
         return Ok(json!({}));
     };
@@ -992,28 +971,31 @@ pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let XyChartSemanticSource {
-        model,
-        editor_facts,
-    } = construct_xychart_semantic_source(code, meta)
-        .into_strict_result()
-        .map_err(XyChartSemanticFailure::into_error)?;
-    let model = match model {
-        Some(model) => render_model_to_compat_json(&model, meta)?,
-        None => json!({}),
-    };
-    Ok((model, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_xychart_semantic_source(code, meta).into_strict_result(),
+        |XyChartSemanticSource {
+             model,
+             editor_facts,
+         }| {
+            let model = match model {
+                Some(model) => render_model_to_compat_json(&model, meta),
+                None => Ok(json!({})),
+            };
+            (model, editor_facts)
+        },
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_xychart_model_for_render(
+pub(crate) fn parse_xychart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<XyChartDiagramRenderModel> {
     construct_xychart_semantic_source(code, meta)
         .into_strict_result()
         .map(|source| source.model.unwrap_or_else(empty_render_model))
-        .map_err(XyChartSemanticFailure::into_error)
+        .map_err(CombinedSemanticFailure::into_error)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -1021,10 +1003,6 @@ pub(crate) fn render_model_to_compat_json(
     meta: &ParseMetadata,
 ) -> Result<Value> {
     Ok(model.to_compat_json(meta))
-}
-
-pub fn parse_xychart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_xychart_semantic_source(code, meta).into_editor_facts()
 }
 
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
@@ -2195,6 +2173,13 @@ struct XyChartSyntaxFragments {
     statements: Vec<SpannedStatement>,
     comments: Vec<SourceSpan>,
     delimiters: Vec<SourceSpan>,
+    unterminated_accessibility: Option<UnterminatedXyChartAccessibility>,
+}
+
+struct UnterminatedXyChartAccessibility {
+    keyword: SourceSpan,
+    opening: SourceSpan,
+    content: Option<SourceSpan>,
 }
 
 impl SpannedStatement {
@@ -2212,6 +2197,7 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
     let mut in_quote = false;
     let mut in_md = false;
     let mut in_acc_descr_block = false;
+    let mut acc_descr_opening = None;
     let mut iter = input.char_indices().peekable();
 
     while let Some((idx, ch)) = iter.next() {
@@ -2281,10 +2267,26 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
         }
 
         match ch {
-            '{' if !in_acc_descr_block && starts_with_xychart_keyword(&cur, "accDescr") => {
+            '{' if !in_acc_descr_block && is_xychart_accessibility_block_prefix(&cur) => {
                 in_acc_descr_block = true;
+                let leading = cur.len().saturating_sub(cur.trim_start().len());
+                let keyword_start = cur_start + leading;
+                acc_descr_opening = Some((
+                    SourceSpan::new(keyword_start, keyword_start + "accDescr".len()),
+                    SourceSpan::new(idx, idx + ch.len_utf8()),
+                ));
             }
-            '}' if in_acc_descr_block => in_acc_descr_block = false,
+            '}' if in_acc_descr_block => {
+                in_acc_descr_block = false;
+                cur.push(ch);
+                out.push(SpannedStatement {
+                    text: std::mem::take(&mut cur),
+                    start: cur_start,
+                });
+                cur_start = idx + ch.len_utf8();
+                acc_descr_opening = None;
+                continue;
+            }
             _ => {}
         }
 
@@ -2303,7 +2305,20 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
         cur.push(ch);
     }
 
-    if !cur.is_empty() {
+    let unterminated_accessibility = if in_acc_descr_block {
+        acc_descr_opening.map(|(keyword, opening)| {
+            let content = SpannedSlice::new(&input[opening.end..], opening.end, input.len()).trim();
+            UnterminatedXyChartAccessibility {
+                keyword,
+                opening,
+                content: (content.start < content.end)
+                    .then(|| SourceSpan::new(content.start, content.end)),
+            }
+        })
+    } else {
+        None
+    };
+    if !in_acc_descr_block && !cur.is_empty() {
         out.push(SpannedStatement {
             text: cur,
             start: cur_start,
@@ -2313,18 +2328,18 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
         statements: out,
         comments,
         delimiters,
+        unterminated_accessibility,
     }
 }
 
-fn starts_with_xychart_keyword(statement: &str, keyword: &str) -> bool {
+fn is_xychart_accessibility_block_prefix(statement: &str) -> bool {
     let statement = statement.trim_start();
     statement
-        .get(..keyword.len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
-        && statement[keyword.len()..]
+        .get(.."accDescr".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("accDescr"))
+        && statement["accDescr".len()..]
             .chars()
-            .next()
-            .is_none_or(|ch| ch.is_whitespace())
+            .all(char::is_whitespace)
 }
 
 #[cfg(test)]
@@ -2583,8 +2598,6 @@ bar [1, 2]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("standalone XYChart JSON parse succeeds")
             .expect("standalone XYChart JSON parse returns a diagram");
-        let standalone_editor = parse_xychart_editor_facts(text, &parsed.meta);
-
         reset_xychart_syntax_construction_count();
         let standalone_json =
             parse_xychart(text, &parsed.meta).expect("XYChart JSON projection succeeds");
@@ -2596,13 +2609,10 @@ bar [1, 2]
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
-        parse_xychart_editor_facts(text, &parsed.meta);
-        assert_eq!(xychart_syntax_construction_count(), 1);
-
-        reset_xychart_syntax_construction_count();
-        let (combined_json, combined_editor) =
-            parse_xychart_json_and_editor_facts(text, &parsed.meta)
-                .expect("XYChart combined projection succeeds");
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_xychart_json_and_editor_facts(text, &parsed.meta),
+        )
+        .expect("XYChart combined projection succeeds");
         assert_eq!(xychart_syntax_construction_count(), 1);
         for field in [
             "orientation",
@@ -2620,7 +2630,7 @@ bar [1, 2]
                 "XYChart combined {field} drift"
             );
         }
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
 
         let typed = serde_json::to_value(typed).expect("XYChart typed model serializes");
         for field in [
@@ -2688,7 +2698,11 @@ bar [1, 2]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart parse succeeds")
             .expect("XYChart model");
-        let facts = parse_xychart_editor_facts(text, &parsed.meta);
+        let facts = crate::family::test_support::editor_facts(
+            parse_xychart_json_and_editor_facts,
+            text,
+            &parsed.meta,
+        );
 
         let assert_payload = |name: &str, detail: &str, start: usize| {
             let symbol = facts
@@ -2779,7 +2793,7 @@ bar [1, 2]
         let invalid_start = text.find("-4aa5").expect("invalid number token");
         reset_xychart_syntax_construction_count();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery succeeds")
             .expect("XYChart editor facts are available");
 
@@ -2810,7 +2824,7 @@ bar [1, 2]
             "bar [3, 4] %% 行尾注释\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor parse")
             .expect("XYChart editor facts");
 
@@ -2917,7 +2931,7 @@ bar [1, 2]
 
         reset_xychart_syntax_construction_count();
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery")
             .expect("XYChart recovered facts");
         assert_eq!(xychart_syntax_construction_count(), 1);
@@ -2951,7 +2965,7 @@ bar [1, 2]
     fn xychart_unterminated_eof_string_keeps_confirmed_delimiter_and_body() {
         let text = "xychart\ntitle \"未完成 🤓";
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery")
             .expect("XYChart recovered facts");
 
@@ -2980,7 +2994,6 @@ bar [1, 2]
             "xychart invalid-orientation",
             "xychart\ntitle \"closed\" trailing",
             "xychart\naccTitle missing-colon",
-            "xychart\naccDescr {unterminated",
             "xychart\nx-axis Name aaa --> 33",
             "xychart\ny-axis [1, 2]",
             "xychart\nline \"title\" [1, , 2]",
@@ -2988,7 +3001,7 @@ bar [1, 2]
             "xychart\nunsupported statement",
         ] {
             let facts = Engine::new()
-                .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+                .parse_editor_semantic_facts_with_type_sync("xychart", text)
                 .unwrap_or_else(|error| panic!("editor recovery failed for {text:?}: {error}"))
                 .unwrap_or_else(|| panic!("missing editor facts for {text:?}"));
             assert_eq!(
@@ -3005,7 +3018,7 @@ bar [1, 2]
     fn xychart_missing_bracket_recovers_at_the_next_statement_boundary() {
         let text = "xychart\nbar [1, 2\nline [3]\n";
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery")
             .expect("XYChart recovered facts");
 

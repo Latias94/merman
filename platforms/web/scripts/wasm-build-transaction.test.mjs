@@ -20,6 +20,7 @@ import {
   acquireOutputLock,
   lockExists,
   outputLockDirectory,
+  workspaceWasmBuildLockDirectory,
 } from "./wasm-build/output-lock.mjs";
 import {
   createOutputStage,
@@ -169,6 +170,35 @@ describe("WASM output transaction", () => {
       [],
     );
   });
+
+  it("serializes independent package surfaces through one workspace build lock", async () => {
+    const root = fixtureRoot();
+    const first = workspaceLockChild(root, 250);
+    await waitForLine(first, "locked");
+    const startedAt = Date.now();
+    const second = workspaceLockChild(root, 0);
+
+    const [firstExit, secondExit] = await Promise.all([
+      once(first, "exit"),
+      once(second, "exit"),
+    ]);
+    assert.equal(firstExit[0], 0);
+    assert.equal(secondExit[0], 0);
+    assert.ok(Date.now() - startedAt >= 150, "second process bypassed the build lock");
+    assert.equal(existsSync(workspaceWasmBuildLockDirectory(root)), false);
+  });
+
+  it("places the build lock in the configured Cargo target directory", () => {
+    const root = fixtureRoot();
+    assert.equal(
+      workspaceWasmBuildLockDirectory(root),
+      path.join(root, "target", ".merman-wasm-build.lock"),
+    );
+    assert.equal(
+      workspaceWasmBuildLockDirectory(root, { cargoTargetDirectory: "build" }),
+      path.join(root, "build", ".merman-wasm-build.lock"),
+    );
+  });
 });
 
 function lockChild(output, holdMs) {
@@ -179,6 +209,18 @@ function lockChild(output, holdMs) {
     `setTimeout(() => { release(); }, ${holdMs});`,
   ].join("\n");
   return spawn(process.execPath, ["--input-type=module", "--eval", source, output], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function workspaceLockChild(root, holdMs) {
+  const source = [
+    `import { acquireWorkspaceWasmBuildLock } from ${JSON.stringify(lockModuleUrl)};`,
+    "const release = acquireWorkspaceWasmBuildLock(process.argv[1], { timeoutMs: 5000, pollMs: 10 });",
+    'console.log("locked");',
+    `setTimeout(() => { release(); }, ${holdMs});`,
+  ].join("\n");
+  return spawn(process.execPath, ["--input-type=module", "--eval", source, root], {
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

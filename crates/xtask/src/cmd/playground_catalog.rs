@@ -363,22 +363,13 @@ fn validate_manifest(
 
         let fixture_path = validate_fixture_path(workspace_root, &canonical_fixtures_root, &entry)?;
         let source = read_utf8(&fixture_path, "fixture")?;
-        let metadata = engine
-            .parse_metadata_sync(&source, ParseOptions::strict())
-            .map_err(|error| {
-                catalog_error(format!(
-                    "example `{}` fixture `{}` failed canonical detection: {error}",
-                    entry.id,
-                    fixture_path.display()
-                ))
-            })?
-            .ok_or_else(|| {
-                catalog_error(format!(
-                    "example `{}` fixture `{}` did not detect a diagram",
-                    entry.id,
-                    fixture_path.display()
-                ))
-            })?;
+        let metadata = engine.parse_metadata_sync(&source).map_err(|error| {
+            catalog_error(format!(
+                "example `{}` fixture `{}` failed canonical detection: {error}",
+                entry.id,
+                fixture_path.display()
+            ))
+        })?;
         let detected_diagram_type = public_diagram_type_for_syntax(&metadata.diagram_type)
             .ok_or_else(|| {
                 catalog_error(format!(

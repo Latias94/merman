@@ -1,20 +1,30 @@
 import type {
   EditorCodeAction,
   EditorCompletionList,
+  DiagramDetectionFacts,
   EditorDiagnosticsResult,
   EditorDocumentSymbol,
   EditorHover,
   EditorLocation,
   EditorPosition,
   EditorPrepareRename,
-  EditorSemanticToken,
   EditorSemanticTokenLegend,
   EditorWorkspaceEdit,
 } from "@mermanjs/web";
+import { MERMAN_ABI_VERSION } from "@mermanjs/web/editor";
 
-export const EDITOR_WORKER_PROTOCOL = 1 as const;
+export { MERMAN_ABI_VERSION };
+
+export const EDITOR_WORKER_PROTOCOL = 2 as const;
 export const EDITOR_SCHEMA_VERSION = 1 as const;
-export const MERMAN_NATIVE_ABI_VERSION = 2 as const;
+
+export type EditorWorkerErrorCode =
+  | "INITIALIZATION_FAILED"
+  | "INVALID_STATE"
+  | "OPERATION_REJECTED"
+  | "PROTOCOL_MISMATCH"
+  | "QUERY_FAILED"
+  | "STALE_DOCUMENT";
 
 export interface EditorDocumentSnapshot {
   readonly uri: string;
@@ -24,6 +34,7 @@ export interface EditorDocumentSnapshot {
 
 export type EditorWorkerQuery =
   | { readonly kind: "diagnostics" }
+  | { readonly kind: "diagramDetection" }
   | { readonly kind: "codeActions" }
   | {
       readonly kind: "completions";
@@ -56,6 +67,7 @@ export type EditorWorkerQuery =
 
 export interface EditorWorkerQueryResults {
   diagnostics: EditorDiagnosticsResult;
+  diagramDetection: DiagramDetectionFacts;
   codeActions: EditorCodeAction[];
   completions: EditorCompletionList;
   hover: EditorHover | null;
@@ -64,7 +76,7 @@ export interface EditorWorkerQueryResults {
   references: EditorLocation[];
   prepareRename: EditorPrepareRename | null;
   rename: EditorWorkspaceEdit | null;
-  semanticTokens: EditorSemanticToken[];
+  semanticTokens: Uint32Array;
 }
 
 export type EditorWorkerQueryResult<Query extends EditorWorkerQuery> =
@@ -89,9 +101,9 @@ export type EditorWorkerRequest =
       readonly type: "query";
       readonly uri: string;
       readonly version: number;
+      readonly legendDigest: string;
       readonly query: EditorWorkerQuery;
     })
-  | (EditorWorkerRequestBase & { readonly type: "cancel" })
   | {
       readonly protocol: typeof EDITOR_WORKER_PROTOCOL;
       readonly type: "dispose";
@@ -105,8 +117,9 @@ interface EditorWorkerResponseBase {
 export type EditorWorkerResponse =
   | (EditorWorkerResponseBase & {
       readonly type: "ready";
-      readonly nativeAbi: typeof MERMAN_NATIVE_ABI_VERSION;
+      readonly nativeAbi: typeof MERMAN_ABI_VERSION;
       readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
+      readonly legendDigest: string;
       readonly legend: EditorSemanticTokenLegend;
     })
   | (EditorWorkerResponseBase & {
@@ -114,13 +127,16 @@ export type EditorWorkerResponse =
       readonly result: unknown;
     })
   | (EditorWorkerResponseBase & {
+      readonly type: "queryResult";
+      readonly uri: string;
+      readonly version: number;
+      readonly legendDigest: string;
+      readonly result: unknown;
+    })
+  | (EditorWorkerResponseBase & {
       readonly type: "error";
-      readonly code:
-        | "CANCELED"
-        | "INITIALIZATION_FAILED"
-        | "INVALID_STATE"
-        | "PROTOCOL_MISMATCH"
-        | "QUERY_FAILED"
-        | "STALE_DOCUMENT";
+      readonly code: EditorWorkerErrorCode;
       readonly message: string;
+      readonly detail: string | null;
+      readonly nativeCode: string | null;
     });

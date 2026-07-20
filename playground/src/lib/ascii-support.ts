@@ -117,12 +117,6 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: readonly FallbackCapabilityInput[] = [
       "dense data uses terminal-compact layout",
     ],
   },
-  {
-    diagramType: "zenuml",
-    displayName: "ZenUML",
-    supportLevel: "partial",
-    limits: ["external ZenUML compatibility is a subset"],
-  },
 ] as const;
 
 export const FALLBACK_ASCII_CAPABILITIES: readonly AsciiCapability[] =

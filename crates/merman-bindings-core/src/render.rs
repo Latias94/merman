@@ -73,6 +73,22 @@ mod tests {
             .expect("render session")
     }
 
+    fn root_style_property_is(svg: &str, property: &str, expected: &str) -> bool {
+        let Ok(document) = roxmltree::Document::parse(svg) else {
+            return false;
+        };
+        document
+            .root_element()
+            .attribute("style")
+            .is_some_and(|style| {
+                style.split(';').map(str::trim).any(|declaration| {
+                    declaration.split_once(':').is_some_and(|(name, value)| {
+                        name.trim() == property && value.trim() == expected
+                    })
+                })
+            })
+    }
+
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         model["tasks"]
             .as_array()
@@ -249,7 +265,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#94a3b8"), "{svg}");
         assert!(svg.contains("#422006"), "{svg}");
         assert!(svg.contains("#f59e0b"), "{svg}");
-        assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#0f172a"),
+            "{svg}"
+        );
         assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(!svg.contains("!important"), "{svg}");
     }
@@ -325,7 +344,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#282c34"), "{svg}");
         assert!(svg.contains("#abb2bf"), "{svg}");
         assert!(svg.contains("#61afef"), "{svg}");
-        assert!(svg.contains("background-color: #282c34;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#282c34"),
+            "{svg}"
+        );
     }
 
     #[test]
@@ -351,7 +373,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#101010"), "{svg}");
         assert!(svg.contains("#ff00aa"), "{svg}");
         assert!(svg.contains("#bfbdb6"), "{svg}");
-        assert!(svg.contains("background-color: #101010;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#101010"),
+            "{svg}"
+        );
     }
 
     #[test]
@@ -364,6 +389,27 @@ B -->|No| D[Debug]";
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("host_theme.preset"));
+    }
+
+    #[test]
+    fn host_theme_rejects_removed_camel_case_theme_variables_alias() {
+        let err = render_svg(
+            b"flowchart TD\nA[Host]",
+            br##"{ "host_theme": { "themeVariables": { "nodeBorder": "#abcdef" } } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            err.message().contains("themeVariables"),
+            "{}",
+            err.message()
+        );
+        assert!(
+            err.message().contains("theme_variables"),
+            "{}",
+            err.message()
+        );
     }
 
     #[test]
@@ -837,6 +883,63 @@ Missing ref: id2,after missing,1d
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
+    }
+
+    #[test]
+    fn superseded_enum_value_aliases_are_rejected() {
+        let cases = [
+            (
+                r#"{ "resources": { "profile": "typst_package" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "typst" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "trusted_native" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "trusted" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "unbounded_for_trusted_input" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "unbounded" } }"#,
+                "resources.profile",
+            ),
+            (r#"{ "svg": { "pipeline": "resvg_safe" } }"#, "svg.pipeline"),
+            (
+                r#"{ "svg": { "css_override_policy": "strip_existing_important" } }"#,
+                "svg.css_override_policy",
+            ),
+            (
+                r#"{ "host_theme": { "output": { "pipeline": "resvg_safe" } } }"#,
+                "host_theme.output.pipeline",
+            ),
+            (
+                r#"{ "host_theme": { "output": { "css_override_policy": "strip_existing_important" } } }"#,
+                "host_theme.output.css_override_policy",
+            ),
+            (
+                r#"{ "host_theme": { "preset": "editor_light" } }"#,
+                "host_theme.preset",
+            ),
+            (
+                r#"{ "host_theme": { "preset": "onedark" } }"#,
+                "host_theme.preset",
+            ),
+        ];
+
+        for (options, field) in cases {
+            let err = render_svg(b"flowchart TD\nA[Hello]", options.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::InvalidArgument, "{options}");
+            assert!(err.message().contains(field), "{options}: {err:?}");
+        }
     }
 
     #[test]

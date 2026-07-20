@@ -42,7 +42,6 @@ legacy `ascii_supported_diagrams` list derived from the richer records.
 | Packet | Full | Bit ranges, labels, row splitting, and multi-row packets. | Visual styling beyond terminal borders is not represented. |
 | Timeline | Summary | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
 | TreeView | Full | Tree nodes, folders/leaves, indentation, and Unicode/ASCII tree connectors. | Browser tree styling is not represented. |
-| ZenUML | Partial | Supported ZenUML interactions are translated into sequence-like terminal output, including participants, messages, and basic conditional frames. | The external ZenUML compatibility surface is a subset; unsupported ZenUML syntax is not represented as terminal output. |
 
 ## Unsupported Families
 
@@ -61,6 +60,7 @@ as ASCII/Unicode render targets:
 | Requirement | Unsupported | Requirement diagrams are SVG-focused today. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
+| ZenUML | Unsupported | The family has a dedicated typed semantic model and SVG renderer, but no family-owned terminal projection has been admitted. It must not be translated through Sequence as an ASCII shortcut. |
 
 ## Playground Filtering
 

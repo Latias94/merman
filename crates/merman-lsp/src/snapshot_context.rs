@@ -7,6 +7,8 @@ use tower_lsp::lsp_types::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SnapshotContextKind {
+    CodeActions,
+    Diagnostics,
     SemanticTokens,
     Structure,
     WorkspaceSymbols,
@@ -16,6 +18,8 @@ impl SnapshotContextKind {
     pub(crate) fn stale_error(self) -> tower_lsp::jsonrpc::Error {
         let mut error = tower_lsp::jsonrpc::Error::content_modified();
         error.message = match self {
+            Self::CodeActions => "code action document changed while computing",
+            Self::Diagnostics => "diagnostic document changed while computing",
             Self::SemanticTokens => "semantic tokens document changed while computing",
             Self::Structure => "structure document changed while computing",
             Self::WorkspaceSymbols => "workspace symbol documents changed while computing",

@@ -1,9 +1,10 @@
-use crate::diagrams::scan::strip_line_ending;
+use crate::diagrams::scan::LineCursor;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
     MermaidConfig, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -161,38 +162,6 @@ impl QuadrantDb {
 struct QuadrantSemanticSource {
     model: QuadrantChartRenderModel,
     editor_facts: EditorSemanticFacts,
-}
-
-struct QuadrantSemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-impl QuadrantSemanticFailure {
-    fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
-        Self {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-        }
-    }
-
-    fn into_error(self) -> Error {
-        *self.error
-    }
-
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match self.error.as_ref() {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("quadrant chart parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
 }
 
 fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
@@ -707,13 +676,6 @@ fn parse_colon_value_ci<'source>(
     })
 }
 
-pub fn parse_quadrant_chart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_quadrant_chart_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
-}
-
 struct QuadrantStatement<'source> {
     source: SourceSlice<'source>,
     terminator: Option<SourceSpan>,
@@ -958,7 +920,7 @@ fn record_quadrant_point(lexemes: &mut EditorLexemeJournal<'_>, point: &ParsedPo
 fn construct_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<QuadrantSemanticSource, QuadrantSemanticFailure> {
+) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -971,7 +933,7 @@ fn construct_quadrant_chart_semantic_source(
             Ok(source)
         }
         Err(mut failure) => {
-            failure.editor_facts.replace_family_lexemes(lexemes);
+            failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
     }
@@ -981,7 +943,7 @@ fn parse_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<QuadrantSemanticSource, QuadrantSemanticFailure> {
+) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
     let mut db = QuadrantDb::default();
     db.clear();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -991,12 +953,10 @@ fn parse_quadrant_chart_semantic_source(
     let mut saw_header = false;
     let mut acc_descr_block: Option<QuadrantAccDescrBlock> = None;
     let mut first_error = None;
-    let mut offset = 0usize;
+    let mut lines = LineCursor::new(code);
 
-    for segment in code.split_inclusive('\n') {
-        let line_start = offset;
-        offset += segment.len();
-        let line = SourceSlice::new(strip_line_ending(segment), line_start);
+    while let Some((segment, line_start)) = lines.next_line() {
+        let line = SourceSlice::new(segment, line_start);
 
         if let Some(mut block) = acc_descr_block.take() {
             if let Some(end) = line.text.find('}') {
@@ -1022,6 +982,7 @@ fn parse_quadrant_chart_semantic_source(
                     EditorLexemeKind::Delimiter,
                     SourceSpan::new(line.start + end, line.start + end + 1),
                 );
+                lines.resume_same_line_at(line.start + end + 1);
                 acc_descr = Some(text);
             } else {
                 block.text.push_str(line.text);
@@ -1127,6 +1088,21 @@ fn parse_quadrant_chart_semantic_source(
                             EditorLexemeKind::Delimiter,
                             SourceSpan::new(after_brace.start + end, after_brace.start + end + 1),
                         );
+                        let trailing = after_brace.subslice(end + 1, after_brace.text.len()).trim();
+                        if !trailing.text.is_empty() {
+                            push_quadrant_slice_lexeme(
+                                lexemes,
+                                EditorLexemeKind::Literal,
+                                trailing,
+                            );
+                            first_error.get_or_insert_with(|| {
+                                Error::diagram_parse_exact(
+                                    meta.diagram_type.clone(),
+                                    "expected ';' or newline after accDescr block",
+                                    trailing.span(),
+                                )
+                            });
+                        }
                         acc_descr = Some(text);
                     } else {
                         let mut text = after_brace.text.trim_start().to_string();
@@ -1442,7 +1418,13 @@ fn parse_quadrant_chart_semantic_source(
                 SourceSpan::new(block.source_start, code.len()),
             );
         }
-        acc_descr = Some(text);
+        first_error.get_or_insert_with(|| {
+            Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "unterminated accDescr block",
+                code.len(),
+            )
+        });
     }
 
     if !saw_header {
@@ -1456,7 +1438,11 @@ fn parse_quadrant_chart_semantic_source(
     }
 
     if let Some(error) = first_error {
-        return Err(QuadrantSemanticFailure::new(error, editor_facts));
+        return Err(CombinedSemanticFailure::parser_recovery(
+            "quadrant chart",
+            error,
+            editor_facts,
+        ));
     }
 
     Ok(QuadrantSemanticSource {
@@ -1483,22 +1469,24 @@ fn parse_quadrant_chart_semantic_source(
     })
 }
 
-pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_quadrant_chart_semantic_source(code, meta)
-        .map_err(QuadrantSemanticFailure::into_error)?;
+        .map_err(CombinedSemanticFailure::into_error)?;
     render_model_to_compat_json(&source.model, meta)
 }
 
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let QuadrantSemanticSource {
-        model,
-        editor_facts,
-    } = construct_quadrant_chart_semantic_source(code, meta)
-        .map_err(QuadrantSemanticFailure::into_error)?;
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_quadrant_chart_semantic_source(code, meta),
+        |QuadrantSemanticSource {
+             model,
+             editor_facts,
+         }| (render_model_to_compat_json(&model, meta), editor_facts),
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -1521,13 +1509,13 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-pub fn parse_quadrant_chart_model_for_render(
+pub(crate) fn parse_quadrant_chart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<QuadrantChartRenderModel> {
     construct_quadrant_chart_semantic_source(code, meta)
         .map(|source| source.model)
-        .map_err(QuadrantSemanticFailure::into_error)
+        .map_err(CombinedSemanticFailure::into_error)
 }
 
 #[cfg(test)]
@@ -1745,8 +1733,8 @@ Project A:::priority : [0.2, 0.8]
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "quadrantChart");
-        match parsed.model {
+        assert_eq!(parsed.metadata().diagram_type, "quadrantChart");
+        match parsed.model() {
             RenderSemanticModel::QuadrantChart(model) => {
                 assert_eq!(model.title.as_deref(), Some("Typed Quadrant"));
                 assert_eq!(model.acc_title.as_deref(), Some("Quadrant accTitle"));
@@ -1828,8 +1816,6 @@ Project A:::priority : [0.2, 0.8]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("standalone Quadrant JSON parse succeeds")
             .expect("standalone Quadrant JSON parse returns a diagram");
-        let standalone_editor = parse_quadrant_chart_editor_facts(text, &parsed.meta);
-
         reset_quadrant_syntax_construction_count();
         parse_quadrant_chart(text, &parsed.meta).expect("Quadrant JSON projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
@@ -1840,16 +1826,13 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
-        parse_quadrant_chart_editor_facts(text, &parsed.meta);
-        assert_eq!(quadrant_syntax_construction_count(), 1);
-
-        reset_quadrant_syntax_construction_count();
-        let (combined_json, combined_editor) =
-            parse_quadrant_chart_json_and_editor_facts(text, &parsed.meta)
-                .expect("Quadrant combined projection succeeds");
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_quadrant_chart_json_and_editor_facts(text, &parsed.meta),
+        )
+        .expect("Quadrant combined projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
         assert_eq!(
             render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
             combined_json
@@ -1884,7 +1867,11 @@ Project A:::priority : [0.2, 0.8]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("quoted semicolons parse")
             .expect("quadrant model");
-        let facts = parse_quadrant_chart_editor_facts(text, &parsed.meta);
+        let facts = crate::family::test_support::editor_facts(
+            parse_quadrant_chart_json_and_editor_facts,
+            text,
+            &parsed.meta,
+        );
 
         assert_eq!(parsed.model["title"], json!("\"Plan; Execute\""));
         assert_eq!(parsed.model["accDescr"], json!("first %% literal; second"));
@@ -1920,7 +1907,11 @@ Project A:::priority : [0.2, 0.8]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("multiline accDescr parses")
             .expect("quadrant model");
-        let facts = parse_quadrant_chart_editor_facts(text, &parsed.meta);
+        let facts = crate::family::test_support::editor_facts(
+            parse_quadrant_chart_json_and_editor_facts,
+            text,
+            &parsed.meta,
+        );
         let description = facts
             .symbols
             .iter()
@@ -1946,11 +1937,7 @@ Project A:::priority : [0.2, 0.8]
         let statement_end = statement_start + "Broken: [1.2, 0.4]".len();
         reset_quadrant_syntax_construction_count();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "quadrantChart",
-                text,
-                ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
             .expect("quadrant editor recovery succeeds")
             .expect("quadrant editor facts are available");
 
@@ -1968,27 +1955,24 @@ Project A:::priority : [0.2, 0.8]
     }
 
     #[test]
-    fn eof_terminates_multiline_acc_descr_like_pinned_jison() {
-        let engine = Engine::new();
+    fn eof_rejects_unterminated_multiline_acc_descr_like_pinned_jison() {
         let text = "quadrantChart\naccDescr {\npartial description\n";
-        let parsed = engine
-            .parse_diagram_sync(text, ParseOptions::strict())
-            .expect("pinned Jison accepts EOF in the multiline accessibility state")
-            .expect("quadrant model");
-        assert_eq!(parsed.model["accDescr"], json!("partial description"));
 
         reset_quadrant_syntax_construction_count();
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "quadrantChart",
-                text,
-                ParseOptions::strict(),
-            )
-            .expect("Quadrant editor recovery succeeds")
-            .expect("Quadrant editor facts are available");
+        let snapshot = Engine::new()
+            .parse_diagram_snapshot_with_type_sync("quadrantChart", text)
+            .expect("Quadrant snapshot operation")
+            .expect("Quadrant snapshot");
         assert_eq!(quadrant_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert!(facts.diagnostics.is_empty());
+        assert!(matches!(
+            snapshot.outcome(),
+            crate::DiagramParseOutcome::Failed(_)
+        ));
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Quadrant recovery facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(!facts.diagnostics.is_empty());
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
         }));

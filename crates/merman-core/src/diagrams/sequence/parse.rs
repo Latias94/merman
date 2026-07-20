@@ -90,23 +90,31 @@ enum SequenceSemanticFailure {
 
 impl SequenceSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        match self {
-            Self::Grammar { error, .. } => Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&error, fallback_offset),
-            ),
-            Self::Db { message, .. } => {
-                Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
-            }
-        }
+        self.into_error_and_editor_facts(meta, fallback_offset).0
     }
 
-    fn into_editor_facts(self, fallback_offset: usize) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
         match self {
             Self::Grammar {
                 error,
                 mut editor_facts,
             } => {
+                let parse_error = Error::diagram_parse_diagnostic(
+                    diagram_type.to_string(),
+                    lalrpop_parse_diagnostic(&error, fallback_offset),
+                );
                 let span = match &error {
                     lalrpop_util::ParseError::User { error } => error.span,
                     _ => lalrpop_recovery_span(&error, fallback_offset),
@@ -118,29 +126,31 @@ impl SequenceSemanticFailure {
                     ),
                     Some(span),
                 );
-                editor_facts
+                (parse_error, editor_facts)
             }
             Self::Db {
                 message,
                 mut editor_facts,
             } => {
+                let parse_error =
+                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
                 editor_facts.mark_recovered_from_parse_error(
                     format!("sequence semantic construction failed: {message}"),
                     None,
                 );
-                editor_facts
+                (parse_error, editor_facts)
             }
         }
     }
 }
 
-pub fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_sequence_semantic_source(code, meta)?
         .db
         .into_model(meta))
 }
 
-pub fn parse_sequence_model_for_render(
+pub(crate) fn parse_sequence_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SequenceDiagramRenderModel> {
@@ -152,16 +162,12 @@ pub fn parse_sequence_model_for_render(
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let SequenceSemanticSource { db, editor_facts } = parse_sequence_semantic_source(code, meta)?;
-    Ok((db.into_model(meta), editor_facts))
-}
-
-pub fn parse_sequence_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_sequence_semantic_source(code, sequence_wrap_enabled(meta)) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => (*failure).into_editor_facts(code.len()),
-    }
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta)),
+        |SequenceSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    )
 }
 
 fn parse_sequence_semantic_source(

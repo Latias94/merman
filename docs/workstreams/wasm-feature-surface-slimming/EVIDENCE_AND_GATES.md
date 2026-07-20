@@ -3,6 +3,10 @@
 Status: Closed
 Last updated: 2026-06-10
 
+> Historical closeout evidence only. Current public Web package exports and release behavior are
+> governed by ADR-0069 and `docs/release/PACKAGE_SURFACES.md`; any forward-looking statement in this
+> closed lane is superseded by those documents.
+
 ## Current Evidence
 
 ### Typst Plugin Protocol
@@ -331,7 +335,7 @@ Confirmed outside the default Typst render wasm path:
 - `core-host`: `uuid`, `web-time`, `getrandom/js`, `chrono/clock`;
 - browser wrapper crates: `wasm-bindgen`, `serde-wasm-bindgen`, `console_error_panic_hook`,
   `js-sys`;
-- raster/CLI crates: `image`, `resvg`, `usvg`, `tiny-skia`, `svg2pdf`, `png`, `clap`,
+- raster/CLI crates: `image`, `resvg`, `usvg`, `tiny-skia`, `krilla`, `krilla-svg`, `png`, `clap`,
   `reqwest`, `rayon`;
 - optional math and ASCII surfaces: `ratex-*`, `merman-ascii`;
 - `roughr-merman/host-random`.
@@ -593,9 +597,10 @@ Follow-up browser package size reduction on 2026-06-10:
 - `npm run prepack --prefix platforms/web` enforces the generated web package budget from
   `docs/release/WASM_SIZE_BUDGETS.json`.
 
-Residual follow-ons:
+Historical residuals at lane closeout on 2026-06-10:
 
-- public npm export paths or separate slim browser packages remain future migration work;
+- this lane did not publish public npm export paths; capability-specific subpaths were subsequently
+  shipped under the single `@mermanjs/web` package and are no longer residual work;
 - `browser-ascii` is an ASCII output surface but still carries the full core registry through
   `merman-ascii`;
 - Typst registry packaging and idiomatic `.typ` wrapper publication remain separate from transport
@@ -656,10 +661,10 @@ flags.
 For a Typst plugin or probe wasm:
 
 ```bash
-wasm-tools print <plugin.wasm> | awk '/^  \(import/{print}'
+cargo run -p xtask -- profile-budget check-imports --profile typst-wasm --wasm <plugin.wasm>
 ```
 
-Allowed imports:
+The structured Wasmi gate permits exactly these imports with their protocol `i32` signatures:
 
 ```text
 (import "typst_env" "wasm_minimal_protocol_write_args_to_buffer" ...)
@@ -679,30 +684,28 @@ The repository now has an initial checked gate for this:
 
 ```bash
 cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>
-cargo run -p xtask -- profile-budget check-imports --profile pure-wasm --wat-file <wasm-tools-print.wat>
+cargo run -p xtask -- profile-budget check-imports --profile pure-wasm --wasm <module.wasm>
 cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>
 ```
 
-`typst-wasm` allows only the two wasm-minimal-protocol `typst_env` imports and requires exported
-`memory` when using `check-wasm` or `check-exports`. `typst-plugin-smoke` additionally proves that
-the artifact can be instantiated by a Typst-compatible `wasmi` host and can return SVG JSON bytes.
-`pure-wasm` currently allows no imports.
+`typst-wasm` allows only the two wasm-minimal-protocol `typst_env` imports and requires the closed
+typed export surface when using `check-wasm` or `check-exports`. `profile-budget` and
+`typst-plugin-smoke` consume the same structured Wasmi module-surface validator; the smoke command
+additionally proves that the artifact can be instantiated by a Typst-compatible host and can return
+SVG and analysis JSON bytes. `pure-wasm` currently allows no imports.
 
 ### Export Gate
 
 For a Typst plugin or probe wasm:
-
-```bash
-wasm-tools print <plugin.wasm> | awk '/^  \(export/{print}'
-```
 
 Required:
 
 - exported `memory`;
 - one or more user-facing plugin functions with Typst-compatible signatures.
 
-The `xtask profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` gate enforces the
-exported `memory` requirement. Function signature checking remains a follow-up.
+The `xtask profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` gate validates the
+binary module directly with Wasmi, including exact `i32` function signatures and immutable linker
+metadata globals. It does not depend on WAT formatting or source-text matching.
 
 ### Size Gate
 

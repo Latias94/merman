@@ -20,7 +20,7 @@ fn render_session() -> RenderSession {
 #[test]
 fn c4_exposes_its_typed_layout_entry() {
     let parsed = parse_for_render("C4Context\nSystem(api, \"API\")\n");
-    let RenderSemanticModel::C4(model) = &parsed.model else {
+    let RenderSemanticModel::C4(model) = parsed.model() else {
         panic!("expected C4 render model");
     };
     let session = render_session();
@@ -28,7 +28,7 @@ fn c4_exposes_its_typed_layout_entry() {
 
     let layout = layout_c4_diagram_typed(
         model,
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
         800.0,
         600.0,
@@ -42,15 +42,18 @@ fn c4_exposes_its_typed_layout_entry() {
 #[test]
 fn xychart_exposes_its_typed_layout_entry() {
     let parsed = parse_for_render("xychart-beta\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [7]\n");
-    let RenderSemanticModel::XyChart(model) = &parsed.model else {
+    let RenderSemanticModel::XyChart(model) = parsed.model() else {
         panic!("expected XYChart render model");
     };
     let session = render_session();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    let layout =
-        layout_xychart_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .expect("typed XYChart layout");
+    let layout = layout_xychart_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("typed XYChart layout");
 
     assert!(layout.width > 0.0);
     assert!(!layout.drawables.is_empty());

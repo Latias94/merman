@@ -10,7 +10,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
-    SourceSpan,
+    SourceSpan, family,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -1496,7 +1496,7 @@ fn parse_git_graph_command(
     }))
 }
 
-pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
     render_model_to_compat_json(&model, meta)
 }
@@ -1504,12 +1504,17 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_git_graph_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let GitGraphSemanticSource {
-        model,
-        editor_facts,
-    } = parse_git_graph_semantic_source(code, meta)?;
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_git_graph_semantic_source(code, meta),
+        |source| {
+            (
+                render_model_to_compat_json(&source.model, meta),
+                source.editor_facts,
+            )
+        },
+        |failure| (*failure.error, *failure.editor_facts),
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -1540,7 +1545,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-pub fn parse_git_graph_model_for_render(
+pub(crate) fn parse_git_graph_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GitGraphRenderModel> {
@@ -1581,13 +1586,6 @@ fn push_gitgraph_payload_fact(
         value.span,
         value.span,
     ));
-}
-
-pub fn parse_git_graph_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_git_graph_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => *failure.editor_facts,
-    }
 }
 
 fn parse_git_graph_semantic_source(
@@ -1999,8 +1997,8 @@ merge feature id:"M1"
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "gitGraph");
-        match parsed.model {
+        assert_eq!(parsed.metadata().diagram_type, "gitGraph");
+        match parsed.model() {
             RenderSemanticModel::GitGraph(model) => {
                 assert_eq!(model.diagram_type, "gitGraph");
                 assert_eq!(model.direction, "TB");
@@ -2047,7 +2045,7 @@ merge feature id:"M1"
             "cherry-pick id:\"C1\" parent:\"P1\" tag:\"pick tag\"\n",
         );
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
             .unwrap()
             .unwrap();
 
@@ -2079,7 +2077,7 @@ merge feature id:"M1"
             "cherry-pick id:\"F1\" tag:\"摘取\"\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
             .unwrap()
             .expect("gitGraph editor facts");
 
@@ -2145,7 +2143,11 @@ merge feature id:"M1"
             "commit id:\"C2\" msg:\"后来\"\r\n",
         );
         crate::diagrams::langium_common::reset_family_syntax_construction_count("gitGraph");
-        let facts = parse_git_graph_editor_facts(text, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_git_graph_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
 
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
@@ -2370,7 +2372,8 @@ merge feature id:"M1"
             "  checkout main trailing %% hidden\r\n",
             "commit id:\"C2\"\r\n",
         );
-        let facts = parse_git_graph_editor_facts(
+        let facts = crate::family::test_support::editor_facts(
+            parse_git_graph_json_and_editor_facts,
             text,
             &ParseMetadata {
                 diagram_type: "gitGraph".to_string(),
@@ -2412,7 +2415,7 @@ merge feature id:"M1"
         assert_eq!(diagnostic.span(), Some(expected_span));
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
             .unwrap()
             .expect("gitGraph editor recovery facts");
         assert_eq!(

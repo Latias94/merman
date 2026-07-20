@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -49,7 +49,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
@@ -116,6 +116,9 @@ jobs:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
         run: bash scripts/build-apple-xcframework.sh
 
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
       - name: Validate Swift package
         run: |
           swift package describe
@@ -128,7 +131,17 @@ jobs:
         run: |
           cd platforms/apple
           ARCHIVE="Merman.xcframework-${RELEASE_TAG}.zip"
-          ditto -c -k --sequesterRsrc --keepParent Merman.xcframework "$ARCHIVE"
+          STAGING="$(mktemp -d)"
+          cp -R Merman.xcframework "$STAGING/Merman.xcframework"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$STAGING/"
+          cp -R THIRD_PARTY_LICENSES "$STAGING/THIRD_PARTY_LICENSES"
+          (
+            cd "$STAGING"
+            zip -qry "$OLDPWD/$ARCHIVE" Merman.xcframework LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES
+          )
+          unzip -Z1 "$ARCHIVE" | grep -Fx 'Merman.xcframework/Info.plist'
+          unzip -Z1 "$ARCHIVE" | grep -Fx 'LICENSE'
+          unzip -Z1 "$ARCHIVE" | grep -Fx 'THIRD_PARTY_NOTICES.md'
           echo "APPLE_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
           CHECKSUM=$(swift package compute-checksum "$ARCHIVE")
           echo "CHECKSUM=$CHECKSUM" >> "$GITHUB_ENV"

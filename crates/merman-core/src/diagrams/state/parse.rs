@@ -90,13 +90,26 @@ struct StateSemanticFailure {
 
 impl StateSemanticFailure {
     fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        Error::diagram_parse_diagnostic(
-            meta.diagram_type.clone(),
-            state_parse_diagnostic(&self.error, fallback_offset),
-        )
+        self.into_error_and_editor_facts(meta, fallback_offset).0
     }
 
-    fn into_editor_facts(mut self, fallback_offset: usize) -> EditorSemanticFacts {
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        mut self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        let error = Error::diagram_parse_diagnostic(
+            diagram_type.to_string(),
+            state_parse_diagnostic(&self.error, fallback_offset),
+        );
         let span = match self.error.as_ref() {
             lalrpop_util::ParseError::User { error } => error
                 .span
@@ -110,7 +123,7 @@ impl StateSemanticFailure {
             ),
             Some(span),
         );
-        *self.editor_facts
+        (error, *self.editor_facts)
     }
 }
 
@@ -128,11 +141,11 @@ fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> 
     }
 }
 
-pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_state_semantic_source(code, meta)?.db.to_model(meta)
 }
 
-pub fn parse_state_model_for_render(
+pub(crate) fn parse_state_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<StateDiagramRenderModel> {
@@ -144,16 +157,12 @@ pub fn parse_state_model_for_render(
 pub(crate) fn parse_state_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let StateSemanticSource { db, editor_facts } = parse_state_semantic_source(code, meta)?;
-    Ok((db.to_model(meta)?, editor_facts))
-}
-
-pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_state_semantic_source(code) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(code.len()),
-    }
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_state_semantic_source(code),
+        |StateSemanticSource { db, editor_facts }| (db.to_model(meta), editor_facts),
+        |failure| failure.into_error_and_editor_facts(meta, code.len()),
+    )
 }
 
 fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {

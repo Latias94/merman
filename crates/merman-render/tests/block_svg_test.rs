@@ -14,19 +14,24 @@ fn render_block_svg_from_text(text: &str) -> String {
 }
 
 fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
+    try_render_block_svg_from_text_with_engine(engine, text).expect("svg render ok")
+}
+
+fn try_render_block_svg_from_text_with_engine(
+    engine: &Engine,
+    text: &str,
+) -> merman_render::Result<String> {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
     let session = RenderEnvironment::parity().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("layout ok");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
-    artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("svg render ok")
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
         .svg()
-        .to_owned()
+        .to_owned())
 }
 
 fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
@@ -183,7 +188,7 @@ fn block_svg_fades_cluster_theme_colors() {
     let engine = legacy_init_theme_compat_engine();
     let svg = render_block_svg_from_text_with_engine(
         &engine,
-        r##"%%{init: {"themeVariables": {"clusterBkg": "#112233", "clusterBorder": "#445566"}}}%%
+        r##"%%{init: {"themeVariables": {"clusterBkg": "rebeccapurple", "clusterBorder": "hsl(80, 100%, 96.2745098039%)"}}}%%
 block
   block
     A["Alpha"]
@@ -193,10 +198,45 @@ block
 
     assert!(
         svg.contains(
-            r#"#merman .node .cluster{fill:rgba(17, 34, 51, 0.5);stroke:rgba(68, 85, 102, 0.2);stroke-width:1px;}"#
+            r#"#merman .node .cluster{fill:rgba(102, 51, 153, 0.5);stroke:rgba(248.6666666666, 255, 235.9999999999, 0.2);stroke-width:1px;}"#
         ),
         "expected block composite cluster CSS to follow Mermaid 11.15 fade() colors"
     );
+}
+
+#[test]
+fn block_svg_rejects_unsupported_cluster_theme_color() {
+    let engine = legacy_init_theme_compat_engine();
+    let error = try_render_block_svg_from_text_with_engine(
+        &engine,
+        r##"%%{init: {"themeVariables": {"clusterBkg": "not-a-css-color"}}}%%
+block
+  block
+    A["Alpha"]
+  end
+"##,
+    )
+    .expect_err("unsupported khroma color must fail the render operation");
+
+    assert!(error.to_string().contains("not-a-css-color"));
+}
+
+#[test]
+fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["HSL"]
+  B["Alpha"]
+  C["Variable"]
+  style A color:hsl(80 100% 96%)
+  style B color:#8090a080
+  style C color:var(--MyColor)
+"#,
+    );
+
+    assert!(svg.contains("color: rgb(248, 255, 235); display: table-cell;"));
+    assert!(svg.contains("color: rgba(128, 144, 160, 0.502); display: table-cell;"));
+    assert!(svg.contains("color: var(--MyColor); display: table-cell;"));
 }
 
 #[test]

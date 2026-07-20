@@ -112,24 +112,6 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    fn parse_hex_rgb_u8(v: &str) -> Option<(u8, u8, u8)> {
-        let v = v.trim();
-        let hex = v.strip_prefix('#')?;
-        match hex.len() {
-            6 => Some((
-                u8::from_str_radix(&hex[0..2], 16).ok()?,
-                u8::from_str_radix(&hex[2..4], 16).ok()?,
-                u8::from_str_radix(&hex[4..6], 16).ok()?,
-            )),
-            3 => Some((
-                u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
-            )),
-            _ => None,
-        }
-    }
-
     fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
         if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
             *value = raw.to_string();
@@ -177,10 +159,12 @@ pub(crate) fn render_block_diagram_svg_model(
         for (key, raw) in &text_decls {
             if key == "color" {
                 let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
-                if let Some((r, g, b)) = parse_hex_rgb_u8(value) {
-                    let _ = write!(&mut div_prefix, "color: rgb({r}, {g}, {b}); ");
-                } else if !value.is_empty() {
-                    let _ = write!(&mut div_prefix, "color: {}; ", value.to_ascii_lowercase());
+                if !value.is_empty() {
+                    let _ = write!(
+                        &mut div_prefix,
+                        "color: {}; ",
+                        super::super::util::cssom_color_value(value)
+                    );
                 }
             } else {
                 div_prefix.push_str(raw);
@@ -221,7 +205,7 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
         let id = escape_xml(diagram_id);
         let theme = PresentationTheme::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
@@ -237,10 +221,8 @@ pub(crate) fn render_block_diagram_svg_model(
         let edge_label_background = theme.edge_label_background.as_str();
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
-        let cluster_bkg =
-            css_rgba_fade(cluster_bkg, 0.5).unwrap_or_else(|| cluster_bkg.to_string());
-        let cluster_border =
-            css_rgba_fade(cluster_border, 0.2).unwrap_or_else(|| cluster_border.to_string());
+        let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
+        let cluster_border = css_rgba_fade(cluster_border, 0.2)?;
 
         let mut out = String::new();
         let _ = write!(
@@ -338,7 +320,7 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             font_family
         );
-        out
+        Ok(out)
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -369,7 +351,7 @@ pub(crate) fn render_block_diagram_svg_model(
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
-    out.push_str(&block_css(diagram_id, effective_config));
+    out.push_str(&block_css(diagram_id, effective_config)?);
     out.push_str("</style><g/>");
 
     let _ = write!(

@@ -1,25 +1,20 @@
 use crate::cli::SvgPipelineKind;
-use merman::render::{RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline};
+use merman::render::{SvgOutputPolicy, SvgPipelinePreset};
 
-pub(super) fn svg_postprocess_pipeline(
-    mut pipeline: SvgPipeline,
+pub(super) fn svg_output_policy(
+    kind: SvgPipelineKind,
     background: Option<&str>,
     css: Option<&str>,
-) -> SvgPipeline {
-    if let Some(background) = background {
-        pipeline.push_postprocessor(RootBackgroundPostprocessor::new(background));
-    }
-    if let Some(css) = css {
-        pipeline.push_postprocessor(ScopedCssPostprocessor::new(css));
-    }
-    pipeline
-}
-
-pub(super) fn svg_pipeline_from_kind(kind: SvgPipelineKind) -> SvgPipeline {
-    match kind {
-        SvgPipelineKind::Parity => SvgPipeline::parity(),
-        SvgPipelineKind::Readable => SvgPipeline::readable(),
-        SvgPipelineKind::ResvgSafe => SvgPipeline::resvg_safe(),
+) -> SvgOutputPolicy {
+    SvgOutputPolicy {
+        preset: match kind {
+            SvgPipelineKind::Parity => SvgPipelinePreset::Parity,
+            SvgPipelineKind::Readable => SvgPipelinePreset::Readable,
+            SvgPipelineKind::ResvgSafe => SvgPipelinePreset::ResvgSafe,
+        },
+        root_background_color: background.map(str::to_owned),
+        scoped_css: css.map(str::to_owned),
+        ..SvgOutputPolicy::default()
     }
 }
 
@@ -47,12 +42,4 @@ fn decode_basic_xml_entities(value: &str) -> String {
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&amp;", "&")
-}
-
-pub(super) fn escape_xml_attr(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }

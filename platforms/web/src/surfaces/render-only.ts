@@ -2,6 +2,8 @@ import { bindSurfaceRuntime } from "../surface-runtime.js";
 import type { MermanWasmModule } from "../index.js";
 export type * from "../index.js";
 export {
+  MERMAN_ABI_VERSION,
+  UNAVAILABLE_DIAGRAM_DETECTION,
   SUPPORTED_THEMES,
   SUPPORTED_HOST_THEME_PRESETS,
   SUPPORTED_DIAGRAMS,

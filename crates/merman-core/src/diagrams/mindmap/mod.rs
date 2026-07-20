@@ -11,7 +11,7 @@ pub(crate) use parse::parse_mindmap_json_and_editor_facts;
 pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };
-pub use parse::{parse_mindmap, parse_mindmap_editor_facts, parse_mindmap_model_for_render};
+pub(crate) use parse::{parse_mindmap, parse_mindmap_model_for_render};
 pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,

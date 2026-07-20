@@ -1,7 +1,7 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     RenderEnvironment, RenderSession, TextMeasurementPhase, TextMeasurementPolicy,
@@ -31,15 +31,15 @@ fn layout_sequence_from_parsed(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> SequenceDiagramLayout {
-    let RenderSemanticModel::Sequence(model) = &parsed.model else {
+    let RenderSemanticModel::Sequence(model) = parsed.model() else {
         panic!("expected Sequence render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     layout_sequence_diagram_typed_with_title(
         model,
-        parsed.meta.title.as_deref(),
-        parsed.meta.effective_config.as_value(),
+        parsed.metadata().title.as_deref(),
+        parsed.metadata().effective_config.as_value(),
         &measurer,
         session.math_renderer(),
     )
@@ -220,14 +220,10 @@ fn render_sequence_svg_with_theme_variables(
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let mut parsed = parse_sequence_for_render(&Engine::new(), text);
-    parsed
-        .meta
-        .effective_config
-        .as_value_mut()
-        .as_object_mut()
-        .expect("effective config object")
-        .insert("themeVariables".to_string(), theme_variables);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": theme_variables,
+    })));
+    let parsed = parse_sequence_for_render(&engine, text);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
@@ -883,7 +879,7 @@ fn sequence_rect_block_is_root_level_before_actors() {
 }
 
 #[test]
-fn sequence_bare_rect_uses_mermaid_11_16_theme_fill_fallbacks() {
+fn sequence_bare_rect_uses_resolved_theme_fill_and_explicit_override() {
     let bare_rect = r#"sequenceDiagram
 participant A
 participant B
@@ -903,26 +899,6 @@ end"#;
             .into_iter()
             .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#112233""##)),
         "rectBkgColor should be the first bare rect fallback: {rect_fill}"
-    );
-
-    let actor_fill = render_sequence_svg_with_theme_variables(
-        bare_rect,
-        serde_json::json!({ "actorBkg": "#445566" }),
-    );
-    assert!(
-        extract_self_closing_tags(&actor_fill, "rect")
-            .into_iter()
-            .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#445566""##)),
-        "actorBkg should be used when rectBkgColor is absent: {actor_fill}"
-    );
-
-    let neutral_fill = render_sequence_svg_with_theme_variables(bare_rect, serde_json::json!({}));
-    assert!(
-        extract_self_closing_tags(&neutral_fill, "rect")
-            .into_iter()
-            .any(|tag| tag.contains(r#"class="rect""#)
-                && tag.contains(r#"fill="rgba(128, 128, 128, 0.5)""#)),
-        "bare rect should use the neutral fallback without theme colors: {neutral_fill}"
     );
 
     let explicit_fill = render_sequence_svg_with_theme_variables(
@@ -1046,8 +1022,11 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
     let text = std::fs::read_to_string(&path).expect("fixture");
 
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    assert_eq!(parsed.meta.title.as_deref(), Some("With forced menus"));
-    let RenderSemanticModel::Sequence(model) = &parsed.model else {
+    assert_eq!(
+        parsed.metadata().title.as_deref(),
+        Some("With forced menus")
+    );
+    let RenderSemanticModel::Sequence(model) = parsed.model() else {
         panic!("expected Sequence render model");
     };
     assert!(

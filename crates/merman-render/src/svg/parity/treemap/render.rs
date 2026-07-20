@@ -144,58 +144,10 @@ pub(crate) fn render_treemap_diagram_svg(
         }
     }
 
-    fn parse_css_rgb(color: &str) -> Option<(u8, u8, u8)> {
-        let c = color.trim();
-        if c.eq_ignore_ascii_case("black") {
-            return Some((0, 0, 0));
-        }
-        if c.eq_ignore_ascii_case("white") {
-            return Some((255, 255, 255));
-        }
-        if let Some(hex) = c.strip_prefix('#') {
-            let h = hex.trim();
-            if h.len() == 3 {
-                let r = u8::from_str_radix(&h[0..1].repeat(2), 16).ok()?;
-                let g = u8::from_str_radix(&h[1..2].repeat(2), 16).ok()?;
-                let b = u8::from_str_radix(&h[2..3].repeat(2), 16).ok()?;
-                return Some((r, g, b));
-            }
-            if h.len() == 6 {
-                let r = u8::from_str_radix(&h[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&h[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&h[4..6], 16).ok()?;
-                return Some((r, g, b));
-            }
-        }
-        let lower = c.to_ascii_lowercase();
-        if let Some(args) = lower.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
-            let parts = args
-                .split(',')
-                .map(|p| p.trim())
-                .filter(|p| !p.is_empty())
-                .collect::<Vec<_>>();
-            if parts.len() >= 3 {
-                let r = parts[0].parse::<u16>().ok()?;
-                let g = parts[1].parse::<u16>().ok()?;
-                let b = parts[2].parse::<u16>().ok()?;
-                if r <= 255 && g <= 255 && b <= 255 {
-                    return Some((r as u8, g as u8, b as u8));
-                }
-            }
-        }
-        None
-    }
-
     fn normalize_dom_style_color(color: &str) -> String {
-        // jsdom serialization tends to normalize hex colors to `rgb(r, g, b)` when the style
-        // attribute has been mutated (e.g. via `.style(...)` in upstream Mermaid).
-        let c = color.trim();
-        if c.starts_with('#')
-            && let Some((r, g, b)) = parse_css_rgb(c)
-        {
-            return format!("rgb({r}, {g}, {b})");
-        }
-        c.to_string()
+        // Upstream mutates this style through D3 after setting the attribute, so preserve the
+        // browser CSSOM serialization boundary while sharing the color parser.
+        super::super::util::cssom_color_value(color)
     }
 
     fn format_int_with_commas(n: i64) -> String {
@@ -254,7 +206,7 @@ pub(crate) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
     let diagram_id_esc = escape_xml(diagram_id);
 
-    let theme = PresentationTheme::new(effective_config).treemap();
+    let theme = PresentationTheme::new(effective_config).treemap()?;
 
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());
@@ -412,7 +364,7 @@ pub(crate) fn render_treemap_diagram_svg(
         vb_h = layout.diagram_padding * 2.0;
     }
 
-    let css = treemap_css(diagram_id, effective_config);
+    let css = treemap_css(diagram_id, effective_config)?;
 
     let mut out = String::new();
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));

@@ -45,7 +45,7 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         ));
     }
 
-    let er = er_css("diag", &cfg);
+    let er = er_css("diag", &cfg).expect("valid ER theme colors");
     assert_fragments_in_order(
         &er,
         &[
@@ -180,13 +180,13 @@ fn er_css_honors_mermaid_11_15_theme_options() {
             "mainBkg": "#505050",
             "nodeBorder": "#606060",
             "nodeTextColor": "#707070",
-            "tertiaryColor": "#8090a0",
+            "tertiaryColor": "hsl(80, 100%, 96%)",
             "edgeLabelBackground": "#b0c0d0",
             "strokeWidth": 3
         }
     });
 
-    let css = er_css("er", &cfg);
+    let css = er_css("er", &cfg).expect("valid ER theme colors");
 
     assert!(css.contains(
         r#"#er{font-family:"ibm plex sans",arial,sans-serif;font-size:18px;fill:#101010;}"#
@@ -197,9 +197,9 @@ fn er_css_honors_mermaid_11_15_theme_options() {
     assert!(css.contains(r#"#er .marker{fill:#202020;stroke:#202020;}"#));
     assert!(css.contains(r#"#er .entityBox{fill:#505050;stroke:#606060;}"#));
     assert!(css.contains(
-        r#"#er .relationshipLabelBox{fill:#8090a0;opacity:0.7;background-color:#8090a0;}"#
+        r#"#er .relationshipLabelBox{fill:hsl(80, 100%, 96%);opacity:0.7;background-color:hsl(80, 100%, 96%);}"#
     ));
-    assert!(css.contains(r#"#er .labelBkg{background-color:rgba(128, 144, 160, 0.5);}"#));
+    assert!(css.contains(r#"#er .labelBkg{background-color:rgba(248.2, 255, 234.6, 0.5);}"#));
     assert!(css.contains(r#"#er .edgeLabel{background-color:#b0c0d0;}#er .edgeLabel .label rect{fill:#b0c0d0;}#er .edgeLabel .label text{fill:#101010;}#er .edgeLabel .label{fill:#606060;font-size:14px;}"#));
     assert!(
         css.contains(r#"#er .label{font-family:"ibm plex sans",arial,sans-serif;color:#707070;}"#)
@@ -211,6 +211,21 @@ fn er_css_honors_mermaid_11_15_theme_options() {
             r#"#er .marker{fill:none!important;stroke:#202020!important;stroke-width:1;}"#
         )
     );
+}
+
+#[test]
+fn er_css_rejects_unsupported_tertiary_color() {
+    let error = er_css(
+        "er",
+        &serde_json::json!({
+            "themeVariables": {
+                "tertiaryColor": "not-a-css-color"
+            }
+        }),
+    )
+    .expect_err("unsupported khroma color must fail stylesheet generation");
+
+    assert!(error.to_string().contains("not-a-css-color"));
 }
 
 #[test]
@@ -285,7 +300,7 @@ fn treemap_css_honors_mermaid_11_15_style_options() {
         }
     });
 
-    let css = treemap_css("tm", &cfg);
+    let css = treemap_css("tm", &cfg).unwrap();
 
     assert!(css.contains("#tm .treemapNode.section{stroke:#111111;stroke-width:2;fill:#222222;}"));
     assert!(css.contains("#tm .treemapNode.leaf{stroke:#333333;stroke-width:3;fill:#444444;}"));

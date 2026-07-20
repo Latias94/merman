@@ -17,7 +17,7 @@ fn render_with_font_only_theme(source: &str, diagram_id: &str) -> (String, Strin
         .expect("parse succeeds")
         .expect("diagram is detected");
     let c_scale = parsed
-        .meta
+        .metadata()
         .effective_config
         .get_str("themeVariables.cScale0")
         .expect("resolved cScale0")

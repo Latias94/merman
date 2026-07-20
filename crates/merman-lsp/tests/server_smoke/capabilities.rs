@@ -1,4 +1,5 @@
 use super::prelude::*;
+use merman_editor_core::semantic_token_descriptor;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
@@ -57,6 +58,16 @@ async fn lsp_service_smoke_handles_initialize() {
     assert_eq!(
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
+    );
+    let descriptor = semantic_token_descriptor();
+    assert_eq!(
+        response.capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
+        serde_json::json!({
+            "schemaVersion": descriptor.schema_version,
+            "descriptorDigest": descriptor.digest,
+            "packedEncoding": descriptor.packed.encoding,
+            "wordsPerToken": descriptor.packed.words_per_token,
+        })
     );
     assert!(response.capabilities.diagnostic_provider.is_some());
     assert!(matches!(

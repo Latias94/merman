@@ -1,5 +1,5 @@
 use super::icons::{NetworkPolicy, load_icon_registry};
-use super::raster::RasterCliOptions;
+use super::raster::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
 use crate::cli::{
     ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat, SvgPipelineKind,
     TextOutputCliArgs,
@@ -28,6 +28,8 @@ pub(crate) struct RenderPlan {
     pub(super) render: RenderCliArgs,
     pub(super) scale: f32,
     pub(super) raster: RasterCliOptions,
+    pub(super) pdf: PdfCliOptions,
+    pub(super) embedded_images: EmbeddedImageCliOptions,
     pub(super) background: Option<String>,
     pub(super) css: Option<String>,
     pub(super) svg_pipeline: Option<SvgPipelineKind>,
@@ -75,6 +77,8 @@ pub(crate) fn render_plan_for_mmdc(
         render,
         scale: export.raster.scale.unwrap_or(1.0),
         raster: RasterCliOptions::from_args(&export.raster)?,
+        pdf: PdfCliOptions::from_args(&export.pdf),
+        embedded_images: EmbeddedImageCliOptions::from_args(&export.embedded_images),
         background: Some(
             export
                 .background_color
@@ -112,6 +116,8 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         render: args.export.render.clone(),
         scale: args.export.raster.scale.unwrap_or(1.0),
         raster: RasterCliOptions::from_args(&args.export.raster)?,
+        pdf: PdfCliOptions::from_args(&args.export.pdf),
+        embedded_images: EmbeddedImageCliOptions::from_args(&args.export.embedded_images),
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
         svg_pipeline: args.export.svg_pipeline,

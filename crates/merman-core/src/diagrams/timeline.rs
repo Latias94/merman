@@ -138,7 +138,8 @@ impl TimelineParseOutcome {
         Ok(self.source)
     }
 
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+    fn into_combined(mut self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
+        let mut first_error = None;
         for issue in self.issues {
             self.source.editor_facts.mark_recovered_from_parse_error(
                 format!(
@@ -147,8 +148,28 @@ impl TimelineParseOutcome {
                 ),
                 Some(issue.span),
             );
+            if first_error.is_none() {
+                first_error = Some(issue.error);
+            }
         }
-        self.source.editor_facts
+        let construction = match first_error {
+            Some(error) => Err(crate::family::CombinedSemanticFailure::new(
+                error,
+                self.source.editor_facts,
+            )),
+            None => Ok(self.source),
+        };
+        crate::family::CombinedSemanticParse::from_construction(
+            construction,
+            |source| {
+                let model = match source.model {
+                    Some(model) => render_model_to_compat_json(&model, meta),
+                    None => Ok(json!({})),
+                };
+                (model, source.editor_facts)
+            },
+            crate::family::CombinedSemanticFailure::into_parts,
+        )
     }
 }
 
@@ -382,6 +403,7 @@ fn parse_acc_descr_block(
         }
         text.push_str(content.text);
         let closing = SourceSpan::new(rest.start + close, rest.start + close + 1);
+        cursor.resume_same_line_at(closing.end);
         let span = content_spans
             .first()
             .zip(content_spans.last())
@@ -417,6 +439,7 @@ fn parse_acc_descr_block(
             }
             text.push_str(content.text);
             closing = Some(SourceSpan::new(rest.start + close, rest.start + close + 1));
+            cursor.resume_same_line_at(rest.start + close + 1);
             break;
         }
         let trimmed = rest.trim();
@@ -666,7 +689,7 @@ fn timeline_parse_issue(error: Error, fallback: SourceSpan) -> TimelineParseIssu
     TimelineParseIssue { error, span }
 }
 
-pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_timeline_semantic_source(code, meta).into_strict_source()?;
     match source.model {
         Some(model) => render_model_to_compat_json(&model, meta),
@@ -677,16 +700,8 @@ pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_timeline_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let TimelineSemanticSource {
-        model,
-        editor_facts,
-    } = construct_timeline_semantic_source(code, meta).into_strict_source()?;
-    let model = match model {
-        Some(model) => render_model_to_compat_json(&model, meta)?,
-        None => json!({}),
-    };
-    Ok((model, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    construct_timeline_semantic_source(code, meta).into_combined(meta)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -706,7 +721,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
-pub fn parse_timeline_model_for_render(
+pub(crate) fn parse_timeline_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TimelineDiagramRenderModel> {
@@ -717,10 +732,6 @@ pub fn parse_timeline_model_for_render(
                 .model
                 .unwrap_or_else(TimelineDiagramRenderModel::empty_compatibility_output)
         })
-}
-
-pub fn parse_timeline_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    construct_timeline_semantic_source(code, meta).into_editor_facts()
 }
 
 fn construct_timeline_semantic_source(code: &str, meta: &ParseMetadata) -> TimelineParseOutcome {
@@ -898,6 +909,17 @@ fn parse_timeline_semantic_source(
                 "timeline accessibility description",
                 EditorSemanticKind::String,
             );
+            if parsed.closing.is_none() {
+                let span = SourceSpan::new(parsed.keyword.start, code.len());
+                issues.push(timeline_parse_issue(
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        "unterminated accDescr block",
+                        code.len(),
+                    ),
+                    span,
+                ));
+            }
             db.acc_descr = parsed.text;
             continue;
         }
@@ -1301,7 +1323,7 @@ section alpha\n\
 task1: event1\n\
 task2: event2: event3\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("timeline", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("timeline", text)
             .unwrap()
             .unwrap();
 
@@ -1350,8 +1372,6 @@ task2: event2: event3\n";
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("standalone Timeline JSON parse succeeds")
             .expect("standalone Timeline JSON parse returns a diagram");
-        let standalone_editor = parse_timeline_editor_facts(text, &parsed.meta);
-
         reset_timeline_syntax_construction_count();
         parse_timeline(text, &parsed.meta).expect("Timeline JSON projection succeeds");
         assert_eq!(timeline_syntax_construction_count(), 1);
@@ -1362,16 +1382,13 @@ task2: event2: event3\n";
         assert_eq!(timeline_syntax_construction_count(), 1);
 
         reset_timeline_syntax_construction_count();
-        parse_timeline_editor_facts(text, &parsed.meta);
-        assert_eq!(timeline_syntax_construction_count(), 1);
-
-        reset_timeline_syntax_construction_count();
-        let (combined_json, combined_editor) =
-            parse_timeline_json_and_editor_facts(text, &parsed.meta)
-                .expect("Timeline combined projection succeeds");
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_timeline_json_and_editor_facts(text, &parsed.meta),
+        )
+        .expect("Timeline combined projection succeeds");
         assert_eq!(timeline_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
-        assert_eq!(combined_editor, standalone_editor);
+        assert!(!combined_editor.symbols.is_empty());
 
         assert_eq!(
             render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
@@ -1409,7 +1426,7 @@ task2: event2: event3\n";
 
         reset_timeline_syntax_construction_count();
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("timeline", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("timeline", text)
             .expect("Timeline editor recovery succeeds")
             .expect("Timeline editor facts are available");
 
@@ -1436,11 +1453,7 @@ task2: event2: event3\n";
             ("timeline TD\r\n", Some("TD")),
         ] {
             let facts = Engine::new()
-                .parse_editor_semantic_facts_with_type_sync(
-                    "timeline",
-                    source,
-                    ParseOptions::strict(),
-                )
+                .parse_editor_semantic_facts_with_type_sync("timeline", source)
                 .expect("Timeline editor parse")
                 .expect("Timeline editor facts");
 
@@ -1488,7 +1501,7 @@ task2: event2: event3\n";
             ": 重复\r\n",
         );
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("timeline", source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("timeline", source)
             .expect("Timeline editor parse")
             .expect("Timeline editor facts");
 
@@ -1650,7 +1663,7 @@ task2: event2: event3\n";
         );
 
         let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("timeline", source, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("timeline", source)
             .expect("Timeline editor recovery")
             .expect("Timeline recovery facts");
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
@@ -1700,23 +1713,25 @@ task2: event2: event3\n";
     }
 
     #[test]
-    fn timeline_eof_terminates_multiline_acc_descr_like_pinned_jison() {
+    fn timeline_rejects_unterminated_multiline_acc_descr_like_pinned_jison() {
         let text = "timeline\naccDescr {\n  partial description\n";
-        let meta = ParseMetadata {
-            diagram_type: "timeline".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
-            title: None,
-        };
 
         reset_timeline_syntax_construction_count();
-        let (model, facts) = parse_timeline_json_and_editor_facts(text, &meta)
-            .expect("pinned Jison accepts EOF in the multiline accessibility state");
+        let snapshot = Engine::new()
+            .parse_diagram_snapshot_with_type_sync("timeline", text)
+            .expect("Timeline snapshot operation")
+            .expect("Timeline snapshot");
         assert_eq!(timeline_syntax_construction_count(), 1);
-        assert_eq!(model["accDescr"], json!("partial description"));
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(matches!(
+            snapshot.outcome(),
+            crate::DiagramParseOutcome::Failed(_)
+        ));
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Timeline recovery facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert_eq!(facts.lexeme_failure(), None);
-        assert!(facts.diagnostics.is_empty());
+        assert!(!facts.diagnostics.is_empty());
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
         }));
@@ -1731,11 +1746,5 @@ task2: event2: event3\n";
                     && lexeme.span() == SourceSpan::new(start, start + needle.len())
             }));
         }
-
-        reset_timeline_syntax_construction_count();
-        let typed = parse_timeline_model_for_render(text, &meta)
-            .expect("typed projection accepts the same pinned Jison input");
-        assert_eq!(timeline_syntax_construction_count(), 1);
-        assert_eq!(typed.acc_descr.as_deref(), Some("partial description"));
     }
 }

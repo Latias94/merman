@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import zlib from "node:zlib";
+import { fileURLToPath } from "node:url";
 
 const vsceTargets = new Set([
   "win32-x64",
@@ -17,8 +18,13 @@ const vsceTargets = new Set([
   "web",
 ]);
 
+if (isDirectRun()) {
+  verifyVsix(process.argv.slice(2));
+}
+
+export function verifyVsix(argv) {
 const args = parseArgs(
-  normalizeNpmForwardedArgs(process.argv.slice(2), [
+  normalizeNpmForwardedArgs(argv, [
     "vsix",
     "platform",
     "target",
@@ -32,6 +38,9 @@ const executableSuffix = platformKey.startsWith("win32-") ? ".exe" : "";
 const expectedTarget = args.target ?? args.platform ?? null;
 const expectedPublisher = args.publisher ?? "latias94";
 const sourceManifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+const repositoryRoot = path.resolve(process.cwd(), "..", "..");
+const canonicalLicenseRoot = path.join(repositoryRoot, "THIRD_PARTY_LICENSES");
+const canonicalLicenseFiles = walkFiles(canonicalLicenseRoot);
 const expectedSourceVersion =
   args.version ??
   process.env.MERMAN_RELEASE_VERSION ??
@@ -52,7 +61,13 @@ const requiredEntries = [
   "extension/readme.md",
   "extension/changelog.md",
   "extension/LICENSE.txt",
+  "extension/THIRD_PARTY_NOTICES.md",
+  ...canonicalLicenseFiles.map(
+    (file) =>
+      `extension/THIRD_PARTY_LICENSES/${path.relative(canonicalLicenseRoot, file).split(path.sep).join("/")}`,
+  ),
   "extension/dist/extension.js",
+  "extension/dist/extension.js.LEGAL.txt",
   "extension/media/preview.css",
   "extension/media/preview.js",
   "extension/snippets/mermaid.json",
@@ -104,6 +119,32 @@ if (!manifest.repository?.url?.includes("github.com/Latias94/merman")) {
 if (!manifest.bugs?.url?.includes("github.com/Latias94/merman/issues")) {
   fail("VSIX package.json is missing the expected bugs URL.");
 }
+const packagedLicense = zip.readText("extension/LICENSE.txt");
+if (!packagedLicense.includes("MIT License") || !packagedLicense.includes("Apache License")) {
+  fail("VSIX LICENSE.txt must contain both complete project license texts.");
+}
+assertEqual(
+  packagedLicense,
+  fs.readFileSync(path.join(process.cwd(), "LICENSE"), "utf8"),
+  "project license bytes",
+);
+const packagedNotices = zip.readText("extension/THIRD_PARTY_NOTICES.md");
+if (!packagedNotices.includes("# Third-Party Notices")) {
+  fail("VSIX third-party notices are missing or malformed.");
+}
+assertEqual(
+  packagedNotices,
+  fs.readFileSync(path.join(repositoryRoot, "THIRD_PARTY_NOTICES.md"), "utf8"),
+  "third-party notice bytes",
+);
+for (const canonical of canonicalLicenseFiles) {
+  const relative = path.relative(canonicalLicenseRoot, canonical).split(path.sep).join("/");
+  assertEqual(
+    zip.readText(`extension/THIRD_PARTY_LICENSES/${relative}`),
+    fs.readFileSync(canonical, "utf8"),
+    `third-party license ${relative}`,
+  );
+}
 if (expectedTarget !== null) {
   const targetPlatform = readVsixTargetPlatform(vsixManifestXml);
   assertEqual(targetPlatform, expectedTarget, "VSIX target platform");
@@ -112,6 +153,17 @@ if (expectedTarget !== null) {
 console.log(
   `verified ${path.basename(vsixPath)}: ${entries.size} entries, platform=${platformKey}, version=${manifest.version}, preRelease=${hasVsixPreReleaseProperty(vsixManifestXml)}`,
 );
+}
+
+function walkFiles(directory) {
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
+    })
+    .sort();
+}
 
 function parseArgs(argv) {
   const parsed = {};
@@ -147,10 +199,10 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function normalizeNpmForwardedArgs(args, options) {
+export function normalizeNpmForwardedArgs(args, options, env = process.env) {
   let normalized = [...args];
   for (const option of options) {
-    const value = process.env[`npm_config_${option}`];
+    const value = env[`npm_config_${option}`];
     const flag = `--${option}`;
     if (!value || value === "true" || hasOption(normalized, flag)) {
       continue;
@@ -162,10 +214,17 @@ function normalizeNpmForwardedArgs(args, options) {
   return normalized;
 }
 
-function normalizeBareForwardedArgs(args) {
+export function normalizeBareForwardedArgs(args) {
+  const valueOptions = new Set(["--vsix", "--platform", "--target", "--publisher", "--version"]);
   const normalized = [];
-  for (const arg of args) {
-    if (arg.startsWith("-")) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (valueOptions.has(arg)) {
+      normalized.push(arg);
+      if (index + 1 < args.length) {
+        normalized.push(args[++index]);
+      }
+    } else if (arg.startsWith("-")) {
       normalized.push(arg);
     } else if (arg.endsWith(".vsix") && !hasOption([...normalized, ...args], "--vsix")) {
       normalized.push("--vsix", arg);
@@ -341,4 +400,11 @@ function printUsage() {
 function fail(message) {
   console.error(message);
   process.exit(1);
+}
+
+function isDirectRun() {
+  return (
+    process.argv[1] !== undefined &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  );
 }

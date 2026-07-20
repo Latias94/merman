@@ -15,7 +15,7 @@ fn render_railroad(site_config: Value) -> (String, Value) {
         .parse_diagram_for_render_model_sync(RAILROAD_SOURCE, ParseOptions::strict())
         .expect("railroad parse succeeds")
         .expect("railroad diagram is detected");
-    let effective_config = parsed.meta.effective_config.as_value().clone();
+    let effective_config = parsed.metadata().effective_config.as_value().clone();
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("railroad layout succeeds");

@@ -133,6 +133,7 @@ export async function createBrowserCompareRealmSession(
         status: "failure",
         stage: response.stage,
         message: response.message,
+        detail: response.detail,
       });
       return;
     }

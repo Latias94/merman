@@ -33,3 +33,6 @@ merman = { path = "../merman", version = "0.8.0-alpha.3", default-features = fal
 merman-render = { path = "../merman-render", version = "0.8.0-alpha.3", optional = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+roxmltree.workspace = true

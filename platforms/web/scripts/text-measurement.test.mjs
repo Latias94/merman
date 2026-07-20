@@ -30,13 +30,28 @@ const OPERATION_CONTRACTS = new Map([
   ["raw-bbox-height", { kind: "length", wrapMode: "svg-like" }],
 ]);
 
+class FakeStyle {
+  get cssText() {
+    return Object.entries(this)
+      .map(([name, value]) => `${name}: ${value}`)
+      .join("; ");
+  }
+
+  set cssText(value) {
+    assert.equal(value, "");
+    for (const name of Object.keys(this)) {
+      delete this[name];
+    }
+  }
+}
+
 class FakeMeasureElement {
   constructor(tagName, canvasContext = null) {
     this.tagName = tagName;
     this.canvasContext = canvasContext;
   }
 
-  style = {};
+  style = new FakeStyle();
   attributes = new Map();
   children = [];
   _textContent = "";
@@ -60,6 +75,10 @@ class FakeMeasureElement {
     this.attributes.delete(name);
   }
 
+  getAttributeNames() {
+    return [...this.attributes.keys()];
+  }
+
   inheritedAttribute(name) {
     return this.attributes.get(name) ?? this.parentElement?.inheritedAttribute?.(name);
   }
@@ -68,6 +87,18 @@ class FakeMeasureElement {
     child.parentElement = this;
     this.children.push(child);
     return child;
+  }
+
+  replaceChildren(...children) {
+    for (const child of this.children) {
+      if (child.parentElement === this) {
+        child.parentElement = undefined;
+      }
+    }
+    this.children = [];
+    for (const child of children) {
+      this.appendChild(child);
+    }
   }
 
   remove() {
@@ -171,10 +202,10 @@ test("browser text measurement session routes exact operations to their DOM prim
     const computed = measure(request("Computed", null, "computed-length", "svg-like"));
     assert.equal(computed.kind, "length");
     assert.equal(computed.length, "Computed".length * 16 * 0.4);
-    assert.equal(body.children.length, 2);
+    assert.equal(body.children.length, 3);
     assert.deepEqual(
       body.children.map((probe) => probe.attributes.get("data-merman-text-measure-probe")),
-      ["html", "svg"]
+      ["html", "svg", "mermaid-dimensions"]
     );
 
     const raw = measure(request("Raw", null, "raw-bbox-width", "svg-like"));
@@ -251,20 +282,47 @@ test("browser text measurement session routes exact operations to their DOM prim
       height: 18 * 1.1,
       line_count: 1,
     });
-    const mermaidSvg = body.appended.at(-1);
+    const mermaidSvg = body.children[2];
     assert.equal(mermaidSvg.tagName, "svg");
-    assert.equal(mermaidSvg.removed, true);
-    assert.equal(body.children.length, 2);
+    assert.notEqual(mermaidSvg.removed, true);
+    assert.equal(body.children.length, 3);
     const mermaidText = mermaidSvg.children[0];
+    const mermaidTspan = mermaidText.children[0];
     assert.equal(mermaidText.tagName, "text");
     assert.equal(mermaidText.style.fontFamily, "Configured Serif;");
     assert.equal(mermaidText.style.fontSize, "18px");
     assert.equal(mermaidText.style.fontWeight, "700");
     assert.equal(mermaidText.style.fontStyle, undefined);
     assert.equal(mermaidText.style.textAnchor, "start");
-    assert.equal(mermaidText.children[0].tagName, "tspan");
-    assert.equal(mermaidText.children[0].attributes.get("x"), "0");
-    assert.equal(mermaidText.children[0].textContent, "Body attached");
+    assert.equal(mermaidTspan.tagName, "tspan");
+    assert.equal(mermaidTspan.attributes.get("x"), "0");
+    assert.equal(mermaidTspan.textContent, "Body attached");
+
+    mermaidText.setAttribute("data-stale", "text");
+    mermaidText.style.staleProperty = "stale";
+    mermaidTspan.setAttribute("data-stale", "tspan");
+    const reusedDimensions = measure({
+      ...request("Reused", null, "mermaid-calculate-text-dimensions", "svg-like"),
+      font_family: "New Family",
+      font_size: 20,
+      font_weight: "500",
+    });
+    assert.deepEqual(reusedDimensions, {
+      kind: "metrics",
+      width: "Reused".length * 20 * 0.6,
+      height: 20 * 1.1,
+      line_count: 1,
+    });
+    assert.equal(body.children[2], mermaidSvg);
+    assert.equal(mermaidSvg.children[0], mermaidText);
+    assert.equal(mermaidText.children[0], mermaidTspan);
+    assert.equal(mermaidText.attributes.has("data-stale"), false);
+    assert.equal(mermaidTspan.attributes.has("data-stale"), false);
+    assert.equal("staleProperty" in mermaidText.style, false);
+    assert.equal(mermaidText.style.fontFamily, "New Family");
+    assert.equal(mermaidText.style.fontSize, "20px");
+    assert.equal(mermaidText.style.fontWeight, "500");
+    assert.equal(mermaidTspan.textContent, "Reused");
 
     assert.equal(canvasCreates, 0);
     const canvasWidth = measure({
@@ -413,7 +471,7 @@ test("browser text measurement session rolls back partially constructed probes",
     failConstruction = false;
     const recovered = session.measure(request("Second", null, "measure", "svg-like"));
     assert.equal(recovered.kind, "metrics");
-    assert.equal(body.children.length, 2);
+    assert.equal(body.children.length, 3);
     session.dispose();
     assert.equal(body.children.length, 0);
   } finally {
@@ -470,7 +528,7 @@ test("browser text measurement session preserves fallback on browser primitive f
   try {
     const session = createBrowserTextMeasurementSession();
     assert.equal(session.measure(request("Node", null, "measure", "svg-like")), undefined);
-    assert.equal(body.children.length, 2);
+    assert.equal(body.children.length, 3);
     session.dispose();
     assert.equal(body.children.length, 0);
   } finally {

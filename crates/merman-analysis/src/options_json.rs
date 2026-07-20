@@ -15,14 +15,8 @@ pub struct AnalysisOptionsJson {
     pub fixed_today: Option<String>,
     pub fixed_local_offset_minutes: Option<i32>,
     pub site_config: Option<Value>,
-    pub parse: Option<ParseOptionsJson>,
     pub resources: Option<ResourceOptionsJson>,
     pub lint: Option<LintOptionsJson>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParseOptionsJson {
-    pub suppress_errors: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +83,7 @@ pub fn analysis_options_from_json_value(
 pub fn analysis_options_json_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
+    reject_removed_analysis_parse_option(value)?;
     let options_value = analysis_options_root_value(value)?;
     serde_json::from_value(options_value.clone()).map_err(|err| {
         AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {err}"))
@@ -136,7 +131,6 @@ fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
         "fixed_today",
         "fixed_local_offset_minutes",
         "site_config",
-        "parse",
         "resources",
         "lint",
     ]
@@ -144,14 +138,31 @@ fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
     .any(|key| map.contains_key(*key))
 }
 
+fn reject_removed_analysis_parse_option(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
+    let Value::Object(map) = value else {
+        return Ok(());
+    };
+    let removed = map.contains_key("parse")
+        || ["merman", "analysis"].iter().any(|key| {
+            map.get(*key)
+                .and_then(Value::as_object)
+                .is_some_and(|options| options.contains_key("parse"))
+        });
+    if removed {
+        return Err(AnalysisOptionsJsonError::new(
+            "analysis option `parse` was removed; analysis always retains family parse failures",
+        ));
+    }
+    Ok(())
+}
+
 impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         let today = self.fixed_today()?;
         let offset_minutes = self.fixed_local_offset_minutes()?;
         validate_local_time_combination(today, offset_minutes)?;
-        let mut analysis = AnalysisOptions::default()
-            .with_parse_options(self.parse_options())
-            .with_max_source_bytes(self.max_source_bytes()?);
+        let mut analysis =
+            AnalysisOptions::default().with_max_source_bytes(self.max_source_bytes()?);
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
@@ -165,19 +176,6 @@ impl AnalysisOptionsJson {
 
         analysis = analysis.with_rule_config(self.rule_config()?);
         Ok(analysis)
-    }
-
-    pub fn parse_options(&self) -> merman_core::ParseOptions {
-        if self
-            .parse
-            .as_ref()
-            .and_then(|parse| parse.suppress_errors)
-            .unwrap_or(false)
-        {
-            merman_core::ParseOptions::lenient()
-        } else {
-            merman_core::ParseOptions::strict()
-        }
     }
 
     pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
@@ -579,6 +577,32 @@ mod tests {
         );
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
         assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_removed_parse_options() {
+        for options in [
+            serde_json::json!({
+                "parse": { "suppress_errors": true }
+            }),
+            serde_json::json!({
+                "analysis": {
+                    "parse": { "suppress_errors": true }
+                }
+            }),
+            serde_json::json!({
+                "merman": {
+                    "parse": { "suppress_errors": true }
+                }
+            }),
+        ] {
+            let err = analysis_options_from_json_value(&options).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("analysis option `parse` was removed"),
+                "unexpected error for {options}: {err}"
+            );
+        }
     }
 
     #[test]

@@ -2,7 +2,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::EditorLexemeJournal,
+    SourceSpan, editor::EditorLexemeJournal, family,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -107,6 +107,16 @@ struct SankeySemanticSource {
     lexemes: Vec<SankeyLexeme>,
 }
 
+struct SankeySemanticConstruction {
+    source: SankeySemanticSource,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct SankeySyntaxOutcome {
+    source: SankeySemanticSource,
+    errors: Vec<SankeySyntaxError>,
+}
+
 impl SankeySemanticSource {
     fn editor_facts(&self, source: &str) -> EditorSemanticFacts {
         let mut facts = EditorSemanticFacts::new();
@@ -170,20 +180,27 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-pub fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_sankey_semantic_source(code, meta)?.into_compat_json(meta)
 }
 
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = parse_sankey_semantic_source(code, meta)?;
-    let editor_facts = source.editor_facts(code);
-    Ok((source.into_compat_json(meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_sankey_semantic_source(code, meta),
+        |construction| {
+            (
+                construction.source.into_compat_json(meta),
+                construction.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_sankey_model_for_render(
+pub(crate) fn parse_sankey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SankeyDiagramRenderModel> {
@@ -192,16 +209,35 @@ pub fn parse_sankey_model_for_render(
         .into_render_model())
 }
 
-pub fn parse_sankey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_sankey_editor_source(code)
+fn parse_sankey_semantic_source(code: &str, meta: &ParseMetadata) -> Result<SankeySemanticSource> {
+    construct_sankey_semantic_source(code, meta)
+        .map(|construction| construction.source)
+        .map_err(family::CombinedSemanticFailure::into_error)
 }
 
-fn parse_sankey_semantic_source(code: &str, meta: &ParseMetadata) -> Result<SankeySemanticSource> {
+fn construct_sankey_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure> {
     #[cfg(test)]
     SANKEY_SYNTAX_CONSTRUCTION_COUNT.set(SANKEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    parse_sankey_syntax(code).map_err(|error| {
-        Error::diagram_parse_exact(meta.diagram_type.clone(), error.message, error.span)
+    let SankeySyntaxOutcome { source, errors } = parse_sankey_syntax_outcome(code);
+    let mut editor_facts = source.editor_facts(code);
+    for error in &errors {
+        editor_facts.mark_recovered_from_parse_error(error.message.clone(), Some(error.span));
+    }
+
+    if let Some(error) = errors.into_iter().next() {
+        return Err(family::CombinedSemanticFailure::new(
+            Error::diagram_parse_exact(meta.diagram_type.clone(), error.message, error.span),
+            editor_facts,
+        ));
+    }
+
+    Ok(SankeySemanticConstruction {
+        source,
+        editor_facts,
     })
 }
 
@@ -433,13 +469,31 @@ impl PreparedSankeyText {
     }
 }
 
-fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, SankeySyntaxError> {
+fn parse_sankey_syntax_outcome(code: &str) -> SankeySyntaxOutcome {
     let prepared = PreparedSankeyText::new(code);
     let Some(header_end) = prepared.text.find('\n') else {
-        return Err(SankeySyntaxError {
-            message: "expected sankey header followed by csv".to_string(),
-            span: prepared.map_span(SourceSpan::new(0, prepared.text.len())),
-        });
+        let span = prepared.map_span(SourceSpan::new(0, prepared.text.len()));
+        let lexemes = (!prepared.text.is_empty())
+            .then(|| SankeyLexeme {
+                kind: if is_sankey_header(prepared.text.trim()) {
+                    EditorLexemeKind::Keyword
+                } else {
+                    EditorLexemeKind::Literal
+                },
+                span,
+            })
+            .into_iter()
+            .collect();
+        return SankeySyntaxOutcome {
+            source: SankeySemanticSource {
+                records: Vec::new(),
+                lexemes,
+            },
+            errors: vec![SankeySyntaxError {
+                message: "expected sankey header followed by csv".to_string(),
+                span,
+            }],
+        };
     };
     let header_raw = &prepared.text[..header_end];
     let header = header_raw.trim();
@@ -448,18 +502,37 @@ fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, 
         .saturating_sub(header_raw.trim_start().len());
     let header_span = SourceSpan::new(header_start, header_start + header.len());
     if !is_sankey_header(header) {
-        return Err(SankeySyntaxError {
-            message: "expected sankey".to_string(),
-            span: prepared.map_span(header_span),
-        });
+        let span = prepared.map_span(header_span);
+        return SankeySyntaxOutcome {
+            source: SankeySemanticSource {
+                records: Vec::new(),
+                lexemes: vec![SankeyLexeme {
+                    kind: EditorLexemeKind::Literal,
+                    span,
+                }],
+            },
+            errors: vec![SankeySyntaxError {
+                message: "expected sankey".to_string(),
+                span,
+            }],
+        };
     }
 
     let mut parser = CsvParser::new(&prepared.text, header_end + 1);
-    let records = parser
-        .parse_records()
-        .map_err(|error| prepared.map_error(error))?;
-    if records.is_empty() {
-        return Err(SankeySyntaxError {
+    let mut records = Vec::new();
+    let mut errors = Vec::new();
+    while !parser.eof() {
+        let record_start = parser.pos;
+        match parser.parse_record() {
+            Ok(record) => records.push(record),
+            Err(error) => {
+                errors.push(prepared.map_error(error));
+                parser.recover_to_next_record(record_start);
+            }
+        }
+    }
+    if records.is_empty() && errors.is_empty() {
+        errors.push(SankeySyntaxError {
             message: "expected at least one csv record".to_string(),
             span: prepared.map_span(SourceSpan::new(header_end + 1, header_end + 1)),
         });
@@ -476,110 +549,20 @@ fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, 
             .map(|lexeme| prepared.map_lexeme(lexeme)),
     );
 
-    Ok(SankeySemanticSource {
-        records: records
-            .into_iter()
-            .map(|record| SankeyRecord {
-                source: prepared.map_field(record.source),
-                target: prepared.map_field(record.target),
-                value: prepared.map_field(record.value),
-            })
-            .collect(),
-        lexemes,
-    })
-}
-
-fn parse_sankey_editor_source(code: &str) -> EditorSemanticFacts {
-    let prepared = PreparedSankeyText::new(code);
-    let mut facts = EditorSemanticFacts::new();
-    let Some(header_end) = prepared.text.find('\n') else {
-        if !prepared.text.is_empty() {
-            let span = prepared.map_span(SourceSpan::new(0, prepared.text.len()));
-            let kind = if is_sankey_header(prepared.text.trim()) {
-                EditorLexemeKind::Keyword
-            } else {
-                EditorLexemeKind::Literal
-            };
-            attach_sankey_lexemes(code, &[SankeyLexeme { kind, span }], &mut facts);
-            facts.mark_recovered_from_parse_error(
-                "expected sankey header followed by csv",
-                Some(span),
-            );
-        }
-        return facts;
-    };
-    let header_raw = &prepared.text[..header_end];
-    let header = header_raw.trim();
-    let header_start = header_raw.find(header).unwrap_or(0);
-    let header_span = SourceSpan::new(header_start, header_start + header.len());
-    if !is_sankey_header(header) {
-        let span = prepared.map_span(header_span);
-        attach_sankey_lexemes(
-            code,
-            &[SankeyLexeme {
-                kind: EditorLexemeKind::Literal,
-                span,
-            }],
-            &mut facts,
-        );
-        facts.mark_recovered_from_parse_error("expected sankey", Some(span));
-        return facts;
+    SankeySyntaxOutcome {
+        source: SankeySemanticSource {
+            records: records
+                .into_iter()
+                .map(|record| SankeyRecord {
+                    source: prepared.map_field(record.source),
+                    target: prepared.map_field(record.target),
+                    value: prepared.map_field(record.value),
+                })
+                .collect(),
+            lexemes,
+        },
+        errors,
     }
-    let mut lexemes = vec![SankeyLexeme {
-        kind: EditorLexemeKind::Keyword,
-        span: prepared.map_span(header_span),
-    }];
-    let mut parser = CsvParser::new(&prepared.text, header_end + 1);
-    let mut record_count = 0usize;
-    while !parser.eof() {
-        let record_start = parser.pos;
-        match parser.parse_record() {
-            Ok(record) => {
-                record_count += 1;
-                let source = prepared.map_field(record.source);
-                let target = prepared.map_field(record.target);
-                let value = prepared.map_field(record.value);
-                push_sankey_payload(
-                    &mut facts,
-                    &source,
-                    "sankey source",
-                    EditorSemanticKind::Namespace,
-                    false,
-                );
-                push_sankey_payload(
-                    &mut facts,
-                    &target,
-                    "sankey target",
-                    EditorSemanticKind::Namespace,
-                    false,
-                );
-                push_sankey_payload(
-                    &mut facts,
-                    &value,
-                    "sankey link value",
-                    EditorSemanticKind::String,
-                    true,
-                );
-            }
-            Err(error) => {
-                let error = prepared.map_error(error);
-                facts.mark_recovered_from_parse_error(error.message, Some(error.span));
-                parser.recover_to_next_record(record_start);
-            }
-        }
-    }
-    if record_count == 0 && facts.completeness == crate::EditorSemanticCompleteness::Complete {
-        let span = prepared.map_span(SourceSpan::new(header_end + 1, header_end + 1));
-        facts.mark_recovered_from_parse_error("expected at least one csv record", Some(span));
-    }
-    lexemes.extend(
-        parser
-            .take_lexemes()
-            .into_iter()
-            .map(|lexeme| prepared.map_lexeme(lexeme)),
-    );
-    attach_sankey_lexemes(code, &lexemes, &mut facts);
-    facts
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -658,14 +641,6 @@ impl<'a> CsvParser<'a> {
         } else {
             false
         }
-    }
-
-    fn parse_records(&mut self) -> std::result::Result<Vec<SankeyRecord>, SankeySyntaxError> {
-        let mut records = Vec::new();
-        while !self.eof() {
-            records.push(self.parse_record()?);
-        }
-        Ok(records)
     }
 
     fn parse_record(&mut self) -> std::result::Result<SankeyRecord, SankeySyntaxError> {
@@ -939,7 +914,7 @@ A,__proto__,0.403
 A,B,0.597
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("sankey", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("sankey", text)
             .unwrap()
             .unwrap();
 
@@ -965,7 +940,7 @@ A,B,0.597
             "\"C, source\",D,2\r\n",
         );
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("sankey", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("sankey", text)
             .unwrap()
             .expect("sankey editor recovery facts");
 
@@ -1014,7 +989,7 @@ A,B,0.597
         assert_eq!(diagnostic.span(), Some(error_span));
 
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("sankey", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("sankey", text)
             .unwrap()
             .expect("Sankey editor recovery facts");
         assert_eq!(

@@ -16,10 +16,10 @@ pub(super) struct DiagramBounds {
 impl DiagramBounds {
     pub(super) fn from_view_box(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
         Self {
-            min_x: finite_or(min_x, 0.0),
-            min_y: finite_or(min_y, 0.0),
-            width: viewport_dimension(width),
-            height: viewport_dimension(height),
+            min_x,
+            min_y,
+            width,
+            height,
         }
     }
 
@@ -30,11 +30,11 @@ impl DiagramBounds {
         max_y: f64,
         padding: f64,
     ) -> Self {
-        let min_x = finite_or(min_x, 0.0);
-        let min_y = finite_or(min_y, 0.0);
-        let max_x = finite_or(max_x, min_x);
-        let max_y = finite_or(max_y, min_y);
-        let padding = finite_or(padding, 0.0).max(0.0);
+        let padding = if padding.is_finite() {
+            padding.max(0.0)
+        } else {
+            padding
+        };
         Self::from_view_box(
             min_x - padding,
             min_y - padding,
@@ -55,15 +55,20 @@ pub(super) struct ViewBox {
 impl ViewBox {
     pub(super) fn new(min_x: f64, min_y: f64, width: f64, height: f64) -> Self {
         Self {
-            min_x: finite_or(min_x, 0.0),
-            min_y: finite_or(min_y, 0.0),
-            width: viewport_dimension(width),
-            height: viewport_dimension(height),
+            min_x,
+            min_y,
+            width,
+            height,
         }
     }
 
-    fn from_bounds(bounds: DiagramBounds) -> Self {
-        Self::new(bounds.min_x, bounds.min_y, bounds.width, bounds.height)
+    fn from_bounds(bounds: DiagramBounds) -> Result<Self> {
+        Ok(Self::new(
+            checked_svg_coordinate(bounds.min_x, "viewBox min-x")?,
+            checked_svg_coordinate(bounds.min_y, "viewBox min-y")?,
+            checked_viewport_dimension(bounds.width, "viewBox width")?,
+            checked_viewport_dimension(bounds.height, "viewBox height")?,
+        ))
     }
 
     pub(super) fn attr(self) -> String {
@@ -105,7 +110,7 @@ impl RootMaxWidth {
             | Self::CssSixSignificant(value)
             | Self::Precision { value, .. } => value,
         };
-        let value = viewport_dimension(value);
+        let value = checked_viewport_dimension(value, "root max-width")?;
         Ok(match self {
             Self::ViewBox | Self::SvgNumber(_) => fmt_string(value),
             Self::CssSixSignificant(_) => format_css_max_width(value),
@@ -640,14 +645,14 @@ impl<'a> RootViewportContext<'a> {
     }
 
     pub(super) fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
-        let view_box = spec.view_box.map(ViewBox::from_bounds);
+        let view_box = spec.view_box.map(ViewBox::from_bounds).transpose()?;
         let max_width = spec.max_width.format(view_box)?;
 
         let fixed_dimensions = || {
             if let Some((width, height)) = spec.fixed_size {
                 return Ok::<_, Error>((
-                    fmt_string(viewport_dimension(width)),
-                    fmt_string(viewport_dimension(height)),
+                    fmt_string(checked_viewport_dimension(width, "fixed root width")?),
+                    fmt_string(checked_viewport_dimension(height, "fixed root height")?),
                 ));
             }
             let view_box = view_box.ok_or_else(|| Error::InvalidModel {
@@ -673,7 +678,10 @@ impl<'a> RootViewportContext<'a> {
             } => (
                 true,
                 Some("100%".to_string()),
-                Some(fmt_string(viewport_dimension(height))),
+                Some(fmt_string(checked_viewport_dimension(
+                    height,
+                    "responsive root height",
+                )?)),
             ),
             RootSizing::Mermaid {
                 use_max_width: false,
@@ -832,12 +840,17 @@ fn format_precision_fixed(value: f64, significant_digits: u8) -> String {
     format!("{value:.decimals$}")
 }
 
-fn finite_or(value: f64, fallback: f64) -> f64 {
-    if value.is_finite() { value } else { fallback }
+fn checked_svg_coordinate(value: f64, field: &str) -> Result<f64> {
+    if value.is_finite() {
+        return Ok(value);
+    }
+    Err(Error::InvalidModel {
+        message: format!("root SVG {field} must be finite"),
+    })
 }
 
-fn viewport_dimension(value: f64) -> f64 {
-    finite_or(value, 1.0).max(1.0)
+fn checked_viewport_dimension(value: f64, field: &str) -> Result<f64> {
+    Ok(checked_svg_coordinate(value, field)?.max(1.0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1156,18 +1169,18 @@ mod tests {
     }
 
     #[test]
-    fn fixed_root_uses_finite_positive_viewbox_dimensions() {
-        let plan = computed_context(RenderFamilyKind::Venn, "root-id")
+    fn root_plan_rejects_non_finite_viewbox_geometry() {
+        let err = computed_context(RenderFamilyKind::Venn, "root-id")
             .plan(RootViewportSpec::mermaid(
                 DiagramBounds::from_view_box(-2.0, f64::NAN, -42.5, f64::INFINITY),
                 false,
             ))
-            .unwrap();
+            .unwrap_err();
 
-        assert_eq!(plan.view_box(), Some(ViewBox::new(-2.0, 0.0, 1.0, 1.0)));
-        assert_eq!(plan.width.as_deref(), Some("1"));
-        assert_eq!(plan.height.as_deref(), Some("1"));
-        assert_eq!(plan.style.as_deref(), Some("background-color: white;"));
+        assert!(
+            err.to_string().contains("viewBox min-y must be finite"),
+            "{err}"
+        );
     }
 
     #[test]

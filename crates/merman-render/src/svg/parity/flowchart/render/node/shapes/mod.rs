@@ -49,9 +49,9 @@ pub(super) use delay::render_delay;
 pub(super) use dispatch::render_flowchart_shape;
 pub(super) use divided_rect::render_divided_rect;
 pub(super) use hexagon::render_hexagon;
-pub(super) use icon::try_render_icon;
-pub(super) use icon_circle::try_render_icon_circle;
-pub(super) use icon_square::{try_render_icon_rounded, try_render_icon_square};
+pub(super) use icon::render_icon;
+pub(super) use icon_circle::render_icon_circle;
+pub(super) use icon_square::{render_icon_rounded, render_icon_square};
 pub(super) use image_square::try_render_image_square;
 pub(super) use label_container::{render_hourglass_collate, render_notched_rectangle};
 pub(super) use lean_trapezoids::{

@@ -22,7 +22,7 @@ impl RenderRequestPlan {
         let (renderer, pipeline) = build_renderer(options)?;
         Ok(Self {
             renderer,
-            pipeline: pipeline.into_pipeline(),
+            pipeline: pipeline.pipeline(),
         })
     }
 
@@ -80,101 +80,12 @@ impl RenderRequestPlan {
 pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::render::SvgPipeline, BindingError> {
-    Ok(build_renderer(options)?.1.into_pipeline())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum PipelineKind {
-    #[default]
-    Parity,
-    Readable,
-    ResvgSafe,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SvgPipelineOptions {
-    kind: PipelineKind,
-    scoped_css: Option<String>,
-    css_override_policy: merman::render::CssOverridePolicy,
-    strip_existing_important: bool,
-    root_background_color: Option<String>,
-    drop_native_duplicate_fallbacks: bool,
-}
-
-impl Default for SvgPipelineOptions {
-    fn default() -> Self {
-        Self {
-            kind: PipelineKind::default(),
-            scoped_css: None,
-            css_override_policy: merman::render::CssOverridePolicy::Preserve,
-            strip_existing_important: false,
-            root_background_color: None,
-            drop_native_duplicate_fallbacks: false,
-        }
-    }
-}
-
-impl SvgPipelineOptions {
-    fn apply_compiled_host_output(&mut self, output: merman::render::CompiledHostThemeOutput) {
-        self.kind = match output.preset {
-            merman::render::SvgPipelinePreset::Parity => PipelineKind::Parity,
-            merman::render::SvgPipelinePreset::Readable => PipelineKind::Readable,
-            merman::render::SvgPipelinePreset::ResvgSafe => PipelineKind::ResvgSafe,
-        };
-        self.css_override_policy = output.css_override_policy;
-        self.strip_existing_important = matches!(
-            output.css_override_policy,
-            merman::render::CssOverridePolicy::StripExistingImportant
-        );
-        if output.root_background_color.is_some() {
-            self.root_background_color = output.root_background_color;
-        }
-        self.drop_native_duplicate_fallbacks = output.drop_native_duplicate_fallbacks;
-        if output.scoped_css.is_some() {
-            self.scoped_css = output.scoped_css;
-        }
-    }
-
-    fn into_pipeline(self) -> merman::render::SvgPipeline {
-        let mut pipeline = match self.kind {
-            PipelineKind::Parity => merman::render::SvgPipeline::parity(),
-            PipelineKind::Readable => merman::render::SvgPipeline::readable(),
-            PipelineKind::ResvgSafe => merman::render::SvgPipeline::resvg_safe(),
-        };
-
-        if self.strip_existing_important {
-            pipeline.push_postprocessor(
-                merman::render::CssOverridePostprocessor::strip_existing_important(),
-            );
-        }
-
-        if self.drop_native_duplicate_fallbacks {
-            pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
-        }
-
-        if let Some(root_background_color) = self.root_background_color {
-            pipeline.push_postprocessor(merman::render::RootBackgroundPostprocessor::new(
-                root_background_color,
-            ));
-        }
-
-        if let Some(scoped_css) = self.scoped_css.filter(|css| !css.trim().is_empty()) {
-            pipeline.push_postprocessor(
-                merman::render::ScopedCssPostprocessor::new(scoped_css)
-                    .with_override_policy(self.css_override_policy),
-            );
-            if matches!(self.kind, PipelineKind::ResvgSafe) {
-                pipeline.push_postprocessor(merman::render::SanitizeCssPostprocessor);
-            }
-        }
-
-        pipeline
-    }
+    Ok(build_renderer(options)?.1.pipeline())
 }
 
 fn build_renderer(
     options: &BindingOptions,
-) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
+) -> Result<(HeadlessRenderer, merman::render::SvgOutputPolicy), BindingError> {
     let mut environment = apply_binding_time_policy(default_render_environment(), options)?;
     if let Some(resources) = options.analysis.resources.as_ref() {
         environment = environment.with_resource_limits(binding_resource_limits(resources)?);
@@ -222,7 +133,6 @@ fn build_renderer(
     let mut renderer = HeadlessRenderer::new().with_environment(environment);
 
     if options
-        .analysis
         .parse
         .as_ref()
         .and_then(|parse| parse.suppress_errors)
@@ -233,10 +143,10 @@ fn build_renderer(
         renderer = renderer.with_strict_parsing();
     }
 
-    let mut pipeline = SvgPipelineOptions::default();
+    let mut output = merman::render::SvgOutputPolicy::default();
     if let Some(host_theme) = options.host_theme.as_ref() {
         let compiled = binding_host_theme(host_theme)?;
-        pipeline.apply_compiled_host_output(compiled.output);
+        output = compiled.output;
         renderer = renderer.with_site_config(compiled.site_config);
     }
 
@@ -260,10 +170,10 @@ fn build_renderer(
             renderer = renderer.with_diagram_id(diagram_id);
         }
         if let Some(raw_pipeline) = svg.pipeline.as_deref() {
-            pipeline.kind = match normalize_option(raw_pipeline).as_str() {
-                "parity" => PipelineKind::Parity,
-                "readable" => PipelineKind::Readable,
-                "resvg-safe" | "resvg_safe" => PipelineKind::ResvgSafe,
+            output.preset = match normalize_option(raw_pipeline).as_str() {
+                "parity" => merman::render::SvgPipelinePreset::Parity,
+                "readable" => merman::render::SvgPipelinePreset::Readable,
+                "resvg-safe" => merman::render::SvgPipelinePreset::ResvgSafe,
                 other => {
                     return Err(BindingError::new(
                         BindingStatus::InvalidArgument,
@@ -273,13 +183,9 @@ fn build_renderer(
             };
         }
         if let Some(raw_policy) = svg.css_override_policy.as_deref() {
-            pipeline.css_override_policy = match normalize_option(raw_policy).as_str() {
-                "preserve" => {
-                    pipeline.strip_existing_important = false;
-                    merman::render::CssOverridePolicy::Preserve
-                }
-                "strip-existing-important" | "strip_existing_important" => {
-                    pipeline.strip_existing_important = true;
+            output.css_override_policy = match normalize_option(raw_policy).as_str() {
+                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "strip-existing-important" => {
                     merman::render::CssOverridePolicy::StripExistingImportant
                 }
                 other => {
@@ -291,19 +197,20 @@ fn build_renderer(
             };
         }
         if let Some(scoped_css) = svg.scoped_css.as_deref() {
-            pipeline.scoped_css = Some(scoped_css.to_string());
+            output.scoped_css = Some(scoped_css.to_string());
         }
         if let Some(root_background_color) = svg.root_background_color.as_deref() {
-            pipeline.root_background_color = Some(css_declaration_value(
+            output.root_background_color = Some(css_declaration_value(
                 root_background_color,
                 "svg.root_background_color",
             )?);
         }
-        pipeline.drop_native_duplicate_fallbacks =
-            svg.drop_native_duplicate_fallbacks.unwrap_or(false);
+        if let Some(drop_native_duplicate_fallbacks) = svg.drop_native_duplicate_fallbacks {
+            output.drop_native_duplicate_fallbacks = drop_native_duplicate_fallbacks;
+        }
     }
 
-    Ok((renderer, pipeline))
+    Ok((renderer, output))
 }
 
 fn default_render_environment() -> RenderEnvironment {
@@ -400,7 +307,7 @@ fn binding_host_theme(
             profile.output.pipeline = match normalize_option(pipeline).as_str() {
                 "parity" => HostThemePipelinePreset::Parity,
                 "readable" => HostThemePipelinePreset::Readable,
-                "resvg-safe" | "resvg_safe" => HostThemePipelinePreset::ResvgSafe,
+                "resvg-safe" => HostThemePipelinePreset::ResvgSafe,
                 other => {
                     return Err(BindingError::new(
                         BindingStatus::InvalidArgument,
@@ -412,7 +319,7 @@ fn binding_host_theme(
         if let Some(policy) = output.css_override_policy.as_deref() {
             profile.output.css_override_policy = match normalize_option(policy).as_str() {
                 "preserve" => merman::render::CssOverridePolicy::Preserve,
-                "strip-existing-important" | "strip_existing_important" => {
+                "strip-existing-important" => {
                     merman::render::CssOverridePolicy::StripExistingImportant
                 }
                 other => {
@@ -464,13 +371,9 @@ fn binding_resource_limits(
         None => merman::render::RenderResourceLimits::interactive(),
         Some(profile) => match normalize_option(profile).as_str() {
             "interactive" => merman::render::RenderResourceLimits::interactive(),
-            "typst-package" | "typst_package" | "typst" => {
-                merman::render::RenderResourceLimits::typst_package()
-            }
-            "trusted-native" | "trusted_native" | "trusted" => {
-                merman::render::RenderResourceLimits::trusted_native()
-            }
-            "unbounded-for-trusted-input" | "unbounded_for_trusted_input" | "unbounded" => {
+            "typst-package" => merman::render::RenderResourceLimits::typst_package(),
+            "trusted-native" => merman::render::RenderResourceLimits::trusted_native(),
+            "unbounded-for-trusted-input" => {
                 merman::render::RenderResourceLimits::unbounded_for_trusted_input()
             }
             other => {
@@ -565,13 +468,13 @@ fn apply_usize_override(
 
 fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingError> {
     match normalize_option(value).as_str() {
-        "editor-light" | "editor_light" => Ok(HostThemePreset::EditorLight),
-        "editor-dark" | "editor_dark" => Ok(HostThemePreset::EditorDark),
-        "one-dark" | "one_dark" | "onedark" => Ok(HostThemePreset::OneDark),
-        "gruvbox-light" | "gruvbox_light" => Ok(HostThemePreset::GruvboxLight),
-        "gruvbox-dark" | "gruvbox_dark" => Ok(HostThemePreset::GruvboxDark),
-        "ayu-light" | "ayu_light" => Ok(HostThemePreset::AyuLight),
-        "ayu-dark" | "ayu_dark" => Ok(HostThemePreset::AyuDark),
+        "editor-light" => Ok(HostThemePreset::EditorLight),
+        "editor-dark" => Ok(HostThemePreset::EditorDark),
+        "one-dark" => Ok(HostThemePreset::OneDark),
+        "gruvbox-light" => Ok(HostThemePreset::GruvboxLight),
+        "gruvbox-dark" => Ok(HostThemePreset::GruvboxDark),
+        "ayu-light" => Ok(HostThemePreset::AyuLight),
+        "ayu-dark" => Ok(HostThemePreset::AyuDark),
         other => Err(BindingError::new(
             BindingStatus::InvalidArgument,
             format!("unsupported host_theme.preset: {other}"),

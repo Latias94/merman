@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
@@ -12,6 +12,7 @@ const wasmSizeBudgets = path.join(workspaceRoot, "docs", "release", "WASM_SIZE_B
 const generatedPackageJson = path.join(root, "pkg", "package.json");
 const presetManifest = path.join(root, "pkg", "merman_wasm_preset.json");
 const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
+const canonicalThirdPartyLicenses = path.join(workspaceRoot, "THIRD_PARTY_LICENSES");
 try {
   assertPackageOutputOwnership(path.join(root, "pkg"));
 } catch (error) {
@@ -31,6 +32,11 @@ const required = [
   path.join(root, "pkg", "merman_wasm.js"),
   path.join(root, "pkg", "merman_wasm.d.ts"),
   wasmBinary,
+  path.join(root, "LICENSE"),
+  path.join(root, "THIRD_PARTY_NOTICES.md"),
+  ...walkFiles(canonicalThirdPartyLicenses).map((file) =>
+    path.join(root, "THIRD_PARTY_LICENSES", path.relative(canonicalThirdPartyLicenses, file)),
+  ),
   ...surfaces.flatMap((surface) => [
     path.join(root, "dist", "surfaces", `${surface.entry}.js`),
     path.join(root, "dist", "surfaces", `${surface.entry}.d.ts`),
@@ -60,6 +66,17 @@ if (missing.length > 0) {
     ].join("\n"),
   );
   process.exit(1);
+}
+
+assertMatchingLegalFile(
+  path.join(workspaceRoot, "THIRD_PARTY_NOTICES.md"),
+  path.join(root, "THIRD_PARTY_NOTICES.md"),
+);
+for (const canonical of walkFiles(canonicalThirdPartyLicenses)) {
+  assertMatchingLegalFile(
+    canonical,
+    path.join(root, "THIRD_PARTY_LICENSES", path.relative(canonicalThirdPartyLicenses, canonical)),
+  );
 }
 
 try {
@@ -170,6 +187,24 @@ function checkDefaultBrowserFullWasmBudget(defaultBrowserFullWasmBudget) {
         "The published @mermanjs/web artifact should be built with the workspace wasm-size profile.",
         ...failures,
       ].join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
+function walkFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
+    })
+    .sort();
+}
+
+function assertMatchingLegalFile(canonical, projection) {
+  if (!readFileSync(canonical).equals(readFileSync(projection))) {
+    console.error(
+      `prepack: legal material projection is stale: ${path.relative(root, projection)}`,
     );
     process.exit(1);
   }

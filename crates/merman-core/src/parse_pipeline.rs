@@ -4,8 +4,8 @@ use crate::{
     SourceSpan, common_db, diagram, diagrams::error_diagram, family, runtime, sanitize, theme,
 };
 use diagram::{
-    CustomJsonRenderModel, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
-    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
+    CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
+    ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
     ResolvedRenderParser,
 };
 
@@ -142,8 +142,14 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
-    pub(crate) fn metadata(&self) -> Result<Option<ParseMetadata>> {
-        Ok(self.preprocess()?.map(|(_, meta)| meta))
+    pub(crate) fn metadata(&self) -> Result<ParseMetadata> {
+        let (_, metadata) = match self.source {
+            ParseSource::Detect => self.preprocess_and_detect_strict()?,
+            ParseSource::KnownType(diagram_type) => {
+                self.preprocess_and_assume_type(diagram_type)?
+            }
+        };
+        Ok(metadata)
     }
 
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
@@ -165,14 +171,13 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
-    pub(crate) fn parse_json_with_editor_facts(
+    pub(crate) fn parse_editor_snapshot(
         &self,
         timing: ParseTiming,
-    ) -> Result<Option<ParsedDiagramWithEditorFacts>> {
+    ) -> Result<Option<DiagramParseSnapshot>> {
         let timing_enabled = timing.is_enabled();
         let total_start = runtime::timing_start(timing_enabled);
         let preprocess_start = runtime::timing_start(timing_enabled);
-        let directive_prefixes = editor_directive_prefixes(self.text);
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
@@ -188,31 +193,39 @@ impl<'a> ParsePipeline<'a> {
             });
 
         let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_local_time(|| match resolved {
-            Some(resolved) => {
-                if let Some(parser) = combined {
-                    parser(editor_input, &meta).map(|(model, facts)| (model, Some(facts)))
-                } else {
-                    (resolved.parser)(editor_input, &meta).map(|model| (model, None))
+        let parse_res = self.with_local_time(|| {
+            Ok(match resolved {
+                Some(resolved) => {
+                    if let Some(parser) = combined {
+                        let parsed = parser(editor_input, &meta);
+                        let (model, editor_facts) = parsed.into_parts();
+                        (model, Some(editor_facts))
+                    } else {
+                        ((resolved.parser)(editor_input, &meta), None)
+                    }
                 }
-            }
-            None => Err(Error::UnsupportedDiagram {
-                diagram_type: meta.diagram_type.clone(),
-            }),
+                None => (
+                    Err(Error::UnsupportedDiagram {
+                        diagram_type: meta.diagram_type.clone(),
+                    }),
+                    None,
+                ),
+            })
         });
         let parse = parse_start.map(runtime::timing_elapsed);
-        let (mut model, combined_facts) = match parse_res {
-            Ok(parsed) => parsed,
+        let (model_result, combined_facts) = parse_res?;
+        let owner = resolved.map(|resolved| resolved.owner);
+        let mut model = match model_result {
+            Ok(model) => model,
             Err(err) => {
-                if !self.options.suppress_errors {
-                    return Err(source_map.remap_parse_error(err));
-                }
-
-                timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
-                return Ok(Some(ParsedDiagramWithEditorFacts {
-                    diagram: error_diagram::suppressed_error_diagram(&meta),
-                    editor_facts: ParsedEditorFacts::Unavailable,
-                }));
+                let err = source_map.remap_parse_error(err);
+                let editor_facts =
+                    self.finish_snapshot_editor_facts(owner, combined_facts, &meta, &source_map);
+                return Ok(Some(DiagramParseSnapshot::new(
+                    meta,
+                    DiagramParseOutcome::Failed(err),
+                    editor_facts,
+                )));
             }
         };
 
@@ -230,17 +243,31 @@ impl<'a> ParsePipeline<'a> {
             input_bytes: self.text.len(),
         });
 
-        let owner = resolved
-            .expect("a successful combined semantic parse must have a registry owner")
-            .owner;
-        let editor_facts = match (owner, combined_facts) {
-            (RegistryOwner::Custom, _) => ParsedEditorFacts::Unavailable,
-            (RegistryOwner::BuiltIn, Some(facts)) => ParsedEditorFacts::Available(
-                self.finish_editor_semantic_facts(facts, &meta, &source_map, directive_prefixes),
+        let editor_facts =
+            self.finish_snapshot_editor_facts(owner, combined_facts, &meta, &source_map);
+
+        Ok(Some(DiagramParseSnapshot::new(
+            meta,
+            DiagramParseOutcome::Parsed(model),
+            editor_facts,
+        )))
+    }
+
+    fn finish_snapshot_editor_facts(
+        &self,
+        owner: Option<RegistryOwner>,
+        facts: Option<EditorSemanticFacts>,
+        meta: &ParseMetadata,
+        source_map: &EditorParseSourceMap<'_>,
+    ) -> ParsedEditorFacts {
+        match (owner, facts) {
+            (Some(RegistryOwner::Custom), _) | (None, _) => ParsedEditorFacts::Unavailable,
+            (Some(RegistryOwner::BuiltIn), Some(facts)) => ParsedEditorFacts::Available(
+                self.finish_editor_semantic_facts(facts, meta, source_map),
             ),
-            (RegistryOwner::BuiltIn, None) => {
+            (Some(RegistryOwner::BuiltIn), None) => {
                 debug_assert!(
-                    family::editor_parser(
+                    family::combined_parser(
                         self.engine.diagram_registry.profile(),
                         &meta.diagram_type,
                     )
@@ -249,12 +276,7 @@ impl<'a> ParsePipeline<'a> {
                 );
                 ParsedEditorFacts::Unavailable
             }
-        };
-
-        Ok(Some(ParsedDiagramWithEditorFacts {
-            diagram: ParsedDiagram { meta, model },
-            editor_facts,
-        }))
+        }
     }
 
     pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
@@ -263,7 +285,7 @@ impl<'a> ParsePipeline<'a> {
             Self::parse_render_semantic_model,
             RenderSemanticModel::sanitize_common_db_fields,
             error_diagram::suppressed_error_render_diagram,
-            |meta, model| ParsedDiagramRender { meta, model },
+            ParsedDiagramRender::new,
             |model, source_map| {
                 model.remap_warning_fact_spans(|fact| {
                     Self::remap_warning_fact_spans(fact, source_map);
@@ -273,71 +295,21 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
-    pub(crate) fn parse_editor_semantic_facts(&self) -> Result<Option<EditorSemanticFacts>> {
-        let directive_prefixes = editor_directive_prefixes(self.text);
-        let Some((code, meta)) = self.preprocess()? else {
-            return Ok(None);
-        };
-        let registry = &self.engine.diagram_registry;
-        match registry.resolve(&meta.diagram_type) {
-            Some(resolved) if resolved.owner == RegistryOwner::Custom => return Ok(None),
-            Some(_) => {}
-            None => {
-                if family::is_builtin_diagram_type(&meta.diagram_type)
-                    && !family::diagram_type_supported_in_profile(
-                        registry.profile(),
-                        &meta.diagram_type,
-                    )
-                {
-                    return Err(Error::UnsupportedDiagram {
-                        diagram_type: meta.diagram_type.clone(),
-                    });
-                }
-            }
-        }
-
-        let source_map = EditorParseSourceMap::new(&code);
-        self.parse_editor_semantic_facts_from_preprocessed(
-            source_map.parser_input(),
-            &meta,
-            &source_map,
-            directive_prefixes,
-        )
-    }
-
-    fn parse_editor_semantic_facts_from_preprocessed(
-        &self,
-        editor_input: &str,
-        meta: &ParseMetadata,
-        source_map: &EditorParseSourceMap<'_>,
-        directive_prefixes: Vec<String>,
-    ) -> Result<Option<EditorSemanticFacts>> {
-        let Some(parser) =
-            family::editor_parser(self.engine.diagram_registry.profile(), &meta.diagram_type)
-        else {
-            return Ok(None);
-        };
-        let facts = parser(editor_input, meta)?;
-        Ok(Some(self.finish_editor_semantic_facts(
-            facts,
-            meta,
-            source_map,
-            directive_prefixes,
-        )))
-    }
     fn finish_editor_semantic_facts(
         &self,
         mut facts: EditorSemanticFacts,
         meta: &ParseMetadata,
         source_map: &EditorParseSourceMap<'_>,
-        mut directive_prefixes: Vec<String>,
     ) -> EditorSemanticFacts {
-        directive_prefixes.append(&mut facts.directive_prefixes);
+        let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts);
         let family = family::diagram_type_family_id(&meta.diagram_type)
-            .expect("built-in editor parsers belong to a catalog family");
+            .expect("built-in combined semantic facts belong to a catalog family");
         facts.finalize_lexemes(family, source_map.source.global_lexemes());
-        for prefix in directive_prefixes {
+        for prefix in source_map.source.global_directive_prefixes() {
+            facts.push_directive_prefix(prefix.clone());
+        }
+        for prefix in family_directive_prefixes {
             facts.push_directive_prefix(prefix);
         }
         facts
@@ -492,11 +464,20 @@ impl<'a> ParsePipeline<'a> {
     fn preprocess(&self) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
         match self.source {
             ParseSource::Detect => self.preprocess_and_detect(),
-            ParseSource::KnownType(diagram_type) => self.preprocess_and_assume_type(diagram_type),
+            ParseSource::KnownType(diagram_type) => {
+                self.preprocess_and_assume_type(diagram_type).map(Some)
+            }
         }
     }
 
     fn preprocess_and_detect(&self) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+        match self.preprocess_and_detect_strict() {
+            Err(Error::DetectType(_)) if self.options.suppress_errors => Ok(None),
+            result => result.map(Some),
+        }
+    }
+
+    fn preprocess_and_detect_strict(&self) -> Result<(PreprocessedSource, ParseMetadata)> {
         let pre = preprocess_mermaid_public_parse_pipeline(self.text, &self.engine.registry, None)?;
         if pre.code().trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
@@ -506,38 +487,30 @@ impl<'a> ParsePipeline<'a> {
         let mut effective_config = self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
 
-        let diagram_type = match self
+        let diagram_type = self
             .engine
             .registry
             .detect_type_precleaned(pre.code(), &mut effective_config)
-        {
-            Ok(diagram_type) => diagram_type.to_string(),
-            Err(err) => {
-                if self.options.suppress_errors {
-                    return Ok(None);
-                }
-                return Err(err);
-            }
-        };
+            .map(str::to_owned)?;
         family::apply_diagram_type_config_effects(
             &diagram_type,
             &pre.config,
             &mut effective_config,
         );
         if has_config_overrides {
-            theme::apply_theme_defaults(&mut effective_config);
+            theme::apply_theme_defaults(&mut effective_config)?;
         } else if cached_effective_config
             .as_ref()
             .is_some_and(|cached| effective_config.ptr_eq(cached))
         {
-            effective_config = self.engine.default_effective_config();
+            effective_config = self.engine.default_effective_config()?;
         } else {
-            theme::apply_theme_defaults(&mut effective_config);
+            theme::apply_theme_defaults(&mut effective_config)?;
         }
 
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
 
-        Ok(Some((
+        Ok((
             pre.source,
             ParseMetadata {
                 diagram_type,
@@ -545,13 +518,13 @@ impl<'a> ParsePipeline<'a> {
                 effective_config,
                 title,
             },
-        )))
+        ))
     }
 
     fn preprocess_and_assume_type(
         &self,
         diagram_type: &str,
-    ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+    ) -> Result<(PreprocessedSource, ParseMetadata)> {
         let pre = preprocess_mermaid_public_parse_pipeline(
             self.text,
             &self.engine.registry,
@@ -566,19 +539,19 @@ impl<'a> ParsePipeline<'a> {
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         family::apply_diagram_type_config_effects(diagram_type, &pre.config, &mut effective_config);
         if has_config_overrides {
-            theme::apply_theme_defaults(&mut effective_config);
+            theme::apply_theme_defaults(&mut effective_config)?;
         } else if cached_effective_config
             .as_ref()
             .is_some_and(|cached| effective_config.ptr_eq(cached))
         {
-            effective_config = self.engine.default_effective_config();
+            effective_config = self.engine.default_effective_config()?;
         } else {
-            theme::apply_theme_defaults(&mut effective_config);
+            theme::apply_theme_defaults(&mut effective_config)?;
         }
 
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
 
-        Ok(Some((
+        Ok((
             pre.source,
             ParseMetadata {
                 diagram_type: diagram_type.to_string(),
@@ -586,7 +559,7 @@ impl<'a> ParsePipeline<'a> {
                 effective_config,
                 title,
             },
-        )))
+        ))
     }
 
     fn with_local_time<R>(&self, f: impl FnOnce() -> Result<R>) -> Result<R> {
@@ -691,43 +664,6 @@ struct ParseTimingSuccess<'a> {
     parse: Option<runtime::TimingDuration>,
     sanitize: Option<runtime::TimingDuration>,
     input_bytes: usize,
-}
-
-fn editor_directive_prefixes(text: &str) -> Vec<String> {
-    let mut prefixes = Vec::new();
-    for line in text.lines() {
-        if let Some(prefix) = editor_directive_prefix(line) {
-            let prefix = prefix.to_string();
-            if !prefixes.contains(&prefix) {
-                prefixes.push(prefix);
-            }
-        }
-    }
-    prefixes
-}
-
-fn editor_directive_prefix(line: &str) -> Option<&'static str> {
-    let trimmed = line.trim_start();
-
-    if let Some(rest) = trimmed.strip_prefix("%%{") {
-        let name = rest
-            .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '}'))
-            .next()
-            .filter(|name| !name.is_empty())?;
-
-        return matches!(name, "init" | "initialize" | "wrap").then_some(match name {
-            "init" => "init",
-            "initialize" => "initialize",
-            "wrap" => "wrap",
-            _ => unreachable!(),
-        });
-    }
-
-    if trimmed.starts_with(":::") {
-        return Some(":::");
-    }
-
-    None
 }
 
 fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Option<String> {

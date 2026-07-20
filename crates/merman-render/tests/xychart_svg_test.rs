@@ -16,13 +16,17 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::XyChart(model) = &parsed.model else {
+    let RenderSemanticModel::XyChart(model) = parsed.model() else {
         panic!("expected XYChart render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_xychart_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("layout ok")
+    layout_xychart_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+    )
+    .expect("layout ok")
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {

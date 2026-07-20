@@ -41,6 +41,11 @@ pub(crate) struct NodeLabelToken {
     pub text: LabeledText,
     pub trigger_span: Option<SourceSpan>,
     pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    /// Strict parser error represented by this editor-recovery token.
+    ///
+    /// The combined semantic path lexes once. An incomplete label therefore carries both the
+    /// token needed for editor facts and the error projected to the strict LALRPOP parser.
+    pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone)]

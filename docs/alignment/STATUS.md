@@ -12,7 +12,7 @@ planning, or coverage documents.
 | Upstream baseline | Mermaid `@11.16.0` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
 | Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
-| Admission | 35 families in the primary SVG matrix; `zenuml` is compatibility-only by compare policy |
+| Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Editor facts | All 35 full-profile families emit parser-owned lexemes through one token planner |
 | Current worktree gate | Focused gates are green; the final strict matrix waits for the active editor transport switch |
@@ -40,7 +40,7 @@ win and this file must be corrected.
 | Admission state | Contract |
 | --- | --- |
 | Primary SVG matrix | All required evidence layers and an executable compare fact are present. |
-| Compatibility-only | Documented headless behavior without upstream SVG parity. |
+| External comparison lane | Full local behavior plus exact companion/browser evidence, kept separate from built-in upstream SVG baselines. |
 
 Primary admission does not mean pixel identity with Chromium or support for every upstream branch.
 It means the family has source-backed local behavior and participates in the repository's
@@ -96,7 +96,7 @@ not a quality ranking. Callers may select another supported mode explicitly.
 
 | Family | State | Current boundary |
 | --- | --- | --- |
-| `zenuml` | Compatibility-only | Full grammar, semantic/editor model, typed layout, and headless SVG are implemented against the admitted ZenUML Core behavior source. It remains outside the primary upstream-SVG compare matrix because Mermaid loads an external browser renderer. |
+| `zenuml` | External comparison lane | Full grammar, semantic/editor model, typed layout, and headless SVG are implemented against the admitted ZenUML Core behavior source. The exact external plugin graph is tested in an opaque browser realm and publishes only strict-validated native SVG; it remains outside the built-in upstream-SVG matrix. |
 
 LSP/editor support is tracked independently in the family capability registry. SVG admission must
 not be used to infer completions, navigation, diagnostics, or source-span support for a family.

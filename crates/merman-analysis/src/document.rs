@@ -329,7 +329,7 @@ pub fn analyze_document_result_shared(
     let mut diagnostics = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
-        let analyzed = analyzer.analyze_diagram(diagram);
+        let analyzed = analyzer.analyze_diagram(diagram, document.source_map());
         extend_document_diagnostics(
             &mut diagnostics,
             &document,
@@ -352,7 +352,8 @@ fn analyze_document_diagnostics(
 ) -> Vec<AnalysisDiagnostic> {
     let mut diagnostics = Vec::new();
     for diagram in document.diagrams() {
-        let diagram_diagnostics = analyzer.analyze_diagram_diagnostics(diagram);
+        let diagram_diagnostics =
+            analyzer.analyze_diagram_diagnostics(diagram, document.source_map());
         extend_document_diagnostics(&mut diagnostics, document, diagram, diagram_diagnostics);
     }
     diagnostics

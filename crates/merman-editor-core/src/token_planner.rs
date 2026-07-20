@@ -1,97 +1,10 @@
+use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use merman_analysis::{
     ByteSpan, EditorSymbolKind, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
     FenceSemanticRole, SourceMap,
 };
 use std::fmt;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PlannedTokenKind {
-    Keyword,
-    Comment,
-    Operator,
-    Delimiter,
-    Identifier,
-    Number,
-    Date,
-    Duration,
-    Boolean,
-    String,
-    Style,
-    Color,
-    Literal,
-    Frontmatter,
-    Directive,
-    Namespace,
-    Class,
-    Struct,
-    Variable,
-    Property,
-    Event,
-    Function,
-}
-
-impl PlannedTokenKind {
-    pub const fn code(self) -> u32 {
-        match self {
-            Self::Keyword => 0,
-            Self::Comment => 1,
-            Self::Operator => 2,
-            Self::Delimiter => 3,
-            Self::Identifier => 4,
-            Self::Number => 5,
-            Self::Date => 6,
-            Self::Duration => 7,
-            Self::Boolean => 8,
-            Self::String => 9,
-            Self::Style => 10,
-            Self::Color => 11,
-            Self::Literal => 12,
-            Self::Frontmatter => 13,
-            Self::Directive => 14,
-            Self::Namespace => 15,
-            Self::Class => 16,
-            Self::Struct => 17,
-            Self::Variable => 18,
-            Self::Property => 19,
-            Self::Event => 20,
-            Self::Function => 21,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PlannedTokenModifier {
-    Declaration,
-    Definition,
-    Reference,
-    Readonly,
-    Documentation,
-    DefaultLibrary,
-    Entity,
-    Outline,
-    Payload,
-}
-
-impl PlannedTokenModifier {
-    pub const fn index(self) -> u32 {
-        match self {
-            Self::Declaration => 0,
-            Self::Definition => 1,
-            Self::Reference => 2,
-            Self::Readonly => 3,
-            Self::Documentation => 4,
-            Self::DefaultLibrary => 5,
-            Self::Entity => 6,
-            Self::Outline => 7,
-            Self::Payload => 8,
-        }
-    }
-
-    pub const fn bit(self) -> u32 {
-        1 << self.index()
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlannedToken {
@@ -212,14 +125,6 @@ impl fmt::Display for TokenPlanError {
 
 impl std::error::Error for TokenPlanError {}
 
-pub const fn planned_token_type_index(kind: PlannedTokenKind) -> u32 {
-    kind.code()
-}
-
-pub const fn planned_token_modifier_index(modifier: PlannedTokenModifier) -> u32 {
-    modifier.index()
-}
-
 pub fn plan_semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
@@ -230,29 +135,12 @@ pub fn plan_semantic_tokens_for_snapshot(
     plan_candidates(&snapshot.source_map, candidates)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CandidateOrigin {
-    Lexeme,
-    Semantic(FenceSemanticRole),
-}
-
-impl CandidateOrigin {
-    const fn precedence(self) -> u8 {
-        match self {
-            Self::Lexeme => 0,
-            Self::Semantic(FenceSemanticRole::Payload) => 1,
-            Self::Semantic(FenceSemanticRole::Outline) => 2,
-            Self::Semantic(FenceSemanticRole::Entity) => 3,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TokenCandidate {
     span: ByteSpan,
     kind: PlannedTokenKind,
     modifiers: Vec<PlannedTokenModifier>,
-    origin: CandidateOrigin,
+    origin: TokenOverlayKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -260,7 +148,7 @@ struct ValidTokenCandidate {
     span: ByteSpan,
     kind: PlannedTokenKind,
     modifier_bits: u32,
-    origin: CandidateOrigin,
+    origin: TokenOverlayKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,7 +176,7 @@ fn collect_fence_candidates(
                 .copied()
                 .map(planned_modifier_for_lexeme)
                 .collect(),
-            origin: CandidateOrigin::Lexeme,
+            origin: TokenOverlayKind::Lexeme,
         });
     }
 
@@ -297,7 +185,7 @@ fn collect_fence_candidates(
             span: absolute_fence_span(snapshot, fence, item.selection)?,
             kind: planned_kind_for_symbol(item.kind),
             modifiers: vec![planned_modifier_for_role(item.role)],
-            origin: CandidateOrigin::Semantic(item.role),
+            origin: token_overlay_for_role(item.role),
         });
     }
 
@@ -405,7 +293,7 @@ fn collect_fence_delimiters(
         span: opening,
         kind: PlannedTokenKind::Delimiter,
         modifiers: Vec::new(),
-        origin: CandidateOrigin::Lexeme,
+        origin: TokenOverlayKind::Lexeme,
     });
 
     match &spans.closing {
@@ -426,7 +314,7 @@ fn collect_fence_delimiters(
                 span: closing,
                 kind: PlannedTokenKind::Delimiter,
                 modifiers: Vec::new(),
-                origin: CandidateOrigin::Lexeme,
+                origin: TokenOverlayKind::Lexeme,
             });
         }
         None if fence.body_end == fence.end => {}
@@ -516,7 +404,7 @@ fn validate_span(source: &str, span: ByteSpan) -> Result<(), TokenPlanError> {
 fn validate_lexical_non_overlap(candidates: &[ValidTokenCandidate]) -> Result<(), TokenPlanError> {
     let mut lexical = candidates
         .iter()
-        .filter(|candidate| candidate.origin == CandidateOrigin::Lexeme)
+        .filter(|candidate| candidate.origin == TokenOverlayKind::Lexeme)
         .collect::<Vec<_>>();
     lexical.sort_by_key(|candidate| (candidate.span.start, candidate.span.end));
     for pair in lexical.windows(2) {
@@ -788,6 +676,14 @@ const fn planned_modifier_for_role(role: FenceSemanticRole) -> PlannedTokenModif
     }
 }
 
+const fn token_overlay_for_role(role: FenceSemanticRole) -> TokenOverlayKind {
+    match role {
+        FenceSemanticRole::Entity => TokenOverlayKind::SemanticEntity,
+        FenceSemanticRole::Outline => TokenOverlayKind::SemanticOutline,
+        FenceSemanticRole::Payload => TokenOverlayKind::SemanticPayload,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,7 +693,7 @@ mod tests {
         span: std::ops::Range<usize>,
         kind: PlannedTokenKind,
         modifiers: Vec<PlannedTokenModifier>,
-        origin: CandidateOrigin,
+        origin: TokenOverlayKind,
     ) -> TokenCandidate {
         TokenCandidate {
             span: ByteSpan {
@@ -932,13 +828,13 @@ mod tests {
                     0..5,
                     PlannedTokenKind::Identifier,
                     vec![PlannedTokenModifier::Reference],
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
                 candidate(
                     0..5,
                     PlannedTokenKind::Variable,
                     vec![PlannedTokenModifier::Entity],
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
             ],
         )
@@ -960,13 +856,13 @@ mod tests {
                     0..7,
                     PlannedTokenKind::String,
                     Vec::new(),
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
                 candidate(
                     1..6,
                     PlannedTokenKind::Variable,
                     vec![PlannedTokenModifier::Entity],
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
             ],
         )
@@ -997,13 +893,13 @@ mod tests {
                     0..source.len(),
                     PlannedTokenKind::String,
                     Vec::new(),
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
                 candidate(
                     middle_start..middle_start + "middle".len(),
                     PlannedTokenKind::Property,
                     vec![PlannedTokenModifier::Payload],
-                    CandidateOrigin::Semantic(FenceSemanticRole::Payload),
+                    TokenOverlayKind::SemanticPayload,
                 ),
             ],
         )
@@ -1032,19 +928,19 @@ mod tests {
                     0..12,
                     PlannedTokenKind::String,
                     Vec::new(),
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
                 candidate(
                     1..6,
                     PlannedTokenKind::Variable,
                     Vec::new(),
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
                 candidate(
                     7..11,
                     PlannedTokenKind::Variable,
                     Vec::new(),
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
             ],
         )
@@ -1076,7 +972,7 @@ mod tests {
                 start..source.len(),
                 PlannedTokenKind::String,
                 Vec::new(),
-                CandidateOrigin::Lexeme,
+                TokenOverlayKind::Lexeme,
             )],
         )
         .expect("multiline token plan");
@@ -1113,13 +1009,13 @@ mod tests {
                     0..4,
                     PlannedTokenKind::Keyword,
                     Vec::new(),
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
                 candidate(
                     3..6,
                     PlannedTokenKind::Identifier,
                     Vec::new(),
-                    CandidateOrigin::Lexeme,
+                    TokenOverlayKind::Lexeme,
                 ),
             ],
         );
@@ -1135,7 +1031,7 @@ mod tests {
                 1..4,
                 PlannedTokenKind::String,
                 Vec::new(),
-                CandidateOrigin::Lexeme,
+                TokenOverlayKind::Lexeme,
             )],
         );
         assert!(matches!(invalid, Err(TokenPlanError::InvalidSpan { .. })));
@@ -1149,7 +1045,7 @@ mod tests {
                     PlannedTokenModifier::Reference,
                     PlannedTokenModifier::Reference,
                 ],
-                CandidateOrigin::Lexeme,
+                TokenOverlayKind::Lexeme,
             )],
         );
         assert!(matches!(
@@ -1168,13 +1064,13 @@ mod tests {
                     0..5,
                     PlannedTokenKind::Variable,
                     Vec::new(),
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
                 candidate(
                     0..5,
                     PlannedTokenKind::Class,
                     Vec::new(),
-                    CandidateOrigin::Semantic(FenceSemanticRole::Entity),
+                    TokenOverlayKind::SemanticEntity,
                 ),
             ],
         );

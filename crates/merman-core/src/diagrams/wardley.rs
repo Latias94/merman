@@ -8,6 +8,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    family::CombinedSemanticFailure,
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -202,35 +203,33 @@ impl WardleyDiagramRenderModel {
     }
 }
 
-pub fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
     construct_wardley_semantic_source(code, meta)
-        .map_err(|failure| *failure.error)?
+        .map_err(CombinedSemanticFailure::into_error)?
         .into_compat_json(meta)
 }
 
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let source = construct_wardley_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let editor_facts = source.editor_facts.clone();
-    Ok((source.into_compat_json(meta)?, editor_facts))
+) -> crate::family::CombinedSemanticParse {
+    crate::family::CombinedSemanticParse::from_construction(
+        construct_wardley_semantic_source(code, meta),
+        |source| {
+            let editor_facts = source.editor_facts.clone();
+            (source.into_compat_json(meta), editor_facts)
+        },
+        CombinedSemanticFailure::into_parts,
+    )
 }
 
-pub fn parse_wardley_model_for_render(
+pub(crate) fn parse_wardley_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<WardleyDiagramRenderModel> {
     Ok(construct_wardley_semantic_source(code, meta)
-        .map_err(|failure| *failure.error)?
+        .map_err(CombinedSemanticFailure::into_error)?
         .into_render_model(meta))
-}
-
-pub fn parse_wardley_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_wardley_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -275,32 +274,10 @@ impl WardleySemanticSource {
 }
 
 #[derive(Debug)]
-struct WardleySemanticFailure {
-    error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
-}
-
-#[derive(Debug)]
 struct WardleyParseOutcome {
     ast: WardleyAst,
     editor_facts: EditorSemanticFacts,
     first_problem: Option<WardleyParseProblem>,
-}
-
-impl WardleySemanticFailure {
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
-        let (message, span) = match &*self.error {
-            Error::DiagramParse { diagnostic, .. } => {
-                (diagnostic.message().to_string(), diagnostic.span())
-            }
-            error => (error.to_string(), None),
-        };
-        self.editor_facts.mark_recovered_from_parse_error(
-            format!("wardley parser recovered after parse error: {message}"),
-            span,
-        );
-        *self.editor_facts
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -619,7 +596,7 @@ fn push_wardley_text_lexeme(
 fn construct_wardley_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<WardleySemanticSource, WardleySemanticFailure> {
+) -> std::result::Result<WardleySemanticSource, CombinedSemanticFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("wardley");
 
@@ -648,15 +625,12 @@ fn wardley_failure(
     meta: &ParseMetadata,
     problem: WardleyParseProblem,
     editor_facts: EditorSemanticFacts,
-) -> WardleySemanticFailure {
-    WardleySemanticFailure {
-        error: Box::new(Error::diagram_parse_exact(
-            meta.diagram_type.clone(),
-            problem.message,
-            problem.span,
-        )),
-        editor_facts: Box::new(editor_facts),
-    }
+) -> CombinedSemanticFailure {
+    CombinedSemanticFailure::parser_recovery(
+        "wardley",
+        Error::diagram_parse_exact(meta.diagram_type.clone(), problem.message, problem.span),
+        editor_facts,
+    )
 }
 
 fn parse_wardley_ast(code: &str) -> WardleyParseOutcome {
@@ -3045,7 +3019,11 @@ batch-loader->end-user
         let start = source.find("Missing").unwrap();
         assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 7)));
 
-        let facts = parse_wardley_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_wardley_json_and_editor_facts,
+            source,
+            &meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "Missing"));
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "Child"));
@@ -3060,15 +3038,12 @@ batch-loader->end-user
         let source = "wardley-beta\ncomponent API [0.6, 0.7]\ncomponent DB [0.4, 0.5]\nAPI -> DB\n";
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
         let engine = Engine::new();
-        let combined = engine
-            .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+        let combined = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
             1
         );
-        let crate::ParsedEditorFacts::Available(facts) = combined.editor_facts else {
+        let crate::ParsedEditorFacts::Available(facts) = combined.editor_facts() else {
             panic!("expected wardley editor facts");
         };
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
@@ -3089,13 +3064,16 @@ batch-loader->end-user
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Wardley(model) = typed.model else {
+        let RenderSemanticModel::Wardley(model) = typed.model() else {
             panic!("expected typed wardley model");
         };
         assert_eq!(model.nodes.len(), 2);
         assert_eq!(
-            render_model_to_compat_json(&model, &typed.meta).unwrap(),
-            combined.diagram.model
+            &render_model_to_compat_json(model, typed.metadata()).unwrap(),
+            combined
+                .outcome()
+                .parsed_model()
+                .expect("expected parsed snapshot")
         );
     }
 
@@ -3110,7 +3088,11 @@ batch-loader->end-user
             "\"重复 🤓\" +'同步'> Target+> ; 重复 🤓\r\n",
             "note \"重复 🤓\" [0.20, 0.30]\r\n",
         );
-        let facts = parse_wardley_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_wardley_json_and_editor_facts,
+            source,
+            &meta(),
+        );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert_eq!(facts.lexeme_failure(), None);
@@ -3190,7 +3172,11 @@ batch-loader->end-user
         );
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
-        let facts = parse_wardley_editor_facts(source, &meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_wardley_json_and_editor_facts,
+            source,
+            &meta(),
+        );
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
             1

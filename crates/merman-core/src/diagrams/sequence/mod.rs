@@ -49,7 +49,7 @@ use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
 pub(crate) use parse::parse_sequence_json_and_editor_facts;
-pub use parse::{parse_sequence, parse_sequence_editor_facts, parse_sequence_model_for_render};
+pub(crate) use parse::{parse_sequence, parse_sequence_model_for_render};
 #[cfg(test)]
 pub(crate) use parse::{
     reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
@@ -79,7 +79,7 @@ mod tests {
             )
             .expect("parse should succeed")
             .expect("sequence diagram should be detected");
-        let RenderSemanticModel::Sequence(model) = parsed.model else {
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
             panic!("expected typed Sequence render model");
         };
 
@@ -113,12 +113,12 @@ Worker-->>Bob: Done"#;
             .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let crate::RenderSemanticModel::Sequence(model) = typed.model else {
+        let crate::RenderSemanticModel::Sequence(model) = typed.model() else {
             panic!("expected Sequence render model");
         };
 
         assert_eq!(
-            render_model_to_compat_json(&model, &typed.meta).unwrap(),
+            render_model_to_compat_json(model, typed.metadata()).unwrap(),
             compat.model
         );
     }

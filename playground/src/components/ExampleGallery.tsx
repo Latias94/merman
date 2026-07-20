@@ -136,7 +136,9 @@ export function ExampleGallery() {
       >
         <DialogHeader className="border-b bg-muted/15 p-4 pr-14 text-left sm:px-5">
           <DialogTitle>{t("examples.title")}</DialogTitle>
-          <DialogDescription>{t("examples.description")}</DialogDescription>
+          <DialogDescription className="sr-only">
+            {t("examples.description")}
+          </DialogDescription>
           <DialogClose asChild>
             <Button
               variant="ghost"

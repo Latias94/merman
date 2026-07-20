@@ -243,6 +243,7 @@ function realmFailure(
     version: `test-${engine}`,
     stage: "render" as const,
     message: "render failed",
+    detail: engine === "mermaid" ? '{"hash":{"token":"INVALID"}}' : null,
   };
 }
 

@@ -11,7 +11,7 @@ import {
 } from "react";
 import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
 import {
-  normalizeSvgDimensions,
+  normalizeSvgForResponsivePreview,
   parseSvgDimensions,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
@@ -24,6 +24,8 @@ interface Point {
 
 export interface SvgViewportController {
   zoom: number;
+  contentScale: number;
+  previewSize: SvgDimensions | null;
   position: Point;
   isDragging: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -48,6 +50,9 @@ export function useSvgViewport({
   enabled,
 }: UseSvgViewportOptions): SvgViewportController {
   const [zoom, setZoom] = useState(1);
+  const [fitZoom, setFitZoom] = useState(1);
+  const [previewSize, setPreviewSize] = useState<SvgDimensions | null>(null);
+  const [fittedSvg, setFittedSvg] = useState<string | null>(null);
   const [position, setPosition] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
@@ -60,22 +65,40 @@ export function useSvgViewport({
     const content = contentRef.current;
     if (!container || !content) return;
 
-    const contentSize = measurePreviewContent(content, svg);
-    if (!contentSize) return;
-
     const availableWidth = Math.max(container.clientWidth - 48, 1);
     const availableHeight = Math.max(container.clientHeight - 48, 1);
-    const nextZoom = Math.max(
-      0.1,
-      Math.min(
+    const intrinsicSize = svg ? parseSvgDimensions(svg) : null;
+    let nextZoom: number;
+
+    if (intrinsicSize) {
+      const insets = measureElementInsets(content);
+      const availableSvgWidth = Math.max(availableWidth - insets.width, 1);
+      const availableSvgHeight = Math.max(availableHeight - insets.height, 1);
+      nextZoom = Math.min(
+        1,
+        availableSvgWidth / intrinsicSize.width,
+        availableSvgHeight / intrinsicSize.height
+      );
+      if (!Number.isFinite(nextZoom) || nextZoom <= 0) return;
+      setPreviewSize({
+        width: Math.max(1, intrinsicSize.width * nextZoom),
+        height: Math.max(1, intrinsicSize.height * nextZoom),
+      });
+    } else {
+      const contentSize = measureRenderedContent(content);
+      if (!contentSize) return;
+      nextZoom = Math.min(
         1,
         availableWidth / contentSize.width,
         availableHeight / contentSize.height
-      )
-    );
+      );
+      setPreviewSize(null);
+    }
 
+    setFittedSvg(svg);
     setIsAutoFit(true);
-    setZoom(Number(nextZoom.toFixed(3)));
+    setFitZoom(nextZoom);
+    setZoom(nextZoom);
     setPosition({ x: 0, y: 0 });
   }, [svg]);
 
@@ -86,8 +109,8 @@ export function useSvgViewport({
 
   const zoomOut = useCallback(() => {
     setIsAutoFit(false);
-    setZoom((value) => Math.max(value / 1.2, 0.1));
-  }, []);
+    setZoom((value) => Math.max(value / 1.2, minimumZoom(fitZoom)));
+  }, [fitZoom]);
 
   const reset = useCallback(() => {
     setIsAutoFit(false);
@@ -95,12 +118,17 @@ export function useSvgViewport({
     setPosition({ x: 0, y: 0 });
   }, []);
 
-  const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsAutoFit(false);
-    const delta = Math.exp(-event.deltaY * 0.001);
-    setZoom((value) => Math.max(0.1, Math.min(5, value * delta)));
-  }, []);
+  const handleWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsAutoFit(false);
+      const delta = Math.exp(-event.deltaY * 0.001);
+      setZoom((value) =>
+        Math.max(minimumZoom(fitZoom), Math.min(5, value * delta))
+      );
+    },
+    [fitZoom]
+  );
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -171,8 +199,11 @@ export function useSvgViewport({
     };
   }, [enabled, fitToView, isAutoFit, svg]);
 
+  const hasCurrentFit = fittedSvg === svg;
   return {
     zoom,
+    contentScale: hasCurrentFit ? zoom / fitZoom : 1,
+    previewSize: hasCurrentFit ? previewSize : null,
     position,
     isDragging,
     containerRef,
@@ -215,7 +246,7 @@ export function SvgViewport({
 
     try {
       assertSafeSvgForDom(svg);
-      const normalized = normalizeSvgDimensions(svg)?.svg ?? svg;
+      const normalized = normalizeSvgForResponsivePreview(svg)?.svg ?? svg;
       assertSafeSvgForDom(normalized);
       return normalized;
     } catch {
@@ -247,7 +278,12 @@ export function SvgViewport({
       cancelAnimationFrame(frame);
       root.replaceChildren();
     };
-  }, [displaySvg, presentationKey]);
+  }, [
+    controller.previewSize?.height,
+    controller.previewSize?.width,
+    displaySvg,
+    presentationKey,
+  ]);
 
   return (
     <div
@@ -275,7 +311,7 @@ export function SvgViewport({
         >
           <div
             style={{
-              transform: `translate(-50%, -50%) scale(${controller.zoom})`,
+              transform: `translate(-50%, -50%) scale(${controller.contentScale})`,
               transformOrigin: "center center",
             }}
           >
@@ -286,7 +322,18 @@ export function SvgViewport({
                 contentClassName
               )}
             >
-              <div ref={shadowHostRef} className="inline-flex" />
+              <div
+                ref={shadowHostRef}
+                className="block shrink-0"
+                style={
+                  controller.previewSize
+                    ? {
+                        width: controller.previewSize.width,
+                        height: controller.previewSize.height,
+                      }
+                    : undefined
+                }
+              />
             </div>
           </div>
         </div>
@@ -297,19 +344,7 @@ export function SvgViewport({
   );
 }
 
-function measurePreviewContent(
-  content: HTMLDivElement,
-  svg: string | null
-): SvgDimensions | null {
-  const parsed = svg ? parseSvgDimensions(svg) : null;
-  if (parsed) {
-    const insets = measureElementInsets(content);
-    return {
-      width: parsed.width + insets.width,
-      height: parsed.height + insets.height,
-    };
-  }
-
+function measureRenderedContent(content: HTMLDivElement): SvgDimensions | null {
   if (content.offsetWidth <= 0 || content.offsetHeight <= 0) {
     return null;
   }
@@ -318,6 +353,10 @@ function measurePreviewContent(
     width: content.offsetWidth,
     height: content.offsetHeight,
   };
+}
+
+function minimumZoom(fitZoom: number): number {
+  return Math.min(0.1, fitZoom / 10);
 }
 
 function measureElementInsets(element: HTMLElement): SvgDimensions {

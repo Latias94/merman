@@ -4,7 +4,7 @@ use crate::diagrams::langium_common::{
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Value, json};
 
@@ -35,7 +35,7 @@ struct InfoSemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
-pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = info_output_into_render_model(parse_info_semantic_source(code, meta)?.output);
     render_model_to_compat_json(&model, meta)
 }
@@ -43,13 +43,18 @@ pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let InfoSemanticSource {
-        output,
-        editor_facts,
-    } = parse_info_semantic_source(code, meta)?;
-    let model = info_output_into_render_model(output);
-    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
+) -> family::CombinedSemanticParse {
+    family::CombinedSemanticParse::from_construction(
+        construct_info_semantic_source(code, meta),
+        |source| {
+            let model = info_output_into_render_model(source.output);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    )
 }
 
 fn info_output_into_render_model(output: InfoParseOutput) -> InfoDiagramRenderModel {
@@ -80,7 +85,7 @@ pub(crate) fn render_model_to_compat_json(
     })
 }
 
-pub fn parse_info_model_for_render(
+pub(crate) fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<InfoDiagramRenderModel> {
@@ -89,53 +94,14 @@ pub fn parse_info_model_for_render(
     ))
 }
 
-pub fn parse_info_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    parse_info_editor_source(code)
-}
-
-fn parse_info_editor_source(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let InfoHeader::Body(body) = info_body_start(code) else {
-        return facts;
-    };
-    let mut offset = body.offset;
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
-    let mut show_info_seen = false;
-    let mut common_seen = false;
-
-    while offset < code.len() {
-        match parse_info_statement(code, offset, !show_info_seen && !common_seen) {
-            InfoStatement::Common(parsed) => {
-                common_seen = true;
-                lexemes.extend(parsed.lexemes.clone());
-                push_langium_common_editor_fact(&mut facts, &parsed.fact, "info");
-                if let Some(diagnostic) = &parsed.diagnostic {
-                    push_langium_common_recovery(&mut facts, diagnostic);
-                }
-                offset += parsed.consumed;
-            }
-            InfoStatement::ShowInfo { span, consumed } => {
-                show_info_seen = true;
-                lexemes.keyword(span);
-                push_show_info_editor_fact(&mut facts, span);
-                offset += consumed;
-            }
-            InfoStatement::Empty { next_offset } => offset = next_offset,
-            InfoStatement::Unexpected {
-                span, next_offset, ..
-            } => {
-                facts.mark_recovered_from_parse_error("unexpected info statement", Some(span));
-                offset = next_offset;
-            }
-        }
-    }
-
-    lexemes.attach(code, &mut facts);
-    facts
-}
-
 fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSemanticSource> {
+    construct_info_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
+}
+
+fn construct_info_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("info");
 
@@ -160,16 +126,20 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
     let mut editor_facts = EditorSemanticFacts::new();
     let mut show_info = false;
     let mut common_seen = false;
+    let mut first_error = None;
 
     while offset < code.len() {
         match parse_info_statement(code, offset, !show_info && !common_seen) {
             InfoStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
-                    return Err(Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
-                        diagnostic.message.clone(),
-                        diagnostic.span.start,
-                    ));
+                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    first_error.get_or_insert_with(|| {
+                        Error::diagram_parse_insertion_point(
+                            meta.diagram_type.clone(),
+                            diagnostic.message.clone(),
+                            diagnostic.span.start,
+                        )
+                    });
                 }
                 lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "info");
@@ -187,19 +157,29 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
                 ch,
                 skipped,
                 bad_offset,
-                ..
+                span,
+                next_offset,
             } => {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!(
-                        "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
-                    ),
-                ));
+                editor_facts
+                    .mark_recovered_from_parse_error("unexpected info statement", Some(span));
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!(
+                            "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
+                        ),
+                    )
+                });
+                offset = next_offset;
             }
         }
     }
 
     lexemes.attach(code, &mut editor_facts);
+
+    if let Some(error) = first_error {
+        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+    }
 
     Ok(InfoSemanticSource {
         output: InfoParseOutput::Model(InfoDiagramRenderModel {
@@ -341,7 +321,7 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig, ParseOptions};
+    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig};
 
     fn test_meta() -> ParseMetadata {
         ParseMetadata {
@@ -357,7 +337,7 @@ mod tests {
         let engine = Engine::new();
         let text = "info showInfo\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("info", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("info", text)
             .unwrap()
             .unwrap();
 
@@ -378,7 +358,11 @@ mod tests {
         let model = parse_info(source, &test_meta()).unwrap();
         assert_eq!(model["showInfo"], true);
 
-        let facts = parse_info_editor_facts(source, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_info_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
         assert!(
             facts
@@ -405,7 +389,11 @@ mod tests {
         let source = "info\ntitle Version\nshowInfo\n";
         assert!(parse_info(source, &test_meta()).is_err());
 
-        let facts = parse_info_editor_facts(source, &test_meta());
+        let facts = crate::family::test_support::editor_facts(
+            parse_info_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(
             facts
