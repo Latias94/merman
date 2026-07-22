@@ -1,0 +1,371 @@
+{
+  "schema_version": 1,
+  "descriptor_id": "merman-artifact-profiles",
+  "capability_authority": {
+    "path": "capabilities/feature-surface-v1.json",
+    "schema_version": 1,
+    "digest": "sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023"
+  },
+  "profiles": [
+    {
+      "id": "c-abi-native",
+      "description": "Current host C library build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
+          "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
+          "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "svg"]
+      }
+    },
+    {
+      "id": "cli-release",
+      "description": "Current complete command-line release build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-cli",
+        "manifest": "crates/merman-cli/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman-cli",
+          "kinds": ["bin"],
+          "crate_types": ["bin"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin", "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"
+          ]
+        }
+      },
+      "expected": {
+        "preset": "preset-mmdc",
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
+          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
+          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
+          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
+          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "lsp-library",
+      "description": "Current embeddable language-server library build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-lsp",
+        "manifest": "crates/merman-lsp/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_lsp",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "outputs": []
+      }
+    },
+    {
+      "id": "lsp-stdio-release",
+      "description": "Current standalone stdio language-server release build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-lsp",
+        "manifest": "crates/merman-lsp/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman-lsp",
+          "kinds": ["bin"],
+          "crate_types": ["bin"],
+          "required_features": ["stdio"]
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin", "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "outputs": []
+      }
+    },
+    {
+      "id": "rust-analysis",
+      "description": "Current analysis library build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-analysis",
+        "manifest": "crates/merman-analysis/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_analysis",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": []
+      }
+    },
+    {
+      "id": "rust-core",
+      "description": "Current invariant Mermaid language core build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-core",
+        "manifest": "crates/merman-core/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_core",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "runtime_ids": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "outputs": []
+      }
+    },
+    {
+      "id": "rust-editor-core",
+      "description": "Current protocol-neutral editor intelligence build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-editor-core",
+        "manifest": "crates/merman-editor-core/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_editor_core",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "editor", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "outputs": []
+      }
+    },
+    {
+      "id": "rust-facade",
+      "description": "Current merman facade default build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "runtime_ids": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "outputs": []
+      }
+    },
+    {
+      "id": "rustdoc-proc-macro",
+      "description": "Current rustdoc proc-macro build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-rustdoc",
+        "manifest": "crates/merman-rustdoc/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_rustdoc",
+          "kinds": ["proc-macro"],
+          "crate_types": ["proc-macro"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "typst-wasm",
+      "description": "Current published Typst WASM build without math.",
+      "semantic_target": "typst",
+      "cargo": {
+        "package": "merman-typst-plugin",
+        "manifest": "crates/merman-typst-plugin/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["analysis", "cytoscape-layout", "elk-layout", "render"],
+        "target": {
+          "name": "merman_typst_plugin",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": ["analysis", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": [
+          "analysis", "layout-cytoscape", "layout-elk", "svg", "typst-transport"
+        ],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "uniffi-native",
+      "description": "Current host UniFFI runtime library build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-uniffi",
+        "manifest": "crates/merman-uniffi/Cargo.toml",
+        "profile": "release",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_uniffi",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
+          "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
+          "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "svg"]
+      }
+    },
+    {
+      "id": "web-wasm",
+      "description": "Current fused browser WASM build.",
+      "semantic_target": "web",
+      "cargo": {
+        "package": "merman-wasm",
+        "manifest": "crates/merman-wasm/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": true,
+        "features": [],
+        "target": {
+          "name": "merman_wasm",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "browser-random", "browser-time", "browser-timing",
+          "editor", "layout-cytoscape", "layout-elk", "svg"
+        ],
+        "outputs": ["ascii", "svg"]
+      }
+    }
+  ]
+}

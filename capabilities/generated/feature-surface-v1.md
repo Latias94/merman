@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e03998c9fa8`
+Semantic digest: `sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023`
 
 ## Public Leaves
 
@@ -53,13 +53,3 @@ Semantic digest: `sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e0
 | `preset-web-editor` | `web` | `analysis`, `editor` | `analysis`, `editor` |
 | `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
 | `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
-
-## Pending Migrations
-
-These entries are explicit transitional debt, not evidence that current consumers match this descriptor.
-
-| Surface | Unit | Legacy live catalogs | Replacement |
-| --- | --- | --- | --- |
-| `native-abi` | `U6` | `abi/merman-v2.json` | ABI 3 references generated capability and output semantic IDs while retaining independent numeric wire discriminants. |
-| `typst-artifacts` | `U8` | `crates/merman-typst-plugin/wasm-profiles.json` | Typst bridge, svg, and publish artifacts consume exact artifact profiles linked to the Typst transport contract. |
-| `web-packages` | `U8` | `platforms/web/web-surface-descriptor.json` | Web package assembly consumes an exact artifact profile and browser transport contract that reference preset-web-* semantic bundles. |

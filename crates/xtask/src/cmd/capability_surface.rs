@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 const DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
@@ -42,17 +42,6 @@ const INCIDENTAL_DEPENDENCY_NAMES: &[&str] = &[
     "wasm-bindgen",
 ];
 
-// These are retirement guards, not capability authorities. They remain stable after a ledger entry
-// is removed so strict mode can detect a catalog that was accidentally left live.
-const LEGACY_LIVE_CATALOG_GUARDS: &[(&str, &str)] = &[
-    ("native-abi", "abi/merman-v2.json"),
-    (
-        "typst-artifacts",
-        "crates/merman-typst-plugin/wasm-profiles.json",
-    ),
-    ("web-packages", "platforms/web/web-surface-descriptor.json"),
-];
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct CapabilitySurfaceDescriptor {
@@ -63,7 +52,6 @@ struct CapabilitySurfaceDescriptor {
     capabilities: Vec<CapabilityDescriptor>,
     outputs: Vec<OutputDescriptor>,
     presets: Vec<PresetDescriptor>,
-    migration_ledger: Vec<MigrationLedgerEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -129,7 +117,6 @@ struct CapabilityDescriptor {
     targets: Vec<String>,
     implications: Vec<String>,
     absence: AbsenceContract,
-    admission: AdmissionContract,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -137,31 +124,6 @@ struct CapabilityDescriptor {
 struct AbsenceContract {
     error_id: String,
     contract: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct AdmissionContract {
-    observable_contract: String,
-    material_closure: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    evidence: Option<MeasurementEvidence>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct MeasurementEvidence {
-    status: EvidenceStatus,
-    kind: String,
-    source: String,
-    gate: String,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum EvidenceStatus {
-    MigrationRequired,
-    Observed,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -182,15 +144,6 @@ struct PresetDescriptor {
     targets: Vec<String>,
     includes: Vec<String>,
     expected_runtime_capabilities: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct MigrationLedgerEntry {
-    surface: String,
-    migration_unit: String,
-    legacy_catalogs: Vec<String>,
-    replacement: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -408,24 +361,6 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
             &capability.absence.contract,
             &format!("{base}.absence.contract"),
         )?;
-        require_non_empty(
-            &capability.admission.observable_contract,
-            &format!("{base}.admission.observable_contract"),
-        )?;
-        require_non_empty(
-            &capability.admission.material_closure,
-            &format!("{base}.admission.material_closure"),
-        )?;
-        let evidence =
-            capability.admission.evidence.as_ref().ok_or_else(|| {
-                format!("{base}.admission.evidence: measured evidence is required")
-            })?;
-        require_non_empty(&evidence.kind, &format!("{base}.admission.evidence.kind"))?;
-        require_non_empty(
-            &evidence.source,
-            &format!("{base}.admission.evidence.source"),
-        )?;
-        require_non_empty(&evidence.gate, &format!("{base}.admission.evidence.gate"))?;
     }
 
     for (capability_index, capability) in descriptor.capabilities.iter().enumerate() {
@@ -578,13 +513,12 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         });
         if !included || !omitted {
             return Err(format!(
-                "capabilities[{capability_index}].admission: `{}` needs at least one applicable preset include and omission",
+                "capabilities[{capability_index}].preset_coverage: `{}` needs at least one applicable preset include and omission",
                 capability.id
             ));
         }
     }
 
-    validate_migration_ledger(descriptor)?;
     Ok(())
 }
 
@@ -760,150 +694,6 @@ fn validate_preset_contract(
     Ok(())
 }
 
-fn validate_migration_ledger(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), String> {
-    validate_unique_ids(
-        descriptor
-            .migration_ledger
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| (index, entry.surface.as_str())),
-        "migration_ledger",
-    )?;
-    let mut catalog_paths = BTreeSet::new();
-    for (index, entry) in descriptor.migration_ledger.iter().enumerate() {
-        let base = format!("migration_ledger[{index}]");
-        validate_kebab_id(&entry.surface, &format!("{base}.surface"))?;
-        if !entry.migration_unit.starts_with('U')
-            || entry.migration_unit.len() < 2
-            || !entry.migration_unit[1..]
-                .bytes()
-                .all(|byte| byte.is_ascii_digit())
-        {
-            return Err(format!(
-                "{base}.migration_unit: `{}` must be a single implementation unit such as `U6`",
-                entry.migration_unit
-            ));
-        }
-        if entry.legacy_catalogs.is_empty() {
-            return Err(format!(
-                "{base}.legacy_catalogs: pending migration must name its legacy live catalog"
-            ));
-        }
-        for (path_index, path) in entry.legacy_catalogs.iter().enumerate() {
-            if !is_owned_relative_path(path) {
-                return Err(format!(
-                    "{base}.legacy_catalogs[{path_index}]: `{path}` must be a normalized repository-relative path"
-                ));
-            }
-            if !catalog_paths.insert(path) {
-                return Err(format!(
-                    "{base}.legacy_catalogs[{path_index}]: duplicate legacy catalog `{path}`"
-                ));
-            }
-        }
-        require_non_empty(&entry.replacement, &format!("{base}.replacement"))?;
-    }
-    Ok(())
-}
-
-fn is_owned_relative_path(value: &str) -> bool {
-    let path = Path::new(value);
-    !value.is_empty()
-        && !value.contains('\\')
-        && !path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
-}
-
-fn validate_committed_ledger(
-    root: &Path,
-    descriptor: &CapabilitySurfaceDescriptor,
-) -> Result<(), String> {
-    let recorded = descriptor
-        .migration_ledger
-        .iter()
-        .flat_map(|entry| {
-            entry
-                .legacy_catalogs
-                .iter()
-                .map(move |path| (path.as_str(), entry.surface.as_str()))
-        })
-        .collect::<BTreeMap<_, _>>();
-    for (surface, path) in LEGACY_LIVE_CATALOG_GUARDS {
-        let exists = root.join(path).is_file();
-        let recorded_surface = recorded.get(path).copied();
-        match (exists, recorded_surface) {
-            (true, Some(actual)) if actual == *surface => {}
-            (true, Some(actual)) => {
-                return Err(format!(
-                    "migration_ledger: legacy catalog `{path}` is recorded under `{actual}`, expected `{surface}`"
-                ));
-            }
-            (true, None) => {
-                return Err(format!(
-                    "migration_ledger: live legacy catalog `{path}` is not recorded"
-                ));
-            }
-            (false, Some(_)) => {
-                return Err(format!(
-                    "migration_ledger: `{path}` was removed but its ledger entry remains"
-                ));
-            }
-            (false, None) => {}
-        }
-    }
-    for entry in &descriptor.migration_ledger {
-        for path in &entry.legacy_catalogs {
-            if !root.join(path).is_file() {
-                return Err(format!(
-                    "migration_ledger[surface={}].legacy_catalogs: `{path}` is not a live file",
-                    entry.surface
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_strict(root: &Path, descriptor: &CapabilitySurfaceDescriptor) -> Result<(), String> {
-    if !descriptor.migration_ledger.is_empty() {
-        return Err(format!(
-            "migration_ledger: strict mode requires an empty ledger; pending surfaces: {}",
-            descriptor
-                .migration_ledger
-                .iter()
-                .map(|entry| entry.surface.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-    for capability in &descriptor.capabilities {
-        let status = capability
-            .admission
-            .evidence
-            .as_ref()
-            .map(|evidence| evidence.status);
-        if status != Some(EvidenceStatus::Observed) {
-            return Err(format!(
-                "capabilities[id={}].admission.evidence.status: strict mode requires `observed` evidence",
-                capability.id
-            ));
-        }
-    }
-    let remaining = LEGACY_LIVE_CATALOG_GUARDS
-        .iter()
-        .filter_map(|(_, path)| root.join(path).is_file().then_some(*path))
-        .collect::<Vec<_>>();
-    if !remaining.is_empty() {
-        return Err(format!(
-            "strict.legacy_catalogs: old live catalogs remain: {}",
-            remaining.join(", ")
-        ));
-    }
-    Ok(())
-}
-
 fn read_descriptor(path: &Path) -> Result<CapabilitySurfaceDescriptor, XtaskError> {
     let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
@@ -923,7 +713,6 @@ fn read_descriptor(path: &Path) -> Result<CapabilitySurfaceDescriptor, XtaskErro
 
 fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let mut canonical = descriptor.clone();
-    canonical.migration_ledger.clear();
     canonical
         .targets
         .sort_by(|left, right| left.id.cmp(&right.id));
@@ -1618,20 +1407,6 @@ fn render_markdown(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         )
         .unwrap();
     }
-    out.push_str("\n## Pending Migrations\n\nThese entries are explicit transitional debt, not evidence that current consumers match this descriptor.\n\n| Surface | Unit | Legacy live catalogs | Replacement |\n| --- | --- | --- | --- |\n");
-    let mut ledger = descriptor.migration_ledger.iter().collect::<Vec<_>>();
-    ledger.sort_by(|left, right| left.surface.cmp(&right.surface));
-    for entry in ledger {
-        writeln!(
-            out,
-            "| `{}` | `{}` | {} | {} |",
-            entry.surface,
-            entry.migration_unit,
-            code_list(entry.legacy_catalogs.iter().map(String::as_str)),
-            entry.replacement
-        )
-        .unwrap();
-    }
     Ok(out)
 }
 
@@ -1721,17 +1496,123 @@ pub(crate) fn gen_capability_surface(args: Vec<String>) -> Result<(), XtaskError
     }
     let root = crate::cmd::workspace_root();
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
-    validate_committed_ledger(&root, &descriptor).map_err(surface_error)?;
     for (path, contents) in generated_artifacts(&descriptor).map_err(surface_error)? {
         write_artifact(&root, &path, &contents)?;
     }
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct ResolvedPresetContract {
+    pub(super) targets: BTreeSet<String>,
+    pub(super) capabilities: BTreeSet<String>,
+    pub(super) expected_runtime_capabilities: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct CapabilityContractCatalog {
+    pub(super) schema_version: u32,
+    pub(super) digest: String,
+    pub(super) target_ids: BTreeSet<String>,
+    pub(super) capability_targets: BTreeMap<String, BTreeSet<String>>,
+    pub(super) capability_implications: BTreeMap<String, BTreeSet<String>>,
+    pub(super) runtime_capability_targets: BTreeMap<String, BTreeSet<String>>,
+    pub(super) output_capabilities: BTreeMap<String, String>,
+    pub(super) output_targets: BTreeMap<String, BTreeSet<String>>,
+    pub(super) presets: BTreeMap<String, ResolvedPresetContract>,
+}
+
+pub(super) fn load_capability_contract_catalog(
+    root: &Path,
+) -> Result<CapabilityContractCatalog, XtaskError> {
+    let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
+    validate_descriptor(&descriptor).map_err(surface_error)?;
+    let capability_by_id = descriptor
+        .capabilities
+        .iter()
+        .map(|capability| (capability.id.as_str(), capability))
+        .collect::<BTreeMap<_, _>>();
+    let preset_by_id = descriptor
+        .presets
+        .iter()
+        .map(|preset| (preset.id.as_str(), preset))
+        .collect::<BTreeMap<_, _>>();
+    let effective = effective_preset_sets(&descriptor, &capability_by_id, &preset_by_id)
+        .map_err(surface_error)?;
+    let digest = semantic_digest(&descriptor).map_err(surface_error)?;
+
+    Ok(CapabilityContractCatalog {
+        schema_version: descriptor.schema_version,
+        digest,
+        target_ids: descriptor
+            .targets
+            .iter()
+            .map(|target| target.id.clone())
+            .collect(),
+        capability_targets: descriptor
+            .capabilities
+            .iter()
+            .map(|capability| {
+                (
+                    capability.id.clone(),
+                    capability.targets.iter().cloned().collect(),
+                )
+            })
+            .collect(),
+        capability_implications: descriptor
+            .capabilities
+            .iter()
+            .map(|capability| {
+                (
+                    capability.id.clone(),
+                    capability.implications.iter().cloned().collect(),
+                )
+            })
+            .collect(),
+        runtime_capability_targets: descriptor
+            .runtime_capabilities
+            .iter()
+            .map(|capability| {
+                (
+                    capability.id.clone(),
+                    capability.targets.iter().cloned().collect(),
+                )
+            })
+            .collect(),
+        output_capabilities: descriptor
+            .outputs
+            .iter()
+            .map(|output| (output.id.clone(), output.capability.clone()))
+            .collect(),
+        output_targets: descriptor
+            .outputs
+            .iter()
+            .map(|output| (output.id.clone(), output.targets.iter().cloned().collect()))
+            .collect(),
+        presets: descriptor
+            .presets
+            .iter()
+            .map(|preset| {
+                (
+                    preset.id.clone(),
+                    ResolvedPresetContract {
+                        targets: preset.targets.iter().cloned().collect(),
+                        capabilities: effective[&preset.id].clone(),
+                        expected_runtime_capabilities: preset
+                            .expected_runtime_capabilities
+                            .iter()
+                            .cloned()
+                            .collect(),
+                    },
+                )
+            })
+            .collect(),
+    })
+}
+
 pub(crate) fn verify_capability_surface_artifacts() -> Result<Option<String>, XtaskError> {
     let root = crate::cmd::workspace_root();
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
-    validate_committed_ledger(&root, &descriptor).map_err(surface_error)?;
     let drift = drifted_artifacts(&root, &descriptor)?;
     if drift.is_empty() {
         Ok(None)
@@ -1750,19 +1631,15 @@ pub(crate) fn verify_capability_surface_artifacts() -> Result<Option<String>, Xt
 pub(crate) fn verify_capability_surface(args: Vec<String>) -> Result<(), XtaskError> {
     let root = crate::cmd::workspace_root();
     let mut descriptor_path = root.join(DESCRIPTOR_PATH);
-    let mut custom_descriptor = false;
-    let mut strict = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--descriptor" => {
                 index += 1;
                 descriptor_path = PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?);
-                custom_descriptor = true;
             }
-            "--strict" => strict = true,
             "--help" | "-h" => {
-                println!("usage: xtask verify-capability-surface [--descriptor <path>] [--strict]");
+                println!("usage: xtask verify-capability-surface [--descriptor <path>]");
                 return Err(XtaskError::Usage);
             }
             _ => return Err(XtaskError::Usage),
@@ -1770,14 +1647,10 @@ pub(crate) fn verify_capability_surface(args: Vec<String>) -> Result<(), XtaskEr
         index += 1;
     }
 
-    let descriptor = read_descriptor(&descriptor_path)?;
-    if !custom_descriptor {
-        validate_committed_ledger(&root, &descriptor).map_err(surface_error)?;
-    }
-    if strict {
-        validate_strict(&root, &descriptor).map_err(surface_error)?;
-    }
-    if !custom_descriptor && let Some(message) = verify_capability_surface_artifacts()? {
+    read_descriptor(&descriptor_path)?;
+    if descriptor_path == root.join(DESCRIPTOR_PATH)
+        && let Some(message) = verify_capability_surface_artifacts()?
+    {
         return Err(XtaskError::VerifyFailed(message));
     }
     Ok(())
@@ -1916,11 +1789,6 @@ mod tests {
         }
         assert!(!c.contains("@mermanjs/"));
         assert!(!c.contains("typst-publish"));
-    }
-
-    #[test]
-    fn committed_migration_ledger_covers_every_live_legacy_catalog() {
-        validate_committed_ledger(&crate::cmd::workspace_root(), &committed_descriptor()).unwrap();
     }
 
     #[test]
@@ -2065,7 +1933,7 @@ mod tests {
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from(["native", "web"]),
-            "Typst math remains unadmitted until U11c"
+            "Typst math remains unavailable until its dedicated admission gates pass"
         );
         assert_eq!(
             preset_by_id["preset-web-render"]
@@ -2082,17 +1950,6 @@ mod tests {
                 "browser-random",
                 "browser-timing",
             ])
-        );
-    }
-
-    #[test]
-    fn semantic_digest_excludes_migration_bookkeeping() {
-        let descriptor = committed_descriptor();
-        let mut migrated = descriptor.clone();
-        migrated.migration_ledger.clear();
-        assert_eq!(
-            semantic_digest(&descriptor).unwrap(),
-            semantic_digest(&migrated).unwrap()
         );
     }
 
@@ -2235,54 +2092,16 @@ mod tests {
     }
 
     #[test]
-    fn fixture_rejects_leaf_without_measured_evidence() {
+    fn fixture_rejects_manual_admission_bookkeeping() {
         let mut descriptor = committed_value();
         let index = capability_index(&descriptor, "svg");
-        descriptor["capabilities"][index]["admission"]
-            .as_object_mut()
-            .unwrap()
-            .remove("evidence");
-        let error = validate_fixture(descriptor).expect_err("missing evidence must fail");
+        descriptor["capabilities"][index]["admission"] = json!({
+            "evidence": {"status": "observed"}
+        });
+        let error = validate_fixture(descriptor).expect_err("manual admission state must fail");
         assert!(
-            error.contains(&format!("capabilities[{index}].admission.evidence")),
+            error.contains("unknown field `admission`"),
             "unexpected diagnostic: {error}"
         );
-    }
-
-    #[test]
-    fn fixture_rejects_invalid_migration_ledger() {
-        let mut descriptor = committed_value();
-        descriptor["migration_ledger"][0]["legacy_catalogs"] = json!(["../outside.json"]);
-        let error = validate_fixture(descriptor).expect_err("invalid ledger must fail");
-        assert!(
-            error.contains("migration_ledger[0].legacy_catalogs[0]"),
-            "unexpected diagnostic: {error}"
-        );
-    }
-
-    #[test]
-    fn strict_mode_rejects_pending_ledger_and_unrecorded_old_catalog() {
-        let descriptor = committed_descriptor();
-        let temporary = tempfile::tempdir().unwrap();
-        let error = validate_strict(temporary.path(), &descriptor).unwrap_err();
-        assert!(error.contains("strict mode requires an empty ledger"));
-
-        let mut cleared = descriptor;
-        cleared.migration_ledger.clear();
-        let error = validate_strict(temporary.path(), &cleared).unwrap_err();
-        assert!(
-            error.contains("admission.evidence.status") && error.contains("observed"),
-            "unexpected diagnostic: {error}"
-        );
-        for capability in &mut cleared.capabilities {
-            capability.admission.evidence.as_mut().unwrap().status = EvidenceStatus::Observed;
-        }
-        validate_strict(temporary.path(), &cleared).unwrap();
-
-        let old_catalog = temporary.path().join(LEGACY_LIVE_CATALOG_GUARDS[0].1);
-        fs::create_dir_all(old_catalog.parent().unwrap()).unwrap();
-        fs::write(&old_catalog, "{}\n").unwrap();
-        let error = validate_strict(temporary.path(), &cleared).unwrap_err();
-        assert!(error.contains("strict.legacy_catalogs"));
     }
 }

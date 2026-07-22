@@ -162,6 +162,8 @@ jobs:
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-editor-token-descriptor
           cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-web-diagram-catalog
           cargo run --locked -p xtask -- verify-playground-example-catalog
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py

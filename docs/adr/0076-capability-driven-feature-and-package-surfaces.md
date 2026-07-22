@@ -3,95 +3,83 @@
 - Status: accepted
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`
+- Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
 
 ## Context
 
 Merman's historical feature graph mixes user-visible products, diagram registry profiles,
 implementation crate names, host behavior, and negative variants. ABI, Web, Typst, runtime, and
 documentation code then repeat overlapping boolean catalogs. Cargo feature unification makes
-those names additive compilation choices, but it cannot make them a runtime policy selector.
+features additive compilation choices, but it cannot make them a runtime policy selector or prove
+that an omitted dependency is absent.
 
-The architecture needs one stable semantic vocabulary without making Cargo manifests generated
-or opaque. It also needs a migration path that does not claim all existing consumers changed in
-the same unit.
+The architecture needs one stable semantic vocabulary and reproducible build recipes without
+generating Cargo manifests or centralizing every protocol and package concern in one descriptor.
 
 ## Decision
 
 `capabilities/feature-surface-v1.json` exclusively owns public capability IDs, output IDs,
 descriptions, target restrictions, implications, named presets, expected runtime capability sets,
-and their additive semantic closure. `capabilities/artifact-profiles-v1.json` owns exact Cargo build
-recipes and distributable composition. `capabilities/transport-contracts-v1.json` owns protocol
-boundaries by referencing, rather than copying, each independent wire authority. Their schema
-versions are independent from native ABI, diagnostics, facts, editor token, text-measurement,
-resource, Typst transport, and package versions.
+and their additive semantic closure.
 
-Cargo manifests remain hand-written declarations. Structured Cargo metadata and compiled runtime
-reports will be checked against the descriptor as their owning surfaces migrate; source substring
-matching and generated Cargo manifests are not contracts.
+`capabilities/artifact-profiles-v1.json` owns exact Cargo recipes for capability-bearing compiled
+artifacts. Each recipe identifies a real Cargo package and target, profile, `default-features`
+choice, explicit feature set, build target, and expected capability/output report. It contains no
+release-state field, documentation path, evidence prose, package bundle, or wire-layout copy.
 
-Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. The
-initial vocabulary includes SVG, analysis, editor, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layout,
-math, four native system adapters, and the three CLI tool leaves. Presets use the `preset-*`
-namespace and are additive inclusion bundles only. They never assert that an omitted capability or
-dependency is absent. Exact native, Web, and Typst artifacts live in artifact profiles and select a
-transport contract independently.
+Cargo manifests remain hand-written. Each protocol keeps its natural authority: the native ABI
+descriptor and header own C layouts and symbols; UniFFI definitions own generated language
+bindings; LSP owns its protocol surface; Web package exports own browser entry points; and the
+Typst descriptor owns its wasm-minimal-protocol boundary. Package manifests and release checks own
+distribution composition. No repository-wide transport catalog duplicates these authorities.
 
-Runtime-only browser adapters and the Typst transport have semantic runtime IDs but are not Cargo
-public leaves. Runtime environment selection and resource profiles remain independent from the
-compiled capability set.
+Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. Presets
+use the `preset-*` namespace and are additive inclusion bundles only. They never assert that an
+omitted capability or dependency is absent. Runtime environment selection and resource profiles
+remain independent from the compiled capability set.
 
-The semantic catalog digest is computed from a normalized descriptor with the migration ledger
-removed. Native numeric output discriminants and ABI layouts remain owned by the ABI descriptor;
-they reference semantic IDs and report their layout digest separately.
+## Verification Boundary
+
+Machine checks cover facts that can be derived without reading prose:
+
+- descriptor schema, IDs, implication closure, preset closure, and target legality;
+- generated Rust, TypeScript, C, and Markdown projection freshness;
+- Cargo package, target, profile, feature, crate-type, and target-triple existence;
+- exact artifact-profile capability/output mappings;
+- surface-owned ABI layouts, exports, runtime probes, package contents, dependency closures, and
+  target builds.
+
+A successful executable probe is evidence. There is no manually promoted
+`migration-required`/`observed` artifact state. README wording, plan identifiers, private function
+names, and source substrings are not machine evidence and are not release gates. User examples may
+be compiled or executed because their behavior is machine-testable; ordinary prose remains a
+review concern.
 
 ## Admission Rules
 
-A new public leaf is accepted only when all of these are present and validated:
+A new public leaf is accepted only when all of these are present:
 
 - a user-observable API, output, engine, adapter, or compiled tool surface;
 - typed absence or removal of that callable surface;
 - a material closure boundary;
-- at least one supported preset include and omission;
-- observed measured evidence with a reproducible gate.
+- at least one supported preset inclusion and omission;
+- an executable gate owned by the affected API, artifact, dependency, or target.
 
 Negative profiles, one-feature-per-diagram designs, and incidental dependency names are invalid.
 Named reusable layout engines are valid because users select their Mermaid behavior directly;
 `math` deliberately hides the current RaTeX implementation.
 
-## Staged Migration
-
-U1 provides schema validation, deterministic generation, fixture validation, and an explicit
-ledger for the still-live native ABI, Web, and Typst catalogs. It does not verify current manifests
-against the target model.
-
-U13 removes build and package ownership from the semantic descriptor, establishes exact artifact
-profiles and transport contracts, and records current products as `migration-required` until a
-real build and runtime probe proves them. A package or release bundle may reference several
-component profiles, while every compiled component still has exactly one profile and one transport
-owner where a callable boundary exists.
-
-Each U2-U8 surface-local unit must wire in its generated projection and enable a structured gate
-that compares the descriptor with the actual compiled capability set, runtime report, or packaged
-artifact. Only after that gate passes may the same change mark the affected evidence `observed`,
-delete the corresponding legacy catalog, and remove its ledger entry. Until then, the old file is a
-transitional consumer input, not a second semantic authority.
-
-Strict mode is intentionally fail-closed during the transition. It rejects any evidence status
-other than `observed`, a non-empty ledger, and stable retirement guards for known old catalog paths.
-U12 enables strict mode only after all structured surface gates pass and all entries and old live
-catalogs are gone.
-
 ## Consequences
 
 - Semantic IDs and presets have one reviewable source while Cargo files remain normal TOML.
-- Exact build absence is proved by observed artifact profiles, never inferred from a preset.
-- Bundles such as VSIX, wheels, AARs, and npm packages compose component profiles without inventing
-  a fake Cargo root or duplicate wire contract.
-- Generated Rust, TypeScript, C, and documentation projections are byte-stable and share one
-  semantic digest.
-- Adding a feature requires API and measured closure evidence, not only an optional dependency.
-- Clearing migration bookkeeping cannot hide a live legacy catalog.
+- Exact build absence is proved by an explicit `default-features = false` recipe plus a build or
+  closure probe, never inferred from a preset or a status field.
+- Bundles such as VSIX, wheels, AARs, and npm packages compose compiled artifacts without inventing
+  fake Cargo roots or duplicate wire contracts.
+- Generated projections are byte-stable and share one semantic digest.
+- Adding a feature requires a callable API and executable closure evidence, not only an optional
+  dependency or a documentation claim.
 - ADR-0006's tiny/full feature decision and ADR-0069's package/preset ownership are superseded.
   ADR-0066 retains its safe FFI crate boundary but no longer owns capability/output semantic IDs.
   ADR-0074 retains realm, runtime, lifecycle, benchmark, cache, and application ownership; only
-  its package-surface selection is projected from this descriptor.
+  its package-surface selection is projected from the capability descriptor.

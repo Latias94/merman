@@ -1,4 +1,5 @@
 pub(crate) mod admission;
+pub(crate) mod artifact_profiles;
 pub(crate) mod audit;
 pub(crate) mod capability_surface;
 pub(crate) mod compare;
@@ -34,6 +35,7 @@ pub(crate) mod web_catalog;
 
 pub(crate) use crate::generated::mermaid_reference::*;
 pub(crate) use admission::*;
+pub(crate) use artifact_profiles::*;
 pub(crate) use audit::*;
 pub(crate) use capability_surface::*;
 pub(crate) use compare::*;

@@ -42,6 +42,8 @@ enum XtaskError {
     TextMeasurementAbi(String),
     #[error("capability surface descriptor is invalid: {0}")]
     CapabilitySurface(String),
+    #[error("artifact profile descriptor is invalid: {0}")]
+    ArtifactProfiles(String),
     #[error("LALRPOP parser generation is invalid: {0}")]
     LalrpopParsers(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
@@ -96,6 +98,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-theme-snapshot");
     println!("  verify-editor-token-descriptor");
     println!("  verify-capability-surface");
+    println!("  verify-artifact-profiles");
     println!("  verify-playground-example-catalog");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
@@ -206,6 +209,9 @@ fn main() -> Result<(), XtaskError> {
         "verify-theme-snapshot" => cmd::verify_theme_snapshot(args.collect()),
         "verify-editor-token-descriptor" => cmd::verify_editor_token_descriptor(args.collect()),
         "verify-capability-surface" => cmd::verify_capability_surface(args.collect()),
+        "verify-artifact-profiles" => {
+            cmd::verify_artifact_profiles(args.collect()).map_err(XtaskError::ArtifactProfiles)
+        }
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
         }

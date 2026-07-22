@@ -1,14 +1,16 @@
-# Capability Surface
+# Capability And Artifact Surfaces
 
-`feature-surface-v1.json` is the only authority for public capability IDs, output IDs,
-implications, additive presets, expected runtime reports, and target restrictions. Exact Cargo
-recipes and release artifacts belong to `artifact-profiles-v1.json`; protocol ownership belongs to
-`transport-contracts-v1.json`. Cargo manifests remain hand-written compilation declarations. They
-are not generated from any descriptor.
+Merman has two repository-wide machine authorities in this directory:
 
-The descriptor establishes the target architecture before every consumer has migrated. It does
-not claim that current Cargo manifests, runtime reports, native bindings, Web packages, or Typst
-artifacts already match the target model.
+- `feature-surface-v1.json` owns public capability and output IDs, implications, additive presets,
+  expected runtime reports, and target legality.
+- `artifact-profiles-v1.json` owns exact Cargo build recipes for capability-bearing artifacts. A
+  recipe names the package, target, profile, `default-features` choice, explicit features, build
+  target, and expected capability/output set.
+
+Cargo manifests remain hand-written compilation declarations. C ABI, UniFFI, LSP, Web exports,
+and the Typst transport retain their own interface authorities. This directory does not copy those
+wire contracts or package release metadata into a generic transport catalog.
 
 ## Generated Projections
 
@@ -17,67 +19,51 @@ Run:
 ```text
 cargo run -p xtask -- gen-capability-surface
 cargo run -p xtask -- verify-capability-surface
+cargo run -p xtask -- verify-artifact-profiles
 ```
 
 The generator writes byte-stable Rust, TypeScript, C, and Markdown projections under
-`capabilities/generated/`. These files are descriptor-owned staging artifacts. A projection does
-not become a live consumer contract until its owning migration unit wires it into that surface and
-removes the superseded catalog.
+`capabilities/generated/`. Verification checks schema, implications, preset closure, target
+legality, generated-file freshness, Cargo package/target existence, Cargo feature names, and exact
+profile-to-capability mappings.
 
-`verify-generated` includes the non-strict capability-surface freshness check. Fixture validation
-can use an alternate descriptor without generating files:
+Fixture validation can use an alternate descriptor without generating files:
 
 ```text
 cargo run -p xtask -- verify-capability-surface --descriptor path/to/fixture.json
+cargo run -p xtask -- verify-artifact-profiles --descriptor path/to/fixture.json
 ```
 
-The semantic SHA-256 digest excludes the migration ledger. Clearing transitional debt therefore
-does not masquerade as a capability-catalog change.
+The semantic SHA-256 digest covers the complete capability descriptor. Project plans, migration
+units, release status, and documentation paths deliberately do not live in either machine contract.
 
 ## Contract Boundaries
 
-A preset says only which capabilities are requested. Cargo features are additive, so a preset
-cannot prove that another feature or dependency is absent. Only an observed artifact profile with
-`default_features: false`, a structurally verified Cargo invocation, and measured closure evidence
-may make an exclusion claim.
+A preset says which capabilities are requested. Cargo features are additive, so a preset cannot
+prove that an omitted feature or dependency is absent. An artifact profile can make that claim only
+when it records `default_features: false` and the corresponding build or dependency-closure probe
+passes. There is no hand-maintained `observed` status: executable evidence is the successful probe.
 
-Package names, target triples, release surfaces, resource defaults, and wire versions deliberately
-do not live in this descriptor. Keeping those facts in their owning authorities prevents a package
-or transport migration from changing the semantic capability digest.
+Artifact profiles describe compiled components, not every package that redistributes one. Wheels,
+AARs, XCFrameworks, npm packages, and other release bundles keep their package manifests and
+release checks at the owning surface. A bundle may compose one or more artifact profiles without
+inventing another Cargo root or copying an ABI definition.
 
-## Migration Ledger
-
-The descriptor's `migration_ledger` implements a three-stage transition:
-
-1. U1 validates the canonical schema and generated projections while explicitly recording every
-   legacy live ABI, Web, and Typst catalog.
-2. Each U2-U8 surface migration consumes the canonical projection and enables a structured,
-   surface-local gate that compares the descriptor with the actual compiled capability set,
-   runtime report, or packaged artifact. Only after that gate passes may the same change mark the
-   affected evidence `observed`, delete the legacy catalog, and remove its ledger entry.
-3. U12 enables `verify-capability-surface --strict`. Strict mode rejects every non-`observed`
-   evidence record, any remaining ledger entry, and known legacy catalog paths, so changing only
-   bookkeeping cannot produce a false pass.
-
-The legacy paths are retirement guards, not alternate capability authorities.
+The verifier does not parse README prose, plan text, or private symbol names. User documentation is
+reviewed and example-tested where useful, but prose is not a release authority. Generated reference
+tables may have freshness checks because their source is structured machine data.
 
 ## Admitting A Public Leaf
 
-A public leaf must use a positive kebab-case name for an observable API, output, selectable
-engine, environment adapter, or compiled tool command. Its descriptor record must define:
+A public leaf uses a positive kebab-case name for an observable API, output, selectable engine,
+environment adapter, or compiled tool command. It must have:
 
-- a typed missing-capability contract or an explicitly removed callable surface;
-- a material dependency, target, license, security, resource, build-time, or artifact-size
-  boundary;
+- a callable public behavior and typed missing-capability result when omitted;
+- a material dependency, target, license, security, resource, build-time, or artifact-size boundary;
 - at least one applicable preset that includes it and one that omits it;
-- measured evidence and the gate that reproduces that evidence.
+- an executable API, artifact, dependency, or target probe owned by the affected surface.
 
-New leaves require `observed` evidence. The plan-mandated U1 leaves are temporarily marked
-`migration-required` to state explicitly that their consumer surfaces have not yet been measured.
-U2-U8 may replace that status only after the owning structured surface gate passes, and must update
-the evidence, live consumer, legacy catalog, and matching ledger entry atomically. Diagram-specific,
-negative, and incidental dependency-named public features are rejected. Layout and math names
-describe selectable Mermaid behavior rather than their current implementation crates.
-
-Runtime environment selection and resource policy remain separate contracts. A compiled adapter
-does not select native or deterministic behavior by itself.
+Diagram-specific, negative, and incidental dependency-named public features are rejected. Layout
+and math names describe selectable Mermaid behavior rather than their current implementation
+crates. Runtime environment selection and resource policy remain separate contracts: compiling an
+adapter does not select native or deterministic behavior for an operation.
