@@ -105,6 +105,11 @@ Implement each admitted delta through the family-owned path appropriate to its k
 - **Removed or changed syntax**: parser recovery, diagnostics, editor lexemes, semantic tokens,
   completions, hover, symbols, rename/reference behavior, fixtures, and migration documentation.
 
+When a changed syntax path uses a checked-in LALRPOP grammar, treat the `.lalrpop` source and its
+generated Rust parser as one atomic projection. Run `cargo run -p xtask -- gen-lalrpop-parsers`;
+never hand-edit `crates/merman-core/src/generated/lalrpop/*.rs`; then prove freshness with
+`cargo run -p xtask -- verify-lalrpop-parsers`.
+
 Port observable dependency behavior needed by headless Merman; do not port implementation-only data
 structures that add no behavior. Parser-only support is incomplete. Keep one parser-derived fact
 stream for semantics, editor services, LSP, Monaco, and VS Code rather than adding a regex or
@@ -146,6 +151,7 @@ cargo run -p xtask -- verify-mermaid-reference
 cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment
+cargo run -p xtask -- verify-lalrpop-parsers
 cargo run -p xtask -- verify --strict
 cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo fmt --all -- --check

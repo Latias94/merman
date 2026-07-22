@@ -91,6 +91,8 @@ security admission; it must not weaken the canonical inline-SVG policy.
 ## Verification Evidence
 
 - [ ] Mermaid reference verification rejects stale source, lock, provenance, and generated output.
+- [ ] Every changed LALRPOP grammar was regenerated through `xtask`; checked-in parser output was
+      not hand-edited and `verify-lalrpop-parsers` passes.
 - [ ] New or removed registrations cannot disappear from parser/editor/render/Playground inventory.
 - [ ] Focused family, parser, editor, LSP, Web, Playground, CLI, and security tests pass as applicable.
 - [ ] Workspace `nextest`, formatting, clippy, strict verification, and alignment gates pass.

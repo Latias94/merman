@@ -35,6 +35,8 @@ REQUIRED_SKILL_TEXT = (
     "verify-mermaid-reference",
     "verify-playground-example-catalog",
     "verify-web-diagram-catalog",
+    "gen-lalrpop-parsers",
+    "verify-lalrpop-parsers",
     "check-alignment",
     "verify --strict",
     "wasm-size-matrix",
@@ -77,6 +79,7 @@ REQUIRED_COMMAND_SEQUENCE = (
     "cargo run -p xtask -- verify-playground-example-catalog",
     "cargo run -p xtask -- verify-web-diagram-catalog",
     "cargo run -p xtask -- check-alignment",
+    "cargo run -p xtask -- verify-lalrpop-parsers",
     "cargo run -p xtask -- verify --strict",
     "cargo run -p xtask -- wasm-size-matrix --budget-file "
     "docs/release/WASM_SIZE_BUDGETS.json",
