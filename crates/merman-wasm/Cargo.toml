@@ -17,16 +17,7 @@ categories = ["wasm", "visualization"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = [
-  "core-host",
-  "render",
-  "analysis",
-  "ascii",
-  "cytoscape-layout",
-  "elk-layout",
-  "editor-language",
-]
-core-host = ["merman-bindings-core/core-host"]
+default = []
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]

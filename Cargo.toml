@@ -89,10 +89,9 @@ icu_collator = "2.2.1"
 icu_locale_core = "2.2.0"
 lol_html = "3.0"
 url = "2.5.4"
-uuid = { version = "1.23", default-features = false, features = ["std"] }
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 cssparser = "0.36.0"
-jiff = { version = "0.2.32", features = ["js"] }
+jiff = { version = "0.2.32", default-features = false }
 clap = { version = "4.6", features = ["derive"] }
 clap_complete = "4.6"
 console_error_panic_hook = "0.1"
@@ -100,7 +99,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 png = "0.18"
 proc-macro2 = "1"
 quote = "1"
-rand = "0.10"
+getrandom = { version = "0.4", default-features = false }
 resvg = "0.47"
 serde-wasm-bindgen = "0.6"
 syn = { version = "2", features = ["full", "parsing", "visit"] }

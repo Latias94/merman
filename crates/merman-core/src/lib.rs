@@ -25,7 +25,7 @@ pub mod models;
 mod parse_pipeline;
 pub mod preprocess;
 pub mod resources;
-mod runtime;
+pub mod runtime;
 pub mod sanitize;
 mod theme;
 pub mod theme_color;
@@ -149,8 +149,7 @@ pub struct Engine {
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
     default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
-    fixed_today_local: Option<chrono::NaiveDate>,
-    local_time_zone: std::result::Result<time::LocalTimeZone, time::LocalTimeZoneError>,
+    runtime_policy: runtime::RuntimePolicy,
 }
 
 impl Default for Engine {
@@ -164,37 +163,20 @@ impl Default for Engine {
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
             default_effective_config,
-            fixed_today_local: None,
-            local_time_zone: Ok(time::LocalTimeZone::ambient()),
+            runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
     }
 }
 
 impl Engine {
-    pub(crate) fn parse_timing_enabled() -> bool {
-        #[cfg(feature = "host-timing")]
-        {
-            Self::parse_timing_enabled_from_env()
-        }
-
-        #[cfg(not(feature = "host-timing"))]
-        false
-    }
-
-    #[cfg(feature = "host-timing")]
-    fn parse_timing_enabled_from_env() -> bool {
-        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *ENABLED.get_or_init(|| {
-            matches!(
-                std::env::var("MERMAN_PARSE_TIMING").as_deref(),
-                Ok("1") | Ok("true")
-            )
-        })
-    }
-
     /// Creates an engine using the pinned Mermaid baseline registries and default site config.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an engine backed by all native system adapters.
+    pub fn try_native() -> std::result::Result<Self, runtime::RuntimePolicyError> {
+        Ok(Self::new().with_runtime_policy(runtime::RuntimePolicy::try_native()?))
     }
 
     pub(crate) fn default_effective_config(&self) -> Result<MermaidConfig> {
@@ -203,44 +185,58 @@ impl Engine {
 
     /// Overrides the "today" value used by diagrams that depend on local time (e.g. Gantt).
     ///
-    /// This exists primarily to make fixture snapshots deterministic. By default, Mermaid uses the
-    /// current local date.
+    /// This exists primarily to make fixture snapshots deterministic. The default runtime policy
+    /// uses the Unix epoch; native callers must explicitly select [`Engine::try_native`].
     pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.fixed_today_local = today;
+        self.runtime_policy = self.runtime_policy.with_fixed_today(today);
         self
     }
 
-    /// Overrides the local timezone offset (in minutes) used by diagrams that depend on local time
-    /// semantics (notably Gantt).
-    ///
-    /// This exists primarily to make fixture snapshots deterministic across CI runners. When
-    /// `None`, the system local timezone is used.
-    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.local_time_zone = match offset_minutes {
-            Some(offset_minutes) => time::LocalTimeZone::fixed(offset_minutes),
-            None => Ok(time::LocalTimeZone::ambient()),
-        };
-        self
+    /// Selects a fixed local UTC offset for diagrams with local-time semantics.
+    pub fn try_with_fixed_local_offset_minutes(
+        mut self,
+        offset_minutes: i32,
+    ) -> std::result::Result<Self, runtime::RuntimePolicyError> {
+        self.runtime_policy = self
+            .runtime_policy
+            .try_with_fixed_local_offset_minutes(offset_minutes)?;
+        Ok(self)
     }
 
     /// Installs an already-resolved local timezone without consulting ambient process state.
     pub fn with_local_time_zone(mut self, time_zone: time::LocalTimeZone) -> Self {
-        self.local_time_zone = Ok(time_zone);
+        self.runtime_policy = self.runtime_policy.with_local_time_zone(time_zone);
         self
+    }
+
+    /// Replaces the complete runtime policy used to begin future operations.
+    pub fn with_runtime_policy(mut self, policy: runtime::RuntimePolicy) -> Self {
+        self.runtime_policy = policy;
+        self
+    }
+
+    /// Replays a previously frozen runtime context without consulting system state.
+    pub fn with_operation_context(self, context: runtime::OperationContext) -> Self {
+        self.with_runtime_policy(runtime::RuntimePolicy::from_operation_context(context))
+    }
+
+    pub fn runtime_policy(&self) -> &runtime::RuntimePolicy {
+        &self.runtime_policy
+    }
+
+    pub fn begin_operation(
+        &self,
+    ) -> std::result::Result<runtime::OperationContext, runtime::RuntimePolicyError> {
+        self.runtime_policy.begin_operation()
     }
 
     /// Returns the fixed local timezone offset configured for this engine.
     pub fn fixed_local_offset_minutes(&self) -> Option<i32> {
-        self.local_time_zone
-            .as_ref()
-            .ok()
-            .and_then(time::LocalTimeZone::fixed_offset_minutes)
+        self.runtime_policy.fixed_local_offset_minutes()
     }
 
-    pub fn local_time_zone(
-        &self,
-    ) -> std::result::Result<&time::LocalTimeZone, &time::LocalTimeZoneError> {
-        self.local_time_zone.as_ref()
+    pub fn local_time_zone(&self) -> &time::LocalTimeZone {
+        self.runtime_policy.local_time_zone()
     }
 
     /// Applies site-level Mermaid config defaults.

@@ -613,15 +613,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
+    let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::super::timing::TimingGuard::new(dst))
-    }
+    let total_timer = timing.start();
 
     #[derive(Debug, Clone, serde::Serialize)]
     struct Pt {
@@ -726,7 +720,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -739,7 +733,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     drop(_g_build_ctx);
 
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
+    let _g_viewbox = timing.section(&mut timings.viewbox);
 
     let padding = 10.0;
     let viewport_bounds =
@@ -765,7 +759,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     drop(_g_viewbox);
 
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let mut out = String::new();
     let root_document =
@@ -1185,8 +1179,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     drop(_g_render_svg);
 
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=mindmap total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} nodes={} edges={}",
             timings.total,

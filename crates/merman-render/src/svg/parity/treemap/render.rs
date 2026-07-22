@@ -953,12 +953,12 @@ mod tests {
             leaves,
         };
 
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session);
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
         let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");

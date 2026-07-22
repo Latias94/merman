@@ -24,21 +24,23 @@ fn union_svg_path_bounds(paths: &[&str]) -> Option<crate::svg::parity::path_boun
 }
 
 fn rough_svg_path_bounds(
+    randomness: &roughr::core::RoughRandomness,
     path_data: &str,
 ) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
     let (fill_d, stroke_d) =
         crate::svg::parity::flowchart::render::node::roughjs::roughjs_paths_for_svg_path(
-            path_data, "#000", "#000", 1.3, "0 0", 0,
+            path_data, "#000", "#000", 1.3, "0 0", randomness,
         )?;
     union_svg_path_bounds(&[fill_d.as_str(), stroke_d.as_str()])
 }
 
 fn rough_stroke_svg_path_bounds(
+    randomness: &roughr::core::RoughRandomness,
     path_data: &str,
 ) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
     let stroke_d =
         crate::svg::parity::flowchart::render::node::roughjs::roughjs_stroke_path_for_svg_path(
-            path_data, "#000", 1.3, "0 0", 0,
+            path_data, "#000", 1.3, "0 0", randomness,
         )?;
     crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
 }
@@ -116,6 +118,9 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
     F: Fn(&str) -> Option<&'data str>,
 {
     let node_padding = ctx.node_padding;
+    // ViewBox estimation rebuilds RoughJS geometry but does not emit it. Keep that work on an
+    // isolated stream so it cannot advance the operation-owned stream used by actual SVG nodes.
+    let bounds_randomness = ctx.hand_drawn_seed.isolated_copy();
 
     let y_offset_for_root = |root: Option<&str>| -> f64 {
         if root.is_some() && subgraph_title_y_shift.abs() >= 1e-9 {
@@ -206,7 +211,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
 
                     let path_data =
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&points);
-                    if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                    if let Some(pb) = rough_svg_path_bounds(&bounds_randomness, &path_data) {
                         let y_shift = -wave_amplitude / 2.0;
                         left_hw = (-pb.min_x).max(0.0);
                         right_hw = pb.max_x.max(0.0);
@@ -244,7 +249,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
 
                     let path_data =
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&points);
-                    if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                    if let Some(pb) = rough_svg_path_bounds(&bounds_randomness, &path_data) {
                         let y_shift = -wave_amplitude / 2.0;
                         left_hw = (-pb.min_x).max(0.0);
                         right_hw = pb.max_x.max(0.0);
@@ -300,8 +305,8 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&tag_points);
                     let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
                     for pb in [
-                        rough_svg_path_bounds(&wave_path_data),
-                        rough_svg_path_bounds(&tag_path_data),
+                        rough_svg_path_bounds(&bounds_randomness, &wave_path_data),
+                        rough_svg_path_bounds(&bounds_randomness, &tag_path_data),
                     ]
                     .into_iter()
                     .flatten()
@@ -342,7 +347,9 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                         );
                     let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
                     for path in geometry.paths {
-                        if let Some(mut pb) = rough_stroke_svg_path_bounds(&path.d) {
+                        if let Some(mut pb) =
+                            rough_stroke_svg_path_bounds(&bounds_randomness, &path.d)
+                        {
                             pb.min_x += geometry.group_tx;
                             pb.max_x += geometry.group_tx;
                             bounds = Some(match bounds {
@@ -444,7 +451,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
 
                     let path_data =
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&points);
-                    if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                    if let Some(pb) = rough_svg_path_bounds(&bounds_randomness, &path_data) {
                         left_hw = (-pb.min_x).max(0.0);
                         right_hw = pb.max_x.max(0.0);
                         top_hh = (-pb.min_y).max(0.0);
@@ -467,7 +474,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     ];
                     let path_data =
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&points);
-                    if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                    if let Some(pb) = rough_svg_path_bounds(&bounds_randomness, &path_data) {
                         left_hw = (-pb.min_x).max(0.0);
                         right_hw = pb.max_x.max(0.0);
                         top_hh = (-pb.min_y).max(0.0);

@@ -248,7 +248,7 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeNew(
             return Ok(0);
         };
 
-        match merman_bindings_core::BindingEngine::new(options_json.as_bytes()) {
+        match crate::binding_engine_for_transport(options_json.as_bytes()) {
             Ok(engine) => {
                 let handle = Box::new(JniReusableEngine {
                     #[cfg(feature = "render")]
@@ -466,7 +466,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeRenderSvg(
             env,
             source,
             options_json,
-            merman_bindings_core::render_svg,
+            crate::transport_render_svg,
         ))
     })
 }
@@ -483,7 +483,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeRenderAscii(
             env,
             source,
             options_json,
-            merman_bindings_core::render_ascii,
+            crate::transport_render_ascii,
         ))
     })
 }
@@ -500,7 +500,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeParseJson(
             env,
             source,
             options_json,
-            merman_bindings_core::parse_json,
+            crate::transport_parse_json,
         ))
     })
 }
@@ -517,7 +517,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeLayoutJson(
             env,
             source,
             options_json,
-            merman_bindings_core::layout_json,
+            crate::transport_layout_json,
         ))
     })
 }
@@ -534,7 +534,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeJson(
             env,
             source,
             options_json,
-            merman_bindings_core::analyze_json,
+            crate::transport_analyze_json,
         ))
     })
 }
@@ -553,7 +553,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentJson(
             source,
             options_json,
             uri,
-            merman_bindings_core::analyze_document_json,
+            crate::transport_analyze_document_json,
         ))
     })
 }
@@ -572,7 +572,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentFactsJso
             source,
             options_json,
             uri,
-            merman_bindings_core::analyze_document_facts_json,
+            crate::transport_analyze_document_facts_json,
         ))
     })
 }
@@ -589,7 +589,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeValidateJson(
             env,
             source,
             options_json,
-            merman_bindings_core::validate_json,
+            crate::transport_validate_json,
         ))
     })
 }

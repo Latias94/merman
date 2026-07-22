@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043" as const;
 
 export const TARGETS = [
   {
@@ -20,30 +20,6 @@ export const TARGETS = [
 ] as const;
 
 export const RUNTIME_CAPABILITIES = [
-  {
-    "id": "browser-random",
-    "kind": "adapter",
-    "description": "Browser-provided randomness adapter.",
-    "targets": [
-      "web"
-    ]
-  },
-  {
-    "id": "browser-time",
-    "kind": "adapter",
-    "description": "Browser-provided date and time adapter.",
-    "targets": [
-      "web"
-    ]
-  },
-  {
-    "id": "browser-timing",
-    "kind": "adapter",
-    "description": "Browser monotonic timing adapter.",
-    "targets": [
-      "web"
-    ]
-  },
   {
     "id": "typst-transport",
     "kind": "transport",
@@ -554,9 +530,6 @@ export const CAPABILITY_PRESETS = [
     "expected_runtime_capabilities": [
       "analysis",
       "ascii",
-      "browser-random",
-      "browser-time",
-      "browser-timing",
       "editor",
       "layout-cytoscape",
       "layout-elk",
@@ -577,9 +550,6 @@ export const CAPABILITY_PRESETS = [
       "svg"
     ],
     "expected_runtime_capabilities": [
-      "browser-random",
-      "browser-time",
-      "browser-timing",
       "layout-cytoscape",
       "layout-elk",
       "math",
@@ -597,9 +567,6 @@ export const TARGET_IDS = [
 export type TargetId = (typeof TARGET_IDS)[number];
 
 export const RUNTIME_CAPABILITY_IDS = [
-  "browser-random",
-  "browser-time",
-  "browser-timing",
   "typst-transport"
 ] as const;
 

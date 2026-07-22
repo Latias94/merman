@@ -1,3 +1,4 @@
+use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::context::ClassRenderDetails;
 use super::edge::{
@@ -24,8 +25,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) terminal_text_style: &'a TextStyle,
     pub(super) look: &'a str,
-    pub(super) hand_drawn_seed: u64,
-    pub(super) timing_enabled: bool,
+    pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
+    pub(super) timing: RenderTiming,
 }
 
 pub(super) struct ClassSplitEdgeGroups {
@@ -67,8 +68,8 @@ pub(super) fn render_class_split_edge_groups(
             text_measurer: ctx.text_measurer,
             terminal_text_style: ctx.terminal_text_style,
             look: ctx.look,
-            hand_drawn_seed: ctx.hand_drawn_seed,
-            timing_enabled: ctx.timing_enabled,
+            hand_drawn_seed: ctx.hand_drawn_seed.clone(),
+            timing: ctx.timing,
         },
     );
     ClassSplitEdgeGroups {

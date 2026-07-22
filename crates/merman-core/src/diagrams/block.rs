@@ -1317,7 +1317,8 @@ impl<'a> Parser<'a> {
 
     fn generate_id(&mut self) -> String {
         self.gen_counter += 1;
-        let rand = crate::runtime::generated_id_hex(12, self.gen_counter as u64, 0x0062_6C6F_636B);
+        let rand =
+            crate::runtime::generated_id_hex("block.generated-id", self.gen_counter as u64, 12);
         format!("id-{rand}-{}", self.gen_counter)
     }
 
@@ -3015,9 +3016,8 @@ C<["Route"]>(left,down)
         assert_eq!(blocks[1]["label"].as_str().unwrap(), "In the middle");
     }
 
-    #[cfg(not(feature = "host-random"))]
     #[test]
-    fn generated_block_ids_are_deterministic_without_host_random() {
+    fn generated_block_ids_are_deterministic_for_default_engine() {
         fn generated_ids(model: &Value) -> Vec<String> {
             model["blocksFlat"]
                 .as_array()

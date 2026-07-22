@@ -6,7 +6,7 @@ use crate::model::{
 };
 
 struct RoughContext {
-    seed: u64,
+    randomness: roughr::core::RoughRandomness,
     line_color: String,
     fill_color: String,
 }
@@ -45,10 +45,13 @@ pub(crate) fn render_ishikawa_diagram_svg(
     if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
         let theme = PresentationTheme::new(effective_config).ishikawa();
         let rough = RoughContext {
-            seed: effective_config
-                .get("handDrawnSeed")
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(0),
+            randomness: options.rough_randomness(
+                effective_config
+                    .get("handDrawnSeed")
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or(options.seed() as f64),
+                "render.ishikawa.roughjs",
+            ),
             line_color: theme.line_color,
             fill_color: theme.main_bkg,
         };
@@ -204,7 +207,7 @@ fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
 
 fn push_rough_line(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {
     let options = roughr::core::OptionsBuilder::default()
-        .seed(rough.seed)
+        .randomness(rough.randomness.clone())
         .roughness(1.5)
         .stroke(rough_color(&rough.line_color))
         .stroke_width(2.0)
@@ -299,7 +302,7 @@ fn push_rough_arrow_marker(out: &mut String, line: &IshikawaLineLayout, rough: &
 
     let color = rough_color(&rough.line_color);
     let options = roughr::core::OptionsBuilder::default()
-        .seed(rough.seed)
+        .randomness(rough.randomness.clone())
         .roughness(1.0)
         .fill(color)
         .fill_style(roughr::core::FillStyle::Solid)
@@ -323,7 +326,7 @@ fn push_rough_arrow_marker(out: &mut String, line: &IshikawaLineLayout, rough: &
 
 fn rough_hachure_options(rough: &RoughContext) -> roughr::core::Options {
     roughr::core::OptionsBuilder::default()
-        .seed(rough.seed)
+        .randomness(rough.randomness.clone())
         .roughness(1.5)
         .fill(rough_color(&rough.fill_color))
         .fill_style(roughr::core::FillStyle::Hachure)

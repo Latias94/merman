@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 3;
+pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 4;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -25,7 +25,7 @@ pub struct BindingCapabilities {
     pub render: bool,
     pub analysis: bool,
     pub ascii: bool,
-    pub core_host: bool,
+    pub system_adapter_ids: &'static [&'static str],
     pub cytoscape_layout: bool,
     pub elk_layout: bool,
     pub ratex_math: bool,
@@ -124,7 +124,7 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         render: cfg!(feature = "render"),
         analysis: cfg!(feature = "analysis"),
         ascii: cfg!(feature = "ascii"),
-        core_host: cfg!(feature = "core-host"),
+        system_adapter_ids: merman::runtime::compiled_system_adapter_ids(),
         cytoscape_layout: compiled_cytoscape_layout_available(),
         elk_layout: compiled_elk_layout_available(),
         ratex_math: cfg!(feature = "ratex-math"),
@@ -525,7 +525,10 @@ mod tests {
         assert_eq!(capabilities.render, cfg!(feature = "render"));
         assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
+        assert_eq!(
+            capabilities.system_adapter_ids,
+            merman::runtime::compiled_system_adapter_ids()
+        );
         assert_eq!(
             capabilities.cytoscape_layout,
             cfg!(feature = "cytoscape-layout")
@@ -556,6 +559,8 @@ mod tests {
         let capabilities: Value =
             serde_json::from_slice(&binding_capabilities_json().unwrap()).unwrap();
 
+        assert!(capabilities.get("core_host").is_none());
+        assert!(capabilities["system_adapter_ids"].is_array());
         assert_eq!(capabilities["render"], cfg!(feature = "render"));
         assert_eq!(capabilities["analysis"], cfg!(feature = "analysis"));
         assert_eq!(

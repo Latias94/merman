@@ -382,11 +382,11 @@ mod tests {
             diagram_id: Some("pieFixed".to_string()),
             ..SvgRenderOptions::default()
         };
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session);
+        let execution = SvgExecution::new(&options, &debug, &session).expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(
             &layout,

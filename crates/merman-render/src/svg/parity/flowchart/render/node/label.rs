@@ -135,10 +135,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         out.push_str("</g></g></g>");
     } else {
-        let label_html =
-            super::helpers::timed_node_label_html(common.timing_enabled, details, || {
-                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-            });
+        let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
+            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+        });
         let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")

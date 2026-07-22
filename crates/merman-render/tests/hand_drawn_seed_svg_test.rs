@@ -10,7 +10,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::{Value, json};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
@@ -336,7 +336,7 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
 }
 
 #[test]
-fn flowchart_svg_normalizes_signed_and_fractional_seeds_like_roughjs() {
+fn flowchart_svg_preserves_javascript_seed_arithmetic_before_imul_coercion() {
     let source_for_seed = |seed: Value| {
         source_with_init(
             json!({
@@ -352,7 +352,10 @@ fn flowchart_svg_normalizes_signed_and_fractional_seeds_like_roughjs() {
         "flowchart-js-seed",
         &source_for_seed(serde_json::json!(u32::MAX)),
     );
-    assert_eq!(negative, uint32_equivalent);
+    assert_eq!(
+        negative, uint32_equivalent,
+        "this rectangle path does not create RoughJS' second-stroke clone, so -1 and u32::MAX share the same base Math.imul stream"
+    );
 
     let fractional = render_svg(
         "flowchart-js-seed",
@@ -360,6 +363,16 @@ fn flowchart_svg_normalizes_signed_and_fractional_seeds_like_roughjs() {
     );
     let truncated = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(1)));
     assert_eq!(fractional, truncated);
+
+    let power_of_two = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(4_294_967_296_u64)),
+    );
+    let falsy_zero = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(0)));
+    assert_ne!(
+        power_of_two, falsy_zero,
+        "2^32 is truthy and yields one zero imul sample before fallback; zero is operation-owned"
+    );
 }
 
 #[test]

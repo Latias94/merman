@@ -1941,15 +1941,7 @@ mod tests {
                 .iter()
                 .cloned()
                 .collect::<BTreeSet<_>>(),
-            ids(&[
-                "svg",
-                "layout-cytoscape",
-                "layout-elk",
-                "math",
-                "browser-time",
-                "browser-random",
-                "browser-timing",
-            ])
+            ids(&["svg", "layout-cytoscape", "layout-elk", "math",])
         );
     }
 
@@ -2023,7 +2015,7 @@ mod tests {
         let error = validate_fixture(descriptor).expect_err("ambiguous capability ID must fail");
         assert!(
             error.contains(&format!(
-                "capabilities[{index}].id: public capability `browser-time` duplicates a runtime-only capability ID"
+                "capabilities[{index}].id: public capability `typst-transport` duplicates a runtime-only capability ID"
             )),
             "unexpected diagnostic: {error}"
         );

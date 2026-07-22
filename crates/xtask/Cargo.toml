@@ -19,12 +19,16 @@ futures.workspace = true
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
 merman = { path = "../merman", features = ["render"] }
-merman-analysis = { workspace = true, features = ["core-host"] }
+merman-analysis.workspace = true
 merman-core = { path = "../merman-core" }
-merman-editor-core = { workspace = true, features = ["core-host"] }
+merman-editor-core.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true
-merman-render = { path = "../merman-render", features = ["elk-layout", "font-metrics-generation"] }
+merman-render = { path = "../merman-render", features = [
+    "cytoscape-layout",
+    "elk-layout",
+    "font-metrics-generation",
+] }
 merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false }
 regex.workspace = true
 roxmltree.workspace = true

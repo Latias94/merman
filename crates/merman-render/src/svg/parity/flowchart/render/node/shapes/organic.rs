@@ -38,7 +38,7 @@ fn render_organic_shape(
     let path = path_data(&geometry.arcs);
     if common.look_is_hand_drawn()
         && let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 super::super::roughjs::roughjs_hachure_paths_for_svg_path(
                     &path,
                     common.fill_color,

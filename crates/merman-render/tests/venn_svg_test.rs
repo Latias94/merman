@@ -7,7 +7,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::venn::layout_venn_diagram_typed;
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
@@ -114,7 +114,7 @@ style A1 color:#123456
 
 #[test]
 fn venn_canonical_typed_path_renders_svg() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
             r##"%%{init: {"venn": {"useMaxWidth": false, "width": 640, "height": 360}}}%%

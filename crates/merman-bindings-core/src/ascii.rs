@@ -1,6 +1,6 @@
 use crate::common::{
     BindingError, BindingStatus, InputResourceOperation, binding_input_resource_policy,
-    binding_local_time_policy, binding_site_config, no_diagram_error, parse_options, source_text,
+    binding_runtime_policy_from, binding_site_config, no_diagram_error, parse_options, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -16,9 +16,16 @@ pub(crate) struct CachedAsciiEngine {
 }
 
 impl CachedAsciiEngine {
-    pub(crate) fn new(options: &crate::common::BindingOptions) -> Result<Self, BindingError> {
+    pub(crate) fn with_runtime_policy(
+        options: &crate::common::BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
         Ok(Self {
-            renderer: build_ascii_renderer(options, InputResourceOperation::ArtifactUnion)?,
+            renderer: build_ascii_renderer_with_runtime_policy(
+                options,
+                InputResourceOperation::ArtifactUnion,
+                runtime_policy,
+            )?,
         })
     }
 
@@ -32,6 +39,18 @@ fn build_ascii_renderer(
     options: &crate::common::BindingOptions,
     resource_operation: InputResourceOperation,
 ) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
+    build_ascii_renderer_with_runtime_policy(
+        options,
+        resource_operation,
+        merman::runtime::RuntimePolicy::deterministic(),
+    )
+}
+
+fn build_ascii_renderer_with_runtime_policy(
+    options: &crate::common::BindingOptions,
+    resource_operation: InputResourceOperation,
+    runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
         .parse
         .as_ref()
@@ -42,11 +61,9 @@ fn build_ascii_renderer(
     } else {
         merman::ParseOptions::strict()
     };
-
-    let time = binding_local_time_policy(options)?;
+    let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
     let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_fixed_today(time.today)
-        .with_local_time_zone(time.time_zone)
+        .with_runtime_policy(runtime_policy)
         .with_parse_options(parse)
         .with_ascii_options(ascii_options_from_json(options)?)
         .with_resource_policy(binding_input_resource_policy(
@@ -203,14 +220,13 @@ fn ascii_direction(value: &str) -> Result<merman::ascii::AsciiDirection, Binding
 fn ascii_color_mode(value: &str) -> Result<merman::ascii::AsciiColorMode, BindingError> {
     match option_key(value).as_str() {
         "plain" | "none" => Ok(merman::ascii::AsciiColorMode::Plain),
-        "auto" => Ok(merman::ascii::AsciiColorMode::Auto),
         "ansi16" | "ansi-16" | "ansi_16" => Ok(merman::ascii::AsciiColorMode::Ansi16),
         "ansi256" | "ansi-256" | "ansi_256" => Ok(merman::ascii::AsciiColorMode::Ansi256),
         "truecolor" | "true-color" | "true_color" => Ok(merman::ascii::AsciiColorMode::TrueColor),
         "html" => Ok(merman::ascii::AsciiColorMode::Html),
         _ => Err(invalid_ascii_option(
             "ascii.color_mode",
-            "expected `plain`, `auto`, `ansi16`, `ansi256`, `truecolor`, or `html`",
+            "expected `plain`, `ansi16`, `ansi256`, `truecolor`, or `html`",
         )),
     }
 }
@@ -237,7 +253,7 @@ fn render_ascii_with_renderer(
 
 fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
     match err {
-        merman::ascii::HeadlessAsciiError::LocalTimeZone(err) => {
+        merman::ascii::HeadlessAsciiError::RuntimePolicy(err) => {
             BindingError::new(BindingStatus::InvalidArgument, err.to_string())
         }
         merman::ascii::HeadlessAsciiError::Parse(err) => {
@@ -394,6 +410,18 @@ mod tests {
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("ascii.charset"), "{err:?}");
+    }
+
+    #[test]
+    fn render_ascii_rejects_environment_dependent_auto_color_mode() {
+        let err = render_ascii(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "ascii": { "color_mode": "auto" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("ascii.color_mode"), "{err:?}");
     }
 
     #[test]

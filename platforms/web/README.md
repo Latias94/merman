@@ -326,8 +326,9 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 
 The package publishes subpaths for the core, render, ASCII, editor, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`analysis`, `core_host`, `cytoscape_layout`, `elk_layout`, `ratex_math`, or `editor_language`
-capabilities.
+`analysis`, `cytoscape_layout`, `elk_layout`, `ratex_math`, or `editor_language` capabilities. Read
+`system_adapter_ids` separately when an operation requires a compiled clock, timezone, random, or
+timing adapter; browser artifacts do not claim native system adapters.
 The slim subpaths are capability-specific entry points, not full API aliases. They type-re-export
 the shared public option/result types and stable helper values, then export only the runtime
 wrappers that make sense for that surface. Use `@mermanjs/web/full` or the default import when you

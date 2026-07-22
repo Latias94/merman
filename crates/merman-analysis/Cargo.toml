@@ -14,8 +14,11 @@ keywords = ["mermaid", "diagnostics", "lint", "lsp", "parser"]
 categories = ["parser-implementations", "development-tools"]
 
 [features]
-default = ["core-host"]
-core-host = ["merman-core/host"]
+default = []
+system-clock = ["merman-core/system-clock"]
+system-timezone = ["merman-core/system-timezone"]
+system-random = ["merman-core/system-random"]
+system-timing = ["merman-core/system-timing"]
 
 [dependencies]
 chrono.workspace = true

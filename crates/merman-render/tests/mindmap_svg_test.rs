@@ -9,7 +9,7 @@ use merman_render::model::MindmapDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -108,7 +108,7 @@ fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
 
 #[test]
 fn mindmap_typed_layout_handles_deep_chain() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     const DEPTH: usize = 1200;
     let source = deep_mindmap_chain(DEPTH);
 
@@ -191,7 +191,7 @@ fn mindmap_svg_uses_direct_classic_shapes_for_rounded_and_hexagon_nodes() {
 
 #[test]
 fn mindmap_tidy_tree_config_dispatches_bidirectional_layout() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(

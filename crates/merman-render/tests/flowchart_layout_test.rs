@@ -95,7 +95,7 @@ fn parse_flowchart_render_model(text: &str) -> ParsedDiagramRender {
 }
 
 fn layout_flowchart(text: &str) -> FlowchartLayout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let engine = Engine::new();
@@ -312,7 +312,7 @@ A --> B
 
 #[test]
 fn flowchart_layout_produces_positions_and_routes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let path = workspace_root()
@@ -381,7 +381,7 @@ fn flowchart_inherited_subgraph_dir_does_not_force_recursive_extraction() {
 
 #[test]
 fn flowchart_layout_respects_lr_direction() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart LR\nA-->B\nB-->C\n";
@@ -409,7 +409,7 @@ fn flowchart_layout_respects_lr_direction() {
 
 #[test]
 fn flowchart_layout_includes_clusters_with_title_placeholders() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let path = workspace_root()
@@ -633,7 +633,7 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
 #[test]
 fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Base cluster width should come from the layout result (cluster bounds), not from any
@@ -692,7 +692,7 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
 
 #[test]
 fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let text = std::fs::read_to_string(
@@ -752,7 +752,7 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
 
 #[test]
 fn flowchart_cluster_title_margins_increase_cluster_height() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text_no_margin = "flowchart TD\nsubgraph A\na-->b\nend\n";
@@ -796,7 +796,7 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
 
 #[test]
 fn flowchart_edge_label_is_included_in_subgraph_bounds() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Ensure edge labels participate in cluster bounding box calculation. Without including the
@@ -853,7 +853,7 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
 
 #[test]
 fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Mermaid 11.16 extracts clusters with an explicit direction even when an edge crosses the
@@ -956,7 +956,7 @@ fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
 
 #[test]
 fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let text = std::fs::read_to_string(
@@ -1017,7 +1017,7 @@ fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
 
 #[test]
 fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Inner\n    a -->|this is a very very long label| b\n  end\nend\n";
@@ -1060,7 +1060,7 @@ fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
 
 #[test]
 fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // The edge spans two different subgraphs; the label node should be assigned to the lowest
@@ -1113,7 +1113,7 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
 
 #[test]
 fn flowchart_html_multiline_edge_label_has_multiple_lines() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // The parity measurer normalizes `<br/>` into `\\n`, so multiline labels should get larger
@@ -1152,7 +1152,7 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
 
 #[test]
 fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Mermaid flowcharts are multigraphs; ensure we can lay out multiple edges between the same
@@ -1186,7 +1186,7 @@ fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
 
 #[test]
 fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // When a cluster is isolated, we apply recursive layout (dir/toggle) and should still include
@@ -1233,7 +1233,7 @@ fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() 
 
 #[test]
 fn flowchart_various_edge_styles_do_not_break_layout() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // The renderer is headless; edge styling should not affect layout stability.
@@ -1259,7 +1259,7 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
 
 #[test]
 fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Verify key flowchart shapes follow pinned Mermaid sizing rules (headless approximation).
@@ -1828,7 +1828,7 @@ Y@{ shape: curved-trapezoid, label: "Label" }
 
 #[test]
 fn flowchart_anchor_shape_ignores_label_for_layout() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TB\nA@{ shape: anchor, label: 'Ignored by Mermaid' }\n";
@@ -1926,7 +1926,7 @@ fn flowchart_layout_rejects_unknown_shape_instead_of_using_a_rectangle() {
     let parsed = parse_flowchart_render_model("flowchart TB\nA[known]\n");
     let mut model = flowchart_model(&parsed).clone();
     model.nodes[0].layout_shape = Some("definitely-unknown".to_string());
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
@@ -1950,7 +1950,7 @@ fn flowchart_layout_rejects_unknown_shape_instead_of_using_a_rectangle() {
 
 #[test]
 fn flowchart_wrapping_width_increases_height_for_long_labels() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
@@ -1992,7 +1992,7 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 
 #[test]
 fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrapping() {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // Mermaid HTML labels use `white-space: nowrap` initially and do not split long words. The
@@ -2043,7 +2043,7 @@ fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrappin
 
 #[test]
 fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     // In SVG-like mode (`htmlLabels=false`), Mermaid's text wrapping logic can split long words to
@@ -2101,7 +2101,7 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
 
 #[test]
 fn flowchart_svglike_markdown_node_labels_wrap_for_shape_layout() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = r#"---
@@ -2150,7 +2150,7 @@ flowchart TB
 
 #[test]
 fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let title = "This is a very long subgraph title that should wrap across multiple lines for layout parity";
@@ -2199,7 +2199,7 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
 
 #[test]
 fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let title = "Supercalifragilisticexpialidocious";
@@ -2242,7 +2242,7 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
 
 #[test]
 fn flowchart_relative_font_size_class_affects_node_label_layout() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -2362,7 +2362,7 @@ classDef border border:1px solid red;
 
 #[test]
 fn flowchart_whole_label_font_style_italic_affects_node_label_layout() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -2408,7 +2408,7 @@ classDef italic font-style:italic;
 
 #[test]
 fn cyclic_subgraph_membership_reports_recoverable_error() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let cases = [
@@ -2474,7 +2474,7 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
 
 #[test]
 fn non_cyclic_subgraph_membership_chain_still_lays_out() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    C\n  end\n  C --> D\n";
@@ -2499,7 +2499,7 @@ fn non_cyclic_subgraph_membership_chain_still_lays_out() {
 
 #[test]
 fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";

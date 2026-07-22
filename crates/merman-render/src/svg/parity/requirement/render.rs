@@ -274,7 +274,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let theme = SvgTheme::new(effective_config);
     let default_fill_color = theme.color("requirementBackground", "#ECECFF");
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
-    let hand_drawn_seed = render_settings.hand_drawn_seed;
+    let hand_drawn_seed = options.rough_randomness(
+        render_settings.hand_drawn_seed,
+        "render.requirement.roughjs",
+    );
     let calc_style = TextStyle {
         font_family: Some(render_settings.calculation_font_family),
         font_size: render_settings.calculation_font_size,
@@ -915,7 +918,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             fill: fill_color,
             stroke: stroke_color,
             stroke_width: stroke_width as f32,
-            seed: hand_drawn_seed,
+            randomness: &hand_drawn_seed,
         })
         .map(|(_, stroke_d)| stroke_d)
         .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
@@ -1010,7 +1013,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let divider_y = y + type_height + name_height + gap;
             let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
                 if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                    .seed(hand_drawn_seed)
+                    .randomness(hand_drawn_seed.clone())
                     .roughness(0.0)
                     .fill_style(roughr::core::FillStyle::Solid)
                     .stroke(stroke)

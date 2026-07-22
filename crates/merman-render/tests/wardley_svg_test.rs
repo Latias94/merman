@@ -11,7 +11,7 @@ fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String 
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
         .expect("Wardley diagram is detected");
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("Wardley layout succeeds");
     assert_eq!(artifact.family_kind(), RenderFamilyKind::Wardley);

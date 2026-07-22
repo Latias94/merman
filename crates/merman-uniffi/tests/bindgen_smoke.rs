@@ -182,6 +182,11 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     .expect("copy canonical Python package shim");
     fs::copy(package_source.join("_abi.py"), module_dir.join("_abi.py"))
         .expect("copy canonical Python ABI contract");
+    fs::copy(
+        package_source.join("_runtime_contract.py"),
+        module_dir.join("_runtime_contract.py"),
+    )
+    .expect("copy canonical Python runtime contract helper");
 
     generate_python_bindings(&cdylib, &module_dir);
     copy_cdylib_next_to_generated_module(&cdylib, &module_dir);
@@ -203,6 +208,26 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     assert!(
         output.status.success(),
         "Python package smoke failed with status {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let runtime_contract_test = workspace_root
+        .join("platforms")
+        .join("python")
+        .join("merman")
+        .join("tests")
+        .join("test_runtime_contract.py");
+    let output = Command::new(python)
+        .env("PYTHONPATH", package_dir.path().join("src"))
+        .env("PYTHONUTF8", "1")
+        .arg(&runtime_contract_test)
+        .output()
+        .expect("run Python runtime contract tests");
+    assert!(
+        output.status.success(),
+        "Python runtime contract tests failed with status {:?}\nstdout:\n{}\nstderr:\n{}",
         output.status.code(),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -254,8 +279,9 @@ fn build_cdylib(workspace_root: &Path) -> PathBuf {
             "build",
             "-p",
             "merman-uniffi",
+            "--no-default-features",
             "--features",
-            "bindgen-smoke",
+            "analysis,ascii,bindgen-smoke,cytoscape-layout,render,system-clock,system-random,system-timezone,system-timing",
         ])
         .status()
         .expect("run cargo build for merman-uniffi cdylib");

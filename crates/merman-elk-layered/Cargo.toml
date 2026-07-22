@@ -14,7 +14,7 @@ keywords = ["elk", "layout", "layered", "diagrams"]
 categories = ["visualization"]
 
 [features]
-default = ["layered"]
+default = []
 # First admission target for Mermaid's `layout: elk` / `flowchart-elk` support.
 layered = []
 

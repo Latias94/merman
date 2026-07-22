@@ -804,7 +804,7 @@ pub(crate) enum TextDirection {
     TopDown,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum TextColorMode {
     Plain,
     Auto,

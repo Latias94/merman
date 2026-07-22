@@ -3,9 +3,7 @@ use crate::options::AsciiRenderOptions;
 use crate::terminal::{
     CanvasStyle, ResolvedCanvasStyle, TerminalCell, char_display_width, write_primary_cell_style,
 };
-use std::env;
 use std::fmt::Write as _;
-use std::io::{self, IsTerminal};
 
 pub(crate) use crate::terminal::CanvasColor;
 
@@ -159,11 +157,8 @@ impl Canvas {
     }
 
     fn finish_with_options_internal(self, options: &AsciiRenderOptions, trim: bool) -> String {
-        match resolve_color_mode(options.color_mode) {
+        match options.color_mode {
             AsciiColorMode::Plain => self.finish_plain(trim),
-            AsciiColorMode::Auto => {
-                unreachable!("auto color mode must be resolved before encoding")
-            }
             AsciiColorMode::Ansi16 => {
                 self.finish_ansi(options.color_theme, AsciiColorMode::Ansi16, trim)
             }
@@ -277,58 +272,6 @@ impl Canvas {
     }
 }
 
-fn resolve_color_mode(mode: AsciiColorMode) -> AsciiColorMode {
-    match mode {
-        AsciiColorMode::Plain
-        | AsciiColorMode::Ansi16
-        | AsciiColorMode::Ansi256
-        | AsciiColorMode::TrueColor
-        | AsciiColorMode::Html => mode,
-        AsciiColorMode::Auto => detect_auto_color_mode(),
-    }
-}
-
-fn detect_auto_color_mode() -> AsciiColorMode {
-    if env::var_os("NO_COLOR").is_some() {
-        return AsciiColorMode::Plain;
-    }
-
-    let colorterm = env::var("COLORTERM")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
-
-    if env::var("CLICOLOR_FORCE").is_ok_and(|value| !value.is_empty() && value != "0") {
-        return if supports_truecolor(&colorterm) {
-            AsciiColorMode::TrueColor
-        } else {
-            AsciiColorMode::Ansi256
-        };
-    }
-
-    if !io::stdout().is_terminal() {
-        return AsciiColorMode::Plain;
-    }
-
-    if supports_truecolor(&colorterm) {
-        return AsciiColorMode::TrueColor;
-    }
-
-    if term.contains("256color") {
-        return AsciiColorMode::Ansi256;
-    }
-
-    if !term.is_empty() && term != "dumb" {
-        return AsciiColorMode::Ansi16;
-    }
-
-    AsciiColorMode::Plain
-}
-
-fn supports_truecolor(colorterm: &str) -> bool {
-    colorterm.contains("truecolor") || colorterm.contains("24bit")
-}
-
 fn push_ansi_start(out: &mut String, mode: AsciiColorMode, style: ResolvedCanvasStyle) {
     if let Some(color) = style.foreground {
         match mode {
@@ -339,7 +282,7 @@ fn push_ansi_start(out: &mut String, mode: AsciiColorMode, style: ResolvedCanvas
             AsciiColorMode::TrueColor => {
                 let _ = write!(out, "\u{1b}[38;2;{};{};{}m", color.r, color.g, color.b);
             }
-            AsciiColorMode::Plain | AsciiColorMode::Auto | AsciiColorMode::Html => {}
+            AsciiColorMode::Plain | AsciiColorMode::Html => {}
         }
     }
     if let Some(color) = style.background {
@@ -351,7 +294,7 @@ fn push_ansi_start(out: &mut String, mode: AsciiColorMode, style: ResolvedCanvas
             AsciiColorMode::TrueColor => {
                 let _ = write!(out, "\u{1b}[48;2;{};{};{}m", color.r, color.g, color.b);
             }
-            AsciiColorMode::Plain | AsciiColorMode::Auto | AsciiColorMode::Html => {}
+            AsciiColorMode::Plain | AsciiColorMode::Html => {}
         }
     }
 }

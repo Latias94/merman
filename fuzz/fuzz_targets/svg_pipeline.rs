@@ -10,7 +10,7 @@ fuzz_target!(|data: &[u8]| {
     };
     let input_is_well_formed_svg = is_well_formed_svg(svg);
 
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("parity render session must be constructible");
     if let Ok(sanitized) = svg_resvg_safe(svg, &session)

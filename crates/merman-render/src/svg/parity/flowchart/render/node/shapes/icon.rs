@@ -98,10 +98,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
         fmt(outer_y0 + outer_h)
     );
 
-    let label_html =
-        super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
-            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-        });
+    let label_html = super::super::helpers::timed_node_label_html(common.timing, details, || {
+        flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+    });
     let label_y = if top_label {
         -outer_h / 2.0
     } else {

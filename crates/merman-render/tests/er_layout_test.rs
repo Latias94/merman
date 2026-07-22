@@ -18,7 +18,7 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     let RenderSemanticModel::Er(model) = parsed.model() else {
         panic!("expected ER render model");
     };
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     layout_er_diagram_typed(
         model,

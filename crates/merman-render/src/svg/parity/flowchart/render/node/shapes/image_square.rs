@@ -127,7 +127,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             escape_xml_display(common.fill_color)
         );
         if let Some(stroke_d) =
-            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_stroke_path_for_svg_path(
                     &rect_stroke_path,
                     common.stroke_color,
@@ -150,7 +150,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 
         // Label group uses a background class in Mermaid's image/icon helpers.
         let label_html =
-            super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_label_html(common.timing, details, || {
                 flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
             });
         let label_dy = if top_label {

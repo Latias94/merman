@@ -1383,6 +1383,12 @@ class Merman {
       Merman.fromDynamicLibrary(openMermanLibraryFromPath(path));
 
   final _MermanBindings _bindings;
+  static const _supportedSystemAdapterIds = {
+    'system-clock',
+    'system-timezone',
+    'system-random',
+    'system-timing',
+  };
   Map<String, Object?>? _runtimeContractCache;
   List<String>? _supportedDiagramsCache;
   List<MermanAsciiCapability>? _asciiCapabilitiesCache;
@@ -1397,7 +1403,7 @@ class Merman {
   /// Returns the versioned ABI, feature, registry, and resource contract.
   Map<String, Object?> runtimeContract() {
     return _runtimeContractCache ??= Map.unmodifiable(
-      _decodeJsonMap(
+      _decodeRuntimeContract(
         _decodeText(_bindings.metadata(_bindings.runtimeContractJson)),
       ),
     );
@@ -1598,6 +1604,39 @@ class Merman {
       codeName: 'DART_JSON_TYPE_ERROR',
       message: 'expected JSON object',
     );
+  }
+
+  static Map<String, Object?> _decodeRuntimeContract(String text) {
+    final contract = _decodeJsonMap(text);
+    if (contract['schema_version'] != 4) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_RUNTIME_CONTRACT_SCHEMA_ERROR',
+        message: 'unsupported Merman runtime contract schema',
+      );
+    }
+    final features = contract['features'];
+    if (features is! Map<String, Object?> ||
+        features.containsKey('core_host')) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_RUNTIME_CONTRACT_SCHEMA_ERROR',
+        message: 'invalid Merman runtime contract feature projection',
+      );
+    }
+    final systemAdapterIds = features['system_adapter_ids'];
+    if (systemAdapterIds is! List ||
+        systemAdapterIds.toSet().length != systemAdapterIds.length ||
+        !systemAdapterIds.every(
+          (item) => item is String && _supportedSystemAdapterIds.contains(item),
+        )) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_RUNTIME_CONTRACT_SCHEMA_ERROR',
+        message: 'invalid Merman system adapter ID projection',
+      );
+    }
+    return contract;
   }
 
   static List<String> _decodeJsonStringList(String text) {

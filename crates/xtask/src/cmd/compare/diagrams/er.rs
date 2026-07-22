@@ -93,7 +93,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
-    let environment = merman::render::RenderEnvironment::parity();
+    let environment = merman::render::RenderEnvironment::deterministic();
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
     let renderer = merman::render::HeadlessRenderer::new()

@@ -22,8 +22,7 @@ use std::sync::Arc;
 pub struct AnalysisOptions {
     pub source: SourceDescriptor,
     pub site_config: Option<MermaidConfig>,
-    pub fixed_today: Option<chrono::NaiveDate>,
-    pub fixed_local_offset_minutes: Option<i32>,
+    pub runtime_policy: merman_core::runtime::RuntimePolicy,
     pub max_source_bytes: Option<usize>,
     pub rule_config: AnalysisRuleConfig,
 }
@@ -33,8 +32,7 @@ impl Default for AnalysisOptions {
         Self {
             source: SourceDescriptor::diagram(),
             site_config: None,
-            fixed_today: None,
-            fixed_local_offset_minutes: None,
+            runtime_policy: merman_core::runtime::RuntimePolicy::deterministic(),
             max_source_bytes: None,
             rule_config: AnalysisRuleConfig::default(),
         }
@@ -53,13 +51,36 @@ impl AnalysisOptions {
     }
 
     pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.fixed_today = today;
+        self.runtime_policy = self.runtime_policy.with_fixed_today(today);
         self
     }
 
-    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.fixed_local_offset_minutes = offset_minutes;
+    pub fn try_with_fixed_local_offset_minutes(
+        mut self,
+        offset_minutes: i32,
+    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+        self.runtime_policy = self
+            .runtime_policy
+            .try_with_fixed_local_offset_minutes(offset_minutes)?;
+        Ok(self)
+    }
+
+    pub fn with_runtime_policy(
+        mut self,
+        runtime_policy: merman_core::runtime::RuntimePolicy,
+    ) -> Self {
+        self.runtime_policy = runtime_policy;
         self
+    }
+
+    pub fn with_operation_context(self, context: merman_core::runtime::OperationContext) -> Self {
+        self.with_runtime_policy(merman_core::runtime::RuntimePolicy::from_operation_context(
+            context,
+        ))
+    }
+
+    pub fn try_native() -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+        Ok(Self::default().with_runtime_policy(merman_core::runtime::RuntimePolicy::try_native()?))
     }
 
     pub fn with_max_source_bytes(mut self, max_source_bytes: Option<usize>) -> Self {
@@ -74,8 +95,7 @@ impl AnalysisOptions {
 
     pub fn snapshot_affecting_eq(&self, other: &Self) -> bool {
         self.site_config == other.site_config
-            && self.fixed_today == other.fixed_today
-            && self.fixed_local_offset_minutes == other.fixed_local_offset_minutes
+            && self.runtime_policy == other.runtime_policy
             && self.max_source_bytes == other.max_source_bytes
             && self.source == other.source
     }
@@ -103,12 +123,43 @@ impl Analyzer {
         Self { engine, options }
     }
 
-    pub fn with_engine_and_options(engine: Engine, options: AnalysisOptions) -> Self {
+    /// Creates an analyzer with a customized engine while keeping `options` authoritative.
+    ///
+    /// Registry customizations on `engine` are preserved. Runtime policy and site configuration
+    /// are always taken from `options`, so snapshots cannot describe a different environment from
+    /// the one used by the parser.
+    pub fn with_engine(engine: Engine, options: AnalysisOptions) -> Self {
+        let engine = apply_options_to_engine(engine, &options);
         Self { engine, options }
     }
 
     pub fn options(&self) -> &AnalysisOptions {
         &self.options
+    }
+
+    pub(crate) fn try_for_operation(
+        &self,
+    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+        let context = self.engine.begin_operation()?;
+        Ok(Self {
+            engine: self.engine.clone().with_operation_context(context.clone()),
+            options: self.options.clone().with_operation_context(context),
+        })
+    }
+
+    pub(crate) fn runtime_policy_diagnostics(
+        &self,
+        error: merman_core::runtime::RuntimePolicyError,
+        source_map: &SourceMap,
+    ) -> Vec<AnalysisDiagnostic> {
+        core_error_diagnostic(
+            CoreError::from(error),
+            source_map,
+            &self.options.rule_config,
+        )
+        .diagnostic
+        .into_iter()
+        .collect()
     }
 
     pub fn analyze_result(&self, source: &str) -> AnalysisResult {
@@ -514,9 +565,11 @@ struct FlowchartFactsProjection {
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
-    let mut engine = Engine::new()
-        .with_fixed_today(options.fixed_today)
-        .with_fixed_local_offset_minutes(options.fixed_local_offset_minutes);
+    apply_options_to_engine(Engine::new(), options)
+}
+
+fn apply_options_to_engine(mut engine: Engine, options: &AnalysisOptions) -> Engine {
+    engine = engine.with_runtime_policy(options.runtime_policy.clone());
 
     if let Some(site_config) = options.site_config.clone() {
         engine = engine.with_site_config(site_config);

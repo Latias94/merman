@@ -17,7 +17,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     let width = common.layout_node.width.max(1.0);
     let height = common.layout_node.height.max(1.0);
     let rough_paths = if common.look_is_hand_drawn() {
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_hachure_paths_for_rect(
                 -width / 2.0,
                 -height / 2.0,

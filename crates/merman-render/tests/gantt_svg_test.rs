@@ -2,9 +2,8 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, TextMeasurementOperation,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::gantt::layout_gantt_diagram_typed;
@@ -22,15 +21,21 @@ fn layout_gantt_from_text_at_container_width(
     text: &str,
     container_width: f64,
 ) -> GanttDiagramLayout {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_gantt_from_text_with_measurer(text, container_width, &measurer)
+    layout_gantt_from_text_with_measurer(
+        text,
+        container_width,
+        &measurer,
+        session.local_time_zone(),
+    )
 }
 
 fn layout_gantt_from_text_with_measurer(
     text: &str,
     container_width: f64,
     measurer: &dyn TextMeasurer,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> GanttDiagramLayout {
     let engine = Engine::new();
     let parsed = futures::executor::block_on(
@@ -47,6 +52,7 @@ fn layout_gantt_from_text_with_measurer(
         parsed.metadata().effective_config.as_value(),
         measurer,
         container_width,
+        local_time_zone,
     )
     .expect("layout ok")
 }
@@ -97,7 +103,7 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
             width: 200.0,
         }),
     );
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
         .begin_session()
         .expect("render session");
@@ -106,6 +112,7 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
         "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
         1_184.0,
         &measurer,
+        session.local_time_zone(),
     );
 
     assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -128,10 +135,12 @@ fn gantt_label_placement_uses_the_resolved_container_edges() {
         calls: Arc::new(AtomicUsize::new(0)),
         width: 200.0,
     };
+    let local_time_zone = merman_core::time::LocalTimeZone::utc();
     let layout = layout_gantt_from_text_with_measurer(
         "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nFull range: full, 2024-01-01, 10d\nStart label: start, 2024-01-01, 1d\nEnd label: end, 2024-01-10, 1d",
         1_184.0,
         &measurer,
+        &local_time_zone,
     );
     let start = layout
         .tasks
@@ -174,14 +183,13 @@ fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
 
     let utc = merman_core::time::LocalTimeZone::utc();
     let measurer = DeterministicTextMeasurer::default();
-    let layout = merman_core::time::with_local_time_zone(&utc, || {
-        layout_gantt_diagram_typed(
-            &model,
-            &serde_json::json!({}),
-            &measurer,
-            LayoutOptions::default().container_width,
-        )
-    })
+    let layout = layout_gantt_diagram_typed(
+        &model,
+        &serde_json::json!({}),
+        &measurer,
+        LayoutOptions::default().container_width,
+        &utc,
+    )
     .expect("maximum-date layout should terminate successfully");
 
     assert_eq!(layout.tasks.len(), 1);
@@ -190,10 +198,10 @@ fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
-    let session = RenderEnvironment::parity()
-        .with_time_snapshot(
-            RenderTimeSnapshot::from_unix_millis(1_704_067_200_000, 0)
-                .expect("valid fixed UTC instant"),
+    let session = RenderEnvironment::deterministic()
+        .with_runtime_policy(
+            merman_core::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_704_067_200_000),
         )
         .begin_session()
         .expect("begin render session");

@@ -10,6 +10,20 @@ use merman_core::{
 use serde_json::json;
 
 #[test]
+fn custom_engine_uses_the_runtime_policy_owned_by_analysis_options() {
+    let engine = merman_core::Engine::new().with_runtime_policy(
+        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
+    );
+    let options = AnalysisOptions::default().with_runtime_policy(
+        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(2_000),
+    );
+
+    let analyzer = Analyzer::with_engine(engine, options.clone());
+
+    assert_eq!(analyzer.engine.runtime_policy(), &options.runtime_policy);
+}
+
+#[test]
 fn analysis_facts_project_canonical_effective_layout() {
     let cases = [
         (

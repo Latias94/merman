@@ -30,7 +30,7 @@ pub(super) use line_with_offset::{
     rounded_line_with_marker_offsets_for_edge_type,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
-pub(super) use trace::{FlowchartEdgeTraceInput, write_flowchart_edge_trace};
+pub(super) use trace::{FlowchartEdgeTraceInput, record_flowchart_edge_trace};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) ctx: &'a FlowchartRenderCtx<'a>,

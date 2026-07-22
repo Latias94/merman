@@ -64,7 +64,7 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
 }
 
 fn layout_snapshot_environment() -> merman::render::RenderEnvironment {
-    merman::render::RenderEnvironment::parity()
+    merman::render::RenderEnvironment::deterministic()
         .with_text_measurement_policy(merman::render::TextMeasurementPolicy::deterministic())
 }
 
@@ -203,130 +203,130 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         )));
     }
 
-    let environment = layout_snapshot_environment();
-    let utc = merman::time::LocalTimeZone::utc();
-    merman::time::with_local_time_zone(&utc, || {
-        let engine = merman::Engine::new()
-            .with_site_config(layout_snapshot_site_config())
-            .with_fixed_today(Some(
-                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0));
-        let layout_opts = merman_render::LayoutOptions::default();
-        let mut failures = Vec::new();
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
+    let environment = layout_snapshot_environment().with_runtime_policy(runtime_policy.clone());
+    let engine = merman::Engine::new()
+        .with_site_config(layout_snapshot_site_config())
+        .with_runtime_policy(runtime_policy);
+    let layout_opts = merman_render::LayoutOptions::default();
+    let mut failures = Vec::new();
 
-        for mmd_path in mmd_files {
-            let text = match fs::read_to_string(&mmd_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-                &text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
+    for mmd_path in mmd_files {
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
                 continue;
             }
-            let diagram_type = parsed.metadata().diagram_type.clone();
+        };
 
-            let session = match environment.begin_session() {
-                Ok(session) => session,
-                Err(err) => {
-                    failures.push(format!("render session failed: {err}"));
-                    continue;
-                }
-            };
-            let artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
-                Ok(v) => v,
-                Err(merman_render::Error::UnsupportedDiagram { .. }) => {
-                    // Layout snapshots are only defined for renderable built-in families. Skip
-                    // unsupported diagrams so `--diagram all` remains useful for the full corpus.
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
+        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
 
-            let mut artifact_json = match artifact.layout_json() {
-                Ok(value) => value,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to serialize layout JSON for {}: {err}",
-                        mmd_path.display()
-                    ));
-                    continue;
-                }
-            };
-            let Some(mut layout_json) = artifact_json
-                .as_object_mut()
-                .and_then(|object| object.remove("layout"))
-            else {
+        if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
+            continue;
+        }
+        let diagram_type = parsed.metadata().diagram_type.clone();
+
+        let session = match environment.begin_session() {
+            Ok(session) => session,
+            Err(err) => {
+                failures.push(format!("render session failed: {err}"));
+                continue;
+            }
+        };
+        let artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
+            Ok(v) => v,
+            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                // Layout snapshots are only defined for renderable built-in families. Skip
+                // unsupported diagrams so `--diagram all` remains useful for the full corpus.
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let mut artifact_json = match artifact.layout_json() {
+            Ok(value) => value,
+            Err(err) => {
                 failures.push(format!(
-                    "layout artifact for {} omitted its layout projection",
+                    "failed to serialize layout JSON for {}: {err}",
                     mmd_path.display()
                 ));
                 continue;
-            };
-            round_json_numbers(&mut layout_json, decimals);
+            }
+        };
+        let Some(mut layout_json) = artifact_json
+            .as_object_mut()
+            .and_then(|object| object.remove("layout"))
+        else {
+            failures.push(format!(
+                "layout artifact for {} omitted its layout projection",
+                mmd_path.display()
+            ));
+            continue;
+        };
+        round_json_numbers(&mut layout_json, decimals);
 
-            let mut out = serde_json::json!({
-                "diagramType": diagram_type,
-                "layout": layout_json,
-            });
-            normalize_layout_snapshot(&diagram_type, &mut out);
+        let mut out = serde_json::json!({
+            "diagramType": diagram_type,
+            "layout": layout_json,
+        });
+        normalize_layout_snapshot(&diagram_type, &mut out);
 
-            let pretty = match serde_json::to_string_pretty(&out) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to pretty-print JSON for {}: {err}",
-                        mmd_path.display()
-                    ));
-                    continue;
-                }
-            };
-
-            let out_path = mmd_path.with_extension("layout.golden.json");
-            if existing_only && !out_path.is_file() {
+        let pretty = match serde_json::to_string_pretty(&out) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to pretty-print JSON for {}: {err}",
+                    mmd_path.display()
+                ));
                 continue;
             }
-            if let Some(parent) = out_path.parent()
-                && let Err(err) = fs::create_dir_all(parent)
-            {
-                failures.push(format!("failed to create dir {}: {err}", parent.display()));
-                continue;
-            }
-            if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
-                failures.push(format!("failed to write {}: {err}", out_path.display()));
-                continue;
-            }
+        };
+
+        let out_path = mmd_path.with_extension("layout.golden.json");
+        if existing_only && !out_path.is_file() {
+            continue;
         }
-
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(XtaskError::LayoutSnapshotUpdateFailed(failures.join("\n")))
+        if let Some(parent) = out_path.parent()
+            && let Err(err) = fs::create_dir_all(parent)
+        {
+            failures.push(format!("failed to create dir {}: {err}", parent.display()));
+            continue;
         }
-    })
+        if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
+            failures.push(format!("failed to write {}: {err}", out_path.display()));
+            continue;
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::LayoutSnapshotUpdateFailed(failures.join("\n")))
+    }
 }
 
 pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
@@ -798,14 +798,17 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     //
     // Also pin "today" so time-dependent diagrams (notably Gantt) remain deterministic and the
     // generated snapshots match the test harness (`crates/merman-core/tests/snapshots.rs`).
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
     let engine = merman::Engine::new()
         .with_site_config(merman::MermaidConfig::from_value(
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
-        .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ))
-        .with_fixed_local_offset_minutes(Some(0));
+        .with_runtime_policy(runtime_policy);
     let mut failures = Vec::new();
 
     fn ms_to_local_iso(ms: i64) -> Option<String> {

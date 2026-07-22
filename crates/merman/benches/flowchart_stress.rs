@@ -12,7 +12,7 @@ fn bench_flowchart_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
 
     let mut group = c.benchmark_group("render_stress");
     group.sample_size(50);

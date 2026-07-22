@@ -10,7 +10,7 @@ const ARCH_REASONABLE_HEIGHT: &str =
 fn bench_architecture_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
 
@@ -22,7 +22,7 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
         panic!("expected architecture render model");
     };
     let effective_config = parsed.metadata().effective_config.as_value();
-    let ambient_seed = session.seed().seed().get();
+    let ambient_seed = session.render_seed().get();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     let mut group = c.benchmark_group("layout_stress");

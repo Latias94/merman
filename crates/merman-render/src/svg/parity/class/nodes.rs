@@ -1,3 +1,4 @@
+use super::super::timing::RenderTiming;
 use super::context::ClassRenderDetails;
 use super::groups::{
     ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
@@ -51,7 +52,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
-    pub(super) timing_enabled: bool,
+    pub(super) timing: RenderTiming,
 }
 
 pub(super) fn render_class_render_tree(
@@ -152,7 +153,7 @@ pub(super) fn render_class_render_tree(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
-                            timing_enabled: ctx.timing_enabled,
+                            timing: ctx.timing,
                         },
                         namespace_id,
                         origin.0,
@@ -181,7 +182,7 @@ pub(super) fn render_class_render_tree(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
-                            timing_enabled: ctx.timing_enabled,
+                            timing: ctx.timing,
                         },
                     );
                 }
@@ -471,8 +472,8 @@ fn render_class_split_edges_for_namespace(
         text_measurer: edge_ctx.text_measurer,
         terminal_text_style: edge_ctx.terminal_text_style,
         look: edge_ctx.look,
-        hand_drawn_seed: edge_ctx.hand_drawn_seed,
-        timing_enabled: edge_ctx.timing_enabled,
+        hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
+        timing: edge_ctx.timing,
     };
     render_class_split_edge_groups(
         ClassSplitEdgeGroupsRenderState {
@@ -544,8 +545,8 @@ fn render_class_node_id(
                 line_height: settings.line_height,
                 use_html_labels: settings.diagram_use_html_labels,
                 look: settings.look.as_str(),
-                hand_drawn_seed: settings.hand_drawn_seed,
-                timing_enabled: ctx.timing_enabled,
+                hand_drawn_seed: settings.hand_drawn_seed.clone(),
+                timing: ctx.timing,
             },
         );
         detail.notes_sanitize += stats.notes_sanitize;
@@ -619,8 +620,8 @@ fn render_class_node_id(
             node_stroke_width,
             node_stroke_dasharray,
             look: settings.look.as_str(),
-            hand_drawn_seed: settings.hand_drawn_seed,
-            timing_enabled: ctx.timing_enabled,
+            hand_drawn_seed: settings.hand_drawn_seed.clone(),
+            timing: ctx.timing,
         },
     );
     detail.path_bounds += basic_container.stats.path_bounds;
@@ -651,7 +652,7 @@ fn render_class_node_id(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                timing_enabled: ctx.timing_enabled,
+                timing: ctx.timing,
             },
         );
         detail.path_bounds += html_stats.path_bounds;
@@ -676,7 +677,7 @@ fn render_class_node_id(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                timing_enabled: ctx.timing_enabled,
+                timing: ctx.timing,
             },
         );
         detail.path_bounds += svg_stats.path_bounds;

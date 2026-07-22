@@ -701,7 +701,7 @@ fn prepare_pair<S, L>(
 /// ```compile_fail
 /// use merman_render::{LayoutOptions, environment::RenderEnvironment};
 ///
-/// let session = RenderEnvironment::parity().begin_session().unwrap();
+/// let session = RenderEnvironment::deterministic().begin_session().unwrap();
 /// let raw_json = serde_json::json!({ "type": "flowchart-v2" });
 /// let _ = merman_render::family::prepare(raw_json, &LayoutOptions::default(), session);
 /// ```
@@ -903,6 +903,7 @@ pub fn prepare(
                     effective_config,
                     execution.text_measurer(),
                     execution.container_width,
+                    execution.local_time_zone(),
                 )
             })?)
         }
@@ -998,6 +999,18 @@ pub fn prepare(
             })?)
         }
         RenderSemanticModel::Er(model) => {
+            #[cfg(feature = "elk-layout")]
+            {
+                BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
+                    crate::er::layout_er_diagram_typed_with_elk_random_policy(
+                        model,
+                        effective_config,
+                        execution.text_measurer(),
+                        execution.elk_random_policy(),
+                    )
+                })?)
+            }
+            #[cfg(not(feature = "elk-layout"))]
             BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
                 crate::er::layout_er_diagram_typed(
                     model,
@@ -1104,7 +1117,7 @@ mod tests {
     }
 
     fn session() -> RenderSession {
-        crate::environment::RenderEnvironment::parity()
+        crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
     }
@@ -1117,7 +1130,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("flowchart source should produce a render model");
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(

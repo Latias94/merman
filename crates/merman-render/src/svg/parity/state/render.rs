@@ -8,19 +8,13 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
+    let timing = options.timing();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::timing::TimingGuard::new(dst))
-    }
+    let total_timer = timing.start();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {
@@ -52,6 +46,10 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let state_render_settings =
         crate::state::StateConfigView::new(effective_config).render_settings();
     let title_top_margin = state_render_settings.title_top_margin;
+    let hand_drawn_seed = options.rough_randomness(
+        state_render_settings.hand_drawn_seed,
+        "render.state.roughjs",
+    );
 
     let has_acc_title = model
         .acc_title
@@ -104,7 +102,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
         diagram_look: state_render_settings.diagram_look,
-        hand_drawn_seed: state_render_settings.hand_drawn_seed,
+        hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
         state_padding: state_render_settings.state_padding,
@@ -269,7 +267,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     drop(_g_build_ctx);
 
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
     // have a browser DOM, so approximate that by parsing the SVG we just emitted and unioning
@@ -340,7 +338,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         None,
         origin_x,
         origin_y,
-        timing_enabled,
+        timing,
         &mut detail,
     );
     let bounds_scan_end = out.len();
@@ -352,9 +350,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     drop(_g_render_svg);
 
-    let mut viewbox_svg_scan = web_time::Duration::ZERO;
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
-    let _g_scan = section(timing_enabled, &mut viewbox_svg_scan);
+    let mut viewbox_svg_scan = std::time::Duration::ZERO;
+    let _g_viewbox = timing.section(&mut timings.viewbox);
+    let _g_scan = timing.section(&mut viewbox_svg_scan);
     let mut content_bounds = svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
         .or_else(|| state_viewport_bounds_from_layout(layout))
         .unwrap_or(Bounds {
@@ -409,13 +407,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     )?;
 
     drop(_g_viewbox);
-    let _g_finalize = section(timing_enabled, &mut timings.finalize_svg);
+    let _g_finalize = timing.section(&mut timings.finalize_svg);
 
     out = out.replacen(TITLE_PLACEHOLDER_COMMENT, title_svg.as_str(), 1);
 
     drop(_g_finalize);
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
             timings.total,
@@ -450,7 +450,7 @@ fn render_state_root(
     root: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
-    timing_enabled: bool,
+    timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
 ) {
     details.root_calls += 1;
@@ -491,7 +491,7 @@ fn render_state_root(
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
 
     // clusters
-    let _g_clusters = detail_guard(timing_enabled, &mut details.clusters);
+    let _g_clusters = detail_guard(timing, &mut details.clusters);
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
@@ -576,7 +576,7 @@ fn render_state_root(
     drop(_g_clusters);
 
     // edge paths
-    let _g_edge_paths = detail_guard(timing_enabled, &mut details.edge_paths);
+    let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
     out.push_str(r#"<g class="edgePaths">"#);
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
@@ -599,7 +599,7 @@ fn render_state_root(
     drop(_g_edge_paths);
 
     // edge labels
-    let _g_edge_labels = detail_guard(timing_enabled, &mut details.edge_labels);
+    let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
     out.push_str(r#"<g class="edgeLabels">"#);
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
@@ -641,7 +641,7 @@ fn render_state_root(
     }
 
     if ctx.include_nodes {
-        let leaf_start = timing_enabled.then(web_time::Instant::now);
+        let leaf_start = timing.start();
         for &id in &ctx.node_order {
             let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
                 continue;
@@ -655,7 +655,7 @@ fn render_state_root(
             if state_leaf_context(ctx, id) != root {
                 continue;
             }
-            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing_enabled, details);
+            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details);
         }
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
@@ -663,14 +663,14 @@ fn render_state_root(
     }
 
     for child_root in nested {
-        let nested_start = timing_enabled.then(web_time::Instant::now);
+        let nested_start = timing.start();
         render_state_root(
             out,
             ctx,
             Some(child_root),
             origin_x,
             origin_y,
-            timing_enabled,
+            timing,
             details,
         );
         if let Some(s) = nested_start {
@@ -680,7 +680,7 @@ fn render_state_root(
 
     // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
     if ctx.include_edges {
-        let _g_placeholders = detail_guard(timing_enabled, &mut details.self_loop_placeholders);
+        let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())

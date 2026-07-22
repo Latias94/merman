@@ -371,18 +371,6 @@ fn run_feature_matrix(
             ],
         ),
         (
-            "cargo check -p merman-lsp --no-default-features --features core-host --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "core-host",
-                "--lib",
-            ],
-        ),
-        (
             "cargo check -p merman-lsp --no-default-features --features stdio --bin merman-lsp",
             &[
                 "check",

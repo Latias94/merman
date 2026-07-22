@@ -10,7 +10,7 @@ use super::options::{
     Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
     PortConstraints,
 };
-use crate::random::JavaRandom;
+use crate::random::{JavaRandom, RandomSeedError, RandomSeedPolicy};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {
@@ -24,7 +24,7 @@ pub struct LGraph {
     pub edges: Vec<LayeredEdge>,
     pub graph_properties: GraphProperties,
     pub cyclic: bool,
-    pub random: JavaRandom,
+    pub(crate) random: JavaRandom,
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
     pub replaced_external_port_dummies: Vec<usize>,
@@ -32,13 +32,37 @@ pub struct LGraph {
     pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
     pub self_loop_holders: Vec<SelfLoopHolder>,
     pub in_layer_successor_constraints_between_non_dummies: bool,
+    random_seed_context: GraphRandomSeedContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GraphRandomSeedContext {
+    policy: RandomSeedPolicy,
+    graph_path: Vec<String>,
+    configuration_invocations: u64,
 }
 
 impl LGraph {
     pub fn new(id: impl Into<String>, options: LayeredOptions) -> Self {
-        let random = JavaRandom::from_layout_seed(options.random_seed);
+        let id = id.into();
+        Self::new_with_random_policy(
+            id.clone(),
+            options,
+            RandomSeedPolicy::require_explicit(),
+            vec![id],
+        )
+    }
+
+    pub(crate) fn new_with_random_policy(
+        id: impl Into<String>,
+        options: LayeredOptions,
+        random_seed_policy: RandomSeedPolicy,
+        graph_path: Vec<String>,
+    ) -> Self {
+        let id = id.into();
+        debug_assert!(!graph_path.is_empty());
         Self {
-            id: id.into(),
+            id,
             options,
             size: LSize::default(),
             padding: LPadding::default(),
@@ -48,7 +72,9 @@ impl LGraph {
             edges: Vec::new(),
             graph_properties: GraphProperties::default(),
             cyclic: false,
-            random,
+            // The seed is resolved immediately before processor assembly. The placeholder is
+            // never an execution source because every public pipeline entry configures first.
+            random: JavaRandom::default(),
             parent_node_id: None,
             hidden_nodes: Vec::new(),
             replaced_external_port_dummies: Vec::new(),
@@ -56,7 +82,55 @@ impl LGraph {
             cross_hierarchy_edges: Vec::new(),
             self_loop_holders: Vec::new(),
             in_layer_successor_constraints_between_non_dummies: false,
+            random_seed_context: GraphRandomSeedContext {
+                policy: random_seed_policy,
+                graph_path,
+                configuration_invocations: 0,
+            },
         }
+    }
+
+    /// Supplies the authority used if this graph retains ELK's `randomSeed = 0` sentinel.
+    ///
+    /// A graph created with [`LGraph::new`] rejects that sentinel until a deterministic fallback
+    /// is supplied. Nonzero configured seeds are unaffected by this policy.
+    pub fn with_random_seed_policy(mut self, policy: RandomSeedPolicy) -> Self {
+        self.set_random_seed_policy(policy);
+        self
+    }
+
+    /// Updates the authority used if this graph retains ELK's `randomSeed = 0` sentinel.
+    pub fn set_random_seed_policy(&mut self, policy: RandomSeedPolicy) {
+        self.random_seed_context.policy = policy;
+        for node in &mut self.layerless_nodes {
+            if let Some(nested_graph) = node.nested_graph.as_mut() {
+                nested_graph.set_random_seed_policy(policy);
+            }
+        }
+    }
+
+    pub fn random_seed_policy(&self) -> RandomSeedPolicy {
+        self.random_seed_context.policy
+    }
+
+    pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
+        let graph_path = self
+            .random_seed_context
+            .graph_path
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let invocation = self.random_seed_context.configuration_invocations;
+        let seed = self.random_seed_context.policy.resolve(
+            self.options.random_seed,
+            &graph_path,
+            invocation,
+        )?;
+        self.random_seed_context.configuration_invocations = self
+            .random_seed_context
+            .configuration_invocations
+            .saturating_add(1);
+        Ok(seed)
     }
 
     pub fn sync_graph_properties_to_options(&mut self) {

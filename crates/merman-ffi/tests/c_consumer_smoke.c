@@ -184,6 +184,25 @@ static int expect_ok_with(MermanResult result, MermanFree free_buffer, const cha
     return 0;
 }
 
+static int expect_runtime_contract(MermanResult result, MermanFree free_buffer) {
+    if (result.code != MERMAN_OK) {
+        if (result.data.data != NULL || result.data.len != 0) {
+            free_buffer(result.data);
+        }
+        return 80 + result.code;
+    }
+    if (
+        !buffer_contains(result.data, "\"schema_version\":4") ||
+        !buffer_contains(result.data, "\"system_adapter_ids\":[") ||
+        buffer_contains(result.data, "\"core_host\"")
+    ) {
+        free_buffer(result.data);
+        return 90;
+    }
+    free_buffer(result.data);
+    return 0;
+}
+
 static int expect_empty_ok(MermanResult result, MermanFree free_buffer) {
     if (result.code != MERMAN_OK) {
         if (result.data.data != NULL || result.data.len != 0) {
@@ -528,7 +547,7 @@ int merman_c_consumer_smoke(MermanApi api) {
     if (rc != 0) {
         return rc;
     }
-    rc = expect_ok_with(api.runtime_contract_json(), api.buffer_free, "\"schema_version\":3");
+    rc = expect_runtime_contract(api.runtime_contract_json(), api.buffer_free);
     if (rc != 0) {
         return rc;
     }

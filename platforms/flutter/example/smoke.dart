@@ -111,6 +111,17 @@ void main(List<String> args) {
   final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
   final source = 'flowchart TD\nA[Hello] --> B[World]';
 
+  final runtimeContract = merman.runtimeContract();
+  final runtimeFeatures = runtimeContract['features'];
+  final systemAdapterIds = runtimeFeatures is Map<String, Object?>
+      ? runtimeFeatures['system_adapter_ids']
+      : null;
+  if (runtimeContract['schema_version'] != 4 ||
+      systemAdapterIds is! List ||
+      systemAdapterIds.any((adapterId) => adapterId is! String)) {
+    throw StateError('runtime contract smoke failed');
+  }
+
   final svg = merman.renderSvg(source);
   if (!svg.contains('<svg') ||
       !svg.contains('Hello') ||

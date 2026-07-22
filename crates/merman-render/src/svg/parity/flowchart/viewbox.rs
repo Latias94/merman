@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use rustc_hash::FxHashMap;
 
+use super::super::timing::RenderTiming;
 use super::viewbox_node_bounds::include_flowchart_node_rendered_bounds;
 use super::*;
 
@@ -27,8 +28,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBoundsRequest<
     pub diagram_title: Option<&'title str>,
     pub font_family: &'borrow str,
     pub title_top_margin: f64,
-    pub timing_enabled: bool,
-    pub viewbox_edge_curve_bounds: &'borrow mut web_time::Duration,
+    pub timing: RenderTiming,
+    pub viewbox_edge_curve_bounds: &'borrow mut std::time::Duration,
     pub detail: &'borrow mut FlowchartRenderDetails,
     pub edge_path_cache: &'borrow mut FxHashMap<&'view str, FlowchartEdgePathCacheEntry>,
 }
@@ -178,7 +179,7 @@ where
         diagram_title,
         font_family,
         title_top_margin,
-        timing_enabled,
+        timing,
         viewbox_edge_curve_bounds,
         detail,
         edge_path_cache,
@@ -204,8 +205,7 @@ where
     // edge path `d` into our base bbox.
     {
         let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
-        let _g = timing_enabled
-            .then(|| super::super::timing::TimingGuard::new(viewbox_edge_curve_bounds));
+        let _g = timing.section(viewbox_edge_curve_bounds);
         let mut lca_scratch: Vec<&str> = Vec::new();
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         let mut root_offsets: FxHashMap<&str, FlowchartRootOffsets> =
@@ -221,7 +221,7 @@ where
         for e in render_edges {
             let e = e.as_ref();
             let root_id = {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_lca);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_lca);
                 lca_for_ids(
                     e.from.as_str(),
                     e.to.as_str(),
@@ -231,7 +231,7 @@ where
                 .unwrap_or("")
             };
             let off = {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_offsets);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_offsets);
                 *root_offsets.entry(root_id).or_insert_with(|| {
                     flowchart_cluster_root_offsets(ctx, root_id).unwrap_or(FlowchartRootOffsets {
                         origin_x: 0.0,
@@ -243,7 +243,7 @@ where
 
             let Some(geom) = ({
                 detail.viewbox_edge_curve_geom_calls += 1;
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_geom);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
                 flowchart_compute_edge_path_geom(
                     FlowchartEdgePathGeomRequest {
                         ctx,
@@ -266,7 +266,7 @@ where
             }
 
             {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_bbox_union);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
                 if let Some(pb) = geom.pb {
                     bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
                     bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
@@ -299,7 +299,7 @@ where
             // node, cluster, and label bounds as the base.
             (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = edge_bounds_base;
             for cache_entry in edge_path_cache.values() {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_bbox_union);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
                 if let Some(pb) = cache_entry.geom.pb {
                     bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x);
                     bbox_min_y = bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform);

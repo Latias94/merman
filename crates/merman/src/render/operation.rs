@@ -3,7 +3,7 @@ use super::{
 };
 use merman_render::{
     ResourceLimitExceeded,
-    environment::{RenderEnvironment, RenderLocalTimePolicy, RenderSession, RenderSessionReport},
+    environment::{RenderEnvironment, RenderSession, RenderSessionReport},
 };
 
 #[cfg(feature = "raster")]
@@ -49,20 +49,24 @@ impl RenderOperationReport {
         self.session.measurement()
     }
 
-    pub const fn time(&self) -> super::RenderTimeSnapshot {
-        self.session.time()
+    pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
+        self.session.operation_context()
     }
 
-    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
-        self.session.local_time_policy()
+    pub const fn unix_millis(&self) -> i64 {
+        self.session.unix_millis()
+    }
+
+    pub const fn local_date(&self) -> chrono::NaiveDate {
+        self.session.local_date()
     }
 
     pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
         self.session.local_time_zone()
     }
 
-    pub const fn seed(&self) -> merman_render::environment::ResolvedRenderSeed {
-        self.session.seed()
+    pub fn render_seed(&self) -> std::num::NonZeroU64 {
+        self.session.render_seed()
     }
 }
 
@@ -307,7 +311,7 @@ impl<'a> HeadlessOperation<'a> {
         environment: &RenderEnvironment,
     ) -> Result<Self> {
         let session = environment.begin_session()?;
-        let engine = super::engine_with_session_time(engine, &session);
+        let engine = super::engine_with_session_context(engine, &session);
         Ok(Self {
             engine,
             text,

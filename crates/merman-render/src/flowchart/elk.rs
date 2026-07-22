@@ -27,9 +27,32 @@ pub fn layout_flowchart_elk_typed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
+    layout_flowchart_elk_typed_with_random_policy(
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        elk::ElkRandomPolicy::require_explicit(),
+    )
+}
+
+/// Lays out a Flowchart through ELK with explicit authority for ELK's `randomSeed = 0` sentinel.
+///
+/// Direct callers normally use [`layout_flowchart_elk_typed`], which rejects an unseeded graph.
+/// The renderer operation path supplies a deterministic policy derived from its captured runtime
+/// context so replay never reads process randomness.
+pub fn layout_flowchart_elk_typed_with_random_policy(
+    model: &FlowchartModel,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    random_policy: elk::ElkRandomPolicy,
+) -> Result<FlowchartLayout> {
     let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
-    let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
-        message: format!("ELK layout failed: {err}"),
+    let layout = elk::layout_with_random_policy(&graph, random_policy).map_err(|err| {
+        Error::InvalidModel {
+            message: format!("ELK layout failed: {err}"),
+        }
     })?;
     flowchart_layout_from_elk(model, effective_config, &graph, layout)
 }

@@ -159,7 +159,7 @@ fn render_sequence_svg_from_fixture_with_options(
     fixture: &str,
     options: &SvgRenderOptions,
 ) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -177,7 +177,7 @@ fn render_sequence_svg_from_fixture_with_options(
 }
 
 fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -197,7 +197,7 @@ fn render_sequence_svg_from_text(text: &str) -> String {
 }
 
 fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -216,7 +216,7 @@ fn render_sequence_svg_with_theme_variables(
     text: &str,
     theme_variables: serde_json::Value,
 ) -> String {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -235,7 +235,7 @@ fn render_sequence_svg_with_theme_variables(
 }
 
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -459,7 +459,7 @@ fn sequence_actor_lifecycle_adjustment_survives_block_close() {
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(path).expect("fixture");
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
     let layout = layout_sequence_from_parsed(&parsed, &session);
     let actor = |id: &str| {
@@ -891,7 +891,7 @@ end"##,
 
 #[test]
 fn sequence_note_width_expands_for_literal_br_backslash_t_with_fallback_profile() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -1114,7 +1114,7 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
             .join(fixture);
         let text = std::fs::read_to_string(&path).expect("fixture");
         let parsed = parse_sequence_for_render(&engine, &text);
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .unwrap();
@@ -1133,7 +1133,7 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
 
 #[test]
 fn sequence_frontmatter_title_expands_layout_root_y() {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -1181,7 +1181,7 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
 
 #[test]
 fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -1253,7 +1253,7 @@ participant B
 A->>B: $$x^2$$
 Note right of B: $$x^2$$
 "#;
-    let environment = RenderEnvironment::parity()
+    let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
     let session = environment.begin_session().unwrap();
@@ -1292,7 +1292,7 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .join("upstream_docs_math_sequence_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let environment = RenderEnvironment::parity()
+    let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
     let session = environment.begin_session().unwrap();

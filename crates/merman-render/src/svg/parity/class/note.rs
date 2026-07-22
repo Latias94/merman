@@ -5,8 +5,9 @@ use crate::text::{
     WrapMode,
 };
 use std::fmt::Write as _;
-use web_time::Duration;
+use std::time::Duration;
 
+use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
@@ -24,8 +25,8 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub line_height: f64,
     pub use_html_labels: bool,
     pub look: &'a str,
-    pub hand_drawn_seed: u64,
-    pub timing_enabled: bool,
+    pub hand_drawn_seed: roughr::core::RoughRandomness,
+    pub timing: RenderTiming,
 }
 
 pub(super) struct ClassNoteRenderState<'a> {
@@ -108,7 +109,7 @@ pub(super) fn render_class_note_node(
                 .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
-    let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
+    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,
@@ -123,7 +124,7 @@ pub(super) fn render_class_note_node(
         label_w,
         label_h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
+    let path_bounds_start = ctx.timing.start();
     let note_fill = theme_token(ctx.effective_config, "noteBkgColor", "#fff5ad");
     let note_stroke = theme_token(ctx.effective_config, "noteBorderColor", "#aaaa33");
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
@@ -137,15 +138,15 @@ pub(super) fn render_class_note_node(
             &note_stroke,
             1.3,
             "0 0",
-            rough_seed,
+            &rough_seed,
         )
         .unwrap_or_else(|| {
             let (stroke_d, _) =
-                class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
             (String::new(), stroke_d)
         })
     } else {
-        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
         (String::new(), stroke_d)
     };
     include_path_d(
@@ -218,7 +219,7 @@ pub(super) fn render_class_note_node(
             escape_attr_display(&note_div_style),
             note_span_class,
         );
-        let sanitize_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let sanitize_start = ctx.timing.start();
         let note_html_config = class_note_sanitize_config(
             borrowed_sanitize_config,
             sanitize_config,

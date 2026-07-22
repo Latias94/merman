@@ -313,7 +313,7 @@ fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
 
     let mut group = c.benchmark_group("layout");
     for (name, input) in fixtures() {
@@ -362,7 +362,7 @@ fn bench_render(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
 
     let mut group = c.benchmark_group("render");
     for (name, input) in fixtures() {

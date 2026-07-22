@@ -27,7 +27,7 @@ fn assert_xml_parseable(name: &str, svg: &str) {
 
 #[cfg(feature = "raster")]
 fn finalize_raster_input(svg: &str) -> merman::render::ResvgCompatibleSvg {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     merman::render::finalize_resvg_svg(svg, &session).expect("valid resvg-compatible fixture")
 }
 
@@ -171,7 +171,7 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 <rect width="16" height="16" fill="black"/>
 </svg>"##;
 
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let out = merman::render::svg_resvg_safe(svg, &session).unwrap();
 
     assert_xml_parseable("raw-resvg-safe-active-content", &out);
@@ -229,7 +229,7 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
         ),
     );
     let renderer = HeadlessRenderer::new()
-        .with_environment(RenderEnvironment::parity().with_icon_registry(Arc::new(registry)))
+        .with_environment(RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry)))
         .with_svg_options(merman::render::SvgRenderOptions {
             diagram_id: Some("security-icon".to_string()),
             ..Default::default()

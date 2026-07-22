@@ -10,7 +10,7 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::xychart::layout_xychart_diagram_typed;
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -30,7 +30,7 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())

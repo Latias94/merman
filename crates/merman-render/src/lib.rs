@@ -6,8 +6,6 @@
 //! - a layout JSON (geometry + routes)
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
 
-extern crate self as web_time;
-
 #[cfg(feature = "cytoscape-layout")]
 pub mod architecture;
 #[cfg(feature = "cytoscape-layout")]
@@ -29,7 +27,6 @@ pub mod flowchart;
 pub mod gantt;
 mod generated;
 pub mod gitgraph;
-mod host_time;
 pub mod info;
 pub mod ishikawa;
 pub mod journey;
@@ -62,8 +59,6 @@ pub mod wardley;
 mod xml;
 pub mod xychart;
 pub mod zenuml;
-
-pub(crate) use host_time::{Duration, Instant};
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
 pub const fn cytoscape_layout_available() -> bool {
@@ -110,6 +105,8 @@ pub enum Error {
     Color(#[from] merman_core::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    OperationTimingUnavailable(#[from] merman_core::runtime::OperationTimingUnavailable),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -180,9 +177,21 @@ impl<'a> LayoutExecution<'a> {
         self.session.resource_policy()
     }
 
-    #[cfg(feature = "cytoscape-layout")]
-    pub(crate) const fn operation_seed(&self) -> u64 {
-        self.session.seed().seed().get()
+    pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+        self.session.local_time_zone()
+    }
+
+    #[cfg(any(feature = "cytoscape-layout", feature = "elk-layout"))]
+    pub(crate) fn operation_seed(&self) -> u64 {
+        self.session.render_seed().get()
+    }
+
+    #[cfg(feature = "elk-layout")]
+    pub(crate) fn elk_random_policy(&self) -> merman_layout_elk::ElkRandomPolicy {
+        // The ELK source port applies its own stable ELK-specific domain and graph-path
+        // derivation. This root key merely keeps every layout backend tied to one immutable
+        // render operation.
+        merman_layout_elk::ElkRandomPolicy::deterministic(self.operation_seed())
     }
 }
 
@@ -220,10 +229,11 @@ fn layout_class_elk_typed_by_feature(
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
-    class::layout_class_diagram_elk_typed_with_config(
+    class::layout_class_diagram_elk_typed_with_config_and_random_policy(
         model,
         effective_config,
         options.text_measurer(),
+        options.elk_random_policy(),
     )
 }
 
@@ -269,11 +279,12 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    flowchart::elk::layout_flowchart_elk_typed(
+    flowchart::elk::layout_flowchart_elk_typed_with_random_policy(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        options.elk_random_policy(),
     )
 }
 
@@ -341,7 +352,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse")
             .expect("diagram");
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         crate::family::prepare(parsed, layout_options, session)
@@ -354,8 +365,33 @@ mod tests {
 
     #[cfg(feature = "elk-layout")]
     #[test]
+    fn elk_random_policy_is_operation_owned_and_replayable() {
+        fn resolve(seed: u64, graph_path: &[&str], invocation: u64) -> i64 {
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_runtime_policy(
+                    merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
+                )
+                .begin_session()
+                .expect("render session");
+            LayoutExecution::new(&LayoutOptions::default(), &session)
+                .elk_random_policy()
+                .resolve(0, graph_path, invocation)
+                .expect("operation-owned policy")
+        }
+
+        assert_eq!(resolve(17, &["root"], 0), resolve(17, &["root"], 0));
+        assert_ne!(resolve(17, &["root"], 0), resolve(18, &["root"], 0));
+        assert_ne!(
+            resolve(17, &["root"], 0),
+            resolve(17, &["root", "group"], 0)
+        );
+        assert_ne!(resolve(17, &["root"], 0), resolve(17, &["root"], 1));
+    }
+
+    #[cfg(feature = "elk-layout")]
+    #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -377,7 +413,7 @@ mod tests {
     #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -414,7 +450,7 @@ A-->B
             .unwrap()
             .unwrap();
         let options = LayoutOptions::default();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxFlowchartNodes, 1)
@@ -438,7 +474,7 @@ A-->B
     #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_uses_elk_for_class_layout_config() {
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -483,7 +519,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
         let options = LayoutOptions::default();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxClassNodes, 1)
@@ -515,7 +551,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
         let options = LayoutOptions::default();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxFlowchartEdges, 2)
@@ -547,7 +583,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
         let options = LayoutOptions::default();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxClassEdges, 1)
@@ -737,7 +773,7 @@ id1(Start)-->id2(Stop)
     #[cfg(not(feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -762,7 +798,7 @@ id1(Start)-->id2(Stop)
     #[cfg(not(feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_rejects_class_elk_without_feature() {
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()

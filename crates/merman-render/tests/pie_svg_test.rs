@@ -18,7 +18,7 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
     let RenderSemanticModel::Pie(model) = parsed.model() else {
         panic!("expected pie render model");
     };
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
@@ -38,7 +38,7 @@ fn render_pie_from_text(text: &str) -> String {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();

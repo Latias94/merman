@@ -68,7 +68,7 @@ mod tests {
         plan.svg_pipeline = Some(SvgPipelineKind::Readable);
         let request = RenderRequest::new(
             &plan,
-            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            HeadlessRenderer::new().with_environment(RenderEnvironment::deterministic()),
             None,
         );
         let session = request.renderer.environment().begin_session().unwrap();
@@ -95,7 +95,7 @@ mod tests {
         let plan = test_plan(RenderFormat::Svg);
         let request = RenderRequest::new(
             &plan,
-            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            HeadlessRenderer::new().with_environment(RenderEnvironment::deterministic()),
             None,
         );
         let session = request.renderer.environment().begin_session().unwrap();
@@ -121,7 +121,7 @@ mod tests {
         plan.svg_pipeline = Some(SvgPipelineKind::ResvgSafe);
         let request = RenderRequest::new(
             &plan,
-            HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
+            HeadlessRenderer::new().with_environment(RenderEnvironment::deterministic()),
             None,
         );
         let session = request.renderer.environment().begin_session().unwrap();
@@ -152,7 +152,7 @@ mod tests {
         .pipeline();
         let svg = r#"<svg id="raw" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
-        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let out = pipeline.process_to_string(svg, &session).unwrap();
 
         assert!(!out.contains("<foreignObject"));

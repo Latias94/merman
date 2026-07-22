@@ -3,7 +3,7 @@
 use chrono::NaiveDate;
 use merman::Engine;
 use merman::render::{
-    HeadlessRenderer, RenderEnvironment, RenderResourcePolicy, RenderTimeSnapshot, ResourceLimitId,
+    HeadlessRenderer, RenderEnvironment, RenderResourcePolicy, ResourceLimitId, RuntimePolicy,
     finalize_resvg_svg,
 };
 use roxmltree::Document;
@@ -20,9 +20,12 @@ pub fn bounded_utf8(data: &[u8], max_bytes: usize) -> Option<&str> {
 }
 
 pub fn deterministic_engine() -> Engine {
-    Engine::new()
+    let policy = RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
         .with_fixed_today(NaiveDate::from_ymd_opt(2025, 1, 1))
-        .with_fixed_local_offset_minutes(Some(0))
+        .with_fixed_unix_millis(1_735_689_600_000);
+    Engine::new().with_runtime_policy(policy)
 }
 
 pub fn bounded_renderer() -> HeadlessRenderer {
@@ -44,9 +47,8 @@ pub fn bounded_renderer() -> HeadlessRenderer {
     }
 
     HeadlessRenderer::new()
-        .with_fixed_time(
-            RenderTimeSnapshot::from_unix_millis(1_735_689_600_000, 0)
-                .expect("2025-01-01 UTC is a valid fixed render time"),
+        .with_runtime_policy(
+            RuntimePolicy::deterministic().with_fixed_unix_millis(1_735_689_600_000),
         )
         .with_strict_parsing()
         .with_deterministic_text_measurer()
@@ -65,7 +67,7 @@ pub fn is_well_formed_svg(svg: &str) -> bool {
 }
 
 pub fn assert_resvg_safe_svg(svg: &str) {
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("parity render session must be constructible");
     let normalized = finalize_resvg_svg(svg, &session)

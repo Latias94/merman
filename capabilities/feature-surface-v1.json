@@ -17,24 +17,6 @@
   ],
   "runtime_capabilities": [
     {
-      "id": "browser-time",
-      "kind": "adapter",
-      "description": "Browser-provided date and time adapter.",
-      "targets": ["web"]
-    },
-    {
-      "id": "browser-random",
-      "kind": "adapter",
-      "description": "Browser-provided randomness adapter.",
-      "targets": ["web"]
-    },
-    {
-      "id": "browser-timing",
-      "kind": "adapter",
-      "description": "Browser monotonic timing adapter.",
-      "targets": ["web"]
-    },
-    {
       "id": "typst-transport",
       "kind": "transport",
       "description": "Typst wasm-minimal-protocol transport.",
@@ -336,7 +318,7 @@
       "description": "Browser SVG render artifact.",
       "targets": ["web"],
       "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
-      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
+      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math"]
     },
     {
       "id": "preset-web-editor",
@@ -357,7 +339,7 @@
       "description": "Fused browser artifact containing all retained Web workflows.",
       "targets": ["web"],
       "includes": ["preset-web-analysis", "preset-web-render", "preset-web-editor", "preset-web-ascii"],
-      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
+      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "layout-cytoscape", "layout-elk", "math"]
     }
   ]
 }

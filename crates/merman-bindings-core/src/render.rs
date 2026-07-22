@@ -5,18 +5,38 @@ use request::RenderRequestPlan;
 use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    render_svg_with_runtime_policy(
+        source,
+        options_json,
+        merman::runtime::RuntimePolicy::deterministic(),
+    )
+}
+
+pub fn render_svg_with_runtime_policy(
+    source: &[u8],
+    options_json: &[u8],
+    runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_svg(source)
+    request_plan_from_options_json(options_json, runtime_policy)?.render_svg(source)
 }
 
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.parse_json(source)
+    request_plan_from_options_json(
+        options_json,
+        merman::runtime::RuntimePolicy::deterministic(),
+    )?
+    .parse_json(source)
 }
 
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.layout_json(source)
+    request_plan_from_options_json(
+        options_json,
+        merman::runtime::RuntimePolicy::deterministic(),
+    )?
+    .layout_json(source)
 }
 
 #[derive(Clone)]
@@ -25,9 +45,12 @@ pub(crate) struct CachedRenderEngine {
 }
 
 impl CachedRenderEngine {
-    pub(crate) fn new(options: &BindingOptions) -> Result<Self, BindingError> {
+    pub(crate) fn with_runtime_policy(
+        options: &BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
         Ok(Self {
-            plan: RenderRequestPlan::from_options(options)?,
+            plan: RenderRequestPlan::from_options_with_runtime_policy(options, runtime_policy)?,
         })
     }
 
@@ -56,9 +79,12 @@ impl CachedRenderEngine {
     }
 }
 
-fn request_plan_from_options_json(options_json: &[u8]) -> Result<RenderRequestPlan, BindingError> {
+fn request_plan_from_options_json(
+    options_json: &[u8],
+    runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<RenderRequestPlan, BindingError> {
     let options = parse_options(options_json)?;
-    RenderRequestPlan::from_options(&options)
+    RenderRequestPlan::from_options_with_runtime_policy(&options, runtime_policy)
 }
 
 #[cfg(test)]
@@ -68,7 +94,7 @@ mod tests {
     use serde_json::Value;
 
     fn render_session() -> merman::render::RenderSession {
-        merman::render::RenderEnvironment::parity()
+        merman::render::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session")
     }

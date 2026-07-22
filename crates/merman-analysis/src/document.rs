@@ -351,11 +351,32 @@ fn analyze_document_result_shared_inner<E>(
     let document = DocumentSource::new(text, source.clone());
     checkpoint()?;
 
+    if document.diagrams().is_empty() {
+        return Ok(AnalysisResult::new(
+            source,
+            document.source_map().clone(),
+            Vec::new(),
+            Vec::new(),
+        ));
+    }
+    let operation_analyzer = match analyzer.try_for_operation() {
+        Ok(analyzer) => analyzer,
+        Err(error) => {
+            return Ok(AnalysisResult::new(
+                source,
+                document.source_map().clone(),
+                analyzer.runtime_policy_diagnostics(error, document.source_map()),
+                Vec::new(),
+            ));
+        }
+    };
+    checkpoint()?;
+
     let mut diagnostics = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
         checkpoint()?;
-        let analyzed = analyzer.analyze_diagram(diagram, document.source_map());
+        let analyzed = operation_analyzer.analyze_diagram(diagram, document.source_map());
         checkpoint()?;
         extend_document_diagnostics(
             &mut diagnostics,
@@ -378,10 +399,20 @@ fn analyze_document_diagnostics(
     document: &DocumentSource,
     analyzer: &Analyzer,
 ) -> Vec<AnalysisDiagnostic> {
+    if document.diagrams().is_empty() {
+        return Vec::new();
+    }
+    let operation_analyzer = match analyzer.try_for_operation() {
+        Ok(analyzer) => analyzer,
+        Err(error) => {
+            return analyzer.runtime_policy_diagnostics(error, document.source_map());
+        }
+    };
+
     let mut diagnostics = Vec::new();
     for diagram in document.diagrams() {
         let diagram_diagnostics =
-            analyzer.analyze_diagram_diagnostics(diagram, document.source_map());
+            operation_analyzer.analyze_diagram_diagnostics(diagram, document.source_map());
         extend_document_diagnostics(&mut diagnostics, document, diagram, diagram_diagnostics);
     }
     diagnostics
@@ -657,8 +688,8 @@ fn next_line_end(source: &str, start: usize) -> usize {
 mod tests {
     use super::*;
     use crate::{
-        AnalysisDiagnostic, Analyzer, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
-        DiagnosticRelated,
+        AnalysisDiagnostic, AnalysisOptions, Analyzer, DiagnosticCategory, DiagnosticFix,
+        DiagnosticFixEdit, DiagnosticRelated,
     };
 
     #[test]
@@ -700,6 +731,27 @@ mod tests {
         assert_eq!(payload.source, source);
         assert!(payload.valid);
         assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn markdown_runtime_failure_is_reported_once_for_the_document_operation() {
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_runtime_policy(
+            merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(i64::MAX),
+        ));
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let result = analyze_document_result(
+            "```mermaid\nflowchart TD\nA-->B\n```\n```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+            &analyzer,
+            source,
+        );
+
+        assert!(result.diagrams().is_empty());
+        assert_eq!(result.diagnostics().len(), 1);
+        assert!(
+            result.diagnostics()[0]
+                .message
+                .contains("outside the supported")
+        );
     }
 
     #[test]

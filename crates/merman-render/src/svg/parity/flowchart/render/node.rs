@@ -1,6 +1,7 @@
 //! Flowchart node renderer.
 
 use super::super::*;
+use crate::svg::parity::timing::RenderTiming;
 
 pub(in crate::svg::parity::flowchart) mod geom;
 mod helpers;
@@ -27,9 +28,9 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub stroke_color: &'a str,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
-    pub hand_drawn_seed: u64,
+    pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub wrapped_in_a: bool,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 impl FlowchartNodeRenderCommon<'_> {
@@ -79,7 +80,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
-    timing_enabled: bool,
+    timing: RenderTiming,
     details: &mut FlowchartRenderDetails,
 ) -> crate::Result<()> {
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
@@ -150,7 +151,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         },
     );
 
-    let style_start = timing_enabled.then(web_time::Instant::now);
+    let style_start = timing.start();
     let mut compiled_styles =
         flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
@@ -177,13 +178,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .unwrap_or("0 0")
         .trim();
 
-    let hand_drawn_seed = ctx
-        .config
-        .as_value()
-        .get("handDrawnSeed")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
     let common = FlowchartNodeRenderCommon {
         node_id,
         shape,
@@ -203,9 +197,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         stroke_color,
         stroke_width,
         stroke_dasharray,
-        hand_drawn_seed,
+        hand_drawn_seed: &ctx.hand_drawn_seed,
         wrapped_in_a,
-        timing_enabled,
+        timing,
     };
     let mut label = FlowchartNodeLabelState {
         text: if resolved.label_text_is_node_id {

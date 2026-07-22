@@ -123,7 +123,7 @@ fn render_icon_rect_frame(
 
     let rounded_rect = rounded_rect_path_d(x, y, width, height, corner_radius);
     let (fill_d, stroke_d) =
-        match super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_svg_path_single_set(
                 &rounded_rect,
                 common.fill_color,
@@ -180,10 +180,9 @@ fn render_icon_rect_frame(
         fmt(outer_x0),
         fmt(outer_y0 + outer_h)
     );
-    let label_html =
-        super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
-            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-        });
+    let label_html = super::super::helpers::timed_node_label_html(common.timing, details, || {
+        flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+    });
     let label_y = if top_label {
         -outer_h / 2.0
     } else {

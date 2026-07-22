@@ -770,7 +770,10 @@ mod tests {
         assert_eq!(capabilities.render, cfg!(feature = "render"));
         assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
+        assert!(
+            capabilities.system_adapter_ids.is_empty(),
+            "browser WASM must not claim native system adapters"
+        );
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(

@@ -1,3 +1,4 @@
+use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::bounds::{include_path_bounds, include_path_d, include_xywh};
 use super::context::ClassRenderDetails;
@@ -40,8 +41,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub text_measurer: &'a dyn TextMeasurer,
     pub terminal_text_style: &'a TextStyle,
     pub look: &'a str,
-    pub hand_drawn_seed: u64,
-    pub timing_enabled: bool,
+    pub hand_drawn_seed: roughr::core::RoughRandomness,
+    pub timing: RenderTiming,
 }
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
@@ -267,7 +268,7 @@ pub(super) fn render_class_edge_groups(
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
 
-    let edge_paths_start = ctx.timing_enabled.then(web_time::Instant::now);
+    let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
@@ -288,7 +289,7 @@ pub(super) fn render_class_edge_groups(
             });
         }
 
-        let curve_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let curve_start = ctx.timing.start();
         let relation = if e.id.starts_with("edgeNote") {
             None
         } else {
@@ -324,12 +325,12 @@ pub(super) fn render_class_edge_groups(
             detail.edge_curve += s.elapsed();
         }
         let rough_d = if ctx.look == "handDrawn" {
-            class_rough_hand_drawn_stroke_path_for_svg_path(&d, 0.3, ctx.hand_drawn_seed)
+            class_rough_hand_drawn_stroke_path_for_svg_path(&d, 0.3, &ctx.hand_drawn_seed)
         } else {
             None
         };
         let render_d = rough_d.as_deref().unwrap_or(&d);
-        let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let path_bounds_start = ctx.timing.start();
         if rough_d.is_none()
             && let Some(pb) = d_pb.as_ref()
         {
@@ -342,7 +343,7 @@ pub(super) fn render_class_edge_groups(
             detail.path_bounds_calls += 1;
         }
 
-        let json_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let json_start = ctx.timing.start();
         edge_points_json_buf.clear();
         json_stringify_points_into(
             &mut edge_points_json_buf,
@@ -353,7 +354,7 @@ pub(super) fn render_class_edge_groups(
             detail.edge_points_json += s.elapsed();
         }
 
-        let b64_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let b64_start = ctx.timing.start();
         edge_points_b64_buf.clear();
         base64::engine::general_purpose::STANDARD
             .encode_string(edge_points_json_buf.as_bytes(), &mut edge_points_b64_buf);
@@ -421,7 +422,7 @@ pub(super) fn render_class_edge_groups(
         detail.edge_paths += s.elapsed();
     }
 
-    let edge_labels_start = ctx.timing_enabled.then(web_time::Instant::now);
+    let edge_labels_start = ctx.timing.start();
     let out = &mut *state.edge_labels;
     out.push_str(r#"<g class="edgeLabels">"#);
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.

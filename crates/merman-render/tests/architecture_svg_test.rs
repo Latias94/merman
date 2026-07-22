@@ -5,16 +5,14 @@ use merman_render::LayoutOptions;
 use merman_render::architecture::layout_architecture_diagram_typed;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
-    MeasurementProfileId, RenderEnvironment, RenderRandomnessPolicy, RenderSession,
-    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman_render::family::{self, RenderFamilyKind};
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
 use regex::Regex;
-use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -67,11 +65,9 @@ fn counting_architecture_environment(host: Arc<CountingArchitectureHost>) -> Ren
         "1",
     )
     .expect("valid profile identity");
-    RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::host_display(
-        identity,
-        host,
-        TextMeasurementPhase::ALL,
-    ))
+    RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host, TextMeasurementPhase::ALL),
+    )
 }
 
 fn workspace_root() -> PathBuf {
@@ -108,7 +104,7 @@ fn render_architecture_text_with_engine_and_options(
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
@@ -132,7 +128,7 @@ fn layout_architecture_typed(
         model,
         parsed.metadata().effective_config.as_value(),
         &measurer,
-        session.seed().seed().get(),
+        session.render_seed().get(),
     )
     .expect("layout ok")
 }
@@ -502,7 +498,7 @@ fn architecture_layout_caches_service_child_bounds() {
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let layout = layout_architecture_typed(&parsed, &session);
@@ -615,7 +611,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
         "Architecture SVG bbox measurements must retain the host phase provenance"
     );
 
-    let parity_session = RenderEnvironment::parity().begin_session().unwrap();
+    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parity_artifact = family::prepare(parsed, &layout_options, parity_session)
         .expect("prepare parity Architecture artifact");
     let parity_rendered = parity_artifact
@@ -632,10 +628,10 @@ fn architecture_svg_uses_the_session_measurement_route() {
 #[test]
 fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
     fn render_with_seed(source: &str, ambient_seed: u64) -> (ArchitectureDiagramLayout, String) {
-        let session = RenderEnvironment::parity()
-            .with_randomness(RenderRandomnessPolicy::pinned(
-                NonZeroU64::new(ambient_seed).unwrap(),
-            ))
+        let session = RenderEnvironment::deterministic()
+            .with_runtime_policy(
+                merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(ambient_seed),
+            )
             .begin_session()
             .expect("begin render session");
         let parsed = Engine::new()

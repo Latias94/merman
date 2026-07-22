@@ -4783,7 +4783,7 @@ mod tests {
         graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
-        crate::configurator::configure_graph_properties(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph).unwrap();
 
         crate::pipeline::execute_ported_compound_processors_until(
             &mut graph,
@@ -4830,7 +4830,7 @@ mod tests {
         graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
-        crate::configurator::configure_graph_properties(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph).unwrap();
         crate::pipeline::execute_ported_compound_processors_until(
             &mut graph,
             crate::pipeline::LayeredPhase::P3NodeOrdering,

@@ -197,7 +197,7 @@ function editorCapabilities() {
     render: false,
     analysis: true,
     ascii: false,
-    core_host: false,
+    system_adapter_ids: [],
     cytoscape_layout: false,
     elk_layout: false,
     ratex_math: false,

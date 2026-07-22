@@ -27,6 +27,7 @@ import type {
   HostThemePresetName,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
+  SystemAdapterId,
   TextMeasurementCapabilities,
   ThemeName,
 } from "./public-catalog.js";
@@ -1619,11 +1620,14 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
 }
 
 function normalizeBindingCapabilities(capabilities: BindingCapabilities): BindingCapabilities {
+  if ("core_host" in (capabilities as unknown as Record<string, unknown>)) {
+    throw new Error("Merman WASM returned the removed core_host capability.");
+  }
   return {
     render: Boolean(capabilities.render),
     analysis: Boolean(capabilities.analysis),
     ascii: Boolean(capabilities.ascii),
-    core_host: Boolean(capabilities.core_host),
+    system_adapter_ids: normalizeBrowserSystemAdapterIds(capabilities.system_adapter_ids),
     cytoscape_layout: Boolean(capabilities.cytoscape_layout),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
@@ -1635,8 +1639,18 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
   };
 }
 
+function normalizeBrowserSystemAdapterIds(value: unknown): SystemAdapterId[] {
+  if (!Array.isArray(value) || !value.every((id) => typeof id === "string")) {
+    throw new Error("Merman WASM returned invalid system adapter IDs.");
+  }
+  if (value.length > 0) {
+    throw new Error("Merman browser WASM must not expose native system adapters.");
+  }
+  return [];
+}
+
 function normalizeRuntimeContract(contract: RuntimeContract): RuntimeContract {
-  if (!contract || typeof contract !== "object" || contract.schema_version !== 3) {
+  if (!contract || typeof contract !== "object" || contract.schema_version !== 4) {
     throw new Error("Merman WASM returned an unsupported runtime contract schema.");
   }
   if (contract.options_schema_version !== 1) {

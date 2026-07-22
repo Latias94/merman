@@ -886,15 +886,30 @@ def minimal_web_descriptor() -> dict:
         "browser-render-only": ["render"],
         "browser-ascii": ["ascii"],
         "browser-editor": ["editor-language"],
-        "browser-full": [],
-        "browser-full-no-elk": [
-            "core-host",
-            "render",
+        "browser-full": [
             "analysis",
             "ascii",
+            "cytoscape-layout",
             "editor-language",
+            "elk-layout",
+            "render",
         ],
-        "browser-ratex-math": ["ratex-math"],
+        "browser-full-no-elk": [
+            "analysis",
+            "ascii",
+            "cytoscape-layout",
+            "editor-language",
+            "render",
+        ],
+        "browser-ratex-math": [
+            "analysis",
+            "ascii",
+            "cytoscape-layout",
+            "editor-language",
+            "elk-layout",
+            "ratex-math",
+            "render",
+        ],
     }
     public = [
         ("core", "browser-core"),
@@ -911,12 +926,9 @@ def minimal_web_descriptor() -> dict:
             {
                 "name": name,
                 "surface": "browser",
-                "default_features": name in {"browser-full", "browser-ratex-math"},
+                "default_features": False,
                 "features": features,
-                "capabilities": preset_capabilities(
-                    features,
-                    default_features=name in {"browser-full", "browser-ratex-math"},
-                ),
+                "capabilities": preset_capabilities(features),
             }
             for name, features in preset_features.items()
         ],
@@ -1011,8 +1023,7 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         name = "merman-wasm"
 
         [features]
-        default = ["core-host", "render", "analysis", "ascii", "elk-layout", "editor-language"]
-        core-host = []
+        default = []
         analysis = []
         ascii = []
         render = []
@@ -1033,19 +1044,8 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
     write(root, "docs/release/PACKAGE_SURFACES.md", docs)
 
 
-def preset_capabilities(features: list[str], *, default_features: bool) -> dict[str, bool]:
+def preset_capabilities(features: list[str]) -> dict[str, bool]:
     enabled = set(features)
-    if default_features:
-        enabled.update(
-            {
-                "core-host",
-                "render",
-                "analysis",
-                "ascii",
-                "elk-layout",
-                "editor-language",
-            }
-        )
     if "editor-language" in enabled:
         enabled.add("analysis")
     if "ratex-math" in enabled:

@@ -1,7 +1,16 @@
 package io.merman
 
+import org.json.JSONObject
+
 object MermanEngine {
     const val ABI_VERSION: Int = MermanTextMeasurementOperation.ABI_VERSION
+    private const val RUNTIME_CONTRACT_SCHEMA_VERSION: Int = 4
+    private val SUPPORTED_SYSTEM_ADAPTER_IDS = setOf(
+        "system-clock",
+        "system-timezone",
+        "system-random",
+        "system-timing",
+    )
 
     init {
         System.loadLibrary("merman_ffi")
@@ -19,7 +28,7 @@ object MermanEngine {
     }
 
     private val runtimeContractJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeRuntimeContractJson()
+        validateRuntimeContract(nativeRuntimeContractJson())
     }
 
     private val asciiCapabilitiesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -110,6 +119,42 @@ object MermanEngine {
         }
         if (nativeBufferStructSize() <= 0L || nativeResultStructSize() <= 0L) {
             throw MermanException("Merman ABI struct size check failed")
+        }
+    }
+
+    private fun validateRuntimeContract(json: String): String {
+        try {
+            val root = JSONObject(json)
+            if (root.optInt("schema_version", -1) != RUNTIME_CONTRACT_SCHEMA_VERSION) {
+                throw MermanException("Unsupported Merman runtime contract schema")
+            }
+            val features = root.optJSONObject("features")
+                ?: throw MermanException("Merman runtime contract is missing features")
+            if (features.has("core_host")) {
+                throw MermanException("Merman runtime contract contains removed core_host field")
+            }
+            val systemAdapterIds = features.optJSONArray("system_adapter_ids")
+                ?: throw MermanException(
+                    "Merman runtime contract is missing system_adapter_ids",
+                )
+            val seenSystemAdapterIds = mutableSetOf<String>()
+            for (index in 0 until systemAdapterIds.length()) {
+                val adapterId = systemAdapterIds.opt(index)
+                if (
+                    adapterId !is String ||
+                    adapterId !in SUPPORTED_SYSTEM_ADAPTER_IDS ||
+                    !seenSystemAdapterIds.add(adapterId)
+                ) {
+                    throw MermanException(
+                        "Merman runtime contract contains an unsupported system adapter ID",
+                    )
+                }
+            }
+            return json
+        } catch (error: MermanException) {
+            throw error
+        } catch (error: Exception) {
+            throw MermanException("Invalid Merman runtime contract: ${error.message}")
         }
     }
 

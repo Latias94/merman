@@ -65,7 +65,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     };
 
     let (fill_d, stroke_d) =
-        match super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_circle(
                 diameter,
                 common.fill_color,
@@ -111,10 +111,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     );
     out.push_str("</g>");
 
-    let label_html =
-        super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
-            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-        });
+    let label_html = super::super::helpers::timed_node_label_html(common.timing, details, || {
+        flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+    });
     let label_y = if top_label {
         -outer_h / 2.0
     } else {

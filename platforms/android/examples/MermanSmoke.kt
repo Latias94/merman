@@ -216,8 +216,10 @@ fun runMermanSmoke() {
     }
     val runtimeContractJson = MermanEngine.runtimeContractJson()
     check(
-        runtimeContractJson.contains("\"schema_version\":3") &&
+        runtimeContractJson.contains("\"schema_version\":4") &&
             runtimeContractJson.contains("\"abi_version\":2") &&
+            runtimeContractJson.contains("\"system_adapter_ids\":[") &&
+            !runtimeContractJson.contains("\"core_host\"") &&
             runtimeContractJson.contains("\"analysis\":1") &&
             runtimeContractJson.contains("\"analysis_facts\":2") &&
             runtimeContractJson.contains("\"general_binding_default_profile\":\"interactive\""),

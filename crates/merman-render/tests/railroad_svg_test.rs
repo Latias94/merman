@@ -20,7 +20,7 @@ fn render_railroad_with_id(site_config: Value, diagram_id: &str) -> (String, Val
         .expect("railroad parse succeeds")
         .expect("railroad diagram is detected");
     let effective_config = parsed.metadata().effective_config.as_value().clone();
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("railroad layout succeeds");
     let rendered = artifact

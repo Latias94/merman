@@ -8,7 +8,7 @@
 //! use merman::render::{RenderEnvironment, RenderOperationReport};
 //!
 //! fn retain_completed(_: &RenderOperationReport) {}
-//! let session = RenderEnvironment::parity().begin_session().unwrap();
+//! let session = RenderEnvironment::deterministic().begin_session().unwrap();
 //! retain_completed(session.report());
 //! ```
 //!
@@ -17,7 +17,7 @@
 //! ```compile_fail
 //! use merman::render::{RenderEnvironment, RenderExecutionPath, RenderOperationReport};
 //!
-//! let session = RenderEnvironment::parity().begin_session().unwrap();
+//! let session = RenderEnvironment::deterministic().begin_session().unwrap();
 //! let _forged = RenderOperationReport {
 //!     execution_path: RenderExecutionPath::HeadlessOperationTyped,
 //!     session: session.report(),
@@ -43,18 +43,16 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-#[cfg(feature = "core-host")]
-pub use merman_render::environment::SystemRenderClock;
+pub use merman_core::runtime::{
+    OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
+};
 pub use merman_render::environment::{
-    FixedOffsetRenderClock, FixedRenderClock, FixedRenderSeedSource, HostFallbackReason,
-    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
-    HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderClock,
-    RenderEnvironment, RenderLocalTimePolicy, RenderRandomnessPolicy, RenderSeedOrigin,
-    RenderSession, RenderSessionReport, RenderTimeError, RenderTimeSnapshot,
-    TEXT_MEASUREMENT_ABI_VERSION, TextMeasurementOperation, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
-    TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
-    TextMeasurementSummary,
+    HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
+    HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
+    RenderSession, RenderSessionReport, TEXT_MEASUREMENT_ABI_VERSION, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementResultKind,
+    TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
 };
 pub use merman_render::family::RenderFamilyKind;
 #[cfg(feature = "ratex-math")]
@@ -103,31 +101,22 @@ pub enum HeadlessError {
     #[error(transparent)]
     Render(#[from] merman_render::Error),
     #[error(transparent)]
-    RenderTime(#[from] RenderTimeError),
+    RuntimePolicy(#[from] RuntimePolicyError),
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessError>;
 
 fn default_render_environment() -> RenderEnvironment {
-    #[cfg(feature = "core-host")]
-    {
-        RenderEnvironment::host()
-    }
-    #[cfg(not(feature = "core-host"))]
-    {
-        RenderEnvironment::parity()
-    }
+    RenderEnvironment::deterministic()
 }
 
-fn engine_with_session_time(
+fn engine_with_session_context(
     engine: &merman_core::Engine,
     session: &merman_render::environment::RenderSession,
 ) -> merman_core::Engine {
-    let snapshot = session.time();
     engine
         .clone()
-        .with_fixed_today(Some(snapshot.local_date()))
-        .with_local_time_zone(session.local_time_zone().clone())
+        .with_operation_context(session.operation_context().clone())
 }
 
 /// Converts an arbitrary string into a conservative SVG `id` token suitable for embedding
@@ -625,7 +614,7 @@ mod svg_pipeline_tests {
     fn renderer_owned_readable_pipeline_records_postprocess_measurements_in_final_report() {
         let source = "flowchart TD\nA@{ shape: stadium, label: 'This is a long label that wraps in the pipeline' }";
         let renderer = HeadlessRenderer::new()
-            .with_environment(RenderEnvironment::parity())
+            .with_environment(RenderEnvironment::deterministic())
             .with_diagram_id("pipeline-report");
         let plain = renderer.render_svg_report_sync(source).unwrap().unwrap();
         let readable_renderer = renderer.clone().with_svg_pipeline(SvgPipeline::readable());
@@ -1021,9 +1010,8 @@ section Demo
 Missing year: id1,03-01,1d
 Missing ref: id2,after missing,1d
 "#;
-        let renderer = HeadlessRenderer::new().with_fixed_time(
-            RenderTimeSnapshot::from_unix_millis(1_771_113_600_000, 0)
-                .expect("valid fixed UTC instant"),
+        let renderer = HeadlessRenderer::new().with_runtime_policy(
+            RuntimePolicy::deterministic().with_fixed_unix_millis(1_771_113_600_000),
         );
         let parsed = renderer.parse_diagram_sync(source).unwrap().unwrap();
 
@@ -1037,17 +1025,15 @@ Missing ref: id2,after missing,1d
         );
 
         let rendered = renderer.render_svg_report_sync(source).unwrap().unwrap();
-        assert_eq!(rendered.report().time().unix_ms(), 1_771_113_600_000);
-        assert_eq!(rendered.report().time().local_offset_minutes(), 0);
+        assert_eq!(rendered.report().unix_millis(), 1_771_113_600_000);
         fn today_line(svg: &str) -> &str {
             let start = svg.find(r#"<g class="today"><line"#).expect("today marker");
             let end = svg[start..].find("/>").expect("today marker end") + start + 2;
             &svg[start..end]
         }
 
-        let next_month = HeadlessRenderer::new().with_fixed_time(
-            RenderTimeSnapshot::from_unix_millis(1_773_532_800_000, 0)
-                .expect("valid next-month UTC instant"),
+        let next_month = HeadlessRenderer::new().with_runtime_policy(
+            RuntimePolicy::deterministic().with_fixed_unix_millis(1_773_532_800_000),
         );
         let next_svg = next_month.render_svg_sync(source).unwrap().unwrap();
         assert_ne!(today_line(rendered.svg()), today_line(&next_svg));
@@ -1100,6 +1086,15 @@ impl HeadlessRenderer {
 
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates a renderer that explicitly captures native clock, timezone, and randomness
+    /// adapters for each operation. Timing diagnostics remain an explicit opt-in capability.
+    pub fn try_native() -> Result<Self> {
+        Ok(Self::from_engine_and_environment(
+            merman_core::Engine::new(),
+            RenderEnvironment::try_native()?,
+        ))
     }
 
     pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
@@ -1164,8 +1159,15 @@ impl HeadlessRenderer {
         self
     }
 
-    pub fn with_fixed_time(mut self, snapshot: RenderTimeSnapshot) -> Self {
-        self.environment = self.environment.with_time_snapshot(snapshot);
+    pub fn with_runtime_policy(mut self, policy: RuntimePolicy) -> Self {
+        self.environment = self.environment.with_runtime_policy(policy);
+        self
+    }
+
+    pub fn with_operation_context(mut self, context: OperationContext) -> Self {
+        self.environment = self
+            .environment
+            .with_runtime_policy(RuntimePolicy::from_operation_context(context));
         self
     }
 
@@ -1236,7 +1238,7 @@ impl HeadlessRenderer {
         &self,
         session: &merman_render::environment::RenderSession,
     ) -> merman_core::Engine {
-        engine_with_session_time(&self.engine, session)
+        engine_with_session_context(&self.engine, session)
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {

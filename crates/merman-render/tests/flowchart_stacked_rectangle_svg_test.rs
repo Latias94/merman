@@ -137,7 +137,7 @@ fn assert_close(actual: f64, expected: f64, name: &str) {
 
 #[test]
 fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
-    let _session = RenderEnvironment::parity().begin_session().unwrap();
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
@@ -197,7 +197,7 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
 
 #[test]
 fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
-    let _session = RenderEnvironment::parity().begin_session().unwrap();
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;

@@ -480,11 +480,11 @@ mod tests {
             diagram_id: Some("timelineFixed".to_string()),
             ..Default::default()
         };
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session);
+        let execution = SvgExecution::new(&options, &debug, &session).expect("SVG execution");
 
         let svg = render_timeline_diagram_svg_inner(
             &layout,

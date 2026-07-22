@@ -19,8 +19,11 @@ exclude = [
 ]
 
 [features]
-default = ["cytoscape-layout"]
-host = ["chrono/clock", "chrono/wasmbind", "dep:rand", "merman-core/host", "roughr/host-random"]
+default = []
+system-clock = ["merman-core/system-clock"]
+system-timezone = ["merman-core/system-timezone"]
+system-random = ["merman-core/system-random"]
+system-timing = ["merman-core/system-timing"]
 cytoscape-layout = ["dep:manatee"]
 elk-layout = ["dep:merman-layout-elk"]
 font-metrics-generation = []
@@ -46,7 +49,6 @@ manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
 pulldown-cmark.workspace = true
-rand = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }

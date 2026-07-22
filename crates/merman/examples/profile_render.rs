@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
     let parse_options = ParseOptions::strict();
     let layout_options: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
     let svg_options = SvgRenderOptions {
         diagram_id: Some(diagram_id_for(&args.input, args.diagram_id.as_deref())),
         ..SvgRenderOptions::default()

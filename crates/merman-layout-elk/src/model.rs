@@ -58,6 +58,9 @@ pub struct LayoutOptions {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
+    /// ELK's source `randomSeed` option. `0` retains the upstream unseeded sentinel and must be
+    /// resolved by an explicit layout policy before processor execution.
+    pub random_seed: i32,
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
     pub cycle_breaking: CycleBreakingStrategy,
@@ -77,6 +80,7 @@ pub struct LayeredOptions {
 impl Default for LayeredOptions {
     fn default() -> Self {
         Self {
+            random_seed: 1,
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
             cycle_breaking: CycleBreakingStrategy::Greedy,

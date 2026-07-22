@@ -12,7 +12,7 @@ fn render_state_svg_from_text(text: &str) -> String {
 }
 
 fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")

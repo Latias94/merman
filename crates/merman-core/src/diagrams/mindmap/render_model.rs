@@ -1,12 +1,9 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
 use crate::{Error, ParseMetadata, Result};
-
-static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -116,7 +113,6 @@ pub(crate) fn render_model_to_compat_json(
         );
     }
 
-    let diagram_id = MINDMAP_DIAGRAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
     let mut root = Map::with_capacity(12);
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     root.insert("nodes".to_string(), Value::Array(nodes));
@@ -131,11 +127,33 @@ pub(crate) fn render_model_to_compat_json(
     root.insert("nodeSpacing".to_string(), Number::from(50).into());
     root.insert("rankSpacing".to_string(), Number::from(50).into());
     root.insert("shapes".to_string(), Value::Object(shapes));
-    root.insert(
-        "diagramId".to_string(),
-        Value::String(format!("mindmap-{diagram_id}")),
-    );
+    root.insert("diagramId".to_string(), Value::String(mindmap_diagram_id()));
     Ok(Value::Object(root))
+}
+
+fn mindmap_diagram_id() -> String {
+    let mut hex = crate::runtime::generated_id_hex("mindmap.diagram-id", 0, 32).into_bytes();
+    hex[12] = b'4';
+    let variant = hex_digit(hex[16]);
+    hex[16] = b"89ab"[(variant & 0x03) as usize];
+
+    let hex = String::from_utf8(hex).expect("generated hexadecimal ID is valid UTF-8");
+    format!(
+        "mindmap-{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
+fn hex_digit(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        _ => unreachable!("generated ID contains only lowercase hexadecimal digits"),
+    }
 }
 
 fn mindmap_compat_config(meta: &ParseMetadata) -> Value {

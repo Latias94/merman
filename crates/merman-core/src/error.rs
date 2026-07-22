@@ -139,7 +139,7 @@ pub enum Error {
     ThemeColor(#[from] crate::theme_color::ColorError),
 
     #[error(transparent)]
-    InvalidLocalTimeZone(#[from] crate::time::LocalTimeZoneError),
+    RuntimePolicy(#[from] crate::runtime::RuntimePolicyError),
 
     #[error(transparent)]
     DetectType(#[from] DetectTypeError),

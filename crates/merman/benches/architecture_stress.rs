@@ -12,7 +12,7 @@ fn bench_architecture_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
 
     let parsed = engine
         .parse_diagram_for_render_model_sync(ARCH_MANY_SERVICES_ONE_GROUP, parse_opts)

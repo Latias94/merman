@@ -25,7 +25,7 @@ fn try_render_block_svg_from_text_with_engine(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
     Ok(artifact

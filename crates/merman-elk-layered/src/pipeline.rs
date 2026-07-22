@@ -15,6 +15,7 @@ use super::options::{
     GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
     PortConstraints, WrappingStrategy,
 };
+use crate::RandomSeedError;
 use crate::compound::preprocess_source_ported_compound_graph;
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LSize, PortSide};
@@ -54,6 +55,8 @@ use crate::transform::{GraphTransformMode, transform_graph_direction};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
+    #[error(transparent)]
+    RandomSeed(#[from] RandomSeedError),
     #[error("layered processor `{kind:?}` is not ported yet")]
     UnsupportedProcessor { kind: ProcessorKind },
     #[error("source-backed compound ELK layout does not support this graph yet: {reason}")]
@@ -403,7 +406,7 @@ pub fn execute_processors_until(
     target: LayeredPhase,
 ) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph);
+    configure_graph_properties(graph)?;
     let processors = assemble_processors_for_graph(graph);
 
     for slot in processors {
@@ -427,7 +430,7 @@ pub fn execute_processors_until_processor(
     target: ProcessorKind,
 ) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph);
+    configure_graph_properties(graph)?;
     let processors = assemble_processors_for_graph(graph);
 
     for slot in processors {
@@ -449,7 +452,7 @@ pub fn execute_processors_until_processor(
 /// the graph in the post-processor state produced by the ported pipeline.
 pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph);
+    configure_graph_properties(graph)?;
     let processors = assemble_processors_for_graph(graph);
 
     for slot in processors {
@@ -502,7 +505,7 @@ fn execute_ported_compound_processors_to(
     stop: Option<PipelineStop>,
 ) -> PipelineResult<Vec<GraphExecution>> {
     preprocess_source_ported_compound_graph(graph);
-    configure_graph_properties(graph);
+    configure_graph_properties(graph)?;
     reject_unsupported_compound_graph(graph)?;
     review_and_correct_hierarchical_processors(graph)?;
 

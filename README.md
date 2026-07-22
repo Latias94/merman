@@ -207,12 +207,19 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 | `analysis` | Diagnostics and lint metadata on transport crates |
 | `elk-layout` | Source-translated ELK layered layout |
 | `ratex-math` | Pure-Rust math layout and embedded KaTeX font assets |
-| `core-host` | Host clock and randomness |
+| `system-clock` | Capture wall-clock values into an operation policy |
+| `system-timezone` | Resolve a complete system time zone, including DST rules |
+| `system-random` | Seed an operation from the operating system |
+| `system-timing` | Enable explicitly requested operation timing diagnostics |
 
 Start from default features for normal native applications. Constrained WASM hosts should select a
 documented build profile instead of assembling an accidental feature combination. The Typst
 package enforces the fixed `constrained` resource policy and does not accept trusted or
 unbounded profiles from document input.
+
+System adapters are independent of Mermaid language support and do not authorize ambient reads
+during parsing or rendering. A native caller captures them once into an operation policy; a
+deterministic caller supplies explicit values and leaves the adapters disabled.
 
 All builds share the complete pinned Mermaid language catalog, including configuration,
 sanitization, detection, semantic parsing, and editor facts. A `merman-lsp --no-default-features`

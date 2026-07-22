@@ -13,7 +13,7 @@ fn render_quadrantchart_svg_from_text(text: &str) -> String {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact

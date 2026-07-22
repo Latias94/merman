@@ -245,8 +245,8 @@ fn run_flowchart_compare(
             ));
         }
     };
-    let mut environment =
-        merman::render::RenderEnvironment::parity().with_text_measurement_policy(text_measurement);
+    let mut environment = merman::render::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(text_measurement);
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }

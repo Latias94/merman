@@ -1,4 +1,4 @@
-use super::super::timing::{RenderTimings, TimingGuard};
+use super::super::timing::RenderTimings;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
 use super::nodes::{ClassNodesRenderContext, ClassNodesRenderState, render_class_render_tree};
 use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
@@ -34,8 +34,8 @@ fn render_class_diagram_svg_model_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
-    let total_start = timing_enabled.then(web_time::Instant::now);
+    let timing = options.timing();
+    let total_timer = timing.start();
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
@@ -44,8 +44,15 @@ fn render_class_diagram_svg_model_inner(
     let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
-    let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
-    let settings = ClassRenderSettings::from_config(effective_config);
+    let build_ctx_guard = timing.section(&mut timings.build_ctx);
+    let hand_drawn_seed = options.rough_randomness(
+        effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(options.seed() as f64),
+        "render.class.roughjs",
+    );
+    let settings = ClassRenderSettings::from_config(effective_config, hand_drawn_seed);
 
     // Mermaid's class renderer uses Dagre with fixed `marginx/marginy=8`, then calls
     // `setupGraphViewbox(svg, padding=conf.diagramPadding)` which computes the final SVG viewBox
@@ -61,7 +68,7 @@ fn render_class_diagram_svg_model_inner(
     // emit (using the exact same `d` strings we output for paths).
     let mut content_bounds: Option<Bounds> = None;
 
-    let render_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.render_svg));
+    let render_guard = timing.section(&mut timings.render_svg);
     let estimated_svg_bytes = 2048usize
         + model.classes.len().saturating_mul(512)
         + model.relations.len().saturating_mul(384)
@@ -137,14 +144,14 @@ fn render_class_diagram_svg_model_inner(
         text_measurer: measurer,
         terminal_text_style: &terminal_text_style,
         look: settings.look.as_str(),
-        hand_drawn_seed: settings.hand_drawn_seed,
-        timing_enabled,
+        hand_drawn_seed: settings.hand_drawn_seed.clone(),
+        timing,
     };
 
     // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
     // coordinates. Rendering consumes that tree directly instead of inferring namespace extraction
     // and edge ownership a second time from flattened compatibility data.
-    let nodes_start = timing_enabled.then(web_time::Instant::now);
+    let nodes_start = timing.start();
 
     let nodes_ctx = ClassNodesRenderContext {
         layout,
@@ -157,7 +164,7 @@ fn render_class_diagram_svg_model_inner(
         measurer,
         content_tx,
         content_ty,
-        timing_enabled,
+        timing,
     };
     render_class_render_tree(
         ClassNodesRenderState {
@@ -183,7 +190,7 @@ fn render_class_diagram_svg_model_inner(
     push_class_gradient(&mut out, diagram_id, effective_config);
 
     drop(render_guard);
-    let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
+    let viewbox_guard = timing.section(&mut timings.viewbox);
 
     let view_box = class_viewbox(ClassViewBoxContext {
         content_bounds,
@@ -219,7 +226,7 @@ fn render_class_diagram_svg_model_inner(
     }
 
     drop(viewbox_guard);
-    let finalize_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.finalize_svg));
+    let finalize_guard = timing.section(&mut timings.finalize_svg);
 
     let final_root_spec =
         root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
@@ -234,7 +241,7 @@ fn render_class_diagram_svg_model_inner(
     out.push_str("</svg>");
     drop(finalize_guard);
 
-    if let Some(s) = total_start {
+    if let Some(s) = total_timer {
         timings.total = s.elapsed();
         emit_class_render_timing(&timings, &detail, layout);
     }

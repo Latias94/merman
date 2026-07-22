@@ -42,7 +42,7 @@ pub(crate) fn class_member_create_text_input(
 enum ClassLayoutEngine {
     Dagre,
     #[cfg(feature = "elk-layout")]
-    Elk,
+    Elk(elk::ElkRandomPolicy),
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -1795,12 +1795,29 @@ pub fn layout_class_diagram_elk_typed_with_config(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramLayout> {
+    layout_class_diagram_elk_typed_with_config_and_random_policy(
+        model,
+        effective_config,
+        measurer,
+        elk::ElkRandomPolicy::require_explicit(),
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+/// Lays out a Class diagram through ELK with explicit authority for ELK's `randomSeed = 0`
+/// sentinel.
+pub fn layout_class_diagram_elk_typed_with_config_and_random_policy(
+    model: &ClassDiagramModel,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    random_policy: elk::ElkRandomPolicy,
+) -> Result<ClassDiagramLayout> {
     layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
-        ClassLayoutEngine::Elk,
+        ClassLayoutEngine::Elk(random_policy),
     )
 }
 
@@ -2170,7 +2187,7 @@ fn layout_class_diagram_typed_inner(
     }
 
     #[cfg(feature = "elk-layout")]
-    if engine == ClassLayoutEngine::Elk {
+    if let ClassLayoutEngine::Elk(random_policy) = engine {
         return layout_class_diagram_elk_from_graph(
             model,
             effective_config,
@@ -2183,6 +2200,7 @@ fn layout_class_diagram_typed_inner(
                 title_margin_bottom,
                 text_style: &text_style,
                 wrap_mode_label,
+                random_policy,
             },
             measurer,
         );
@@ -2384,6 +2402,7 @@ struct ClassElkLayoutSettings<'a> {
     title_margin_bottom: f64,
     text_style: &'a TextStyle,
     wrap_mode_label: WrapMode,
+    random_policy: elk::ElkRandomPolicy,
 }
 
 #[cfg(feature = "elk-layout")]
@@ -2404,9 +2423,12 @@ fn layout_class_diagram_elk_from_graph(
         &settings,
         measurer,
     );
-    let layout = elk::layout(&elk_graph).map_err(|err| Error::InvalidModel {
-        message: format!("Class ELK layout failed: {err}"),
-    })?;
+    let layout =
+        elk::layout_with_random_policy(&elk_graph, settings.random_policy).map_err(|err| {
+            Error::InvalidModel {
+                message: format!("Class ELK layout failed: {err}"),
+            }
+        })?;
     class_layout_from_elk(
         model,
         &graph,

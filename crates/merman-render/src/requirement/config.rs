@@ -52,8 +52,8 @@ impl<'a> RequirementConfigView<'a> {
             hand_drawn_seed: self
                 .effective_config
                 .get("handDrawnSeed")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
             title_top_margin: self
                 .config_f64(&["state", "titleTopMargin"])
                 .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
@@ -115,7 +115,7 @@ pub(crate) struct RequirementRenderSettings<'a> {
     pub(crate) look: DiagramLook<'a>,
     pub(crate) viewport_padding: f64,
     pub(crate) use_max_width: bool,
-    pub(crate) hand_drawn_seed: u64,
+    pub(crate) hand_drawn_seed: f64,
     pub(crate) title_top_margin: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(settings.look.as_str(), "neo");
         assert_eq!(settings.viewport_padding, DEFAULT_VIEWPORT_PADDING);
         assert!(!settings.use_max_width);
-        assert_eq!(settings.hand_drawn_seed, 7);
+        assert_eq!(settings.hand_drawn_seed, 7.0);
         assert_eq!(settings.title_top_margin, DEFAULT_TITLE_TOP_MARGIN);
         assert_eq!(settings.font_family, "Inter,sans-serif");
         assert_eq!(settings.font_size, 20.0);

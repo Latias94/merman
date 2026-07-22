@@ -99,8 +99,8 @@ impl<'a> ErConfigView<'a> {
             hand_drawn_seed: self
                 .effective_config
                 .get("handDrawnSeed")
-                .and_then(Value::as_u64)
-                .unwrap_or(0),
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
         }
     }
 
@@ -252,7 +252,7 @@ pub(crate) struct ErRenderSettings {
     pub(crate) relationship_html_labels: bool,
     pub(crate) entity_html_label_wrap_mode: WrapMode,
     pub(crate) entity_measurement: ErEntityMeasurementSettings,
-    pub(crate) hand_drawn_seed: u64,
+    pub(crate) hand_drawn_seed: f64,
 }
 
 pub(super) fn rank_dir_from(direction: &str) -> RankDir {
@@ -390,7 +390,7 @@ mod tests {
             ErLayoutAlgorithm::Elk
         );
         assert_eq!(settings.diagram_look, "handDrawn");
-        assert_eq!(settings.hand_drawn_seed, 7);
+        assert_eq!(settings.hand_drawn_seed, 7.0);
         assert_eq!(settings.font_size, 1.0);
         assert_eq!(settings.title_top_margin, 12.0);
         assert_eq!(settings.insert_title_top_margin, 12.0);

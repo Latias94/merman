@@ -117,7 +117,8 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
         .with_fixed_today(Some(
             NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed fixture date"),
         ))
-        .with_fixed_local_offset_minutes(Some(0));
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("UTC is a valid fixed offset");
     let mut audit = FormalFixtureEditorFactsAudit {
         total: fixtures.len(),
         ..Default::default()

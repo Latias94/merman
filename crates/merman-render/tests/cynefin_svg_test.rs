@@ -19,7 +19,11 @@ fn parse_layout_and_render(
     input: &str,
     layout_options: &LayoutOptions,
 ) -> (CynefinDiagramLayout, String) {
-    parse_layout_and_render_with_environment(input, layout_options, &RenderEnvironment::parity())
+    parse_layout_and_render_with_environment(
+        input,
+        layout_options,
+        &RenderEnvironment::deterministic(),
+    )
 }
 
 fn parse_layout_and_render_with_environment(
@@ -121,10 +125,12 @@ fn cynefin_global_font_family_drives_css_and_item_measurement() {
         "test",
     )
     .unwrap();
-    let environment =
-        RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::uniform(
-            TextMeasurementProfile::new(identity, Arc::new(FontAwareTextMeasurer)),
-        ));
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(FontAwareTextMeasurer),
+        )),
+    );
     let (layout, svg) = parse_layout_and_render_with_environment(
         r#"---
 config:

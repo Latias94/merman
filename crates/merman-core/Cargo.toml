@@ -15,12 +15,22 @@ categories = ["parser-implementations", "visualization"]
 
 [features]
 # Mermaid language parsing, configuration, sanitization, detection, and family facts are the
-# unconditional core contract. Features only describe ambient host capabilities.
-default = ["host"]
-host = ["host-clock", "host-random", "host-timing"]
-host-clock = ["chrono/clock", "chrono/wasmbind", "dep:jiff", "dep:sha2"]
-host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
-host-timing = ["dep:web-time"]
+# unconditional core contract. Features only admit explicit system adapters.
+default = []
+system-clock = []
+system-timezone = [
+    "dep:jiff",
+    "dep:sha2",
+    "jiff/std",
+    "jiff/tz-system",
+    "jiff/tz-fat",
+    "jiff/tzdb-bundle-platform",
+    "jiff/tzdb-zoneinfo",
+    "jiff/tzdb-concatenated",
+    "jiff/perf-inline",
+]
+system-random = ["dep:getrandom", "getrandom/std"]
+system-timing = ["dep:web-time"]
 
 [dependencies]
 euclid.workspace = true
@@ -35,9 +45,9 @@ thiserror.workspace = true
 unicode-general-category.workspace = true
 lol_html.workspace = true
 url.workspace = true
-uuid = { workspace = true, optional = true }
 chrono.workspace = true
 jiff = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 ryu-js.workspace = true
 rustc-hash.workspace = true
 sha2 = { workspace = true, optional = true }

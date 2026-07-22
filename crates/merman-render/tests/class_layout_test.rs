@@ -39,7 +39,7 @@ fn layout_class_with_dagre(
 }
 
 fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -51,7 +51,7 @@ fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
 }
 
 fn layout_class_text(text: &str) -> (ClassDiagramLayout, ParsedDiagramRender) {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = parse_class(text);
     let layout = layout_class_with_dagre(&parsed, &session);
     (layout, parsed)
@@ -92,7 +92,7 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
 
 #[test]
 fn class_layout_produces_positions_and_routes() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -125,7 +125,7 @@ fn class_layout_produces_positions_and_routes() {
 
 #[test]
 fn class_namespaces_contain_member_classes() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -461,7 +461,7 @@ namespace Company.Project.Module {
 
 #[test]
 fn class_terminal_labels_exist_for_cardinalities_fixture() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -487,7 +487,7 @@ fn point_inside(rect: (f64, f64, f64, f64), x: f64, y: f64, eps: f64) -> bool {
 
 #[test]
 fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -542,7 +542,7 @@ fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() 
 
 #[test]
 fn class_svg_title_widths_scale_with_measured_content() {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = r#"---

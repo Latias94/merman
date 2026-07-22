@@ -202,13 +202,12 @@ pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str 
 }
 
 pub(super) fn timed_node_roughjs<T>(
-    timing_enabled: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
     f: impl FnOnce() -> T,
 ) -> T {
-    if timing_enabled {
+    if let Some(start) = timing.start() {
         details.node_roughjs_calls += 1;
-        let start = web_time::Instant::now();
         let out = f();
         details.node_roughjs += start.elapsed();
         out
@@ -218,13 +217,12 @@ pub(super) fn timed_node_roughjs<T>(
 }
 
 pub(super) fn timed_node_label_html<T>(
-    timing_enabled: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
     f: impl FnOnce() -> T,
 ) -> T {
-    if timing_enabled {
+    if let Some(start) = timing.start() {
         details.node_label_html_calls += 1;
-        let start = web_time::Instant::now();
         let out = f();
         details.node_label_html += start.elapsed();
         out

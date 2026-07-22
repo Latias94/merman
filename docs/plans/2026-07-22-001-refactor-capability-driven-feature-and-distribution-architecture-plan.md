@@ -17,7 +17,7 @@ execution: code
 - **Authority:** The pinned Mermaid `11.16.0` source and companion behavior graph define language and rendering correctness. Cargo's additive feature semantics define compile-time composition. The canonical capability descriptor, ABI descriptor, package manifests, and measured dependency/artifact closures define release truth. Runtime environment and resource policies remain distinct from compiled capability.
 - **Execution profile:** Fearless alpha refactor. Public Cargo features, defaults, C symbols, UniFFI records, package names, npm exports, CLI build profiles, and generated descriptors may break. Delete old aliases and phantom capabilities instead of carrying compatibility layers. Preserve one family-owned parser/semantic/editor path and source-backed behavior.
 - **Stop conditions:** Do not create one feature per diagram, make parser or LSP coverage depend on a render backend, replace ICU or another semantic dependency with an approximation, claim npm subpaths reduce installation size, keep a feature with no callable API, generate Cargo manifests, or upgrade a behavior dependency without source and parity evidence.
-- **Tail ownership:** Implement every unit, run the complete verification contract, simplify abandoned attempts, and create focused Conventional Commits on the current branch. Do not push, publish, tag, release, or open a PR without separate maintainer authorization.
+- **Tail ownership:** Implement every unit, run the complete verification contract, simplify abandoned attempts, and create focused Conventional Commits on the current branch. The maintainer has authorized the final U17 branch push and pull request after the repository is reviewed, repaired, and versioned as `0.8.0-alpha.4`. Do not publish packages, create a tag, or create a GitHub Release.
 
 ---
 
@@ -119,6 +119,7 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 - R39. Consider a Node/SSG product only after ABI 3. Compare Node-targeted WASM and napi-rs behind the same `merman-bindings-core` contract; publish `@mermanjs/node` only when one transport clears corpus parity, cold/warm/RSS, installation, target, concurrency, and error-behavior evidence.
 - R40. Admit any additional language transport only through a bounded evidence decision. It must demonstrate a real user workflow, direct `merman-bindings-core` ownership, capability/resource/error mapping, lifecycle and async/cancellation semantics, package delivery, target CI, generated-API drift protection, and a documented user benefit that justifies its incremental long-term maintenance cost over the incumbent transport. Keep one public transport per user surface; a rejected spike leaves no live package, generated API, or runtime dependency.
 - R41. Close every current-HEAD item in the Fixed-Point Review Intake before dependency and distribution migration can obscure its cause. Security/resource defects, false-positive parity normalization, first-match parser semantics, runtime capability reporting, CI feature validity, and source-backed Mermaid behavior each require a focused regression test; rewriting the affected module later is not evidence that the defect disappeared.
+- R42. After U1-U16 and the strict U12 matrix are complete, perform a fresh fixed-point review of the entire branch, repair every actionable finding, and rerun affected plus aggregate verification. Only then update every governed package, generated projection, lock, changelog, installation example, and release contract from `0.8.0-alpha.3` to `0.8.0-alpha.4`. Commit the reviewed release candidate, push the current feature branch, and open one PR against `main` with no Compound Engineering badge. A PR is not permission to publish, tag, or create a release.
 
 ### Key Flows
 
@@ -381,6 +382,7 @@ U8 + U11a-U11c --> U7 lockstep npm packages and Playground adoption
 U6 + U7 + U11c + U13 --> U14 Node/SSG transport evidence and admission decision
 U6 + U13 --> U15 Flutter transport evidence and admission decision
 U1-U11c + U13-U16 --> U12 strict matrix, docs, legal projections, and cleanup
+U12 + U14 + U15 --> U17 fixed-point review, alpha.4 versioning, and pull request
 ```
 
 ### System-Wide Impact
@@ -470,6 +472,7 @@ This ledger records findings revalidated against the current branch after the or
 | U14 | Node/SSG transport evidence and admission decision | Node candidate harness, package/release docs | U6, U7, U11c, U13 |
 | U15 | Flutter transport evidence and admission decision | Flutter spike harness, generated binding/docs | U6, U13 |
 | U12 | Strict matrix, user feature guide, release docs, legal sync, cleanup | CI, `docs/FEATURES.md`, READMEs/changelogs | U1-U11c, U13-U16 |
+| U17 | Fixed-point review, `0.8.0-alpha.4` version convergence, and PR | full branch diff, version/release surfaces, GitHub PR | U12, U14-U15 |
 
 ### U1. Establish the canonical capability vocabulary and descriptor
 
@@ -511,9 +514,9 @@ This ledger records findings revalidated against the current branch after the or
 
 - **Goal:** Make native convenience and deterministic reproducibility explicit, composable, and immune to feature union.
 - **Requirements:** R7-R10, R31, R35-R38; F2-F5; AE3, AE9, AE11-AE12.
-- **Files:** `crates/merman-core/Cargo.toml`, `crates/merman-core/src/time.rs`, `crates/merman-core/src/runtime.rs`, `crates/merman-render/Cargo.toml`, `crates/merman-render/src/environment.rs`, `crates/merman-render/src/host_time.rs`, `crates/merman/src/render/mod.rs`, `crates/merman/src/render/operation.rs`, and native/browser/Typst time tests.
-- **Approach:** Replace `host`/`core-host` forwarding with `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Make core, analysis, editor-core, ASCII, render/export, bindings-core, and transport crates default-empty before any facade preset is trusted. Configure Jiff with target-owned features instead of workspace-wide `js` plus defaults. Route generated IDs, UUID-like values, Roughr seeds, and operation randomness through the same explicit system/deterministic random provider, then delete UUID or other direct randomness dependencies that no longer own semantics. Add explicit deterministic/native environment constructors and attest the selected runtime policy separately from compiled capability.
-- **Test scenarios:** System DST gap/fold and winter/summer resolution; fixed offset versus system rules; UTC behavior without system-timezone; browser JS time without native tzdb assumptions; Typst with no ambient imports; deterministic output in a build that also compiled all system adapters; boundary years and provenance digest stability.
+- **Files:** `crates/merman-core/Cargo.toml`, `crates/merman-core/src/time.rs`, `crates/merman-core/src/runtime.rs`, analysis document operations, `crates/merman-render/Cargo.toml`, `crates/merman-render/src/environment.rs`, removal of `crates/merman-render/src/host_time.rs`, Manatee, Dugong, and ELK random/debug entry points, `crates/roughr/`, `crates/merman/src/render/mod.rs`, `crates/merman/src/render/operation.rs`, and native/browser/Typst time tests.
+- **Approach:** Replace `host`/`core-host` forwarding with `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Make core, analysis, editor-core, ASCII, render/export, bindings-core, and transport crates default-empty before any facade preset is trusted. Configure Jiff with target-owned features instead of workspace-wide `js` plus defaults, use its fallible system-time-zone discovery, and never substitute an unknown UTC zone for a requested system adapter. Freeze one operation context before analyzing all Mermaid fences in a Markdown or MDX document; make analysis options the sole runtime-policy owner even when a caller supplies a customized engine. Route generated IDs, UUID-like values, RoughJS-compatible seed streams, ELK seeds, and operation randomness through the same explicit system/deterministic provider, preserving JavaScript boundary-number semantics before `ToInt32`; delete UUID or other direct randomness dependencies that no longer own semantics. Remove `MANATEE_*`, `DUGONG_*`, public timing-to-stdout helpers, zero-seed `SystemTime`, and similar ambient layout/debug backdoors. Let only an unforgeable operation timing token start clocks, reject requested timing when the operation did not enable it, and delete renderer-owned timing shims. Add explicit deterministic/native environment constructors and attest selected runtime policy separately from compiled capability.
+- **Test scenarios:** System DST gap/fold and winter/summer resolution; fixed offset versus system rules; replayed computed versus explicitly fixed local dates; fail-closed system-time-zone discovery; one frozen context across a multi-fence Markdown/MDX operation; UTC behavior without system-timezone; browser JS time without native tzdb assumptions; Typst with no ambient imports; deterministic output in a build that also compiled all system adapters; RoughJS and ELK boundary seeds; timing request rejection and explicit enablement; boundary years and provenance digest stability.
 - **Verification:** Artifact-profile closure tests, rather than a raw preset complement, prove deterministic/editor/lint/Typst products omit Jiff/UUID/web-time where intended. Cross-process deterministic SVG is byte-identical and existing time-zone regressions pass. Current transitional defaults remain release-blocking until U5 admits the profile recipes.
 
 ### U4. Split renderer, layout, math, and output capabilities
@@ -633,6 +636,15 @@ This ledger records findings revalidated against the current branch after the or
 - **Test scenarios:** Every actor flow and acceptance example; user-guide examples compile/run; clean checkout generation; ignored/stale artifact rejection; all supported targets; missing package/feature/runtime capability; raw-preset versus exact-profile distinction; each compiled component has an exact recipe and each interface/package passes its owner-specific probe; release preflight without credentials; previous package imports produce actionable migration errors. Documentation review confirms no unavailable VS Code Marketplace release or unsupported package is claimed, without turning prose into a schema.
 - **Verification:** The Verification Contract passes from a clean tree, `git diff --check` is clean, generated projections are stable, and code/docs/build/release paths made obsolete or unreachable by U1-U16 are removed. Unrelated historical cleanup is not a completion blocker.
 
+### U17. Review the release candidate, converge on alpha.4, and open the PR
+
+- **Goal:** Turn the completed architecture into one reviewed, internally consistent `0.8.0-alpha.4` pull request without publishing it.
+- **Requirements:** R33-R34, R42; AE10, AE12.
+- **Files:** the complete branch diff and commit range; workspace/package manifests and locks; generated capability, ABI, resource, editor, Web, Typst, native, and release projections; root and package changelogs/READMEs; release contracts and workflow version inputs; PR title and body.
+- **Approach:** First review the complete merge-base-to-HEAD diff along both repository standards and plan/spec axes. Run focused reviewers for runtime/unsafe/security, feature and dependency closure, parser/editor/LSP semantics, render/parity, Web/Playground, native transports, release workflow, documentation, and dead-code/obsolete-path cleanup. Reproduce every actionable finding, fix root causes, delete superseded implementations and compatibility residue, and rerun the affected owner gates plus the full U12 matrix. Only after that review is clean, use the repository's single version-governance path to change all governed surfaces from `0.8.0-alpha.3` to `0.8.0-alpha.4`; regenerate locks, package metadata, generated constants, changelogs, installation snippets, and release contracts from their authorities. Review the version-only delta for stale `.3`, accidental unrelated versions, and publishability. Create the final Conventional Commit(s), verify the branch is based on the intended `main`, push only this feature branch, and open a PR against `main`. The PR body summarizes the breaking feature/ABI/package migration, measured dependency and size results, tests, residual risks, and migration guidance; it contains no Compound Engineering badge. Do not create a tag, GitHub Release, registry publication, or release workflow dispatch.
+- **Test scenarios:** A deliberately stale package version fails version verification; old alpha.3 installation snippets and generated constants are detected; ABI 3/package version remain separate; changelog has a user-facing breaking migration section; clean package install/build smokes consume alpha.4 metadata; review findings require focused regressions; `git diff --check` and generated freshness remain clean after the bump; PR base/head and commit list contain only the intended branch.
+- **Verification:** Run the repository version verifier and release preflight without credentials, repeat the U12 strict verification contract against the alpha.4 tree, inspect `git diff <merge-base>...HEAD` and `git status`, and confirm no publish/tag/release side effect occurred. The pushed branch and open PR are the terminal artifacts; CI is observed and any branch-owned failure is repaired before the plan is marked complete.
+
 ---
 
 ## Verification Contract
@@ -716,8 +728,8 @@ U15 first validates generated `ffigen` bindings from the ABI-3 header and the ha
 
 ## Definition of Done
 
-- R1-R41 and AE1-AE15 are satisfied with repository evidence, not documentation claims alone.
-- U1-U16 each meet their test scenarios and verification outcome in dependency order.
+- R1-R42 and AE1-AE15 are satisfied with repository evidence, not documentation claims alone.
+- U1-U17 each meet their test scenarios and verification outcome in dependency order.
 - Complete Mermaid 11.16 detector/parser/semantic/span/vocabulary behavior is invariant across every parser-capable preset; whenever analysis, editor, or LSP is compiled, it covers that same full catalog without a second semantic path.
 - Feature names are intuitive, additive, and capability-based; removed aliases and fake profiles are absent from live surfaces.
 - Runtime policy remains explicit and deterministic under an all-capabilities build.
@@ -726,5 +738,5 @@ U15 first validates generated `ffigen` bindings from the ABI-3 header and the ha
 - Browser users install one intended browser-only WASM package, Typst remains a closed pure-WASM transport without math until separately admitted, and package/size/release probes are exact. Node is either admitted from U14 evidence with target-specific packages or explicitly absent.
 - Deprecated/dead dependencies and downstream parser generation are removed; maintained dependency migrations and upstream ports have source, parity, target, legal, and size evidence.
 - All executable strict, platform, package, parity, security, legal, generated-file, and public-example gates pass, or any unavailable external tool is named with the successful lower-level evidence that remains. Ordinary prose receives review rather than a substring gate.
-- Abandoned approaches, temporary compatibility shims, duplicate descriptors, stale generated artifacts, obsolete docs, and dead code made obsolete, touched, or replaced by U1-U16 are removed before the final commit set; unrelated repository archaeology is not a completion blocker.
-- No push, package publication, tag, release, or PR is created by this plan's execution.
+- Abandoned approaches, temporary compatibility shims, duplicate descriptors, stale generated artifacts, obsolete docs, and dead code made obsolete, touched, or replaced by U1-U17 are removed before the final commit set; unrelated repository archaeology is not a completion blocker.
+- Every governed release surface reports `0.8.0-alpha.4`; the reviewed feature branch is pushed and one PR against `main` is open without a Compound Engineering badge. No package publication, tag, GitHub Release, or release workflow dispatch occurs.

@@ -1,37 +1,14 @@
 //! Trace payload structures for debugging flowchart edge geometry.
 //!
-//! These types are emitted only when tracing is enabled through [`SvgDebugOptions`].
+//! These records are emitted only when tracing is enabled through [`SvgDebugOptions`].
 
 use super::super::*;
+use crate::svg::{FlowchartEdgeTrace, FlowchartEdgeTracePoint};
 
-#[derive(serde::Serialize)]
-pub(in crate::svg::parity::flowchart) struct TracePoint {
-    pub(in crate::svg::parity::flowchart) x: f64,
-    pub(in crate::svg::parity::flowchart) y: f64,
-}
-
-pub(in crate::svg::parity::flowchart) fn tp(p: &crate::model::LayoutPoint) -> TracePoint {
-    TracePoint { x: p.x, y: p.y }
-}
-
-#[derive(serde::Serialize)]
-pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTrace {
-    fixture_diagram_id: String,
-    edge_id: String,
-    from: String,
-    to: String,
-    layout_from: String,
-    layout_to: String,
-    from_cluster: Option<String>,
-    to_cluster: Option<String>,
-    origin_x: f64,
-    origin_y: f64,
-    tx: f64,
-    ty: f64,
-    base_points: Vec<TracePoint>,
-    points_after_intersect: Vec<TracePoint>,
-    points_for_render: Vec<TracePoint>,
-    points_for_data_points: Vec<TracePoint>,
+pub(in crate::svg::parity::flowchart) fn tp(
+    p: &crate::model::LayoutPoint,
+) -> FlowchartEdgeTracePoint {
+    FlowchartEdgeTracePoint { x: p.x, y: p.y }
 }
 
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTraceInput<'a> {
@@ -47,7 +24,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTraceInput<'a> {
     pub(in crate::svg::parity::flowchart) points_for_data_points: &'a [crate::model::LayoutPoint],
 }
 
-pub(in crate::svg::parity::flowchart) fn write_flowchart_edge_trace(
+pub(in crate::svg::parity::flowchart) fn record_flowchart_edge_trace(
     input: FlowchartEdgeTraceInput<'_>,
 ) {
     let FlowchartEdgeTraceInput {
@@ -85,10 +62,7 @@ pub(in crate::svg::parity::flowchart) fn write_flowchart_edge_trace(
         points_for_data_points: points_for_data_points.iter().map(tp).collect(),
     };
 
-    let default_path =
-        std::path::PathBuf::from(format!("merman_flowchart_edge_trace_{}.json", edge.id));
-    let out_path = ctx.trace_output_path.unwrap_or(default_path.as_path());
-    if let Ok(json) = serde_json::to_string_pretty(&trace) {
-        let _ = std::fs::write(out_path, json);
+    if let Some(collector) = ctx.trace_collector {
+        collector.record(trace);
     }
 }

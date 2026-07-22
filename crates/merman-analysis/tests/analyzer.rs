@@ -808,8 +808,8 @@ fn unsupported_diagram_returns_compatibility_error() {
     let mut engine = merman_core::Engine::new();
     *engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
 
-    let payload = Analyzer::with_engine_and_options(engine, AnalysisOptions::default())
-        .analyze("flowchart TD\nA-->B\n");
+    let payload =
+        Analyzer::with_engine(engine, AnalysisOptions::default()).analyze("flowchart TD\nA-->B\n");
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);

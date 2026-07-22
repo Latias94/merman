@@ -40,7 +40,7 @@ data ItemAddedData {
         .unwrap();
     assert_eq!(parsed.metadata().diagram_type, "eventmodeling");
 
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
     let rendered = artifact
         .render_svg(
@@ -77,7 +77,7 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
     let RenderSemanticModel::EventModeling(model) = parsed.model() else {
         panic!("expected eventmodeling render model");
     };
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let layout = layout_eventmodeling_diagram_typed(
         model,

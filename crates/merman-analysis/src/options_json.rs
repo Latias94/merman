@@ -162,7 +162,9 @@ impl AnalysisOptionsJson {
             analysis = analysis.with_fixed_today(Some(today));
         }
         if let Some(offset_minutes) = offset_minutes {
-            analysis = analysis.with_fixed_local_offset_minutes(Some(offset_minutes));
+            analysis = analysis
+                .try_with_fixed_local_offset_minutes(offset_minutes)
+                .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
         }
 
         analysis = analysis.with_rule_config(self.rule_config()?);
@@ -287,16 +289,7 @@ fn validate_local_time_combination(
     let time_zone = match offset_minutes {
         Some(offset_minutes) => merman_core::time::LocalTimeZone::fixed(offset_minutes)
             .map_err(|err| AnalysisOptionsJsonError::new(err.to_string()))?,
-        None => {
-            #[cfg(feature = "core-host")]
-            {
-                merman_core::time::LocalTimeZone::system()
-            }
-            #[cfg(not(feature = "core-host"))]
-            {
-                merman_core::time::LocalTimeZone::utc()
-            }
-        }
+        None => merman_core::time::LocalTimeZone::utc(),
     };
     let midnight = today
         .and_hms_opt(0, 0, 0)
@@ -348,6 +341,27 @@ fn validate_configurable_rule_id(
 mod tests {
     use super::*;
     use crate::{rule_descriptors, rules::RESOURCE_LIMIT_RULE_ID};
+
+    #[test]
+    fn shared_analysis_options_json_keeps_utc_without_an_explicit_timezone() {
+        let options = AnalysisOptionsJson {
+            fixed_today: Some("2026-01-15".to_string()),
+            ..Default::default()
+        };
+
+        let analysis = options.to_analysis_options().unwrap();
+        let context = analysis.runtime_policy.begin_operation().unwrap();
+
+        assert_eq!(
+            context.today_local(),
+            NaiveDate::from_ymd_opt(2026, 1, 15).unwrap()
+        );
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
+        assert_eq!(
+            context.clock_source(),
+            merman_core::runtime::RuntimeValueSource::Fixed
+        );
+    }
 
     #[test]
     fn shared_analysis_options_json_honors_lint_configuration() {

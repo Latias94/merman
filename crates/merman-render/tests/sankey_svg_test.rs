@@ -9,7 +9,7 @@ fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("layout ok")
         .render_svg(options, &SvgDebugOptions::default())

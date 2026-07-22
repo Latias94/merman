@@ -291,7 +291,8 @@ pub(crate) fn render_er_diagram_svg_model(
     let edge_html_labels = er_render_settings.relationship_html_labels;
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
-    let hand_drawn_seed = er_render_settings.hand_drawn_seed;
+    let hand_drawn_seed =
+        options.rough_randomness(er_render_settings.hand_drawn_seed, "render.er.roughjs");
     let insert_title_top_margin = er_render_settings.insert_title_top_margin;
     fn parse_trailing_index(id: &str) -> Option<i64> {
         let (_, tail) = id.rsplit_once('-')?;
@@ -878,48 +879,6 @@ pub(crate) fn render_er_diagram_svg_model(
             continue;
         }
 
-        fn fallback_rough_line_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            let c1x = x0 + (x1 - x0) * 0.25;
-            let c1y = y0 + (y1 - y0) * 0.25;
-            let c2x = x0 + (x1 - x0) * 0.75;
-            let c2y = y0 + (y1 - y0) * 0.75;
-            let d1 = format!(
-                "M{} {} C{} {}, {} {}, {} {}",
-                fmt_path(x0),
-                fmt_path(y0),
-                fmt_path(c1x),
-                fmt_path(c1y),
-                fmt_path(c2x),
-                fmt_path(c2y),
-                fmt_path(x1),
-                fmt_path(y1)
-            );
-            let c1x2 = x0 + (x1 - x0) * 0.35;
-            let c1y2 = y0 + (y1 - y0) * 0.15;
-            let c2x2 = x0 + (x1 - x0) * 0.65;
-            let c2y2 = y0 + (y1 - y0) * 0.85;
-            let d2 = format!(
-                "M{} {} C{} {}, {} {}, {} {}",
-                fmt_path(x0),
-                fmt_path(y0),
-                fmt_path(c1x2),
-                fmt_path(c1y2),
-                fmt_path(c2x2),
-                fmt_path(c2y2),
-                fmt_path(x1),
-                fmt_path(y1)
-            );
-            format!("{d1} {d2}")
-        }
-
-        fn fallback_rough_rect_border_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            let top = fallback_rough_line_path_d(x0, y0, x1, y0);
-            let right = fallback_rough_line_path_d(x1, y0, x1, y1);
-            let bottom = fallback_rough_line_path_d(x1, y1, x0, y1);
-            let left = fallback_rough_line_path_d(x0, y1, x0, y0);
-            format!("{top} {right} {bottom} {left}")
-        }
-
         fn html_label_content(
             label: &crate::er::ErBoxLabel,
             span_style_attr: &str,
@@ -1012,26 +971,12 @@ pub(crate) fn render_er_diagram_svg_model(
         // Even with roughness=0, Rough.js still depends on seeded randomness via `divergePoint`.
         // For strict SVG parity we use the same Rough.js algorithm (v4.6.6) here instead of a
         // generic sketchy-stroke renderer.
-        fn roughjs46_next_f64(seed: &mut u32) -> f64 {
-            if *seed == 0 {
-                // Mermaid (Rough.js) falls back to `Math.random()` when seed=0. We keep our SVG
-                // stable in that case by returning 0, which yields `divergePoint=0.2`.
-                return 0.0;
-            }
-            // Rough.js v4.6.6 (bin/math.js):
-            //   this.seed = Math.imul(48271, this.seed)
-            //   return ((2**31 - 1) & this.seed) / 2**31
-            let prod = seed.wrapping_mul(48_271);
-            *seed = prod & 0x7fff_ffff;
-            (*seed as f64) / 2_147_483_648.0
-        }
-
-        fn roughjs46_diverge_point(seed: &mut u32) -> f64 {
-            0.2 + roughjs46_next_f64(seed) * 0.2
+        fn roughjs46_diverge_point(options: &mut roughr::core::Options) -> f64 {
+            0.2 + options.random() * 0.2
         }
 
         fn roughjs46_double_line_path_d(
-            seed: &mut u32,
+            options: &mut roughr::core::Options,
             x0: f64,
             y0: f64,
             x1: f64,
@@ -1042,7 +987,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let dy = y1 - y0;
 
             for _ in 0..2 {
-                let d = roughjs46_diverge_point(seed);
+                let d = roughjs46_diverge_point(options);
                 // Rough.js `_line()` continues to call into `_offsetOpt()` even when `roughness=0`
                 // (the random terms get multiplied by zero, but the PRNG state still advances).
                 //
@@ -1052,7 +997,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 // - 6 random() calls for bcurveTo (cp1/cp2/x2/y2)
                 // Total: 10 random() calls after divergePoint.
                 for _ in 0..10 {
-                    let _ = roughjs46_next_f64(seed);
+                    let _ = options.random();
                 }
                 let cx1 = x0 + dx * d;
                 let cy1 = y0 + dy * d;
@@ -1068,13 +1013,19 @@ pub(crate) fn render_er_diagram_svg_model(
             out.trim_end().to_string()
         }
 
-        fn rough_rect_border_path_d(seed: u64, x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+        fn rough_rect_border_path_d(
+            randomness: &roughr::core::RoughRandomness,
+            x0: f64,
+            y0: f64,
+            x1: f64,
+            y1: f64,
+        ) -> String {
             let w = (x1 - x0).max(0.0);
             let h = (y1 - y0).max(0.0);
-            if seed == 0 {
-                return fallback_rough_rect_border_path_d(x0, y0, x1, y1);
-            }
-            let mut s = seed as u32;
+            let mut options = roughr::core::OptionsBuilder::default()
+                .randomness(randomness.clone())
+                .build()
+                .expect("ER rough rectangle options must be valid");
 
             // Rough.js v4.6.6 renderer.rectangle -> polygon -> linearPath:
             //   segments: (x,y)->(x+w,y)->(x+w,y+h)->(x,y+h)->(x,y)
@@ -1089,7 +1040,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 (x0, y2, x0, y0),
             ];
             for (ax, ay, bx, by) in segs {
-                let d = roughjs46_double_line_path_d(&mut s, ax, ay, bx, by);
+                let d = roughjs46_double_line_path_d(&mut options, ax, ay, bx, by);
                 out.push_str(&d);
                 out.push(' ');
             }
@@ -1125,7 +1076,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-            rough_rect_border_path_d(hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
+            rough_rect_border_path_d(&hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
             escape_xml(&box_stroke),
             stroke_width_attr,
             override_style_attr
@@ -1192,7 +1143,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                rough_rect_border_path_d(hand_drawn_seed, box_x0, y0, box_x1, y1),
+                rough_rect_border_path_d(&hand_drawn_seed, box_x0, y0, box_x1, y1),
                 escape_xml(&node_border),
                 stroke_width_attr,
                 row_override_style_attr
@@ -1363,7 +1314,7 @@ pub(crate) fn render_er_diagram_svg_model(
         #[allow(clippy::too_many_arguments)]
         fn write_divider_group(
             out: &mut String,
-            hand_drawn_seed: u64,
+            hand_drawn_seed: &roughr::core::RoughRandomness,
             x0: f64,
             y0: f64,
             x1: f64,
@@ -1384,7 +1335,7 @@ pub(crate) fn render_er_diagram_svg_model(
 
         write_divider_group(
             &mut out,
-            hand_drawn_seed,
+            &hand_drawn_seed,
             box_x0,
             sep_y,
             box_x1,
@@ -1404,7 +1355,7 @@ pub(crate) fn render_er_diagram_svg_model(
         for x in divider_xs {
             write_divider_group(
                 &mut out,
-                hand_drawn_seed,
+                &hand_drawn_seed,
                 x,
                 sep_y,
                 x,
@@ -1416,7 +1367,7 @@ pub(crate) fn render_er_diagram_svg_model(
 
         write_divider_group(
             &mut out,
-            hand_drawn_seed,
+            &hand_drawn_seed,
             box_x0,
             sep_y,
             box_x1,

@@ -63,7 +63,7 @@ WEB_CAPABILITY_NAMES = {
     "render",
     "analysis",
     "ascii",
-    "core_host",
+    "cytoscape_layout",
     "elk_layout",
     "ratex_math",
     "editor_language",
@@ -78,7 +78,7 @@ WEB_CAPABILITY_FEATURES = {
     "render": "render",
     "analysis": "analysis",
     "ascii": "ascii",
-    "core_host": "core-host",
+    "cytoscape_layout": "cytoscape-layout",
     "elk_layout": "elk-layout",
     "ratex_math": "ratex-math",
     "editor_language": "editor-language",
@@ -89,7 +89,14 @@ WEB_RUNTIME_CAPABILITIES = {
     "render-only": {"render"},
     "ascii": {"ascii"},
     "editor": {"analysis", "editor_language"},
-    "full": {"analysis", "ascii", "core_host", "editor_language", "elk_layout", "render"},
+    "full": {
+        "analysis",
+        "ascii",
+        "cytoscape_layout",
+        "editor_language",
+        "elk_layout",
+        "render",
+    },
 }
 OPERATIONAL_CHANNEL_STATES = {"published", "artifact-only"}
 PROTECTED_PUBLICATION_KINDS = {
@@ -1044,7 +1051,7 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
         )
 
     wasm_features = cargo_features(root, "crates/merman-wasm/Cargo.toml")
-    for feature in ["core-host", "analysis", "ascii", "render", "cytoscape-layout", "elk-layout", "editor-language", "ratex-math"]:
+    for feature in ["analysis", "ascii", "render", "cytoscape-layout", "elk-layout", "editor-language", "ratex-math"]:
         if feature not in wasm_features:
             fail("crates/merman-wasm/Cargo.toml", f"missing wasm feature {feature}")
     for preset in descriptor["presets"]:

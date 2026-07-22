@@ -6,16 +6,9 @@ pub use fcose::{FcoseRandomPolicy, FcoseRandomSource};
 #[derive(Debug, Clone)]
 pub enum Algorithm {
     /// Cytoscape COSE-Bilkent (Mermaid mindmap default).
-    CoseBilkent(CoseBilkentOptions),
+    CoseBilkent,
     /// Cytoscape FCoSE (Mermaid architecture layout).
     Fcose(FcoseOptions),
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct CoseBilkentOptions {
-    /// Seed for deterministic randomness. The upstream JS implementation relies on `Math.random`,
-    /// so the Rust port will use a reproducible RNG here.
-    pub random_seed: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -29,8 +22,8 @@ pub struct FcoseOptions {
     /// Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` inside `layoutstop`).
     ///
     /// When enabled, the Rust port mimics that behavior by performing two consecutive runs while
-    /// keeping the historical RNG stream continuous between runs. Callers that need different
-    /// random semantics can use the additive `fcose::layout_with_random_policy` API.
+    /// keeping the historical RNG stream continuous between runs. Callers that need a different
+    /// explicit stream policy can use `fcose::layout_with_random_policy`.
     pub rerun: bool,
     /// Whether to initialize the layout with FCoSE's spectral/randomized start positions.
     pub randomize: bool,

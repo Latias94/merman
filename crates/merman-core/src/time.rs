@@ -1,11 +1,11 @@
 use chrono::{DateTime, FixedOffset, NaiveDateTime, Offset, TimeZone};
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 use chrono::{Datelike, Timelike};
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 use sha2::{Digest, Sha256};
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
 
@@ -38,19 +38,11 @@ pub enum LocalTimeZoneSource {
     System,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum LocalTimeZoneError {
-    #[error("local UTC offset must be between -1439 and 1439 minutes, got {0}")]
-    InvalidFixedOffset(i32),
-}
-
 /// An immutable local-time resolver.
 ///
 /// Materialized system resolvers own the complete time-zone rule set rather than the offset sampled
 /// at "now": another target date may be on the other side of a daylight-saving transition. The
-/// default engine carries a lazy ambient resolver so diagrams that do not use local time never pay
-/// for host time-zone discovery. Both the captured rules and their lazily computed provenance are
-/// shared by every clone of a resolver.
+/// captured rules and their lazily computed provenance are shared by every clone of a resolver.
 #[derive(Debug, Clone)]
 pub struct LocalTimeZone {
     data: Arc<LocalTimeZoneData>,
@@ -65,17 +57,20 @@ struct LocalTimeZoneData {
 #[derive(Debug)]
 enum LocalTimeZoneInner {
     Fixed(FixedOffset),
-    #[cfg(feature = "host-clock")]
-    System(OnceLock<jiff::tz::TimeZone>),
+    #[cfg(feature = "system-timezone")]
+    System(jiff::tz::TimeZone),
 }
 
 impl LocalTimeZone {
-    pub fn fixed(offset_minutes: i32) -> Result<Self, LocalTimeZoneError> {
+    pub fn fixed(offset_minutes: i32) -> Result<Self, crate::runtime::RuntimePolicyError> {
         if !(-1439..=1439).contains(&offset_minutes) {
-            return Err(LocalTimeZoneError::InvalidFixedOffset(offset_minutes));
+            return Err(crate::runtime::RuntimePolicyError::InvalidFixedOffset(
+                offset_minutes,
+            ));
         }
-        let offset = FixedOffset::east_opt(offset_minutes * 60)
-            .ok_or(LocalTimeZoneError::InvalidFixedOffset(offset_minutes))?;
+        let offset = FixedOffset::east_opt(offset_minutes * 60).ok_or(
+            crate::runtime::RuntimePolicyError::InvalidFixedOffset(offset_minutes),
+        )?;
         Ok(Self {
             data: Arc::new(LocalTimeZoneData {
                 inner: LocalTimeZoneInner::Fixed(offset),
@@ -92,49 +87,39 @@ impl LocalTimeZone {
         Self::fixed(0).expect("UTC is a valid fixed offset")
     }
 
-    /// Captures the current system time-zone rules immediately.
-    ///
-    /// Render operations use this constructor at their environment boundary so parsing, layout,
-    /// and provenance all observe the same immutable rule set.
-    #[cfg(feature = "host-clock")]
-    pub fn system() -> Self {
-        thread_local! {
-            static CACHE: RefCell<Option<LocalTimeZone>> = const { RefCell::new(None) };
-        }
-
-        let time_zone = jiff::tz::TimeZone::system();
-        CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if let Some(cached) = cache.as_ref()
-                && cached.materialized_system_time_zone() == Some(&time_zone)
-            {
-                return cached.clone();
-            }
-            let captured = Self {
-                data: Arc::new(LocalTimeZoneData {
-                    inner: LocalTimeZoneInner::System(OnceLock::from(time_zone)),
-                    provenance: OnceLock::new(),
-                }),
-            };
-            *cache = Some(captured.clone());
-            captured
-        })
-    }
-
-    pub(crate) fn ambient() -> Self {
-        #[cfg(feature = "host-clock")]
+    /// Captures the system time-zone rules or reports that the adapter is unavailable.
+    pub fn try_system() -> Result<Self, crate::runtime::RuntimePolicyError> {
+        #[cfg(feature = "system-timezone")]
         {
-            // Default parsing must not discover host resources until a diagram asks for local time.
-            Self {
-                data: Arc::new(LocalTimeZoneData {
-                    inner: LocalTimeZoneInner::System(OnceLock::new()),
-                    provenance: OnceLock::new(),
-                }),
+            thread_local! {
+                static CACHE: RefCell<Option<LocalTimeZone>> = const { RefCell::new(None) };
             }
+
+            let time_zone = jiff::tz::TimeZone::try_system().map_err(|error| {
+                crate::runtime::RuntimePolicyError::SystemTimeZone(error.to_string())
+            })?;
+            CACHE.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                if let Some(cached) = cache.as_ref()
+                    && cached.materialized_system_time_zone() == Some(&time_zone)
+                {
+                    return Ok(cached.clone());
+                }
+                let captured = Self {
+                    data: Arc::new(LocalTimeZoneData {
+                        inner: LocalTimeZoneInner::System(time_zone),
+                        provenance: OnceLock::new(),
+                    }),
+                };
+                *cache = Some(captured.clone());
+                Ok(captured)
+            })
         }
-        #[cfg(not(feature = "host-clock"))]
+        #[cfg(not(feature = "system-timezone"))]
         {
-            Self::utc()
+            Err(crate::runtime::RuntimePolicyError::MissingCapability(
+                crate::runtime::RuntimeCapability::SystemTimeZone,
+            ))
         }
     }
 
@@ -145,19 +130,17 @@ impl LocalTimeZone {
                 identifier: format_fixed_offset(offset.local_minus_utc() / 60),
                 rules_sha256: None,
             },
-            #[cfg(feature = "host-clock")]
-            LocalTimeZoneInner::System(time_zone) => {
-                system_provenance(time_zone.get_or_init(jiff::tz::TimeZone::system))
-            }
+            #[cfg(feature = "system-timezone")]
+            LocalTimeZoneInner::System(time_zone) => system_provenance(time_zone),
         })
     }
 
     pub fn is_system(&self) -> bool {
-        #[cfg(feature = "host-clock")]
+        #[cfg(feature = "system-timezone")]
         {
             matches!(self.data.inner, LocalTimeZoneInner::System(_))
         }
-        #[cfg(not(feature = "host-clock"))]
+        #[cfg(not(feature = "system-timezone"))]
         {
             false
         }
@@ -166,7 +149,7 @@ impl LocalTimeZone {
     pub fn fixed_offset_minutes(&self) -> Option<i32> {
         match &self.data.inner {
             LocalTimeZoneInner::Fixed(offset) => Some(offset.local_minus_utc() / 60),
-            #[cfg(feature = "host-clock")]
+            #[cfg(feature = "system-timezone")]
             LocalTimeZoneInner::System(_) => None,
         }
     }
@@ -174,11 +157,8 @@ impl LocalTimeZone {
     pub fn datetime_from_naive_local(&self, naive: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
         match &self.data.inner {
             LocalTimeZoneInner::Fixed(offset) => offset.from_local_datetime(&naive).single(),
-            #[cfg(feature = "host-clock")]
-            LocalTimeZoneInner::System(time_zone) => {
-                let time_zone = time_zone.get_or_init(jiff::tz::TimeZone::system);
-                datetime_from_naive_system(time_zone, naive)
-            }
+            #[cfg(feature = "system-timezone")]
+            LocalTimeZoneInner::System(time_zone) => datetime_from_naive_system(time_zone, naive),
         }
     }
 
@@ -188,9 +168,8 @@ impl LocalTimeZone {
     ) -> Option<DateTime<FixedOffset>> {
         match &self.data.inner {
             LocalTimeZoneInner::Fixed(offset) => Some(datetime.with_timezone(offset)),
-            #[cfg(feature = "host-clock")]
+            #[cfg(feature = "system-timezone")]
             LocalTimeZoneInner::System(time_zone) => {
-                let time_zone = time_zone.get_or_init(jiff::tz::TimeZone::system);
                 let utc = datetime.naive_utc();
                 let timestamp = utc_timestamp_candidates(utc).next()?;
                 let offset = FixedOffset::east_opt(time_zone.to_offset(timestamp).seconds())?;
@@ -199,11 +178,11 @@ impl LocalTimeZone {
         }
     }
 
-    #[cfg(feature = "host-clock")]
+    #[cfg(feature = "system-timezone")]
     fn materialized_system_time_zone(&self) -> Option<&jiff::tz::TimeZone> {
         match &self.data.inner {
             LocalTimeZoneInner::Fixed(_) => None,
-            LocalTimeZoneInner::System(time_zone) => time_zone.get(),
+            LocalTimeZoneInner::System(time_zone) => Some(time_zone),
         }
     }
 }
@@ -212,12 +191,9 @@ impl PartialEq for LocalTimeZone {
     fn eq(&self, other: &Self) -> bool {
         match (&self.data.inner, &other.data.inner) {
             (LocalTimeZoneInner::Fixed(left), LocalTimeZoneInner::Fixed(right)) => left == right,
-            #[cfg(feature = "host-clock")]
-            (LocalTimeZoneInner::System(left), LocalTimeZoneInner::System(right)) => {
-                left.get_or_init(jiff::tz::TimeZone::system)
-                    == right.get_or_init(jiff::tz::TimeZone::system)
-            }
-            #[cfg(feature = "host-clock")]
+            #[cfg(feature = "system-timezone")]
+            (LocalTimeZoneInner::System(left), LocalTimeZoneInner::System(right)) => left == right,
+            #[cfg(feature = "system-timezone")]
             _ => false,
         }
     }
@@ -231,16 +207,16 @@ fn format_fixed_offset(offset_minutes: i32) -> String {
     format!("{sign}{:02}:{:02}", absolute / 60, absolute % 60)
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 const JIFF_MIN_YEAR: i32 = -9999;
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 const JIFF_MAX_YEAR: i32 = 9999;
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 const GREGORIAN_CYCLE_YEARS: i32 = 400;
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn datetime_from_jiff_timestamp(
     timestamp: jiff::Timestamp,
     offset_seconds: i32,
@@ -253,7 +229,7 @@ fn datetime_from_jiff_timestamp(
     Some(utc.with_timezone(&offset))
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn jiff_year_candidates(year: i32) -> [Option<i32>; 2] {
     if (JIFF_MIN_YEAR..=JIFF_MAX_YEAR).contains(&year) {
         let fallback = if year > JIFF_MAX_YEAR - GREGORIAN_CYCLE_YEARS {
@@ -279,7 +255,7 @@ fn jiff_year_candidates(year: i32) -> [Option<i32>; 2] {
     [Some(projected), None]
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn jiff_civil_datetime(naive: NaiveDateTime, year: i32) -> Option<jiff::civil::DateTime> {
     jiff::civil::DateTime::new(
         year.try_into().ok()?,
@@ -293,7 +269,7 @@ fn jiff_civil_datetime(naive: NaiveDateTime, year: i32) -> Option<jiff::civil::D
     .ok()
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn datetime_from_naive_system(
     time_zone: &jiff::tz::TimeZone,
     naive: NaiveDateTime,
@@ -323,7 +299,7 @@ fn datetime_from_naive_system(
     None
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn utc_timestamp_candidates(naive: NaiveDateTime) -> impl Iterator<Item = jiff::Timestamp> {
     jiff_year_candidates(naive.year())
         .into_iter()
@@ -341,7 +317,7 @@ fn utc_timestamp_candidates(naive: NaiveDateTime) -> impl Iterator<Item = jiff::
         })
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 fn system_provenance(time_zone: &jiff::tz::TimeZone) -> LocalTimeZoneProvenance {
     let identifier = time_zone.iana_name().map(str::to_owned).unwrap_or_else(|| {
         if time_zone.is_unknown() {
@@ -375,57 +351,31 @@ fn system_provenance(time_zone: &jiff::tz::TimeZone) -> LocalTimeZoneProvenance 
     }
 }
 
-/// Runs a closure with one immutable local-time resolver installed for this thread.
-pub fn with_local_time_zone<R>(time_zone: &LocalTimeZone, f: impl FnOnce() -> R) -> R {
-    crate::runtime::with_local_time_zone(time_zone, f)
-}
-
-/// Interprets a local `NaiveDateTime` as an absolute instant in the active local timezone.
-///
-/// The resolver installed by [`with_local_time_zone`] is used. Without an explicit context, a
-/// system resolver is captured when `host-clock` is enabled, and UTC is used otherwise.
-pub fn datetime_from_naive_local(naive: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
-    crate::runtime::datetime_from_naive_local(naive)
-}
-
-/// Maps an absolute instant to the active local timezone (as a `FixedOffset`).
-///
-/// The resolver installed by [`with_local_time_zone`] is used. Without an explicit context, a
-/// system resolver is captured when `host-clock` is enabled, and UTC is used otherwise.
-pub fn datetime_to_local_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
-    crate::runtime::datetime_to_local_fixed(dt)
-}
-
-/// Returns the `NaiveDateTime` for an absolute instant under the active local-time semantics.
-pub fn datetime_to_naive_local(dt: DateTime<FixedOffset>) -> NaiveDateTime {
-    crate::runtime::datetime_to_naive_local(dt)
-}
-
 /// Returns the UTC fixed offset without fallible construction.
 pub fn utc_fixed_offset() -> FixedOffset {
     chrono::Utc.fix()
 }
 
-#[cfg(all(test, feature = "host-clock"))]
-mod host_clock_tests {
+#[cfg(all(test, feature = "system-timezone"))]
+mod system_timezone_tests {
     use super::*;
 
     #[test]
-    fn ambient_resolver_construction_uses_bounded_stack() {
+    fn deterministic_resolver_construction_uses_bounded_stack() {
         let handle = std::thread::Builder::new()
-            .name("merman-core-ambient-time-zone-small-stack".to_string())
+            .name("merman-core-deterministic-time-zone-small-stack".to_string())
             .stack_size(256 * 1024)
-            .spawn(|| std::hint::black_box(LocalTimeZone::ambient()))
-            .expect("spawn ambient time-zone construction test");
+            .spawn(|| std::hint::black_box(LocalTimeZone::utc()))
+            .expect("spawn deterministic time-zone construction test");
 
         handle
             .join()
-            .expect("ambient time-zone construction should not overflow a 256 KiB stack");
+            .expect("deterministic time-zone construction should not overflow a 256 KiB stack");
     }
 
     #[test]
     fn system_resolver_supports_mermaid_year_boundary_beyond_jiff_civil_range() {
-        let resolver = LocalTimeZone::system();
+        let resolver = LocalTimeZone::try_system().expect("system time-zone adapter");
         for year in [-10000, 10000] {
             let naive = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
                 .expect("boundary year should be representable by chrono")
@@ -440,7 +390,7 @@ mod host_clock_tests {
 
     #[test]
     fn system_resolver_maps_out_of_range_utc_instants_without_losing_the_instant() {
-        let resolver = LocalTimeZone::system();
+        let resolver = LocalTimeZone::try_system().expect("system time-zone adapter");
         let naive = chrono::NaiveDate::from_ymd_opt(10000, 1, 1)
             .expect("boundary year should be representable by chrono")
             .and_hms_opt(0, 0, 0)
@@ -461,7 +411,7 @@ mod host_clock_tests {
             .expect("valid deterministic US Eastern POSIX rule");
         let resolver = LocalTimeZone {
             data: Arc::new(LocalTimeZoneData {
-                inner: LocalTimeZoneInner::System(OnceLock::from(time_zone)),
+                inner: LocalTimeZoneInner::System(time_zone),
                 provenance: OnceLock::new(),
             }),
         };
@@ -474,5 +424,28 @@ mod host_clock_tests {
             .expect("compatible DST gap resolution should succeed");
         assert_eq!(resolved.naive_local().hour(), 3);
         assert_eq!(resolved.naive_local().minute(), 30);
+    }
+
+    #[test]
+    fn system_resolver_preserves_compatible_dst_fold_resolution() {
+        let time_zone = jiff::tz::TimeZone::posix("EST5EDT,M3.2.0,M11.1.0")
+            .expect("valid deterministic US Eastern POSIX rule");
+        let resolver = LocalTimeZone {
+            data: Arc::new(LocalTimeZoneData {
+                inner: LocalTimeZoneInner::System(time_zone),
+                provenance: OnceLock::new(),
+            }),
+        };
+        let repeated = chrono::NaiveDate::from_ymd_opt(2026, 11, 1)
+            .expect("valid date")
+            .and_hms_opt(1, 30, 0)
+            .expect("valid civil time");
+
+        let resolved = resolver
+            .datetime_from_naive_local(repeated)
+            .expect("compatible DST fold resolution should succeed");
+
+        assert_eq!(resolved.naive_local(), repeated);
+        assert_eq!(resolved.offset().local_minus_utc(), -4 * 60 * 60);
     }
 }

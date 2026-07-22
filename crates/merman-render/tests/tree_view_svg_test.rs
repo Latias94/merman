@@ -39,7 +39,7 @@ impl HostTextMeasurer for TreeViewBBoxHost {
 }
 
 fn render_tree_view_svg_with_options(input: &str, options: SvgRenderOptions) -> String {
-    render_tree_view_svg_with_environment(input, options, &RenderEnvironment::parity())
+    render_tree_view_svg_with_environment(input, options, &RenderEnvironment::deterministic())
 }
 
 fn render_tree_view_svg_with_environment(
@@ -95,7 +95,7 @@ fn layout_tree_view(
 
 #[test]
 fn tree_view_typed_render_model_outputs_svg() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -145,7 +145,7 @@ treeView-beta
 
 #[test]
 fn tree_view_typed_render_model_outputs_accessibility_nodes() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"treeView-beta
 title TreeView Diagram Title
 accTitle: Accessible TreeView Title
@@ -179,7 +179,7 @@ accDescr: Accessible TreeView Description
 
 #[test]
 fn tree_view_mermaid_11_16_annotations_render_svg_dom() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -237,7 +237,7 @@ fn tree_view_security_level_controls_only_icon_use_nodes() {
         input,
         options,
         &loose_engine,
-        &RenderEnvironment::parity(),
+        &RenderEnvironment::deterministic(),
     );
     let strict_document = roxmltree::Document::parse(&strict_svg).expect("valid strict SVG");
     let loose_document = roxmltree::Document::parse(&loose_svg).expect("valid loose SVG");
@@ -301,7 +301,7 @@ App.tsx icon(logos:react)
             IconSvg::new(r#"<path data-icon="registry-override"/>"#, 16.0, 16.0),
         );
     }
-    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
     let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
@@ -391,7 +391,7 @@ fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
         .with_viewbox(2.0, 3.0, 32.0, 18.0),
     );
     registry.insert("test:empty", IconSvg::new("", 16.0, 16.0));
-    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
     let svg = render_tree_view_svg_with_environment(
         "treeView-beta\nRoot\n    Rocket icon(test:rocket)\n    Rocket Again icon(test:rocket)\n    Missing icon(test:missing)\n    Empty icon(test:empty)\n",
         SvgRenderOptions {
@@ -484,7 +484,7 @@ fn assert_unknown_tree_view_icon(document: &roxmltree::Document<'_>, symbol_id: 
 
 #[test]
 fn tree_view_root_highlight_visual_bounds_fit_inside_viewbox() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"treeView-beta
 root/ :::highlight
 "##;
@@ -515,7 +515,7 @@ root/ :::highlight
 
 #[test]
 fn tree_view_multiple_highlights_follow_upstream_width_growth() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"treeView-beta
 root/ :::highlight
     child/ :::highlight
@@ -608,7 +608,7 @@ fn assert_tree_view_highlights_fit_viewbox(svg: &str) {
 
 #[test]
 fn tree_view_trailing_slash_only_marks_directory_labels() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"treeView-beta
 src/ :::directory-probe
     main.rs :::file-probe
@@ -637,7 +637,7 @@ src/ :::directory-probe
 
 #[test]
 fn tree_view_layout_measures_directory_labels_with_bold_style() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
             "treeView-beta\nverylongdirectoryname/ :::directory-probe\n",
@@ -665,7 +665,7 @@ fn tree_view_layout_measures_directory_labels_with_bold_style() {
 
 #[test]
 fn tree_view_layout_measures_descriptions_with_italic_style() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
             "treeView-beta\nfile.txt ## a long slanted description\n",
@@ -700,7 +700,7 @@ fn tree_view_layout_routes_direct_text_bbox_height_through_the_host() {
         "1",
     )
     .unwrap();
-    let environment = RenderEnvironment::parity().with_text_measurement_policy(
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
         TextMeasurementPolicy::host_display(
             identity,
             host.clone(),
@@ -726,7 +726,7 @@ fn tree_view_layout_routes_direct_text_bbox_height_through_the_host() {
 
 #[test]
 fn tree_view_fixed_size_root_keeps_width_and_height() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -761,7 +761,7 @@ treeView-beta
 
 #[test]
 fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let mut child = TreeViewNodeRenderModel {
         id: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
@@ -799,7 +799,7 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
 
 #[test]
 fn tree_view_public_layout_accepts_max_allowed_chain() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let mut input = String::from("treeView-beta\n");
     for depth in 0..MAX_DIAGRAM_NESTING_DEPTH {
         input.push_str(&" ".repeat(depth));

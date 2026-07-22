@@ -653,7 +653,7 @@ pub(crate) fn run_canonical_svg_compare(
         .and_then(|guard| guard.node_katex_math_renderer());
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = merman::render::RenderEnvironment::parity();
+    let mut environment = merman::render::RenderEnvironment::deterministic();
     if let Some(renderer) = sequence_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
@@ -1373,7 +1373,7 @@ mod tests {
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
-            let environment = merman::render::RenderEnvironment::parity();
+            let environment = merman::render::RenderEnvironment::deterministic();
             let mut observed = ObservedRenderOperations::from_environment(&environment)
                 .expect("representative operation contract");
             let diagram_id = format!("computed-root-{}", fact.diagram);
@@ -1806,7 +1806,7 @@ mod tests {
         let out_path = root.join("report.md");
         fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
             .expect("conflicting local SVG directory should be created");
-        let environment = merman::render::RenderEnvironment::parity();
+        let environment = merman::render::RenderEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -1874,7 +1874,7 @@ mod tests {
 
         let out_path = root.join("report.md");
         fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
-        let environment = merman::render::RenderEnvironment::parity();
+        let environment = merman::render::RenderEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(

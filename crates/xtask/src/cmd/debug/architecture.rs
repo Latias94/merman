@@ -593,15 +593,6 @@ fn format_debug_rect(v: Option<DebugRect>) -> String {
         .unwrap_or_else(|| "<none>".to_string())
 }
 
-fn model_bounds_to_debug_rect(bounds: &merman_render::model::Bounds) -> DebugRect {
-    DebugRect {
-        x: bounds.min_x,
-        y: bounds.min_y,
-        w: (bounds.max_x - bounds.min_x).max(0.0),
-        h: (bounds.max_y - bounds.min_y).max(0.0),
-    }
-}
-
 fn format_debug_rect_expansion(v: Option<DebugRectExpansion>) -> String {
     v.map(|e| {
         format!(
@@ -2174,7 +2165,6 @@ fn render_architecture_render_path_join_markdown(
     local_groups: &BTreeMap<String, DebugRect>,
     layout: &merman_render::model::ArchitectureDiagramLayout,
     fcose_compound_rows: &[(String, DebugRect, Option<DebugRect>)],
-    local_fcose_debug_stages: &[merman_render::model::ArchitectureFcoseDebugStage],
 ) {
     let facts_match = render_probe.get("renderedFacts") == render_probe.get("storedFacts");
     let probe_kind = render_probe
@@ -2268,56 +2258,6 @@ fn render_architecture_render_path_join_markdown(
         .iter()
         .map(|(id, fcose, _)| (id.as_str(), *fcose))
         .collect();
-    let mut local_stage_compounds: BTreeMap<(usize, &str, &str), DebugRect> = BTreeMap::new();
-    let mut local_stage_nodes: BTreeMap<(usize, &str, &str), DebugRect> = BTreeMap::new();
-    let mut local_stage_displacements: BTreeMap<(usize, &str, &str), DebugPt> = BTreeMap::new();
-    let mut local_relocates: BTreeMap<usize, (Option<DebugRect>, DebugPt, DebugPt, DebugPt)> =
-        BTreeMap::new();
-    for stage in local_fcose_debug_stages {
-        for node in &stage.nodes {
-            local_stage_nodes.insert(
-                (stage.run_index, stage.tag.as_str(), node.id.as_str()),
-                model_bounds_to_debug_rect(&node.bounds),
-            );
-            if let Some(displacement) = node.displacement.as_ref() {
-                local_stage_displacements.insert(
-                    (stage.run_index, stage.tag.as_str(), node.id.as_str()),
-                    DebugPt {
-                        x: displacement.x,
-                        y: displacement.y,
-                    },
-                );
-            }
-        }
-        for compound in &stage.compound_bounds {
-            local_stage_compounds.insert(
-                (stage.run_index, stage.tag.as_str(), compound.id.as_str()),
-                model_bounds_to_debug_rect(&compound.bounds),
-            );
-        }
-        if stage.tag == "relocateComponent.before-shift"
-            && let Some(relocate) = stage.relocate.as_ref()
-        {
-            local_relocates.insert(
-                stage.run_index,
-                (
-                    stage.bbox.as_ref().map(model_bounds_to_debug_rect),
-                    DebugPt {
-                        x: relocate.original_center.x,
-                        y: relocate.original_center.y,
-                    },
-                    DebugPt {
-                        x: relocate.rect_center.x,
-                        y: relocate.rect_center.y,
-                    },
-                    DebugPt {
-                        x: relocate.delta.x,
-                        y: relocate.delta.y,
-                    },
-                ),
-            );
-        }
-    }
 
     let _ = writeln!(report, "## Render-path probe join\n");
     let _ = writeln!(
@@ -2602,106 +2542,6 @@ fn render_architecture_render_path_join_markdown(
     }
     let _ = writeln!(report);
 
-    let _ = writeln!(report, "### Local FCoSE debug stages\n");
-    let _ = writeln!(
-        report,
-        "Local stages are emitted only when `MANATEE_FCOSE_DEBUG_TRACE=1`; they are layout-base diagnostics, not SVG group rects.\n"
-    );
-    let _ = writeln!(
-        report,
-        "| run | stage | iterations | bbox | relocate delta | group | local compound rect |\n|---:|---|---:|---|---|---|---|"
-    );
-    if local_fcose_debug_stages.is_empty() {
-        let _ = writeln!(
-            report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
-        );
-    } else {
-        for stage in local_fcose_debug_stages {
-            let iterations = stage
-                .iterations
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "<none>".to_string());
-            let bbox = stage.bbox.as_ref().map(model_bounds_to_debug_rect);
-            let relocate = stage
-                .relocate
-                .as_ref()
-                .map(|r| {
-                    format!(
-                        "orig=({:.6},{:.6}) rect=({:.6},{:.6}) d=({:.6},{:.6})",
-                        r.original_center.x,
-                        r.original_center.y,
-                        r.rect_center.x,
-                        r.rect_center.y,
-                        r.delta.x,
-                        r.delta.y
-                    )
-                })
-                .unwrap_or_else(|| "<none>".to_string());
-            if stage.compound_bounds.is_empty() {
-                let _ = writeln!(
-                    report,
-                    "| {} | `{}` | `{}` | `{}` | `{}` | `<none>` | `<none>` |",
-                    stage.run_index,
-                    stage.tag,
-                    iterations,
-                    format_debug_rect(bbox),
-                    relocate
-                );
-            } else {
-                for compound in &stage.compound_bounds {
-                    let rect = model_bounds_to_debug_rect(&compound.bounds);
-                    let _ = writeln!(
-                        report,
-                        "| {} | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
-                        stage.run_index,
-                        stage.tag,
-                        iterations,
-                        format_debug_rect(bbox),
-                        relocate,
-                        compound.id,
-                        format_debug_rect(Some(rect))
-                    );
-                }
-            }
-        }
-    }
-    let _ = writeln!(report);
-
-    let _ = writeln!(report, "### Local FCoSE debug stage nodes\n");
-    let _ = writeln!(
-        report,
-        "| run | stage | kind | id | local layout rect | local displacement |\n|---:|---|---|---|---|---|"
-    );
-    let mut wrote_local_stage_nodes = false;
-    for stage in local_fcose_debug_stages {
-        for node in &stage.nodes {
-            let rect = model_bounds_to_debug_rect(&node.bounds);
-            let displacement = node
-                .displacement
-                .as_ref()
-                .map(|p| DebugPt { x: p.x, y: p.y });
-            let _ = writeln!(
-                report,
-                "| {} | `{}` | `{}` | `{}` | `{}` | `{}` |",
-                stage.run_index,
-                stage.tag,
-                node.kind,
-                node.id,
-                format_debug_rect(Some(rect)),
-                format_debug_point(displacement)
-            );
-            wrote_local_stage_nodes = true;
-        }
-    }
-    if !wrote_local_stage_nodes {
-        let _ = writeln!(
-            report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
-        );
-    }
-    let _ = writeln!(report);
-
     let _ = writeln!(
         report,
         "### Bundled FCoSE/Cose internal group rects vs local FCoSE compounds\n"
@@ -2765,17 +2605,14 @@ fn render_architecture_render_path_join_markdown(
     }
     let _ = writeln!(report);
 
+    let _ = writeln!(report, "### Bundled FCoSE/Cose relocate centers\n");
     let _ = writeln!(
         report,
-        "### Bundled FCoSE/Cose relocate centers vs local trace\n"
+        "These `relocateComponent.before-shift` inputs decide the final global layout translation after each bundled FCoSE run.\n"
     );
     let _ = writeln!(
         report,
-        "This table compares the `relocateComponent.before-shift` inputs that decide the final global layout translation after each bundled/local FCoSE run.\n"
-    );
-    let _ = writeln!(
-        report,
-        "| run | bundled rect bbox | local rect bbox | rect dx | rect dy | rect dw | rect dh | bundled original center | local original center | origin dx | origin dy | bundled rect center | local rect center | center dx | center dy | bundled delta | local delta | delta dx | delta dy |\n|---:|---|---|---:|---:|---:|---:|---|---|---:|---:|---|---|---:|---:|---|---|---:|---:|"
+        "| run | rect bbox | original center | rect center | delta |\n|---:|---|---|---|---|"
     );
     let mut wrote_relocate = false;
     if let Some(stages) = render_probe
@@ -2794,75 +2631,16 @@ fn render_architecture_render_path_join_markdown(
             let bundled_origin = json_debug_point(stage.get("originalCenter"));
             let bundled_center = json_debug_point(stage.get("rectCenter"));
             let bundled_delta = json_debug_point(stage.get("delta"));
-            let local = run_index.and_then(|run| local_relocates.get(&run).copied());
-            let local_bbox = local.and_then(|(bbox, _, _, _)| bbox);
-            let local_origin = local.map(|(_, origin, _, _)| origin);
-            let local_center = local.map(|(_, _, center, _)| center);
-            let local_delta = local.map(|(_, _, _, delta)| delta);
             let _ = writeln!(
                 report,
-                "| {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} |",
+                "| {} | `{}` | `{}` | `{}` | `{}` |",
                 run_index
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "<none>".to_string()),
                 format_debug_rect(bundled_bbox),
-                format_debug_rect(local_bbox),
-                format_debug_optional_f64(
-                    bundled_bbox
-                        .zip(local_bbox)
-                        .map(|(bundled, local)| local.x - bundled.x)
-                ),
-                format_debug_optional_f64(
-                    bundled_bbox
-                        .zip(local_bbox)
-                        .map(|(bundled, local)| local.y - bundled.y)
-                ),
-                format_debug_optional_f64(
-                    bundled_bbox
-                        .zip(local_bbox)
-                        .map(|(bundled, local)| local.w - bundled.w)
-                ),
-                format_debug_optional_f64(
-                    bundled_bbox
-                        .zip(local_bbox)
-                        .map(|(bundled, local)| local.h - bundled.h)
-                ),
                 format_debug_point(bundled_origin),
-                format_debug_point(local_origin),
-                format_debug_optional_f64(
-                    bundled_origin
-                        .zip(local_origin)
-                        .map(|(bundled, local)| local.x - bundled.x)
-                ),
-                format_debug_optional_f64(
-                    bundled_origin
-                        .zip(local_origin)
-                        .map(|(bundled, local)| local.y - bundled.y)
-                ),
                 format_debug_point(bundled_center),
-                format_debug_point(local_center),
-                format_debug_optional_f64(
-                    bundled_center
-                        .zip(local_center)
-                        .map(|(bundled, local)| local.x - bundled.x)
-                ),
-                format_debug_optional_f64(
-                    bundled_center
-                        .zip(local_center)
-                        .map(|(bundled, local)| local.y - bundled.y)
-                ),
                 format_debug_point(bundled_delta),
-                format_debug_point(local_delta),
-                format_debug_optional_f64(
-                    bundled_delta
-                        .zip(local_delta)
-                        .map(|(bundled, local)| local.x - bundled.x)
-                ),
-                format_debug_optional_f64(
-                    bundled_delta
-                        .zip(local_delta)
-                        .map(|(bundled, local)| local.y - bundled.y)
-                ),
             );
             wrote_relocate = true;
         }
@@ -2870,22 +2648,15 @@ fn render_architecture_render_path_join_markdown(
     if !wrote_relocate {
         let _ = writeln!(
             report,
-            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
         );
     }
     let _ = writeln!(report);
 
+    let _ = writeln!(report, "### Bundled FCoSE/Cose internal group rects\n");
     let _ = writeln!(
         report,
-        "### Bundled FCoSE/Cose internal group rects vs local same-stage trace\n"
-    );
-    let _ = writeln!(
-        report,
-        "This table compares only matching `run` + `stage` + `group` entries. `<none>` means the local trace has no stage with the bundled tag.\n"
-    );
-    let _ = writeln!(
-        report,
-        "| run | stage | group | bundled layout rect | local same-stage rect | dx | dy | dw | dh |\n|---:|---|---|---|---|---:|---:|---:|---:|"
+        "| run | stage | group | layout rect |\n|---:|---|---|---|"
     );
     let mut wrote_same_stage = false;
     if let Some(stages) = render_probe
@@ -2906,62 +2677,29 @@ fn render_architecture_render_path_join_markdown(
                     continue;
                 };
                 let bundled_rect = json_debug_rect(node.get("rect"));
-                let local_rect =
-                    run_index.and_then(|run| local_stage_compounds.get(&(run, tag, id)).copied());
                 let _ = writeln!(
                     report,
-                    "| {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+                    "| {} | `{}` | `{}` | `{}` |",
                     run_index
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "<none>".to_string()),
                     tag,
                     id,
                     format_debug_rect(bundled_rect),
-                    format_debug_rect(local_rect),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.x - bundled.x)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.y - bundled.y)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.w - bundled.w)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.h - bundled.h)
-                    ),
                 );
                 wrote_same_stage = true;
             }
         }
     }
     if !wrote_same_stage {
-        let _ = writeln!(
-            report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
-        );
+        let _ = writeln!(report, "| `<none>` | `<none>` | `<none>` | `<none>` |");
     }
     let _ = writeln!(report);
 
+    let _ = writeln!(report, "### Bundled FCoSE/Cose internal node states\n");
     let _ = writeln!(
         report,
-        "### Bundled FCoSE/Cose internal nodes vs local same-stage trace\n"
-    );
-    let _ = writeln!(
-        report,
-        "This table compares matching `run` + `stage` + `node id` entries for services, junctions, and groups.\n"
-    );
-    let _ = writeln!(
-        report,
-        "| run | stage | node | bundled layout rect | local same-stage rect | dx | dy | dw | dh | bundled displacement | local displacement | disp dx | disp dy |\n|---:|---|---|---|---|---:|---:|---:|---:|---|---|---:|---:|"
+        "| run | stage | node | layout rect | displacement |\n|---:|---|---|---|---|"
     );
     let mut wrote_same_stage_nodes = false;
     if let Some(stages) = render_probe
@@ -2982,58 +2720,22 @@ fn render_architecture_render_path_join_markdown(
                     continue;
                 };
                 let bundled_rect = json_debug_rect(node.get("rect"));
-                let local_rect =
-                    run_index.and_then(|run| local_stage_nodes.get(&(run, tag, id)).copied());
                 let bundled_disp = node.get("forces").and_then(|forces| {
                     Some(DebugPt {
                         x: json_f64(forces, "displacementX")?,
                         y: json_f64(forces, "displacementY")?,
                     })
                 });
-                let local_disp = run_index
-                    .and_then(|run| local_stage_displacements.get(&(run, tag, id)).copied());
                 let _ = writeln!(
                     report,
-                    "| {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} |",
+                    "| {} | `{}` | `{}` | `{}` | `{}` |",
                     run_index
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "<none>".to_string()),
                     tag,
                     id,
                     format_debug_rect(bundled_rect),
-                    format_debug_rect(local_rect),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.x - bundled.x)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.y - bundled.y)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.w - bundled.w)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_rect
-                            .zip(local_rect)
-                            .map(|(bundled, local)| local.h - bundled.h)
-                    ),
                     format_debug_point(bundled_disp),
-                    format_debug_point(local_disp),
-                    format_debug_optional_f64(
-                        bundled_disp
-                            .zip(local_disp)
-                            .map(|(bundled, local)| local.x - bundled.x)
-                    ),
-                    format_debug_optional_f64(
-                        bundled_disp
-                            .zip(local_disp)
-                            .map(|(bundled, local)| local.y - bundled.y)
-                    ),
                 );
                 wrote_same_stage_nodes = true;
             }
@@ -3042,7 +2744,7 @@ fn render_architecture_render_path_join_markdown(
     if !wrote_same_stage_nodes {
         let _ = writeln!(
             report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
         );
     }
     let _ = writeln!(report);
@@ -3547,7 +3249,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 model,
                 parsed.metadata().effective_config.as_value(),
                 &measurer,
-                session.seed().seed().get(),
+                session.render_seed().get(),
             )
             .map_err(|e| {
                 XtaskError::SvgCompareFailed(format!(
@@ -4011,7 +3713,6 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 &lo_groups,
                 &layout,
                 &fcose_compound_rows,
-                &layout.fcose_debug_stages,
             );
         }
 
@@ -5172,7 +4873,6 @@ mod tests {
                 },
             ],
             fcose_compound_bounds: Vec::new(),
-            fcose_debug_stages: Vec::new(),
             bounds: None,
         };
         let fcose_compound_rows = vec![(
@@ -5185,59 +4885,6 @@ mod tests {
             },
             None,
         )];
-        let local_fcose_debug_stages = vec![
-            merman_render::model::ArchitectureFcoseDebugStage {
-                run_index: 1,
-                tag: "classicLayout.end".to_string(),
-                iterations: Some(300),
-                bbox: Some(merman_render::model::Bounds {
-                    min_x: 6.0,
-                    min_y: 16.0,
-                    max_x: 42.0,
-                    max_y: 58.0,
-                }),
-                nodes: vec![merman_render::model::ArchitectureFcoseDebugNodeBounds {
-                    id: "left".to_string(),
-                    kind: "group".to_string(),
-                    bounds: merman_render::model::Bounds {
-                        min_x: 6.0,
-                        min_y: 16.0,
-                        max_x: 42.0,
-                        max_y: 58.0,
-                    },
-                    displacement: Some(merman_render::model::LayoutPoint { x: 1.0, y: 2.0 }),
-                }],
-                compound_bounds: vec![merman_render::model::ArchitectureCompoundBounds {
-                    id: "left".to_string(),
-                    bounds: merman_render::model::Bounds {
-                        min_x: 6.0,
-                        min_y: 16.0,
-                        max_x: 42.0,
-                        max_y: 58.0,
-                    },
-                }],
-                relocate: None,
-            },
-            merman_render::model::ArchitectureFcoseDebugStage {
-                run_index: 1,
-                tag: "relocateComponent.before-shift".to_string(),
-                iterations: None,
-                bbox: Some(merman_render::model::Bounds {
-                    min_x: 3.0,
-                    min_y: 5.0,
-                    max_x: 54.0,
-                    max_y: 63.0,
-                }),
-                nodes: vec![],
-                compound_bounds: vec![],
-                relocate: Some(merman_render::model::ArchitectureFcoseRelocateDebug {
-                    original_center: merman_render::model::LayoutPoint { x: 11.0, y: 21.0 },
-                    rect_center: merman_render::model::LayoutPoint { x: 13.0, y: 24.0 },
-                    delta: merman_render::model::LayoutPoint { x: -2.0, y: -3.0 },
-                }),
-            },
-        ];
-
         let mut md = String::new();
         render_architecture_render_path_join_markdown(
             &mut md,
@@ -5249,7 +4896,6 @@ mod tests {
             &local_groups,
             &layout,
             &fcose_compound_rows,
-            &local_fcose_debug_stages,
         );
 
         assert!(md.contains("## Render-path probe join"));
@@ -5268,18 +4914,6 @@ mod tests {
         assert!(
             md.contains("### Bundled FCoSE/Cose internal group rects vs local FCoSE compounds")
         );
-        assert!(md.contains("| 1 | `classicLayout.end` | `left` | `x=7.000000 y=17.000000 w=35.000000 h=43.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -1.000000 | -1.000000 | 1.000000 | -1.000000 |"));
-        assert!(md.contains("### Local FCoSE debug stages"));
-        assert!(md.contains("| 1 | `classicLayout.end` | `300` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | `<none>` | `left` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` |"));
-        assert!(md.contains("### Local FCoSE debug stage nodes"));
-        assert!(md.contains("| 1 | `classicLayout.end` | `group` | `left` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` |"));
-        assert!(md.contains("### Bundled FCoSE/Cose relocate centers vs local trace"));
-        assert!(md.contains("| 1 | `x=2.000000 y=3.000000 w=50.000000 h=60.000000` | `x=3.000000 y=5.000000 w=51.000000 h=58.000000` | 1.000000 | 2.000000 | 1.000000 | -2.000000 | `x=10.000000 y=20.000000` | `x=11.000000 y=21.000000` | 1.000000 | 1.000000 | `x=12.000000 y=22.000000` | `x=13.000000 y=24.000000` | 1.000000 | 2.000000 | `x=-2.000000 y=-2.000000` | `x=-2.000000 y=-3.000000` | 0.000000 | -1.000000 |"));
-        assert!(
-            md.contains("### Bundled FCoSE/Cose internal group rects vs local same-stage trace")
-        );
-        assert!(md.contains("| 1 | `classicLayout.end` | `left` | `x=7.000000 y=17.000000 w=35.000000 h=43.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -1.000000 | -1.000000 | 1.000000 | -1.000000 |"));
-        assert!(md.contains("### Bundled FCoSE/Cose internal nodes vs local same-stage trace"));
         assert!(md.contains("| 1 | `classicLayout.end` | `left` | `x=7.000000 y=17.000000 w=35.000000 h=43.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -1.000000 | -1.000000 | 1.000000 | -1.000000 |"));
     }
 
@@ -5349,7 +4983,6 @@ mod tests {
                 },
             ],
             fcose_compound_bounds: Vec::new(),
-            fcose_debug_stages: Vec::new(),
             bounds: None,
         };
         let local_service_positions =
@@ -5446,7 +5079,6 @@ mod tests {
             edges: Vec::new(),
             cytoscape_service_bounds: Vec::new(),
             fcose_compound_bounds: Vec::new(),
-            fcose_debug_stages: Vec::new(),
             bounds: None,
         };
         let upstream_groups = BTreeMap::from([(

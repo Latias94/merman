@@ -1,4 +1,3 @@
-use crate::algo::CoseBilkentOptions;
 use crate::error::Result;
 use crate::graph::{Graph, LayoutResult, Point};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
@@ -18,28 +17,10 @@ pub struct IndexedEdge {
     pub b: usize,
 }
 
-pub fn layout_indexed(
-    nodes: &[IndexedNode],
-    edges: &[IndexedEdge],
-    _opts: &CoseBilkentOptions,
-) -> Result<Vec<Point>> {
+pub fn layout_indexed(nodes: &[IndexedNode], edges: &[IndexedEdge]) -> Result<Vec<Point>> {
     if nodes.is_empty() {
         return Ok(Vec::new());
     }
-
-    let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
-    #[derive(Debug, Default, Clone)]
-    struct CoseLayoutTimings {
-        total: web_time::Duration,
-        from_indexed: web_time::Duration,
-        flat_forest: web_time::Duration,
-        radial: web_time::Duration,
-        spring: web_time::Duration,
-        transform: web_time::Duration,
-        output: web_time::Duration,
-    }
-    let mut timings = CoseLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
 
     for (idx, e) in edges.iter().enumerate() {
         if e.a >= nodes.len() || e.b >= nodes.len() {
@@ -49,41 +30,16 @@ pub fn layout_indexed(
         }
     }
 
-    let from_indexed_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_indexed(nodes, edges);
-    if let Some(s) = from_indexed_start {
-        timings.from_indexed = s.elapsed();
-    }
 
-    let flat_forest_start = timing_enabled.then(web_time::Instant::now);
     let forest = sim.get_flat_forest();
-    if let Some(s) = flat_forest_start {
-        timings.flat_forest = s.elapsed();
-    }
     if !forest.is_empty() {
-        let radial_start = timing_enabled.then(web_time::Instant::now);
         sim.position_nodes_radially(&forest);
-        if let Some(s) = radial_start {
-            timings.radial = s.elapsed();
-        }
     }
 
-    let spring_start = timing_enabled.then(web_time::Instant::now);
-    if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
-        sim.run_spring_embedder(timing_enabled);
-    }
-    if let Some(s) = spring_start {
-        timings.spring = s.elapsed();
-    }
-    let transform_start = timing_enabled.then(web_time::Instant::now);
-    if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
-        sim.transform_to_origin();
-    }
-    if let Some(s) = transform_start {
-        timings.transform = s.elapsed();
-    }
+    sim.run_spring_embedder();
+    sim.transform_to_origin();
 
-    let output_start = timing_enabled.then(web_time::Instant::now);
     let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
     for n in &sim.nodes {
         out.push(Point {
@@ -91,50 +47,12 @@ pub fn layout_indexed(
             y: n.center_y(),
         });
     }
-    if let Some(s) = output_start {
-        timings.output = s.elapsed();
-    }
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[manatee-cose-timing] total={:?} from_indexed={:?} flat_forest={:?} radial={:?} spring={:?} transform={:?} output={:?} nodes={} edges={} components={}",
-            timings.total,
-            timings.from_indexed,
-            timings.flat_forest,
-            timings.radial,
-            timings.spring,
-            timings.transform,
-            timings.output,
-            sim.nodes.len(),
-            sim.edges.len(),
-            forest.len(),
-        );
-    }
     Ok(out)
 }
 
-pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult> {
+pub fn layout(graph: &Graph) -> Result<LayoutResult> {
     graph.validate()?;
-
-    let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
-    #[derive(Debug, Default, Clone)]
-    struct CoseLayoutTimings {
-        total: web_time::Duration,
-        from_graph: web_time::Duration,
-        flat_forest: web_time::Duration,
-        radial: web_time::Duration,
-        spring: web_time::Duration,
-        transform: web_time::Duration,
-        output: web_time::Duration,
-    }
-    let mut timings = CoseLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
-    let from_graph_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_graph(graph);
-    if let Some(s) = from_graph_start {
-        timings.from_graph = s.elapsed();
-    }
 
     // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
     // This follows the upstream `cose-base` control flow:
@@ -142,39 +60,15 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
     // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
-    let flat_forest_start = timing_enabled.then(web_time::Instant::now);
     let forest = sim.get_flat_forest();
-    if let Some(s) = flat_forest_start {
-        timings.flat_forest = s.elapsed();
-    }
     if !forest.is_empty() {
-        let radial_start = timing_enabled.then(web_time::Instant::now);
         sim.position_nodes_radially(&forest);
-        if let Some(s) = radial_start {
-            timings.radial = s.elapsed();
-        }
     } else {
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
-    let spring_start = timing_enabled.then(web_time::Instant::now);
-    if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
-        sim.run_spring_embedder(timing_enabled);
-    }
-    if let Some(s) = spring_start {
-        timings.spring = s.elapsed();
-    }
-    let transform_start = timing_enabled.then(web_time::Instant::now);
-    if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
-        sim.transform_to_origin();
-    }
-    if let Some(s) = transform_start {
-        timings.transform = s.elapsed();
-    }
-
-    let output_start = timing_enabled.then(web_time::Instant::now);
-    let node_count = sim.nodes.len();
-    let edge_count = sim.edges.len();
+    sim.run_spring_embedder();
+    sim.transform_to_origin();
 
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
@@ -184,27 +78,6 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         let y = n.center_y();
         positions.insert(n.id, Point { x, y });
     }
-    if let Some(s) = output_start {
-        timings.output = s.elapsed();
-    }
-
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[manatee-cose-timing] total={:?} from_graph={:?} flat_forest={:?} radial={:?} spring={:?} transform={:?} output={:?} nodes={} edges={} components={}",
-            timings.total,
-            timings.from_graph,
-            timings.flat_forest,
-            timings.radial,
-            timings.spring,
-            timings.transform,
-            timings.output,
-            node_count,
-            edge_count,
-            forest.len(),
-        );
-    }
-
     Ok(LayoutResult { positions })
 }
 
@@ -1018,36 +891,15 @@ impl SimGraph {
         }
     }
 
-    fn run_spring_embedder(&mut self, timing_enabled: bool) {
+    fn run_spring_embedder(&mut self) {
         if self.nodes.is_empty() {
             return;
         }
 
-        #[derive(Debug, Default, Clone)]
-        struct SpringEmbedderTimings {
-            total: web_time::Duration,
-            nodes_to_apply_gravitation: web_time::Duration,
-            update_grid: web_time::Duration,
-            spring_forces: web_time::Duration,
-            repulsion_forces: web_time::Duration,
-            gravitation_forces: web_time::Duration,
-            move_nodes: web_time::Duration,
-            iterations: usize,
-            active_edges_spring: u64,
-            repulsion_pairs_considered: u64,
-            repulsion_pairs_in_range: u64,
-        }
-        let mut timings = SpringEmbedderTimings::default();
-        let total_start = timing_enabled.then(web_time::Instant::now);
-
         // Mermaid's Cytoscape COSE-Bilkent applies gravitational forces only when the graph is
         // disconnected (`calculateNodesToApplyGravitationTo()` collects nodes from non-connected
         // graphs). For a connected mindmap tree this list is empty, so gravity is a no-op.
-        let nodes_with_gravity_start = timing_enabled.then(web_time::Instant::now);
         let nodes_with_gravity = self.nodes_to_apply_gravitation();
-        if let Some(s) = nodes_with_gravity_start {
-            timings.nodes_to_apply_gravitation = s.elapsed();
-        }
 
         fn nodes2_mut(nodes: &mut [SimNode], a: usize, b: usize) -> (&mut SimNode, &mut SimNode) {
             debug_assert!(a != b);
@@ -1091,9 +943,6 @@ impl SimGraph {
 
         loop {
             total_iterations += 1;
-            if timing_enabled {
-                timings.iterations += 1;
-            }
 
             if total_iterations == max_iterations {
                 break;
@@ -1128,7 +977,6 @@ impl SimGraph {
             let mut total_displacement = 0.0f64;
 
             // Spring forces
-            let spring_start = timing_enabled.then(web_time::Instant::now);
             for e in &self.edges {
                 if !e.active {
                     continue;
@@ -1137,10 +985,6 @@ impl SimGraph {
                 if !(self.nodes[a].active && self.nodes[b].active) {
                     continue;
                 }
-                if timing_enabled {
-                    timings.active_edges_spring += 1;
-                }
-
                 // Upstream `FDLayout.calcSpringForce` uses clipping points on the node rectangles
                 // (via `IGeometry.getIntersection`) so the "ideal edge length" applies between
                 // node borders rather than between node centers.
@@ -1174,25 +1018,16 @@ impl SimGraph {
                 nb.spring_fx -= sfx;
                 nb.spring_fy -= sfy;
             }
-            if let Some(s) = spring_start {
-                timings.spring_forces += s.elapsed();
-            }
-
             // Repulsion forces (FR-grid variant).
             //
             // Mirrors `FDLayout.calcRepulsionForces` + `calculateRepulsionForceOfANode`:
             // - rebuild the grid every `GRID_CALCULATION_CHECK_PERIOD` iterations (when allowed)
             // - cache `node.surrounding` between grid rebuilds
             // - candidate filtering uses *border distances* against `repulsionRange`
-            let repulsion_start = timing_enabled.then(web_time::Instant::now);
             let rebuild_surrounding = total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1;
 
             if rebuild_surrounding {
-                let update_grid_start = timing_enabled.then(web_time::Instant::now);
                 self.update_grid(repulsion_range);
-                if let Some(s) = update_grid_start {
-                    timings.update_grid += s.elapsed();
-                }
             }
 
             processed_repulsion.fill(false);
@@ -1254,10 +1089,6 @@ impl SimGraph {
 
                     let surrounding = self.nodes[a].surrounding.clone();
                     for b in surrounding {
-                        if timing_enabled {
-                            timings.repulsion_pairs_considered += 1;
-                            timings.repulsion_pairs_in_range += 1;
-                        }
                         let (rfx, rfy) = self.calc_repulsion_force(a, b, repulsion_constant);
                         let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
                         na.repulsion_fx += rfx;
@@ -1270,12 +1101,7 @@ impl SimGraph {
                 }
             }
 
-            if let Some(s) = repulsion_start {
-                timings.repulsion_forces += s.elapsed();
-            }
-
             // Gravitation (only for disconnected graphs).
-            let gravitation_start = timing_enabled.then(web_time::Instant::now);
             if !nodes_with_gravity.is_empty()
                 && let Some((owner_center_x, owner_center_y, estimated_size)) =
                     self.gravitation_context(gravity_range_factor)
@@ -1295,12 +1121,7 @@ impl SimGraph {
                     }
                 }
             }
-            if let Some(s) = gravitation_start {
-                timings.gravitation_forces += s.elapsed();
-            }
-
             // Move nodes
-            let move_start = timing_enabled.then(web_time::Instant::now);
             for n in &mut self.nodes {
                 if !n.active {
                     continue;
@@ -1329,29 +1150,7 @@ impl SimGraph {
                 n.gravitation_fx = 0.0;
                 n.gravitation_fy = 0.0;
             }
-            if let Some(s) = move_start {
-                timings.move_nodes += s.elapsed();
-            }
-
             last_total_displacement = total_displacement;
-        }
-
-        if let Some(s) = total_start {
-            timings.total = s.elapsed();
-            eprintln!(
-                "[manatee-cose-spring] total={:?} iters={} gravity_select={:?} update_grid={:?} spring={:?} repulsion={:?} gravitation={:?} move={:?} spring_edges={} repulsion_pairs={} repulsion_in_range={}",
-                timings.total,
-                timings.iterations,
-                timings.nodes_to_apply_gravitation,
-                timings.update_grid,
-                timings.spring_forces,
-                timings.repulsion_forces,
-                timings.gravitation_forces,
-                timings.move_nodes,
-                timings.active_edges_spring,
-                timings.repulsion_pairs_considered,
-                timings.repulsion_pairs_in_range,
-            );
         }
     }
 
@@ -2175,7 +1974,7 @@ mod tests {
         ];
         let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
 
-        let out = layout_indexed(&nodes, &edges, &Default::default()).expect("layout");
+        let out = layout_indexed(&nodes, &edges).expect("layout");
 
         assert_eq!(out.len(), 3);
         assert_close(out[0].x, 152.283539);
@@ -2206,7 +2005,7 @@ mod tests {
             .name("cose-bilkent-deep-tree-radial-layout".to_string())
             .stack_size(64 * 1024)
             .spawn(move || {
-                let out = layout_indexed(&nodes, &edges, &Default::default())
+                let out = layout_indexed(&nodes, &edges)
                     .expect("deep tree layout should not depend on recursive stack growth");
                 assert_eq!(out.len(), DEPTH);
                 assert!(

@@ -173,132 +173,132 @@ fn parser_only_layout_exclusions_use_exact_family_facts() {
 
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    let environment = merman_render::environment::RenderEnvironment::parity()
+    let runtime_policy = merman_core::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
+    let environment = merman_render::environment::RenderEnvironment::deterministic()
         .with_text_measurement_policy(
             merman_render::environment::TextMeasurementPolicy::deterministic(),
-        );
-    // Pin a fixed local timezone offset so Gantt (and related layout logic) stays deterministic on CI.
-    let utc = merman_core::time::LocalTimeZone::utc();
-    merman_core::time::with_local_time_zone(&utc, || {
-        let fixtures_root = workspace_root().join("fixtures");
-        let mmd_files = collect_mmd_files(&fixtures_root);
-        assert!(
-            !mmd_files.is_empty(),
-            "no .mmd fixtures found under {}",
-            fixtures_root.display()
-        );
+        )
+        .with_runtime_policy(runtime_policy.clone());
+    let fixtures_root = workspace_root().join("fixtures");
+    let mmd_files = collect_mmd_files(&fixtures_root);
+    assert!(
+        !mmd_files.is_empty(),
+        "no .mmd fixtures found under {}",
+        fixtures_root.display()
+    );
 
-        // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-        let engine = Engine::new()
-            .with_site_config(legacy_init_theme_compat_config())
-            .with_fixed_today(Some(
-                NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0));
-        let layout_opts = LayoutOptions::default();
-        let mut failures: Vec<String> = Vec::new();
+    // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
+    let engine = Engine::new()
+        .with_site_config(legacy_init_theme_compat_config())
+        .with_runtime_policy(runtime_policy);
+    let layout_opts = LayoutOptions::default();
+    let mut failures: Vec<String> = Vec::new();
 
-        for mmd_path in mmd_files {
-            let golden_path = mmd_path.with_extension("layout.golden.json");
-            if !golden_path.is_file() {
+    for mmd_path in mmd_files {
+        let golden_path = mmd_path.with_extension("layout.golden.json");
+        if !golden_path.is_file() {
+            continue;
+        }
+
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
                 continue;
             }
+        };
 
-            let text = match fs::read_to_string(&mmd_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
+        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
+            &text,
+            ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-                &text,
-                ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
+        let diagram_type = parsed.metadata().diagram_type.clone();
+        let session = environment.begin_session().expect("begin render session");
+        let artifact = match family::prepare(parsed, &layout_opts, session) {
+            Ok(v) => v,
+            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
 
-            let diagram_type = parsed.metadata().diagram_type.clone();
-            let session = environment.begin_session().expect("begin render session");
-            let artifact = match family::prepare(parsed, &layout_opts, session) {
-                Ok(v) => v,
-                Err(merman_render::Error::UnsupportedDiagram { .. }) => {
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            let mut layout_json = match artifact.layout_json() {
-                Ok(mut artifact_json) => artifact_json
-                    .get_mut("layout")
-                    .map(JsonValue::take)
-                    .expect("layout artifact contains layout projection"),
-                Err(err) => {
-                    failures.push(format!(
-                        "layout serialization failed for {}: {err}",
-                        mmd_path.display()
-                    ));
-                    continue;
-                }
-            };
-            round_json_numbers(&mut layout_json, 3);
-
-            let mut actual = serde_json::json!({
-                "diagramType": diagram_type,
-                "layout": layout_json,
-            });
-            normalize_dynamic_fields(&diagram_type, &mut actual);
-
-            let expected_text = match fs::read_to_string(&golden_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to read golden {}: {err}",
-                        golden_path.display()
-                    ));
-                    continue;
-                }
-            };
-
-            let mut expected: JsonValue = match serde_json::from_str(&expected_text) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to parse golden {}: {err}",
-                        golden_path.display()
-                    ));
-                    continue;
-                }
-            };
-            normalize_dynamic_fields(&diagram_type, &mut expected);
-
-            if actual != expected {
+        let mut layout_json = match artifact.layout_json() {
+            Ok(mut artifact_json) => artifact_json
+                .get_mut("layout")
+                .map(JsonValue::take)
+                .expect("layout artifact contains layout projection"),
+            Err(err) => {
                 failures.push(format!(
+                    "layout serialization failed for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+        round_json_numbers(&mut layout_json, 3);
+
+        let mut actual = serde_json::json!({
+            "diagramType": diagram_type,
+            "layout": layout_json,
+        });
+        normalize_dynamic_fields(&diagram_type, &mut actual);
+
+        let expected_text = match fs::read_to_string(&golden_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to read golden {}: {err}",
+                    golden_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let mut expected: JsonValue = match serde_json::from_str(&expected_text) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to parse golden {}: {err}",
+                    golden_path.display()
+                ));
+                continue;
+            }
+        };
+        normalize_dynamic_fields(&diagram_type, &mut expected);
+
+        if actual != expected {
+            failures.push(format!(
                 "layout snapshot mismatch for {}\n  expected: {}\n  actual:   {}\n  hint: regenerate via `cargo run -p xtask -- update-layout-snapshots --filter {}`",
                 mmd_path.display(),
                 golden_path.display(),
                 "<computed>",
                 mmd_path.file_stem().and_then(|s| s.to_str()).unwrap_or("")
             ));
-            }
         }
+    }
 
-        if !failures.is_empty() {
-            panic!("{}", failures.join("\n\n"));
-        }
-    });
+    if !failures.is_empty() {
+        panic!("{}", failures.join("\n\n"));
+    }
 }

@@ -143,6 +143,10 @@ impl<'a> ParsePipeline<'a> {
     }
 
     pub(crate) fn metadata(&self) -> Result<ParseMetadata> {
+        self.with_operation_context(|_| self.metadata_in_context())
+    }
+
+    fn metadata_in_context(&self) -> Result<ParseMetadata> {
         let (_, metadata) = match self.source {
             ParseSource::Detect => self.preprocess_and_detect_strict()?,
             ParseSource::KnownType(diagram_type) => {
@@ -175,42 +179,50 @@ impl<'a> ParsePipeline<'a> {
         &self,
         timing: ParseTiming,
     ) -> Result<Option<DiagramParseSnapshot>> {
-        let timing_enabled = timing.is_enabled();
-        let total_start = runtime::timing_start(timing_enabled);
-        let preprocess_start = runtime::timing_start(timing_enabled);
+        self.with_operation_context(|context| {
+            self.parse_editor_snapshot_in_context(timing, context)
+        })
+    }
+
+    fn parse_editor_snapshot_in_context(
+        &self,
+        timing: ParseTiming,
+        operation_context: &runtime::OperationContext,
+    ) -> Result<Option<DiagramParseSnapshot>> {
+        let operation_timing = timing.operation_timing(operation_context);
+        let total_start = operation_timing.map(runtime::OperationTiming::start);
+        let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(&code);
         let editor_input = source_map.parser_input();
-        let preprocess = preprocess_start.map(runtime::timing_elapsed);
+        let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
         let resolved = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let combined = resolved
             .filter(|resolved| resolved.owner == RegistryOwner::BuiltIn)
             .and_then(|_| family::combined_parser(&meta.diagram_type));
 
-        let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_local_time(|| {
-            Ok(match resolved {
-                Some(resolved) => {
-                    if let Some(parser) = combined {
-                        let parsed = parser(editor_input, &meta);
-                        let (model, editor_facts) = parsed.into_parts();
-                        (model, Some(editor_facts))
-                    } else {
-                        ((resolved.parser)(editor_input, &meta), None)
-                    }
+        let parse_start = operation_timing.map(runtime::OperationTiming::start);
+        let parse_res: Result<_> = Ok(match resolved {
+            Some(resolved) => {
+                if let Some(parser) = combined {
+                    let parsed = parser(editor_input, &meta);
+                    let (model, editor_facts) = parsed.into_parts();
+                    (model, Some(editor_facts))
+                } else {
+                    ((resolved.parser)(editor_input, &meta), None)
                 }
-                None => (
-                    Err(Error::UnsupportedDiagram {
-                        diagram_type: meta.diagram_type.clone(),
-                    }),
-                    None,
-                ),
-            })
+            }
+            None => (
+                Err(Error::UnsupportedDiagram {
+                    diagram_type: meta.diagram_type.clone(),
+                }),
+                None,
+            ),
         });
-        let parse = parse_start.map(runtime::timing_elapsed);
+        let parse = parse_start.map(runtime::OperationTimer::elapsed);
         let (model_result, combined_facts) = parse_res?;
         let owner = resolved.map(|resolved| resolved.owner);
         let mut model = match model_result {
@@ -227,9 +239,9 @@ impl<'a> ParsePipeline<'a> {
             }
         };
 
-        let sanitize_start = runtime::timing_start(timing_enabled);
+        let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-        let sanitize = sanitize_start.map(runtime::timing_elapsed);
+        let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         Self::remap_value_warning_facts(&mut model, &source_map);
         timing.log_success(ParseTimingSuccess {
             total_start,
@@ -323,19 +335,45 @@ impl<'a> ParsePipeline<'a> {
         postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
-        let timing_enabled = timing.is_enabled();
-        let total_start = runtime::timing_start(timing_enabled);
+        self.with_operation_context(|operation_context| {
+            self.parse_model_in_context(
+                timing,
+                operation_context,
+                parse,
+                sanitize,
+                suppressed,
+                finish,
+                postprocess,
+                model_kind,
+            )
+        })
+    }
 
-        let preprocess_start = runtime::timing_start(timing_enabled);
+    #[allow(clippy::too_many_arguments)]
+    fn parse_model_in_context<T, O>(
+        &self,
+        timing: ParseTiming,
+        operation_context: &runtime::OperationContext,
+        parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
+        sanitize: impl FnOnce(&mut T, &MermaidConfig),
+        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        finish: impl FnOnce(ParseMetadata, T) -> O,
+        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
+        model_kind: impl FnOnce(&T) -> Option<&'static str>,
+    ) -> Result<Option<O>> {
+        let operation_timing = timing.operation_timing(operation_context);
+        let total_start = operation_timing.map(runtime::OperationTiming::start);
+
+        let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(&code);
-        let preprocess = preprocess_start.map(runtime::timing_elapsed);
+        let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
-        let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_local_time(|| parse(self, source_map.parser_input(), &meta));
-        let parse = parse_start.map(runtime::timing_elapsed);
+        let parse_start = operation_timing.map(runtime::OperationTiming::start);
+        let parse_res = parse(self, source_map.parser_input(), &meta);
+        let parse = parse_start.map(runtime::OperationTimer::elapsed);
 
         let mut model = match parse_res {
             Ok(model) => model,
@@ -349,9 +387,9 @@ impl<'a> ParsePipeline<'a> {
             }
         };
 
-        let sanitize_start = runtime::timing_start(timing_enabled);
+        let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
         sanitize(&mut model, &meta.effective_config);
-        let sanitize = sanitize_start.map(runtime::timing_elapsed);
+        let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         postprocess(&mut model, &source_map);
 
         timing.log_success(ParseTimingSuccess {
@@ -553,11 +591,12 @@ impl<'a> ParsePipeline<'a> {
         ))
     }
 
-    fn with_local_time<R>(&self, f: impl FnOnce() -> Result<R>) -> Result<R> {
-        let time_zone = self.engine.local_time_zone.as_ref().map_err(Clone::clone)?;
-        runtime::with_fixed_today_local(self.engine.fixed_today_local, || {
-            runtime::with_local_time_zone(time_zone, f)
-        })
+    fn with_operation_context<R>(
+        &self,
+        f: impl FnOnce(&runtime::OperationContext) -> Result<R>,
+    ) -> Result<R> {
+        let context = self.engine.begin_operation()?;
+        runtime::with_operation_context(&context, || f(&context))
     }
 
     fn effective_config_before_detect(&self, overrides: &MermaidConfig) -> MermaidConfig {
@@ -573,15 +612,18 @@ impl<'a> ParsePipeline<'a> {
 }
 
 impl ParseTiming {
-    fn is_enabled(self) -> bool {
-        self != Self::None && Engine::parse_timing_enabled()
+    fn operation_timing(
+        self,
+        context: &runtime::OperationContext,
+    ) -> Option<runtime::OperationTiming> {
+        (self != Self::None).then(|| context.timing()).flatten()
     }
 
     fn log_suppressed_error(
         self,
-        total_start: Option<runtime::TimingInstant>,
-        preprocess: Option<runtime::TimingDuration>,
-        parse: Option<runtime::TimingDuration>,
+        total_start: Option<runtime::OperationTimer>,
+        preprocess: Option<std::time::Duration>,
+        parse: Option<std::time::Duration>,
         input_bytes: usize,
     ) {
         let Some(start) = total_start else {
@@ -593,20 +635,20 @@ impl ParseTiming {
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                    runtime::timing_elapsed(start),
+                    start.elapsed(),
                     preprocess.unwrap_or_default(),
                     parse.unwrap_or_default(),
-                    runtime::timing_zero_duration(),
+                    std::time::Duration::ZERO,
                     input_bytes,
                 );
             }
             Self::Render => {
                 eprintln!(
                     "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                    runtime::timing_elapsed(start),
+                    start.elapsed(),
                     preprocess.unwrap_or_default(),
                     parse.unwrap_or_default(),
-                    runtime::timing_zero_duration(),
+                    std::time::Duration::ZERO,
                     input_bytes,
                 );
             }
@@ -624,7 +666,7 @@ impl ParseTiming {
                 eprintln!(
                     "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                     success.meta.diagram_type,
-                    runtime::timing_elapsed(start),
+                    start.elapsed(),
                     success.preprocess.unwrap_or_default(),
                     success.parse.unwrap_or_default(),
                     success.sanitize.unwrap_or_default(),
@@ -636,7 +678,7 @@ impl ParseTiming {
                     "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                     success.meta.diagram_type,
                     success.model_kind.unwrap_or("unknown"),
-                    runtime::timing_elapsed(start),
+                    start.elapsed(),
                     success.preprocess.unwrap_or_default(),
                     success.parse.unwrap_or_default(),
                     success.sanitize.unwrap_or_default(),
@@ -648,12 +690,12 @@ impl ParseTiming {
 }
 
 struct ParseTimingSuccess<'a> {
-    total_start: Option<runtime::TimingInstant>,
+    total_start: Option<runtime::OperationTimer>,
     meta: &'a ParseMetadata,
     model_kind: Option<&'static str>,
-    preprocess: Option<runtime::TimingDuration>,
-    parse: Option<runtime::TimingDuration>,
-    sanitize: Option<runtime::TimingDuration>,
+    preprocess: Option<std::time::Duration>,
+    parse: Option<std::time::Duration>,
+    sanitize: Option<std::time::Duration>,
     input_bytes: usize,
 }
 

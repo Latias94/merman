@@ -542,7 +542,7 @@ pub(crate) fn binding_site_config(
     Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
 ) -> Result<Option<chrono::NaiveDate>, BindingError> {
@@ -559,7 +559,7 @@ pub(crate) fn binding_fixed_today(
         })
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
 pub(crate) fn binding_fixed_local_offset_minutes(
     options: &BindingOptions,
 ) -> Result<Option<i32>, BindingError> {
@@ -579,56 +579,40 @@ pub(crate) fn binding_fixed_local_offset_minutes(
     Ok(Some(offset_minutes))
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
-#[derive(Clone)]
-pub(crate) struct BindingLocalTimePolicy {
-    pub(crate) today: Option<chrono::NaiveDate>,
-    pub(crate) time_zone: merman::time::LocalTimeZone,
-    #[cfg(feature = "render")]
-    pub(crate) explicit: bool,
-}
-
-#[cfg(any(feature = "render", feature = "ascii"))]
-pub(crate) fn binding_local_time_policy(
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+pub(crate) fn binding_runtime_policy_from(
     options: &BindingOptions,
-) -> Result<BindingLocalTimePolicy, BindingError> {
+    mut runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<merman::runtime::RuntimePolicy, BindingError> {
     let today = binding_fixed_today(options)?;
     let offset_minutes = binding_fixed_local_offset_minutes(options)?;
-    let time_zone = match offset_minutes {
-        Some(offset_minutes) => merman::time::LocalTimeZone::fixed(offset_minutes),
-        None => {
-            #[cfg(feature = "core-host")]
-            {
-                Ok(merman::time::LocalTimeZone::system())
-            }
-            #[cfg(not(feature = "core-host"))]
-            {
-                Ok(merman::time::LocalTimeZone::utc())
-            }
-        }
+    if let Some(offset_minutes) = offset_minutes {
+        runtime_policy = runtime_policy
+            .try_with_fixed_local_offset_minutes(offset_minutes)
+            .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
     }
-    .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
 
     if let Some(today) = today {
         let midnight = today
             .and_hms_opt(0, 0, 0)
             .expect("every valid date has a valid midnight");
-        if time_zone.datetime_from_naive_local(midnight).is_none() {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "fixed_today is outside the supported range of the selected local timezone: {today}"
-                ),
-            ));
-        }
+        let local = runtime_policy
+            .local_time_zone()
+            .datetime_from_naive_local(midnight)
+            .ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!(
+                        "fixed_today is outside the supported range of the selected local timezone: {today}"
+                    ),
+                )
+            })?;
+        runtime_policy = runtime_policy
+            .with_fixed_unix_millis(local.timestamp_millis())
+            .with_fixed_today(Some(today));
     }
 
-    Ok(BindingLocalTimePolicy {
-        today,
-        time_zone,
-        #[cfg(feature = "render")]
-        explicit: today.is_some() || offset_minutes.is_some(),
-    })
+    Ok(runtime_policy)
 }
 
 #[cfg(feature = "analysis")]

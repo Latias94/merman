@@ -8,11 +8,6 @@ use super::viewbox::{
 };
 use super::*;
 
-#[inline]
-fn section(enabled: bool, dst: &mut web_time::Duration) -> Option<timing::TimingGuard<'_>> {
-    enabled.then(|| timing::TimingGuard::new(dst))
-}
-
 pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
     layout: &FlowchartLayout,
     model: &crate::flowchart::FlowchartModel,
@@ -71,15 +66,22 @@ fn render_flowchart_svg_model(
         });
     }
 
-    let timing_enabled = options.debug.include_timing_diagnostics;
+    let render_timing = options.timing();
     let measurer = options.text_measurer();
     let mut timings = timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
+    let total_timer = render_timing.start();
 
     let effective_config_value = effective_config.as_value();
+    let hand_drawn_seed = options.rough_randomness(
+        effective_config_value
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(options.seed() as f64),
+        "render.flowchart.roughjs",
+    );
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = render_timing.section(&mut timings.build_ctx);
 
     let FlowchartRenderInputs {
         mut render_edges,
@@ -210,6 +212,7 @@ fn render_flowchart_svg_model(
 
     let node_dom_index = flowchart_node_dom_indices(model);
 
+    let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
         diagram_id,
         diagram_type,
@@ -217,6 +220,7 @@ fn render_flowchart_svg_model(
         ty,
         measurer,
         config: effective_config,
+        hand_drawn_seed,
         resource_limits: options.resource_policy(),
         math_renderer: options.math_renderer(),
         icon_registry: options.icon_registry(),
@@ -228,8 +232,8 @@ fn render_flowchart_svg_model(
         node_fill_color,
         default_edge_interpolate,
         default_edge_style,
-        trace_edge_id: options.debug.flowchart_trace_edge_id.as_deref(),
-        trace_output_path: options.debug.flowchart_trace_output_path.as_deref(),
+        trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
+        trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
         subgraph_order,
         edge_order,
         nodes_by_id,
@@ -280,8 +284,8 @@ fn render_flowchart_svg_model(
     drop(_g_build_ctx);
 
     let mut detail = FlowchartRenderDetails::default();
-    let mut viewbox_edge_curve_bounds = web_time::Duration::ZERO;
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
+    let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
+    let _g_viewbox = render_timing.section(&mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
         let mut cur = ctx.parent.get(id).copied();
@@ -323,7 +327,7 @@ fn render_flowchart_svg_model(
             diagram_title,
             font_family: &font_family,
             title_top_margin,
-            timing_enabled,
+            timing: render_timing,
             viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
             detail: &mut detail,
             edge_path_cache: &mut edge_path_cache,
@@ -349,7 +353,7 @@ fn render_flowchart_svg_model(
     });
 
     drop(_g_viewbox);
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
     let mut css = flowchart_css(
         diagram_id,
@@ -378,7 +382,7 @@ fn render_flowchart_svg_model(
     let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
 
     let mut root_session = FlowchartRootRenderSession {
-        timing_enabled,
+        timing: render_timing,
         details: &mut detail,
         edge_cache: &edge_path_cache,
     };
@@ -413,8 +417,10 @@ fn render_flowchart_svg_model(
     out.push_str("</svg>\n");
 
     drop(_g_render_svg);
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if render_timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_curve_lca={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
             timings.total,

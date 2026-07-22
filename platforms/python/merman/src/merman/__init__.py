@@ -9,6 +9,14 @@ from ._abi import (
     require_abi_version,
 )
 
+from ._runtime_contract import (
+    MermanRuntimeContract,
+    MermanRuntimeContractError,
+    MermanRuntimeFeatures,
+    MermanTextMeasurementCapabilities,
+    get_runtime_contract,
+)
+
 try:
     from .merman_uniffi import (
         MermanAsciiCapability,
@@ -33,8 +41,8 @@ except ModuleNotFoundError as exc:
     if exc.name == f"{__name__}.merman_uniffi":
         raise ImportError(
             "Generated merman UniFFI bindings are missing. "
-            "Run `cargo build -p merman-uniffi --features bindgen-smoke`, then "
-            "`cargo run -p merman-uniffi --features bindgen-smoke --example "
+            "Build an explicit merman-uniffi artifact profile, then run "
+            "`cargo run -p merman-uniffi --no-default-features --features bindgen-smoke --example "
             "generate_python_package -- --package-dir platforms/python/merman`."
         ) from exc
     raise
@@ -51,15 +59,20 @@ __all__ = [
     "MermanError",
     "MermanLintRuleCatalogEntry",
     "MermanReusableEngine",
+    "MermanRuntimeContract",
+    "MermanRuntimeContractError",
+    "MermanRuntimeFeatures",
     "MermanTextDirection",
     "MermanTextMeasureRequest",
     "MermanTextMeasureResult",
     "MermanTextMeasurementOperation",
     "MermanTextMeasurementPhase",
     "MermanTextMeasurementResultKind",
+    "MermanTextMeasurementCapabilities",
     "MermanTextMeasurer",
     "MermanTextWhiteSpace",
     "MermanTextWrapMode",
     "MermanValidationResult",
+    "get_runtime_contract",
     "require_abi_version",
 ]

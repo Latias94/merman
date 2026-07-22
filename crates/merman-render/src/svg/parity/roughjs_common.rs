@@ -121,7 +121,7 @@ pub(in crate::svg::parity) struct RoughRectSpec<'a> {
     pub(in crate::svg::parity) fill: &'a str,
     pub(in crate::svg::parity) stroke: &'a str,
     pub(in crate::svg::parity) stroke_width: f32,
-    pub(in crate::svg::parity) seed: u64,
+    pub(in crate::svg::parity) randomness: &'a roughr::core::RoughRandomness,
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_rect(
@@ -135,13 +135,13 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
         fill,
         stroke,
         stroke_width,
-        seed,
+        randomness,
     } = spec;
 
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
     let mut opts = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
         .fill(fill)
@@ -174,9 +174,12 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
     ))
 }
 
-pub(in crate::svg::parity) fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
+pub(in crate::svg::parity) fn roughjs_circle_path_d(
+    diameter: f64,
+    randomness: &roughr::core::RoughRandomness,
+) -> Option<String> {
     let mut opts = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
         .disable_multi_stroke(false)

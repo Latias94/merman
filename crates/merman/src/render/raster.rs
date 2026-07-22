@@ -1935,14 +1935,14 @@ mod tests {
     use base64::Engine as _;
 
     fn compatible_svg(svg: &str) -> super::super::ResvgCompatibleSvg {
-        let session = super::super::RenderEnvironment::parity()
+        let session = super::super::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         super::super::finalize_resvg_svg(svg, &session).unwrap()
     }
 
     fn trusted_compatible_svg(svg: &str) -> super::super::ResvgCompatibleSvg {
-        let session = super::super::RenderEnvironment::parity()
+        let session = super::super::RenderEnvironment::deterministic()
             .with_resource_policy(merman_render::resources::RenderResourcePolicy::trusted_native())
             .begin_session()
             .unwrap();

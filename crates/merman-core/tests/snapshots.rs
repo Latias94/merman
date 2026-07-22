@@ -255,7 +255,8 @@ fn fixtures_match_golden_snapshots() {
         ))
         // Gantt date handling follows JavaScript local-time semantics, which varies by runner timezone.
         // Pin a fixed offset so snapshots are stable across CI environments.
-        .with_fixed_local_offset_minutes(Some(0));
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("UTC is a valid fixed offset");
     for mmd_path in fixtures {
         let text = std::fs::read_to_string(&mmd_path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));

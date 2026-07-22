@@ -114,7 +114,6 @@ const WEB_SURFACE_DESCRIPTOR_SOURCE: &str =
 const WEB_CAPABILITY_NAMES: &[&str] = &[
     "analysis",
     "ascii",
-    "core_host",
     "cytoscape_layout",
     "editor_language",
     "elk_layout",

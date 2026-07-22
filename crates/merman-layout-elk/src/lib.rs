@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 mod model;
 pub use merman_elk_layered as source_port;
 pub use model::*;
+pub use source_port::RandomSeedPolicy as ElkRandomPolicy;
 
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, LGraph, LNodeKind,
@@ -37,7 +38,22 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
-    Ok(layout_layered_recursive(graph, None, None)?.layout)
+    layout_with_random_policy(graph, ElkRandomPolicy::require_explicit())
+}
+
+/// Executes Mermaid's ELK adapter with an explicit resolution policy for ELK's upstream
+/// `randomSeed = 0` sentinel.
+///
+/// Normal Mermaid adapter graphs keep their source default seed of `1`, so this policy affects
+/// only an explicitly configured unseeded graph. Native render operations pass a policy derived
+/// from their immutable operation context; raw callers must choose one rather than accidentally
+/// reading process randomness.
+pub fn layout_with_random_policy(
+    graph: &Graph,
+    random_policy: ElkRandomPolicy,
+) -> Result<LayoutResult> {
+    let root_scope = vec![graph.id.clone()];
+    Ok(layout_layered_recursive(graph, random_policy, &root_scope, None, None)?.layout)
 }
 
 /// Build the source-backed layered input graph used by [`layout`].
@@ -60,15 +76,21 @@ struct RecursiveSourceLayout {
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/RecursiveGraphLayoutEngine.java
 fn layout_layered_recursive(
     graph: &Graph,
+    random_policy: ElkRandomPolicy,
+    graph_scope: &[String],
     root_spacing_base: Option<f64>,
     root_label: Option<Label>,
 ) -> Result<RecursiveSourceLayout> {
     let mut layout_graph = graph.clone();
-    let nested_layouts = prelayout_separate_children(&mut layout_graph)?;
+    let nested_layouts =
+        prelayout_separate_children(&mut layout_graph, random_policy, graph_scope)?;
 
     let input =
         graph_to_source_input_with_root_context(&layout_graph, root_spacing_base, root_label);
-    let mut lgraph = source_port::import_graph(&input).map_err(Error::SourceImport)?;
+    let scope = graph_scope.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut lgraph =
+        source_port::import_graph_with_random_policy_at_scope(&input, random_policy, &scope)
+            .map_err(Error::SourceImport)?;
     if source_graph_has_nested_graphs(&lgraph) {
         source_port::execute_ported_compound_processors(&mut lgraph)
             .map_err(Error::SourcePipeline)?;
@@ -172,6 +194,8 @@ fn graph_to_source_input_with_root_context(
 
 fn prelayout_separate_children(
     graph: &mut Graph,
+    random_policy: ElkRandomPolicy,
+    graph_scope: &[String],
 ) -> Result<HashMap<String, RecursiveSourceLayout>> {
     let mut nested_layouts = HashMap::new();
     let root_handling = graph.options.layered.hierarchy_handling;
@@ -181,6 +205,8 @@ fn prelayout_separate_children(
         None,
         root_handling,
         root_direction,
+        random_policy,
+        graph_scope,
         &mut nested_layouts,
     )?;
     Ok(nested_layouts)
@@ -191,6 +217,8 @@ fn prelayout_separate_children_under(
     parent: Option<&str>,
     parent_handling: HierarchyHandling,
     parent_direction: Direction,
+    random_policy: ElkRandomPolicy,
+    graph_scope: &[String],
     nested_layouts: &mut HashMap<String, RecursiveSourceLayout>,
 ) -> Result<()> {
     let child_ids = direct_child_group_ids_with_children(graph, parent);
@@ -206,7 +234,15 @@ fn prelayout_separate_children_under(
         if parent_separates_children || child_stops_hierarchy {
             let child_graph =
                 graph_for_recursive_child(graph, &child, child_handling, child_direction);
-            let child_layout = layout_layered_recursive(&child_graph, Some(30.0), child.label)?;
+            let mut child_scope = graph_scope.to_vec();
+            child_scope.push(child.id.clone());
+            let child_layout = layout_layered_recursive(
+                &child_graph,
+                random_policy,
+                &child_scope,
+                Some(30.0),
+                child.label,
+            )?;
             if let Some(node) = graph.nodes.iter_mut().find(|node| node.id == child.id) {
                 node.width = node.width.max(child_layout.size.width);
                 node.height = node.height.max(child_layout.size.height);
@@ -218,6 +254,8 @@ fn prelayout_separate_children_under(
                 Some(child.id.as_str()),
                 child_handling,
                 child_direction,
+                random_policy,
+                graph_scope,
                 nested_layouts,
             )?;
         }
@@ -394,6 +432,7 @@ fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
 fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     let mut options =
         SourceLayeredOptions::mermaid_flowchart_defaults(direction_to_source(graph.direction));
+    options.random_seed = graph.options.layered.random_seed;
     options.hierarchy_handling =
         hierarchy_handling_to_source(graph.options.layered.hierarchy_handling);
     options.edge_routing = edge_routing_to_source(graph.options.layered.edge_routing);
@@ -1217,6 +1256,35 @@ mod tests {
         let input = graph_to_source_input(&graph);
 
         assert!(input.options.inside_self_loops_activate);
+    }
+
+    #[test]
+    fn layered_options_to_source_preserves_upstream_random_seed_sentinel() {
+        let mut graph = flat_graph(vec![leaf("A")], vec![]);
+        graph.options.layered.random_seed = 0;
+
+        let input = graph_to_source_input(&graph);
+
+        assert_eq!(input.options.random_seed, 0);
+    }
+
+    #[test]
+    fn raw_layout_rejects_unseeded_elk_zero_but_operation_policy_is_replayable() {
+        let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
+        graph.options.layered.random_seed = 0;
+
+        assert!(matches!(
+            layout(&graph),
+            Err(Error::SourcePipeline(source_port::PipelineError::RandomSeed(
+                source_port::RandomSeedError::Unresolved { graph_path }
+            ))) if graph_path == "root"
+        ));
+
+        let policy = ElkRandomPolicy::deterministic(0x6d65_726d_616e);
+        let first = layout_with_random_policy(&graph, policy).expect("deterministic layout");
+        let replayed = layout_with_random_policy(&graph, policy).expect("replayed layout");
+
+        assert_eq!(first, replayed);
     }
 
     #[test]

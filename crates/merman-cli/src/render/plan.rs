@@ -10,6 +10,10 @@ use crate::error::CliError;
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
 use crate::markdown;
 use merman::render::IconRegistry;
+#[cfg(feature = "ascii")]
+use std::env;
+#[cfg(feature = "ascii")]
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -62,6 +66,7 @@ pub(crate) fn render_plan_for_mmdc(
             .clone()
             .unwrap_or_else(|| default_mmdc_output_path(input.as_deref(), format)),
     ));
+    let text = resolve_text_output_args(export.text.clone(), output.as_ref());
 
     let mut parse = export.parse.clone();
     let mut render = export.render.clone();
@@ -92,7 +97,7 @@ pub(crate) fn render_plan_for_mmdc(
         jobs: export.jobs.unwrap_or_else(default_jobs),
         pdf_fit: export.pdf_fit,
         quiet: export.quiet,
-        text: export.text.clone(),
+        text,
         mode: RenderMode::MmdcCompat,
     })
 }
@@ -102,6 +107,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
     let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)
         .unwrap_or(RenderFormat::Svg);
     let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
+    let text = resolve_text_output_args(args.export.text.clone(), output.as_ref());
     let icon_registry = load_icon_registry(
         &args.export.icons.icon_packs,
         &args.export.icons.icon_packs_names_and_urls,
@@ -126,7 +132,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         jobs: 1,
         pdf_fit: true,
         quiet: args.export.quiet,
-        text: args.export.text.clone(),
+        text,
         mode: RenderMode::Subcommand,
     })
 }
@@ -152,7 +158,12 @@ impl RenderPlan {
         if let Some(color_mode) = self.text.ascii_color {
             options.color_mode = match color_mode {
                 TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
-                TextColorMode::Auto => merman::ascii::AsciiColorMode::Auto,
+                TextColorMode::Auto => {
+                    return Err(CliError::InvalidInput(
+                        "ASCII color mode `auto` was not resolved when the render plan was created"
+                            .to_string(),
+                    ));
+                }
                 TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
                 TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
                 TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
@@ -189,6 +200,90 @@ impl RenderPlan {
             // Kept intentionally quiet for no-op options that are only meaningful in a browser.
         }
     }
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy)]
+struct TerminalColorEnvironment {
+    no_color: bool,
+    force_color: bool,
+    truecolor: bool,
+    color_256: bool,
+    basic_color: bool,
+    stdout_is_terminal: bool,
+    output_is_stdout: bool,
+}
+
+#[cfg(feature = "ascii")]
+impl TerminalColorEnvironment {
+    fn capture(output: Option<&OutputTarget>) -> Self {
+        let color_term = env::var("COLORTERM")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
+
+        Self {
+            no_color: env::var_os("NO_COLOR").is_some(),
+            force_color: env::var("CLICOLOR_FORCE")
+                .is_ok_and(|value| !value.is_empty() && value != "0"),
+            truecolor: color_term.contains("truecolor") || color_term.contains("24bit"),
+            color_256: term.contains("256color"),
+            basic_color: !term.is_empty() && term != "dumb",
+            stdout_is_terminal: io::stdout().is_terminal(),
+            output_is_stdout: match output {
+                None | Some(OutputTarget::Stdout) => true,
+                Some(OutputTarget::File(_)) => false,
+            },
+        }
+    }
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_text_output_args(
+    mut text: TextOutputCliArgs,
+    output: Option<&OutputTarget>,
+) -> TextOutputCliArgs {
+    if text.ascii_color == Some(TextColorMode::Auto) {
+        text.ascii_color = Some(resolve_auto_text_color(TerminalColorEnvironment::capture(
+            output,
+        )));
+    }
+    text
+}
+
+#[cfg(not(feature = "ascii"))]
+fn resolve_text_output_args(
+    text: TextOutputCliArgs,
+    _output: Option<&OutputTarget>,
+) -> TextOutputCliArgs {
+    text
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_auto_text_color(environment: TerminalColorEnvironment) -> TextColorMode {
+    if environment.no_color {
+        return TextColorMode::Plain;
+    }
+    if environment.force_color {
+        return if environment.truecolor {
+            TextColorMode::Truecolor
+        } else {
+            TextColorMode::Ansi256
+        };
+    }
+    if !environment.output_is_stdout || !environment.stdout_is_terminal {
+        return TextColorMode::Plain;
+    }
+    if environment.truecolor {
+        return TextColorMode::Truecolor;
+    }
+    if environment.color_256 {
+        return TextColorMode::Ansi256;
+    }
+    if environment.basic_color {
+        return TextColorMode::Ansi16;
+    }
+    TextColorMode::Plain
 }
 
 fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs) {
@@ -343,5 +438,86 @@ fn default_raster_out_path(input: Option<&str>, ext: &str) -> PathBuf {
     match input.filter(|p| *p != "-") {
         Some(path) => PathBuf::from(path).with_extension(ext),
         None => PathBuf::from(format!("out.{ext}")),
+    }
+}
+
+#[cfg(all(test, feature = "ascii"))]
+mod tests {
+    use super::*;
+
+    fn terminal_environment() -> TerminalColorEnvironment {
+        TerminalColorEnvironment {
+            no_color: false,
+            force_color: false,
+            truecolor: false,
+            color_256: false,
+            basic_color: false,
+            stdout_is_terminal: true,
+            output_is_stdout: true,
+        }
+    }
+
+    #[test]
+    fn no_color_takes_precedence_over_forced_truecolor() {
+        let environment = TerminalColorEnvironment {
+            no_color: true,
+            force_color: true,
+            truecolor: true,
+            ..terminal_environment()
+        };
+
+        assert_eq!(resolve_auto_text_color(environment), TextColorMode::Plain);
+    }
+
+    #[test]
+    fn forced_color_is_preserved_for_file_output() {
+        let environment = TerminalColorEnvironment {
+            force_color: true,
+            output_is_stdout: false,
+            stdout_is_terminal: false,
+            ..terminal_environment()
+        };
+
+        assert_eq!(resolve_auto_text_color(environment), TextColorMode::Ansi256);
+    }
+
+    #[test]
+    fn automatic_color_requires_terminal_stdout() {
+        let redirected = TerminalColorEnvironment {
+            truecolor: true,
+            stdout_is_terminal: false,
+            ..terminal_environment()
+        };
+        let file = TerminalColorEnvironment {
+            truecolor: true,
+            output_is_stdout: false,
+            ..terminal_environment()
+        };
+
+        assert_eq!(resolve_auto_text_color(redirected), TextColorMode::Plain);
+        assert_eq!(resolve_auto_text_color(file), TextColorMode::Plain);
+    }
+
+    #[test]
+    fn automatic_color_chooses_the_most_capable_terminal_mode() {
+        let truecolor = TerminalColorEnvironment {
+            truecolor: true,
+            color_256: true,
+            basic_color: true,
+            ..terminal_environment()
+        };
+        let color_256 = TerminalColorEnvironment {
+            color_256: true,
+            basic_color: true,
+            ..terminal_environment()
+        };
+        let basic = TerminalColorEnvironment {
+            basic_color: true,
+            ..terminal_environment()
+        };
+
+        assert_eq!(resolve_auto_text_color(truecolor), TextColorMode::Truecolor);
+        assert_eq!(resolve_auto_text_color(color_256), TextColorMode::Ansi256);
+        assert_eq!(resolve_auto_text_color(basic), TextColorMode::Ansi16);
     }
 }

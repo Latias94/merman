@@ -74,12 +74,27 @@ impl AsciiRenderer {
 }
 
 pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
+    render_model_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
+}
+
+/// Renders a typed model with one explicitly captured local-time resolver.
+///
+/// Most families are timezone independent. Gantt uses this resolver for user-visible dates so a
+/// caller can keep parse and render semantics on the same operation context without thread-local
+/// ambient state.
+pub fn render_model_with_local_time_zone(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Result<String> {
     options.validate()?;
     match model {
         RenderSemanticModel::Class(model) => render_class(model, options),
         RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
-        RenderSemanticModel::Gantt(model) => render_gantt(model, options),
+        RenderSemanticModel::Gantt(model) => {
+            render_gantt_with_local_time_zone(model, options, local_time_zone)
+        }
         RenderSemanticModel::GitGraph(model) => render_git_graph(model, options),
         RenderSemanticModel::Journey(model) => render_journey(model, options),
         RenderSemanticModel::Kanban(model) => render_kanban(model, options),
@@ -124,8 +139,16 @@ pub fn render_gantt(
     model: &GanttDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
+    render_gantt_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
+}
+
+pub fn render_gantt_with_local_time_zone(
+    model: &GanttDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Result<String> {
     options.validate()?;
-    Ok(gantt::render_gantt_diagram(model, options))
+    Ok(gantt::render_gantt_diagram(model, options, local_time_zone))
 }
 
 pub fn render_git_graph(

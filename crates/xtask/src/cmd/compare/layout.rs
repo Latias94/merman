@@ -32,7 +32,7 @@ pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
 }
 
 pub(crate) fn svg_compare_environment() -> merman::render::RenderEnvironment {
-    merman::render::RenderEnvironment::parity()
+    merman::render::RenderEnvironment::deterministic()
 }
 
 #[cfg(test)]

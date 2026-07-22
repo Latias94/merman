@@ -153,8 +153,8 @@ pub(super) fn flowchart_compute_edge_path_geom(
         dedup_consecutive_points_into, force_intersect_for_layout_shape,
         intersect_for_layout_shape, is_rounded_intersect_shift_shape,
         line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_remove_redundant_cluster_run_point,
-        rounded_line_with_marker_offsets_for_edge_type, write_flowchart_edge_trace,
+        maybe_fix_corners, maybe_remove_redundant_cluster_run_point, record_flowchart_edge_trace,
+        rounded_line_with_marker_offsets_for_edge_type,
     };
 
     let is_elk_layout = ctx.diagram_type == "flowchart-elk"
@@ -397,7 +397,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
     }
 
     if trace_enabled {
-        write_flowchart_edge_trace(FlowchartEdgeTraceInput {
+        record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
             layout_edge: le,

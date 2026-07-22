@@ -68,6 +68,12 @@ export const BINDING_STATUS_CODE_NAMES = [
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
 
+export type SystemAdapterId =
+  | "system-clock"
+  | "system-timezone"
+  | "system-random"
+  | "system-timing";
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -80,7 +86,7 @@ export interface BindingCapabilities {
   render: boolean;
   analysis: boolean;
   ascii: boolean;
-  core_host: boolean;
+  system_adapter_ids: SystemAdapterId[];
   cytoscape_layout: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
@@ -99,7 +105,6 @@ interface BindingCapabilityFlags {
   render: boolean;
   analysis: boolean;
   ascii: boolean;
-  core_host: boolean;
   cytoscape_layout: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
@@ -201,7 +206,6 @@ export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   render: false,
   analysis: true,
   ascii: false,
-  core_host: false,
   cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
@@ -212,7 +216,6 @@ export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   render: true,
   analysis: true,
   ascii: false,
-  core_host: false,
   cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
@@ -223,7 +226,6 @@ export const RENDER_ONLY_BINDING_CAPABILITIES: BindingCapabilities = bindingCapa
   render: true,
   analysis: false,
   ascii: false,
-  core_host: false,
   cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
@@ -234,7 +236,6 @@ export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabiliti
   render: false,
   analysis: false,
   ascii: true,
-  core_host: false,
   cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
@@ -245,7 +246,6 @@ export const EDITOR_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   render: false,
   analysis: true,
   ascii: false,
-  core_host: false,
   cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
@@ -256,7 +256,6 @@ export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   render: true,
   analysis: true,
   ascii: true,
-  core_host: true,
   cytoscape_layout: true,
   elk_layout: true,
   ratex_math: false,
@@ -268,6 +267,7 @@ export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = FULL_BINDING_CA
 function bindingCapabilities(flags: BindingCapabilityFlags): BindingCapabilities {
   return {
     ...flags,
+    system_adapter_ids: [],
     text_measurement: {
       vendored: flags.render,
       deterministic: flags.render,

@@ -5,9 +5,8 @@ use crate::architecture_metrics::{
 use crate::config::{config_f64, json_f64, value_at};
 use crate::model::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
-    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
-    ArchitectureFcoseDebugNodeBounds, ArchitectureFcoseDebugStage, ArchitectureFcoseRelocateDebug,
-    Bounds, LayoutEdge, LayoutNode, LayoutPoint,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
+    LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -546,7 +545,6 @@ fn architecture_fcose_node_bounds_extras<'a>(
 
 #[derive(Debug, Clone)]
 struct ArchitectureFcoseInputPlan<'a> {
-    node_ids: Vec<&'a str>,
     compound_ids: Vec<&'a str>,
     graph: manatee::algo::fcose::IndexedGraph,
     options: manatee::algo::fcose::IndexedFcoseOptions,
@@ -1048,12 +1046,11 @@ fn build_architecture_fcose_input_plan<'a>(
         // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
         // while the additive random policy models each independently wrapped call.
         rerun: true,
-        random_seed: fcose_random_policy.seed().unwrap_or_default(),
+        random_seed: fcose_random_policy.seed(),
         random_seed_offset: None,
     };
 
     Ok(ArchitectureFcoseInputPlan {
-        node_ids,
         compound_ids,
         graph,
         options,
@@ -1140,7 +1137,6 @@ fn architecture_bounds_from_layout_rect(rect: manatee::graph::LayoutRect) -> Bou
 #[derive(Debug, Clone, Default)]
 struct ArchitectureFcoseResultProjection {
     compound_bounds: Vec<ArchitectureCompoundBounds>,
-    debug_stages: Vec<ArchitectureFcoseDebugStage>,
 }
 
 fn project_architecture_fcose_result(
@@ -1165,78 +1161,7 @@ fn project_architecture_fcose_result(
         }
     }
 
-    let mut debug_stages = Vec::with_capacity(result.debug_stages.len());
-    for stage in result.debug_stages {
-        let node_displacements = stage.node_displacements;
-        let stage_nodes = stage
-            .node_bounds
-            .into_iter()
-            .enumerate()
-            .filter_map(|(idx, b)| {
-                let displacement = node_displacements
-                    .get(idx)
-                    .map(|p| LayoutPoint { x: p.x, y: p.y });
-                if let Some(node_id) = plan.node_ids.get(idx) {
-                    Some(ArchitectureFcoseDebugNodeBounds {
-                        id: (*node_id).to_string(),
-                        kind: "node".to_string(),
-                        bounds: architecture_bounds_from_layout_rect(b),
-                        displacement,
-                    })
-                } else {
-                    let group_idx = idx.checked_sub(plan.node_ids.len())?;
-                    plan.compound_ids.get(group_idx).map(|group_id| {
-                        ArchitectureFcoseDebugNodeBounds {
-                            id: (*group_id).to_string(),
-                            kind: "group".to_string(),
-                            bounds: architecture_bounds_from_layout_rect(b),
-                            displacement,
-                        }
-                    })
-                }
-            })
-            .collect();
-        let stage_compound_bounds = stage
-            .compound_bounds
-            .into_iter()
-            .enumerate()
-            .filter_map(|(idx, b)| {
-                plan.compound_ids
-                    .get(idx)
-                    .map(|group_id| ArchitectureCompoundBounds {
-                        id: (*group_id).to_string(),
-                        bounds: architecture_bounds_from_layout_rect(b),
-                    })
-            })
-            .collect();
-        debug_stages.push(ArchitectureFcoseDebugStage {
-            run_index: stage.run_index,
-            tag: stage.tag,
-            iterations: stage.iterations,
-            bbox: stage.bbox.map(architecture_bounds_from_layout_rect),
-            nodes: stage_nodes,
-            compound_bounds: stage_compound_bounds,
-            relocate: stage.relocate.map(|r| ArchitectureFcoseRelocateDebug {
-                original_center: LayoutPoint {
-                    x: r.original_center.x,
-                    y: r.original_center.y,
-                },
-                rect_center: LayoutPoint {
-                    x: r.rect_center.x,
-                    y: r.rect_center.y,
-                },
-                delta: LayoutPoint {
-                    x: r.delta.x,
-                    y: r.delta.y,
-                },
-            }),
-        });
-    }
-
-    ArchitectureFcoseResultProjection {
-        compound_bounds,
-        debug_stages,
-    }
+    ArchitectureFcoseResultProjection { compound_bounds }
 }
 
 pub fn layout_architecture_diagram_typed(
@@ -1312,7 +1237,6 @@ fn layout_architecture_diagram_model(
         });
     }
     let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
-    let mut fcose_debug_stages: Vec<ArchitectureFcoseDebugStage> = Vec::new();
 
     if !nodes.is_empty() {
         let plan = build_architecture_fcose_input_plan(ArchitectureFcoseInputPlanInput {
@@ -1340,7 +1264,6 @@ fn layout_architecture_diagram_model(
         })?;
         let projection = project_architecture_fcose_result(&plan, &mut nodes, result);
         fcose_compound_bounds = projection.compound_bounds;
-        fcose_debug_stages = projection.debug_stages;
     }
 
     let cytoscape_service_bounds = architecture_cytoscape_service_bounds(
@@ -1535,7 +1458,6 @@ fn layout_architecture_diagram_model(
         edges,
         cytoscape_service_bounds,
         fcose_compound_bounds,
-        fcose_debug_stages,
         bounds,
     })
 }
@@ -1627,7 +1549,6 @@ mod tests {
 
         let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
 
-        assert_eq!(plan.node_ids, vec!["api", "db"]);
         assert_eq!(plan.graph.nodes.len(), 2);
         assert_eq!(plan.graph.nodes[0].width, 80.0);
         assert_eq!(plan.graph.nodes[0].height, 80.0);
@@ -1685,7 +1606,7 @@ mod tests {
             manatee::FcoseRandomSource::Mulberry32
         );
         assert!(!plan.random_policy.resets_seed_each_run());
-        assert_eq!(plan.random_policy.seed(), Some(77));
+        assert_eq!(plan.random_policy.seed(), 77);
         assert_eq!(plan.random_policy.seed_offset(), Some(0));
     }
 
@@ -1697,7 +1618,7 @@ mod tests {
         let wraps_to_zero = serde_json::json!(4_294_967_296.0);
         assert_eq!(
             super::architecture_seed_policy(Some(&wraps_to_zero), 77).seed(),
-            Some(0),
+            0,
             "JavaScript checks seed === 0 before coercing the enabled seed with >>> 0"
         );
     }
@@ -1710,9 +1631,9 @@ mod tests {
         let number_policy = super::architecture_seed_policy(Some(&number_zero), 77);
         let string_policy = super::architecture_seed_policy(Some(&string_zero), 77);
 
-        assert_eq!(number_policy.seed(), Some(77));
+        assert_eq!(number_policy.seed(), 77);
         assert!(!number_policy.resets_seed_each_run());
-        assert_eq!(string_policy.seed(), Some(0));
+        assert_eq!(string_policy.seed(), 0);
         assert_eq!(
             string_policy.source(),
             manatee::FcoseRandomSource::Mulberry32
@@ -1932,7 +1853,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_fcose_result_projection_updates_nodes_and_maps_debug_ids() {
+    fn architecture_fcose_result_projection_updates_nodes_and_maps_compound_bounds() {
         let model = super::ArchitectureModelView {
             nodes: vec![
                 super::ArchitectureNodeView {
@@ -1969,28 +1890,6 @@ mod tests {
             ],
             compound_positions: vec![manatee::Point { x: 50.0, y: 60.0 }],
             compound_bounds: vec![layout_rect(5.0, 6.0, 100.0, 120.0)],
-            debug_stages: vec![manatee::algo::fcose::IndexedFcoseDebugStage {
-                run_index: 1,
-                tag: "final".to_string(),
-                iterations: Some(7),
-                bbox: Some(layout_rect(0.0, 0.0, 160.0, 180.0)),
-                node_bounds: vec![
-                    layout_rect(10.0, 20.0, 80.0, 80.0),
-                    layout_rect(30.0, 40.0, 80.0, 80.0),
-                    layout_rect(5.0, 6.0, 100.0, 120.0),
-                ],
-                node_displacements: vec![
-                    manatee::Point { x: 1.0, y: 2.0 },
-                    manatee::Point { x: 3.0, y: 4.0 },
-                    manatee::Point { x: 5.0, y: 6.0 },
-                ],
-                compound_bounds: vec![layout_rect(5.0, 6.0, 100.0, 120.0)],
-                relocate: Some(manatee::algo::fcose::IndexedFcoseRelocateDebug {
-                    original_center: manatee::Point { x: 10.0, y: 20.0 },
-                    rect_center: manatee::Point { x: 30.0, y: 40.0 },
-                    delta: manatee::Point { x: 2.0, y: 3.0 },
-                }),
-            }],
         };
 
         let projection = super::project_architecture_fcose_result(&plan, &mut layout_nodes, result);
@@ -2001,24 +1900,6 @@ mod tests {
         assert_eq!(projection.compound_bounds[0].id, "core");
         assert_eq!(projection.compound_bounds[0].bounds.min_x, 5.0);
         assert_eq!(projection.compound_bounds[0].bounds.max_y, 126.0);
-
-        let stage = &projection.debug_stages[0];
-        assert_eq!(stage.run_index, 1);
-        assert_eq!(stage.tag, "final");
-        assert_eq!(stage.nodes.len(), 3);
-        assert_eq!(stage.nodes[0].id, "api");
-        assert_eq!(stage.nodes[0].kind, "node");
-        assert_eq!(stage.nodes[1].id, "db");
-        assert_eq!(stage.nodes[2].id, "core");
-        assert_eq!(stage.nodes[2].kind, "group");
-        let group_displacement = stage.nodes[2]
-            .displacement
-            .as_ref()
-            .expect("group displacement");
-        assert_eq!((group_displacement.x, group_displacement.y), (5.0, 6.0));
-        assert_eq!(stage.compound_bounds[0].id, "core");
-        let relocate = stage.relocate.as_ref().expect("relocate debug");
-        assert_eq!((relocate.delta.x, relocate.delta.y), (2.0, 3.0));
     }
 
     #[test]

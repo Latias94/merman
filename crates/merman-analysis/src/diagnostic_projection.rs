@@ -43,7 +43,7 @@ pub(crate) fn core_error_diagnostic(
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::InvalidLocalTimeZone(error) => CoreErrorDiagnostic {
+        CoreError::RuntimePolicy(error) => CoreErrorDiagnostic {
             diagnostic: rule_diagnostic(
                 DIAGRAM_PARSE_RULE_ID,
                 AnalysisStatus::ParseError,

@@ -461,10 +461,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::render_svg(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.render_svg(source.as_bytes())),
+        )
     }
 
     pub fn render_ascii(
@@ -472,10 +472,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::render_ascii(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.render_ascii(source.as_bytes())),
+        )
     }
 
     pub fn parse_json(
@@ -483,10 +483,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::parse_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.parse_json(source.as_bytes())),
+        )
     }
 
     pub fn layout_json(
@@ -494,10 +494,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::layout_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.layout_json(source.as_bytes())),
+        )
     }
 
     pub fn analyze_json(
@@ -505,10 +505,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::analyze_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.analyze_json(source.as_bytes())),
+        )
     }
 
     pub fn analyze_document_json(
@@ -517,11 +517,10 @@ impl MermanEngine {
         options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::analyze_document_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-            uri.as_bytes(),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.analyze_document_json(source.as_bytes(), uri.as_bytes())),
+        )
     }
 
     pub fn analyze_document_facts_json(
@@ -530,11 +529,11 @@ impl MermanEngine {
         options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::analyze_document_facts_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-            uri.as_bytes(),
-        ))
+        string_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref())).and_then(
+                |engine| engine.analyze_document_facts_json(source.as_bytes(), uri.as_bytes()),
+            ),
+        )
     }
 
     pub fn validate(
@@ -542,10 +541,10 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
-        validation_output(merman_bindings_core::validate_json(
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-        ))
+        validation_output(
+            binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .and_then(|engine| engine.validate_json(source.as_bytes())),
+        )
     }
 
     pub fn reusable_engine(
@@ -646,7 +645,7 @@ impl MermanEngine {
 impl MermanReusableEngine {
     #[uniffi::constructor]
     pub fn new(options_json: Option<String>) -> Result<Arc<Self>, MermanError> {
-        let inner = BindingEngine::new(options_bytes(options_json.as_deref()))
+        let inner = binding_engine_for_transport(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
         #[cfg(feature = "render")]
         let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
@@ -742,7 +741,7 @@ impl MermanReusableEngine {
         options_json: Option<String>,
         measurer: Arc<dyn MermanTextMeasurer>,
     ) -> Result<Arc<Self>, MermanError> {
-        let base = BindingEngine::new(options_bytes(options_json.as_deref()))
+        let base = binding_engine_for_transport(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
         let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
         let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
@@ -830,6 +829,25 @@ fn reentrant_render_error() -> MermanError {
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
+}
+
+fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
+    #[cfg(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    ))]
+    {
+        BindingEngine::try_native(options_json)
+    }
+    #[cfg(not(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    )))]
+    {
+        BindingEngine::new(options_json)
+    }
 }
 
 fn string_output(result: Result<Vec<u8>, BindingError>) -> Result<String, MermanError> {
@@ -1590,6 +1608,11 @@ mod tests {
         );
         assert_eq!(runtime_contract["abi_version"], MERMAN_UNIFFI_ABI_VERSION);
         assert_eq!(runtime_contract["options_schema_version"], 1);
+        assert!(runtime_contract["features"].get("core_host").is_none());
+        assert_eq!(
+            runtime_contract["features"]["system_adapter_ids"],
+            serde_json::json!(merman_bindings_core::binding_capabilities().system_adapter_ids)
+        );
         assert_eq!(
             runtime_contract["features"]["render"],
             cfg!(feature = "render")

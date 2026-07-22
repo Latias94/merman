@@ -12,6 +12,65 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, TryLockError};
 
+fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
+    #[cfg(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    ))]
+    {
+        BindingEngine::try_native(options_json)
+    }
+    #[cfg(not(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    )))]
+    {
+        BindingEngine::new(options_json)
+    }
+}
+
+fn transport_render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.render_svg(source)
+}
+
+fn transport_render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.render_ascii(source)
+}
+
+fn transport_parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.parse_json(source)
+}
+
+fn transport_layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.layout_json(source)
+}
+
+fn transport_analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.analyze_json(source)
+}
+
+fn transport_analyze_document_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.analyze_document_json(source, uri)
+}
+
+fn transport_analyze_document_facts_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.analyze_document_facts_json(source, uri)
+}
+
+fn transport_validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    binding_engine_for_transport(options_json)?.validate_json(source)
+}
+
 #[cfg(target_os = "android")]
 mod android_jni;
 
@@ -618,7 +677,7 @@ pub unsafe extern "C" fn merman_analyze_json(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::analyze_json,
+            transport_analyze_json,
         )
     })
 }
@@ -648,7 +707,7 @@ pub unsafe extern "C" fn merman_analyze_document_json(
             options_len,
             uri,
             uri_len,
-            merman_bindings_core::analyze_document_json,
+            transport_analyze_document_json,
         )
     })
 }
@@ -675,7 +734,7 @@ pub unsafe extern "C" fn merman_analyze_document_facts_json(
             options_len,
             uri,
             uri_len,
-            merman_bindings_core::analyze_document_facts_json,
+            transport_analyze_document_facts_json,
         )
     })
 }
@@ -701,7 +760,7 @@ pub unsafe extern "C" fn merman_render_svg(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::render_svg,
+            transport_render_svg,
         )
     })
 }
@@ -727,7 +786,7 @@ pub unsafe extern "C" fn merman_render_ascii(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::render_ascii,
+            transport_render_ascii,
         )
     })
 }
@@ -753,7 +812,7 @@ pub unsafe extern "C" fn merman_parse_json(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::parse_json,
+            transport_parse_json,
         )
     })
 }
@@ -779,7 +838,7 @@ pub unsafe extern "C" fn merman_layout_json(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::layout_json,
+            transport_layout_json,
         )
     })
 }
@@ -805,7 +864,7 @@ pub unsafe extern "C" fn merman_validate_json(
             source_len,
             options_json,
             options_len,
-            merman_bindings_core::validate_json,
+            transport_validate_json,
         )
     })
 }
@@ -910,7 +969,7 @@ unsafe fn engine_new_impl(
     options_len: usize,
 ) -> Result<BindingEngine, BindingError> {
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    BindingEngine::new(options_bytes)
+    binding_engine_for_transport(options_bytes)
 }
 
 fn engine_registry() -> &'static Mutex<FfiEngineRegistry> {
@@ -1769,6 +1828,11 @@ mod tests {
         );
         assert_eq!(runtime_contract["abi_version"], MERMAN_ABI_VERSION);
         assert_eq!(runtime_contract["options_schema_version"], 1);
+        assert!(runtime_contract["features"].get("core_host").is_none());
+        assert_eq!(
+            runtime_contract["features"]["system_adapter_ids"],
+            serde_json::json!(merman_bindings_core::binding_capabilities().system_adapter_ids)
+        );
         assert_eq!(
             runtime_contract["features"]["render"],
             cfg!(feature = "render")

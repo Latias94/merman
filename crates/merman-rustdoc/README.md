@@ -18,8 +18,9 @@ Mermaid rendering, a JavaScript-based rustdoc integration may be a lighter fit.
 ## Dependency weight
 
 `merman-rustdoc` renders diagrams during rustdoc macro expansion. To do that, it depends on Merman's
-renderer stack with `core-host` and `render` enabled. That is the right tradeoff for
-build-time SVG output, but many crates do not want that stack compiled during every normal build.
+SVG renderer with default features disabled. It does not enable system clock, time-zone, random, or
+timing adapters, so documentation builds remain deterministic. Many crates still do not want the
+renderer stack compiled during every normal build.
 
 For libraries and applications, prefer an optional documentation feature:
 

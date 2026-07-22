@@ -1381,7 +1381,7 @@ mod tests {
         output.drop_native_duplicate_fallbacks = true;
 
         let compiled = HostThemeProfile::builder().output(output).build().compile();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
@@ -1510,7 +1510,7 @@ mod tests {
     fn compiled_output_builds_host_pipeline() {
         let compiled = HostThemeProfile::editor_dark().compile();
         let pipeline = compiled.pipeline();
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let out = pipeline

@@ -814,6 +814,48 @@ fn mindmap_get_data_basic_nodes_edges_and_layout_defaults() {
 }
 
 #[test]
+fn mindmap_diagram_id_is_stable_for_the_same_operation_seed() {
+    let source = "mindmap\nroot\n child\n";
+
+    let first = parse(source);
+    let repeated = parse(source);
+
+    assert_eq!(first["diagramId"], repeated["diagramId"]);
+}
+
+#[test]
+fn mindmap_diagram_id_is_domain_derived_from_the_operation_seed() {
+    fn diagram_id(seed: u64) -> String {
+        let engine = Engine::new().with_runtime_policy(
+            crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
+        );
+        block_on(engine.parse_diagram("mindmap\nroot\n", ParseOptions::default()))
+            .unwrap()
+            .unwrap()
+            .model["diagramId"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    let first = diagram_id(11);
+    let other = diagram_id(22);
+    let replayed = diagram_id(11);
+
+    assert_eq!(first, replayed);
+    assert_ne!(first, other);
+
+    let uuid = first.strip_prefix("mindmap-").unwrap();
+    let groups = uuid.split('-').collect::<Vec<_>>();
+    assert_eq!(
+        groups.iter().map(|group| group.len()).collect::<Vec<_>>(),
+        [8, 4, 4, 4, 12]
+    );
+    assert!(groups[2].starts_with('4'));
+    assert!(matches!(groups[3].as_bytes()[0], b'8' | b'9' | b'a' | b'b'));
+}
+
+#[test]
 fn mindmap_typed_render_model_projects_exact_compatibility_json() {
     let source = concat!(
         "mindmap root(Root Node)\n",

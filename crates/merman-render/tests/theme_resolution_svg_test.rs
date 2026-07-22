@@ -22,7 +22,7 @@ fn render_with_font_only_theme(source: &str, diagram_id: &str) -> (String, Strin
         .get_str("themeVariables.cScale0")
         .expect("resolved cScale0")
         .to_string();
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout succeeds");
     let svg = artifact

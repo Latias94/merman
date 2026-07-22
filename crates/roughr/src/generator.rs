@@ -8,6 +8,7 @@ use svgtypes::PathSegment;
 
 use crate::core::{
     _c, Drawable, FillStyle, OpSet, OpSetType, OpType, Options, OptionsBuilder, PathInfo,
+    RoughJsSeed, RoughMathRandom, RoughRandomness,
 };
 use crate::curve_points::{curve_to_bezier, points_on_bezier_curves};
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
@@ -26,7 +27,10 @@ impl Default for Generator {
     fn default() -> Self {
         Self {
             default_options: OptionsBuilder::default()
-                .seed(345_u64)
+                .randomness(RoughRandomness::new(
+                    RoughJsSeed::new(345.0),
+                    RoughMathRandom::new(345),
+                ))
                 .build()
                 .expect("failed to build default options"),
         }
@@ -509,5 +513,83 @@ impl Generator {
             path_infos.push(path_info);
         }
         path_infos
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Generator;
+    use crate::core::{
+        FillStyle, OpSetType, Options, OptionsBuilder, RoughJsSeed, RoughMathRandom,
+        RoughRandomness,
+    };
+
+    fn zero_seed_solid_options() -> Options {
+        zero_seed_solid_options_with_math_random(RoughMathRandom::new(7))
+    }
+
+    fn zero_seed_solid_options_with_math_random(math_random: RoughMathRandom) -> Options {
+        OptionsBuilder::default()
+            .randomness(RoughRandomness::new(RoughJsSeed::new(0.0), math_random))
+            .fill(roughr_color())
+            .fill_style(FillStyle::Solid)
+            .stroke(roughr_color())
+            .build()
+            .expect("rectangle options")
+    }
+
+    fn roughr_color() -> palette::Srgba {
+        palette::Srgba::new(0.0, 0.0, 0.0, 1.0)
+    }
+
+    #[test]
+    fn rectangle_advances_one_fallback_chain_then_emits_fill_before_stroke() {
+        let generator = Generator::default();
+        let drawable =
+            generator.rectangle::<f64>(0.0, 0.0, 20.0, 10.0, &Some(zero_seed_solid_options()));
+
+        assert_eq!(drawable.sets.len(), 2);
+        assert_eq!(drawable.sets[0].op_set_type, OpSetType::FillPath);
+        assert_eq!(drawable.sets[1].op_set_type, OpSetType::Path);
+
+        let points = vec![vec![
+            euclid::default::Point2D::new(0.0, 0.0),
+            euclid::default::Point2D::new(20.0, 0.0),
+            euclid::default::Point2D::new(20.0, 10.0),
+            euclid::default::Point2D::new(0.0, 10.0),
+        ]];
+        let mut continuous = zero_seed_solid_options();
+        let expected_stroke = crate::renderer::rectangle(0.0, 0.0, 20.0, 10.0, &mut continuous);
+        let expected_fill = crate::renderer::solid_fill_polygon(&points, &mut continuous);
+        assert_eq!(drawable.sets[0], expected_fill);
+        assert_eq!(drawable.sets[1], expected_stroke);
+
+        let mut reset = zero_seed_solid_options();
+        let reset_fill = crate::renderer::solid_fill_polygon(&points, &mut reset);
+        assert_ne!(drawable.sets[0], reset_fill);
+    }
+
+    #[test]
+    fn separate_shapes_continue_one_shared_fallback_stream() {
+        let generator = Generator::default();
+        let shared = RoughMathRandom::new(7);
+        let _first = generator.rectangle::<f64>(
+            0.0,
+            0.0,
+            20.0,
+            10.0,
+            &Some(zero_seed_solid_options_with_math_random(shared.clone())),
+        );
+        let second = generator.rectangle::<f64>(
+            30.0,
+            0.0,
+            20.0,
+            10.0,
+            &Some(zero_seed_solid_options_with_math_random(shared)),
+        );
+        let reset_second =
+            generator.rectangle::<f64>(30.0, 0.0, 20.0, 10.0, &Some(zero_seed_solid_options()));
+
+        assert_ne!(second.sets, reset_second.sets);
     }
 }

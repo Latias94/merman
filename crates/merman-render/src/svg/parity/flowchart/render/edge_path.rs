@@ -49,14 +49,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let data_points_b64 = geom.data_points_b64.as_str();
     let data_look = flowchart_config_look(ctx.config);
     let hand_drawn = data_look == "handDrawn";
-    let hand_drawn_seed = ctx
-        .config
-        .as_value()
-        .get("handDrawnSeed")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
     let rough_d = if hand_drawn && !geom.line_hop_applied {
-        super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(d, 0.3, hand_drawn_seed)
+        super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
+            d,
+            0.3,
+            &ctx.hand_drawn_seed,
+        )
     } else {
         None
     };

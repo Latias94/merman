@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn resvg_safe_pipeline_uses_preset_stage_runner() {
         let svg = r#"<svg><style>@keyframes a{to{opacity:1}}</style><foreignObject width="10" height="10"><div><p>Hello</p></div></foreignObject><rect width="10px" height="NaN"/></svg>"#;
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
 
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn resvg_safe_stages_keep_an_unchanged_svg_borrowed() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L1 1"/></svg>"#;
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let metadata = SvgPostprocessMetadata::from_svg(svg);
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn direct_resvg_safe_helper_does_not_infer_family_from_root_role() {
         let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
 
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn explicit_typed_family_metadata_enables_quadrant_presentation_fallback() {
         let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let metadata = SvgPostprocessMetadata::from_svg(svg)
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn direct_generic_helper_preserves_legal_fragment_paints_with_similar_words() {
         let svg = r##"<svg id="quadrant" aria-roledescription="quadrantChart"><defs><linearGradient id="undefined"/><linearGradient id="nan"/><linearGradient id="undefined-gradient"/><linearGradient id="nan-stroke"/></defs><g class="data-points"><g class="data-point"><circle fill="url(#undefined)" stroke="url(#nan)"/><circle fill="url(#undefined-gradient)" stroke="url(#nan-stroke)"/></g></g></svg>"##;
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
 

@@ -159,7 +159,6 @@ export type AsciiDirectionOption =
 export type AsciiColorModeOption =
   | "plain"
   | "none"
-  | "auto"
   | "ansi16"
   | "ansi-16"
   | "ansi_16"

@@ -16,17 +16,17 @@ the right output format.
 This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not
 parse Mermaid syntax itself.
 
-Direct `merman-ascii` builds retain the current native `core-host` forwarding by default. Mermaid
-language semantics are unconditional in `merman-core`, so disabling this crate's defaults does not
-change which typed models it can render:
+`merman-ascii` has no default features. Mermaid language semantics are unconditional in
+`merman-core`; system clock, time-zone, random, and timing adapters are separate opt-ins and do not
+change which typed models this crate can render:
 
 ```toml
 merman-ascii = { version = "0.8.0-alpha.3", default-features = false }
 ```
 
-When using the public `merman` facade, `merman --no-default-features --features ascii` changes only
-the facade's optional host forwarding. Compose the core and renderer features explicitly when a
-deployment needs a particular ambient-environment policy.
+Applications that need host-derived values must choose the relevant `system-*` adapters and capture
+them into an operation policy. Deterministic and sandboxed applications should provide explicit
+operation values instead of enabling system adapters.
 
 ## Current Status
 

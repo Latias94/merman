@@ -156,7 +156,7 @@ public struct MermanRuntimeFeatures: Decodable {
     public let render: Bool
     public let analysis: Bool
     public let ascii: Bool
-    public let coreHost: Bool
+    public let systemAdapterIds: [String]
     public let cytoscapeLayout: Bool
     public let elkLayout: Bool
     public let ratexMath: Bool
@@ -166,7 +166,7 @@ public struct MermanRuntimeFeatures: Decodable {
         case render
         case analysis
         case ascii
-        case coreHost = "core_host"
+        case systemAdapterIds = "system_adapter_ids"
         case cytoscapeLayout = "cytoscape_layout"
         case elkLayout = "elk_layout"
         case ratexMath = "ratex_math"
@@ -233,6 +233,13 @@ public struct MermanRuntimeResourceProfile: Decodable {
 public final class MermanEngine {
     public static let abiVersion = mermanGeneratedAbiVersion
     private static let okCode: Int32 = 0
+    private static let runtimeContractSchemaVersion: UInt32 = 4
+    private static let supportedSystemAdapterIds: Set<String> = [
+        "system-clock",
+        "system-timezone",
+        "system-random",
+        "system-timing",
+    ]
 
     public let packageVersion: String
     private var supportedDiagramsCache: [String]?
@@ -317,9 +324,40 @@ public final class MermanEngine {
             return runtimeContractCache
         }
         let text = try decode(merman_runtime_contract_json())
-        let value = try decodeJson(MermanRuntimeContract.self, from: Data(text.utf8))
+        let data = Data(text.utf8)
+        try Self.validateRuntimeContractShape(data)
+        let value = try decodeJson(MermanRuntimeContract.self, from: data)
         runtimeContractCache = value
         return value
+    }
+
+    private static func validateRuntimeContractShape(_ data: Data) throws {
+        let root: [String: Any]
+        do {
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw MermanError.jsonDecode(message: "Merman runtime contract must be a JSON object")
+            }
+            root = object
+        } catch let error as MermanError {
+            throw error
+        } catch {
+            throw MermanError.jsonDecode(
+                message: "Merman runtime contract JSON decode failed: \(error)"
+            )
+        }
+
+        guard let schemaVersion = root["schema_version"] as? NSNumber,
+              schemaVersion.uint32Value == runtimeContractSchemaVersion,
+              let features = root["features"] as? [String: Any],
+              features["core_host"] == nil,
+              let systemAdapterIds = features["system_adapter_ids"] as? [String],
+              Set(systemAdapterIds).count == systemAdapterIds.count,
+              systemAdapterIds.allSatisfy(supportedSystemAdapterIds.contains)
+        else {
+            throw MermanError.jsonDecode(
+                message: "Merman runtime contract schema or system adapter projection is unsupported"
+            )
+        }
     }
 
     public func asciiCapabilities() throws -> [MermanAsciiCapability] {

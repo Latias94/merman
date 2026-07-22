@@ -383,22 +383,6 @@ fn util_build_layer_matrix_creates_a_matrix_based_on_rank_and_order_of_nodes_in_
 }
 
 #[test]
-fn util_time_logs_timing_information() {
-    let mut buf: Vec<u8> = Vec::new();
-    util::time_to_writer("foo", &mut buf, || {});
-    let output = String::from_utf8(buf).unwrap();
-    assert!(output.starts_with("foo time: "));
-    assert!(output.trim_end().ends_with("ms"));
-}
-
-#[test]
-fn util_time_returns_the_value_from_the_evaluated_function() {
-    let mut buf: Vec<u8> = Vec::new();
-    let v = util::time_to_writer("foo", &mut buf, || "bar");
-    assert_eq!(v, "bar");
-}
-
-#[test]
 fn util_normalize_ranks_adjusts_ranks_such_that_all_are_gte_0_and_at_least_one_is_0() {
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: false,

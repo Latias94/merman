@@ -68,9 +68,9 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
 }
 
 struct ArchitectureTimingState<'a> {
-    enabled: bool,
+    timing: super::super::timing::RenderTiming,
     timings: &'a mut super::super::timing::RenderTimings,
-    total_start: web_time::Instant,
+    total_timer: Option<merman_core::runtime::OperationTimer>,
 }
 
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
@@ -79,9 +79,9 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
+    let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
+    let total_timer = timing.start();
 
     render_architecture_diagram_svg_with_model(
         ArchitectureRenderRequest {
@@ -92,9 +92,9 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             options,
         },
         ArchitectureTimingState {
-            enabled: timing_enabled,
+            timing,
             timings: &mut timings,
-            total_start,
+            total_timer,
         },
     )
 }
@@ -111,19 +111,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         options,
     } = req;
     let ArchitectureTimingState {
-        enabled: timing_enabled,
+        timing,
         timings,
-        total_start,
+        total_timer,
     } = timing;
 
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::super::timing::TimingGuard::new(dst))
-    }
-
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
@@ -359,8 +352,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     drop(_g_render_svg);
 
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=architecture total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?}",
             timings.total,

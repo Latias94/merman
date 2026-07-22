@@ -9,7 +9,7 @@ const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_
 fn bench_mindmap_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
 

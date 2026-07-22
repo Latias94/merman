@@ -3,8 +3,9 @@ use crate::model::{Bounds, ClassNodeRowMetrics, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
-use web_time::Duration;
+use std::time::Duration;
 
+use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{
@@ -26,12 +27,12 @@ pub(super) struct ClassNodeRenderPosition {
     pub node_bounds_ty: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) struct ClassNodeBoxGeometry {
     pub w: f64,
     pub h: f64,
     pub left: f64,
-    pub rough_seed: u64,
+    pub rough_seed: roughr::core::RoughRandomness,
 }
 
 pub(super) struct ClassNodeRenderState<'a> {
@@ -47,8 +48,8 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub hand_drawn_seed: u64,
-    pub timing_enabled: bool,
+    pub hand_drawn_seed: roughr::core::RoughRandomness,
+    pub timing: RenderTiming,
 }
 
 pub(super) struct ClassNodeDividerContext<'a> {
@@ -57,7 +58,7 @@ pub(super) struct ClassNodeDividerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -122,7 +123,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 pub(super) struct ClassSvgNodeBodyContext<'a> {
@@ -136,7 +137,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 pub(super) fn render_class_node_shell_open(
@@ -253,7 +254,7 @@ pub(super) fn render_class_node_basic_container(
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
     let top = -h / 2.0;
-    let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &node.dom_id);
+    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id, &node.dom_id);
     let hand_drawn = ctx.look == "handDrawn";
     out.push_str(r#"<g class="basic label-container outer-path">"#);
     if !hand_drawn {
@@ -283,15 +284,15 @@ pub(super) fn render_class_node_basic_container(
             ctx.node_stroke,
             ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
             ctx.node_stroke_dasharray,
-            rough_seed,
+            &rough_seed,
         )
         .unwrap_or_else(|| {
             let (stroke_d, _) =
-                class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
             (String::new(), stroke_d)
         })
     } else {
-        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
         (String::new(), stroke_d)
     };
     include_xywh(
@@ -301,7 +302,7 @@ pub(super) fn render_class_node_basic_container(
         w,
         h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
+    let path_bounds_start = ctx.timing.start();
     include_path_d(
         content_bounds,
         &stroke_d,
@@ -348,7 +349,7 @@ pub(super) fn render_class_node_dividers(
     left: f64,
     right: f64,
     divider_ys: [f64; 2],
-    rough_seed: u64,
+    rough_seed: &roughr::core::RoughRandomness,
     ctx: &ClassNodeDividerContext<'_>,
 ) -> ClassNodeRenderStats {
     let out = &mut *state.out;
@@ -378,7 +379,7 @@ pub(super) fn render_class_node_dividers(
         } else {
             class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed).0
         };
-        let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let path_bounds_start = ctx.timing.start();
         include_path_d(
             content_bounds,
             &d,
@@ -633,14 +634,14 @@ pub(super) fn render_class_html_node_body(
             geometry.left,
             geometry.left + geometry.w,
             [divider1_y, divider2_y],
-            geometry.rough_seed,
+            &geometry.rough_seed,
             &ClassNodeDividerContext {
                 node_style_attr: ctx.node_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
-                timing_enabled: ctx.timing_enabled,
+                timing: ctx.timing,
             },
         )
     }
@@ -1004,14 +1005,14 @@ pub(super) fn render_class_svg_node_body(
             geometry.left,
             geometry.left + geometry.w,
             [divider1_y, divider2_y],
-            geometry.rough_seed,
+            &geometry.rough_seed,
             &ClassNodeDividerContext {
                 node_style_attr: ctx.node_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
-                timing_enabled: ctx.timing_enabled,
+                timing: ctx.timing,
             },
         )
     }

@@ -34,7 +34,7 @@ pub use graph::{
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
-    import_graph,
+    import_graph, import_graph_with_random_policy, import_graph_with_random_policy_at_scope,
 };
 pub use intermediate::{
     IntermediateError, IntermediateResult, calculate_layer_sizes_and_graph_height,
@@ -74,7 +74,7 @@ pub use pipeline::{
     execute_ported_compound_processors_until, execute_ported_compound_processors_until_processor,
     execute_ported_processors, execute_processors_until, execute_processors_until_processor,
 };
-pub use random::JavaRandom;
+pub use random::{JavaRandom, RandomSeedError, RandomSeedPolicy};
 pub use selfloops::{
     postprocess_self_loops, preprocess_self_loops, restore_self_loop_ports, route_self_loops,
 };

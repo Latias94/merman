@@ -16,7 +16,7 @@ fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
 }
 
 fn render_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
-    render_svg_from_text_with_environment(text, options, &RenderEnvironment::parity())
+    render_svg_from_text_with_environment(text, options, &RenderEnvironment::deterministic())
 }
 
 fn render_svg_from_text_with_environment(
@@ -218,7 +218,7 @@ fn flowchart_iconify_internal_ids_are_scoped_per_node() {
         ),
     );
 
-    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
     let svg = render_svg_from_text_with_environment(
         r#"flowchart TD
 A@{ icon: "test:clip", label: "A" }
@@ -250,7 +250,7 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     registry.insert("foo:bar-baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo-bar:baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo:bar-baz-2", IconSvg::new(icon_body, 16.0, 16.0));
-    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
     let options = SvgRenderOptions {
         diagram_id: Some("m15-tree-view-icons".to_string()),
         ..SvgRenderOptions::default()

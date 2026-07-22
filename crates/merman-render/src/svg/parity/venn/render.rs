@@ -82,10 +82,10 @@ fn rough_circle_paths(
     stroke_color: &str,
     stroke_width: f32,
     hachure_angle: f32,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, String)> {
     let options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.7)
         .bowing(1.0)
         .fill(rough_color(base_color)?)
@@ -125,9 +125,13 @@ fn rough_circle_paths(
     }
 }
 
-fn rough_intersection_fill_path(path: &str, fill: &str, seed: u64) -> Result<String> {
+fn rough_intersection_fill_path(
+    path: &str,
+    fill: &str,
+    randomness: &roughr::core::RoughRandomness,
+) -> Result<String> {
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.7)
         .bowing(1.0)
         .fill(rough_color(fill)?)
@@ -293,11 +297,13 @@ pub(crate) fn render_venn_diagram_svg_model(
 
     let style_by_key = build_style_by_key(model);
     let is_hand_drawn = config_diagram_look(effective_config).as_str() == "handDrawn";
-    let hand_drawn_seed = effective_config
-        .get("handDrawnSeed")
-        .and_then(serde_json::Value::as_u64)
-        .filter(|seed| *seed != 0)
-        .unwrap_or_else(|| options.seed());
+    let hand_drawn_seed = options.rough_randomness(
+        effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(options.seed() as f64),
+        "render.venn.roughjs",
+    );
     let mut circle_index = 0usize;
 
     for area in &layout.areas {
@@ -346,7 +352,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     stroke_color,
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
-                    hand_drawn_seed,
+                    &hand_drawn_seed,
                 )?;
                 let fill_stroke = transparentize(&base_color, 0.7)?;
                 let _ = write!(
@@ -383,7 +389,7 @@ pub(crate) fn render_venn_diagram_svg_model(
             if is_hand_drawn {
                 if let Some(fill) = custom_fill {
                     let fill_path =
-                        rough_intersection_fill_path(&area.path, fill, hand_drawn_seed)?;
+                        rough_intersection_fill_path(&area.path, fill, &hand_drawn_seed)?;
                     let fill_stroke = transparentize(fill, 0.3)?;
                     let _ = write!(
                         &mut out,

@@ -2,6 +2,7 @@
 
 use super::super::*;
 use super::edge_label::render_swimlane_edge_label_node;
+use crate::svg::parity::timing::RenderTiming;
 
 pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as_cluster(
     ctx: &FlowchartRenderCtx<'_>,
@@ -10,7 +11,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as
 }
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details, 'cache> {
-    pub(in crate::svg::parity::flowchart) timing_enabled: bool,
+    pub(in crate::svg::parity::flowchart) timing: RenderTiming,
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
     pub(in crate::svg::parity::flowchart) edge_cache:
         &'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
@@ -26,7 +27,7 @@ struct FlowchartRootFrame<'a> {
     dom_order: Vec<&'a str>,
     next_dom_index: usize,
     initialized: bool,
-    nested_start: Option<web_time::Instant>,
+    nested_start: Option<merman_core::runtime::OperationTimer>,
 }
 
 impl<'a> FlowchartRootFrame<'a> {
@@ -34,7 +35,7 @@ impl<'a> FlowchartRootFrame<'a> {
         cluster_id: Option<&'a str>,
         parent_origin_x: f64,
         parent_origin_y: f64,
-        nested_start: Option<web_time::Instant>,
+        nested_start: Option<merman_core::runtime::OperationTimer>,
     ) -> Self {
         Self {
             cluster_id,
@@ -111,7 +112,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
                 // node DOM element. Recursive clusters render as nested `.root` groups.
                 if ctx.recursive_clusters.contains(id) {
-                    let nested_start = session.timing_enabled.then(web_time::Instant::now);
+                    let nested_start = session.timing.start();
                     if let Some(parent) = frame.take() {
                         let child = FlowchartRootFrame::new(
                             Some(id),
@@ -128,7 +129,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 continue;
             }
 
-            let node_start = session.timing_enabled.then(web_time::Instant::now);
+            let node_start = session.timing.start();
             let Some(current) = frame.as_ref() else {
                 break;
             };
@@ -138,7 +139,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 id,
                 current.origin_x,
                 current.content_origin_y,
-                session.timing_enabled,
+                session.timing,
                 &mut *session.details,
             )?;
             if let Some(s) = node_start {
@@ -188,7 +189,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     render_flowchart_elk_subgraphs(out, ctx, session);
     render_flowchart_elk_nodes(out, ctx, session)?;
 
-    let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
+    let _g_edges_select = detail_guard(session.timing, &mut session.details.edges_select);
     let edges = flowchart_elk_edges(ctx);
     drop(_g_edges_select);
 
@@ -202,7 +203,7 @@ fn render_flowchart_elk_subgraphs(
     ctx: &FlowchartRenderCtx<'_>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
 ) {
-    let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
+    let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
 
     let mut clusters_to_draw: Vec<&LayoutCluster> = ctx
         .dom_node_order_by_root
@@ -269,7 +270,7 @@ fn render_flowchart_elk_nodes(
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="nodes">"#);
 
-    let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
+    let _g_dom_order = detail_guard(session.timing, &mut session.details.dom_order);
     let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
         .get("")
@@ -287,14 +288,14 @@ fn render_flowchart_elk_nodes(
             continue;
         }
 
-        let node_start = session.timing_enabled.then(web_time::Instant::now);
+        let node_start = session.timing.start();
         render_flowchart_node(
             out,
             ctx,
             id,
             0.0,
             0.0,
-            session.timing_enabled,
+            session.timing,
             &mut *session.details,
         )?;
         if let Some(s) = node_start {
@@ -312,7 +313,7 @@ fn render_flowchart_elk_edge_paths(
     session: &mut FlowchartRootRenderSession<'_, '_>,
     edges: &[&crate::flowchart::FlowEdge],
 ) {
-    let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
+    let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     if edges.is_empty() {
         out.push_str(r#"<g class="edges edgePaths"/>"#);
         return;
@@ -332,7 +333,7 @@ fn render_flowchart_elk_edge_labels(
     session: &mut FlowchartRootRenderSession<'_, '_>,
     edges: &[&crate::flowchart::FlowEdge],
 ) {
-    let _g_edge_labels = detail_guard(session.timing_enabled, &mut session.details.edge_labels);
+    let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
         return;
@@ -391,7 +392,7 @@ fn initialize_flowchart_root_frame<'a>(
 
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
 
-    let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
+    let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = frame.cluster_id {
         if ctx
@@ -500,11 +501,11 @@ fn initialize_flowchart_root_frame<'a>(
     }
     drop(_g_clusters);
 
-    let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
+    let _g_edges_select = detail_guard(session.timing, &mut session.details.edges_select);
     let edges = flowchart_edges_for_root(ctx, frame.cluster_id);
     drop(_g_edges_select);
 
-    let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
+    let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     let edge_group_class = if ctx.swimlane_direction.is_some() {
         "edges edgePath"
     } else {
@@ -530,7 +531,7 @@ fn initialize_flowchart_root_frame<'a>(
     }
     drop(_g_edge_paths);
 
-    let _g_edge_labels = detail_guard(session.timing_enabled, &mut session.details.edge_labels);
+    let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
     if ctx.swimlane_direction.is_some() || edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
@@ -577,7 +578,7 @@ fn initialize_flowchart_root_frame<'a>(
 
     // Mermaid inserts node DOM elements in `graph.nodes()` insertion order while recursively
     // rendering extracted cluster graphs. Our layout captures that order per extracted root.
-    let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
+    let _g_dom_order = detail_guard(session.timing, &mut session.details.dom_order);
     let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
         .get(frame.cluster_id.unwrap_or(""))

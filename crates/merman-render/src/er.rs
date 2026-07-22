@@ -530,15 +530,64 @@ pub fn layout_er_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<ErDiagramLayout> {
+    layout_er_diagram_typed_with_elk_authority(
+        model,
+        effective_config,
+        measurer,
+        ErElkAuthority::RequireExplicit,
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+/// Lays out an ER diagram while giving ELK's upstream `randomSeed = 0` sentinel an
+/// operation-owned deterministic fallback.
+pub fn layout_er_diagram_typed_with_elk_random_policy(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    random_policy: elk::ElkRandomPolicy,
+) -> Result<ErDiagramLayout> {
+    layout_er_diagram_typed_with_elk_authority(
+        model,
+        effective_config,
+        measurer,
+        ErElkAuthority::Deterministic(random_policy),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ErElkAuthority {
+    RequireExplicit,
+    #[cfg(feature = "elk-layout")]
+    Deterministic(elk::ElkRandomPolicy),
+}
+
+fn layout_er_diagram_typed_with_elk_authority(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    elk_authority: ErElkAuthority,
+) -> Result<ErDiagramLayout> {
     let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
 
     if settings.algorithm == ErLayoutAlgorithm::Elk {
         #[cfg(feature = "elk-layout")]
         {
-            return layout_er_diagram_elk_typed(model, effective_config, measurer, settings);
+            let random_policy = match elk_authority {
+                ErElkAuthority::RequireExplicit => elk::ElkRandomPolicy::require_explicit(),
+                ErElkAuthority::Deterministic(policy) => policy,
+            };
+            return layout_er_diagram_elk_typed(
+                model,
+                effective_config,
+                measurer,
+                settings,
+                random_policy,
+            );
         }
         #[cfg(not(feature = "elk-layout"))]
         {
+            let _ = elk_authority;
             return Err(Error::UnsupportedDiagram {
                 diagram_type: "er (layout: elk)".to_string(),
             });
@@ -908,6 +957,7 @@ fn layout_er_diagram_elk_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
+    random_policy: elk::ElkRandomPolicy,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
         algorithm: _,
@@ -1006,8 +1056,10 @@ fn layout_er_diagram_elk_typed(
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
         .collect::<HashMap<_, _>>();
-    let elk_layout = elk::layout(&elk_graph).map_err(|err| Error::InvalidModel {
-        message: format!("ER ELK layout failed: {err}"),
+    let elk_layout = elk::layout_with_random_policy(&elk_graph, random_policy).map_err(|err| {
+        Error::InvalidModel {
+            message: format!("ER ELK layout failed: {err}"),
+        }
     })?;
 
     let mut out_nodes = elk_layout

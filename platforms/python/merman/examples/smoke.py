@@ -163,6 +163,14 @@ def main() -> None:
         raise RuntimeError("expected mismatched ABI to be rejected")
     if not engine.package_version():
         raise RuntimeError("empty package version")
+    runtime_contract = merman.get_runtime_contract(engine)
+    runtime_features = runtime_contract.get("features")
+    if (
+        runtime_contract.get("schema_version") != 4
+        or not isinstance(runtime_features, dict)
+        or "system_adapter_ids" not in runtime_features
+    ):
+        raise RuntimeError("runtime contract schema smoke failed")
 
     source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 

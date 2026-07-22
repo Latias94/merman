@@ -790,7 +790,7 @@ mod tests {
             "v1",
         )
         .unwrap();
-        let environment = RenderEnvironment::parity().with_text_measurement_policy(
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
             TextMeasurementPolicy::host_display(
                 identity,
                 Arc::new(WideHost),
@@ -801,7 +801,7 @@ mod tests {
         let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let options = SvgExecution::new(&request, &debug, &session);
+        let options = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
         let svg = render_kanban_diagram_svg(&layout, &serde_json::json!({}), &measurer, &options)
             .unwrap();

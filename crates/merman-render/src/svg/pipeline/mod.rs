@@ -309,7 +309,7 @@ mod tests {
     use super::*;
 
     fn render_session() -> RenderSession {
-        crate::environment::RenderEnvironment::parity()
+        crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
     }
@@ -520,7 +520,7 @@ mod tests {
             }
         }
 
-        let session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 64)

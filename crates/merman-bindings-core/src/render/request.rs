@@ -1,13 +1,12 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_local_time_policy,
-    binding_resource_policy, binding_site_config, css_declaration_value, finite_positive,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_resource_policy,
+    binding_runtime_policy_from, binding_site_config, css_declaration_value, finite_positive,
     internal_json_error, no_diagram_error, normalize_option,
 };
 use merman::render::{
-    FixedRenderClock, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
-    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
-    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
+    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
+    RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use std::sync::Arc;
 
@@ -18,8 +17,11 @@ pub(super) struct RenderRequestPlan {
 }
 
 impl RenderRequestPlan {
-    pub(super) fn from_options(options: &BindingOptions) -> Result<Self, BindingError> {
-        let (renderer, pipeline) = build_renderer(options)?;
+    pub(super) fn from_options_with_runtime_policy(
+        options: &BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let (renderer, pipeline) = build_renderer(options, runtime_policy)?;
         Ok(Self {
             renderer,
             pipeline: pipeline.pipeline(),
@@ -80,13 +82,19 @@ impl RenderRequestPlan {
 pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::render::SvgPipeline, BindingError> {
-    Ok(build_renderer(options)?.1.pipeline())
+    Ok(
+        build_renderer(options, merman::runtime::RuntimePolicy::deterministic())?
+            .1
+            .pipeline(),
+    )
 }
 
 fn build_renderer(
     options: &BindingOptions,
+    runtime_policy: merman::runtime::RuntimePolicy,
 ) -> Result<(HeadlessRenderer, merman::render::SvgOutputPolicy), BindingError> {
-    let mut environment = apply_binding_time_policy(default_render_environment(), options)?;
+    let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
+    let mut environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
     environment = environment.with_resource_policy(binding_resource_policy(
         options.analysis.resources.as_ref(),
     )?);
@@ -211,40 +219,6 @@ fn build_renderer(
     }
 
     Ok((renderer, output))
-}
-
-fn default_render_environment() -> RenderEnvironment {
-    #[cfg(feature = "core-host")]
-    {
-        RenderEnvironment::host()
-    }
-    #[cfg(not(feature = "core-host"))]
-    {
-        RenderEnvironment::parity()
-    }
-}
-
-fn apply_binding_time_policy(
-    environment: RenderEnvironment,
-    options: &BindingOptions,
-) -> Result<RenderEnvironment, BindingError> {
-    let policy = binding_local_time_policy(options)?;
-    if !policy.explicit {
-        return Ok(environment);
-    }
-
-    let mut environment = environment;
-    if let Some(today) = policy.today {
-        let snapshot =
-            RenderTimeSnapshot::from_local_midnight(today, &policy.time_zone).map_err(|err| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("fixed_today cannot be resolved: {err}"),
-                )
-            })?;
-        environment = environment.with_clock(Arc::new(FixedRenderClock::new(snapshot)));
-    }
-    Ok(environment.with_local_time_zone(policy.time_zone))
 }
 
 fn binding_host_theme(
@@ -525,7 +499,7 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
         merman::render::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
-        merman::render::HeadlessError::RenderTime(err) => {
+        merman::render::HeadlessError::RuntimePolicy(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
     }
@@ -534,33 +508,37 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman::time::LocalTimeZone;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct AdvancingClock(AtomicUsize);
-
-    impl merman::render::RenderClock for AdvancingClock {
-        fn unix_millis_and_offset(&self) -> (i64, i32) {
-            let tick = self.0.fetch_add(1, Ordering::Relaxed) as i64;
-            (tick * 86_400_000, -60)
-        }
-    }
 
     #[test]
     fn fixed_local_midnight_uses_fixed_local_offset() {
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
-
+        let utc_options = crate::common::parse_options(
+            br#"{ "fixed_today": "2026-06-10", "fixed_local_offset_minutes": 0 }"#,
+        )
+        .expect("UTC options");
         assert_eq!(
-            RenderTimeSnapshot::from_local_midnight(today, &LocalTimeZone::utc())
-                .expect("valid UTC midnight")
-                .unix_ms(),
+            binding_runtime_policy_from(
+                &utc_options,
+                merman::runtime::RuntimePolicy::deterministic()
+            )
+            .expect("valid UTC midnight")
+            .begin_operation()
+            .expect("UTC operation")
+            .unix_millis(),
             1_781_049_600_000
         );
-        let east_one = LocalTimeZone::fixed(60).expect("valid fixed offset");
+        let east_one_options = crate::common::parse_options(
+            br#"{ "fixed_today": "2026-06-10", "fixed_local_offset_minutes": 60 }"#,
+        )
+        .expect("fixed-offset options");
         assert_eq!(
-            RenderTimeSnapshot::from_local_midnight(today, &east_one)
-                .expect("valid fixed-offset midnight")
-                .unix_ms(),
+            binding_runtime_policy_from(
+                &east_one_options,
+                merman::runtime::RuntimePolicy::deterministic(),
+            )
+            .expect("valid fixed-offset midnight")
+            .begin_operation()
+            .expect("fixed-offset operation")
+            .unix_millis(),
             1_781_046_000_000
         );
     }
@@ -574,34 +552,27 @@ mod tests {
             }"#,
         )
         .expect("binding options JSON");
-        let error = apply_binding_time_policy(RenderEnvironment::parity(), &options)
-            .expect_err("boundary instant must be rejected");
+        let error =
+            binding_runtime_policy_from(&options, merman::runtime::RuntimePolicy::deterministic())
+                .expect_err("boundary instant must be rejected");
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("fixed_today"));
     }
 
     #[test]
-    fn fixed_offset_only_preserves_an_advancing_binding_clock() {
+    fn fixed_offset_only_preserves_the_selected_binding_clock() {
         let options = crate::common::parse_options(br#"{ "fixed_local_offset_minutes": 480 }"#)
             .expect("binding options");
-        let environment =
-            RenderEnvironment::parity().with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))));
-        let environment =
-            apply_binding_time_policy(environment, &options).expect("binding time policy");
+        let policy = binding_runtime_policy_from(
+            &options,
+            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(86_400_000),
+        )
+        .expect("binding time policy");
+        let context = policy.begin_operation().expect("operation context");
 
-        let first = environment.begin_session().expect("first session");
-        let second = environment.begin_session().expect("second session");
-
-        assert_eq!(first.time().unix_ms(), 0);
-        assert_eq!(second.time().unix_ms(), 86_400_000);
-        assert_eq!(first.time().local_offset_minutes(), 480);
-        assert_eq!(second.time().local_offset_minutes(), 480);
-        assert_eq!(
-            first.time(),
-            first.time(),
-            "one operation keeps one snapshot"
-        );
+        assert_eq!(context.unix_millis(), 86_400_000);
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
     }
 
     #[test]
@@ -613,16 +584,16 @@ mod tests {
             }"#,
         )
         .expect("binding options");
-        let environment =
-            RenderEnvironment::parity().with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))));
-        let environment =
-            apply_binding_time_policy(environment, &options).expect("binding time policy");
+        let policy =
+            binding_runtime_policy_from(&options, merman::runtime::RuntimePolicy::deterministic())
+                .expect("binding time policy");
+        let environment = RenderEnvironment::deterministic().with_runtime_policy(policy);
 
         let first = environment.begin_session().expect("first session");
         let second = environment.begin_session().expect("second session");
 
-        assert_eq!(first.time(), second.time());
-        assert_eq!(first.time().unix_ms(), 1_781_046_000_000);
-        assert_eq!(first.time().local_offset_minutes(), 60);
+        assert_eq!(first.operation_context(), second.operation_context());
+        assert_eq!(first.unix_millis(), 1_781_046_000_000);
+        assert_eq!(first.local_time_zone().fixed_offset_minutes(), Some(60));
     }
 }

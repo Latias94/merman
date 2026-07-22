@@ -1190,14 +1190,15 @@ fn token_equivalence_artifact(
         )));
     }
 
-    let analyzer = Analyzer::with_options(
-        AnalysisOptions::default()
-            .with_fixed_today(Some(
-                chrono::NaiveDate::from_ymd_opt(2026, 6, 10)
-                    .expect("token-equivalence evidence date is valid"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0)),
-    );
+    let runtime_policy = merman_core::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 6, 10)
+                .expect("token-equivalence evidence date is valid"),
+        ));
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_runtime_policy(runtime_policy));
     let mut family_cases = Vec::with_capacity(baselines.len());
     for (family, example) in baselines {
         let fixture_path = root.join(&example.fixture);

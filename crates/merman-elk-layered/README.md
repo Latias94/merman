@@ -17,3 +17,15 @@ Current source baseline:
 The crate contains the production layered graph, option model, processor assembly, and layout
 phases used by `merman-layout-elk`. Corrections and new behavior must continue to follow the pinned
 Eclipse ELK sources rather than approximating fixture output.
+
+## Random seed authority
+
+Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This
+source port does not read time or process randomness for that branch. A graph
+must either retain a nonzero source seed or carry an explicit
+`RandomSeedPolicy` before a configurator or pipeline entry point executes.
+
+`RandomSeedPolicy::DeterministicFallback` derives a Java seed from the owning
+operation key, stable graph path, and configuration invocation without
+rewriting the source option. Low-level callers can instead use
+`RequireExplicit` to reject the sentinel at the execution boundary.

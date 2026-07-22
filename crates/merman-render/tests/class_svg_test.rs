@@ -35,7 +35,7 @@ fn render_class_svg_from_text_with_engine_and_options(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -150,7 +150,7 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
             parsed.metadata().diagram_type,
             "the typed Class model must preserve the detector-selected diagram id for {source:?}"
         );
-        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("layout ok");
         let svg = artifact
@@ -247,7 +247,7 @@ fn class_parse_for_render_model_handles_deep_namespace_chain() {
 
 #[test]
 fn class_layout_handles_deep_namespace_chain() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
     let handle = std::thread::Builder::new()

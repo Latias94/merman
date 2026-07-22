@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -11,9 +11,6 @@ pub const TARGET_IDS: &[&str] = &[
 ];
 
 pub const RUNTIME_CAPABILITY_IDS: &[&str] = &[
-    "browser-random",
-    "browser-time",
-    "browser-timing",
     "typst-transport",
 ];
 
@@ -82,24 +79,6 @@ pub struct RuntimeCapabilityDescriptor {
 }
 
 pub const RUNTIME_CAPABILITIES: &[RuntimeCapabilityDescriptor] = &[
-    RuntimeCapabilityDescriptor {
-        id: "browser-random",
-        kind: "adapter",
-        description: "Browser-provided randomness adapter.",
-        targets: &["web"],
-    },
-    RuntimeCapabilityDescriptor {
-        id: "browser-time",
-        kind: "adapter",
-        description: "Browser-provided date and time adapter.",
-        targets: &["web"],
-    },
-    RuntimeCapabilityDescriptor {
-        id: "browser-timing",
-        kind: "adapter",
-        description: "Browser monotonic timing adapter.",
-        targets: &["web"],
-    },
     RuntimeCapabilityDescriptor {
         id: "typst-transport",
         kind: "transport",
@@ -378,13 +357,13 @@ pub const CAPABILITY_PRESETS: &[CapabilityPresetDescriptor] = &[
         description: "Fused browser artifact containing all retained Web workflows.",
         targets: &["web"],
         capabilities: &["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["analysis", "ascii", "browser-random", "browser-time", "browser-timing", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+        expected_runtime_capabilities: &["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
     },
     CapabilityPresetDescriptor {
         id: "preset-web-render",
         description: "Browser SVG render artifact.",
         targets: &["web"],
         capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["browser-random", "browser-time", "browser-timing", "layout-cytoscape", "layout-elk", "math", "svg"],
+        expected_runtime_capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
     },
 ];

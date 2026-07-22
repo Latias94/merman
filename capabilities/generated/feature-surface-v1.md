@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023`
+Semantic digest: `sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043`
 
 ## Public Leaves
 
@@ -51,5 +51,5 @@ Semantic digest: `sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a
 | `preset-web-analysis` | `web` | `analysis` | `analysis` |
 | `preset-web-ascii` | `web` | `ascii` | `ascii` |
 | `preset-web-editor` | `web` | `analysis`, `editor` | `analysis`, `editor` |
-| `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
-| `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
+| `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math` |
+| `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` |

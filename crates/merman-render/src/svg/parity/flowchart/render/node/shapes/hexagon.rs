@@ -33,7 +33,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     let path_data = path_from_points(&pts);
 
     let rough_paths = if common.look_is_hand_drawn() {
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 common.fill_color,

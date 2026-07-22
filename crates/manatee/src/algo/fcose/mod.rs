@@ -43,7 +43,7 @@ pub enum FcoseRandomSource {
 #[non_exhaustive]
 pub struct FcoseRandomPolicy {
     source: FcoseRandomSource,
-    seed: Option<u64>,
+    seed: u64,
     seed_offset: Option<usize>,
     reset_seed_each_run: bool,
 }
@@ -53,17 +53,7 @@ impl FcoseRandomPolicy {
     pub const fn seeded(source: FcoseRandomSource, seed: u64) -> Self {
         Self {
             source,
-            seed: Some(seed),
-            seed_offset: None,
-            reset_seed_each_run: false,
-        }
-    }
-
-    /// Use a best-effort ambient seed without requiring a browser or host callback.
-    pub const fn ambient(source: FcoseRandomSource) -> Self {
-        Self {
-            source,
-            seed: None,
+            seed,
             seed_offset: None,
             reset_seed_each_run: false,
         }
@@ -77,7 +67,6 @@ impl FcoseRandomPolicy {
 
     /// Restart a deterministic random stream before each FCoSE rerun.
     ///
-    /// Ambient streams remain continuous because there is no deterministic seed to restore.
     pub const fn with_reset_seed_each_run(mut self, reset: bool) -> Self {
         self.reset_seed_each_run = reset;
         self
@@ -88,8 +77,8 @@ impl FcoseRandomPolicy {
         self.source
     }
 
-    /// Return the deterministic seed, or `None` for ambient randomness.
-    pub const fn seed(self) -> Option<u64> {
+    /// Return the required deterministic seed.
+    pub const fn seed(self) -> u64 {
         self.seed
     }
 
@@ -103,48 +92,9 @@ impl FcoseRandomPolicy {
         self.reset_seed_each_run
     }
 
-    const fn legacy(seed: u64) -> Self {
+    const fn xorshift(seed: u64) -> Self {
         Self::seeded(FcoseRandomSource::XorShift64Star, seed)
     }
-}
-
-impl Default for FcoseRandomPolicy {
-    fn default() -> Self {
-        Self::legacy(0)
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-struct FcoseLayoutTimings {
-    total: web_time::Duration,
-    from_indexed: web_time::Duration,
-    constraints: web_time::Duration,
-    spring: FcoseSpringTimings,
-    translate: web_time::Duration,
-    output: web_time::Duration,
-}
-
-#[derive(Debug, Default, Clone)]
-struct FcoseSpringTimings {
-    total: web_time::Duration,
-    opts_prep: web_time::Duration,
-    spectral: web_time::Duration,
-    root_compound: web_time::Duration,
-    collapse_start_positions: web_time::Duration,
-    pre_constraints: web_time::Duration,
-    constraint_rt: web_time::Duration,
-    repulsion_grid_build: web_time::Duration,
-    repulsion_surrounding: web_time::Duration,
-    repulsion_forces: web_time::Duration,
-    repulsion_overlap_force: web_time::Duration,
-    repulsion_non_overlapping_force: web_time::Duration,
-    iterations: web_time::Duration,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct SpringStats {
-    iterations: usize,
-    spectral_applied: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -277,34 +227,10 @@ pub struct IndexedLayoutResult {
     /// These are the internal compound node rects used by the FCoSE port, not Cytoscape
     /// `node.boundingBox()` values.
     pub compound_bounds: Vec<LayoutRect>,
-    /// Optional diagnostic stages collected only when `MANATEE_FCOSE_DEBUG_TRACE=1`.
-    ///
-    /// This is source-audit evidence for comparing local FCoSE phases with bundled
-    /// `cytoscape-fcose` probes. Ordinary layout callers should ignore it.
-    pub debug_stages: Vec<IndexedFcoseDebugStage>,
-}
-
-#[derive(Debug, Clone)]
-pub struct IndexedFcoseDebugStage {
-    pub run_index: usize,
-    pub tag: String,
-    pub iterations: Option<usize>,
-    pub bbox: Option<LayoutRect>,
-    pub node_bounds: Vec<LayoutRect>,
-    pub node_displacements: Vec<Point>,
-    pub compound_bounds: Vec<LayoutRect>,
-    pub relocate: Option<IndexedFcoseRelocateDebug>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct IndexedFcoseRelocateDebug {
-    pub original_center: Point,
-    pub rect_center: Point,
-    pub delta: Point,
 }
 
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
-    layout_with_random_policy(graph, opts, FcoseRandomPolicy::legacy(opts.random_seed))
+    layout_with_random_policy(graph, opts, FcoseRandomPolicy::xorshift(opts.random_seed))
 }
 
 /// Lay out a graph with an explicit random policy while preserving [`FcoseOptions`]' stable
@@ -339,7 +265,7 @@ pub fn layout_indexed(
     graph: &IndexedGraph,
     opts: &IndexedFcoseOptions,
 ) -> Result<IndexedLayoutResult> {
-    layout_indexed_with_random_policy(graph, opts, FcoseRandomPolicy::legacy(opts.random_seed))
+    layout_indexed_with_random_policy(graph, opts, FcoseRandomPolicy::xorshift(opts.random_seed))
 }
 
 /// Lay out an indexed graph with an explicit random policy.
@@ -350,22 +276,10 @@ pub fn layout_indexed_with_random_policy(
 ) -> Result<IndexedLayoutResult> {
     graph.validate()?;
 
-    let timing_enabled = std::env::var("MANATEE_FCOSE_TIMING").ok().as_deref() == Some("1");
-    let mut timings = FcoseLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
-    let from_indexed_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_indexed(graph);
-    if let Some(s) = from_indexed_start {
-        timings.from_indexed = s.elapsed();
-    }
 
-    let constraints_start = timing_enabled.then(web_time::Instant::now);
     let constraints = Constraints::from_indexed_opts(&sim, opts);
     constraints.validate(sim.nodes.len())?;
-    if let Some(s) = constraints_start {
-        timings.constraints = s.elapsed();
-    }
 
     let random_seed_offset = random_policy
         .seed_offset
@@ -374,20 +288,10 @@ pub fn layout_indexed_with_random_policy(
     let mut rng = new_fcose_random(random_policy);
     advance_random(&mut rng, random_seed_offset);
     let run_count = if opts.rerun { 2 } else { 1 };
-    let mut spring_stats = SpringStats::default();
-    let collect_debug_trace =
-        std::env::var("MANATEE_FCOSE_DEBUG_TRACE").ok().as_deref() == Some("1");
-    let mut debug_stages = Vec::new();
-
-    let debug_rng_calls = std::env::var("MANATEE_FCOSE_DEBUG_RNG_CALLS")
-        .ok()
-        .as_deref()
-        == Some("1");
     let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
     for run_idx in 0..run_count {
         reset_fcose_random_for_run(&mut rng, random_policy, random_seed_offset, run_idx);
-        let rng_calls_before = rng.calls();
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
@@ -399,15 +303,6 @@ pub fn layout_indexed_with_random_policy(
             }
         }
         sim.update_bounds(&mut owner_bounds);
-        if collect_debug_trace {
-            sim.push_debug_stage(
-                &mut debug_stages,
-                run_idx,
-                "run-start.after-update-bounds",
-                None,
-                None,
-            );
-        }
 
         // Mimic fcose's `aux.relocateComponent(...)`: keep the final component center aligned to
         // the original component center to avoid arbitrary global translations affecting viewBox
@@ -432,100 +327,23 @@ pub fn layout_indexed_with_random_policy(
             .relocate_center
             .or_else(|| sim.bounding_box_center_eles(run_idx))
             .unwrap_or((0.0, 0.0));
-        let debug_relocate = std::env::var("MANATEE_FCOSE_DEBUG_RELOCATE")
-            .ok()
-            .as_deref()
-            == Some("1");
-
-        let spring_start = timing_enabled.then(web_time::Instant::now);
-        spring_stats = sim.run_spring_embedder(
-            &constraints,
-            opts,
-            &mut rng,
-            run_idx,
-            &mut owner_bounds,
-            collect_debug_trace.then_some(&mut debug_stages),
-            if timing_enabled {
-                Some(&mut timings.spring)
-            } else {
-                None
-            },
-        );
-        if debug_rng_calls {
-            eprintln!(
-                "[manatee-fcose-rng] run={} calls_before={} calls_after={} (+{})",
-                run_idx,
-                rng_calls_before,
-                rng.calls(),
-                rng.calls().saturating_sub(rng_calls_before)
-            );
-        }
-        if let Some(s) = spring_start {
-            timings.spring.total = s.elapsed();
-        }
+        sim.run_spring_embedder(&constraints, opts, &mut rng, &mut owner_bounds);
 
         // Ensure compound node rectangles reflect the final child placements before we compute the
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
         sim.update_bounds(&mut owner_bounds);
 
         let new_center = sim.bounding_box_center_rects().unwrap_or((0.0, 0.0));
-        let translate_start = timing_enabled.then(web_time::Instant::now);
-        let disable_relocate = std::env::var("MANATEE_FCOSE_DISABLE_RELOCATE")
-            .ok()
-            .as_deref()
-            == Some("1");
         let dx = orig_center.0 - new_center.0;
         let dy = orig_center.1 - new_center.1;
-        if collect_debug_trace {
-            sim.push_debug_stage(
-                &mut debug_stages,
-                run_idx,
-                "relocateComponent.before-shift",
-                None,
-                Some(IndexedFcoseRelocateDebug {
-                    original_center: Point {
-                        x: orig_center.0,
-                        y: orig_center.1,
-                    },
-                    rect_center: Point {
-                        x: new_center.0,
-                        y: new_center.1,
-                    },
-                    delta: Point { x: dx, y: dy },
-                }),
-            );
-        }
-        if !disable_relocate {
-            if debug_relocate {
-                eprintln!(
-                    "[manatee-fcose-relocate] run={} orig=({:.6},{:.6}) new=({:.6},{:.6}) d=({:.6},{:.6})",
-                    run_idx, orig_center.0, orig_center.1, new_center.0, new_center.1, dx, dy
-                );
-            }
-            sim.translate(dx, dy);
-        }
-        if collect_debug_trace {
-            sim.push_debug_stage(
-                &mut debug_stages,
-                run_idx,
-                "run-end.after-relocate",
-                None,
-                None,
-            );
-        }
-        if let Some(s) = translate_start {
-            timings.translate = s.elapsed();
-        }
+        sim.translate(dx, dy);
 
         if run_idx + 1 < run_count {
             sim.update_bounds(&mut owner_bounds);
         }
     }
 
-    let output_start = timing_enabled.then(web_time::Instant::now);
     let leaf_count = sim.leaf_count;
-    let node_count = sim.nodes.len();
-    let edge_count = sim.edges.len();
     let compound_count = sim.compound_parent.len();
 
     let mut node_positions: Vec<Point> = Vec::with_capacity(leaf_count);
@@ -547,45 +365,10 @@ pub fn layout_indexed_with_random_policy(
             });
         }
     }
-    if let Some(s) = output_start {
-        timings.output = s.elapsed();
-    }
-
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[manatee-fcose-timing] total={:?} from_indexed={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_repulsion_grid_build={:?} spring_repulsion_surrounding={:?} spring_repulsion_overlap_force={:?} spring_repulsion_non_overlapping_force={:?} spring_repulsion_forces={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
-            timings.total,
-            timings.from_indexed,
-            timings.constraints,
-            timings.spring.total,
-            timings.spring.opts_prep,
-            timings.spring.spectral,
-            timings.spring.root_compound,
-            timings.spring.collapse_start_positions,
-            timings.spring.pre_constraints,
-            timings.spring.constraint_rt,
-            timings.spring.repulsion_grid_build,
-            timings.spring.repulsion_surrounding,
-            timings.spring.repulsion_overlap_force,
-            timings.spring.repulsion_non_overlapping_force,
-            timings.spring.repulsion_forces,
-            timings.spring.iterations,
-            timings.translate,
-            timings.output,
-            node_count,
-            edge_count,
-            compound_count,
-            spring_stats.iterations,
-            spring_stats.spectral_applied,
-        );
-    }
-
     let result = IndexedLayoutResult {
         node_positions,
         compound_positions,
         compound_bounds,
-        debug_stages,
     };
     validate_indexed_layout_result(&result)?;
     Ok(result)
@@ -622,26 +405,6 @@ fn validate_indexed_layout_result(result: &IndexedLayoutResult) -> Result<()> {
         return Err(Error::NonFiniteLayout {
             field: "compound_bounds",
         });
-    }
-    for stage in &result.debug_stages {
-        if stage.bbox.is_some_and(|bounds| !rect_is_finite(bounds))
-            || !stage.node_bounds.iter().copied().all(rect_is_finite)
-            || !stage
-                .node_displacements
-                .iter()
-                .copied()
-                .all(point_is_finite)
-            || !stage.compound_bounds.iter().copied().all(rect_is_finite)
-            || stage.relocate.is_some_and(|relocate| {
-                !point_is_finite(relocate.original_center)
-                    || !point_is_finite(relocate.rect_center)
-                    || !point_is_finite(relocate.delta)
-            })
-        {
-            return Err(Error::NonFiniteLayout {
-                field: "debug_stages",
-            });
-        }
     }
     Ok(())
 }
@@ -773,7 +536,6 @@ fn map_string_align_lists(
 
 #[derive(Debug, Clone)]
 struct SimNode {
-    id: String,
     parent: Option<usize>,
     owner_idx: usize,
     is_compound: bool,
@@ -1524,20 +1286,6 @@ impl SimGraph {
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
 
-    fn should_trace_iteration(iteration: usize) -> bool {
-        matches!(
-            iteration,
-            1 | 2 | 10 | 11 | 12 | 20 | 21 | 30 | 31 | 50 | 51 | 75 | 90 | 91 | 99 | 100 | 200
-        )
-    }
-
-    fn update_displacements_trace_tag(iteration: usize) -> String {
-        if iteration == 1 {
-            "updateDisplacements.start".to_string()
-        } else {
-            format!("updateDisplacements.iter-{iteration}.start")
-        }
-    }
     fn from_indexed(graph: &IndexedGraph) -> Self {
         let leaf_count = graph.nodes.len();
         let compound_count = graph.compounds.len();
@@ -1547,7 +1295,6 @@ impl SimGraph {
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
             nodes.push(SimNode {
-                id: String::new(),
                 parent: n.parent,
                 owner_idx: usize::MAX,
                 is_compound: false,
@@ -1580,7 +1327,6 @@ impl SimGraph {
         // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
         for c in &graph.compounds {
             nodes.push(SimNode {
-                id: String::new(),
                 parent: c.parent,
                 owner_idx: usize::MAX,
                 is_compound: true,
@@ -1865,92 +1611,15 @@ impl SimGraph {
         })
     }
 
-    fn debug_compound_bounds(&self) -> Vec<LayoutRect> {
-        self.nodes
-            .iter()
-            .skip(self.leaf_count)
-            .map(|n| LayoutRect {
-                left: n.left,
-                top: n.top,
-                width: n.width,
-                height: n.height,
-            })
-            .collect()
-    }
-
-    fn debug_node_bounds(&self) -> Vec<LayoutRect> {
-        self.nodes
-            .iter()
-            .map(|n| LayoutRect {
-                left: n.left,
-                top: n.top,
-                width: n.width,
-                height: n.height,
-            })
-            .collect()
-    }
-
-    fn debug_node_displacements(&self, disps: &[(f64, f64)]) -> Vec<Point> {
-        self.nodes
-            .iter()
-            .enumerate()
-            .map(|(idx, _)| {
-                let (x, y) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
-                Point { x, y }
-            })
-            .collect()
-    }
-
-    fn push_debug_stage(
-        &self,
-        stages: &mut Vec<IndexedFcoseDebugStage>,
-        run_index: usize,
-        tag: &str,
-        iterations: Option<usize>,
-        relocate: Option<IndexedFcoseRelocateDebug>,
-    ) {
-        self.push_debug_stage_with_displacements(
-            stages, run_index, tag, iterations, relocate, None,
-        );
-    }
-
-    fn push_debug_stage_with_displacements(
-        &self,
-        stages: &mut Vec<IndexedFcoseDebugStage>,
-        run_index: usize,
-        tag: &str,
-        iterations: Option<usize>,
-        relocate: Option<IndexedFcoseRelocateDebug>,
-        node_displacements: Option<&[(f64, f64)]>,
-    ) {
-        stages.push(IndexedFcoseDebugStage {
-            run_index,
-            tag: tag.to_string(),
-            iterations,
-            bbox: self.layout_rect_bbox(),
-            node_bounds: self.debug_node_bounds(),
-            node_displacements: node_displacements
-                .map(|disps| self.debug_node_displacements(disps))
-                .unwrap_or_default(),
-            compound_bounds: self.debug_compound_bounds(),
-            relocate,
-        });
-    }
-
     fn bounding_box_center_eles(&self, run_idx: usize) -> Option<(f64, f64)> {
         if self.nodes.is_empty() {
             return None;
         }
-        let debug_bbox = std::env::var("MANATEE_FCOSE_DEBUG_ELES_BBOX")
-            .ok()
-            .as_deref()
-            == Some("1");
 
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
-        let mut debug_rows: Vec<String> = Vec::new();
 
         // Nodes (incl. labels). Cytoscape `eles.boundingBox()` treats compound nodes as wrappers
         // around their child graphs, and `compound-sizing-wrt-labels: include` causes descendant
@@ -2075,17 +1744,6 @@ impl SimGraph {
             min_y = min_y.min(bb.y1);
             max_x = max_x.max(bb.x2);
             max_y = max_y.max(bb.y2);
-            if debug_bbox {
-                let kind = if self.nodes.get(idx).is_some_and(|n| n.is_compound) {
-                    "compound"
-                } else {
-                    "node"
-                };
-                debug_rows.push(format!(
-                    "[manatee-fcose-eles-bbox] run={run_idx} kind={kind} idx={idx} bb=({:.6},{:.6})-({:.6},{:.6})",
-                    bb.x1, bb.y1, bb.x2, bb.y2
-                ));
-            }
         }
 
         // Edges: Cytoscape `eles.boundingBox()` includes edge geometry. For Mermaid Architecture,
@@ -2180,12 +1838,6 @@ impl SimGraph {
                 sx - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
                 sy - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
             );
-            if debug_bbox {
-                debug_rows.push(format!(
-                    "[manatee-fcose-eles-bbox] run={run_idx} kind=edge-endpoints edge=({}->{}) src=({:.6},{:.6}) dst=({:.6},{:.6})",
-                    e.a, e.b, sx, sy, tx, ty
-                ));
-            }
             include_point(
                 &mut min_x,
                 &mut min_y,
@@ -2292,12 +1944,6 @@ impl SimGraph {
                     if let Some((mx, my)) = mp {
                         let hw = lw / 2.0;
                         let hh = lh / 2.0;
-                        if debug_bbox {
-                            debug_rows.push(format!(
-                                "[manatee-fcose-eles-bbox] run={run_idx} kind=edge-label edge=({}->{}) center=({:.6},{:.6}) size=({:.6},{:.6})",
-                                e.a, e.b, mx, my, lw, lh
-                            ));
-                        }
                         include_point(
                             &mut min_x,
                             &mut min_y,
@@ -2321,20 +1967,6 @@ impl SimGraph {
 
         if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
             return None;
-        }
-        if debug_bbox {
-            for row in debug_rows {
-                eprintln!("{row}");
-            }
-            eprintln!(
-                "[manatee-fcose-eles-bbox] run={run_idx} total=({:.6},{:.6})-({:.6},{:.6}) center=({:.6},{:.6})",
-                min_x,
-                min_y,
-                max_x,
-                max_y,
-                (min_x + max_x) / 2.0,
-                (min_y + max_y) / 2.0
-            );
         }
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
@@ -2460,64 +2092,22 @@ impl SimGraph {
         out
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn run_spring_embedder(
         &mut self,
         constraints: &Constraints,
         opts: &IndexedFcoseOptions,
         rng: &mut FcoseRandom,
-        run_idx: usize,
         owner_bounds: &mut OwnerBounds,
-        mut debug_stages: Option<&mut Vec<IndexedFcoseDebugStage>>,
-        mut timings: Option<&mut FcoseSpringTimings>,
-    ) -> SpringStats {
+    ) {
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
         // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
         // restarting the generation counter can silently drop repulsion pairs on the second run.
         self.surrounding_seen.fill(0);
 
         if self.nodes.is_empty() {
-            return SpringStats::default();
+            return;
         }
 
-        let timing_enabled = timings.is_some();
-        let debug_positions = std::env::var("MANATEE_FCOSE_DEBUG_POSITIONS")
-            .ok()
-            .as_deref()
-            == Some("1");
-        let debug_positions_all = std::env::var("MANATEE_FCOSE_DEBUG_POSITIONS_ALL")
-            .ok()
-            .as_deref()
-            == Some("1");
-        let leaf_count = self.leaf_count;
-        let dump_positions = |tag: &str, nodes: &[SimNode]| {
-            if !debug_positions {
-                return;
-            }
-            // Default to leaf nodes for readability; optionally include compounds.
-            let n = if debug_positions_all {
-                nodes.len()
-            } else {
-                leaf_count.min(nodes.len())
-            };
-            eprintln!("[manatee-fcose-pos] {tag} leaf_count={n}");
-            for i in 0..n {
-                eprintln!(
-                    "[manatee-fcose-pos] {tag} id={} compound={} center=({:.6},{:.6}) left_top=({:.6},{:.6}) size=({:.3},{:.3}) owner={}",
-                    nodes[i].id,
-                    nodes[i].is_compound,
-                    nodes[i].center_x(),
-                    nodes[i].center_y(),
-                    nodes[i].left,
-                    nodes[i].top,
-                    nodes[i].width,
-                    nodes[i].height,
-                    nodes[i].owner_idx
-                );
-            }
-        };
-
-        let opts_prep_start = timing_enabled.then(web_time::Instant::now);
         // Recompute per-edge ideal lengths (layout-base `FDLayout.calcIdealEdgeLengths`).
         // This must be re-applied on each run because Mermaid runs FCoSE twice.
         //
@@ -2544,35 +2134,10 @@ impl SimGraph {
         let half_default_edge_length = default_edge_length / 2.0;
 
         self.adjust_intergraph_ideal_edge_lengths();
-        if std::env::var("MANATEE_FCOSE_DEBUG_EDGE_LENGTHS")
-            .ok()
-            .as_deref()
-            == Some("1")
-        {
-            let mut inter = 0usize;
-            for e in &self.edges {
-                let intergraph = self.nodes[e.a].owner_idx != self.nodes[e.b].owner_idx;
-                if intergraph {
-                    inter += 1;
-                }
-                eprintln!(
-                    "[manatee-fcose-edge] a={} b={} inter={} base={:.6} ideal={:.6} elasticity={:.6}",
-                    e.a, e.b, intergraph, e.base_ideal_length, e.ideal_length, e.elasticity
-                );
-            }
-            eprintln!(
-                "[manatee-fcose-edge] edges={} intergraph={}",
-                self.edges.len(),
-                inter
-            );
-        }
         // CoSE updates `MIN_REPULSION_DIST` based on the effective `DEFAULT_EDGE_LENGTH` when
         // `idealEdgeLength` is set. For Mermaid Architecture this is always set (as a function),
         // so we scale the minimum repulsion distance with the average ideal length.
         let min_repulsion_dist = (default_edge_length / 10.0).max(0.0005);
-        if let (Some(t), Some(s)) = (timings.as_deref_mut(), opts_prep_start) {
-            t.opts_prep = s.elapsed();
-        }
 
         // Apply uniform compound padding (Cytoscape style `padding`).
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
@@ -2581,13 +2146,9 @@ impl SimGraph {
                 n.padding = compound_padding;
             }
         }
-        if let Some(stages) = debug_stages.as_deref_mut() {
-            self.push_debug_stage(stages, run_idx, "classicLayout.start", None, None);
-        }
 
         // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
         // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
-        let spectral_start = timing_enabled.then(web_time::Instant::now);
         let mut spectral_applied = false;
         if opts.randomize {
             let node_separation = opts
@@ -2609,20 +2170,8 @@ impl SimGraph {
                 rng,
             );
         }
-        dump_positions("spectral_raw", &self.nodes);
-        if let (Some(t), Some(s)) = (timings.as_deref_mut(), spectral_start) {
-            t.spectral = s.elapsed();
-        }
-
-        dump_positions("spectral", &self.nodes);
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
-        let debug_forces = std::env::var("MANATEE_FCOSE_DEBUG_FORCES").ok().as_deref() == Some("1");
-        let debug_edge_forces = std::env::var("MANATEE_FCOSE_DEBUG_EDGE_FORCES")
-            .ok()
-            .as_deref()
-            == Some("1");
-        let debug_disps = std::env::var("MANATEE_FCOSE_DEBUG_DISPS").ok().as_deref() == Some("1");
 
         // Upstream CoSE applies gravitational forces only to nodes that belong to a *disconnected*
         // owner graph (see `CoSELayout.calculateNodesToApplyGravitationTo()`), where "connected"
@@ -2632,15 +2181,7 @@ impl SimGraph {
         // Applying gravity to all nodes (a common simplification) makes sparse cross-compound
         // Architecture graphs significantly more compact than Mermaid/Cytoscape, which in turn
         // changes the root `viewBox/max-width` in parity-root comparisons.
-        let disable_gravity = std::env::var("MANATEE_FCOSE_DISABLE_GRAVITY")
-            .ok()
-            .as_deref()
-            == Some("1");
-        let apply_gravity: Vec<bool> = if disable_gravity {
-            vec![false; self.nodes.len()]
-        } else {
-            self.nodes_apply_gravity_mask()
-        };
+        let apply_gravity = self.nodes_apply_gravity_mask();
 
         // Match `cose-base` repulsion cutoff (`CoSELayout.calcRepulsionRange()`):
         //
@@ -2656,41 +2197,21 @@ impl SimGraph {
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if opts.randomize && self.edges.is_empty() && !spectral_applied {
-            let collapse_start = timing_enabled.then(web_time::Instant::now);
             self.collapse_start_positions(default_edge_length, rng);
-            if let (Some(t), Some(s)) = (timings.as_deref_mut(), collapse_start) {
-                t.collapse_start_positions = s.elapsed();
-            }
         }
 
         // Upstream `cose-base` runs a dedicated constraint handler before the spring embedder.
         // This can rotate/reflect the draft layout and enforce alignment/relative-placement
         // constraints in position space, which strongly affects overall orientation and the
         // parity-root root viewport.
-        let disable_pre = std::env::var("MANATEE_FCOSE_DISABLE_PRE_CONSTRAINTS")
-            .ok()
-            .as_deref()
-            == Some("1");
         let has_constraints = !constraints.align_horizontal.is_empty()
             || !constraints.align_vertical.is_empty()
             || !constraints.relative.is_empty();
-        if !disable_pre && has_constraints {
-            let pre_constraints_start = timing_enabled.then(web_time::Instant::now);
+        if has_constraints {
             handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
-            dump_positions("pre_constraints", &self.nodes);
-            if let Some(stages) = debug_stages.as_deref_mut() {
-                self.push_debug_stage(stages, run_idx, "after-pre-constraints", None, None);
-            }
-            if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
-                t.pre_constraints = s.elapsed();
-            }
         }
 
-        let constraint_rt_start = timing_enabled.then(web_time::Instant::now);
         let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
-        if let (Some(t), Some(s)) = (timings.as_deref_mut(), constraint_rt_start) {
-            t.constraint_rt = s.elapsed();
-        }
 
         let n = self.nodes.len() as f64;
         let displacement_threshold_per_node = (3.0 * default_edge_length) / 100.0;
@@ -2718,12 +2239,6 @@ impl SimGraph {
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
-        let disable_convergence = std::env::var("MANATEE_FCOSE_DISABLE_CONVERGENCE")
-            .ok()
-            .as_deref()
-            == Some("1");
-
-        let iterations_start = timing_enabled.then(web_time::Instant::now);
         let mut processed_generation: Vec<u32> = vec![0; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
         let all_nodes_in_layout_order = self.all_nodes_layout_order();
@@ -2742,7 +2257,7 @@ impl SimGraph {
 
                 old_total_displacement = last_total_displacement;
 
-                if !disable_convergence && (converged || oscilating) {
+                if converged || oscilating {
                     break;
                 }
 
@@ -2759,12 +2274,6 @@ impl SimGraph {
 
             // Match `cose-base` tick order: update compound bounds (with padding) before forces.
             self.update_bounds(owner_bounds);
-            if Self::should_trace_iteration(total_iterations)
-                && let Some(stages) = debug_stages.as_deref_mut()
-            {
-                let tag = format!("tick-{total_iterations}.start");
-                self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
-            }
 
             // Spring forces (per-edge ideal lengths).
             for e in &self.edges {
@@ -2786,8 +2295,6 @@ impl SimGraph {
                     rect_intersection_points_no_overlap_check(&self.nodes[a], &self.nodes[b]);
                 let mut lx = bx - ax;
                 let mut ly = by - ay;
-                let raw_lx = lx;
-                let raw_ly = ly;
                 // layout-base `LEdge.updateLength()` clamps very small deltas to {-1, 0, 1}
                 // using `IMath.sign`, to avoid divide-by-zero instability.
                 if lx.abs() < 1.0 {
@@ -2807,34 +2314,6 @@ impl SimGraph {
                 let spring_force = e.elasticity * (len - e.ideal_length.max(1.0));
                 let sfx = spring_force * (lx / len);
                 let sfy = spring_force * (ly / len);
-                if debug_edge_forces && total_iterations == 1 {
-                    let ida = self.nodes.get(a).map(|n| n.id.as_str()).unwrap_or("<oob>");
-                    let idb = self.nodes.get(b).map(|n| n.id.as_str()).unwrap_or("<oob>");
-                    eprintln!(
-                        "[manatee-fcose-edge-force] iter=1 a={} b={} a_ctr=({:.15},{:.15}) b_ctr=({:.15},{:.15}) clip_a=({:.15},{:.15}) clip_b=({:.15},{:.15}) raw_lx={:.20} raw_ly={:.20} raw_ly_bits={:#018x} lx={:.12} ly={:.12} len={:.12} ideal={:.12} elast={:.6} spring={:.12} sfx={:.12} sfy={:.12}",
-                        ida,
-                        idb,
-                        self.nodes[a].center_x(),
-                        self.nodes[a].center_y(),
-                        self.nodes[b].center_x(),
-                        self.nodes[b].center_y(),
-                        ax,
-                        ay,
-                        bx,
-                        by,
-                        raw_lx,
-                        raw_ly,
-                        raw_ly.to_bits(),
-                        lx,
-                        ly,
-                        len,
-                        e.ideal_length.max(1.0),
-                        e.elasticity,
-                        spring_force,
-                        sfx,
-                        sfy
-                    );
-                }
                 self.nodes[a].spring_fx += sfx;
                 self.nodes[a].spring_fy += sfy;
                 self.nodes[b].spring_fx -= sfx;
@@ -2852,7 +2331,6 @@ impl SimGraph {
                 current_processed_generation = 1;
             }
             if refresh_surrounding {
-                let repulsion_grid_build_start = timing_enabled.then(web_time::Instant::now);
                 let (l, r, t, b) = (
                     owner_bounds.left[self.root_owner_idx],
                     owner_bounds.right[self.root_owner_idx],
@@ -2869,16 +2347,11 @@ impl SimGraph {
                     repulsion_range,
                     &all_nodes_in_layout_order,
                 );
-                if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_grid_build_start) {
-                    t.repulsion_grid_build += s.elapsed();
-                }
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
                 for &i in &all_nodes_in_layout_order {
                     if refresh_surrounding {
-                        let repulsion_surrounding_start =
-                            timing_enabled.then(web_time::Instant::now);
                         if let Some(g) = &repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
@@ -2892,19 +2365,12 @@ impl SimGraph {
                         } else {
                             self.nodes[i].surrounding.clear();
                         }
-                        if let (Some(t), Some(s)) =
-                            (timings.as_deref_mut(), repulsion_surrounding_start)
-                        {
-                            t.repulsion_surrounding += s.elapsed();
-                        }
                     }
 
-                    let repulsion_forces_start = timing_enabled.then(web_time::Instant::now);
                     let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
                     for &j in &surrounding {
-                        let repulsion_force_start = timing_enabled.then(web_time::Instant::now);
                         let node_j_center_x = self.nodes[j].center_x();
                         let node_j_center_y = self.nodes[j].center_y();
                         let (rfx, rfy) = calc_repulsion_force(
@@ -2917,14 +2383,6 @@ impl SimGraph {
                             node_j_center_x,
                             node_j_center_y,
                         );
-                        if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_force_start)
-                        {
-                            if rects_intersect(&self.nodes[i], &self.nodes[j]) {
-                                t.repulsion_overlap_force += s.elapsed();
-                            } else {
-                                t.repulsion_non_overlapping_force += s.elapsed();
-                            }
-                        }
                         // Apply a symmetric pairwise force.
                         //
                         // Unlike `i < j` index-based deduping, upstream CoSE/FCoSE dedupes via a
@@ -2936,9 +2394,6 @@ impl SimGraph {
                         self.nodes[j].repulsion_fy -= rfy;
                     }
                     self.nodes[i].surrounding = surrounding;
-                    if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_forces_start) {
-                        t.repulsion_forces += s.elapsed();
-                    }
                     processed_generation[i] = current_processed_generation;
                 }
             } else {
@@ -3015,38 +2470,6 @@ impl SimGraph {
                 }
             }
 
-            if debug_forces && total_iterations == 1 {
-                eprintln!("[manatee-fcose-force] iter=1 nodes={}", self.nodes.len());
-                for (idx, n) in self.nodes.iter().enumerate() {
-                    eprintln!(
-                        "[manatee-fcose-force] idx={} id={} owner={} compound={} spring=({:.6},{:.6}) rep=({:.6},{:.6}) grav=({:.6},{:.6})",
-                        idx,
-                        n.id,
-                        n.owner_idx,
-                        n.is_compound,
-                        n.spring_fx,
-                        n.spring_fy,
-                        n.repulsion_fx,
-                        n.repulsion_fy,
-                        n.gravitation_fx,
-                        n.gravitation_fy,
-                    );
-                }
-            }
-            if Self::should_trace_iteration(total_iterations)
-                && let Some(stages) = debug_stages.as_deref_mut()
-            {
-                let tag = Self::update_displacements_trace_tag(total_iterations);
-                self.push_debug_stage_with_displacements(
-                    stages,
-                    run_idx,
-                    &tag,
-                    Some(total_iterations),
-                    None,
-                    Some(&disps),
-                );
-            }
-
             // Move nodes (with constraints applied to displacements).
             //
             // Upstream `cose-base` computes displacements from forces, then applies constraint
@@ -3102,9 +2525,6 @@ impl SimGraph {
                 }
             }
 
-            let disps_before_constraints =
-                (debug_disps && total_iterations == 1).then(|| disps.clone());
-
             if let Some(rt) = constraint_rt.as_mut() {
                 rt.update_displacements(
                     &self.nodes,
@@ -3116,48 +2536,6 @@ impl SimGraph {
                 );
             } else {
                 apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
-            }
-
-            if debug_disps && total_iterations == 1 {
-                if let Some(before) = disps_before_constraints {
-                    eprintln!("[manatee-fcose-disp] iter=1 phase=before_constraints");
-                    for (idx, (dx, dy)) in before.iter().copied().enumerate() {
-                        let id = self
-                            .nodes
-                            .get(idx)
-                            .map(|n| n.id.as_str())
-                            .unwrap_or("<oob>");
-                        eprintln!(
-                            "[manatee-fcose-disp] idx={} id={} disp=({:.6},{:.6})",
-                            idx, id, dx, dy
-                        );
-                    }
-                }
-                eprintln!("[manatee-fcose-disp] iter=1 phase=after_constraints");
-                for (idx, (dx, dy)) in disps.iter().copied().enumerate() {
-                    let id = self
-                        .nodes
-                        .get(idx)
-                        .map(|n| n.id.as_str())
-                        .unwrap_or("<oob>");
-                    eprintln!(
-                        "[manatee-fcose-disp] idx={} id={} disp=({:.6},{:.6})",
-                        idx, id, dx, dy
-                    );
-                }
-            }
-            if Self::should_trace_iteration(total_iterations)
-                && let Some(stages) = debug_stages.as_deref_mut()
-            {
-                let tag = format!("tick-{total_iterations}.after-displacements");
-                self.push_debug_stage_with_displacements(
-                    stages,
-                    run_idx,
-                    &tag,
-                    Some(total_iterations),
-                    None,
-                    Some(&disps),
-                );
             }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
@@ -3181,46 +2559,11 @@ impl SimGraph {
             }
 
             last_total_displacement = total_displacement;
-
-            if debug_positions && total_iterations == 1 {
-                dump_positions("iter1", &self.nodes);
-            }
-            if Self::should_trace_iteration(total_iterations)
-                && let Some(stages) = debug_stages.as_deref_mut()
-            {
-                let tag = format!("tick-{total_iterations}.after-move");
-                self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
-            }
-        }
-        if let (Some(t), Some(s)) = (timings, iterations_start) {
-            t.iterations = s.elapsed();
         }
 
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
         self.update_bounds(owner_bounds);
-        if let Some(stages) = debug_stages {
-            self.push_debug_stage(
-                stages,
-                run_idx,
-                "classicLayout.end",
-                Some(total_iterations),
-                None,
-            );
-            self.push_debug_stage(
-                stages,
-                run_idx,
-                "coseLayout.after-runLayout",
-                Some(total_iterations),
-                None,
-            );
-        }
-        dump_positions("final", &self.nodes);
-
-        SpringStats {
-            iterations: total_iterations,
-            spectral_applied,
-        }
     }
 
     fn nodes_apply_gravity_mask(&self) -> Vec<bool> {
@@ -4579,13 +3922,6 @@ impl FcoseRandom {
         }
     }
 
-    fn calls(&self) -> u64 {
-        match self {
-            Self::XorShift64Star(rng) => rng.calls(),
-            Self::Mulberry32(rng) => rng.calls(),
-        }
-    }
-
     fn next_usize(&mut self, upper: usize) -> usize {
         if upper <= 1 {
             return 0;
@@ -4596,10 +3932,13 @@ impl FcoseRandom {
 }
 
 fn new_fcose_random(policy: FcoseRandomPolicy) -> FcoseRandom {
-    let seed = policy.seed.unwrap_or_else(ambient_random_seed);
     match policy.source {
-        FcoseRandomSource::XorShift64Star => FcoseRandom::XorShift64Star(XorShift64Star::new(seed)),
-        FcoseRandomSource::Mulberry32 => FcoseRandom::Mulberry32(Mulberry32::new(seed as u32)),
+        FcoseRandomSource::XorShift64Star => {
+            FcoseRandom::XorShift64Star(XorShift64Star::new(policy.seed))
+        }
+        FcoseRandomSource::Mulberry32 => {
+            FcoseRandom::Mulberry32(Mulberry32::new(policy.seed as u32))
+        }
     }
 }
 
@@ -4615,62 +3954,24 @@ fn reset_fcose_random_for_run(
     seed_offset: usize,
     run_idx: usize,
 ) {
-    if run_idx == 0 || !policy.reset_seed_each_run || policy.seed.is_none() {
+    if run_idx == 0 || !policy.reset_seed_each_run {
         return;
     }
     *rng = new_fcose_random(policy);
     advance_random(rng, seed_offset);
 }
 
-fn ambient_random_seed() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NONCE: AtomicU64 = AtomicU64::new(0);
-    mix_ambient_seed(
-        ambient_seed_entropy(),
-        NONCE.fetch_add(1, Ordering::Relaxed),
-    )
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn ambient_seed_entropy() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos() as u64)
-}
-
-#[cfg(target_arch = "wasm32")]
-const fn ambient_seed_entropy() -> u64 {
-    // Pure wasm builds have no clock or randomness import. The per-process nonce still gives
-    // opt-out calls distinct streams without calling the unsupported `SystemTime::now()` path.
-    0xa076_1d64_78bd_642f
-}
-
-fn mix_ambient_seed(entropy: u64, nonce: u64) -> u64 {
-    let mut value = entropy ^ nonce.wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
-}
-
 #[derive(Debug, Clone)]
 struct XorShift64Star {
     state: u64,
-    calls: u64,
 }
 
 impl XorShift64Star {
     fn new(seed: u64) -> Self {
-        Self {
-            state: seed.max(1),
-            calls: 0,
-        }
+        Self { state: seed.max(1) }
     }
 
     fn next_u64(&mut self) -> u64 {
-        self.calls = self.calls.wrapping_add(1);
         let mut x = self.state;
         x ^= x >> 12;
         x ^= x << 25;
@@ -4684,38 +3985,25 @@ impl XorShift64Star {
         let u = self.next_u64() >> 11;
         (u as f64) / ((1u64 << 53) as f64)
     }
-
-    fn calls(&self) -> u64 {
-        self.calls
-    }
 }
 
 #[derive(Debug, Clone)]
 struct Mulberry32 {
     state: u32,
-    calls: u64,
 }
 
 impl Mulberry32 {
     fn new(seed: u32) -> Self {
-        Self {
-            state: seed,
-            calls: 0,
-        }
+        Self { state: seed }
     }
 
     fn next_f64_unit(&mut self) -> f64 {
-        self.calls = self.calls.wrapping_add(1);
         self.state = self.state.wrapping_add(0x6d2b_79f5);
         let mut value = self.state;
         value = (value ^ (value >> 15)).wrapping_mul(value | 1);
         value ^= value.wrapping_add((value ^ (value >> 7)).wrapping_mul(value | 61));
         let output = value ^ (value >> 14);
         f64::from(output) / 4_294_967_296.0
-    }
-
-    fn calls(&self) -> u64 {
-        self.calls
     }
 }
 
@@ -4735,7 +4023,6 @@ mod tests {
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
-            id: "n".to_string(),
             parent: None,
             owner_idx: 0,
             is_compound: false,
@@ -5187,27 +4474,6 @@ mod tests {
     }
 
     #[test]
-    fn ambient_policy_keeps_its_stream_continuous_between_runs() {
-        let policy = FcoseRandomPolicy::ambient(FcoseRandomSource::Mulberry32)
-            .with_reset_seed_each_run(true);
-        let mut rng = new_fcose_random(policy);
-        let _ = rng.next_f64_unit();
-        let calls_before_second_run = rng.calls();
-
-        reset_fcose_random_for_run(&mut rng, policy, 0, 1);
-
-        assert_eq!(rng.calls(), calls_before_second_run);
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[test]
-    fn ambient_policy_is_clock_free_and_callable_on_wasm32() {
-        let first = super::ambient_random_seed();
-        let second = super::ambient_random_seed();
-        assert_ne!(first, second);
-    }
-
-    #[test]
     fn repulsion_grid_surrounding_excludes_processed_nodes() {
         // Build a tiny 1D-ish layout:
         //
@@ -5475,7 +4741,6 @@ mod tests {
         let mut nodes: Vec<SimNode> = Vec::new();
         for (i, (x, y)) in draft.iter().copied().enumerate() {
             nodes.push(SimNode {
-                id: ids[i].to_string(),
                 parent: None,
                 owner_idx: i,
                 is_compound: false,

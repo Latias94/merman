@@ -7,15 +7,12 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:9c3e86f87af0f0a24cf3de6a150180650aadbdb41f23edc8a9bc66a9e76fc023"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
 #define MERMAN_TARGET_WEB "web"
 
-#define MERMAN_RUNTIME_CAPABILITY_BROWSER_RANDOM "browser-random"
-#define MERMAN_RUNTIME_CAPABILITY_BROWSER_TIME "browser-time"
-#define MERMAN_RUNTIME_CAPABILITY_BROWSER_TIMING "browser-timing"
 #define MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT "typst-transport"
 
 #define MERMAN_CAPABILITY_ANALYSIS "analysis"
@@ -94,29 +91,14 @@ typedef struct MermanCapabilityPresetDescriptor {
     size_t expected_runtime_capability_count;
 } MermanCapabilityPresetDescriptor;
 
-static const char *const MERMAN_RUNTIME_CAPABILITY_BROWSER_RANDOM_TARGETS[] = {
-    "web",
-};
-
-static const char *const MERMAN_RUNTIME_CAPABILITY_BROWSER_TIME_TARGETS[] = {
-    "web",
-};
-
-static const char *const MERMAN_RUNTIME_CAPABILITY_BROWSER_TIMING_TARGETS[] = {
-    "web",
-};
-
 static const char *const MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT_TARGETS[] = {
     "typst",
 };
 
 static const MermanRuntimeCapabilityDescriptor MERMAN_RUNTIME_CAPABILITIES[] = {
-    { "browser-random", "adapter", "Browser-provided randomness adapter.", MERMAN_RUNTIME_CAPABILITY_BROWSER_RANDOM_TARGETS, 1 },
-    { "browser-time", "adapter", "Browser-provided date and time adapter.", MERMAN_RUNTIME_CAPABILITY_BROWSER_TIME_TARGETS, 1 },
-    { "browser-timing", "adapter", "Browser monotonic timing adapter.", MERMAN_RUNTIME_CAPABILITY_BROWSER_TIMING_TARGETS, 1 },
     { "typst-transport", "transport", "Typst wasm-minimal-protocol transport.", MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT_TARGETS, 1 },
 };
-#define MERMAN_RUNTIME_CAPABILITY_COUNT 4u
+#define MERMAN_RUNTIME_CAPABILITY_COUNT 1u
 
 static const char *const MERMAN_CAPABILITY_ANALYSIS_TARGETS[] = {
     "native",

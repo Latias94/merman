@@ -1,7 +1,7 @@
 use merman::ParseOptions;
 use merman::render::{
     HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderExecutionPath,
-    RenderResourcePolicy, RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync,
+    RenderResourcePolicy, RuntimePolicy, SvgRenderOptions, prepare_render_sync,
     prepare_semantic_sync, render_svg_sync,
 };
 
@@ -15,7 +15,7 @@ fn assert_info_artifact(prepared: &PreparedRender) {
 
 #[test]
 fn completed_render_report_records_the_canonical_execution_path() {
-    let environment = RenderEnvironment::parity();
+    let environment = RenderEnvironment::deterministic();
     let session_report = environment
         .begin_session()
         .expect("fresh render session")
@@ -85,7 +85,7 @@ A --> B
     let engine = merman::Engine::new();
     let renderer = HeadlessRenderer::new()
         .with_engine(engine)
-        .with_environment(RenderEnvironment::parity())
+        .with_environment(RenderEnvironment::deterministic())
         .with_strict_parsing()
         .with_layout_options(LayoutOptions::headless_svg_defaults())
         .with_resource_policy(
@@ -225,10 +225,10 @@ section Delivery
 First: first,-1,1ms
 Second: second,after first,2ms
 "#;
-    let session_time = RenderTimeSnapshot::from_unix_millis(0, 0).expect("Unix epoch");
-    let request_time = RenderTimeSnapshot::from_unix_millis(1, 0).expect("one millisecond");
+    let session_time = 0;
+    let request_time = 1;
     let renderer = HeadlessRenderer::new()
-        .with_fixed_time(session_time)
+        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_unix_millis(session_time))
         .with_diagram_id("prepared-gantt-time");
     let prepared = renderer
         .prepare_render_sync(source)
@@ -246,7 +246,7 @@ Second: second,after first,2ms
         .unwrap()
         .expect("high-level Gantt render");
     let session_render = HeadlessRenderer::new()
-        .with_fixed_time(request_time)
+        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_unix_millis(request_time))
         .with_diagram_id("prepared-gantt-time")
         .render_svg_report_sync(source)
         .unwrap()
@@ -266,18 +266,12 @@ Second: second,after first,2ms
         today_line(prepared_render.svg()),
         today_line(session_render.svg())
     );
+    assert_eq!(prepared_render.report().unix_millis(), session_time);
     assert_eq!(
-        prepared_render.report().time().unix_ms(),
-        session_time.unix_ms()
+        high_level_request_render.report().unix_millis(),
+        session_time
     );
-    assert_eq!(
-        high_level_request_render.report().time().unix_ms(),
-        session_time.unix_ms()
-    );
-    assert_eq!(
-        session_render.report().time().unix_ms(),
-        request_time.unix_ms()
-    );
+    assert_eq!(session_render.report().unix_millis(), request_time);
 }
 
 #[test]

@@ -98,7 +98,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
 
     if common.look_is_hand_drawn() {
         if let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_hachure_paths_for_svg_path(
                     &path_data,
                     common.fill_color,
@@ -132,7 +132,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             return;
         }
     } else if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,

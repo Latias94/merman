@@ -290,7 +290,7 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
     })?;
 
     let layout_opts = merman_render::LayoutOptions::default();
-    let session = merman::render::RenderEnvironment::parity()
+    let session = merman::render::RenderEnvironment::deterministic()
         .begin_session()
         .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
     let artifact = merman_render::family::prepare(parsed, &layout_opts, session).map_err(|e| {

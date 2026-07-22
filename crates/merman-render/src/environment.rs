@@ -7,8 +7,8 @@ use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
-use merman_core::time::{LocalTimeZone, LocalTimeZoneProvenance};
+use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
+use merman_core::time::LocalTimeZoneProvenance;
 use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -1007,294 +1007,14 @@ fn valid_wrapped_with_raw_width(value: &(TextMetrics, Option<f64>)) -> bool {
     valid_metrics(&value.0) && value.1.as_ref().is_none_or(valid_length)
 }
 
-/// One coherent time snapshot derived from an instant and a UTC offset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RenderTimeSnapshot {
-    unix_ms: i64,
-    local_date: NaiveDate,
-    local_offset_minutes: i32,
-}
-
-/// Local-time semantics retained for date parsing during one render operation.
-///
-/// A snapshot offset describes only the sampled instant. It must not be reused for
-/// another date when the host timezone may cross a daylight-saving transition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RenderLocalTimePolicy {
-    /// Resolve every target date through the host timezone and its transition rules.
-    SystemTimeZone,
-    /// Apply the sampled fixed UTC offset to every target date.
-    FixedOffset,
-}
-
-impl RenderTimeSnapshot {
-    pub fn from_unix_millis(
-        unix_ms: i64,
-        local_offset_minutes: i32,
-    ) -> Result<Self, RenderTimeError> {
-        if !(-1439..=1439).contains(&local_offset_minutes) {
-            return Err(RenderTimeError::InvalidLocalOffset(local_offset_minutes));
-        }
-        let instant = DateTime::<Utc>::from_timestamp_millis(unix_ms)
-            .ok_or(RenderTimeError::InstantOutOfRange(unix_ms))?;
-        let offset = FixedOffset::east_opt(local_offset_minutes * 60)
-            .ok_or(RenderTimeError::InvalidLocalOffset(local_offset_minutes))?;
-        Ok(Self {
-            unix_ms,
-            local_date: instant.with_timezone(&offset).date_naive(),
-            local_offset_minutes,
-        })
-    }
-
-    pub fn unix_epoch_utc() -> Self {
-        Self::from_unix_millis(0, 0).expect("Unix epoch is a valid UTC instant")
-    }
-
-    /// Resolves local midnight through the host timezone at the target date.
-    #[cfg(feature = "host")]
-    pub fn from_system_local_midnight(local_date: NaiveDate) -> Result<Self, RenderTimeError> {
-        Self::from_local_midnight(local_date, &LocalTimeZone::system())
-    }
-
-    /// Resolves local midnight through one immutable timezone resolver.
-    pub fn from_local_midnight(
-        local_date: NaiveDate,
-        time_zone: &LocalTimeZone,
-    ) -> Result<Self, RenderTimeError> {
-        let local_midnight = local_date
-            .and_hms_opt(0, 0, 0)
-            .expect("every valid date has a valid midnight");
-        let local = time_zone
-            .datetime_from_naive_local(local_midnight)
-            .ok_or(RenderTimeError::InvalidLocalDateTime(local_midnight))?;
-        Self::from_unix_millis(
-            local.timestamp_millis(),
-            local.offset().local_minus_utc() / 60,
-        )
-    }
-
-    pub const fn unix_ms(self) -> i64 {
-        self.unix_ms
-    }
-
-    pub const fn local_date(self) -> NaiveDate {
-        self.local_date
-    }
-
-    pub const fn local_offset_minutes(self) -> i32 {
-        self.local_offset_minutes
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum RenderTimeError {
-    #[error("local UTC offset must be between -1439 and 1439 minutes, got {0}")]
-    InvalidLocalOffset(i32),
-    #[error("Unix timestamp in milliseconds is outside chrono's supported range: {0}")]
-    InstantOutOfRange(i64),
-    #[error("local datetime cannot be resolved in the selected local timezone: {0}")]
-    InvalidLocalDateTime(NaiveDateTime),
-}
-
-/// Supplies an instant and offset; the environment derives the date when the session begins.
-pub trait RenderClock: Send + Sync {
-    fn unix_millis_and_offset(&self) -> (i64, i32);
-}
-
-/// Preserves a clock's advancing instant while replacing its local offset.
-#[derive(Clone)]
-pub struct FixedOffsetRenderClock {
-    source: Arc<dyn RenderClock>,
-    local_offset_minutes: i32,
-}
-
-impl FixedOffsetRenderClock {
-    pub fn new(
-        source: Arc<dyn RenderClock>,
-        local_offset_minutes: i32,
-    ) -> Result<Self, RenderTimeError> {
-        if !(-1439..=1439).contains(&local_offset_minutes) {
-            return Err(RenderTimeError::InvalidLocalOffset(local_offset_minutes));
-        }
-        Ok(Self {
-            source,
-            local_offset_minutes,
-        })
-    }
-}
-
-impl fmt::Debug for FixedOffsetRenderClock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FixedOffsetRenderClock")
-            .field("local_offset_minutes", &self.local_offset_minutes)
-            .finish_non_exhaustive()
-    }
-}
-
-impl RenderClock for FixedOffsetRenderClock {
-    fn unix_millis_and_offset(&self) -> (i64, i32) {
-        let (unix_ms, _) = self.source.unix_millis_and_offset();
-        (unix_ms, self.local_offset_minutes)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FixedRenderClock {
-    unix_ms: i64,
-    local_offset_minutes: i32,
-}
-
-impl FixedRenderClock {
-    pub const fn new(snapshot: RenderTimeSnapshot) -> Self {
-        Self {
-            unix_ms: snapshot.unix_ms,
-            local_offset_minutes: snapshot.local_offset_minutes,
-        }
-    }
-}
-
-impl RenderClock for FixedRenderClock {
-    fn unix_millis_and_offset(&self) -> (i64, i32) {
-        (self.unix_ms, self.local_offset_minutes)
-    }
-}
-
-#[cfg(feature = "host")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SystemRenderClock;
-
-#[cfg(feature = "host")]
-impl RenderClock for SystemRenderClock {
-    fn unix_millis_and_offset(&self) -> (i64, i32) {
-        let now = chrono::Local::now();
-        (now.timestamp_millis(), now.offset().local_minus_utc() / 60)
-    }
-}
-
-#[cfg(feature = "host")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SystemRenderSeedSource;
-
-#[cfg(feature = "host")]
-impl RenderSeedSource for SystemRenderSeedSource {
-    fn next_seed(&self) -> NonZeroU64 {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-
-        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let entropy = rand::random::<u64>();
-        let mut mixed = entropy ^ counter.rotate_left(23);
-        mixed ^= mixed >> 30;
-        mixed = mixed.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        mixed ^= mixed >> 27;
-        mixed = mixed.wrapping_mul(0x94d0_49bb_1331_11eb);
-        mixed ^= mixed >> 31;
-        NonZeroU64::new(mixed).unwrap_or(NonZeroU64::MIN)
-    }
-}
-
-/// Supplies a valid ambient seed exactly when an operation session begins.
-pub trait RenderSeedSource: Send + Sync {
-    fn next_seed(&self) -> NonZeroU64;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct FixedRenderSeedSource(NonZeroU64);
-
-impl FixedRenderSeedSource {
-    pub const fn new(seed: NonZeroU64) -> Self {
-        Self(seed)
-    }
-}
-
-impl RenderSeedSource for FixedRenderSeedSource {
-    fn next_seed(&self) -> NonZeroU64 {
-        self.0
-    }
-}
-
-/// Randomness selection before an operation begins.
-#[derive(Clone)]
-pub enum RenderRandomnessPolicy {
-    Pinned(NonZeroU64),
-    Ambient(Arc<dyn RenderSeedSource>),
-}
-
-impl RenderRandomnessPolicy {
-    pub const fn parity() -> Self {
-        Self::Pinned(NonZeroU64::MIN)
-    }
-
-    pub const fn pinned(seed: NonZeroU64) -> Self {
-        Self::Pinned(seed)
-    }
-
-    pub fn ambient(source: Arc<dyn RenderSeedSource>) -> Self {
-        Self::Ambient(source)
-    }
-
-    fn resolve(&self) -> ResolvedRenderSeed {
-        match self {
-            Self::Pinned(seed) => ResolvedRenderSeed {
-                seed: *seed,
-                origin: RenderSeedOrigin::Pinned,
-            },
-            Self::Ambient(source) => ResolvedRenderSeed {
-                seed: source.next_seed(),
-                origin: RenderSeedOrigin::Ambient,
-            },
-        }
-    }
-}
-
-impl fmt::Debug for RenderRandomnessPolicy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Pinned(seed) => f.debug_tuple("Pinned").field(seed).finish(),
-            Self::Ambient(_) => f.write_str("Ambient(..)"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RenderSeedOrigin {
-    Pinned,
-    Ambient,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ResolvedRenderSeed {
-    seed: NonZeroU64,
-    origin: RenderSeedOrigin,
-}
-
-impl ResolvedRenderSeed {
-    pub const fn seed(self) -> NonZeroU64 {
-        self.seed
-    }
-
-    pub const fn origin(self) -> RenderSeedOrigin {
-        self.origin
-    }
-}
-
-/// Immutable adapters and policy shared by render operations.
+/// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     icon_registry: Option<Arc<IconRegistry>>,
-    clock: Arc<dyn RenderClock>,
-    local_time_source: RenderLocalTimeSource,
-    randomness: RenderRandomnessPolicy,
+    runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
-}
-
-#[derive(Debug, Clone)]
-enum RenderLocalTimeSource {
-    ClockFixedOffset,
-    #[cfg(feature = "host")]
-    AmbientSystem,
-    Captured(LocalTimeZone),
 }
 
 impl fmt::Debug for RenderEnvironment {
@@ -1303,38 +1023,29 @@ impl fmt::Debug for RenderEnvironment {
             .field("text_measurement", &self.text_measurement)
             .field("has_math_renderer", &self.math_renderer.is_some())
             .field("has_icon_registry", &self.icon_registry.is_some())
-            .field("local_time_source", &self.local_time_source)
-            .field("randomness", &self.randomness)
+            .field("runtime_policy", &self.runtime_policy)
             .field("resource_policy", &self.resource_policy)
             .finish_non_exhaustive()
     }
 }
 
 impl RenderEnvironment {
-    pub fn parity() -> Self {
+    /// Creates a target-independent environment with fixed time, UTC, and a fixed seed.
+    pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::parity(),
             math_renderer: None,
             icon_registry: None,
-            clock: Arc::new(FixedRenderClock::new(RenderTimeSnapshot::unix_epoch_utc())),
-            local_time_source: RenderLocalTimeSource::ClockFixedOffset,
-            randomness: RenderRandomnessPolicy::parity(),
+            runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
         }
     }
 
-    /// Host defaults preserve Mermaid's current-time and ambient-randomness behavior.
-    #[cfg(feature = "host")]
-    pub fn host() -> Self {
-        Self {
-            text_measurement: TextMeasurementPolicy::parity(),
-            math_renderer: None,
-            icon_registry: None,
-            clock: Arc::new(SystemRenderClock),
-            local_time_source: RenderLocalTimeSource::AmbientSystem,
-            randomness: RenderRandomnessPolicy::ambient(Arc::new(SystemRenderSeedSource)),
-            resource_policy: RenderResourcePolicy::interactive(),
-        }
+    /// Creates an environment backed by native clock, timezone, and randomness adapters.
+    ///
+    /// Timing remains an explicit opt-in because it adds work and observable diagnostics.
+    pub fn try_native() -> Result<Self, RuntimePolicyError> {
+        Ok(Self::deterministic().with_runtime_policy(RuntimePolicy::try_native()?))
     }
 
     pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
@@ -1352,61 +1063,13 @@ impl RenderEnvironment {
         self
     }
 
-    pub fn with_clock(mut self, clock: Arc<dyn RenderClock>) -> Self {
-        self.clock = clock;
-        // RenderClock exposes an offset, not a timezone rule set. A custom clock
-        // therefore has deterministic fixed-offset semantics unless a host
-        // SystemRenderClock is selected by RenderEnvironment::host().
-        self.local_time_source = RenderLocalTimeSource::ClockFixedOffset;
+    pub fn with_runtime_policy(mut self, policy: RuntimePolicy) -> Self {
+        self.runtime_policy = policy;
         self
     }
 
-    /// Replaces the instant source while retaining host timezone transition rules.
-    ///
-    /// This is useful for deterministic host tests and embeddings that own their
-    /// clock but still want target dates resolved with the system timezone.
-    #[cfg(feature = "host")]
-    pub fn with_system_time_zone_clock(mut self, clock: Arc<dyn RenderClock>) -> Self {
-        self.clock = clock;
-        self.local_time_source = RenderLocalTimeSource::AmbientSystem;
-        self
-    }
-
-    /// Uses a timezone rule set that was already captured by the caller.
-    ///
-    /// This is the operation handoff used by CLI and binding request plans: parsing, layout and
-    /// evidence all retain the same resolver even if the ambient `TZ` changes later.
-    pub fn with_local_time_zone(mut self, time_zone: LocalTimeZone) -> Self {
-        self.local_time_source = RenderLocalTimeSource::Captured(time_zone);
-        self
-    }
-
-    /// Freezes an instant while retaining host timezone transition rules for target dates.
-    #[cfg(feature = "host")]
-    pub fn with_system_time_snapshot(self, snapshot: RenderTimeSnapshot) -> Self {
-        self.with_system_time_zone_clock(Arc::new(FixedRenderClock::new(snapshot)))
-    }
-
-    /// Preserves the configured clock's advancing instant while overriding its local UTC offset.
-    pub fn with_fixed_local_offset_minutes(
-        mut self,
-        local_offset_minutes: i32,
-    ) -> Result<Self, RenderTimeError> {
-        self.clock = Arc::new(FixedOffsetRenderClock::new(
-            self.clock,
-            local_offset_minutes,
-        )?);
-        self.local_time_source = RenderLocalTimeSource::ClockFixedOffset;
-        Ok(self)
-    }
-
-    pub fn with_time_snapshot(self, snapshot: RenderTimeSnapshot) -> Self {
-        self.with_clock(Arc::new(FixedRenderClock::new(snapshot)))
-    }
-
-    pub fn with_randomness(mut self, policy: RenderRandomnessPolicy) -> Self {
-        self.randomness = policy;
-        self
+    pub fn runtime_policy(&self) -> &RuntimePolicy {
+        &self.runtime_policy
     }
 
     pub const fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
@@ -1414,58 +1077,23 @@ impl RenderEnvironment {
         self
     }
 
-    /// Freezes time, ambient seed, and provenance collection exactly once per operation.
-    pub fn begin_session(&self) -> Result<RenderSession, RenderTimeError> {
-        let (unix_ms, offset) = self.clock.unix_millis_and_offset();
-        let local_time_zone = resolve_local_time_zone(offset, &self.local_time_source)?;
-        let local_time_policy = if local_time_zone.is_system() {
-            RenderLocalTimePolicy::SystemTimeZone
-        } else {
-            RenderLocalTimePolicy::FixedOffset
-        };
+    /// Captures time, timezone rules, random seed, and provenance exactly once.
+    pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
+        let operation_context = self.runtime_policy.begin_operation()?;
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
             measurement_recorder: TextMeasurementRecorder::default(),
             math_renderer: self.math_renderer.clone(),
             icon_registry: self.icon_registry.clone(),
-            time: resolve_time_snapshot(unix_ms, &local_time_zone)?,
-            local_time_zone,
-            local_time_policy,
-            seed: self.randomness.resolve(),
+            operation_context,
             resource_policy: self.resource_policy,
         })
     }
 }
 
-fn resolve_time_snapshot(
-    unix_ms: i64,
-    local_time_zone: &LocalTimeZone,
-) -> Result<RenderTimeSnapshot, RenderTimeError> {
-    let instant = DateTime::<Utc>::from_timestamp_millis(unix_ms)
-        .ok_or(RenderTimeError::InstantOutOfRange(unix_ms))?
-        .with_timezone(&merman_core::time::utc_fixed_offset());
-    let local = local_time_zone
-        .datetime_to_local_fixed(instant)
-        .ok_or(RenderTimeError::InstantOutOfRange(unix_ms))?;
-    RenderTimeSnapshot::from_unix_millis(unix_ms, local.offset().local_minus_utc() / 60)
-}
-
-fn resolve_local_time_zone(
-    sampled_offset_minutes: i32,
-    source: &RenderLocalTimeSource,
-) -> Result<LocalTimeZone, RenderTimeError> {
-    match source {
-        RenderLocalTimeSource::ClockFixedOffset => LocalTimeZone::fixed(sampled_offset_minutes)
-            .map_err(|_| RenderTimeError::InvalidLocalOffset(sampled_offset_minutes)),
-        #[cfg(feature = "host")]
-        RenderLocalTimeSource::AmbientSystem => Ok(LocalTimeZone::system()),
-        RenderLocalTimeSource::Captured(time_zone) => Ok(time_zone.clone()),
-    }
-}
-
 impl Default for RenderEnvironment {
     fn default() -> Self {
-        Self::parity()
+        Self::deterministic()
     }
 }
 
@@ -1475,10 +1103,7 @@ pub struct RenderSession {
     measurement_recorder: TextMeasurementRecorder,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     icon_registry: Option<Arc<IconRegistry>>,
-    time: RenderTimeSnapshot,
-    local_time_zone: LocalTimeZone,
-    local_time_policy: RenderLocalTimePolicy,
-    seed: ResolvedRenderSeed,
+    operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
 }
 
@@ -1499,20 +1124,28 @@ impl RenderSession {
         self.measurement_recorder.report(&self.text_measurement)
     }
 
-    pub const fn time(&self) -> RenderTimeSnapshot {
-        self.time
+    pub fn operation_context(&self) -> &OperationContext {
+        &self.operation_context
     }
 
-    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
-        self.local_time_policy
+    pub fn operation_timing(&self) -> Option<OperationTiming> {
+        self.operation_context.timing()
     }
 
-    pub fn local_time_zone(&self) -> &LocalTimeZone {
-        &self.local_time_zone
+    pub const fn unix_millis(&self) -> i64 {
+        self.operation_context.unix_millis()
     }
 
-    pub const fn seed(&self) -> ResolvedRenderSeed {
-        self.seed
+    pub const fn local_date(&self) -> chrono::NaiveDate {
+        self.operation_context.today_local()
+    }
+
+    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+        self.operation_context.local_time_zone()
+    }
+
+    pub fn render_seed(&self) -> NonZeroU64 {
+        self.operation_context.derive_nonzero_u64("render.root", 0)
     }
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
@@ -1532,10 +1165,12 @@ impl RenderSession {
         RenderSessionReport {
             measurement_routes: self.text_measurement.routes(),
             measurement: self.measurement_recorder.report(&self.text_measurement),
-            time: self.time,
-            local_time_policy: self.local_time_policy,
-            local_time_zone: self.local_time_zone.provenance().clone(),
-            seed: self.seed,
+            operation_context: self.operation_context.clone(),
+            local_time_zone: self
+                .operation_context
+                .local_time_zone()
+                .provenance()
+                .clone(),
             resource_policy: self.resource_policy,
         }
     }
@@ -1546,10 +1181,8 @@ impl RenderSession {
 pub struct RenderSessionReport {
     measurement_routes: [TextMeasurementRoute; 4],
     measurement: TextMeasurementReport,
-    time: RenderTimeSnapshot,
-    local_time_policy: RenderLocalTimePolicy,
+    operation_context: OperationContext,
     local_time_zone: LocalTimeZoneProvenance,
-    seed: ResolvedRenderSeed,
     resource_policy: RenderResourcePolicy,
 }
 
@@ -1562,20 +1195,24 @@ impl RenderSessionReport {
         &self.measurement
     }
 
-    pub const fn time(&self) -> RenderTimeSnapshot {
-        self.time
+    pub fn operation_context(&self) -> &OperationContext {
+        &self.operation_context
     }
 
-    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
-        self.local_time_policy
+    pub const fn unix_millis(&self) -> i64 {
+        self.operation_context.unix_millis()
+    }
+
+    pub const fn local_date(&self) -> chrono::NaiveDate {
+        self.operation_context.today_local()
     }
 
     pub fn local_time_zone(&self) -> &LocalTimeZoneProvenance {
         &self.local_time_zone
     }
 
-    pub const fn seed(&self) -> ResolvedRenderSeed {
-        self.seed
+    pub fn render_seed(&self) -> NonZeroU64 {
+        self.operation_context.derive_nonzero_u64("render.root", 0)
     }
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
@@ -1617,6 +1254,35 @@ mod tests {
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
             ]
+        );
+    }
+
+    #[test]
+    fn deterministic_environment_projects_one_operation_context_into_the_report() {
+        let runtime_policy = RuntimePolicy::deterministic()
+            .with_fixed_unix_millis(1_704_067_200_000)
+            .try_with_fixed_local_offset_minutes(480)
+            .expect("valid fixed offset")
+            .with_fixed_seed(77);
+        let environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
+
+        let session = environment.begin_session().expect("render session");
+        let captured = session.operation_context().clone();
+        let report = session.report();
+
+        assert_eq!(captured.unix_millis(), 1_704_067_200_000);
+        assert_eq!(captured.seed(), 77);
+        assert_eq!(captured.local_time_zone().fixed_offset_minutes(), Some(480));
+        assert_eq!(report.operation_context(), &captured);
+        assert_eq!(report.unix_millis(), captured.unix_millis());
+        assert_eq!(report.operation_context().seed(), captured.seed());
+        assert_eq!(
+            report.render_seed(),
+            captured.derive_nonzero_u64("render.root", 0)
+        );
+        assert_eq!(
+            report.local_time_zone(),
+            captured.local_time_zone().provenance()
         );
     }
 
@@ -1720,7 +1386,7 @@ mod tests {
             [TextMeasurementPhase::ComputedLength],
             vendored_parity_profile(),
         );
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(policy)
             .begin_session()
             .expect("begin render session");
@@ -1747,7 +1413,7 @@ mod tests {
             [TextMeasurementPhase::SvgBBox],
             vendored_parity_profile(),
         );
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(policy)
             .begin_session()
             .expect("begin render session");
@@ -1774,7 +1440,7 @@ mod tests {
             [TextMeasurementPhase::SvgBBox],
             vendored_parity_profile(),
         );
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(policy)
             .begin_session()
             .expect("begin render session");
@@ -1801,7 +1467,7 @@ mod tests {
             [TextMeasurementPhase::SvgBBox],
             vendored_parity_profile(),
         );
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(policy)
             .begin_session()
             .expect("begin render session");
@@ -1828,7 +1494,7 @@ mod tests {
             [TextMeasurementPhase::SvgBBox, TextMeasurementPhase::Layout],
             vendored_parity_profile(),
         );
-        let session = RenderEnvironment::parity()
+        let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(policy)
             .begin_session()
             .expect("begin render session");
@@ -1985,7 +1651,7 @@ mod tests {
         );
         let profile =
             TextMeasurementProfile::new(profile_identity.clone(), Arc::new(SpecializedProfile));
-        let environment = RenderEnvironment::parity()
+        let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let session = environment.begin_session().expect("begin render session");
         let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
@@ -2175,7 +1841,7 @@ mod tests {
         for (outcome, expected_reason, expected_width) in scenarios {
             let host_calls = Arc::new(AtomicUsize::new(0));
             let fallback_calls = Arc::new(AtomicUsize::new(0));
-            let environment = RenderEnvironment::parity()
+            let environment = RenderEnvironment::deterministic()
                 .with_text_measurement_policy(host_policy(outcome, &host_calls, &fallback_calls));
             let session = environment.begin_session().expect("begin render session");
             let measured = session
@@ -2230,7 +1896,7 @@ mod tests {
             [TextMeasurementPhase::Wrap],
             fallback,
         );
-        let environment = RenderEnvironment::parity().with_text_measurement_policy(policy);
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(policy);
         let session = environment.begin_session().expect("begin render session");
         let style = TextStyle {
             font_style: Some("italic".to_string()),
@@ -2256,11 +1922,9 @@ mod tests {
     fn operation_specific_length_is_authoritative_and_invalid_lengths_fallback() {
         let host_calls = Arc::new(AtomicUsize::new(0));
         let fallback_calls = Arc::new(AtomicUsize::new(0));
-        let environment = RenderEnvironment::parity().with_text_measurement_policy(host_policy(
-            HostOutcome::Length(73.0),
-            &host_calls,
-            &fallback_calls,
-        ));
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            host_policy(HostOutcome::Length(73.0), &host_calls, &fallback_calls),
+        );
         let session = environment.begin_session().expect("begin render session");
 
         assert_eq!(
@@ -2286,7 +1950,7 @@ mod tests {
             let host_calls = Arc::new(AtomicUsize::new(0));
             let fallback_calls = Arc::new(AtomicUsize::new(0));
             let environment =
-                RenderEnvironment::parity().with_text_measurement_policy(host_policy(
+                RenderEnvironment::deterministic().with_text_measurement_policy(host_policy(
                     HostOutcome::Length(invalid_length),
                     &host_calls,
                     &fallback_calls,
@@ -2379,7 +2043,7 @@ mod tests {
                 [TextMeasurementPhase::SvgBBox],
                 fallback,
             );
-            let session = RenderEnvironment::parity()
+            let session = RenderEnvironment::deterministic()
                 .with_text_measurement_policy(policy)
                 .begin_session()
                 .expect("render session");
@@ -2406,117 +2070,25 @@ mod tests {
     }
 
     #[test]
-    fn time_snapshot_derives_date_from_instant_and_offset() {
-        let utc = RenderTimeSnapshot::from_unix_millis(0, 0).expect("UTC epoch");
-        let west = RenderTimeSnapshot::from_unix_millis(0, -60).expect("west of UTC epoch");
-
-        assert_eq!(
-            utc.local_date(),
-            NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
-        );
-        assert_eq!(
-            west.local_date(),
-            NaiveDate::from_ymd_opt(1969, 12, 31).unwrap()
-        );
-        assert!(RenderTimeSnapshot::from_unix_millis(0, 1440).is_err());
-    }
-
-    struct CountingClock {
-        calls: Arc<AtomicUsize>,
-    }
-
-    struct AdvancingClock(AtomicUsize);
-
-    impl RenderClock for AdvancingClock {
-        fn unix_millis_and_offset(&self) -> (i64, i32) {
-            let tick = self.0.fetch_add(1, Ordering::Relaxed) as i64;
-            (tick * 86_400_000, -60)
-        }
-    }
-
-    #[test]
-    fn fixed_offset_clock_preserves_advancing_instants_across_sessions() {
-        let environment = RenderEnvironment::parity()
-            .with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))))
-            .with_fixed_local_offset_minutes(480)
-            .expect("valid fixed offset");
-
-        let first = environment.begin_session().expect("first session");
-        let second = environment.begin_session().expect("second session");
-
-        assert_eq!(first.time().unix_ms(), 0);
-        assert_eq!(second.time().unix_ms(), 86_400_000);
-        assert_eq!(first.time().local_offset_minutes(), 480);
-        assert_eq!(second.time().local_offset_minutes(), 480);
-        assert_eq!(
-            first.time().local_date(),
-            NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
-        );
-        assert_eq!(
-            second.time().local_date(),
-            NaiveDate::from_ymd_opt(1970, 1, 2).unwrap()
-        );
-        assert!(
-            RenderEnvironment::parity()
-                .with_fixed_local_offset_minutes(1440)
-                .is_err()
-        );
-    }
-
-    impl RenderClock for CountingClock {
-        fn unix_millis_and_offset(&self) -> (i64, i32) {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            (0, 8 * 60)
-        }
-    }
-
-    struct CountingSeedSource {
-        calls: Arc<AtomicUsize>,
-        seed: NonZeroU64,
-    }
-
-    impl RenderSeedSource for CountingSeedSource {
-        fn next_seed(&self) -> NonZeroU64 {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-            self.seed
-        }
-    }
-
-    #[test]
-    fn session_freezes_clock_and_ambient_seed_once_and_exposes_narrow_services() {
-        let clock_calls = Arc::new(AtomicUsize::new(0));
-        let seed_calls = Arc::new(AtomicUsize::new(0));
+    fn session_exposes_services_and_derives_a_nonzero_render_seed() {
         let limits = RenderResourcePolicy::trusted_native();
-        let environment = RenderEnvironment::parity()
-            .with_clock(Arc::new(CountingClock {
-                calls: Arc::clone(&clock_calls),
-            }))
-            .with_randomness(RenderRandomnessPolicy::ambient(Arc::new(
-                CountingSeedSource {
-                    calls: Arc::clone(&seed_calls),
-                    seed: NonZeroU64::new(77).unwrap(),
-                },
-            )))
+        let environment = RenderEnvironment::deterministic()
+            .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(0))
             .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
             .with_icon_registry(Arc::new(IconRegistry::new()))
             .with_resource_policy(limits);
 
         let session = environment.begin_session().expect("begin render session");
-        assert_eq!(session.time().unix_ms(), 0);
-        assert_eq!(session.time().local_offset_minutes(), 8 * 60);
-        assert_eq!(session.seed().seed(), NonZeroU64::new(77).unwrap());
-        assert_eq!(session.seed().origin(), RenderSeedOrigin::Ambient);
+        assert_eq!(session.operation_context().seed(), 0);
+        assert_eq!(
+            session.render_seed(),
+            session
+                .operation_context()
+                .derive_nonzero_u64("render.root", 0)
+        );
         assert_eq!(session.resource_policy(), limits);
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
-
-        assert_eq!(session.seed().seed(), NonZeroU64::new(77).unwrap());
-        assert_eq!(clock_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(seed_calls.load(Ordering::Relaxed), 1);
-        assert!(NonZeroU64::new(0).is_none());
-        assert_eq!(
-            RenderRandomnessPolicy::parity().resolve().seed(),
-            NonZeroU64::MIN
-        );
+        assert_eq!(session.report().operation_context().seed(), 0);
     }
 }

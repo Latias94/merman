@@ -140,13 +140,19 @@ struct MermanAppleSmoke {
         }
 
         let runtimeContract = try engine.runtimeContract()
-        guard runtimeContract.schemaVersion == 3,
+        guard runtimeContract.schemaVersion == 4,
               runtimeContract.abiVersion == MermanEngine.abiVersion,
               runtimeContract.packageVersion == engine.packageVersion,
               runtimeContract.optionsSchemaVersion == 1,
               runtimeContract.payloadSchemas["analysis"] == 1,
               runtimeContract.payloadSchemas["analysis_facts"] == 2,
               runtimeContract.features.render,
+              Set(runtimeContract.features.systemAdapterIds).isSubset(of: [
+                  "system-clock",
+                  "system-timezone",
+                  "system-random",
+                  "system-timing",
+              ]),
               runtimeContract.resources?.generalBindingDefaultProfile == "interactive"
         else {
             throw SmokeError.failed("runtime contract smoke failed")

@@ -23,7 +23,7 @@ fn edge_labels_group(svg: &str) -> &str {
 }
 
 fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let parsed = Engine::new()

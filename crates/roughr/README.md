@@ -10,8 +10,11 @@
 This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
 parity stable and deterministic across platforms.
 
-The `host-random` feature keeps the upstream-style host randomness fallback. Disable default
-features for pure-wasm or Typst-oriented builds that need deterministic, host-free output.
+Drawing options require an explicit `RoughRandomness` contract. Its `RoughJsSeed` preserves the
+JavaScript Number until Rough.js would coerce it in `Math.imul`, including the preceding `seed + 1`
+for cloned curve strokes. Its cloneable `RoughMathRandom` handle is the caller-owned shared stream
+used where upstream Rough.js reads global `Math.random()`; generation never reads ambient host
+randomness.
 
 ## Differences from upstream `roughr`
 
@@ -54,6 +57,7 @@ roughr = { package = "roughr-merman", version = "0.12.1" }
 
 ```rust
 let options = OptionsBuilder::default()
+    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
     .fill_style(FillStyle::Hachure)
@@ -85,6 +89,7 @@ rect.draw(&mut rc);
 
 ```rust
 let options = OptionsBuilder::default()
+    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
     .fill_style(FillStyle::Hachure)
@@ -114,6 +119,7 @@ circle_paths.draw(&mut rc);
 
 ```rust
 let options = OptionsBuilder::default()
+    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
     .fill_style(FillStyle::Hachure)
@@ -144,6 +150,7 @@ ellipse_paths.draw(&mut rc);
 
 ```rust
 let options = OptionsBuilder::default()
+    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
     .fill_style(FillStyle::Hachure)

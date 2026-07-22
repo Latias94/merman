@@ -1,10 +1,17 @@
-#![cfg(all(feature = "render", feature = "core-host", unix))]
+#![cfg(all(
+    feature = "render",
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random",
+    feature = "system-timing",
+    unix
+))]
 
-use std::{process::Command, sync::Arc};
+use std::process::Command;
 
 use merman::{
     Engine, ParseOptions, RenderSemanticModel,
-    render::{HeadlessRenderer, RenderClock, RenderEnvironment},
+    render::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
 };
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
@@ -12,23 +19,6 @@ const PROVENANCE_CHILD: &str = "MERMAN_TZ_PROVENANCE_CHILD";
 const SOURCE: &str = "gantt\ndateFormat YYYY-MM-DD\nsection Winter\nTask: task, 2026-01-15, 1d";
 const GAP_SOURCE: &str =
     "gantt\ndateFormat YYYY-MM-DD HH:mm\nsection Gap\nTask: task, 2026-03-08 02:30, 1h";
-
-struct JulyNewYorkClock;
-
-impl RenderClock for JulyNewYorkClock {
-    fn unix_millis_and_offset(&self) -> (i64, i32) {
-        // SystemTimeZone derives the coherent offset from this instant.
-        (1_784_390_400_000, 0)
-    }
-}
-
-struct WinterMountainClock;
-
-impl RenderClock for WinterMountainClock {
-    fn unix_millis_and_offset(&self) -> (i64, i32) {
-        (1_768_478_400_000, 0)
-    }
-}
 
 #[test]
 fn system_timezone_resolves_target_date_dst_in_parse_and_layout() {
@@ -53,18 +43,27 @@ fn system_timezone_resolves_target_date_dst_in_parse_and_layout() {
 }
 
 fn assert_new_york_winter_semantics() {
-    let winter_midnight = merman::render::RenderTimeSnapshot::from_system_local_midnight(
-        chrono::NaiveDate::from_ymd_opt(2026, 1, 15).expect("valid winter date"),
-    )
-    .expect("resolve New York winter midnight");
-    assert_eq!(winter_midnight.unix_ms(), 1_768_453_200_000);
-    assert_eq!(winter_midnight.local_offset_minutes(), -5 * 60);
+    let runtime_policy = RuntimePolicy::try_native()
+        .expect("native runtime policy")
+        .with_fixed_unix_millis(1_784_390_400_000);
+    let winter_midnight = runtime_policy
+        .local_time_zone()
+        .datetime_from_naive_local(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 15)
+                .expect("valid winter date")
+                .and_hms_opt(0, 0, 0)
+                .expect("valid winter midnight"),
+        )
+        .expect("resolve New York winter midnight");
+    assert_eq!(winter_midnight.timestamp_millis(), 1_768_453_200_000);
+    assert_eq!(winter_midnight.offset().local_minus_utc() / 60, -5 * 60);
 
     let environment =
-        RenderEnvironment::host().with_system_time_zone_clock(Arc::new(JulyNewYorkClock));
+        RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
     let renderer = HeadlessRenderer::new().with_environment(environment);
 
     let parsed = Engine::new()
+        .with_runtime_policy(runtime_policy.clone())
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Gantt")
         .expect("detect Gantt");
@@ -74,6 +73,7 @@ fn assert_new_york_winter_semantics() {
     assert_eq!(model.tasks[0].start_ms, 1_768_453_200_000);
 
     let gap = Engine::new()
+        .with_runtime_policy(runtime_policy)
         .parse_diagram_for_render_model_sync(GAP_SOURCE, ParseOptions::strict())
         .expect("parse DST gap Gantt")
         .expect("detect DST gap Gantt");
@@ -149,8 +149,10 @@ fn capture_timezone_provenance(time_zone: &str) -> (String, String, i32) {
 }
 
 fn emit_timezone_provenance(expected_identifier: &str) {
-    let environment =
-        RenderEnvironment::host().with_system_time_zone_clock(Arc::new(WinterMountainClock));
+    let runtime_policy = RuntimePolicy::try_native()
+        .expect("native runtime policy")
+        .with_fixed_unix_millis(1_768_478_400_000);
+    let environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
     let session = environment.begin_session().expect("capture timezone rules");
     let report = session.report();
     assert_eq!(report.local_time_zone().identifier(), expected_identifier);
@@ -164,12 +166,23 @@ fn emit_timezone_provenance(expected_identifier: &str) {
         .expect("summer midnight")
         .offset()
         .local_minus_utc();
+    let captured_instant =
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(session.unix_millis())
+            .expect("captured instant")
+            .fixed_offset();
+    let captured_offset = session
+        .local_time_zone()
+        .datetime_to_local_fixed(captured_instant)
+        .expect("captured local instant")
+        .offset()
+        .local_minus_utc()
+        / 60;
     println!(
         "MERMAN_TIME_ZONE_EVIDENCE|{}|{}:{}:{}|{}|{}",
         report.local_time_zone().identifier(),
-        report.time().unix_ms(),
-        report.time().local_date(),
-        report.time().local_offset_minutes(),
+        report.unix_millis(),
+        report.local_date(),
+        captured_offset,
         report
             .local_time_zone()
             .rules_sha256()

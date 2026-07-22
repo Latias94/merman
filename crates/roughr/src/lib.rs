@@ -31,6 +31,7 @@
 //!
 //! ```ignore
 //! let options = OptionsBuilder::default()
+//!     .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
 //!     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
 //!     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
 //!     .fill_style(FillStyle::Hachure)
@@ -62,6 +63,7 @@
 //!
 //! ```ignore
 //! let options = OptionsBuilder::default()
+//!     .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
 //!     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
 //!     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
 //!     .fill_style(FillStyle::Hachure)
@@ -91,6 +93,7 @@
 //!
 //! ```ignore
 //! let options = OptionsBuilder::default()
+//!     .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
 //!     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
 //!     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
 //!     .fill_style(FillStyle::Hachure)
@@ -121,6 +124,7 @@
 //!
 //! ```ignore
 //! let options = OptionsBuilder::default()
+//!     .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
 //!     .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
 //!     .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
 //!     .fill_style(FillStyle::Hachure)

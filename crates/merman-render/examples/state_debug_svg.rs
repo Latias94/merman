@@ -17,7 +17,7 @@ fn main() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");

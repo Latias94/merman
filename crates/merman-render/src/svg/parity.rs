@@ -173,8 +173,81 @@ impl SvgRenderOptions {
     }
 }
 
+/// A point captured while diagnosing one flowchart edge route.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct FlowchartEdgeTracePoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// An in-memory diagnostic record for one flowchart edge route.
+///
+/// The renderer never serializes this value or writes it to a host filesystem. Callers that need
+/// a file own that I/O boundary and can serialize a drained record themselves.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct FlowchartEdgeTrace {
+    pub fixture_diagram_id: String,
+    pub edge_id: String,
+    pub from: String,
+    pub to: String,
+    pub layout_from: String,
+    pub layout_to: String,
+    pub from_cluster: Option<String>,
+    pub to_cluster: Option<String>,
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub tx: f64,
+    pub ty: f64,
+    pub base_points: Vec<FlowchartEdgeTracePoint>,
+    pub points_after_intersect: Vec<FlowchartEdgeTracePoint>,
+    pub points_for_render: Vec<FlowchartEdgeTracePoint>,
+    pub points_for_data_points: Vec<FlowchartEdgeTracePoint>,
+}
+
+/// Explicit, caller-owned storage for flowchart route diagnostics.
+///
+/// Clones share one collection so a caller can retain a handle while a render owns a clone. A
+/// poisoned lock is recovered because trace collection is diagnostic-only and must not turn a
+/// completed render into an ambient host failure.
+#[derive(Debug, Clone, Default)]
+pub struct FlowchartEdgeTraceCollector(std::sync::Arc<std::sync::Mutex<Vec<FlowchartEdgeTrace>>>);
+
+impl FlowchartEdgeTraceCollector {
+    pub(crate) fn record(&self, trace: FlowchartEdgeTrace) {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(trace);
+    }
+
+    /// Returns a snapshot without consuming the collected records.
+    pub fn snapshot(&self) -> Vec<FlowchartEdgeTrace> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Drains all records collected so far.
+    pub fn drain(&self) -> Vec<FlowchartEdgeTrace> {
+        std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+}
+
+/// An opaque flowchart trace request created by [`SvgDebugOptions::with_flowchart_edge_trace`].
+#[derive(Debug, Clone)]
+pub struct FlowchartEdgeTraceRequest {
+    edge_id: String,
+    collector: FlowchartEdgeTraceCollector,
+}
+
 /// Diagnostic visibility controls kept separate from production render requests.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct SvgDebugOptions {
     pub include_edges: bool,
     pub include_nodes: bool,
@@ -182,8 +255,12 @@ pub struct SvgDebugOptions {
     pub include_cluster_debug_markers: bool,
     pub include_edge_id_labels: bool,
     pub include_timing_diagnostics: bool,
-    pub flowchart_trace_edge_id: Option<String>,
-    pub flowchart_trace_output_path: Option<std::path::PathBuf>,
+    /// Optional caller-owned trace collection request.
+    ///
+    /// Use [`SvgDebugOptions::with_flowchart_edge_trace`] to construct a non-empty request. The
+    /// field remains publicly updateable so existing `SvgDebugOptions { ..Default::default() }`
+    /// callers keep their normal Rust struct-update ergonomics.
+    pub flowchart_edge_trace: Option<FlowchartEdgeTraceRequest>,
 }
 
 impl Default for SvgDebugOptions {
@@ -195,9 +272,32 @@ impl Default for SvgDebugOptions {
             include_cluster_debug_markers: false,
             include_edge_id_labels: false,
             include_timing_diagnostics: false,
-            flowchart_trace_edge_id: None,
-            flowchart_trace_output_path: None,
+            flowchart_edge_trace: None,
         }
+    }
+}
+
+impl SvgDebugOptions {
+    /// Captures diagnostics for one edge in caller-owned memory.
+    ///
+    /// This replaces the former implicit current-working-directory trace file. Hosts that want a
+    /// file must drain `collector` after rendering and perform their own checked I/O.
+    pub fn with_flowchart_edge_trace(
+        mut self,
+        edge_id: impl Into<String>,
+        collector: FlowchartEdgeTraceCollector,
+    ) -> Self {
+        self.flowchart_edge_trace = Some(FlowchartEdgeTraceRequest {
+            edge_id: edge_id.into(),
+            collector,
+        });
+        self
+    }
+
+    pub(crate) fn flowchart_edge_trace(&self) -> Option<(&str, &FlowchartEdgeTraceCollector)> {
+        self.flowchart_edge_trace
+            .as_ref()
+            .map(|trace| (trace.edge_id.as_str(), &trace.collector))
     }
 }
 
@@ -205,6 +305,7 @@ pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
     session: &'a RenderSession,
     text_measurer: RoutedTextMeasurer<'a>,
+    timing: timing::RenderTiming,
     pub(crate) debug: &'a SvgDebugOptions,
 }
 
@@ -213,13 +314,24 @@ impl<'a> SvgExecution<'a> {
         request: &'a SvgRenderOptions,
         debug: &'a SvgDebugOptions,
         session: &'a RenderSession,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let timing = if debug.include_timing_diagnostics {
+            timing::RenderTiming::enabled(
+                session
+                    .operation_context()
+                    .require_timing()
+                    .map_err(Error::from)?,
+            )
+        } else {
+            timing::RenderTiming::disabled()
+        };
+        Ok(Self {
             request,
             session,
             text_measurer: session.text_measurer(TextMeasurementPhase::SvgBBox),
+            timing,
             debug,
-        }
+        })
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn TextMeasurer {
@@ -239,11 +351,31 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn unix_ms(&self) -> i64 {
-        self.session.time().unix_ms()
+        self.session.unix_millis()
     }
 
-    pub(crate) const fn seed(&self) -> u64 {
-        self.session.seed().seed().get()
+    pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+        self.session.local_time_zone()
+    }
+
+    pub(crate) fn seed(&self) -> u64 {
+        self.session.render_seed().get()
+    }
+
+    pub(crate) fn rough_randomness(
+        &self,
+        number: f64,
+        owner_domain: &str,
+    ) -> roughr::core::RoughRandomness {
+        let operation = self.session.operation_context();
+        roughr::core::RoughRandomness::new(
+            roughr::core::RoughJsSeed::new(number),
+            roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
+        )
+    }
+
+    pub(crate) fn timing(&self) -> timing::RenderTiming {
+        self.timing
     }
 
     pub(crate) const fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
@@ -257,10 +389,11 @@ impl<'a> SvgExecution<'a> {
         let configured = effective_config
             .get("handDrawnSeed")
             .and_then(serde_json::Value::as_f64);
-        let replacement = match configured {
-            Some(seed) if seed != 0.0 => u64::from(javascript_to_uint32(seed)),
-            _ => self.seed(),
-        };
+        if configured.is_some_and(|seed| seed != 0.0) {
+            return Cow::Borrowed(effective_config);
+        }
+
+        let replacement = self.seed();
         if effective_config
             .get("handDrawnSeed")
             .and_then(serde_json::Value::as_u64)
@@ -290,13 +423,6 @@ impl<'a> SvgExecution<'a> {
     }
 }
 
-fn javascript_to_uint32(value: f64) -> u32 {
-    if !value.is_finite() || value == 0.0 {
-        return 0;
-    }
-    value.trunc().rem_euclid(4_294_967_296.0) as u32
-}
-
 impl std::ops::Deref for SvgExecution<'_> {
     type Target = SvgRenderOptions;
 
@@ -310,11 +436,12 @@ pub(crate) fn with_test_svg_execution<T>(
     request: &SvgRenderOptions,
     run: impl FnOnce(&SvgExecution<'_>) -> T,
 ) -> T {
-    let session = crate::environment::RenderEnvironment::parity()
+    let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("create test render session");
     let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(request, &debug, &session);
+    let execution = SvgExecution::new(request, &debug, &session)
+        .expect("default test SVG execution does not request timing");
     run(&execution)
 }
 
@@ -327,7 +454,7 @@ pub(crate) fn render_builtin_family_artifact(
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
+    let execution = SvgExecution::new(options, debug, session)?;
     let rooted_svg = render_builtin_family_artifact_raw(
         family,
         effective_config,
@@ -625,36 +752,69 @@ mod operation_time_tests {
 
     #[test]
     fn svg_execution_uses_the_operation_session_time() {
-        let snapshot = crate::environment::RenderTimeSnapshot::from_unix_millis(1_000, 0)
-            .expect("valid operation time");
-        let session = crate::environment::RenderEnvironment::parity()
-            .with_time_snapshot(snapshot)
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_runtime_policy(
+                merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
+            )
             .begin_session()
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session);
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
-        assert_eq!(execution.unix_ms(), session.time().unix_ms());
+        assert_eq!(execution.unix_ms(), session.unix_millis());
     }
 
     #[test]
-    fn svg_execution_normalizes_nonzero_hand_drawn_seeds_like_javascript() {
-        let session = crate::environment::RenderEnvironment::parity()
+    fn svg_execution_preserves_truthy_javascript_number_seeds() {
+        let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session);
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
-        for (seed, expected) in [
-            (serde_json::json!(-1), u64::from(u32::MAX)),
-            (serde_json::json!(1.75), 1),
-            (serde_json::json!(4_294_967_297_u64), 1),
+        for seed in [
+            serde_json::json!(-1),
+            serde_json::json!(1.75),
+            serde_json::json!(4_294_967_297_u64),
         ] {
             let config = serde_json::json!({ "handDrawnSeed": seed });
             let effective = execution.effective_config_value(&config);
-            assert_eq!(effective["handDrawnSeed"].as_u64(), Some(expected));
+            assert_eq!(effective.as_ref(), &config);
         }
+    }
+
+    #[test]
+    fn svg_execution_owns_falsy_seed_replacement_and_shared_math_random_stream() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin render session");
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({ "handDrawnSeed": 0 }),
+        ] {
+            let effective = execution.effective_config_value(&config);
+            assert_eq!(effective["handDrawnSeed"].as_u64(), Some(execution.seed()));
+        }
+
+        let randomness = execution.rough_randomness(0.0, "render.test.roughjs");
+        assert_eq!(
+            randomness.math_random().initial_seed(),
+            session
+                .operation_context()
+                .derive_u64("render.test.roughjs", 0)
+        );
+        assert_ne!(
+            randomness.math_random().initial_seed(),
+            execution
+                .rough_randomness(0.0, "render.other.roughjs")
+                .math_random()
+                .initial_seed()
+        );
     }
 }

@@ -46,7 +46,7 @@ fn deep_ishikawa_source(depth: usize) -> String {
 
 #[test]
 fn ishikawa_typed_render_model_outputs_svg() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"---
 config:
   ishikawa:
@@ -225,7 +225,7 @@ ishikawa-beta
         First detail
 "##
         );
-        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let parsed = legacy_init_theme_compat_engine()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
@@ -418,7 +418,7 @@ ishikawa-beta
 
 #[test]
 fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())

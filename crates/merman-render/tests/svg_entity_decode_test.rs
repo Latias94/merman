@@ -16,7 +16,7 @@ fn fixtures_root() -> PathBuf {
 }
 
 fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
-    let session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let mmd_path = fixtures_root().join(rel_fixture_path);

@@ -15,11 +15,14 @@ pub(super) struct ClassRenderSettings {
     pub(super) default_node_stroke: String,
     pub(super) security_level_loose: bool,
     pub(super) look: String,
-    pub(super) hand_drawn_seed: u64,
+    pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
 }
 
 impl ClassRenderSettings {
-    pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
+    pub(super) fn from_config(
+        effective_config: &serde_json::Value,
+        hand_drawn_seed: roughr::core::RoughRandomness,
+    ) -> Self {
         let config = crate::class::config::ClassConfigView::new(effective_config);
 
         let diagram_use_html_labels = config.render_diagram_html_labels();
@@ -40,11 +43,6 @@ impl ClassRenderSettings {
             .and_then(serde_json::Value::as_str)
             == Some("loose");
         let look = config.diagram_look();
-        let hand_drawn_seed = effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-
         Self {
             diagram_use_html_labels,
             edge_use_html_labels,

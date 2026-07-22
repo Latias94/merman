@@ -47,12 +47,6 @@ fn write_swimlane_rect(
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
-        let seed = ctx
-            .config
-            .as_value()
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
         // RoughJS creates the outline before the fill. Generating both paths
         // and omitting the fill path for the body therefore preserves the
         // exact seeded outline used by `fill: none` upstream.
@@ -69,7 +63,7 @@ fn write_swimlane_rect(
                 SWIMLANE_HAND_DRAWN_FILL_WEIGHT,
                 SWIMLANE_HAND_DRAWN_HACHURE_GAP,
                 SWIMLANE_HAND_DRAWN_ROUGHNESS,
-                seed,
+                &ctx.hand_drawn_seed,
             )
         {
             out.push_str("<g>");

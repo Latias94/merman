@@ -1377,7 +1377,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     // uses the default engine configuration.
     let engine = merman::Engine::new();
     let layout_opts = merman_render::LayoutOptions::default();
-    let session = merman::render::RenderEnvironment::parity()
+    let session = merman::render::RenderEnvironment::deterministic()
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
@@ -1410,13 +1410,12 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         diagram_id: Some(fixture_name.to_string()),
         ..Default::default()
     };
-    let debug = merman_render::svg::SvgDebugOptions {
-        flowchart_trace_edge_id: Some(edge_id.to_string()),
-        flowchart_trace_output_path: Some(out.clone()),
-        ..Default::default()
-    };
+    let trace_collector = merman_render::svg::FlowchartEdgeTraceCollector::default();
+    let debug = merman_render::svg::SvgDebugOptions::default()
+        .with_flowchart_edge_trace(edge_id.to_string(), trace_collector.clone());
 
-    // Render once to trigger the trace emission inside `merman-render`.
+    // Render once to collect the trace in caller-owned memory. This command owns the checked
+    // serialization and filesystem boundary below.
     let rendered = artifact
         .render_svg(&svg_opts, &debug)
         .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
@@ -1434,7 +1433,15 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         println!();
     }
 
-    let trace_json = fs::read_to_string(&out).map_err(|source| XtaskError::ReadFile {
+    let trace = trace_collector
+        .drain()
+        .into_iter()
+        .find(|trace| trace.edge_id == edge_id)
+        .ok_or_else(|| {
+            XtaskError::DebugSvgFailed(format!("render did not collect trace for edge {edge_id:?}"))
+        })?;
+    let trace_json = serde_json::to_string_pretty(&trace)?;
+    fs::write(&out, &trace_json).map_err(|source| XtaskError::WriteFile {
         path: out.display().to_string(),
         source,
     })?;
@@ -1611,7 +1618,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     } else {
         merman::render::TextMeasurementPolicy::deterministic()
     };
-    let session = merman::render::RenderEnvironment::parity()
+    let session = merman::render::RenderEnvironment::deterministic()
         .with_text_measurement_policy(measurement_policy)
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;

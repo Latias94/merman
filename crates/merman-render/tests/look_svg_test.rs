@@ -9,7 +9,7 @@ use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")

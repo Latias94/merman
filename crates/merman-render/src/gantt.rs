@@ -14,10 +14,12 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
-fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
-    merman_core::time::datetime_to_local_fixed(
-        dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()),
-    )
+fn dt_utc_to_local_fixed(
+    dt_utc: chrono::DateTime<chrono::Utc>,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<chrono::DateTime<FixedOffset>> {
+    local_time_zone
+        .datetime_to_local_fixed(dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()))
 }
 
 fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {
@@ -101,9 +103,13 @@ fn ordinal_suffix(n: u32) -> &'static str {
     }
 }
 
-fn format_dayjs_like(ms: i64, fmt: &str) -> Option<String> {
+fn format_dayjs_like(
+    ms: i64,
+    fmt: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<String> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let fmt = fmt.trim();
 
     let mut out = String::new();
@@ -194,8 +200,11 @@ fn format_dayjs_like(ms: i64, fmt: &str) -> Option<String> {
     Some(out)
 }
 
-fn format_yyyy_mm_dd(ms: i64) -> Option<String> {
-    format_dayjs_like(ms, "YYYY-MM-DD")
+fn format_yyyy_mm_dd(
+    ms: i64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<String> {
+    format_dayjs_like(ms, "YYYY-MM-DD", local_time_zone)
 }
 
 fn weekend_start_day(weekend: &str) -> u32 {
@@ -211,11 +220,12 @@ fn is_invalid_date(
     excludes: &[String],
     includes: &[String],
     weekend: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> bool {
-    let Some(formatted_date) = format_dayjs_like(ms, date_format) else {
+    let Some(formatted_date) = format_dayjs_like(ms, date_format, local_time_zone) else {
         return false;
     };
-    let Some(date_only) = format_yyyy_mm_dd(ms) else {
+    let Some(date_only) = format_yyyy_mm_dd(ms, local_time_zone) else {
         return false;
     };
 
@@ -229,7 +239,9 @@ fn is_invalid_date(
     let Some(dt_utc) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) else {
         return false;
     };
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let Some(dt) = dt_utc_to_local_fixed(dt_utc, local_time_zone) else {
+        return false;
+    };
     let iso_weekday = dt.weekday().number_from_monday();
 
     if excludes.iter().any(|t| t == "weekends") {
@@ -249,16 +261,16 @@ fn is_invalid_date(
         .any(|t| t == &formatted_date || t == &date_only)
 }
 
-fn start_of_day_ms(ms: i64) -> Option<i64> {
+fn start_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let d = dt.date_naive();
-    let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
+    let local_midnight = local_time_zone.datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
     Some(local_midnight?.timestamp_millis())
 }
 
-fn end_of_day_ms(ms: i64) -> Option<i64> {
-    let start = start_of_day_ms(ms)?;
+fn end_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
+    let start = start_of_day_ms(ms, local_time_zone)?;
     start.checked_add(MS_PER_DAY)?.checked_sub(1)
 }
 
@@ -443,9 +455,14 @@ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
     }
 }
 
-fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
+fn add_interval(
+    ms: i64,
+    every: i64,
+    unit: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let next = match unit {
@@ -487,7 +504,7 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
         _ => return None,
     };
 
-    let out = merman_core::time::datetime_from_naive_local(next);
+    let out = local_time_zone.datetime_from_naive_local(next);
     Some(out?.timestamp_millis())
 }
 
@@ -504,9 +521,15 @@ fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
     }
 }
 
-fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>) -> Option<i64> {
+fn ceil_tick_start(
+    min_ms: i64,
+    every: i64,
+    unit: &str,
+    week_start: Option<&str>,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(min_ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let start = match unit {
@@ -680,18 +703,22 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
         _ => return None,
     };
 
-    let out = merman_core::time::datetime_from_naive_local(start);
+    let out = local_time_zone.datetime_from_naive_local(start);
     Some(out?.timestamp_millis())
 }
 
-fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
+fn add_d3_time_day_every(
+    ms: i64,
+    every: i64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let e = every.max(1);
     if e <= 1 {
-        return add_interval(ms, 1, "day");
+        return add_interval(ms, 1, "day", local_time_zone);
     }
 
     // D3's `timeDay.every(e)` uses a filtered interval based on `(date.getDate() - 1) % e`.
@@ -728,7 +755,7 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
         naive.time().second(),
     )?;
 
-    let out = merman_core::time::datetime_from_naive_local(next);
+    let out = local_time_zone.datetime_from_naive_local(next);
     Some(out?.timestamp_millis())
 }
 
@@ -908,15 +935,28 @@ fn format_axis_tick_label(d: chrono::DateTime<FixedOffset>, axis_format: &str) -
     out
 }
 
-fn build_ticks(
+struct GanttTickRequest<'a> {
     min_ms: i64,
     max_ms: i64,
     range: f64,
     left_padding: f64,
-    axis_format: &str,
-    tick_interval: Option<&str>,
-    week_start: Option<&str>,
-) -> Vec<GanttAxisTickLayout> {
+    axis_format: &'a str,
+    tick_interval: Option<&'a str>,
+    week_start: Option<&'a str>,
+    local_time_zone: &'a merman_core::time::LocalTimeZone,
+}
+
+fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
+    let GanttTickRequest {
+        min_ms,
+        max_ms,
+        range,
+        left_padding,
+        axis_format,
+        tick_interval,
+        week_start,
+        local_time_zone,
+    } = request;
     const MAX_TICK_COUNT: f64 = 10_000.0;
 
     fn estimate_ticks(min_ms: i64, max_ms: i64, every: i64, unit: &str) -> f64 {
@@ -956,7 +996,8 @@ fn build_ticks(
     };
 
     let mut ticks = Vec::new();
-    let mut cur = ceil_tick_start(min_ms, every, unit, week_start).unwrap_or(min_ms);
+    let mut cur =
+        ceil_tick_start(min_ms, every, unit, week_start, local_time_zone).unwrap_or(min_ms);
     let max_ticks = 2000;
     for _ in 0..max_ticks {
         if cur > max_ms {
@@ -964,7 +1005,8 @@ fn build_ticks(
         }
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
         let label = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cur)
-            .map(|d| format_axis_tick_label(dt_utc_to_local_fixed(d), axis_format))
+            .and_then(|d| dt_utc_to_local_fixed(d, local_time_zone))
+            .map(|d| format_axis_tick_label(d, axis_format))
             .unwrap_or_default();
         ticks.push(GanttAxisTickLayout {
             time_ms: cur,
@@ -972,9 +1014,9 @@ fn build_ticks(
             label,
         });
         let next = if unit == "day" && every > 1 {
-            add_d3_time_day_every(cur, every)
+            add_d3_time_day_every(cur, every, local_time_zone)
         } else {
-            add_interval(cur, every, unit)
+            add_interval(cur, every, unit, local_time_zone)
         };
         let Some(next) = next else {
             break;
@@ -992,6 +1034,7 @@ pub fn layout_gantt_diagram_typed(
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
     let mut m = model.clone();
 
@@ -1104,14 +1147,20 @@ pub fn layout_gantt_diagram_typed(
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
     if has_excludes_layer {
-        let mut cur = start_of_day_ms(min_ms).unwrap_or(min_ms);
-        let max_day = start_of_day_ms(max_ms).unwrap_or(max_ms);
+        let mut cur = start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
+        let max_day = start_of_day_ms(max_ms, local_time_zone).unwrap_or(max_ms);
         let mut range_start: Option<i64> = None;
         let mut range_end: Option<i64> = None;
 
         while cur <= max_day {
-            let invalid =
-                is_invalid_date(cur, &m.date_format, &m.excludes, &m.includes, &m.weekend);
+            let invalid = is_invalid_date(
+                cur,
+                &m.date_format,
+                &m.excludes,
+                &m.includes,
+                &m.weekend,
+                local_time_zone,
+            );
             if invalid {
                 if range_start.is_none() {
                     range_start = Some(cur);
@@ -1122,10 +1171,10 @@ pub fn layout_gantt_diagram_typed(
             } else if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
                 let id = format!(
                     "exclude-{}",
-                    format_yyyy_mm_dd(s).unwrap_or_else(|| "invalid".to_string())
+                    format_yyyy_mm_dd(s, local_time_zone).unwrap_or_else(|| "invalid".to_string())
                 );
                 let x0 = scale_time(s, min_ms, max_ms, range) + left_padding;
-                let eod = end_of_day_ms(e).unwrap_or(e);
+                let eod = end_of_day_ms(e, local_time_zone).unwrap_or(e);
                 let x1 = scale_time(eod, min_ms, max_ms, range) + left_padding;
                 excludes_layout.push(GanttExcludeRangeLayout {
                     id,
@@ -1413,29 +1462,31 @@ pub fn layout_gantt_diagram_typed(
         Some(m.weekday.as_str())
     };
     let bottom_ticks = if has_tasks {
-        build_ticks(
+        build_ticks(GanttTickRequest {
             min_ms,
             max_ms,
             range,
             left_padding,
-            &axis_format,
+            axis_format: &axis_format,
             tick_interval,
             week_start,
-        )
+            local_time_zone,
+        })
     } else {
         Vec::new()
     };
     let top_axis_enabled = m.top_axis || cfg_top_axis;
     let top_ticks = if has_tasks && top_axis_enabled {
-        build_ticks(
+        build_ticks(GanttTickRequest {
             min_ms,
             max_ms,
             range,
             left_padding,
-            &axis_format,
+            axis_format: &axis_format,
             tick_interval,
             week_start,
-        )
+            local_time_zone,
+        })
     } else {
         Vec::new()
     };

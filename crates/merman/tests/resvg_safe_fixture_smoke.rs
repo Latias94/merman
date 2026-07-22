@@ -382,7 +382,7 @@ fn assert_expected_labels_and_colors(
 
 #[cfg(feature = "raster")]
 fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
-    let session = merman::render::RenderEnvironment::parity()
+    let session = merman::render::RenderEnvironment::deterministic()
         .begin_session()
         .expect("fixture render session");
     let svg = merman::render::finalize_resvg_svg(svg, &session)

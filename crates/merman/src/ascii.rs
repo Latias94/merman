@@ -2,8 +2,9 @@ pub use merman_ascii::{
     AsciiCapability, AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorTheme,
     AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiRenderOptions, AsciiRenderer, AsciiRgb,
     AsciiSupportLevel, AsciiTerminalPalette, ascii_capabilities, ascii_supported_diagram_types,
-    render_class, render_er, render_flowchart, render_gantt, render_git_graph, render_journey,
-    render_kanban, render_mindmap, render_model, render_packet, render_sequence, render_timeline,
+    render_class, render_er, render_flowchart, render_gantt, render_gantt_with_local_time_zone,
+    render_git_graph, render_journey, render_kanban, render_mindmap, render_model,
+    render_model_with_local_time_zone, render_packet, render_sequence, render_timeline,
     render_tree_view, render_xychart,
 };
 
@@ -14,7 +15,7 @@ pub enum HeadlessAsciiError {
     #[error(transparent)]
     Ascii(#[from] merman_ascii::AsciiError),
     #[error(transparent)]
-    LocalTimeZone(#[from] merman_core::time::LocalTimeZoneError),
+    RuntimePolicy(#[from] merman_core::runtime::RuntimePolicyError),
     #[error(transparent)]
     Resource(#[from] merman_core::resources::InputResourceLimitExceeded),
 }
@@ -26,10 +27,12 @@ fn render_model_with_engine_time(
     model: &merman_core::diagram::RenderSemanticModel,
     ascii_options: &AsciiRenderOptions,
 ) -> Result<String> {
-    let time_zone = engine.local_time_zone().map_err(Clone::clone)?;
-    Ok(merman_core::time::with_local_time_zone(time_zone, || {
-        merman_ascii::render_model(model, ascii_options)
-    })?)
+    let context = engine.begin_operation()?;
+    Ok(merman_ascii::render_model_with_local_time_zone(
+        model,
+        ascii_options,
+        context.local_time_zone(),
+    )?)
 }
 
 /// Synchronous ASCII/Unicode render helper (executor-free).
@@ -61,15 +64,18 @@ fn render_ascii_with_resource_policy_sync(
     resources: &merman_core::resources::InputResourcePolicy,
 ) -> Result<Option<String>> {
     resources.check_source_bytes(text)?;
-    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
+    let context = engine.begin_operation()?;
+    let operation_engine = engine.clone().with_operation_context(context.clone());
+    let Some(parsed) = operation_engine.parse_diagram_for_render_model_sync(text, parse_options)?
+    else {
         return Ok(None);
     };
     resources.check_render_model(parsed.model())?;
 
-    Ok(Some(render_model_with_engine_time(
-        engine,
+    Ok(Some(merman_ascii::render_model_with_local_time_zone(
         parsed.model(),
         ascii_options,
+        context.local_time_zone(),
     )?))
 }
 
@@ -112,6 +118,10 @@ impl HeadlessAsciiRenderer {
         Self::default()
     }
 
+    pub fn try_native() -> Result<Self> {
+        Ok(Self::new().with_runtime_policy(merman_core::runtime::RuntimePolicy::try_native()?))
+    }
+
     pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
         self.engine = engine;
         self
@@ -122,18 +132,16 @@ impl HeadlessAsciiRenderer {
         self
     }
 
-    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.engine = self.engine.with_fixed_today(today);
+    pub fn with_runtime_policy(mut self, policy: merman_core::runtime::RuntimePolicy) -> Self {
+        self.engine = self.engine.with_runtime_policy(policy);
         self
     }
 
-    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.engine = self.engine.with_fixed_local_offset_minutes(offset_minutes);
-        self
-    }
-
-    pub fn with_local_time_zone(mut self, time_zone: merman_core::time::LocalTimeZone) -> Self {
-        self.engine = self.engine.with_local_time_zone(time_zone);
+    pub fn with_operation_context(
+        mut self,
+        context: merman_core::runtime::OperationContext,
+    ) -> Self {
+        self.engine = self.engine.with_operation_context(context);
         self
     }
 
@@ -229,11 +237,12 @@ mod headless_ascii_renderer_tests {
 
     #[test]
     fn headless_ascii_renderer_fixed_time_controls_semantic_parse() {
-        let renderer = HeadlessAsciiRenderer::new()
-            .with_fixed_today(Some(
-                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0));
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today");
+        let policy = merman_core::runtime::RuntimePolicy::deterministic()
+            .try_with_fixed_local_offset_minutes(0)
+            .expect("valid UTC offset")
+            .with_fixed_today(Some(today));
+        let renderer = HeadlessAsciiRenderer::new().with_runtime_policy(policy);
         let parsed = renderer
             .parse_diagram_sync(
                 r#"gantt
@@ -258,22 +267,23 @@ Missing ref: id2,after missing,1d
 
     #[test]
     fn headless_ascii_renderer_fixed_local_offset_controls_gantt_render_dates() {
+        let policy = merman_core::runtime::RuntimePolicy::deterministic()
+            .try_with_fixed_local_offset_minutes(14 * 60)
+            .expect("valid fixed offset");
         let renderer = HeadlessAsciiRenderer::new()
             .with_strict_parsing()
-            .with_fixed_local_offset_minutes(Some(14 * 60));
+            .with_runtime_policy(policy);
 
-        let ambient_utc = merman_core::time::LocalTimeZone::utc();
-        let rendered = merman_core::time::with_local_time_zone(&ambient_utc, || {
-            renderer.render_ascii_sync(
+        let rendered = renderer
+            .render_ascii_sync(
                 r#"gantt
 dateFormat YYYY-MM-DD
 section Demo
 Task: task1, 2026-01-01, 1d
 "#,
             )
-        })
-        .unwrap()
-        .unwrap();
+            .unwrap()
+            .unwrap();
 
         assert!(
             rendered.contains("  - Task [2026-01-01 -> 2026-01-02]"),

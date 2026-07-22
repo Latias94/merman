@@ -3,6 +3,7 @@ use crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
+use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
 
@@ -14,7 +15,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub bounds_dx: f64,
     pub bounds_dy: f64,
     pub look: &'a str,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 pub(super) fn render_class_namespace_cluster_group(
@@ -22,8 +23,8 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> web_time::Duration {
-    let clusters_start = ctx.timing_enabled.then(web_time::Instant::now);
+) -> std::time::Duration {
+    let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
     for c in clusters {
         let w = c.width.max(1.0);

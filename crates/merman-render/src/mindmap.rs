@@ -292,14 +292,10 @@ fn layout_mindmap_diagram_model(
             let _ = edge_idx;
         }
 
-        let positions = manatee::algo::cose_bilkent::layout_indexed(
-            &indexed_nodes,
-            &indexed_edges,
-            &Default::default(),
-        )
-        .map_err(|e| Error::InvalidModel {
-            message: format!("manatee layout failed: {e}"),
-        })?;
+        let positions = manatee::algo::cose_bilkent::layout_indexed(&indexed_nodes, &indexed_edges)
+            .map_err(|e| Error::InvalidModel {
+                message: format!("manatee layout failed: {e}"),
+            })?;
 
         for (n, p) in nodes.iter_mut().zip(positions) {
             n.x = p.x;

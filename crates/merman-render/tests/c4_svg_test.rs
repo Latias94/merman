@@ -59,7 +59,7 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
 
 #[test]
 fn c4_public_layout_handles_deep_boundary_chain() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     const DEPTH: usize = 1500;
     let source = deep_c4_boundary_chain(DEPTH);
 
@@ -95,10 +95,12 @@ fn c4_type_text_length_comes_from_canonical_text_measurement() {
         "test",
     )
     .unwrap();
-    let environment =
-        RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::uniform(
-            TextMeasurementProfile::new(identity, Arc::new(C4TypeWidthProbe)),
-        ));
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(C4TypeWidthProbe),
+        )),
+    );
     let svg = render_c4_svg_with_environment(
         r#"C4Context
 Person(person, "Person")

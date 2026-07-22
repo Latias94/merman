@@ -356,7 +356,7 @@ if (surfaceContract.render) {
 const capabilities = api.bindingCapabilities();
 const runtimeContract = api.runtimeContract();
 const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
-assert.equal(runtimeContract.schema_version, 3);
+assert.equal(runtimeContract.schema_version, 4);
 assert.equal(runtimeContract.abi_version, api.abiVersion());
 assert.equal(runtimeContract.package_version, api.packageVersion());
 assert.equal(runtimeContract.options_schema_version, 1);
@@ -402,7 +402,7 @@ if (surfaceContract.render || surfaceContract.analysis || surfaceContract.ascii)
 assert.equal(typeof capabilities.render, "boolean");
 assert.equal(typeof capabilities.analysis, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
-assert.equal(typeof capabilities.core_host, "boolean");
+assert.deepEqual(capabilities.system_adapter_ids, []);
 assert.equal(typeof capabilities.cytoscape_layout, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 assert.equal(typeof capabilities.editor_language, "boolean");

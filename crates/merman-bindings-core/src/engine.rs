@@ -15,10 +15,42 @@ pub struct BindingEngine {
 }
 
 impl BindingEngine {
+    /// Creates a deterministic engine that never consults ambient host state.
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
+        Self::with_runtime_policy(
+            options_json,
+            merman::runtime::RuntimePolicy::deterministic(),
+        )
+    }
+
+    /// Creates an engine that explicitly selects the compiled native runtime adapters.
+    pub fn try_native(options_json: &[u8]) -> Result<Self, BindingError> {
+        let runtime_policy = merman::runtime::RuntimePolicy::try_native().map_err(|err| {
+            BindingError::new(
+                crate::BindingStatus::UnsupportedFormat,
+                format!("native runtime unavailable: {err}"),
+            )
+        })?;
+        Self::with_runtime_policy(options_json, runtime_policy)
+    }
+
+    pub fn with_operation_context(
+        options_json: &[u8],
+        context: merman::runtime::OperationContext,
+    ) -> Result<Self, BindingError> {
+        Self::with_runtime_policy(
+            options_json,
+            merman::runtime::RuntimePolicy::from_operation_context(context),
+        )
+    }
+
+    pub fn with_runtime_policy(
+        options_json: &[u8],
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
         #[cfg(not(any(feature = "analysis", feature = "render", feature = "ascii")))]
         {
-            let _ = options_json;
+            let _ = (options_json, runtime_policy);
             Ok(Self {})
         }
 
@@ -27,11 +59,21 @@ impl BindingEngine {
             let options = common::parse_options(options_json)?;
             Ok(Self {
                 #[cfg(feature = "analysis")]
-                analyzer: Analyzer::with_options(common::artifact_analysis_options(&options)?),
+                analyzer: Analyzer::with_options(
+                    common::artifact_analysis_options(&options)?.with_runtime_policy(
+                        common::binding_runtime_policy_from(&options, runtime_policy.clone())?,
+                    ),
+                ),
                 #[cfg(feature = "render")]
-                render: crate::render::CachedRenderEngine::new(&options)?,
+                render: crate::render::CachedRenderEngine::with_runtime_policy(
+                    &options,
+                    runtime_policy.clone(),
+                )?,
                 #[cfg(feature = "ascii")]
-                ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
+                ascii: crate::ascii::CachedAsciiEngine::with_runtime_policy(
+                    &options,
+                    runtime_policy,
+                )?,
             })
         }
     }

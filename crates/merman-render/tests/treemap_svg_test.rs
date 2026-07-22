@@ -52,11 +52,9 @@ fn counting_treemap_environment(host: Arc<CountingTreemapHost>) -> RenderEnviron
         "1",
     )
     .expect("valid profile identity");
-    RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::host_display(
-        identity,
-        host,
-        TextMeasurementPhase::ALL,
-    ))
+    RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host, TextMeasurementPhase::ALL),
+    )
 }
 
 fn workspace_root() -> PathBuf {
@@ -127,7 +125,7 @@ fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json:
     let effective_config = parsed.metadata().effective_config.as_value().clone();
 
     let layout_options = LayoutOptions::default();
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
@@ -292,7 +290,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     assert_eq!(parsed.metadata().diagram_type, "error");
 
     let layout_options = LayoutOptions::default();
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
@@ -319,7 +317,7 @@ fn treemap_typed_layout_handles_deep_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let session = RenderEnvironment::parity()
+    let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
     let RenderSemanticModel::Treemap(model) = parsed.model() else {
@@ -403,7 +401,7 @@ title Routed title
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let parity_session = RenderEnvironment::parity().begin_session().unwrap();
+    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
         .expect("parity layout");
     let parity_svg = parity_artifact

@@ -22,13 +22,21 @@ fn parse_with_site_config(text: &str, site_config: Option<MermaidConfig>) -> Val
         .model
 }
 
+fn with_test_local_time_zone<R>(time_zone: crate::time::LocalTimeZone, f: impl FnOnce() -> R) -> R {
+    let context = crate::runtime::RuntimePolicy::deterministic()
+        .with_local_time_zone(time_zone)
+        .begin_operation()
+        .expect("test operation context");
+    crate::runtime::with_operation_context(&context, f)
+}
+
 fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
     let m = m0 + 1;
     let naive = NaiveDate::from_ymd_opt(y, m, d)
         .unwrap()
         .and_hms_opt(h, min, s)
         .unwrap();
-    crate::time::datetime_from_naive_local(naive)
+    crate::runtime::datetime_from_naive_local(naive)
         .expect("test datetime is supported by the active timezone")
         .timestamp_millis()
 }
@@ -514,7 +522,8 @@ fn gantt_render_model_uses_fixed_today_for_missing_year_dates() {
         .with_fixed_today(Some(
             NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
         ))
-        .with_fixed_local_offset_minutes(Some(0));
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("UTC is a valid fixed offset");
     let parsed = block_on(engine.parse_diagram_for_render_model(
         r#"
 gantt
@@ -737,7 +746,7 @@ test1: id1,202304,1d
 #[test]
 fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
     let utc = crate::time::LocalTimeZone::utc();
-    crate::time::with_local_time_zone(&utc, || {
+    with_test_local_time_zone(utc, || {
         let dt = parse_js_date_fallback("10000").unwrap();
         assert_eq!(dt.year(), 10000);
 
@@ -746,11 +755,11 @@ fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
     });
 }
 
-#[cfg(feature = "host-clock")]
+#[cfg(feature = "system-timezone")]
 #[test]
 fn gantt_js_date_fallback_supports_upper_guardrail_in_system_timezone() {
-    let system = crate::time::LocalTimeZone::system();
-    crate::time::with_local_time_zone(&system, || {
+    let system = crate::time::LocalTimeZone::try_system().expect("system time-zone adapter");
+    with_test_local_time_zone(system, || {
         let dt = parse_js_date_fallback("10000").unwrap();
         assert_eq!(dt.year(), 10000);
     });
@@ -795,7 +804,7 @@ fn gantt_parse_duration_matches_upstream_examples() {
 #[test]
 fn gantt_duration_arithmetic_rejects_unrepresentable_ranges_without_panicking() {
     let utc = crate::time::LocalTimeZone::utc();
-    crate::time::with_local_time_zone(&utc, || {
+    with_test_local_time_zone(utc, || {
         let base = local_from_naive(
             NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
@@ -845,7 +854,7 @@ fn gantt_maximum_date_semantic_model_supports_one_millisecond_duration() {
             .timestamp_millis();
     let source = format!("gantt\ndateFormat x\nsection Boundary\nTask: task,{max_ms},1ms\n");
     let utc = crate::time::LocalTimeZone::utc();
-    let parsed = crate::time::with_local_time_zone(&utc, || {
+    let parsed = with_test_local_time_zone(utc, || {
         block_on(Engine::new().parse_diagram(&source, ParseOptions::default()))
     })
     .expect("one millisecond remains representable on NaiveDate::MAX")

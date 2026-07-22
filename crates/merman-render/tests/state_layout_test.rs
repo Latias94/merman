@@ -55,7 +55,7 @@ fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagra
     let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected State render model");
     };
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     layout_state_diagram_typed(
@@ -77,7 +77,7 @@ fn layout_state_from_text_with_options(
     let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected State render model");
     };
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     layout_state_diagram_typed(

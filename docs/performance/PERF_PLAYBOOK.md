@@ -77,8 +77,8 @@ Notes:
 SVG emission timing is an explicit per-request debug choice. Direct `merman-render` callers can
 set `SvgDebugOptions::include_timing_diagnostics` and use a `*_with_debug` render entry point.
 Layout timing is intentionally measured by Criterion or an external profiler instead of hidden
-process-global switches. `MANATEE_COSE_TIMING=1` remains available for the lower-level
-COSE-Bilkent implementation.
+process-global switches. Profile the lower-level COSE-Bilkent implementation through the same
+explicit benchmark or profiler boundary.
 
 ## Reporting conventions
 

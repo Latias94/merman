@@ -122,41 +122,8 @@ fn update_input_graph(
 }
 
 fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let timing_enabled = std::env::var("DUGONG_LAYOUT_TIMING")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    #[derive(Debug, Default, Clone)]
-    struct LayoutTimings {
-        total: web_time::Duration,
-        preprocess: web_time::Duration,
-        self_edges_remove: web_time::Duration,
-        acyclic: web_time::Duration,
-        nesting_run: web_time::Duration,
-        rank: web_time::Duration,
-        edge_label_proxies: web_time::Duration,
-        assign_rank_min_max: web_time::Duration,
-        normalize_run: web_time::Duration,
-        compound_border: web_time::Duration,
-        order: web_time::Duration,
-        coord_adjust: web_time::Duration,
-        self_edges_insert: web_time::Duration,
-        layering_y: web_time::Duration,
-        position_x: web_time::Duration,
-        self_edges_position: web_time::Duration,
-        remove_border_nodes: web_time::Duration,
-        normalize_undo: web_time::Duration,
-        translate: web_time::Duration,
-        edge_points: web_time::Duration,
-        acyclic_undo: web_time::Duration,
-    }
-
-    let total_start = timing_enabled.then(web_time::Instant::now);
-    let mut timings = LayoutTimings::default();
-
     // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
     // (we later materialize label nodes in `normalize::run`).
-    let preprocess_start = timing_enabled.then(web_time::Instant::now);
     g.graph_mut().ranksep /= 2.0;
     let rankdir = g.graph().rankdir;
     g.for_each_edge_mut(|_ek, e| {
@@ -168,18 +135,10 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
     });
-    if let Some(s) = preprocess_start {
-        timings.preprocess = s.elapsed();
-    }
-
     // Dagre removes self-loops before ranking/normalization and re-inserts them during positioning
     // via dummy "selfedge" nodes. This avoids invalid rank constraints and gives self-loops a
     // deterministic, spacing-aware offset in BK positioning.
-    let self_edges_remove_start = timing_enabled.then(web_time::Instant::now);
     self_edges::remove_self_edges(g);
-    if let Some(s) = self_edges_remove_start {
-        timings.self_edges_remove = s.elapsed();
-    }
 
     let mut has_compound_structure = false;
     g.for_each_node(|id, _n| {
@@ -194,33 +153,17 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         None
     };
 
-    let acyclic_start = timing_enabled.then(web_time::Instant::now);
     let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
         false
     } else {
         acyclic::run(g);
         true
     };
-    if let Some(s) = acyclic_start {
-        timings.acyclic = s.elapsed();
-    }
-
     // Mermaid's dagre adapter always enables `compound: true`, and Dagre's ranker expects a
     // connected graph. Nesting graph connects components (even if there are no explicit
     // subgraphs), preventing network-simplex from panicking on disconnected inputs.
-    if g.options().compound {
-        let nesting_start = timing_enabled.then(web_time::Instant::now);
-        let ran_nesting = if tiny_simple_chain {
-            false
-        } else {
-            nesting_graph::run(g);
-            true
-        };
-        if let Some(s) = nesting_start
-            && ran_nesting
-        {
-            timings.nesting_run = s.elapsed();
-        }
+    if g.options().compound && !tiny_simple_chain {
+        nesting_graph::run(g);
     }
 
     // Match upstream Dagre: ranking runs on a non-compound view of the graph so cluster nodes
@@ -228,7 +171,6 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     //
     // `nesting_graph::run` materializes border nodes and nesting edges; those border nodes are
     // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
-    let rank_start = timing_enabled.then(web_time::Instant::now);
     if tiny_simple_chain {
         // For the smallest flowcharts (e.g. `A --> B`) network-simplex + ordering overhead
         // dominates total runtime. A deterministic direct rank assignment keeps behavior
@@ -266,14 +208,9 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
     }
-    if let Some(s) = rank_start {
-        timings.rank = s.elapsed();
-    }
-
     // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
     // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with
     // the correct width/height, letting BK positioning account for edge labels.
-    let edge_proxy_start = timing_enabled.then(web_time::Instant::now);
     let mut edge_proxy_nodes: Vec<String> = Vec::new();
     // Only clone edge keys when a proxy is actually needed.
     let mut to_proxy: Vec<(graphlib::EdgeKey, i32)> = Vec::new();
@@ -356,15 +293,10 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
         let _ = g.remove_node(&v);
     }
-    if let Some(s) = edge_proxy_start {
-        timings.edge_label_proxies = s.elapsed();
-    }
-
     // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
     if g.options().compound && !tiny_simple_chain {
-        let span_start = timing_enabled.then(web_time::Instant::now);
         let node_ids = g.node_ids();
         for v in node_ids {
             let Some(node) = g.node(&v).cloned() else {
@@ -384,25 +316,13 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 n.max_rank = Some(max_rank);
             }
         }
-        if let Some(s) = span_start {
-            timings.assign_rank_min_max = s.elapsed();
-        }
     }
 
-    let normalize_run_start = timing_enabled.then(web_time::Instant::now);
     normalize::run(g);
-    if let Some(s) = normalize_run_start {
-        timings.normalize_run = s.elapsed();
-    }
     if g.options().compound && !tiny_simple_chain {
-        let border_start = timing_enabled.then(web_time::Instant::now);
         parent_dummy_chains::parent_dummy_chains(g);
         add_border_segments::add_border_segments(g);
-        if let Some(s) = border_start {
-            timings.compound_border = s.elapsed();
-        }
     }
-    let order_start = timing_enabled.then(web_time::Instant::now);
     if tiny_simple_chain {
         let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
         g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
@@ -428,27 +348,14 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             },
         );
     }
-    if let Some(s) = order_start {
-        timings.order = s.elapsed();
-    }
-
     // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
-    let coord_adjust_start = timing_enabled.then(web_time::Instant::now);
     coordinate_system::adjust(g);
-    if let Some(s) = coord_adjust_start {
-        timings.coord_adjust = s.elapsed();
-    }
 
     // Insert dummy self-edge nodes after ordering and rankdir transforms, so their sizes match the
     // active coordinate system (TB) and they can influence BK x-positioning.
-    let self_edges_insert_start = timing_enabled.then(web_time::Instant::now);
     self_edges::insert_self_edges(g);
-    if let Some(s) = self_edges_insert_start {
-        timings.self_edges_insert = s.elapsed();
-    }
 
     let rank_sep = g.graph().ranksep;
-    let layering_start = timing_enabled.then(web_time::Instant::now);
     let layering = util::build_layer_matrix(g);
 
     let mut prev_y: f64 = 0.0;
@@ -468,48 +375,26 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             prev_y += rank_sep;
         }
     }
-    if let Some(s) = layering_start {
-        timings.layering_y = s.elapsed();
-    }
-
-    let position_x_start = timing_enabled.then(web_time::Instant::now);
     let xs = position::bk::position_x_with_layering(g, &layering);
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
     });
-    if let Some(s) = position_x_start {
-        timings.position_x = s.elapsed();
-    }
-
     // Convert dummy self-edge nodes into self-loop edge point sequences and remove the dummy nodes.
-    let self_edges_position_start = timing_enabled.then(web_time::Instant::now);
     self_edges::position_self_edges(g);
-    if let Some(s) = self_edges_position_start {
-        timings.self_edges_position = s.elapsed();
-    }
 
     // Match upstream Dagre: `removeBorderNodes` runs after positioning and before `normalize.undo`.
     // It sets compound-node geometry (x/y/width/height) from border nodes, then removes all
     // border dummy nodes.
     if g.options().compound && !tiny_simple_chain {
-        let remove_border_start = timing_enabled.then(web_time::Instant::now);
         super::compound::remove_border_nodes(g);
-        if let Some(s) = remove_border_start {
-            timings.remove_border_nodes = s.elapsed();
-        }
     }
 
-    let normalize_undo_start = timing_enabled.then(web_time::Instant::now);
     normalize::undo(g);
     fixup_edge_label_coords(g);
     coordinate_system::undo(g);
-    if let Some(s) = normalize_undo_start {
-        timings.normalize_undo = s.elapsed();
-    }
 
     // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
     // `translateGraph(...)` behavior.
-    let translate_start = timing_enabled.then(web_time::Instant::now);
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
     let mut max_x: f64 = f64::NEG_INFINITY;
@@ -572,13 +457,8 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         g.graph_mut().width = graph_width;
         g.graph_mut().height = graph_height;
     }
-    if let Some(s) = translate_start {
-        timings.translate = s.elapsed();
-    }
-
     // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
     // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
-    let edge_points_start = timing_enabled.then(web_time::Instant::now);
     let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
     for e in edge_keys {
         let Some((sx, sy, sw, sh)) = g
@@ -660,46 +540,8 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             lbl.y = Some(ey);
         }
     }
-    if let Some(s) = edge_points_start {
-        timings.edge_points = s.elapsed();
-    }
-
-    let acyclic_undo_start = timing_enabled.then(web_time::Instant::now);
     if ran_acyclic {
         acyclic::undo(g);
-    }
-    if let Some(s) = acyclic_undo_start {
-        timings.acyclic_undo = s.elapsed();
-    }
-
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[dugong-timing] pipeline=layout nodes={} edges={} total={:?} preprocess={:?} self_edges_remove={:?} acyclic={:?} nesting_run={:?} rank={:?} edge_label_proxies={:?} assign_rank_min_max={:?} normalize_run={:?} compound_border={:?} order={:?} coord_adjust={:?} self_edges_insert={:?} layering_y={:?} position_x={:?} self_edges_position={:?} remove_border_nodes={:?} normalize_undo={:?} translate={:?} edge_points={:?} acyclic_undo={:?}",
-            g.node_count(),
-            g.edge_count(),
-            timings.total,
-            timings.preprocess,
-            timings.self_edges_remove,
-            timings.acyclic,
-            timings.nesting_run,
-            timings.rank,
-            timings.edge_label_proxies,
-            timings.assign_rank_min_max,
-            timings.normalize_run,
-            timings.compound_border,
-            timings.order,
-            timings.coord_adjust,
-            timings.self_edges_insert,
-            timings.layering_y,
-            timings.position_x,
-            timings.self_edges_position,
-            timings.remove_border_nodes,
-            timings.normalize_undo,
-            timings.translate,
-            timings.edge_points,
-            timings.acyclic_undo,
-        );
     }
 }
 

@@ -71,6 +71,7 @@ fn project_typst_capabilities(
     mut capabilities: merman_bindings_core::BindingCapabilities,
 ) -> merman_bindings_core::BindingCapabilities {
     capabilities.ascii = false;
+    capabilities.system_adapter_ids = &[];
     capabilities.ratex_math = false;
     capabilities.editor_language = false;
     capabilities.text_measurement.host_callback = false;
@@ -172,7 +173,8 @@ mod tests {
         assert_eq!(payload["render"], backend.render);
         assert_eq!(payload["analysis"], backend.analysis);
         assert_eq!(payload["ascii"], false);
-        assert_eq!(payload["core_host"], backend.core_host);
+        assert!(payload.get("core_host").is_none());
+        assert_eq!(payload["system_adapter_ids"], serde_json::json!([]));
         assert_eq!(payload["cytoscape_layout"], backend.cytoscape_layout);
         assert_eq!(payload["elk_layout"], backend.elk_layout);
         assert_eq!(payload["ratex_math"], false);
@@ -195,7 +197,12 @@ mod tests {
             render: true,
             analysis: true,
             ascii: true,
-            core_host: true,
+            system_adapter_ids: &[
+                "system-clock",
+                "system-timezone",
+                "system-random",
+                "system-timing",
+            ],
             cytoscape_layout: true,
             elk_layout: true,
             ratex_math: true,
@@ -213,7 +220,7 @@ mod tests {
         assert!(projected.elk_layout);
         assert!(projected.render);
         assert!(projected.analysis);
-        assert!(projected.core_host);
+        assert!(projected.system_adapter_ids.is_empty());
         assert!(projected.text_measurement.vendored);
         assert!(projected.text_measurement.deterministic);
         assert!(!projected.ascii);

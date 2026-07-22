@@ -21,8 +21,11 @@ name = "generate_python_package"
 required-features = ["bindgen-smoke"]
 
 [features]
-default = ["core-host", "render", "analysis", "ascii", "cytoscape-layout"]
-core-host = ["merman-bindings-core/core-host"]
+default = []
+system-clock = ["merman-bindings-core/system-clock"]
+system-timezone = ["merman-bindings-core/system-timezone"]
+system-random = ["merman-bindings-core/system-random"]
+system-timing = ["merman-bindings-core/system-timing"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]

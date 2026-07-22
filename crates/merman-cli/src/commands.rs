@@ -2,9 +2,7 @@ use crate::cli::{
     Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, LintArgs, LintOutputFormat,
     LintRulesArgs, ParseArgs, RenderCliArgs,
 };
-use crate::config::{
-    engine_for, parse_options, renderer_for, site_config_for, validate_time_policy,
-};
+use crate::config::{engine_for, parse_options, renderer_for, runtime_policy_for, site_config_for};
 use crate::error::CliError;
 use crate::io::{read_input, write_stdout, write_stdout_line};
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
@@ -231,13 +229,12 @@ fn lint_analyzer_options(
         fixed_local_offset_minutes: args.fixed_local_offset_minutes,
         ..Default::default()
     };
-    validate_time_policy(&time_args)?;
+    let runtime_policy = runtime_policy_for(&time_args)?;
     let site_config = site_config_for(&time_args, &RenderCliArgs::default())?;
     Ok(merman_analysis::AnalysisOptions::default()
         .with_source(source)
         .with_site_config(site_config)
-        .with_fixed_today(args.fixed_today)
-        .with_fixed_local_offset_minutes(args.fixed_local_offset_minutes)
+        .with_runtime_policy(runtime_policy)
         .with_max_source_bytes(args.max_source_bytes)
         .with_rule_config(lint_rule_config(args)))
 }

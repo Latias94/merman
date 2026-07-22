@@ -307,7 +307,7 @@ impl GitGraphDb {
         if let Some(prng) = self.prng.as_mut() {
             prng.make_random_hex(7)
         } else {
-            crate::runtime::generated_id_hex(7, self.seq as u64, 0x6769_7467_7261_7068)
+            crate::runtime::generated_id_hex("git-graph.commit-id", self.seq as u64, 7)
         }
     }
 
@@ -2226,9 +2226,8 @@ merge feature id:"M1"
         assert_eq!(base, vec!["0-5b722bd".to_string()]);
     }
 
-    #[cfg(not(feature = "host-random"))]
     #[test]
-    fn auto_commit_ids_are_deterministic_without_host_random() {
+    fn auto_commit_ids_are_deterministic_for_default_engine() {
         let first = commit_ids(&parse("gitGraph:\ncommit\ncommit\n"));
         let second = commit_ids(&parse("gitGraph:\ncommit\ncommit\n"));
 

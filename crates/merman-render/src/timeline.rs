@@ -1068,7 +1068,7 @@ mod tests {
         let RenderSemanticModel::Timeline(model) = parsed.model() else {
             panic!("expected timeline render model");
         };
-        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         layout_timeline_diagram_typed(
             model,

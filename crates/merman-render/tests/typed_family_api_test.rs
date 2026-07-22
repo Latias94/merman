@@ -14,7 +14,7 @@ fn parse_for_render(source: &str) -> ParsedDiagramRender {
 }
 
 fn render_session() -> RenderSession {
-    RenderEnvironment::parity().begin_session().unwrap()
+    RenderEnvironment::deterministic().begin_session().unwrap()
 }
 
 #[test]

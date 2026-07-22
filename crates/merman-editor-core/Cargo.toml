@@ -14,8 +14,11 @@ keywords = ["mermaid", "editor", "language-tools", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
 [features]
-default = ["core-host"]
-core-host = ["merman-analysis/core-host", "merman-core/host"]
+default = []
+system-clock = ["merman-analysis/system-clock", "merman-core/system-clock"]
+system-timezone = ["merman-analysis/system-timezone", "merman-core/system-timezone"]
+system-random = ["merman-analysis/system-random", "merman-core/system-random"]
+system-timing = ["merman-analysis/system-timing", "merman-core/system-timing"]
 
 [dependencies]
 merman-analysis.workspace = true

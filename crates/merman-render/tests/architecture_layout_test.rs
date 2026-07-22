@@ -13,7 +13,7 @@ fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
 }
 
 fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureDiagramLayout {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -27,7 +27,7 @@ fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureD
         model,
         parsed.metadata().effective_config.as_value(),
         &measurer,
-        session.seed().seed().get(),
+        session.render_seed().get(),
     )
     .expect("layout ok")
 }
@@ -136,7 +136,7 @@ fn disconnected_diagram() -> &'static str {
 
 #[test]
 fn architecture_default_layout_options_execute_fcose_layout() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(chain_diagram(), ParseOptions::strict())
@@ -179,7 +179,7 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
   align row a b
   align row b a
 "#;
-    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -194,7 +194,7 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
         model,
         parsed.metadata().effective_config.as_value(),
         &measurer,
-        session.seed().seed().get(),
+        session.render_seed().get(),
     )
     .expect_err("contradictory row constraints must fail at layout");
 

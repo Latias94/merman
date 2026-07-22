@@ -251,7 +251,7 @@ mod tests {
     use crate::svg::pipeline::{SvgPipeline, SvgPostprocessMetadata};
 
     fn render_session() -> crate::environment::RenderSession {
-        crate::environment::RenderEnvironment::parity()
+        crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
     }

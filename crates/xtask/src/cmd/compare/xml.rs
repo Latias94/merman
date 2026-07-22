@@ -303,7 +303,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         "deterministic" => merman::render::TextMeasurementPolicy::deterministic(),
         _ => merman::render::TextMeasurementPolicy::parity(),
     };
-    let verification_environment = merman::render::RenderEnvironment::parity()
+    let verification_environment = merman::render::RenderEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy.clone());
     let mut observed_operations =
         super::ObservedRenderOperations::from_environment(&verification_environment)?;
@@ -506,7 +506,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
                     })?
             } else {
-                merman::render::RenderEnvironment::parity()
+                merman::render::RenderEnvironment::deterministic()
             }
             .with_text_measurement_policy(text_measurement_policy.clone());
             if matches!(diagram.as_str(), "flowchart" | "sequence")
@@ -560,7 +560,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
             let prepared = if diagram == "gantt" {
                 let baseline_local_offset_minutes = super::gantt_baseline_local_offset_minutes();
-                let calibrated = super::gantt_calibrated_time_snapshot(
+                let calibrated = super::gantt_calibrated_runtime_policy(
                     &prepared,
                     &upstream_svg,
                     baseline_local_offset_minutes,
@@ -570,16 +570,10 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         "invalid calibrated Gantt baseline time for {stem}: {err}"
                     ))
                 })?;
-                if let Some(snapshot) = calibrated {
-                    let environment =
-                        super::gantt_compare_environment(baseline_local_offset_minutes)
-                            .map_err(|err| {
-                                XtaskError::SvgCompareFailed(format!(
-                                    "invalid Gantt baseline time: {err}"
-                                ))
-                            })?
-                            .with_time_snapshot(snapshot)
-                            .with_text_measurement_policy(text_measurement_policy.clone());
+                if let Some(runtime_policy) = calibrated {
+                    let environment = merman::render::RenderEnvironment::deterministic()
+                        .with_runtime_policy(runtime_policy)
+                        .with_text_measurement_policy(text_measurement_policy.clone());
                     let renderer = merman::render::HeadlessRenderer::new()
                         .with_engine(engine.clone())
                         .with_parse_options(merman::ParseOptions {
@@ -845,7 +839,7 @@ mod tests {
 
     #[test]
     fn svg_xml_report_does_not_claim_an_unobserved_operation() {
-        let environment = merman::render::RenderEnvironment::parity();
+        let environment = merman::render::RenderEnvironment::deterministic();
         let observed = super::super::ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let pinned = svg_xml_report_header(

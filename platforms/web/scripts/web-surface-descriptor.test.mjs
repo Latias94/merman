@@ -22,6 +22,7 @@ test("checked-in Web descriptor has one valid closed surface graph", () => {
     ({ name }) => name === "browser-bridge",
   );
   assert.deepEqual(bridge?.features, []);
+  assert.equal("core_host" in (bridge?.capabilities ?? {}), false);
   assert.ok(
     Object.keys(bridge?.capabilities ?? {}).length > 0 &&
       Object.values(bridge?.capabilities ?? {}).every((value) => value === false),
@@ -82,6 +83,16 @@ test("descriptor rejects dangling preset references and unknown runtime profiles
 test("descriptor requires the complete boolean capability record", () => {
   const descriptor = cloneDescriptor();
   delete descriptor.presets[0].capabilities.editor_language;
+
+  assert.throws(
+    () => parseWebSurfaceDescriptor(descriptor),
+    /capabilities keys must be exactly/,
+  );
+});
+
+test("descriptor rejects the removed aggregate host capability", () => {
+  const descriptor = cloneDescriptor();
+  descriptor.presets[0].capabilities.core_host = false;
 
   assert.throws(
     () => parseWebSurfaceDescriptor(descriptor),
