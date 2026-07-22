@@ -42,6 +42,8 @@ enum XtaskError {
     TextMeasurementAbi(String),
     #[error("capability surface descriptor is invalid: {0}")]
     CapabilitySurface(String),
+    #[error("LALRPOP parser generation is invalid: {0}")]
+    LalrpopParsers(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
     MermaidReference(String),
     #[error("missing reference checkout: {0}")]
@@ -98,6 +100,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
+    println!("  verify-lalrpop-parsers");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -134,6 +137,7 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-theme-snapshot");
     println!("  gen-editor-token-descriptor");
     println!("  gen-capability-surface");
+    println!("  gen-lalrpop-parsers");
     println!("  gen-text-measurement-abi");
     println!("  gen-resource-contract");
     println!("  verify-text-measurement-abi");
@@ -190,6 +194,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
         "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
         "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
+        "gen-lalrpop-parsers" => cmd::gen_lalrpop_parsers(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
@@ -208,6 +213,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
         "verify-text-measurement-abi" => cmd::verify_text_measurement_abi(args.collect()),
         "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
+        "verify-lalrpop-parsers" => cmd::verify_lalrpop_parsers(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),

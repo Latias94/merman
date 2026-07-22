@@ -25,10 +25,10 @@ pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_const
 
 pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
 
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr, clippy::filter_map_identity)]
     state_grammar,
-    "/diagrams/state_grammar.rs"
+    "state_grammar.rs"
 );
 
 #[derive(Debug, Clone)]

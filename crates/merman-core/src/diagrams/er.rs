@@ -27,10 +27,10 @@ pub(crate) fn er_syntax_construction_count() -> usize {
     ER_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr)]
     er_grammar,
-    "/diagrams/er_grammar.rs"
+    "er_grammar.rs"
 );
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

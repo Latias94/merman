@@ -1,11 +1,11 @@
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(
         clippy::empty_line_after_outer_attr,
         clippy::type_complexity,
         clippy::result_large_err
     )]
     sequence_grammar,
-    "/diagrams/sequence_grammar.rs"
+    "sequence_grammar.rs"
 );
 
 // Mermaid 11.15.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).

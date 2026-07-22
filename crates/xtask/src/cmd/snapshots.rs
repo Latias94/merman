@@ -529,6 +529,7 @@ enum GeneratedArtifactCheck {
     DefaultConfig,
     DompurifyDefaults,
     EditorTokenDescriptor,
+    LalrpopParsers,
     PlaygroundExampleCatalog,
     ResourceContract,
     ThemeSnapshot,
@@ -552,12 +553,17 @@ fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::ThemeSnapshot]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 9] {
+fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::LalrpopParsers]
+}
+
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 10] {
     [
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
         GeneratedArtifactCheck::EditorTokenDescriptor,
+        GeneratedArtifactCheck::LalrpopParsers,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
         GeneratedArtifactCheck::ResourceContract,
         GeneratedArtifactCheck::ThemeSnapshot,
@@ -573,6 +579,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
             GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
+            GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
             GeneratedArtifactCheck::ResourceContract => "resource contract",
             GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
@@ -631,6 +638,7 @@ fn verify_generated_artifact_check(
         GeneratedArtifactCheck::EditorTokenDescriptor => {
             super::verify_editor_token_descriptor_artifacts()
         }
+        GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
@@ -723,6 +731,11 @@ pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError>
 
 pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_dompurify_defaults_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_lalrpop_parsers(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_lalrpop_parsers_checks();
     verify_generated_artifact_checks(args, &checks)
 }
 
@@ -955,8 +968,8 @@ mod tests {
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
         fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
         snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
-        verify_dompurify_defaults_checks, verify_generated_checks, verify_theme_snapshot_checks,
-        verify_web_diagram_catalog_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks, verify_lalrpop_parsers_checks,
+        verify_theme_snapshot_checks, verify_web_diagram_catalog_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -978,12 +991,17 @@ mod tests {
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
                 GeneratedArtifactCheck::EditorTokenDescriptor,
+                GeneratedArtifactCheck::LalrpopParsers,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
                 GeneratedArtifactCheck::ResourceContract,
                 GeneratedArtifactCheck::ThemeSnapshot,
                 GeneratedArtifactCheck::TextMeasurementAbi,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
+        );
+        assert_eq!(
+            verify_lalrpop_parsers_checks(),
+            [GeneratedArtifactCheck::LalrpopParsers]
         );
         assert_eq!(
             GeneratedArtifactCheck::CapabilitySurface.label(),
@@ -1000,6 +1018,10 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::EditorTokenDescriptor.label(),
             "editor token descriptor"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::LalrpopParsers.label(),
+            "checked-in LALRPOP parsers"
         );
         assert_eq!(
             GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),

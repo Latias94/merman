@@ -12,7 +12,6 @@ documentation = "https://docs.rs/merman-core"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "parser", "ast"]
 categories = ["parser-implementations", "visualization"]
-build = "build.rs"
 
 [features]
 # `full` keeps Mermaid-compatible parser/config/sanitizer affordances on by default.
@@ -48,9 +47,6 @@ ryu-js.workspace = true
 rustc-hash.workspace = true
 sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }
-
-[build-dependencies]
-lalrpop.workspace = true
 
 [dev-dependencies]
 futures.workspace = true

@@ -18,6 +18,24 @@
 //! let _parser = registry.get("flowchart-v2");
 //! ```
 
+macro_rules! include_checked_in_lalrpop_parser {
+    ($(#[$attr:meta])* $name:ident, $file:literal) => {
+        #[rustfmt::skip]
+        #[allow(clippy::extra_unused_lifetimes)]
+        #[allow(clippy::needless_lifetimes)]
+        #[allow(clippy::let_unit_value)]
+        #[allow(clippy::just_underscores_and_digits)]
+        $(#[$attr])*
+        mod $name {
+            include!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/generated/lalrpop/",
+                $file
+            ));
+        }
+    };
+}
+
 pub mod architecture;
 pub mod block;
 pub mod c4;

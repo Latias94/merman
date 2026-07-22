@@ -28,14 +28,17 @@ LR/Jison behavior and make exact compatibility harder, especially once the gramm
 
 ## Current implementation
 
-- Build step runs LALRPOP: `crates/merman-core/build.rs`
 - Flowchart grammar: `crates/merman-core/src/diagrams/flowchart_grammar.lalrpop`
+- Checked-in generated parser: `crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs`
 - Flowchart lexer + adapter: `crates/merman-core/src/diagrams/flowchart.rs`
+- Maintainer generation: `cargo run -p xtask -- gen-lalrpop-parsers`
+- Freshness gate: `cargo run -p xtask -- verify-lalrpop-parsers`
 
 ## Consequences
 
 - Adding new flowchart syntax should primarily be “add tokens + extend grammar + add tests”.
+- Parser generation is a maintainer operation. Downstream builds compile the checked-in parser and
+  therefore require `lalrpop-util`, but not the LALRPOP generator or a crate build script.
 - The lexer becomes a critical component; it must be carefully tested because tokenization affects
   parse results.
 - This approach scales better to full Mermaid compatibility than ad-hoc string parsing.
-

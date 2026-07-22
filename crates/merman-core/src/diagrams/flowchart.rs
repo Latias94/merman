@@ -41,7 +41,7 @@ pub(crate) fn flowchart_accessibility_scan_count() -> usize {
     accessibility::flowchart_accessibility_scan_count()
 }
 
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(
         clippy::empty_line_after_outer_attr,
         clippy::large_enum_variant,
@@ -49,7 +49,7 @@ lalrpop_util::lalrpop_mod!(
         clippy::result_large_err
     )]
     flowchart_grammar,
-    "/diagrams/flowchart_grammar.rs"
+    "flowchart_grammar.rs"
 );
 
 mod accessibility;

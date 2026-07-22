@@ -124,3 +124,16 @@ JSON `FlowchartV2` variant key.
 Core does not decide user-visible diagnostic merge policy. It reports parser facts and capability
 gaps; `merman-analysis` owns rule ids, Markdown remapping, recovered-parser deduplication, and
 editor-facing fallback policy.
+
+## Maintainer Parser Generation
+
+The Class, ER, Flowchart, Sequence, and State grammars use checked-in LALRPOP output. Downstream
+builds compile those parsers directly and do not run the LALRPOP generator. After editing any
+`src/diagrams/*_grammar.lalrpop` file, regenerate and verify the complete five-parser set:
+
+```console
+cargo run -p xtask -- gen-lalrpop-parsers
+cargo run -p xtask -- verify-lalrpop-parsers
+```
+
+`verify-generated` includes the same byte-for-byte freshness check.

@@ -1,7 +1,7 @@
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr)]
     class_grammar,
-    "/diagrams/class_grammar.rs"
+    "class_grammar.rs"
 );
 
 pub(crate) const LINE_SOLID: i32 = 0;
