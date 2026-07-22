@@ -24,6 +24,8 @@ pub(crate) enum DomMode {
 pub(crate) struct DomComparisonProfile {
     descendants: DomMode,
     root_viewport: bool,
+    normalize_browser_text_wrapping: bool,
+    normalize_browser_text_length: bool,
 }
 
 impl DomComparisonProfile {
@@ -32,10 +34,14 @@ impl DomComparisonProfile {
             DomMode::ParityRoot => Self {
                 descendants: DomMode::Parity,
                 root_viewport: true,
+                normalize_browser_text_wrapping: false,
+                normalize_browser_text_length: false,
             },
             descendants => Self {
                 descendants,
                 root_viewport: false,
+                normalize_browser_text_wrapping: false,
+                normalize_browser_text_length: false,
             },
         }
     }
@@ -45,7 +51,28 @@ impl DomComparisonProfile {
         Self {
             descendants,
             root_viewport: true,
+            normalize_browser_text_wrapping: false,
+            normalize_browser_text_length: false,
         }
+    }
+
+    pub(crate) const fn with_browser_text_wrapping_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_wrapping = true;
+        }
+        self
+    }
+
+    pub(crate) const fn with_browser_text_length_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_length = true;
+        }
+        self
+    }
+
+    const fn without_root_viewport(mut self) -> Self {
+        self.root_viewport = false;
+        self
     }
 
     pub(crate) const fn descendants(self) -> DomMode {
@@ -54,6 +81,14 @@ impl DomComparisonProfile {
 
     pub(crate) const fn compares_root_viewport(self) -> bool {
         self.root_viewport
+    }
+
+    pub(crate) const fn normalizes_browser_text_wrapping(self) -> bool {
+        self.normalize_browser_text_wrapping
+    }
+
+    pub(crate) const fn normalizes_browser_text_length(self) -> bool {
+        self.normalize_browser_text_length
     }
 }
 
@@ -476,17 +511,15 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             .replace(&gradient_prefix, "linearGradient-")
     }
 
-    fn is_vertical_timeline_diagram(n: roxmltree::Node<'_, '_>) -> bool {
-        let Some(svg) = n.ancestors().find(|ancestor| {
+    fn vertical_timeline_diagram_id(n: roxmltree::Node<'_, '_>) -> Option<String> {
+        let svg = n.ancestors().find(|ancestor| {
             ancestor.is_element()
                 && ancestor.tag_name().name() == "svg"
                 && ancestor
                     .attribute("aria-roledescription")
                     .is_some_and(|value| value == "timeline")
-        }) else {
-            return false;
-        };
-        let Some(activity_line) = svg.descendants().find(|descendant| {
+        })?;
+        let activity_line = svg.descendants().find(|descendant| {
             descendant.is_element()
                 && descendant.tag_name().name() == "line"
                 && descendant
@@ -496,10 +529,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                         class.split_whitespace().any(|token| token == "lineWrapper")
                     })
                 && descendant.attribute("stroke-width") == Some("4")
-        }) else {
-            return false;
-        };
-        activity_line.attribute("x1") == activity_line.attribute("x2")
+        })?;
+        (activity_line.attribute("x1") == activity_line.attribute("x2"))
+            .then(|| svg.attribute("id").map(str::to_string))
+            .flatten()
     }
 
     fn normalize_vertical_timeline_internal_value(
@@ -507,22 +540,23 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         key: &str,
         val: &str,
     ) -> Option<String> {
-        if !is_vertical_timeline_diagram(n) {
-            return None;
-        }
+        let diagram_id = vertical_timeline_diagram_id(n)?;
+        let scoped_arrowhead = format!("{diagram_id}-arrowhead");
 
         if n.tag_name().name() == "marker"
             && key == "id"
-            && (val == "undefined-arrowhead" || val.ends_with("-arrowhead"))
+            && (val == "undefined-arrowhead" || val == scoped_arrowhead)
         {
             return Some("<timeline-arrowhead>".to_string());
         }
+        let scoped_arrowhead_ref = format!("url(#{scoped_arrowhead})");
         if n.tag_name().name() == "line"
             && key == "marker-end"
-            && (val == "url(#arrowhead)" || val.ends_with("-arrowhead)"))
+            && (val == "url(#arrowhead)" || val == scoped_arrowhead_ref)
         {
             return Some("url(#<timeline-arrowhead>)".to_string());
         }
+        let scoped_node_prefix = format!("{diagram_id}-node-");
         if n.tag_name().name() == "path"
             && key == "id"
             && n.attribute("class").is_some_and(|class| {
@@ -531,7 +565,9 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                         .split_whitespace()
                         .any(|token| token == "node-undefined")
             })
-            && let Some((_, ordinal)) = val.rsplit_once("-node-")
+            && let Some(ordinal) = val
+                .strip_prefix("undefined-node-")
+                .or_else(|| val.strip_prefix(&scoped_node_prefix))
             && !ordinal.is_empty()
             && ordinal.bytes().all(|byte| byte.is_ascii_digit())
         {
@@ -858,8 +894,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 val = normalize_class_list(&val, mode);
                 val = normalize_gitgraph_dynamic_commit_ids(&val);
             }
-            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
-                && let Some(normalized) = normalize_vertical_timeline_internal_value(n, &key, &val)
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && let Some(normalized) = normalize_vertical_timeline_internal_value(n, &key, &val)
             {
                 val = normalized;
             }
@@ -1312,12 +1350,59 @@ pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     Ok(build_node(root, mode, decimals))
 }
 
+fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
+    for child in &mut node.children {
+        normalize_browser_text_wrapping(child);
+    }
+
+    if node.name != "text" || node.children.is_empty() {
+        return;
+    }
+
+    let is_generated_row = |child: &SvgDomNode| {
+        child.name == "tspan"
+            && child.attrs.get("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|token| token == "text-outer-tspan")
+            })
+    };
+    if !node.children.iter().all(is_generated_row) {
+        return;
+    }
+
+    node.children = vec![SvgDomNode {
+        name: "tspan".to_string(),
+        attrs: [("class".to_string(), "text-outer-tspan".to_string())].into(),
+        text: None,
+        children: Vec::new(),
+    }];
+}
+
+fn normalize_browser_text_length(node: &mut SvgDomNode) {
+    for child in &mut node.children {
+        normalize_browser_text_length(child);
+    }
+
+    if node.name == "text"
+        && let Some(value) = node.attrs.get_mut("textLength")
+    {
+        *value = "<browser-text-length>".to_string();
+    }
+}
+
 pub(crate) fn dom_signature_for_comparison(
     svg: &str,
     profile: DomComparisonProfile,
     decimals: u32,
 ) -> Result<SvgDomNode, String> {
     let mut signature = dom_signature(svg, profile.descendants(), decimals)?;
+    if profile.normalizes_browser_text_wrapping() {
+        normalize_browser_text_wrapping(&mut signature);
+    }
+    if profile.normalizes_browser_text_length() {
+        normalize_browser_text_length(&mut signature);
+    }
     if !profile.compares_root_viewport() {
         return Ok(signature);
     }
@@ -1613,7 +1698,7 @@ pub(crate) fn diagnose_root_viewport_mismatch(
 
     let primary_detail = format_dom_diffs(&dom_diffs(upstream, local))
         .ok_or_else(|| "parity-root signatures differ without a diagnostic".to_string())?;
-    let descendant_profile = DomComparisonProfile::from_mode(profile.descendants());
+    let descendant_profile = profile.without_root_viewport();
     let upstream_without_root =
         dom_signature_for_comparison(upstream_svg, descendant_profile, decimals)
             .map_err(|err| format!("upstream descendant fallback parse failed: {err}"))?;
@@ -1953,6 +2038,102 @@ mod tests {
     }
 
     #[test]
+    fn evidence_profile_normalizes_only_generated_browser_text_rows() {
+        let one_row = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProbe</tspan></tspan></text></svg>"#;
+        let two_rows = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProb</tspan></tspan><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">e</tspan></tspan></text></svg>"#;
+
+        assert_ne!(
+            dom_signature(one_row, DomMode::Parity, 3).unwrap(),
+            dom_signature(two_rows, DomMode::Parity, 3).unwrap()
+        );
+
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+        assert_eq!(
+            dom_signature_for_comparison(one_row, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+
+        let strict = DomComparisonProfile::from_mode(DomMode::Strict)
+            .with_browser_text_wrapping_normalized();
+        assert!(!strict.normalizes_browser_text_wrapping());
+        assert_ne!(
+            dom_signature_for_comparison(one_row, strict, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_non_row_tspan_structure() {
+        let generated = r#"<svg><text><tspan class="text-outer-tspan row"><tspan>Label</tspan></tspan></text></svg>"#;
+        let authored =
+            r#"<svg><text><tspan class="authored"><tspan>Label</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_ne!(
+            dom_signature_for_comparison(generated, profile, 3).unwrap(),
+            dom_signature_for_comparison(authored, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn evidence_profile_normalizes_only_present_browser_text_length_values() {
+        let measured_a = r#"<svg><text class="type" textLength="51">person</text></svg>"#;
+        let measured_b = r#"<svg><text class="type" textLength="52">person</text></svg>"#;
+        let missing = r#"<svg><text class="type">person</text></svg>"#;
+        let changed_class = r#"<svg><text class="different" textLength="52">person</text></svg>"#;
+
+        let profile =
+            DomComparisonProfile::from_mode(DomMode::Parity).with_browser_text_length_normalized();
+        assert_eq!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(measured_b, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(missing, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_class, profile, 3).unwrap()
+        );
+
+        let strict =
+            DomComparisonProfile::from_mode(DomMode::Strict).with_browser_text_length_normalized();
+        assert!(!strict.normalizes_browser_text_length());
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, strict, 3).unwrap(),
+            dom_signature_for_comparison(measured_b, strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn root_diagnosis_retains_browser_text_profile_for_descendants() {
+        let upstream = r#"<svg viewBox="0 0 100 100"><text><tspan class="text-outer-tspan row"><tspan>LongLabe</tspan></tspan><tspan class="text-outer-tspan row"><tspan>l</tspan></tspan></text></svg>"#;
+        let local = r#"<svg viewBox="0 0 101 100"><text><tspan class="text-outer-tspan row"><tspan>LongLabel</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::ParityRoot)
+            .with_browser_text_wrapping_normalized();
+        let upstream_signature = dom_signature_for_comparison(upstream, profile, 3).unwrap();
+        let local_signature = dom_signature_for_comparison(local, profile, 3).unwrap();
+
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_signature,
+            &local_signature,
+            profile,
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
+        assert!(matches!(
+            mismatch,
+            ParityRootMismatch::NormalizedDescendantsMatch { .. }
+        ));
+    }
+
+    #[test]
     fn parity_ignores_foreign_object_visible_overflow() {
         let upstream =
             r#"<svg><foreignObject width="10" height="20"><div>Hi</div></foreignObject></svg>"#;
@@ -2134,14 +2315,16 @@ mod tests {
     }
 
     #[test]
-    fn parity_normalizes_only_vertical_timeline_broken_upstream_ids() {
+    fn structure_and_parity_normalize_only_vertical_timeline_broken_upstream_ids() {
         let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
         let local = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
 
-        assert_eq!(
-            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
-            dom_signature(local, DomMode::Parity, 3).unwrap()
-        );
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap()
+            );
+        }
         assert_ne!(
             dom_signature(upstream, DomMode::Strict, 3).unwrap(),
             dom_signature(local, DomMode::Strict, 3).unwrap()
@@ -2149,14 +2332,16 @@ mod tests {
     }
 
     #[test]
-    fn parity_preserves_horizontal_timeline_ids() {
+    fn structure_and_parity_preserve_horizontal_timeline_ids() {
         let left = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs></svg>"#;
         let right = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs></svg>"#;
 
-        assert_ne!(
-            dom_signature(left, DomMode::Parity, 3).unwrap(),
-            dom_signature(right, DomMode::Parity, 3).unwrap()
-        );
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_ne!(
+                dom_signature(left, mode, 3).unwrap(),
+                dom_signature(right, mode, 3).unwrap()
+            );
+        }
     }
 
     #[test]

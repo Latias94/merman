@@ -28,29 +28,6 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     out
 }
 
-fn c4_type_text_length_px(type_c4_shape: &str) -> Option<f64> {
-    match type_c4_shape {
-        "component" => Some(73.0),
-        "component_db" => Some(93.0),
-        "container" => Some(63.0),
-        "container_db" => Some(83.0),
-        "external_component" => Some(122.0),
-        "external_component_db" => Some(142.0),
-        "external_container" => Some(112.0),
-        "external_container_db" => Some(132.0),
-        "external_container_queue" => Some(152.0),
-        "external_person" => Some(100.0),
-        "external_system" => Some(101.0),
-        "external_system_db" => Some(121.0),
-        "external_system_queue" => Some(141.0),
-        "person" => Some(50.0),
-        "system" => Some(52.0),
-        "system_db" => Some(72.0),
-        "system_queue" => Some(92.0),
-        _ => None,
-    }
-}
-
 struct C4TspanText<'a> {
     content: &'a str,
     x: f64,
@@ -390,8 +367,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             .as_deref()
             .unwrap_or(C4_DEFAULT_FONT_FAMILY);
         let type_size = type_font.font_size;
-        let type_text_length = c4_type_text_length_px(&s.type_c4_shape)
-            .unwrap_or_else(|| s.type_block.width.round().max(0.0));
+        let type_text_length = s.type_block.width.round().max(0.0);
         let _ = write!(
             &mut out,
             r#"<text fill="{}" font-family="{}" font-size="{}" font-style="italic" lengthAdjust="spacing" textLength="{}" x="{}" y="{}">{}</text>"#,
@@ -786,25 +762,5 @@ mod tests {
         assert!(css.contains("#c4{"));
         assert!(css.contains("fill:#778899;"));
         assert!(css.contains("#c4 .person{stroke:#112233;fill:#445566;}"));
-    }
-
-    #[test]
-    fn c4_type_text_length_rules_stay_local() {
-        let cases = [
-            ("component", Some(73.0)),
-            ("component_db", Some(93.0)),
-            ("container", Some(63.0)),
-            ("external_container_queue", Some(152.0)),
-            ("external_person", Some(100.0)),
-            ("person", Some(50.0)),
-            ("system", Some(52.0)),
-            ("system_db", Some(72.0)),
-            ("system_queue", Some(92.0)),
-            ("unknown", None),
-        ];
-
-        for (shape, expected) in cases {
-            assert_eq!(c4_type_text_length_px(shape), expected, "{shape}");
-        }
     }
 }

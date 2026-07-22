@@ -58,6 +58,7 @@ pub fn parser_only_fixture_reason(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FixtureDomEvidence {
     StructureOnly,
+    BrowserTextWrapping,
 }
 
 impl FixtureDomEvidence {
@@ -66,7 +67,38 @@ impl FixtureDomEvidence {
             Self::StructureOnly => {
                 "JavaScript RoughJS and Rust roughr path geometry differ; compare exact DOM structure without hiding path coordinates"
             }
+            Self::BrowserTextWrapping => {
+                "browser font measurement changes only Mermaid's generated text-row segmentation; preserve all other parity-visible DOM evidence"
+            }
         }
+    }
+}
+
+/// DOM evidence boundary that applies to every fixture in one diagram family.
+///
+/// These policies describe behavior derived directly from the pinned Mermaid implementation.
+/// They must remain family-scoped so browser-dependent values are not discarded from unrelated
+/// diagrams.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagramDomEvidence {
+    BrowserMeasuredTextLength,
+}
+
+impl DiagramDomEvidence {
+    pub const fn reason(self) -> &'static str {
+        match self {
+            Self::BrowserMeasuredTextLength => {
+                "pinned Mermaid derives C4 textLength from browser text measurement; compare attribute presence and all surrounding DOM while normalizing only the measured numeric value"
+            }
+        }
+    }
+}
+
+/// Returns a source-backed DOM evidence boundary for an entire diagram family.
+pub fn diagram_dom_evidence(diagram: &str) -> Option<DiagramDomEvidence> {
+    match diagram {
+        "c4" => Some(DiagramDomEvidence::BrowserMeasuredTextLength),
+        _ => None,
     }
 }
 
@@ -90,6 +122,9 @@ pub fn fixture_dom_evidence(
             | "upstream_cypress_venn_handdrawn_three_set_title_015"
             | "upstream_cypress_venn_handdrawn_custom_styles_018",
         ) => Some(FixtureDomEvidence::StructureOnly),
+        ("class", "stress_class_svg_font_size_precedence_025") => {
+            Some(FixtureDomEvidence::BrowserTextWrapping)
+        }
         _ => None,
     }
 }

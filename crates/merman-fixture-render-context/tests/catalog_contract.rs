@@ -1,6 +1,7 @@
 use merman_fixture_render_context::{
-    FixtureDomEvidence, FixtureRenderContext, MANIFEST_RELATIVE_PATH, Provenance,
-    RenderContextCatalog, SecurityLevel, fixture_dom_evidence, parser_only_fixture_reason,
+    DiagramDomEvidence, FixtureDomEvidence, FixtureRenderContext, MANIFEST_RELATIVE_PATH,
+    Provenance, RenderContextCatalog, SecurityLevel, diagram_dom_evidence, fixture_dom_evidence,
+    parser_only_fixture_reason,
 };
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -378,4 +379,35 @@ fn rough_dom_evidence_is_exact_family_scoped_policy() {
         ),
         None
     );
+}
+
+#[test]
+fn browser_text_wrapping_evidence_is_exact_family_scoped_policy() {
+    let evidence = fixture_dom_evidence("class", "stress_class_svg_font_size_precedence_025.mmd")
+        .expect("Class font-size boundary fixture should declare its browser text evidence");
+    assert_eq!(evidence, FixtureDomEvidence::BrowserTextWrapping);
+    assert!(evidence.reason().contains("font measurement"));
+
+    assert_eq!(
+        fixture_dom_evidence(
+            "class",
+            "stress_class_svg_font_size_px_string_precedence_026"
+        ),
+        None
+    );
+    assert_eq!(
+        fixture_dom_evidence("flowchart", "stress_class_svg_font_size_precedence_025"),
+        None
+    );
+}
+
+#[test]
+fn browser_measured_text_length_evidence_is_family_scoped_policy() {
+    let evidence = diagram_dom_evidence("c4")
+        .expect("C4 should declare its browser-measured textLength evidence");
+    assert_eq!(evidence, DiagramDomEvidence::BrowserMeasuredTextLength);
+    assert!(evidence.reason().contains("browser text measurement"));
+
+    assert_eq!(diagram_dom_evidence("class"), None);
+    assert_eq!(diagram_dom_evidence("flowchart"), None);
 }

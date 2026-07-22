@@ -1,7 +1,49 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::c4::layout_c4_diagram_typed;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
+};
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use std::sync::Arc;
+
+fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = environment.begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("layout ok");
+
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
+}
+
+#[derive(Debug)]
+struct C4TypeWidthProbe;
+
+impl TextMeasurer for C4TypeWidthProbe {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        let width = match text {
+            "«person»" => 151.0,
+            "«system»" => 252.0,
+            "«external_person»" => 399.0,
+            _ => 80.0,
+        };
+        TextMetrics {
+            width,
+            height: style.font_size.max(1.0),
+            line_count: 1,
+        }
+    }
+}
 
 fn deep_c4_boundary_chain(depth: usize) -> String {
     let mut input = String::from("C4Context\n");
@@ -44,4 +86,38 @@ fn c4_public_layout_handles_deep_boundary_chain() {
     assert_eq!(c4.boundaries.len(), DEPTH + 1);
     assert_eq!(c4.shapes.len(), 1);
     assert_eq!(c4.shapes[0].alias, "leaf");
+}
+
+#[test]
+fn c4_type_text_length_comes_from_canonical_text_measurement() {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.c4-type-width").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let environment =
+        RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::uniform(
+            TextMeasurementProfile::new(identity, Arc::new(C4TypeWidthProbe)),
+        ));
+    let svg = render_c4_svg_with_environment(
+        r#"C4Context
+Person(person, "Person")
+System(system, "System")
+Person_Ext(external, "External")
+"#,
+        &environment,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+
+    for (label, expected) in [
+        ("<<person>>", "151"),
+        ("<<system>>", "252"),
+        ("<<external_person>>", "399"),
+    ] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+            .unwrap_or_else(|| panic!("missing C4 type label {label}: {svg}"));
+        assert_eq!(text.attribute("textLength"), Some(expected), "{label}");
+    }
 }

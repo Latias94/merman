@@ -375,8 +375,8 @@ impl CompareAllInvocationOptions<'_> {
                 .map(str::to_string),
             accepted_residual_policy: if self.root_parity_policy_enabled {
                 AcceptedResidualPolicy::RootParityExact
-            } else if matches!(diagram, "ishikawa" | "venn") {
-                AcceptedResidualPolicy::ExactFixtureDomEvidence
+            } else if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
+                AcceptedResidualPolicy::ScopedDomEvidenceCatalog
             } else {
                 AcceptedResidualPolicy::None
             },
@@ -591,7 +591,21 @@ mod tests {
                 .for_diagram("ishikawa", compare_dir)
                 .request
                 .accepted_residual_policy,
-            AcceptedResidualPolicy::ExactFixtureDomEvidence
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("c4", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("class", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
         );
     }
 

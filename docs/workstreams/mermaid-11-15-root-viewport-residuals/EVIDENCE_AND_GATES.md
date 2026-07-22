@@ -1766,3 +1766,50 @@ Outcome:
 - The experiment was reverted. Keep the current `padding + 2.5px` group expansion.
 - Do not treat the direct `+5/+5/+3` width tails as evidence for a global padding or final group
   rect change. They remain a service child contribution plus Cytoscape compound-bbox phase seam.
+
+## 2026-07-22 - Class Browser Text-Wrapping Evidence Refresh
+
+The attested Mermaid 11.16 corpus regenerated
+`class/stress_class_svg_font_size_precedence_025` with Headless Chrome 131 on macOS arm64. The
+browser split `FontSizeSvgProbe` into two generated `text-outer-tspan` rows, while Merman's
+vendored headless metrics retained one row. The previous attested browser corpus and the current
+Merman output both retain one row, so changing title weight or layout semantics would merely tune
+the renderer to one browser/font boundary.
+
+The comparison policy therefore normalizes only generated text-row segmentation for this exact,
+family-scoped fixture. It continues to compare the surrounding text element, all non-row children,
+the rest of the parity-visible subtree, and the root viewport. Strict DOM mode remains unchanged.
+The root residual entry is rebound to the current input and upstream SVG digests, so another source
+or browser baseline change fails closed instead of inheriting this evidence silently.
+
+## 2026-07-22 - C4 Measurement Ownership And Root Catalog Refresh
+
+Mermaid 11.16 computes each C4 type-label `textLength` with browser
+`calculateTextWidth(...)`. Merman already measured the same label during canonical layout, but the
+SVG renderer replaced that result with a 17-entry string lookup table. The lookup was deleted and
+the renderer now consumes the operation-owned text measurement result. An injected-measurer
+regression test proves that the SVG value follows the canonical measurement contract.
+
+The attested browser currently reports values such as `51` and `99`, while deterministic vendored
+metrics report `50` and `100`. The C4 family comparison profile therefore normalizes only the value
+of a present `<text textLength>` attribute in non-strict modes. Attribute presence, text content,
+classes, surrounding DOM, and all root attributes remain compared. Strict mode preserves the raw
+numeric value. This is a family-scoped source-backed browser boundary, not a fixture-name or value
+whitelist.
+
+The authoritative full `parity-root` candidate completed without descendant failures after this
+change. Review results:
+
+- previous reviewed entries: `1698`;
+- fresh observed entries: `1627`;
+- unchanged fixture identities: `1626`, with zero input digest changes;
+- entries removed because root output became exact: `72`;
+- newly observed entry: the Mermaid 11.16 vertical Timeline sections fixture, classified as
+  `browser-root-bbox`;
+- upstream SVG digests refreshed from the attested corpus: `698`.
+
+Existing evidence IDs were carried forward only for the same diagram, fixture, and input digest.
+The reviewed candidate retained all fresh upstream/local signatures, referenced every declared
+evidence record, contained no `unreviewed` entries, and was accepted through
+`accept-root-residual-candidate` using SHA-256
+`ef4fbd0d49fd4eb78c08520df7e078add93318c22b69123aba89cf8a8be8b628`.

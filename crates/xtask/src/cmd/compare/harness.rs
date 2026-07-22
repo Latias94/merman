@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
-    ExactFixtureDomEvidence,
+    ScopedDomEvidenceCatalog,
     RootParityExact,
 }
 
@@ -19,7 +19,9 @@ impl AcceptedResidualPolicy {
     fn label(self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::ExactFixtureDomEvidence => "exact family-scoped fixture DOM evidence catalog",
+            Self::ScopedDomEvidenceCatalog => {
+                "source-backed family- and fixture-scoped DOM evidence catalog"
+            }
             Self::RootParityExact => "compare-all exact fail-closed root residual registry",
         }
     }
@@ -160,8 +162,8 @@ impl CompareRequest {
         fact: DiagramVerificationFact,
     ) -> Result<Self, XtaskError> {
         let mut request = Self::default();
-        if matches!(fact.diagram, "ishikawa" | "venn") {
-            request.accepted_residual_policy = AcceptedResidualPolicy::ExactFixtureDomEvidence;
+        if matches!(fact.diagram, "c4" | "class" | "ishikawa" | "venn") {
+            request.accepted_residual_policy = AcceptedResidualPolicy::ScopedDomEvidenceCatalog;
         }
         let mut i = 0;
         while i < args.len() {
@@ -1191,7 +1193,7 @@ fn write_rendered_fixture(
         let (profile, residual_note) = fixture_dom_profile(diagram, stem, mode);
         if let Some(reason) = residual_note {
             notes.push(format!(
-                "DOM evidence for {diagram}/{stem}: requested parity attributes are bounded to structure ({reason})"
+                "DOM evidence for {diagram}/{stem}: accepted residual profile applied ({reason})"
             ));
         }
         if let Err(err) = compare_dom_signatures(
@@ -1226,6 +1228,18 @@ pub(crate) fn fixture_dom_profile(
     stem: &str,
     requested: svgdom::DomMode,
 ) -> (svgdom::DomComparisonProfile, Option<&'static str>) {
+    let diagram_evidence = merman_fixture_render_context::diagram_dom_evidence(diagram);
+    let mut profile = svgdom::DomComparisonProfile::from_mode(requested);
+    let mut residual_note = None;
+    if let Some(merman_fixture_render_context::DiagramDomEvidence::BrowserMeasuredTextLength) =
+        diagram_evidence
+    {
+        profile = profile.with_browser_text_length_normalized();
+        residual_note = (!matches!(requested, svgdom::DomMode::Strict)).then_some(
+            merman_fixture_render_context::DiagramDomEvidence::BrowserMeasuredTextLength.reason(),
+        );
+    }
+
     match merman_fixture_render_context::fixture_dom_evidence(diagram, stem) {
         Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly)
             if matches!(
@@ -1233,7 +1247,7 @@ pub(crate) fn fixture_dom_profile(
                 svgdom::DomMode::Strict | svgdom::DomMode::Parity | svgdom::DomMode::ParityRoot
             ) =>
         {
-            let profile = if requested == svgdom::DomMode::ParityRoot {
+            profile = if requested == svgdom::DomMode::ParityRoot {
                 svgdom::DomComparisonProfile::with_root_viewport(svgdom::DomMode::Structure)
             } else {
                 svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::Structure)
@@ -1244,8 +1258,14 @@ pub(crate) fn fixture_dom_profile(
             )
         }
         Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly) | None => {
-            (svgdom::DomComparisonProfile::from_mode(requested), None)
+            (profile, residual_note)
         }
+        Some(merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping) => (
+            profile.with_browser_text_wrapping_normalized(),
+            (!matches!(requested, svgdom::DomMode::Strict)).then_some(
+                merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping.reason(),
+            ),
+        ),
     }
 }
 
@@ -1429,8 +1449,8 @@ mod tests {
             ),
             (
                 "ishikawa",
-                AcceptedResidualPolicy::ExactFixtureDomEvidence,
-                "exact family-scoped fixture DOM evidence catalog",
+                AcceptedResidualPolicy::ScopedDomEvidenceCatalog,
+                "source-backed family- and fixture-scoped DOM evidence catalog",
             ),
             ("info", AcceptedResidualPolicy::None, "policy: `none`"),
         ];
@@ -1480,6 +1500,79 @@ mod tests {
         assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
         assert!(profile.compares_root_viewport());
         assert!(note.expect("rough residual note").contains("RoughJS"));
+    }
+
+    #[test]
+    fn browser_text_fixture_profile_normalizes_only_non_strict_wrapping() {
+        for requested in [
+            svgdom::DomMode::Structure,
+            svgdom::DomMode::Parity,
+            svgdom::DomMode::ParityRoot,
+        ] {
+            let (profile, note) = fixture_dom_profile(
+                "class",
+                "stress_class_svg_font_size_precedence_025",
+                requested,
+            );
+            assert_eq!(
+                profile.descendants(),
+                svgdom::DomComparisonProfile::from_mode(requested).descendants()
+            );
+            assert!(profile.normalizes_browser_text_wrapping());
+            assert_eq!(
+                profile.compares_root_viewport(),
+                requested == svgdom::DomMode::ParityRoot
+            );
+            assert!(
+                note.expect("browser text residual note")
+                    .contains("font measurement")
+            );
+        }
+
+        let (strict, note) = fixture_dom_profile(
+            "class",
+            "stress_class_svg_font_size_precedence_025",
+            svgdom::DomMode::Strict,
+        );
+        assert!(!strict.normalizes_browser_text_wrapping());
+        assert_eq!(note, None);
+
+        let (neighbor, note) = fixture_dom_profile(
+            "class",
+            "stress_class_svg_font_size_px_string_precedence_026",
+            svgdom::DomMode::Parity,
+        );
+        assert!(!neighbor.normalizes_browser_text_wrapping());
+        assert_eq!(note, None);
+    }
+
+    #[test]
+    fn c4_family_profile_normalizes_only_non_strict_browser_text_lengths() {
+        for requested in [
+            svgdom::DomMode::Structure,
+            svgdom::DomMode::Parity,
+            svgdom::DomMode::ParityRoot,
+        ] {
+            let (profile, note) = fixture_dom_profile("c4", "any_fixture", requested);
+            assert!(profile.normalizes_browser_text_length());
+            assert_eq!(
+                profile.compares_root_viewport(),
+                requested == svgdom::DomMode::ParityRoot
+            );
+            assert!(
+                note.expect("C4 browser measurement note")
+                    .contains("textLength")
+            );
+        }
+
+        let (strict, note) = fixture_dom_profile("c4", "any_fixture", svgdom::DomMode::Strict);
+        assert!(!strict.normalizes_browser_text_length());
+        assert_eq!(note, None);
+
+        let (neighbor, note) =
+            fixture_dom_profile("sequence", "any_fixture", svgdom::DomMode::Parity);
+        assert!(!neighbor.normalizes_browser_text_length());
+        assert_eq!(note, None);
     }
 
     #[test]
