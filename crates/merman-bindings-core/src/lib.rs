@@ -17,11 +17,10 @@ mod ascii;
 #[cfg(feature = "render")]
 mod render;
 
-#[cfg(feature = "render")]
-pub use common::resource_options_json;
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingStatus,
-    error_payload_json_bytes, render_payload_json_bytes,
+    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
+    resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use metadata::{
@@ -33,9 +32,9 @@ pub use metadata::{
     binding_capabilities, binding_capabilities_json, binding_capabilities_json_for,
     configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
     diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
-    lint_rule_catalog_json, runtime_contract, runtime_contract_json, selected_registry_profile,
-    supported_diagrams, supported_diagrams_json, supported_host_theme_presets,
-    supported_host_theme_presets_json, supported_themes, supported_themes_json,
+    lint_rule_catalog_json, runtime_contract, runtime_contract_json, supported_diagrams,
+    supported_diagrams_json, supported_host_theme_presets, supported_host_theme_presets_json,
+    supported_themes, supported_themes_json,
 };
 
 #[cfg(feature = "analysis")]

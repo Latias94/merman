@@ -80,7 +80,6 @@ export interface BindingCapabilities {
   render: boolean;
   analysis: boolean;
   ascii: boolean;
-  core_full: boolean;
   core_host: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
@@ -99,14 +98,11 @@ interface BindingCapabilityFlags {
   render: boolean;
   analysis: boolean;
   ascii: boolean;
-  core_full: boolean;
   core_host: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
   editor_language: boolean;
 }
-
-export type RegistryProfile = "full" | "tiny";
 
 export interface DiagramFamilyCapability {
   diagram_type: string;
@@ -203,7 +199,6 @@ export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   render: false,
   analysis: true,
   ascii: false,
-  core_full: false,
   core_host: false,
   elk_layout: false,
   ratex_math: false,
@@ -214,7 +209,6 @@ export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   render: true,
   analysis: true,
   ascii: false,
-  core_full: false,
   core_host: false,
   elk_layout: false,
   ratex_math: false,
@@ -225,7 +219,6 @@ export const RENDER_ONLY_BINDING_CAPABILITIES: BindingCapabilities = bindingCapa
   render: true,
   analysis: false,
   ascii: false,
-  core_full: false,
   core_host: false,
   elk_layout: false,
   ratex_math: false,
@@ -236,7 +229,6 @@ export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabiliti
   render: false,
   analysis: false,
   ascii: true,
-  core_full: false,
   core_host: false,
   elk_layout: false,
   ratex_math: false,
@@ -247,7 +239,6 @@ export const EDITOR_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   render: false,
   analysis: true,
   ascii: false,
-  core_full: true,
   core_host: false,
   elk_layout: false,
   ratex_math: false,
@@ -258,7 +249,6 @@ export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   render: true,
   analysis: true,
   ascii: true,
-  core_full: true,
   core_host: true,
   elk_layout: true,
   ratex_math: false,

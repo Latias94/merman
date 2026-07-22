@@ -19,9 +19,9 @@ futures.workspace = true
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
 merman = { path = "../merman", features = ["render"] }
-merman-analysis = { workspace = true, features = ["core-full", "core-host"] }
+merman-analysis = { workspace = true, features = ["core-host"] }
 merman-core = { path = "../merman-core" }
-merman-editor-core = { workspace = true, features = ["core-full", "core-host"] }
+merman-editor-core = { workspace = true, features = ["core-host"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true
 merman-render = { path = "../merman-render", features = ["elk-layout", "font-metrics-generation"] }

@@ -283,7 +283,6 @@ fn expected_capabilities_json(capabilities: &TypstProfileCapabilities) -> JsonVa
         "render": capabilities.render,
         "analysis": capabilities.analysis,
         "ascii": capabilities.ascii,
-        "core_full": capabilities.core_full,
         "core_host": capabilities.core_host,
         "elk_layout": capabilities.elk_layout,
         "ratex_math": capabilities.ratex_math,
@@ -644,7 +643,7 @@ mod tests {
             "typst-full-elk"
         );
 
-        for alias in ["publish", "minimal", "full-no-elk"] {
+        for alias in ["publish", "minimal"] {
             let options = parse_options(vec![
                 "--wasm".to_string(),
                 "plugin.wasm".to_string(),
@@ -672,7 +671,6 @@ mod tests {
                 "render": true,
                 "analysis": true,
                 "ascii": false,
-                "core_full": true,
                 "core_host": false,
                 "elk_layout": true,
                 "ratex_math": false,

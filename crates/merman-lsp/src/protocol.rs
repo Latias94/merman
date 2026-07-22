@@ -100,7 +100,6 @@ pub fn experimental_capabilities() -> serde_json::Value {
                 "renamePolicies": EditorRenamePolicy::IDS,
             },
             "diagramSupport": {
-                "profile": merman_core::selected_baseline_registry_profile().as_str(),
                 "families": diagram_families,
             },
             "requests": {
@@ -391,10 +390,6 @@ mod tests {
                 "renamePolicies": EditorRenamePolicy::IDS,
             })
         );
-        assert_eq!(
-            capabilities["merman"]["diagramSupport"]["profile"],
-            merman_core::selected_baseline_registry_profile().as_str()
-        );
         let families = capabilities["merman"]["diagramSupport"]["families"]
             .as_array()
             .expect("diagram family capabilities");
@@ -403,11 +398,10 @@ mod tests {
                 && family["semanticParser"] == true
                 && family["renderParser"] == true
         }));
-        #[cfg(not(any(feature = "core-full", feature = "core-full-registry")))]
         assert!(
             families
                 .iter()
-                .all(|family| family["diagramType"] != "mindmap")
+                .any(|family| family["diagramType"] == "mindmap")
         );
     }
 

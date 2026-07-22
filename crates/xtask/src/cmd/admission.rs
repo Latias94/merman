@@ -101,12 +101,8 @@ pub(crate) fn primary_svg_matrix_diagrams() -> impl Iterator<Item = &'static str
 
 pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Vec<String> {
     let workspace_root = crate::cmd::workspace_root();
-    let supported_diagrams = merman_core::supported_diagrams_for_profile(
-        merman_core::baseline::BaselineRegistryProfile::Full,
-    );
-    let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
-        merman_core::baseline::BaselineRegistryProfile::Full,
-    );
+    let supported_diagrams = merman_core::supported_diagrams();
+    let core_capabilities = merman_core::diagram_family_capabilities();
     let mut failures =
         public_metadata_admission_failures(supported_diagrams, admission_inventory());
 
@@ -239,7 +235,7 @@ fn public_metadata_admission_failures(
     for &diagram in supported_diagrams {
         if !seen_supported.insert(diagram) {
             failures.push(format!(
-                "admission inventory: duplicate full-profile public metadata family `{diagram}`"
+                "admission inventory: duplicate canonical public metadata family `{diagram}`"
             ));
             continue;
         }
@@ -250,7 +246,7 @@ fn public_metadata_admission_failures(
             .collect();
         match matching.as_slice() {
             [] => failures.push(format!(
-                "admission inventory: full-profile public metadata family `{diagram}` has no admission record"
+                "admission inventory: canonical public metadata family `{diagram}` has no admission record"
             )),
             [record]
                 if matches!(
@@ -258,11 +254,11 @@ fn public_metadata_admission_failures(
                     AdmissionStatus::PrimarySvgMatrix | AdmissionStatus::CompatibilityOnly
                 ) => {}
             [record] => failures.push(format!(
-                "admission inventory: full-profile public metadata family `{diagram}` has unsupported admission status {:?}",
+                "admission inventory: canonical public metadata family `{diagram}` has unsupported admission status {:?}",
                 record.admission
             )),
             records => failures.push(format!(
-                "admission inventory: full-profile public metadata family `{diagram}` has {} admission records; expected exactly one",
+                "admission inventory: canonical public metadata family `{diagram}` has {} admission records; expected exactly one",
                 records.len()
             )),
         }
@@ -608,16 +604,14 @@ mod tests {
     }
 
     #[test]
-    fn full_profile_public_metadata_families_have_exactly_one_admission_record() {
-        let supported_diagrams = merman_core::supported_diagrams_for_profile(
-            merman_core::baseline::BaselineRegistryProfile::Full,
-        );
+    fn unique_catalog_public_metadata_families_have_exactly_one_admission_record() {
+        let supported_diagrams = merman_core::supported_diagrams();
         let failures =
             public_metadata_admission_failures(supported_diagrams, admission_inventory());
 
         assert!(
             failures.is_empty(),
-            "full-profile public metadata must map one-to-one into admission records:\n{}",
+            "unique-catalog public metadata must map one-to-one into admission records:\n{}",
             failures.join("\n")
         );
     }
@@ -650,9 +644,7 @@ mod tests {
 
     #[test]
     fn admission_inventory_covered_records_are_backed_by_core_family_facts() {
-        let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
-            merman_core::baseline::BaselineRegistryProfile::Full,
-        );
+        let core_capabilities = merman_core::diagram_family_capabilities();
 
         for record in admission_inventory() {
             let capability = core_family_capability(core_capabilities, record.diagram);

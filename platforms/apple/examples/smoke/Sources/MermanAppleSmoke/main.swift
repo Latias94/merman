@@ -54,7 +54,8 @@ struct MermanAppleSmoke {
             documentSource,
             uri: "file:///tmp/example.md"
         )
-        guard documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
+        guard documentFactsJson.contains("\"version\":2"),
+              documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
             throw SmokeError.failed("document facts smoke failed")
         }
 
@@ -85,7 +86,8 @@ struct MermanAppleSmoke {
             documentSource,
             uri: "file:///tmp/example.md"
         )
-        guard reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
+        guard reusableDocumentFactsJson.contains("\"version\":2"),
+              reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
             throw SmokeError.failed("reusable document facts smoke failed")
         }
         reusable.close()
@@ -138,10 +140,12 @@ struct MermanAppleSmoke {
         }
 
         let runtimeContract = try engine.runtimeContract()
-        guard runtimeContract.schemaVersion == 1,
+        guard runtimeContract.schemaVersion == 2,
               runtimeContract.abiVersion == MermanEngine.abiVersion,
               runtimeContract.packageVersion == engine.packageVersion,
               runtimeContract.optionsSchemaVersion == 1,
+              runtimeContract.payloadSchemas["analysis"] == 1,
+              runtimeContract.payloadSchemas["analysis_facts"] == 2,
               runtimeContract.features.render,
               runtimeContract.resources?.generalBindingDefaultProfile == "interactive"
         else {

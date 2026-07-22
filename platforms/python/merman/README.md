@@ -71,7 +71,9 @@ local editing. The native CLI's default is intentionally separate (`trusted-nati
 Call `engine.runtime_contract_json()` to inspect the loaded resource catalog and exact profile
 values instead of duplicating limits in application code.
 
-Diagnostics and parser-facts payloads use schema `1`, independently of UniFFI ABI `2`. The current facts v1 contract is parser-only; consumers of the removed alpha TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
+Diagnostics use schema `1` and parser-facts use schema `2`, independently of UniFFI ABI `2`.
+Facts v1 is rejected at its version boundary; consumers of the removed alpha TextScan shape must
+migrate to parser-backed items and explicit unavailable bodies.
 
 ## Text Measurement
 

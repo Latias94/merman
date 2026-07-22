@@ -43,20 +43,19 @@ raster helpers.
 
 ## Capability Metadata
 
-`binding_capabilities()` reports compiled output and host profiles. `selected_registry_profile()`
-reports the active Mermaid registry profile (`"full"` or `"tiny"`), and
-`diagram_family_capabilities()` exposes the complete detector, semantic/editor parser, typed render,
-authoring-header, and config-namespace facts selected by that profile.
-Use this diagnostic surface when a host needs to reason about slim WASM/native artifacts without
-assuming capabilities from a package name.
+`binding_capabilities()` reports compiled output and host capabilities.
+`diagram_family_capabilities()` exposes the one complete pinned Mermaid language catalog: detector,
+semantic/editor parser, typed render, authoring-header, and config-namespace facts. This catalog is
+not selected by a build profile. Use the output capability bits to determine whether a particular
+artifact can render, analyze, or emit ASCII without assuming behavior from a package name.
 The `analysis` capability bit is independent from `render` and `ascii`; slim artifacts can expose
 ASCII or render output without compiling diagnostics and lint catalog support.
 
-Diagnostics payloads and rich parser-only document facts are independent schema v1 contracts.
-Current facts writers always emit `rename_policy`; readers map an omitted additive policy in an
-older v1 semantic item to the fail-closed `none` policy. This narrow field default does not revive
-the removed TextScan-capable alpha decoder, executor, or parallel binding path. Transport and
-platform ABI versions are independent from these JSON schema versions.
+Diagnostics payloads and rich parser-only document facts are independent contracts: diagnostics
+remain schema v1, while facts are schema v2. Facts v1 is rejected at the version boundary before
+its body is decoded. Current facts writers always emit `rename_policy`; this does not revive the
+removed TextScan-capable alpha decoder, executor, or parallel binding path. Transport and platform
+ABI versions are independent from these JSON schema versions.
 
 With `render` enabled, this crate centralizes the host text-measurement result-shape contract. The
 current alpha transports expose 19 exact operations with contiguous codes `0..18`; operation 18 is

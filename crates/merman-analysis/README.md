@@ -37,9 +37,10 @@ Editor-facing ownership is layered:
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are separate serialized
 contracts with separate version constants. `AnalysisPayload` remains version 1. The parser-only
-`AnalysisFactsPayload` is the sole version 1 facts contract.
+`AnalysisFactsPayload` is the sole version 2 facts contract; readers reject facts v1 at the
+version boundary before attempting to decode its body.
 
-Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
+Facts v2 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
 not manufacture body semantic items. Current writers include `rename_policy` on every
 `semantic_items[]` entry so consumers can enforce the owning diagram family's identifier grammar.
 Readers accept older v1 entries that omit this additive field and conservatively decode them as

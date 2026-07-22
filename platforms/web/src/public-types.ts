@@ -43,7 +43,6 @@ export interface RuntimeContract {
   payload_schemas: Record<string, number>;
   features: BindingCapabilities;
   registry: {
-    profile: string;
     diagram_family_count: number;
   };
   resources: RuntimeResourceContract | null;
@@ -543,7 +542,7 @@ export interface AnalysisDiagramFacts {
 }
 
 export interface AnalysisFactsResult extends AnalysisPayloadFields {
-  version: 1;
+  version: 2;
   diagrams: AnalysisDiagramFacts[];
 }
 
@@ -946,7 +945,6 @@ export interface MermanWasmModule {
   asciiCapabilities: () => AsciiCapability[];
   bindingCapabilities: () => BindingCapabilities;
   runtimeContract: () => RuntimeContract;
-  selectedRegistryProfile: () => string;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

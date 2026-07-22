@@ -663,10 +663,7 @@ fn analysis_only_max_source_bytes(
         return Ok(None);
     };
     if resources.profile.is_some() {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "resources.profile requires a binding artifact with the render resource catalog",
-        ));
+        return Err(render_resource_options_unavailable());
     }
     if let Some(unknown) = resources
         .limits
@@ -750,6 +747,19 @@ pub fn resource_options_json(
         "resources": resources,
     }))
     .map_err(internal_json_error)
+}
+
+#[cfg(not(feature = "render"))]
+pub fn resource_options_json(
+    profile_id: &str,
+    overrides: &[(&str, usize)],
+) -> Result<Vec<u8>, BindingError> {
+    let _ = (profile_id, overrides);
+    Err(render_resource_options_unavailable())
+}
+
+pub fn render_resource_options_unavailable() -> BindingError {
+    feature_required_error("resource options", "render")
 }
 
 #[cfg(feature = "analysis")]
@@ -939,6 +949,17 @@ mod tests {
         ] {
             assert_eq!(error.status(), BindingStatus::InvalidArgument);
         }
+    }
+
+    #[cfg(not(feature = "render"))]
+    #[test]
+    fn resource_options_builder_reports_a_typed_missing_render_capability() {
+        let error = resource_options_json("constrained", &[]).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(
+            error.message(),
+            "resource options requires the render feature"
+        );
     }
 
     #[cfg(all(feature = "analysis", not(any(feature = "render", feature = "ascii"))))]

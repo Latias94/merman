@@ -270,7 +270,7 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
 }
 
 fn bench_frontmatter_preprocess(c: &mut Criterion) {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
 
     let mut group = c.benchmark_group("frontmatter_preprocess");
     for (name, input) in frontmatter_fixtures() {

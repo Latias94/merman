@@ -125,7 +125,7 @@ pub(crate) fn resolve_completion_item_with_profile(
 mod tests {
     use super::completion_for_snapshot;
     use crate::document_store::DocumentStore;
-    use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
+    use merman_core::diagram_header_facts;
     use tower_lsp::lsp_types::{Position, Url};
 
     #[test]
@@ -145,11 +145,10 @@ mod tests {
             })
             .map(|item| item.label)
             .collect();
-        let expected: Vec<_> =
-            diagram_header_facts_for_profile(selected_baseline_registry_profile())
-                .iter()
-                .map(|fact| fact.label.to_string())
-                .collect();
+        let expected: Vec<_> = diagram_header_facts()
+            .iter()
+            .map(|fact| fact.label.to_string())
+            .collect();
 
         assert_eq!(labels, expected);
     }

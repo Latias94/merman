@@ -734,7 +734,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         score: i64,
     }
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
 
     let mut spec_files: Vec<PathBuf> = Vec::new();
     collect_test_files_recursively(&src_root, &mut spec_files)?;

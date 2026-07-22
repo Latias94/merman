@@ -121,10 +121,10 @@ explicit `browser-full` artifacts. Source,
 CI, and local package builds can still choose a different browser preset through
 `platforms/web/scripts/build-wasm.mjs`; the TypeScript wrapper exposes `bindingCapabilities()` so
 callers can discover the active artifact's compiled capabilities after initialization, including
-whether `editor_language` is compiled. It also exposes `selectedRegistryProfile()` and
-`diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
-parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
-governed analyzer rule table and its evidence references without hard-coding them.
+whether `editor_language` is compiled. `diagramFamilyCapabilities()` reports the one complete
+pinned Mermaid language catalog shared by all artifacts, and `lintRuleCatalog()` lets editor
+integrations discover the governed analyzer rule table and its evidence references without
+hard-coding them.
 The editor-bearing presets expose `editorSemanticTokenDescriptor()` and
 `editorSemanticTokens()`. The descriptor is generated from
 `editor-language/token-descriptor-v1.json`; the token query returns the descriptor's validated
@@ -141,12 +141,12 @@ without extracting private JavaScript names or source formatting.
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
 | `browser-core` | no | `analysis` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
-| `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation over the minimal core profile. Editor-language entry points are unavailable. |
+| `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation. Editor-language entry points are unavailable. |
 | `browser-render-only` | no | `render` | SVG/parse/layout artifact with metadata only. Analysis, validation, lint catalog, ASCII, and editor-language entry points are unavailable. |
 | `browser-ascii` | no | `ascii` | ASCII/Unicode artifact with metadata only. Analysis, validation, lint catalog, render, parse, layout, and editor-language entry points are unavailable. |
-| `browser-editor` | no | `core-full`, `editor-language` | Full 35-family catalog, analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, parse/layout JSON, ASCII, host, and ELK entry points are unavailable. |
-| `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
-| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-editor` | no | `editor-language` | Complete 35-family language catalog, analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, parse/layout JSON, ASCII, host, and ELK entry points are unavailable. |
+| `browser-full` | yes | none | Default npm artifact: browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
+| `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
 `npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
@@ -187,17 +187,16 @@ Current release semantics are intentionally explicit:
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`,
   `@mermanjs/web/render-only`, `@mermanjs/web/ascii`, and `@mermanjs/web/editor`; these slim
-  subpaths omit unsupported runtime wrapper exports. The editor subpath retains `core-full` so its
-  Worker covers the same 35 logical families as the Playground and LSP rather than silently using
-  the tiny registry. Its diagnostics, detection, code actions, completion, structure, navigation,
+  subpaths omit unsupported runtime wrapper exports. The editor subpath has the same complete
+  35-family language catalog as the Playground and LSP. Its diagnostics, detection, code actions,
+  completion, structure, navigation,
   rename, and packed semantic tokens are projections of one analyzed document snapshot in the
   dedicated Worker; there is no Monarch or regex fallback.
   `@mermanjs/web/full` is the explicit full-preset subpath.
 - Browser WASM ABI 2 is required by the current 0.8 wrapper and render-environment contract.
   `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
-  whether `analysis` and `editor_language` are available. `selectedRegistryProfile()` and
-  `diagramFamilyCapabilities()` report the selected diagram registry profile and registered
-  parser/render family facts. `lintRuleCatalog()` is available on analysis-capable artifacts and
+  whether `analysis` and `editor_language` are available. `diagramFamilyCapabilities()` reports
+  the complete shared parser/render family catalog. `lintRuleCatalog()` is available on analysis-capable artifacts and
   reports analyzer rule ids, evidence references, default profiles, origins, configurability, and
   fixability. Consumers that load custom artifacts must keep the generated wasm-bindgen artifact and
   TypeScript wrapper from the same package
@@ -207,7 +206,7 @@ Current release semantics are intentionally explicit:
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its Cargo default and public package
   profile `publish` both resolve to canonical profile `typst-full-elk`, built with exactly
-  `render`, `analysis`, `core-full`, and `elk-layout`. The closed ABI 2 surface exports
+  `render`, `analysis`, `cytoscape-layout`, and `elk-layout`. The closed ABI 2 surface exports
   `abi_version`, `package_version`, `capabilities_json`, `render_svg_json`, and `analyze_json`.
   `--no-default-features` builds the internal protocol bridge only; it is not a public package
   profile. The Typst plugin replaces caller-provided `resources` with the fixed `constrained`
@@ -284,12 +283,11 @@ applied to `wasm-tools strip --all` output:
 | Browser | `browser-render` | no | `render`, `analysis` | 10,036,036 | 7,688,279 | 2,389,785 | 1,598,148 |
 | Browser | `browser-render-only` | no | `render` | 9,593,092 | 7,389,779 | 2,285,872 | 1,536,742 |
 | Browser | `browser-ascii` | no | `ascii` | 4,273,421 | 3,100,695 | 931,323 | 707,493 |
-| Browser | `browser-editor` | no | `core-full`, `editor-language` | 5,313,319 | 3,901,365 | 1,270,356 | 941,247 |
-| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 12,670,877 | 9,702,444 | 3,119,444 | 2,111,940 |
+| Browser | `browser-editor` | no | `editor-language` | 5,313,319 | 3,901,365 | 1,270,356 | 941,247 |
+| Browser | `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 12,670,877 | 9,702,444 | 3,119,444 | 2,111,940 |
 | Browser | `browser-full` | yes | none | 13,573,233 | 10,348,509 | 3,307,400 | 2,248,122 |
 | Browser | `browser-ratex-math` | yes | `ratex-math` | 16,842,133 | 13,069,360 | 4,252,461 | 2,927,677 |
 | Typst | `typst-bridge` | no | none | 62,063 | 46,146 | 19,500 | 16,574 |
 | Typst | `typst-render-only-no-elk` | no | `render` | 8,796,764 | 7,009,094 | 2,212,276 | 1,484,121 |
 | Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 9,166,305 | 7,259,433 | 2,297,231 | 1,535,192 |
-| Typst | `typst-core-full-no-elk` | no | `render`, `analysis`, `core-full` | 10,543,235 | 8,341,671 | 2,732,327 | 1,855,750 |
-| Typst | `typst-full-elk` (`publish`) | no | `render`, `analysis`, `core-full`, `elk-layout` | 11,445,996 | 8,987,989 | 2,919,785 | 1,986,128 |
+| Typst | `typst-full-elk` (`publish`) | no | `render`, `analysis`, `cytoscape-layout`, `elk-layout` | 11,445,996 | 8,987,989 | 2,919,785 | 1,986,128 |

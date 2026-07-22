@@ -1,5 +1,4 @@
 use crate::MermaidConfig;
-#[cfg(feature = "full-sanitization")]
 use url::Url;
 
 pub const BLANK_URL: &str = "about:blank";
@@ -338,26 +337,18 @@ pub fn sanitize_url(url: &str) -> String {
     }
 
     if url_scheme == "http:" || url_scheme == "https:" {
-        #[cfg(feature = "full-sanitization")]
-        {
-            let Ok(mut parsed) = Url::parse(&back_sanitized) else {
-                return BLANK_URL.to_string();
-            };
+        let Ok(mut parsed) = Url::parse(&back_sanitized) else {
+            return BLANK_URL.to_string();
+        };
 
-            let scheme = parsed.scheme().to_ascii_lowercase();
-            let _ = parsed.set_scheme(&scheme);
-            if let Some(host) = parsed.host_str() {
-                let lower_host = host.to_ascii_lowercase();
-                let _ = parsed.set_host(Some(&lower_host));
-            }
-
-            return parsed.to_string();
+        let scheme = parsed.scheme().to_ascii_lowercase();
+        let _ = parsed.set_scheme(&scheme);
+        if let Some(host) = parsed.host_str() {
+            let lower_host = host.to_ascii_lowercase();
+            let _ = parsed.set_host(Some(&lower_host));
         }
 
-        #[cfg(not(feature = "full-sanitization"))]
-        {
-            return back_sanitized;
-        }
+        return parsed.to_string();
     }
 
     back_sanitized
@@ -470,10 +461,7 @@ mod tests {
             sanitize_url("http://example.com:4567/path/to:something"),
             "http://example.com:4567/path/to:something"
         );
-        #[cfg(feature = "full-sanitization")]
         assert_eq!(sanitize_url("https://example.com"), "https://example.com/");
-        #[cfg(not(feature = "full-sanitization"))]
-        assert_eq!(sanitize_url("https://example.com"), "https://example.com");
         assert_eq!(
             sanitize_url("https://example.com:4567/path/to:something"),
             "https://example.com:4567/path/to:something"

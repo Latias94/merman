@@ -430,8 +430,8 @@ exact value or `null` for every profile. This avoids copying profile values into
 ## Runtime Contract Discovery
 
 Query the loaded artifact rather than inferring capabilities or resource values from a package
-name. Runtime-contract schema `1` includes native ABI, package version, options schema, payload
-schemas, compiled features, registry profile and family count, plus the resource descriptor when
+name. Runtime-contract schema `2` includes native ABI, package version, options schema, payload
+schemas, compiled features, complete language-catalog family count, plus the resource descriptor when
 rendering is compiled. Analysis-only artifacts return `resources: null`.
 
 | Surface | API |

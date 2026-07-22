@@ -92,6 +92,8 @@ const textMeasurementAbi = await import(
 );
 const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
 const surfaceContract = surfaceContractForEntry(entrySubpath);
+const completeCytoscapeRenderSurface = entrySubpath === "." || entrySubpath === "./full";
+const cytoscapeLayoutDiagramTypes = new Set(["architecture", "mindmap"]);
 
 assert.equal(typeof exportedWasmModule.default, "function");
 assertSurfaceExports(api, surfaceContract);
@@ -354,12 +356,11 @@ if (surfaceContract.render) {
 const capabilities = api.bindingCapabilities();
 const runtimeContract = api.runtimeContract();
 const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
-assert.equal(runtimeContract.schema_version, 1);
+assert.equal(runtimeContract.schema_version, 2);
 assert.equal(runtimeContract.abi_version, api.abiVersion());
 assert.equal(runtimeContract.package_version, api.packageVersion());
 assert.equal(runtimeContract.options_schema_version, 1);
 assert.deepEqual(runtimeContract.features, capabilities);
-assert.equal(runtimeContract.registry.profile, api.selectedRegistryProfile());
 assert.equal(
   runtimeContract.registry.diagram_family_count,
   api.diagramFamilyCapabilities().length
@@ -382,7 +383,6 @@ if (surfaceContract.render) {
 assert.equal(typeof capabilities.render, "boolean");
 assert.equal(typeof capabilities.analysis, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
-assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 assert.equal(typeof capabilities.editor_language, "boolean");
@@ -403,10 +403,6 @@ assert.equal(defaultCapabilities.analysis, surfaceContract.analysis);
 assert.equal(defaultCapabilities.ascii, surfaceContract.ascii);
 assert.equal(defaultCapabilities.editor_language, surfaceContract.editor);
 assert.equal(defaultCapabilities.text_measurement.host_callback, defaultCapabilities.render);
-
-const registryProfile = api.selectedRegistryProfile();
-assert.match(registryProfile, /^(full|tiny)$/);
-assert.equal(registryProfile, capabilities.core_full ? "full" : "tiny");
 
 const familyCapabilities = api.diagramFamilyCapabilities();
 assert.equal(Array.isArray(familyCapabilities), true);
@@ -527,15 +523,13 @@ if (capabilities.analysis) {
       effectiveLayoutId: "dagre",
     }
   );
-  if (capabilities.core_full) {
-    assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
-      status: "available",
-      validity: "valid",
-      diagramType: "flowchart",
-      syntaxId: "flowchart-elk",
-      effectiveLayoutId: "elk",
-    });
-  }
+  assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
+    status: "available",
+    validity: "valid",
+    diagramType: "flowchart",
+    syntaxId: "flowchart-elk",
+    effectiveLayoutId: "elk",
+  });
 
   const mappedSequenceFacts = api.analysisFacts(
     [
@@ -659,7 +653,7 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   assert.ok(measurementOperations.has("wrapped"));
 
-  if (api.supportedDiagrams().includes("architecture")) {
+  if (completeCytoscapeRenderSurface) {
     const architectureOperations = new Map();
     const architectureSvg = api.renderSvgWithTextMeasurer(
       "architecture-beta\n  service api(server)[API service]\n",
@@ -786,20 +780,13 @@ if (capabilities.render) {
   assert.equal(typeof api.supportedHostThemePresets, "undefined");
 }
 
-if (capabilities.core_full) {
-  assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
-  assert.equal(
-    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
-    true
-  );
-} else {
-  for (const diagram of api.supportedDiagrams()) {
-    assert.equal(api.isDiagramType(diagram), true);
-  }
-  assert.equal(
-    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
-    false
-  );
+assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
+assert.equal(
+  familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
+  true
+);
+for (const diagram of api.supportedDiagrams()) {
+  assert.equal(api.isDiagramType(diagram), true);
 }
 
 if (capabilities.ascii) {
@@ -969,7 +956,22 @@ if (capabilities.render) {
         )
       : path.join(repoRoot, ...repositoryFixturePath);
     const fixture = await readFile(fixturePath, "utf8");
-    assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+    try {
+      assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+    } catch (error) {
+      assert.equal(
+        completeCytoscapeRenderSurface,
+        false,
+        `complete render surface failed to render ${diagram}`
+      );
+      assert.equal(
+        cytoscapeLayoutDiagramTypes.has(diagram),
+        true,
+        `unexpected render feature absence for ${diagram}`
+      );
+      assert.equal(error?.code_name, "MERMAN_RENDER_ERROR");
+      assert.match(error?.message ?? "", new RegExp(`unsupported diagram type for layout: ${diagram}`));
+    }
     if (capabilities.analysis) {
       const detection = api.detectDiagramFacts(fixture, deterministicTime);
       assert.equal(detection.status, "available", `detection unavailable for ${diagram}`);
@@ -991,7 +993,6 @@ console.log(
     `render=${capabilities.render}`,
     `analysis=${capabilities.analysis}`,
     `ascii=${capabilities.ascii}`,
-    `core_full=${capabilities.core_full}`,
     `ratex_math=${capabilities.ratex_math}`,
     `editor_language=${capabilities.editor_language}`,
     `text_measurement=${JSON.stringify(capabilities.text_measurement)}`,

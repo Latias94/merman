@@ -9,6 +9,7 @@ pub enum MermanResourceProfile {
     UnboundedForTrustedInput,
 }
 
+#[cfg(feature = "render")]
 impl MermanResourceProfile {
     fn id(self) -> &'static str { match self {
         Self::Interactive => "interactive",
@@ -38,6 +39,7 @@ pub enum MermanResourceLimitId {
     MaxLabelBytes,
 }
 
+#[cfg(feature = "render")]
 impl MermanResourceLimitId {
     fn id(self) -> &'static str { match self {
         Self::MaxSourceBytes => "max_source_bytes",
@@ -65,21 +67,30 @@ pub struct MermanResourceLimitOverride {
     pub value: u64,
 }
 
-#[cfg(feature = "render")]
 #[uniffi::export]
 pub fn resource_options_json(
     profile: MermanResourceProfile,
     overrides: Vec<MermanResourceLimitOverride>,
 ) -> Result<String, MermanError> {
-    let pairs = overrides
-        .iter()
-        .map(|override_| {
-            usize::try_from(override_.value)
-                .map(|value| (override_.id.id(), value))
-                .map_err(|_| MermanError::internal("resource override exceeds host usize"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)
-        .map_err(MermanError::from_binding)?;
-    String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))
+    #[cfg(feature = "render")]
+    {
+        let pairs = overrides
+            .iter()
+            .map(|override_| {
+                usize::try_from(override_.value)
+                    .map(|value| (override_.id.id(), value))
+                    .map_err(|_| MermanError::internal("resource override exceeds host usize"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)
+            .map_err(MermanError::from_binding)?;
+        String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))
+    }
+    #[cfg(not(feature = "render"))]
+    {
+        let _ = (profile, overrides);
+        Err(MermanError::from_binding(
+            merman_bindings_core::render_resource_options_unavailable(),
+        ))
+    }
 }

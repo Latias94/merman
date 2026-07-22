@@ -83,8 +83,7 @@ exports.
 `@mermanjs/web/ascii` has no analysis, validation, lint catalog, render, parse, layout, or
 editor-language exports.
 `@mermanjs/web/editor` has no render, parse/layout JSON, ASCII, browser text-measurement, host, or
-ELK exports. It includes all 35 full-profile family parsers so browser editor behavior does not
-silently fall back to the tiny registry.
+ELK exports. It includes the complete 35-family language catalog, just like every other artifact.
 `bindingCapabilities().analysis` is the supported runtime contract for whether the loaded artifact
 exposes `analyze()`, `analysisFacts()`, `detectDiagramFacts()`, document analysis, validation, and
 `lintRuleCatalog()`.
@@ -263,23 +262,22 @@ diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the
 facts without speaking LSP.
 
 Successful syntax facts add `effective_layout` from the canonical parsed effective configuration.
-The field is additive within facts schema `1`; consumers deserializing older schema `1` payloads
-must treat it as absent. `detectDiagramFacts(source, options)` validates that payload and maps its
-raw parser syntax id through the runtime family catalog. It returns either
+The field is part of facts schema `2`; consumers must reject a facts payload whose version is not
+`2`. `detectDiagramFacts(source, options)` validates that payload and maps its raw parser syntax id
+through the runtime family catalog. It returns either
 `{ status: "available", diagramType, syntaxId, effectiveLayoutId }` or an explicit unavailable
 result. The projection is neutral metadata: choosing or loading Mermaid JS external packages remains
 the host application's responsibility.
 
 The diagnostics and facts endpoints expose separate payload contracts. The diagnostics-only
-payload remains version 1. The current parser-only facts payload is also version 1: it uses explicit
-`fact_source: "unavailable"` provenance when body semantics are unavailable, and every
-current `semantic_items[]` entry includes a `rename_policy` field. Readers must accept older v1
-entries that omit this additive field and treat them as `"none"` so stale metadata cannot enable
-rename operations.
+payload remains version 1. The parser-only facts payload is version 2 and rejects facts v1 at the
+version boundary before its body is decoded. It uses explicit `fact_source: "unavailable"`
+provenance when body semantics are unavailable, and every current `semantic_items[]` entry includes
+a `rename_policy` field.
 
 The TextScan-capable alpha shape shipped in `0.8.0-alpha.3` with the same numeric discriminator. The
 web package does not retain a legacy decoder or dual facts path; consumers must update their schema
-handling and generated types for the current facts v1 contract. This version is independent from
+handling and generated types for the current facts v2 contract. This version is independent from
 LSP document revisions, Mermaid `*-v2` diagram ids, and the wasm-bindgen/package ABI surface.
 
 This web surface is an integration bridge, not a request that external linters copy Merman policy.
@@ -327,14 +325,13 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 
 The package publishes subpaths for the core, render, ASCII, editor, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`analysis`, `core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
+`analysis`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
 capabilities.
 The slim subpaths are capability-specific entry points, not full API aliases. They type-re-export
 the shared public option/result types and stable helper values, then export only the runtime
 wrappers that make sense for that surface. Use `@mermanjs/web/full` or the default import when you
 want one module namespace with render, ASCII, and editor-language wrappers together.
-`selectedRegistryProfile()` reports the active Mermaid registry profile and
-`diagramFamilyCapabilities()` reports the complete family catalog registered in the current
+`diagramFamilyCapabilities()` reports the complete pinned Mermaid family catalog shared by every
 artifact: logical/render identities, detector and semantic/editor parser support, authoring
 headers, config namespaces, and typed-render availability. Artifacts with
 `bindingCapabilities().analysis === true` also expose `lintRuleCatalog()`
@@ -419,7 +416,7 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
   `editorSemanticTokenDescriptor()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
-- `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `runtimeContract()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
+- `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `runtimeContract()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 `@mermanjs/web/core` exports initialization, analysis/facts, validation, metadata, ABI/package
@@ -434,7 +431,7 @@ from slim entry points rather than exported as throwing stubs.
 queries over the full 35-family catalog. `createEditorSession()` owns one analyzed document and
 reuses it across diagnostics, completion, navigation, rename, and semantic-token queries until
 `update()` replaces it or `dispose()` releases it. Its native browser ABI is 2; editor diagnostics
-and shared analysis/facts payloads remain schema 1.
+remain schema 1 and shared analysis facts are schema 2.
 
 All render, parse, layout, analysis, validation, editor, and metadata functions require
 `initMerman()` first. The stateless editor functions remain available for one-shot consumers.

@@ -34,7 +34,6 @@ export const {
   isMermanInitialized,
   bindingCapabilities,
   runtimeContract,
-  selectedRegistryProfile,
   supportedDiagrams,
   diagramFamilyCapabilities,
   supportedThemes,

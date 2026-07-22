@@ -98,11 +98,11 @@ The callback is isolate-local. Create, measure, render, and close the reusable e
 
 ## Analysis Contract
 
-`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `1`. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `2` and rejects facts v1 at its version boundary. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
 
 ## Runtime Contract
 
-Call `runtimeContract()` to inspect runtime-contract schema `1` from the loaded native library. It
+Call `runtimeContract()` to inspect runtime-contract schema `2` from the loaded native library. It
 reports the loaded ABI, package, and options versions together with compiled features, registry
 facts, and the exact values of every resource profile. Use this contract to choose an explicit
 profile for the host workload instead of duplicating limits in Dart or inferring capabilities from

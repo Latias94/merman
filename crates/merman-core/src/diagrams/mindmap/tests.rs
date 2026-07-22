@@ -658,7 +658,6 @@ fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn mindmap_recovery_constructs_one_parser_outcome() {
     reset_mindmap_syntax_construction_count();
     let facts = Engine::new()

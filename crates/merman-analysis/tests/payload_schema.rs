@@ -67,7 +67,7 @@ fn analysis_payload_matches_adr_0070_schema_shape() {
 }
 
 #[test]
-fn analysis_facts_payload_matches_v1_schema_shape() {
+fn analysis_facts_payload_matches_v2_schema_shape() {
     let source = Arc::<str>::from("");
     let source_descriptor = SourceDescriptor::diagram();
     let result = AnalysisResult::new(
@@ -94,7 +94,7 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
     assert_eq!(
         serde_json::to_value(result.to_facts_payload()).unwrap(),
         json!({
-            "version": 1,
+            "version": 2,
             "valid": true,
             "summary": {
                 "errors": 0,
@@ -165,7 +165,7 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
 }
 
 #[test]
-fn analysis_facts_v1_rejects_legacy_text_scan_provenance() {
+fn analysis_facts_v2_rejects_legacy_text_scan_provenance() {
     let mut value = parser_backed_facts_json();
     value["diagrams"][0]["syntax"]["fact_source"] = json!("text_scan");
 
@@ -174,21 +174,36 @@ fn analysis_facts_v1_rejects_legacy_text_scan_provenance() {
 }
 
 #[test]
-fn analysis_facts_v1_rejects_other_wire_versions() {
-    for version in [0, 2] {
+fn analysis_facts_v2_rejects_other_wire_versions() {
+    for version in [0, 1, 3] {
         let mut value = parser_backed_facts_json();
         value["version"] = json!(version);
 
         let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
         assert_eq!(
             error.to_string(),
-            format!("unsupported analysis facts payload version {version}; expected 1")
+            format!("unsupported analysis facts payload version {version}; expected 2")
         );
     }
 }
 
 #[test]
-fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
+fn analysis_facts_v1_is_rejected_before_deep_payload_deserialization() {
+    let mut value = serde_json::Map::new();
+    value.insert("valid".to_string(), json!("not a boolean"));
+    value.insert("summary".to_string(), json!("not a summary"));
+    value.insert("version".to_string(), json!(1));
+
+    let error = serde_json::from_value::<AnalysisFactsPayload>(Value::Object(value))
+        .expect_err("facts v1 must be rejected at the version boundary");
+    assert_eq!(
+        error.to_string(),
+        "unsupported analysis facts payload version 1; expected 2"
+    );
+}
+
+#[test]
+fn analysis_facts_v2_accepts_payload_without_additive_effective_layout() {
     let mut value = parser_backed_facts_json();
     let syntax = value["diagrams"][0]["syntax"]
         .as_object_mut()
@@ -196,13 +211,13 @@ fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
     assert_eq!(syntax.remove("effective_layout"), Some(json!("dagre")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("older facts v1 payload should remain readable");
-    assert_eq!(payload.version, 1);
+        .expect("a compatible facts v2 payload should remain readable");
+    assert_eq!(payload.version, 2);
     assert_eq!(payload.diagrams[0].syntax.effective_layout, None);
 }
 
 #[test]
-fn analysis_facts_v1_disables_rename_when_older_payload_omits_policy() {
+fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]
         .as_array_mut()
@@ -214,7 +229,7 @@ fn analysis_facts_v1_disables_rename_when_older_payload_omits_policy() {
         .remove("rename_policy");
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("older facts v1 payload should remain readable");
+        .expect("a compatible facts v2 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].syntax.semantic_items[0].rename_policy,
         merman_analysis::FenceRenamePolicy::None
@@ -222,7 +237,7 @@ fn analysis_facts_v1_disables_rename_when_older_payload_omits_policy() {
 }
 
 #[test]
-fn analysis_facts_v1_writers_always_emit_rename_policy() {
+fn analysis_facts_v2_writers_always_emit_rename_policy() {
     let value = parser_backed_facts_json();
     assert!(
         value["diagrams"][0]["syntax"]["semantic_items"][0]

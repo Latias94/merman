@@ -7,7 +7,7 @@ mod utils;
 mod tests;
 
 pub(crate) use parse::parse_mindmap_json_and_editor_facts;
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };

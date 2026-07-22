@@ -14,8 +14,7 @@ keywords = ["mermaid", "diagrams", "ascii", "unicode", "headless"]
 categories = ["visualization", "command-line-utilities"]
 
 [features]
-default = ["core-full", "core-host"]
-core-full = ["merman-core/full"]
+default = ["core-host"]
 core-host = ["merman-core/host"]
 
 [dependencies]

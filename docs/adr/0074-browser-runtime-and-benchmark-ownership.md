@@ -3,11 +3,11 @@
 - Status: accepted
 - Date: 2026-07-18
 - Amended: 2026-07-22 (package-surface projection delegated to ADR-0076)
-- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `2`, editor/analysis/facts schema `1`
+- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `2`, editor-token and diagnostics schema `1`, facts schema `2`
 
-The version fields above describe the live transitional runtime when this ADR was amended. ADR-0076
-plans independent facts schema `2` and native ABI `3` migrations in U2 and U6; those migrations do
-not alter this ADR's realm, lifecycle, cache, or benchmark ownership decisions.
+The version fields above describe the live transitional runtime when this ADR was amended. U2 has
+completed the independent facts schema `2` migration; U6 still plans native ABI `3`. Neither
+change alters this ADR's realm, lifecycle, cache, or benchmark ownership decisions.
 
 ## Context
 
@@ -174,8 +174,8 @@ token plan. Results with stale document versions or descriptor digests are disca
 client wait does not claim to interrupt synchronous WASM execution; the completed stale result is
 ignored. Protocol or result-shape mismatch fails closed.
 
-The native browser ABI remains `2`; editor diagnostics and shared analysis/facts remain schema `1`.
-These numbers describe different contracts and do not advance together.
+The native browser ABI remains `2`; editor diagnostics remain schema `1` and shared analysis facts
+are schema `2`. These numbers describe different contracts and do not advance together.
 
 ### 7. Examples And Detection Have Canonical Sources
 
@@ -268,5 +268,5 @@ thread responsive.
 - The editor bundle is larger because Monaco and a Worker WASM are local, but it provides real
   parser-backed language intelligence and makes no runtime CDN dependency.
 - HTTP cache quality remains measurable deployment evidence rather than hidden application policy.
-- Native ABI stays `2`, editor/analysis/facts schemas stay `1`, and Mermaid remains pinned to
-  `11.16.0@7c0cafcf`.
+- Native ABI stays `2`, editor-token and diagnostics schemas stay `1`, facts stays schema `2`, and
+  Mermaid remains pinned to `11.16.0@7c0cafcf`.

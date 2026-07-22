@@ -157,7 +157,6 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
     ) => withState(() => root.editorSemanticTokens(source, uri, options)),
     bindingCapabilities: () => withState(root.bindingCapabilities),
     runtimeContract: () => withState(root.runtimeContract),
-    selectedRegistryProfile: () => withState(root.selectedRegistryProfile),
     supportedDiagrams: () => withState(root.supportedDiagrams),
     diagramFamilyCapabilities: () => withState(root.diagramFamilyCapabilities),
     lintRuleCatalog: () => withState(root.lintRuleCatalog),

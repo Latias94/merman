@@ -8,7 +8,8 @@ use std::process::Command;
 const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PACKAGE: &str = "merman-typst-plugin";
 const EXPECTED_ARTIFACT: &str = "merman_typst_plugin.wasm";
-const REQUIRED_PUBLISH_FEATURES: &[&str] = &["render", "analysis", "core-full", "elk-layout"];
+const REQUIRED_PUBLISH_FEATURES: &[&str] =
+    &["render", "analysis", "cytoscape-layout", "elk-layout"];
 const DESCRIPTOR_SOURCE: &str = include_str!("../../../merman-typst-plugin/wasm-profiles.json");
 
 #[derive(Debug, Clone, Deserialize)]
@@ -39,7 +40,6 @@ pub(crate) struct TypstProfileCapabilities {
     pub(crate) render: bool,
     pub(crate) analysis: bool,
     pub(crate) ascii: bool,
-    pub(crate) core_full: bool,
     pub(crate) core_host: bool,
     pub(crate) elk_layout: bool,
     pub(crate) ratex_math: bool,
@@ -360,7 +360,6 @@ fn capabilities_for_features(features: &[String]) -> TypstProfileCapabilities {
         render,
         analysis: enabled("analysis"),
         ascii: enabled("ascii"),
-        core_full: enabled("core-full"),
         core_host: enabled("core-host"),
         elk_layout: enabled("elk-layout"),
         ratex_math: enabled("ratex-math"),
@@ -417,26 +416,19 @@ mod tests {
             "typst-render-analysis-no-elk"
         );
         assert_eq!(
-            catalog.resolve_package(Some("full-no-elk")).unwrap().name(),
-            "typst-core-full-no-elk"
-        );
-        assert_eq!(
             publish.features(),
-            &["render", "analysis", "core-full", "elk-layout"]
+            &["render", "analysis", "cytoscape-layout", "elk-layout"]
         );
         assert!(catalog.resolve_package(Some("default")).is_err());
         assert!(catalog.resolve_package(Some("full")).is_err());
         assert!(catalog.resolve_package(Some("full-elk")).is_err());
+        assert!(catalog.resolve_package(Some("full-no-elk")).is_err());
         assert!(catalog.resolve_package(Some("ratex-math")).is_err());
         assert!(catalog.resolve_package(Some("typst-bridge")).is_err());
         assert!(catalog.resolve_package(Some("typst-full-elk")).is_err());
-        assert_eq!(
-            catalog.public_profile_names(),
-            vec!["full-no-elk", "minimal", "publish"]
-        );
+        assert_eq!(catalog.public_profile_names(), vec!["minimal", "publish"]);
         assert!(publish.capabilities().render);
         assert!(publish.capabilities().analysis);
-        assert!(publish.capabilities().core_full);
         assert!(publish.capabilities().elk_layout);
         assert!(!publish.capabilities().text_measurement.host_callback);
     }
@@ -466,8 +458,8 @@ mod tests {
     #[test]
     fn descriptor_rejects_cargo_default_drift() {
         let manifest = valid_manifest().replace(
-            "default = [\"render\", \"analysis\", \"core-full\", \"elk-layout\"]",
-            "default = [\"render\", \"analysis\", \"elk-layout\"]",
+            "default = [\"render\", \"analysis\", \"cytoscape-layout\", \"elk-layout\"]",
+            "default = [\"render\", \"analysis\"]",
         );
         let descriptor = valid_descriptor();
         let error = parse_and_validate(&descriptor, &manifest).unwrap_err();
@@ -508,12 +500,11 @@ mod tests {
             {
               "name": "typst-full-elk",
               "aliases": ["publish"],
-              "features": ["render", "analysis", "core-full", "elk-layout"],
+              "features": ["render", "analysis", "cytoscape-layout", "elk-layout"],
               "capabilities": {
                 "render": true,
                 "analysis": true,
                 "ascii": false,
-                "core_full": true,
                 "core_host": false,
                 "elk_layout": true,
                 "ratex_math": false,
@@ -543,10 +534,10 @@ mod tests {
           name = "merman-typst-plugin"
 
           [features]
-          default = ["render", "analysis", "core-full", "elk-layout"]
-          core-full = []
+          default = ["render", "analysis", "cytoscape-layout", "elk-layout"]
           analysis = ["dep:serde_json"]
           render = ["dep:serde_json"]
+          cytoscape-layout = []
           elk-layout = []
         "#
     }

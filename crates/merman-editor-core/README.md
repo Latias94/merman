@@ -25,7 +25,8 @@ semantic facts in `merman-core` / `merman-analysis` rather than adding protocol-
 
 Editor-core builds typed snapshots directly from `AnalysisResult` and `FenceTextIndex`; it does not
 serialize or deserialize an analysis payload internally. The separately exposed binding wire is
-the current `AnalysisFactsPayload` version 1. The superseded TextScan-capable alpha implementation
+the current `AnalysisFactsPayload` version 2. Facts v1 is rejected at the binding boundary. The
+superseded TextScan-capable alpha implementation
 is removed rather than supported in parallel. This does not change LSP document revision numbers or
 Mermaid's own `*-v2` diagram ids.
 

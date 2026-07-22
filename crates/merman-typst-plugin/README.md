@@ -55,12 +55,13 @@ profile aliases:
 
 | Alias | Capabilities |
 | --- | --- |
-| `publish` | Render, canonical analysis, full Mermaid config, and ELK layout |
-| `full-no-elk` | Render, canonical analysis, and full Mermaid config without ELK |
-| `minimal` | Render and canonical analysis without full config or ELK |
+| `publish` | Render, canonical analysis, and the Cytoscape and ELK layout backends |
+| `minimal` | Render and canonical analysis without either optional layout backend |
 
 Bridge-only and render-only entries are internal size-measurement profiles, not
-package publication choices.
+package publication choices. Mermaid configuration, sanitization, detection, and semantic parsing
+are invariant core behavior in every profile; a missing layout backend produces a typed capability
+error only when a diagram requires it.
 
 RaTeX math is not supported by the Typst plugin. Its current dependency closure
 uses browser system-font discovery, which violates the zero-browser-import
@@ -92,10 +93,9 @@ host:
 cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
 ```
 
-The smoke command defaults to `--profile publish`. Use `minimal` or
-`full-no-elk` only when the artifact was built from that exact descriptor
-profile. Raw Cargo output under `target/wasm-build/` is private build input and
-must not be packaged or used as release evidence.
+The smoke command defaults to `--profile publish`. Use `minimal` only when the artifact was built
+from that exact descriptor profile. Raw Cargo output under `target/wasm-build/` is private build
+input and must not be packaged or used as release evidence.
 
 Compile the wrapper examples and tests against the exact staged bundle with:
 

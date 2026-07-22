@@ -38,13 +38,10 @@ fn normalize_imported_diagram_dir(detected: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::normalize_imported_diagram_dir;
-    use merman_core::baseline::BaselineRegistryProfile;
 
     #[test]
     fn imported_fixture_routing_is_owned_by_the_family_catalog() {
-        for capability in
-            merman_core::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full)
-        {
+        for capability in merman_core::diagram_family_capabilities() {
             let expected = capability.metadata_id;
             assert_eq!(
                 normalize_imported_diagram_dir(capability.diagram_type),

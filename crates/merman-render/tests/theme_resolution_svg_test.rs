@@ -42,16 +42,22 @@ fn render_with_font_only_theme(source: &str, diagram_id: &str) -> (String, Strin
 #[test]
 fn font_only_theme_uses_one_resolved_palette_across_scale_consumers() {
     const EXPECTED_SCALE: &str = "hsl(240, 100%, 76.2745098039%)";
-    let cases = [
+    let cases = vec![
         ("radar", "radar-beta\naxis A, B\ncurve sample{1, 2}\n"),
         ("kanban", "kanban\n  Todo\n    item1\n"),
-        ("mindmap", "mindmap\n  root((Root))\n    child(Child)\n"),
         (
             "timeline",
             "timeline\n  section Release\n    Plan : Build\n",
         ),
         ("treemap", "treemap-beta\n\"Root\"\n  \"Child\": 1\n"),
     ];
+
+    #[cfg(feature = "cytoscape-layout")]
+    let cases = {
+        let mut cases = cases;
+        cases.push(("mindmap", "mindmap\n  root((Root))\n    child(Child)\n"));
+        cases
+    };
 
     for (diagram_id, source) in cases {
         let (c_scale, svg) = render_with_font_only_theme(source, diagram_id);

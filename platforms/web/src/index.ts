@@ -27,7 +27,6 @@ import type {
   HostThemePresetName,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
-  RegistryProfile,
   TextMeasurementCapabilities,
   ThemeName,
 } from "./public-catalog.js";
@@ -917,7 +916,7 @@ export function detectDiagramFacts(
     const facts: unknown = analysisFacts(source, options);
     if (
       !isRecord(facts) ||
-      facts.version !== 1 ||
+      facts.version !== 2 ||
       typeof facts.valid !== "boolean"
     ) {
       return UNAVAILABLE_DIAGRAM_DETECTION;
@@ -1284,14 +1283,6 @@ export function runtimeContract(): RuntimeContract {
   return structuredCloneValue(state.runtimeContractCache);
 }
 
-export function selectedRegistryProfile(): RegistryProfile {
-  const profile = getMerman().selectedRegistryProfile();
-  if (profile === "full" || profile === "tiny") {
-    return profile;
-  }
-  throw new Error(`Merman WASM returned an invalid registry profile: ${String(profile)}`);
-}
-
 export function supportedDiagrams(): DiagramType[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
   state.supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
@@ -1632,7 +1623,6 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
     render: Boolean(capabilities.render),
     analysis: Boolean(capabilities.analysis),
     ascii: Boolean(capabilities.ascii),
-    core_full: Boolean(capabilities.core_full),
     core_host: Boolean(capabilities.core_host),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
@@ -1645,7 +1635,7 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
 }
 
 function normalizeRuntimeContract(contract: RuntimeContract): RuntimeContract {
-  if (!contract || typeof contract !== "object" || contract.schema_version !== 1) {
+  if (!contract || typeof contract !== "object" || contract.schema_version !== 2) {
     throw new Error("Merman WASM returned an unsupported runtime contract schema.");
   }
   if (contract.options_schema_version !== 1) {

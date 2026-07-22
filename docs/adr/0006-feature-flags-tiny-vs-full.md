@@ -6,9 +6,8 @@ Superseded by ADR-0076
 
 The tiny/full registry and host-profile decision below is retained as historical context. The
 canonical capability vocabulary, additive leaves, named presets, target restrictions, and
-migration policy now live in `capabilities/feature-surface-v1.json`. Current manifests migrate in
-later implementation units; this status change does not claim that the old flags have already
-been removed.
+migration policy now live in `capabilities/feature-surface-v1.json`. U2 removed the old flags and
+registry split; this document is historical context only.
 
 ## Context
 

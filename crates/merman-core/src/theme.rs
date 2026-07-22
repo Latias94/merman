@@ -3864,7 +3864,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "full-config")]
     fn invalid_frontmatter_theme_color_fails_at_parse_operation_boundary() {
         let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
             "secure": [

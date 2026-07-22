@@ -143,15 +143,57 @@ impl AnalysisSyntaxFacts {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AnalysisFactsPayload {
-    #[serde(deserialize_with = "crate::payload::deserialize_analysis_facts_payload_version")]
     pub version: u32,
     pub valid: bool,
     pub summary: Summary,
     pub source: SourceDescriptor,
     pub diagnostics: Vec<AnalysisDiagnostic>,
     pub diagrams: Vec<AnalysisDiagramFacts>,
+}
+
+#[derive(Deserialize)]
+struct AnalysisFactsPayloadTransport {
+    version: u32,
+    valid: bool,
+    summary: Summary,
+    source: SourceDescriptor,
+    diagnostics: Vec<AnalysisDiagnostic>,
+    diagrams: Vec<AnalysisDiagramFacts>,
+}
+
+impl<'de> Deserialize<'de> for AnalysisFactsPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Facts are a JSON binding wire contract. Read an untyped transport first so the
+        // version boundary is checked before any potentially incompatible nested field.
+        let raw = serde_json::Value::deserialize(deserializer)?;
+        let version = raw
+            .get("version")
+            .ok_or_else(|| serde::de::Error::missing_field("version"))
+            .and_then(|value| {
+                serde_json::from_value::<u32>(value.clone()).map_err(serde::de::Error::custom)
+            })?;
+        if version != ANALYSIS_FACTS_PAYLOAD_VERSION {
+            return Err(serde::de::Error::custom(format_args!(
+                "unsupported analysis facts payload version {version}; expected {ANALYSIS_FACTS_PAYLOAD_VERSION}"
+            )));
+        }
+
+        let transport: AnalysisFactsPayloadTransport =
+            serde_json::from_value(raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            version: transport.version,
+            valid: transport.valid,
+            summary: transport.summary,
+            source: transport.source,
+            diagnostics: transport.diagnostics,
+            diagrams: transport.diagrams,
+        })
+    }
 }
 
 impl AnalysisFactsPayload {

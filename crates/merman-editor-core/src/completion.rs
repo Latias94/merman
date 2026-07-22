@@ -2,7 +2,7 @@ use crate::context::CompletionContext;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
 use merman_analysis::FenceTextIndexSource;
-use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
+use merman_core::diagram_header_facts;
 use serde::{Deserialize, Serialize};
 
 const COMMON_TEMPLATE_DETAIL: &str = "diagram template";
@@ -79,7 +79,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 }
 
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
-    diagram_header_facts_for_profile(selected_baseline_registry_profile())
+    diagram_header_facts()
         .iter()
         .map(|fact| {
             keyword_completion(

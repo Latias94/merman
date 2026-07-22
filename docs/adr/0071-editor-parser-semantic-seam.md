@@ -26,8 +26,9 @@ with render semantics.
 
 - Each built-in family owns its successful semantic construction and its recoverable editor facts.
 - The Diagram Family catalog declares the semantic parser, closed combined semantic/editor
-  construction, aliases, profile gates, and authoring headers for every built-in id. Analysis does
-  not maintain another family match or invoke a second family parser after failure.
+  construction, aliases, and authoring headers for every built-in id. The pinned catalog is
+  complete rather than selected by Cargo features. Analysis does not maintain another family
+  match or invoke a second family parser after failure.
 - Recoverable partial parsing is a first-class family contract for incomplete editor buffers. It
   shares family tokens and grammar facts; it is not a separate editor-only successful grammar.
 - Families that use Mermaid's Langium `common.langium` share the same span-rich title and
@@ -82,22 +83,21 @@ or whole-document degraded fallback. Serialized facts keep `source_mapped_spans`
 compatibility: it is true for parser-backed facts and false for `Unavailable`. `Unavailable`
 produces no body completion, hover, symbols, navigation, rename, or semantic tokens.
 
-### Analysis facts v1 is the sole parser-only wire contract
+### Analysis facts v2 is the sole parser-only wire contract
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independently
-versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `1` is the sole
+versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `2` is the sole
 parser-only semantic contract produced after this migration:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
-- current writers include `rename_policy` on every semantic item, while readers map an omitted
-  additive policy in an older v1 item to the fail-closed `none` policy;
+- current writers include `rename_policy` on every semantic item;
 - parser-backed, recovered, and source-mapped-span flags retain their explicit meanings; and
 - no TextScan-shape decoder, legacy executor, deprecated alias, or dual projection path remains.
 
 Merman `0.8.0-alpha.3` exposed a TextScan-capable alpha shape with the same numeric discriminator.
 This decision deliberately resets the contract before the first stable release: consumers of that
-alpha shape must update to the current v1 schema, and version `1` alone is not evidence that an
-obsolete alpha payload is compatible.
+alpha shape must update to the current v2 schema, and facts version `1` is rejected before its body
+is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
 analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`, `DocumentSnapshot`,
@@ -178,12 +178,9 @@ Rejected. It duplicates successful grammar behavior and splits the public meanin
 
 ### Number the replacement facts shape as version 2
 
-Rejected. The facts API is still explicitly alpha, and the chosen pre-stable reset leaves one clean
-v1 contract instead of carrying an obsolete schema generation into the stable version history.
-Strict schema validation rejects the removed TextScan shape and all wire version values other than
-`1`. Within the current semantic-item shape, an omitted additive `rename_policy` is accepted only
-as the non-renameable `none` policy; consumers of the earlier TextScan alpha must still update with
-the breaking package release.
+Adopted by amendment. The facts API is explicitly alpha, but the previous v1 discriminator also
+identified an incompatible TextScan-capable shape. Facts v2 makes the wire boundary unambiguous and
+rejects v1 before nested fields are decoded.
 
 ## Related Decisions
 

@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
-// Diagnostics and facts are independent contracts that both begin at version 1.
-pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
+// Diagnostics and facts are independent contracts. Facts v2 replaces the alpha v1 wire shape.
+pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 2;
 
 fn deserialize_payload_version<'de, D>(
     deserializer: D,
@@ -28,19 +28,6 @@ where
     D: serde::Deserializer<'de>,
 {
     deserialize_payload_version(deserializer, ANALYSIS_PAYLOAD_VERSION, "analysis")
-}
-
-pub(crate) fn deserialize_analysis_facts_payload_version<'de, D>(
-    deserializer: D,
-) -> Result<u32, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    deserialize_payload_version(
-        deserializer,
-        ANALYSIS_FACTS_PAYLOAD_VERSION,
-        "analysis facts",
-    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

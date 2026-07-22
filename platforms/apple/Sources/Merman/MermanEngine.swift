@@ -156,7 +156,6 @@ public struct MermanRuntimeFeatures: Decodable {
     public let render: Bool
     public let analysis: Bool
     public let ascii: Bool
-    public let coreFull: Bool
     public let coreHost: Bool
     public let elkLayout: Bool
     public let ratexMath: Bool
@@ -166,7 +165,6 @@ public struct MermanRuntimeFeatures: Decodable {
         case render
         case analysis
         case ascii
-        case coreFull = "core_full"
         case coreHost = "core_host"
         case elkLayout = "elk_layout"
         case ratexMath = "ratex_math"
@@ -175,11 +173,9 @@ public struct MermanRuntimeFeatures: Decodable {
 }
 
 public struct MermanRuntimeRegistry: Decodable {
-    public let profile: String
     public let diagramFamilyCount: Int
 
     enum CodingKeys: String, CodingKey {
-        case profile
         case diagramFamilyCount = "diagram_family_count"
     }
 }

@@ -24,14 +24,13 @@ test("checked-in Web descriptor has one valid closed surface graph", () => {
   assert.deepEqual(bridge?.features, []);
   assert.deepEqual(
     Object.values(bridge?.capabilities ?? {}),
-    Array(8).fill(false),
+    Array(7).fill(false),
   );
 
   const editor = webSurfaceDescriptor.presets.find(
     ({ name }) => name === "browser-editor",
   );
-  assert.deepEqual(editor?.features, ["core-full", "editor-language"]);
-  assert.equal(editor?.capabilities.core_full, true);
+  assert.deepEqual(editor?.features, ["editor-language"]);
   assert.equal(editor?.capabilities.editor_language, true);
   assert.equal(editor?.capabilities.render, false);
 });

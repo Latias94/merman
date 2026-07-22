@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "b093700a2fd3e6ac9aa4267cd564795f968c81bfce2a7f8e328fb3d4c45e24a3",
+    "cargo_lock_sha256": "782bc19393cb149da318e3d2f51c9110427d8946d9e5b95d0a851bf35c61dc95",
     "configuration_sha256": "4765a9560ee1ed9c96619908ef21fc462eab4fa9d917243106f1a96b534d7007"
   },
   "licenses": [
@@ -1161,8 +1161,28 @@
           "repository": "https://github.com/contain-rs/bit-set"
         },
         {
+          "name": "bit-set",
+          "version": "0.9.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Alexis Beingessner <a.beingessner@gmail.com>"
+          ],
+          "repository": "https://github.com/contain-rs/bit-set"
+        },
+        {
           "name": "bit-vec",
           "version": "0.8.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Alexis Beingessner <a.beingessner@gmail.com>"
+          ],
+          "repository": "https://github.com/contain-rs/bit-vec"
+        },
+        {
+          "name": "bit-vec",
+          "version": "0.9.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -1390,6 +1410,16 @@
           "repository": "https://github.com/bluss/arrayvec"
         },
         {
+          "name": "ascii-canvas",
+          "version": "4.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Niko Matsakis <niko@alum.mit.edu>"
+          ],
+          "repository": "https://github.com/lalrpop/ascii-canvas"
+        },
+        {
           "name": "atomic-waker",
           "version": "1.1.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -1546,6 +1576,16 @@
           "repository": "https://github.com/rayon-rs/either"
         },
         {
+          "name": "ena",
+          "version": "0.14.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Niko Matsakis <niko@alum.mit.edu>"
+          ],
+          "repository": "https://github.com/rust-lang/ena"
+        },
+        {
           "name": "encoding_rs_io",
           "version": "0.1.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -1593,6 +1633,16 @@
             "Stjepan Glavina <stjepang@gmail.com>"
           ],
           "repository": "https://github.com/smol-rs/fastrand"
+        },
+        {
+          "name": "fixedbitset",
+          "version": "0.5.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "bluss"
+          ],
+          "repository": "https://github.com/petgraph/fixedbitset"
         },
         {
           "name": "flate2",
@@ -1667,6 +1717,16 @@
         },
         {
           "name": "hashbrown",
+          "version": "0.15.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Amanieu d'Antras <amanieu@gmail.com>"
+          ],
+          "repository": "https://github.com/rust-lang/hashbrown"
+        },
+        {
+          "name": "hashbrown",
           "version": "0.17.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
@@ -1728,6 +1788,16 @@
           "repository": "https://github.com/indexmap-rs/indexmap"
         },
         {
+          "name": "itertools",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "bluss"
+          ],
+          "repository": "https://github.com/rust-itertools/itertools"
+        },
+        {
           "name": "js-sys",
           "version": "0.3.103",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -1736,6 +1806,16 @@
             "The wasm-bindgen Developers"
           ],
           "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys"
+        },
+        {
+          "name": "lalrpop",
+          "version": "0.23.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Niko Matsakis <niko@alum.mit.edu>"
+          ],
+          "repository": "https://github.com/lalrpop/lalrpop"
         },
         {
           "name": "lalrpop-util",
@@ -1917,6 +1997,17 @@
             "The rust-url developers"
           ],
           "repository": "https://github.com/servo/rust-url/"
+        },
+        {
+          "name": "petgraph",
+          "version": "0.8.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "bluss",
+            "mitchmindtree"
+          ],
+          "repository": "https://github.com/petgraph/petgraph"
         },
         {
           "name": "plain",
@@ -2158,6 +2249,16 @@
           "repository": "https://github.com/storyyeller/stable_deref_trait"
         },
         {
+          "name": "string_cache",
+          "version": "0.9.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "The Servo Project Developers"
+          ],
+          "repository": "https://github.com/servo/string-cache"
+        },
+        {
           "name": "svgtypes",
           "version": "0.16.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -2177,6 +2278,17 @@
             "The Rust Project Developers"
           ],
           "repository": "https://github.com/Stebalien/tempfile"
+        },
+        {
+          "name": "term",
+          "version": "1.2.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Steven Allen",
+            "The Rust Project Developers"
+          ],
+          "repository": "https://github.com/Stebalien/term"
         },
         {
           "name": "thread_local",
@@ -2303,6 +2415,18 @@
             "kwantam <kwantam@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-width"
+        },
+        {
+          "name": "unicode-xid",
+          "version": "0.2.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "erick.tryzelaar <erick.tryzelaar@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-xid"
         },
         {
           "name": "url",
@@ -2501,7 +2625,27 @@
           "repository": "https://github.com/RustCrypto/traits"
         },
         {
+          "name": "keccak",
+          "version": "0.1.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "RustCrypto Developers"
+          ],
+          "repository": "https://github.com/RustCrypto/sponges/tree/master/keccak"
+        },
+        {
           "name": "sha2",
+          "version": "0.10.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "RustCrypto Developers"
+          ],
+          "repository": "https://github.com/RustCrypto/hashes"
+        },
+        {
+          "name": "sha3",
           "version": "0.10.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
@@ -5351,6 +5495,16 @@
       "text_sha256": "b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744",
       "text": "Copyright (c) 2024 Orson Peters\n\nThis software is provided 'as-is', without any express or implied warranty. In\nno event will the authors be held liable for any damages arising from the use of\nthis software.\n\nPermission is granted to anyone to use this software for any purpose, including\ncommercial applications, and to alter it and redistribute it freely, subject to\nthe following restrictions:\n\n1. The origin of this software must not be misrepresented; you must not claim\n    that you wrote the original software. If you use this software in a product,\n    an acknowledgment in the product documentation would be appreciated but is\n    not required.\n\n2. Altered source versions must be plainly marked as such, and must not be\n    misrepresented as being the original software.\n\n3. This notice may not be removed or altered from any source distribution.",
       "packages": [
+        {
+          "name": "foldhash",
+          "version": "0.1.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Zlib",
+          "authors": [
+            "Orson Peters <orsonpeters@gmail.com>"
+          ],
+          "repository": "https://github.com/orlp/foldhash"
+        },
         {
           "name": "foldhash",
           "version": "0.2.0",

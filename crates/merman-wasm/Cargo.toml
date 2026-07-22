@@ -18,15 +18,14 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = [
-  "core-full",
   "core-host",
   "render",
   "analysis",
   "ascii",
+  "cytoscape-layout",
   "elk-layout",
   "editor-language",
 ]
-core-full = ["merman-bindings-core/core-full"]
 core-host = ["merman-bindings-core/core-host"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]

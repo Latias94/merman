@@ -152,7 +152,8 @@ void main(List<String> args) {
     uri: 'file:///tmp/example.md',
   );
   final diagrams = documentFacts['diagrams'] as List<Object?>? ?? const [];
-  if (diagrams.isEmpty ||
+  if (documentFacts['version'] != 2 ||
+      diagrams.isEmpty ||
       (diagrams.first as Map<String, Object?>)['source_id'] !=
           'mermaid-fence-1') {
     throw StateError('analyzeDocumentFactsJson smoke failed');
@@ -252,7 +253,8 @@ void main(List<String> args) {
     );
     final reusableDiagrams =
         reusableDocumentFacts['diagrams'] as List<Object?>? ?? const [];
-    if (reusableDiagrams.isEmpty ||
+    if (reusableDocumentFacts['version'] != 2 ||
+        reusableDiagrams.isEmpty ||
         (reusableDiagrams.first as Map<String, Object?>)['source_id'] !=
             'mermaid-fence-1') {
       throw StateError('reusable analyzeDocumentFactsJson smoke failed');

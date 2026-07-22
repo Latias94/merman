@@ -57,14 +57,14 @@ npm run build:wasm:full --prefix platforms/web
 npm run build:wasm:ratex-math --prefix platforms/web
 ```
 
-The generated module exports `bindingCapabilities()`, `selectedRegistryProfile()`,
-`diagramFamilyCapabilities()`, and `lintRuleCatalog()` so JavaScript callers can detect whether the
-current artifact includes `render`, `analysis`, `ascii`, `core_full`, `core_host`, `elk_layout`,
-`ratex_math`, or `editor_language` support, which diagram parser/render facts are registered, and
-which lint rules are configurable or authoring-only. Lint rule entries include evidence references
-so browser hosts can explain why a rule is classified as Mermaid-backed compatibility or Merman
-authoring guidance.
-The ASCII preset can stay on the slim core profile when built without `core-full`/`core-host`.
+The generated module exports `bindingCapabilities()`, `diagramFamilyCapabilities()`, and
+`lintRuleCatalog()` so JavaScript callers can detect whether the current artifact includes
+`render`, `analysis`, `ascii`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
+support, inspect the complete pinned Mermaid language catalog, and discover configurable or
+authoring-only lint rules. Lint rule entries include evidence references so browser hosts can
+explain why a rule is classified as Mermaid-backed compatibility or Merman authoring guidance.
+All artifacts share the same language catalog; slim presets only omit output, analysis, editor, or
+host capabilities.
 Render entry points stay present on the JavaScript surface for shape stability, but artifacts built
 without render support return `MERMAN_UNSUPPORTED_FORMAT`; callers should use
 `bindingCapabilities().render` rather than function presence for capability checks. Optional surfaces
@@ -75,9 +75,10 @@ The Rust feature boundary for diagnostics and validation is `analysis`. It contr
 `analysisFacts`, `validate`, and lint rule catalog helpers. The `editor-language` feature implies
 `analysis`, while ASCII-only browser builds can omit both.
 
-`analyze*` returns diagnostics schema v1. `analysisFacts` returns the current parser-only facts
-schema v1; the TextScan-capable alpha implementation from `0.8.0-alpha.3` is not retained. The two
-JSON contracts are independently versioned, and their versions are independent from
+`analyze*` returns diagnostics schema v1. `analysisFacts` returns parser-only facts schema v2 and
+rejects facts v1 at the version boundary; the TextScan-capable alpha implementation from
+`0.8.0-alpha.3` is not retained. The two JSON contracts are independently versioned, and their
+versions are independent from
 wasm-bindgen/package ABI versions and Mermaid's own `*-v2` ids.
 
 The Rust feature boundary for the browser editor APIs is `editor-language`. Slim browser presets

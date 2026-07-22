@@ -1,5 +1,4 @@
 use crate::XtaskError;
-use merman_core::baseline::BaselineRegistryProfile;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -56,20 +55,19 @@ fn write_catalog(path: &Path, contents: &str) -> Result<(), XtaskError> {
 
 pub(crate) fn gen_web_diagram_catalog(args: Vec<String>) -> Result<(), XtaskError> {
     let output = parse_output_path(args)?;
-    let diagrams = merman_core::supported_diagrams_for_profile(BaselineRegistryProfile::Full);
+    let diagrams = merman_core::supported_diagrams();
     write_catalog(&output, &render_diagram_catalog(diagrams)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DEFAULT_OUTPUT, parse_output_path, render_diagram_catalog};
-    use merman_core::baseline::BaselineRegistryProfile;
     use std::fs;
     use std::path::PathBuf;
 
     #[test]
-    fn generator_projects_the_full_registry_in_catalog_order() {
-        let diagrams = merman_core::supported_diagrams_for_profile(BaselineRegistryProfile::Full);
+    fn generator_projects_the_unique_registry_in_catalog_order() {
+        let diagrams = merman_core::supported_diagrams();
         let output = render_diagram_catalog(diagrams).expect("render catalog");
 
         assert_eq!(diagrams.len(), 35);
@@ -116,11 +114,9 @@ mod tests {
     }
 
     #[test]
-    fn committed_catalog_matches_the_full_rust_registry() {
-        let expected = render_diagram_catalog(merman_core::supported_diagrams_for_profile(
-            BaselineRegistryProfile::Full,
-        ))
-        .expect("render catalog");
+    fn committed_catalog_matches_the_unique_rust_registry() {
+        let expected =
+            render_diagram_catalog(merman_core::supported_diagrams()).expect("render catalog");
         let path = crate::cmd::workspace_root().join(DEFAULT_OUTPUT);
         let actual = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));

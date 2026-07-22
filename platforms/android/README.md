@@ -58,7 +58,7 @@ val svg = MermanEngine.renderSvg(
 )
 ```
 
-`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `1`. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `2` and rejects facts v1 at its version boundary. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
 
 Pass full Markdown/MDX-like content and a URI to document analysis:
 
@@ -71,7 +71,7 @@ val factsJson = MermanEngine.analyzeDocumentFactsJson(
 
 Use `diagramFamilyCapabilitiesJson()` and `asciiCapabilitiesJson()` instead of hard-coding support for a build profile or output format.
 Use `runtimeContractJson()` for the loaded ABI/package/options versions, feature set, registry
-facts, and exact resource profile values. The returned JSON uses runtime-contract schema `1`.
+facts, and exact resource profile values. The returned JSON uses runtime-contract schema `2`.
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then pass the generated options JSON:
 
 ```kotlin

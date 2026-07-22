@@ -1084,6 +1084,33 @@ fn top_level_mmdc_flags_render_svg_file() {
 }
 
 #[test]
+fn default_cli_renders_architecture_fixture() {
+    let root = repo_root();
+    let fixture = root
+        .join("fixtures")
+        .join("architecture")
+        .join("upstream_docs_architecture_example_002.mmd");
+    assert!(fixture.exists(), "fixture missing: {}", fixture.display());
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out = tmp.path().join("architecture.svg");
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .current_dir(&root)
+        .args([
+            "-i",
+            fixture.to_string_lossy().as_ref(),
+            "-o",
+            out.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let svg = fs::read_to_string(&out).expect("read SVG");
+    assert!(svg.trim_start().starts_with("<svg"), "output is not SVG");
+}
+
+#[test]
 fn top_level_missing_input_file_reports_path() {
     let tmp = tempfile::tempdir().expect("tempdir");
 

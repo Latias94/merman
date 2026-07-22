@@ -14,7 +14,7 @@
 //! ```compile_fail,E0624
 //! use merman_core::DiagramRegistry;
 //!
-//! let registry = DiagramRegistry::for_pinned_mermaid_baseline();
+//! let registry = DiagramRegistry::pinned_mermaid_baseline();
 //! let _parser = registry.get("flowchart-v2");
 //! ```
 

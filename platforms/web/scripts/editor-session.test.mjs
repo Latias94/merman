@@ -197,7 +197,6 @@ function editorCapabilities() {
     render: false,
     analysis: true,
     ascii: false,
-    core_full: true,
     core_host: false,
     elk_layout: false,
     ratex_math: false,

@@ -1109,7 +1109,6 @@ mod tests {
             .unwrap()
     }
 
-    #[cfg(feature = "core-full")]
     fn prepare_with_flowchart_node_limit(
         source: &str,
         max_flowchart_nodes: usize,
@@ -1132,7 +1131,6 @@ mod tests {
         prepare(parsed, &LayoutOptions::default(), session)
     }
 
-    #[cfg(feature = "core-full")]
     fn assert_flowchart_node_limit(error: Error, actual: usize, max: usize) {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected max_flowchart_nodes resource limit error")
@@ -1143,7 +1141,6 @@ mod tests {
         assert_eq!(limit.max, max);
     }
 
-    #[cfg(feature = "core-full")]
     #[test]
     fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart TD\nA --> B";
@@ -1157,7 +1154,6 @@ mod tests {
         assert_flowchart_node_limit(error, 2, 1);
     }
 
-    #[cfg(feature = "core-full")]
     #[test]
     fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "swimlane-beta LR\nA --> B";
@@ -1171,7 +1167,7 @@ mod tests {
         assert_flowchart_node_limit(error, 2, 1);
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart-elk TD\nA --> B";

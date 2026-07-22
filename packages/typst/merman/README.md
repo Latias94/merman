@@ -325,14 +325,8 @@ wrapper and legal-material tree. Packaging stages only snapshot bytes, verifies 
 shape and contents, then rechecks live source identity immediately before atomically replacing the
 version directory.
 
-The `publish` profile enables rendering, analysis, the complete family registry, and ELK layout.
-Build the no-ELK full-config artifact with:
-
-```sh
-cargo run --locked -p xtask -- build-typst-package --profile full-no-elk
-```
-
-Build the minimal render and analysis artifact without the full registry or ELK with:
+The `publish` profile enables rendering, analysis, the complete Mermaid language catalog, and ELK
+layout. Build the smaller render-and-analysis artifact without ELK with:
 
 ```sh
 cargo run --locked -p xtask -- build-typst-package --profile minimal

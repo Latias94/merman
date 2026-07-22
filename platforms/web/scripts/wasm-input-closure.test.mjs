@@ -59,18 +59,12 @@ const expectedCrateDirectories = {
     "merman-wasm",
   ],
   "browser-editor": [
-    "dugong",
-    "dugong-graphlib",
-    "manatee",
     "merman",
     "merman-analysis",
-    "merman-ascii",
     "merman-bindings-core",
     "merman-core",
     "merman-editor-core",
-    "merman-render",
     "merman-wasm",
-    "roughr",
   ],
   "browser-full": [
     "dugong",

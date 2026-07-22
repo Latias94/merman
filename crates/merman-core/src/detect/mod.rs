@@ -1,4 +1,3 @@
-use crate::baseline::BaselineRegistryProfile;
 use crate::{MermaidConfig, Result};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -29,19 +28,13 @@ pub struct Detector {
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
     detectors: Arc<Vec<Detector>>,
-    profile: BaselineRegistryProfile,
 }
 
 impl DetectorRegistry {
     /// Creates an empty detector registry.
     pub fn new() -> Self {
-        Self::with_profile(BaselineRegistryProfile::Full)
-    }
-
-    fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
             detectors: Arc::new(Vec::new()),
-            profile,
         }
     }
 
@@ -61,9 +54,7 @@ impl DetectorRegistry {
         let no_directives = remove_directives(no_frontmatter.as_ref());
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
 
-        if let Some(id) =
-            crate::family::fast_detect_by_leading_keyword(cleaned.as_ref(), self.profile)
-        {
+        if let Some(id) = crate::family::fast_detect_by_leading_keyword(cleaned.as_ref()) {
             return Ok(id);
         }
 
@@ -86,7 +77,7 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
-        if let Some(id) = crate::family::fast_detect_by_leading_keyword(text, self.profile) {
+        if let Some(id) = crate::family::fast_detect_by_leading_keyword(text) {
             return Ok(id);
         }
 
@@ -102,12 +93,10 @@ impl DetectorRegistry {
         .into())
     }
 
-    /// Builds the full detector registry for the pinned Mermaid baseline.
-    ///
-    /// This matches Mermaid's `includeLargeFeatures=true` registration profile.
-    pub fn pinned_mermaid_baseline_full() -> Self {
-        let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
-        for fact in crate::family::detector_facts(BaselineRegistryProfile::Full) {
+    /// Builds the detector registry for the pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline() -> Self {
+        let mut reg = Self::new();
+        for fact in crate::family::detector_facts() {
             reg.add_fn(fact.id, fact.detector);
             if fact.id == "error" {
                 reg.add_fn("---", detector_frontmatter_unparsed);
@@ -116,34 +105,6 @@ impl DetectorRegistry {
 
         reg
     }
-
-    /// Builds the small detector registry for the pinned Mermaid baseline.
-    ///
-    /// This matches the base Mermaid registration profile without large feature diagrams.
-    pub fn pinned_mermaid_baseline_tiny() -> Self {
-        let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
-        for fact in crate::family::detector_facts(BaselineRegistryProfile::Tiny) {
-            reg.add_fn(fact.id, fact.detector);
-            if fact.id == "error" {
-                reg.add_fn("---", detector_frontmatter_unparsed);
-            }
-        }
-
-        reg
-    }
-
-    /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(feature = "full-registry")]
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        Self::pinned_mermaid_baseline_full()
-    }
-
-    /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(not(feature = "full-registry"))]
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        Self::pinned_mermaid_baseline_tiny()
-    }
-
     #[cfg(test)]
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.detectors.iter().map(|detector| detector.id)
@@ -467,7 +428,7 @@ mod registry_clone_tests {
 
     #[test]
     fn detector_registry_clone_uses_copy_on_write_storage() {
-        let original = DetectorRegistry::pinned_mermaid_baseline_full();
+        let original = DetectorRegistry::pinned_mermaid_baseline();
         let mut cloned = original.clone();
 
         assert!(Arc::ptr_eq(&original.detectors, &cloned.detectors));

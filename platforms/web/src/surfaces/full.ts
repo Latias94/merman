@@ -50,7 +50,6 @@ export const {
   validate,
   bindingCapabilities,
   runtimeContract,
-  selectedRegistryProfile,
   supportedDiagrams,
   diagramFamilyCapabilities,
   supportedThemes,

@@ -259,15 +259,11 @@ mod tests {
     use crate::client_profile::ClientProtocolProfile;
     use crate::document_store::DocumentStore;
     use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
-    #[cfg(feature = "core-full")]
     use serde::Deserialize;
-    #[cfg(feature = "core-full")]
     use std::fs;
-    #[cfg(feature = "core-full")]
     use std::path::PathBuf;
     use tower_lsp::lsp_types::{Position, Url};
 
-    #[cfg(feature = "core-full")]
     #[derive(Debug, Deserialize)]
     struct TokenEquivalenceEvidence {
         descriptor_digest: String,
@@ -276,7 +272,6 @@ mod tests {
         recovery_cases: Vec<TokenEquivalenceCase>,
     }
 
-    #[cfg(feature = "core-full")]
     #[derive(Debug, Deserialize)]
     struct TokenEquivalenceCase {
         id: String,
@@ -426,7 +421,6 @@ mod tests {
         assert!(tokens.data.is_empty());
     }
 
-    #[cfg(feature = "core-full")]
     #[test]
     fn all_family_and_recovery_sequences_match_the_generated_cross_surface_evidence() {
         let evidence_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -500,24 +494,6 @@ mod tests {
                 case.id
             );
         }
-    }
-
-    #[cfg(not(feature = "core-full"))]
-    #[test]
-    fn tiny_registry_keeps_full_only_families_out_of_semantic_tokens() {
-        assert!(!merman_core::supported_diagrams().contains(&"architecture"));
-
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///token-equivalence/tiny-architecture.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "architecture-beta\n  service api\n".to_string());
-
-        assert!(snapshot.detection().is_none());
-        assert!(
-            semantic_tokens_for_snapshot(&snapshot)
-                .expect("unsupported tiny-profile source is a valid empty plan")
-                .data
-                .is_empty()
-        );
     }
 
     #[test]

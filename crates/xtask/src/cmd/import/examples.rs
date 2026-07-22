@@ -280,7 +280,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     let example_re = Regex::new(r#"(?s)\{\s*title:\s*(?:'([^']*)'|"([^"]*)").*?code:\s*`([^`]*)`"#)
         .map_err(|err| XtaskError::SnapshotUpdateFailed(format!("bad regex: {err}")))?;
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
 
     let mut existing_by_diagram: std::collections::HashMap<
         String,

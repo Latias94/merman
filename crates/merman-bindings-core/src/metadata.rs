@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 1;
+pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 2;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -25,7 +25,6 @@ pub struct BindingCapabilities {
     pub render: bool,
     pub analysis: bool,
     pub ascii: bool,
-    pub core_full: bool,
     pub core_host: bool,
     pub elk_layout: bool,
     pub ratex_math: bool,
@@ -55,7 +54,6 @@ pub struct RuntimeContract {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuntimeRegistryContract {
-    pub profile: &'static str,
     pub diagram_family_count: usize,
 }
 
@@ -125,7 +123,6 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         render: cfg!(feature = "render"),
         analysis: cfg!(feature = "analysis"),
         ascii: cfg!(feature = "ascii"),
-        core_full: cfg!(feature = "core-full"),
         core_host: cfg!(feature = "core-host"),
         elk_layout: cfg!(feature = "elk-layout"),
         ratex_math: cfg!(feature = "ratex-math"),
@@ -160,7 +157,6 @@ pub fn runtime_contract(abi_version: u32) -> RuntimeContract {
         payload_schemas,
         features: binding_capabilities(),
         registry: RuntimeRegistryContract {
-            profile: selected_registry_profile(),
             diagram_family_count: diagram_family_capabilities().len(),
         },
         resources: runtime_resource_contract(),
@@ -209,10 +205,6 @@ fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
 #[cfg(not(feature = "render"))]
 const fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
     None
-}
-
-pub fn selected_registry_profile() -> &'static str {
-    merman::selected_baseline_registry_profile().as_str()
 }
 
 pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
@@ -468,7 +460,6 @@ mod tests {
         assert_eq!(capabilities.render, cfg!(feature = "render"));
         assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(capabilities.core_full, cfg!(feature = "core-full"));
         assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
@@ -528,7 +519,10 @@ mod tests {
             BINDING_OPTIONS_SCHEMA_VERSION
         );
         assert_eq!(contract.features, binding_capabilities());
-        assert_eq!(contract.registry.profile, selected_registry_profile());
+        assert_eq!(
+            contract.registry.diagram_family_count,
+            diagram_family_capabilities().len()
+        );
 
         #[cfg(feature = "render")]
         {
@@ -563,24 +557,8 @@ mod tests {
         assert!(contract.resources.is_none());
 
         let json: Value = serde_json::from_slice(&runtime_contract_json(2).unwrap()).unwrap();
-        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["schema_version"], RUNTIME_CONTRACT_SCHEMA_VERSION);
         assert_eq!(json["abi_version"], 2);
-    }
-
-    #[test]
-    fn selected_registry_profile_reports_core_profile() {
-        assert_eq!(
-            selected_registry_profile(),
-            merman::selected_baseline_registry_profile().as_str()
-        );
-        assert_eq!(
-            selected_registry_profile(),
-            if cfg!(feature = "core-full") {
-                "full"
-            } else {
-                "tiny"
-            }
-        );
     }
 
     #[test]
@@ -652,10 +630,11 @@ mod tests {
             assert!(railroad_variant.has_render_parser);
         }
 
-        let has_mindmap = capabilities
-            .iter()
-            .any(|capability| capability.diagram_type == "mindmap");
-        assert_eq!(has_mindmap, cfg!(feature = "core-full"));
+        assert!(
+            capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == "mindmap")
+        );
     }
 
     #[test]

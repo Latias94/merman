@@ -54,7 +54,6 @@ fn parse_indented_headers_across_common_diagrams() {
         assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
     }
 
-    #[cfg(feature = "full-registry")]
     for (text, expected_type) in [
         ("     mindmap\n       root\n", "mindmap"),
         (
@@ -68,7 +67,6 @@ fn parse_indented_headers_across_common_diagrams() {
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_merges_frontmatter_and_directive_config() {
     let engine = Engine::new();
     let text = r#"---
@@ -93,7 +91,6 @@ graph TD;A-->B;"#;
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_frontmatter_and_directives_deep_merge_nested_config_like_upstream() {
     let engine = Engine::new();
     let text = r#"---
@@ -198,7 +195,6 @@ graph TD;A-->B;"##;
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_maps_top_level_frontmatter_diagram_config() {
     let engine = Engine::new();
     let text = r#"---
@@ -266,7 +262,6 @@ gantt
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_frontmatter_config_takes_priority_over_diagram_compat() {
     let engine = Engine::new();
     let text = r#"---
@@ -374,7 +369,6 @@ fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_sanitizes_frontmatter_title_like_mermaid_common_db() {
     let engine = Engine::new();
     let text = r#"---
@@ -392,7 +386,6 @@ A-->B
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_stringifies_truthy_frontmatter_title_like_upstream() {
     let engine = Engine::new();
     let meta = engine
@@ -410,7 +403,6 @@ Alice->Bob: Hi
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn parse_indented_frontmatter_like_upstream() {
     let engine = Engine::new();
     let meta = engine
@@ -509,7 +501,6 @@ graph TD;A-->B;
 }
 
 #[test]
-#[cfg(feature = "full-registry")]
 fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default =
@@ -809,7 +800,6 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
                 crate::config::drop_value_nonrecursive(model);
             }
 
-            #[cfg(feature = "full-registry")]
             {
                 let (label, diagram_type, source) = (
                     "architecture",
@@ -884,7 +874,6 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
                 crate::config::drop_value_nonrecursive(model);
             }
 
-            #[cfg(feature = "full-registry")]
             for (label, diagram_type, source) in [
                 ("mindmap", "mindmap", "mindmap\nroot\n child\n"),
                 ("mindmap-empty", "mindmap", "mindmap\n"),
@@ -949,7 +938,6 @@ fn default_engine_construction_uses_bounded_stack() {
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
     const DEPTH: usize = 32;
     let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
@@ -997,7 +985,6 @@ fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
@@ -1022,7 +1009,6 @@ fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let mut source = String::from("---\nconfig:\n  ");
@@ -1049,7 +1035,6 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
 }
 
 #[test]
-#[cfg(feature = "full-config")]
 fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata(
@@ -1058,20 +1043,6 @@ fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
     .expect("non-string YAML keys should not fail frontmatter parsing");
 
     assert_eq!(res.diagram_type, "sequence");
-    assert_eq!(res.config.as_value(), &json!({}));
-}
-
-#[test]
-#[cfg(not(feature = "full-config"))]
-fn frontmatter_is_stripped_without_full_config_but_config_is_not_applied() {
-    let engine = Engine::new();
-    let res = block_on(engine.parse_metadata(
-        "---\ntitle: Pure profile title\nconfig:\n  theme: forest\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
-    ))
-    .expect("closed frontmatter should be stripped");
-
-    assert_eq!(res.diagram_type, "sequence");
-    assert_eq!(res.title, None);
     assert_eq!(res.config.as_value(), &json!({}));
 }
 
@@ -1255,7 +1226,6 @@ fn render_semantic_model_supports_diagram_type_aliases() {
 }
 
 #[test]
-#[cfg(feature = "full-registry")]
 fn render_parser_registry_drives_typed_alias_parse() {
     let engine = Engine::new();
     assert!(engine.render_diagram_registry().contains("flowchart-elk"));
@@ -1357,7 +1327,6 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn combined_parse_keeps_custom_semantic_overlay_and_reports_editor_unavailable() {
     for (diagram_type, source) in [
         ("flowchart-v2", "flowchart TD\nA-->B"),
@@ -1505,44 +1474,6 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
 }
 
 #[test]
-#[cfg(not(feature = "full"))]
-fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_inheritance() {
-    let mut engine = Engine::new();
-    engine
-        .diagram_registry_mut()
-        .insert("architecture", custom_overlay_json_parser);
-    let source = "architecture-beta\nservice api(server)[API]";
-
-    let parsed = engine
-        .parse_diagram_with_type_sync("architecture", source, ParseOptions::strict())
-        .unwrap()
-        .unwrap();
-    assert_eq!(parsed.model["owner"], json!("custom-semantic"));
-
-    let rendered = engine
-        .parse_diagram_for_render_model_with_type_sync(
-            "architecture",
-            source,
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap();
-    let RenderSemanticModel::CustomJson(model) = rendered.model() else {
-        panic!("custom Architecture semantics should remain an explicit JSON boundary");
-    };
-    assert_eq!(
-        model.provenance(),
-        CustomJsonProvenance::SemanticRegistryOverlay
-    );
-    assert!(
-        engine
-            .parse_editor_semantic_facts_with_type_sync("architecture", source,)
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[test]
 fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
     let mut engine = Engine::new();
     assert!(engine.render_diagram_registry_mut().remove("flowchart-v2"));
@@ -1603,14 +1534,8 @@ fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<Cust
     ))
 }
 
-#[cfg(feature = "full-sanitization")]
 fn expected_custom_title_after_sanitization() -> &'static str {
     "<b>custom</b>"
-}
-
-#[cfg(not(feature = "full-sanitization"))]
-fn expected_custom_title_after_sanitization() -> &'static str {
-    "&lt;script&gt;discarded&lt;/script&gt;&lt;b&gt;custom&lt;/b&gt;"
 }
 
 fn detect_generic_custom(text: &str, _config: &mut MermaidConfig) -> bool {
@@ -1672,7 +1597,6 @@ fn deep_init_directive_source(root_key: &str, depth: usize, leaf: &str) -> Strin
     source
 }
 
-#[cfg(feature = "full-config")]
 fn deep_frontmatter_config_source(root_key: &str, depth: usize, leaf: &str) -> String {
     let mut source = format!("---\nconfig: {{\"{root_key}\": ");
     for idx in 0..depth {
@@ -2967,7 +2891,6 @@ accDescr: <script>alert(1)</script><b>d</b>
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn parse_architecture_applies_upstream_category_population_order() {
     let source = r#"architecture-beta
 api:R -- L:join
@@ -3007,7 +2930,6 @@ group child(cloud)[Child] in root
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn parse_architecture_converts_quoted_titles_like_langium() {
     let source = r#"architecture-beta
 service api(server)["API \"Gateway\""]
@@ -3025,7 +2947,6 @@ service api(server)["API \"Gateway\""]
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_strings_and_titles() {
     for source in [
         "architecture-beta\nservice api \"icon\\\ntext\"\n",
@@ -3038,7 +2959,6 @@ fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_string
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload() {
     let source = "architecture-beta\naccDescr {\n  Draft description\n";
     let engine = Engine::new();
@@ -3079,7 +2999,6 @@ fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload
 }
 
 #[test]
-#[cfg(feature = "full")]
 fn parse_architecture_validates_junction_ids_and_parents_with_exact_spans() {
     let cases = [
         (

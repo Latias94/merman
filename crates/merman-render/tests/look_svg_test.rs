@@ -40,7 +40,7 @@ struct LookDomCase {
 
 #[test]
 fn configured_look_reaches_declared_dom_consumers() {
-    let cases = [
+    let cases = vec![
         LookDomCase {
             name: "flowchart",
             diagram_id: "look-flowchart",
@@ -95,16 +95,6 @@ state Active {
             ],
         },
         LookDomCase {
-            name: "mindmap",
-            diagram_id: "look-mindmap",
-            source: r#"%%{init: {"look": "neo"}}%%
-mindmap
-  Root
-    Child
-"#,
-            expected_fragments: &[r#"id="look-mindmap-node_0" data-look="neo""#],
-        },
-        LookDomCase {
             name: "requirement",
             diagram_id: "look-requirement",
             source: r#"%%{init: {"look": "neo"}}%%
@@ -136,6 +126,22 @@ kanban
             expected_fragments: &[r#"id="look-kanban-Todo" data-look="neo""#],
         },
     ];
+
+    #[cfg(feature = "cytoscape-layout")]
+    let cases = {
+        let mut cases = cases;
+        cases.push(LookDomCase {
+            name: "mindmap",
+            diagram_id: "look-mindmap",
+            source: r#"%%{init: {"look": "neo"}}%%
+mindmap
+  Root
+    Child
+"#,
+            expected_fragments: &[r#"id="look-mindmap-node_0" data-look="neo""#],
+        });
+        cases
+    };
 
     for case in cases {
         let svg = render_svg(case.diagram_id, case.source);

@@ -84,9 +84,7 @@ fn rendered_svgs_do_not_contain_mermaid_entity_placeholders() {
     // Mermaid preprocesses input with `encodeEntities(...)`, which introduces placeholder sequences
     // like `ﬂ°...¶ß` (to avoid grammar conflicts with `#...;`). Rendered SVG output should not leak
     // these internal placeholders.
-    let fixtures = [
-        "mindmap/stress_mindmap_markdown_vs_verbatim_030.mmd",
-        "mindmap/stress_mindmap_shapes_with_ids_and_labels_028.mmd",
+    let fixtures = vec![
         "quadrantchart/stress_quadrantchart_batch1_unicode_quotes_punct_009.mmd",
         "sequence/stress_html_entities_and_escaping_038.mmd",
         "state/upstream_cypress_statediagram_v2_spec_v2_states_can_have_a_class_applied_032.mmd",
@@ -95,6 +93,16 @@ fn rendered_svgs_do_not_contain_mermaid_entity_placeholders() {
         "timeline/timeline_stress_period_labels_with_colons_entities.mmd",
         "timeline/timeline_stress_section_titles_with_hashes_colons_semicolons.mmd",
     ];
+
+    #[cfg(feature = "cytoscape-layout")]
+    let fixtures = {
+        let mut fixtures = fixtures;
+        fixtures.extend([
+            "mindmap/stress_mindmap_markdown_vs_verbatim_030.mmd",
+            "mindmap/stress_mindmap_shapes_with_ids_and_labels_028.mmd",
+        ]);
+        fixtures
+    };
 
     for fixture in fixtures {
         let svg = render_fixture_svg(fixture);
@@ -107,9 +115,7 @@ fn rendered_svgs_do_not_contain_mermaid_entity_placeholders() {
 
 #[test]
 fn rendered_svgs_do_not_contain_malformed_xml_entity_references() {
-    let fixtures = [
-        "mindmap/stress_mindmap_markdown_vs_verbatim_030.mmd",
-        "mindmap/stress_mindmap_shapes_with_ids_and_labels_028.mmd",
+    let fixtures = vec![
         "quadrantchart/stress_quadrantchart_batch1_unicode_quotes_punct_009.mmd",
         "sequence/stress_html_entities_and_escaping_038.mmd",
         "state/upstream_cypress_statediagram_v2_spec_v2_states_can_have_a_class_applied_032.mmd",
@@ -118,6 +124,16 @@ fn rendered_svgs_do_not_contain_malformed_xml_entity_references() {
         "timeline/timeline_stress_period_labels_with_colons_entities.mmd",
         "timeline/timeline_stress_section_titles_with_hashes_colons_semicolons.mmd",
     ];
+
+    #[cfg(feature = "cytoscape-layout")]
+    let fixtures = {
+        let mut fixtures = fixtures;
+        fixtures.extend([
+            "mindmap/stress_mindmap_markdown_vs_verbatim_030.mmd",
+            "mindmap/stress_mindmap_shapes_with_ids_and_labels_028.mmd",
+        ]);
+        fixtures
+    };
 
     for fixture in fixtures {
         let svg = render_fixture_svg(fixture);

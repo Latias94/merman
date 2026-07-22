@@ -316,7 +316,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         "xychart",
     ];
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
     let mut created: Vec<CreatedFixture> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
@@ -1101,12 +1101,11 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::baseline::BaselineRegistryProfile;
     use std::collections::BTreeSet;
 
     #[test]
     fn upstream_doc_routes_cover_every_documented_supported_family() {
-        let expected = merman_core::supported_diagrams_for_profile(BaselineRegistryProfile::Full)
+        let expected = merman_core::supported_diagrams()
             .iter()
             .copied()
             .filter(|diagram| *diagram != "info")

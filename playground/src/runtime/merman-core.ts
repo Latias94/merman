@@ -7,7 +7,6 @@ import type {
   DiagramDetectionFacts,
   DiagramType,
   HostThemePresetName,
-  RegistryProfile,
   ThemeName,
   ValidationResult,
 } from "@mermanjs/web";
@@ -85,7 +84,6 @@ export interface MermanDomainFacade {
     configJson?: string,
     options?: MermanRenderOptions
   ): string;
-  registryProfile(): RegistryProfile;
   render(
     code: string,
     theme: string,

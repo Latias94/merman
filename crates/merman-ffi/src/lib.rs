@@ -1117,6 +1117,7 @@ where
     f(&engine.inner, source_bytes, uri_bytes)
 }
 
+#[cfg(feature = "render")]
 unsafe fn resource_options_json_impl(
     profile: i32,
     overrides: *const MermanResourceLimitOverride,
@@ -1152,6 +1153,16 @@ unsafe fn resource_options_json_impl(
         })
         .collect::<Result<Vec<_>, BindingError>>()?;
     merman_bindings_core::resource_options_json(profile, &overrides)
+}
+
+#[cfg(not(feature = "render"))]
+unsafe fn resource_options_json_impl(
+    profile: i32,
+    overrides: *const MermanResourceLimitOverride,
+    overrides_len: usize,
+) -> Result<Vec<u8>, BindingError> {
+    let _ = (profile, overrides, overrides_len);
+    Err(merman_bindings_core::render_resource_options_unavailable())
 }
 
 unsafe fn ffi_source_options_call<F>(
@@ -1538,6 +1549,19 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "cytoscape-layout")]
+    #[test]
+    fn complete_ffi_build_renders_architecture() {
+        let result = call_render(
+            b"architecture-beta\n  service api(server)[API service]\n",
+            b"",
+        );
+
+        assert_eq!(result.code, BindingStatus::Ok.code());
+        let svg = take_text(result.data);
+        assert!(svg.contains("<svg"));
+    }
+
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
@@ -1801,13 +1825,24 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("flowchart".to_string()))
         );
-        assert_eq!(runtime_contract["schema_version"], 1);
+        assert_eq!(
+            runtime_contract["schema_version"],
+            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
+        );
         assert_eq!(runtime_contract["abi_version"], MERMAN_ABI_VERSION);
         assert_eq!(runtime_contract["options_schema_version"], 1);
         assert_eq!(
-            runtime_contract["resources"]["general_binding_default_profile"],
-            "interactive"
+            runtime_contract["features"]["render"],
+            cfg!(feature = "render")
         );
+        if cfg!(feature = "render") {
+            assert_eq!(
+                runtime_contract["resources"]["general_binding_default_profile"],
+                "interactive"
+            );
+        } else {
+            assert!(runtime_contract["resources"].is_null());
+        }
         let ascii_capabilities = ascii_capabilities.as_array().unwrap();
         if cfg!(feature = "ascii") {
             let sequence = ascii_capabilities
@@ -1971,15 +2006,28 @@ mod tests {
         let overrides = [MermanResourceLimitOverride { id: 0, value: 4096 }];
         let result =
             unsafe { merman_resource_options_json(1, overrides.as_ptr(), overrides.len()) };
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let value: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert_eq!(value["version"], 1);
-        assert_eq!(value["resources"]["profile"], "constrained");
-        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let value: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert_eq!(value["version"], 1);
+            assert_eq!(value["resources"]["profile"], "constrained");
+            assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
 
-        let invalid = unsafe { merman_resource_options_json(99, std::ptr::null(), 0) };
-        assert_eq!(invalid.code, BindingStatus::InvalidArgument.code());
-        unsafe { merman_buffer_free(invalid.data) };
+            let invalid = unsafe { merman_resource_options_json(99, std::ptr::null(), 0) };
+            assert_eq!(invalid.code, BindingStatus::InvalidArgument.code());
+            unsafe { merman_buffer_free(invalid.data) };
+        } else {
+            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
+            let error = take_error(result);
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::UnsupportedFormat.code_name()
+            );
+            assert_eq!(
+                error["message"],
+                "resource options requires the render feature"
+            );
+        }
         assert_eq!(
             merman_resource_limit_override_struct_size(),
             std::mem::size_of::<MermanResourceLimitOverride>()

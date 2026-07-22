@@ -162,7 +162,9 @@ size_t merman_resource_limit_override_struct_size(void);
  * Build versioned options JSON from the typed resource descriptor projection.
  *
  * `overrides` may be NULL only when `overrides_len` is zero. The returned buffer follows the
- * normal MermanResult ownership rules and must be released with merman_buffer_free.
+ * normal MermanResult ownership rules and must be released with merman_buffer_free. This requires
+ * render support. A render-disabled build returns MERMAN_UNSUPPORTED_FORMAT with the message
+ * "resource options requires the render feature"; query runtime_contract.features.render first.
  */
 MermanResult merman_resource_options_json(
     MermanResourceProfile profile,

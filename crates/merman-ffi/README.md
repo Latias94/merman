@@ -66,10 +66,10 @@ Use `merman_engine_new` when several calls share one options document. Concurren
 ## Compatibility Contracts
 
 - Native ABI: `2`. Hosts must compare `merman_abi_version()` with `MERMAN_ABI_VERSION` and verify every exposed struct size before use.
-- Diagnostics and parser-facts payload schemas: `1`. These schema numbers are independent of the native ABI. The current facts v1 contract is parser-only; the removed alpha TextScan shape is not accepted.
+- Diagnostics and parser-facts payload schemas: diagnostics `1`, facts `2`. These schema numbers are independent of the native ABI. Facts v1 is rejected at its version boundary; the removed alpha TextScan shape is not accepted.
 - Text measurement: ABI 2 defines 19 exact operations (`0..18`) and four tagged result kinds. A handled callback must return the result kind required by `request.operation`; do not infer a shape from zero-valued fields.
 - Diagram discovery: query `merman_diagram_family_capabilities_json()` instead of hard-coding parser, editor, layout, or render availability.
-- Runtime discovery: query `merman_runtime_contract_json()` for schema `1` ABI/package/options/payload versions, compiled features, registry facts, and the descriptor-driven resource catalog. Render-disabled artifacts report `resources: null`.
+- Runtime discovery: query `merman_runtime_contract_json()` for schema `2` ABI/package/options/payload versions, compiled features, registry facts, and the descriptor-driven resource catalog. Render-disabled artifacts report `resources: null`.
 
 This prerelease replaced the earlier ABI 2 text-measurement records without changing the numeric ABI. Rebuild the native library and host bindings together; old headers will fail the struct-size contract.
 
@@ -92,7 +92,7 @@ cargo build -p merman-ffi --release --no-default-features --features ascii
 cargo build -p merman-ffi --release --features elk-layout,ratex-math
 ```
 
-Entry points remain exported when their feature is absent and return `MERMAN_UNSUPPORTED_FORMAT`. The `raster` Cargo feature prepares shared conversion support, but the C ABI does not yet expose raster byte-output functions.
+Entry points remain exported when their feature is absent and return `MERMAN_UNSUPPORTED_FORMAT` with an operation-specific message. For example, `merman_resource_options_json` returns `resource options requires the render feature`; query `runtime_contract.features.render` before calling it. The `raster` Cargo feature prepares shared conversion support, but the C ABI does not yet expose raster byte-output functions.
 
 ## Platform Wrappers
 

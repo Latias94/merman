@@ -1437,7 +1437,6 @@ click id1 href "https://example.com/" garbage tail
 }
 
 #[test]
-#[cfg(feature = "full-sanitization")]
 fn gantt_common_db_sanitizes_title_and_accessibility_fields() {
     let model = parse(
         r#"

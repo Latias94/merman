@@ -196,7 +196,7 @@ const exactTypeStringLiterals = new Map([
 ]);
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
-  ["AnalysisFactsResult", "version", "1"],
+  ["AnalysisFactsResult", "version", "2"],
 ];
 
 let failed = false;

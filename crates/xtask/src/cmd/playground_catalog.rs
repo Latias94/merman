@@ -1,6 +1,6 @@
 use crate::XtaskError;
 use merman::render::HeadlessRenderer;
-use merman_core::baseline::{BaselineRegistryProfile, PINNED_MERMAID_BASELINE_TAG};
+use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
 use merman_core::{Engine, ParseOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -212,7 +212,7 @@ fn validate_fixture_path(
 }
 
 fn public_diagram_type_for_syntax(syntax_id: &str) -> Option<&'static str> {
-    merman_core::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full)
+    merman_core::diagram_family_capabilities()
         .iter()
         .find(|capability| capability.diagram_type == syntax_id)
         .and_then(|capability| capability.metadata_id)
@@ -373,7 +373,7 @@ fn validate_manifest(
         let detected_diagram_type = public_diagram_type_for_syntax(&metadata.diagram_type)
             .ok_or_else(|| {
                 catalog_error(format!(
-                    "example `{}` fixture `{}` detected syntax `{}` without a full-profile public diagram type",
+                    "example `{}` fixture `{}` detected syntax `{}` without a canonical public diagram type",
                     entry.id,
                     fixture_path.display(),
                     metadata.diagram_type
@@ -455,7 +455,7 @@ fn validate_manifest(
         let missing = expected.difference(&actual).copied().collect::<Vec<_>>();
         let unexpected = actual.difference(&expected).copied().collect::<Vec<_>>();
         return Err(catalog_error(format!(
-            "manifest diagram set does not match the canonical full-profile catalog; missing={missing:?}, unexpected={unexpected:?}"
+            "manifest diagram set does not match the canonical diagram catalog; missing={missing:?}, unexpected={unexpected:?}"
         )));
     }
     for diagram_type in &expected {
@@ -630,7 +630,7 @@ fn build_committed_catalog(
     validate_manifest(
         workspace_root,
         manifest_path,
-        merman_core::supported_diagrams_for_profile(BaselineRegistryProfile::Full),
+        merman_core::supported_diagrams(),
         render_smoke,
     )
 }
@@ -734,12 +734,10 @@ mod tests {
                 .iter()
                 .map(|example| example.diagram_type.as_str())
                 .collect::<BTreeSet<_>>(),
-            merman_core::supported_diagrams_for_profile(
-                merman_core::baseline::BaselineRegistryProfile::Full
-            )
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>()
+            merman_core::supported_diagrams()
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
         );
         assert!(
             catalog

@@ -78,7 +78,7 @@ test("detectDiagramFacts fails closed for malformed or unsupported facts", () =>
     effectiveLayoutId: null,
   };
   const invalidFacts = [
-    { ...facts("flowchart-v2", "dagre"), version: 2 },
+    { ...facts("flowchart-v2", "dagre"), version: 1 },
     { ...facts("flowchart-v2", "dagre"), valid: "yes" },
     { ...facts("flowchart-v2", "dagre"), diagrams: [] },
     {
@@ -103,7 +103,7 @@ test("detectDiagramFacts fails closed for malformed or unsupported facts", () =>
 
 function facts(syntaxId, effectiveLayoutId) {
   return {
-    version: 1,
+    version: 2,
     valid: true,
     diagrams: [diagram(syntaxId, effectiveLayoutId)],
   };

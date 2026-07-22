@@ -1217,6 +1217,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn engine_renders_svg() {
         let svg = engine()
@@ -1226,6 +1227,19 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
+    }
+
+    #[cfg(feature = "cytoscape-layout")]
+    #[test]
+    fn complete_uniffi_build_renders_architecture() {
+        let svg = engine()
+            .render_svg(
+                "architecture-beta\n  service api(server)[API service]\n".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert!(svg.contains("<svg"));
     }
 
     #[test]
@@ -1328,6 +1342,7 @@ mod tests {
         assert!(raw_height > 0.0);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn engine_accepts_options_json() {
         let svg = engine()
@@ -1347,6 +1362,7 @@ mod tests {
         assert!(svg.contains("data-merman-foreignobject"));
     }
 
+    #[cfg(feature = "ascii")]
     #[test]
     fn engine_renders_ascii() {
         let text = engine()
@@ -1357,6 +1373,7 @@ mod tests {
         assert!(text.contains("World"));
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn engine_returns_semantic_json() {
         let json: Value = serde_json::from_str(
@@ -1372,6 +1389,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn engine_returns_layout_json() {
         let json: Value = serde_json::from_str(
@@ -1385,6 +1403,7 @@ mod tests {
         assert!(json.get("layout").is_some());
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_returns_analysis_json() {
         let json: Value = serde_json::from_str(
@@ -1398,6 +1417,7 @@ mod tests {
         assert_eq!(json["valid"], true);
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_returns_document_analysis_json() {
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
@@ -1417,6 +1437,7 @@ mod tests {
         assert_eq!(json["valid"], true);
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_returns_document_facts_json() {
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
@@ -1431,7 +1452,6 @@ mod tests {
         )
         .unwrap();
 
-        #[cfg(feature = "analysis")]
         assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
         assert_eq!(json["source"]["kind"], "markdown");
         assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
@@ -1457,7 +1477,6 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        #[cfg(feature = "analysis")]
         assert_eq!(unavailable["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
         assert_eq!(
             unavailable["diagrams"][0]["syntax"]["fact_source"],
@@ -1469,6 +1488,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_validates_source() {
         let result = engine()
@@ -1494,31 +1514,36 @@ mod tests {
                 .contains(&"flowchart".to_string())
         );
         let ascii_capabilities = engine.ascii_capabilities();
-        let sequence = ascii_capabilities
-            .iter()
-            .find(|capability| capability.diagram_type == "sequence")
-            .expect("expected UniFFI ASCII capabilities to include sequence");
-        assert_eq!(sequence.support_level, "full");
+        #[cfg(feature = "ascii")]
+        {
+            let sequence = ascii_capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == "sequence")
+                .expect("expected UniFFI ASCII capabilities to include sequence");
+            assert_eq!(sequence.support_level, "full");
 
-        let gantt = ascii_capabilities
-            .iter()
-            .find(|capability| capability.diagram_type == "gantt")
-            .expect("expected UniFFI ASCII capabilities to include gantt");
-        assert_eq!(gantt.support_level, "summary");
-        assert!(!gantt.summary_fallback);
+            let gantt = ascii_capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == "gantt")
+                .expect("expected UniFFI ASCII capabilities to include gantt");
+            assert_eq!(gantt.support_level, "summary");
+            assert!(!gantt.summary_fallback);
 
-        let class = ascii_capabilities
-            .iter()
-            .find(|capability| capability.diagram_type == "class")
-            .expect("expected UniFFI ASCII capabilities to include class");
-        assert_eq!(class.support_level, "partial");
-        assert!(class.summary_fallback);
+            let class = ascii_capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == "class")
+                .expect("expected UniFFI ASCII capabilities to include class");
+            assert_eq!(class.support_level, "partial");
+            assert!(class.summary_fallback);
+        }
+        #[cfg(not(feature = "ascii"))]
+        assert!(ascii_capabilities.is_empty());
         assert!(engine.supported_themes().contains(&"default".to_string()));
-        assert!(
-            engine
-                .supported_host_theme_presets()
-                .contains(&"one-dark".to_string())
-        );
+        let host_theme_presets = engine.supported_host_theme_presets();
+        #[cfg(feature = "render")]
+        assert!(host_theme_presets.contains(&"one-dark".to_string()));
+        #[cfg(not(feature = "render"))]
+        assert!(host_theme_presets.is_empty());
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
@@ -1534,48 +1559,83 @@ mod tests {
                 && capability.config_namespace.as_deref() == Some("flowchart")
         }));
         let lint_rules = engine.lint_rule_catalog();
-        assert!(lint_rules.iter().any(|rule| {
-            rule.id == "merman.authoring.flowchart.explicit_direction"
-                && rule.origin == "merman_authoring"
-                && rule.default_profile == "recommended"
-                && rule
-                    .evidence
-                    .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
-        }));
-        assert!(
-            engine
-                .configurable_lint_rule_catalog()
-                .iter()
-                .all(|rule| rule.configurable && rule.category != "internal")
-        );
+        #[cfg(feature = "analysis")]
+        {
+            assert!(lint_rules.iter().any(|rule| {
+                rule.id == "merman.authoring.flowchart.explicit_direction"
+                    && rule.origin == "merman_authoring"
+                    && rule.default_profile == "recommended"
+                    && rule
+                        .evidence
+                        .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
+            }));
+            assert!(
+                engine
+                    .configurable_lint_rule_catalog()
+                    .iter()
+                    .all(|rule| rule.configurable && rule.category != "internal")
+            );
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            assert!(lint_rules.is_empty());
+            assert!(engine.configurable_lint_rule_catalog().is_empty());
+        }
         let runtime_contract: serde_json::Value =
             serde_json::from_str(&engine.runtime_contract_json().unwrap()).unwrap();
-        assert_eq!(runtime_contract["schema_version"], 1);
+        assert_eq!(
+            runtime_contract["schema_version"],
+            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
+        );
         assert_eq!(runtime_contract["abi_version"], MERMAN_UNIFFI_ABI_VERSION);
         assert_eq!(runtime_contract["options_schema_version"], 1);
         assert_eq!(
-            runtime_contract["resources"]["general_binding_default_profile"],
-            "interactive"
+            runtime_contract["features"]["render"],
+            cfg!(feature = "render")
         );
+        if cfg!(feature = "render") {
+            assert_eq!(
+                runtime_contract["resources"]["general_binding_default_profile"],
+                "interactive"
+            );
+        } else {
+            assert!(runtime_contract["resources"].is_null());
+        }
+    }
+
+    #[test]
+    fn typed_resource_options_builder_uses_the_shared_descriptor() {
+        #[cfg(feature = "render")]
+        {
+            let json = resource_options_json(
+                MermanResourceProfile::Constrained,
+                vec![MermanResourceLimitOverride {
+                    id: MermanResourceLimitId::MaxSourceBytes,
+                    value: 4096,
+                }],
+            )
+            .unwrap();
+            let value: Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(value["version"], 1);
+            assert_eq!(value["resources"]["profile"], "constrained");
+            assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            let error = resource_options_json(MermanResourceProfile::Constrained, Vec::new())
+                .expect_err("analysis-only UniFFI must retain the typed resource endpoint");
+            let MermanError::Binding {
+                code,
+                code_name,
+                message,
+            } = error;
+            assert_eq!(code, BindingStatus::UnsupportedFormat.code());
+            assert_eq!(code_name, BindingStatus::UnsupportedFormat.code_name());
+            assert_eq!(message, "resource options requires the render feature");
+        }
     }
 
     #[cfg(feature = "render")]
-    #[test]
-    fn typed_resource_options_builder_uses_the_shared_descriptor() {
-        let json = resource_options_json(
-            MermanResourceProfile::Constrained,
-            vec![MermanResourceLimitOverride {
-                id: MermanResourceLimitId::MaxSourceBytes,
-                value: 4096,
-            }],
-        )
-        .unwrap();
-        let value: Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(value["version"], 1);
-        assert_eq!(value["resources"]["profile"], "constrained");
-        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
-    }
-
     #[test]
     fn reusable_engine_reuses_options() {
         let reusable = MermanReusableEngine::new(Some(
@@ -1594,6 +1654,7 @@ mod tests {
         assert!(svg.contains("data-merman-foreignobject"));
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn reusable_engine_returns_document_analysis_json() {
         let reusable = MermanReusableEngine::new(Some(
@@ -1795,6 +1856,7 @@ mod tests {
         assert_eq!(measurer.calls(), calls_after_set);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn engine_error_preserves_binding_status() {
         let err = engine()
@@ -1809,5 +1871,22 @@ mod tests {
         assert_eq!(code, BindingStatus::OptionsJsonError.code());
         assert_eq!(code_name, BindingStatus::OptionsJsonError.code_name());
         assert!(message.contains("invalid options_json"));
+    }
+
+    #[cfg(not(feature = "render"))]
+    #[test]
+    fn engine_reports_render_feature_as_unavailable() {
+        let err = engine()
+            .render_svg("flowchart TD\nA[Hello]".to_string(), None)
+            .unwrap_err();
+
+        let MermanError::Binding {
+            code,
+            code_name,
+            message,
+        } = err;
+        assert_eq!(code, BindingStatus::UnsupportedFormat.code());
+        assert_eq!(code_name, BindingStatus::UnsupportedFormat.code_name());
+        assert_eq!(message, "SVG rendering requires the render feature");
     }
 }

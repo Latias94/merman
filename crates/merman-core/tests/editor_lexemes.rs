@@ -339,7 +339,7 @@ fn family_baselines() -> BTreeMap<String, PathBuf> {
 }
 
 #[test]
-fn every_full_profile_family_emits_rich_non_overlapping_lexemes() {
+fn every_catalog_family_emits_rich_non_overlapping_lexemes() {
     let baselines = family_baselines();
     let supported = diagram_family_capabilities()
         .iter()

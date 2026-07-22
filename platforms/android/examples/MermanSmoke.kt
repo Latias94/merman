@@ -198,7 +198,10 @@ fun runMermanSmoke() {
         documentSource,
         "file:///tmp/example.md",
     )
-    check(documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"")) {
+    check(
+        documentFactsJson.contains("\"version\":2") &&
+            documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\""),
+    ) {
         "document facts JSON smoke failed"
     }
 
@@ -213,8 +216,10 @@ fun runMermanSmoke() {
     }
     val runtimeContractJson = MermanEngine.runtimeContractJson()
     check(
-        runtimeContractJson.contains("\"schema_version\":1") &&
+        runtimeContractJson.contains("\"schema_version\":2") &&
             runtimeContractJson.contains("\"abi_version\":2") &&
+            runtimeContractJson.contains("\"analysis\":1") &&
+            runtimeContractJson.contains("\"analysis_facts\":2") &&
             runtimeContractJson.contains("\"general_binding_default_profile\":\"interactive\""),
     ) {
         "runtime contract smoke failed"
@@ -321,7 +326,10 @@ fun runMermanSmoke() {
             documentSource,
             "file:///tmp/example.md",
         )
-        check(reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"")) {
+        check(
+            reusableDocumentFactsJson.contains("\"version\":2") &&
+                reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\""),
+        ) {
             "reusable document facts JSON smoke failed"
         }
         engine.setTextMeasurer(null)

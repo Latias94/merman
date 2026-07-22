@@ -50,11 +50,10 @@ export function StatusBar() {
   const runtimeMetadata = useMemo(
     () => ({
       capabilities: facade?.bindingCapabilities() ?? null,
-      registryProfile: facade?.registryProfile() ?? null,
     }),
     [facade]
   );
-  const { capabilities, registryProfile } = runtimeMetadata;
+  const { capabilities } = runtimeMetadata;
   const runtimeLabel = facade
     ? `${t("status.ready")} ${facade.packageVersion}`
     : t(runtimeStatus === "error" ? "status.error" : "status.loading");
@@ -128,11 +127,6 @@ export function StatusBar() {
             {capabilities.editor_language
               ? t("status.enabled")
               : t("status.disabled")}
-          </span>
-        )}
-        {registryProfile && (
-          <span className="hidden xl:inline">
-            {t("status.registryProfile")}: {registryProfile}
           </span>
         )}
         {lastRenderTime > 0 && (

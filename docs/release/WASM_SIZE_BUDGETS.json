@@ -83,12 +83,6 @@
       "max_gzip_bytes": 2420000,
       "max_brotli_bytes": 1620000
     },
-    "typst-core-full-no-elk": {
-      "max_raw_bytes": 11100000,
-      "max_stripped_bytes": 8800000,
-      "max_gzip_bytes": 2875000,
-      "max_brotli_bytes": 1950000
-    },
     "typst-full-elk": {
       "max_raw_bytes": 12050000,
       "max_stripped_bytes": 9450000,

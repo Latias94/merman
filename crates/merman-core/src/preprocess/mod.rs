@@ -6,20 +6,20 @@ use crate::{DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, Result, So
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 use std::cell::Cell;
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 thread_local! {
     static PUBLIC_PARSE_PREPROCESS_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 pub(crate) fn reset_public_parse_preprocess_count() {
     PUBLIC_PARSE_PREPROCESS_COUNT.set(0);
 }
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 pub(crate) fn public_parse_preprocess_count() -> usize {
     PUBLIC_PARSE_PREPROCESS_COUNT.get()
 }
@@ -72,7 +72,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    #[cfg(all(test, feature = "full"))]
+    #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
     let outer = preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)?;
@@ -423,63 +423,53 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
         return Ok((input, None, MermaidConfig::empty_object()));
     };
 
-    #[cfg(not(feature = "full-config"))]
-    {
-        let _ = yaml_body;
-        Ok((stripped, None, MermaidConfig::empty_object()))
+    if config_nesting_exceeds_limit(yaml_body.as_ref()) {
+        return Err(Error::InvalidFrontMatterYaml {
+            message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
+        });
     }
 
-    #[cfg(feature = "full-config")]
+    let parsed = crate::yaml_config::parse_yaml_value(yaml_body.as_ref(), MAX_CONFIG_NESTING_DEPTH)
+        .map_err(|e| Error::InvalidFrontMatterYaml { message: e })?;
+    let parsed_obj = match parsed {
+        Value::Object(obj) => obj,
+        other => {
+            crate::config::drop_value_nonrecursive(other);
+            Default::default()
+        }
+    };
+
+    let mut title = None;
+    let mut display_mode = None;
+
+    if let Some(t) = parsed_obj
+        .get("title")
+        .filter(|value| frontmatter_truthy(value))
     {
-        if config_nesting_exceeds_limit(yaml_body.as_ref()) {
-            return Err(Error::InvalidFrontMatterYaml {
-                message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-            });
-        }
-
-        let parsed =
-            crate::yaml_config::parse_yaml_value(yaml_body.as_ref(), MAX_CONFIG_NESTING_DEPTH)
-                .map_err(|e| Error::InvalidFrontMatterYaml { message: e })?;
-        let parsed_obj = match parsed {
-            Value::Object(obj) => obj,
-            other => {
-                crate::config::drop_value_nonrecursive(other);
-                Default::default()
-            }
-        };
-
-        let mut title = None;
-        let mut display_mode = None;
-
-        if let Some(t) = parsed_obj
-            .get("title")
-            .filter(|value| frontmatter_truthy(value))
-        {
-            title = Some(frontmatter_to_string(t));
-        }
-        if let Some(dm) = parsed_obj
-            .get("displayMode")
-            .filter(|value| frontmatter_truthy(value))
-        {
-            display_mode = Some(frontmatter_to_string(dm));
-        }
-
-        let mut config = MermaidConfig::empty_object();
-        merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
-        if let Some(v) = parsed_obj
-            .get("config")
-            .filter(|value| frontmatter_truthy(value))
-        {
-            config.deep_merge(v);
-        }
-        crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
-        if let Some(dm) = display_mode {
-            config.set_value("gantt.displayMode", Value::String(dm));
-        }
-
-        crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
-        Ok((stripped, title, config))
+        title = Some(frontmatter_to_string(t));
     }
+    if let Some(dm) = parsed_obj
+        .get("displayMode")
+        .filter(|value| frontmatter_truthy(value))
+    {
+        display_mode = Some(frontmatter_to_string(dm));
+    }
+
+    let mut config = MermaidConfig::empty_object();
+    merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
+    if let Some(v) = parsed_obj
+        .get("config")
+        .filter(|value| frontmatter_truthy(value))
+    {
+        config.deep_merge(v);
+    }
+    crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
+    if let Some(dm) = display_mode {
+        config.set_value("gantt.displayMode", Value::String(dm));
+    }
+
+    crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
+    Ok((stripped, title, config))
 }
 
 fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
@@ -528,22 +518,13 @@ pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
 pub fn parse_frontmatter_yaml_fields(
     input: &str,
 ) -> std::result::Result<Map<String, Value>, String> {
-    #[cfg(feature = "full-config")]
-    {
-        let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
-        match parsed {
-            Value::Object(map) => Ok(map),
-            other => {
-                crate::config::drop_value_nonrecursive(other);
-                Ok(Map::new())
-            }
+    let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
+    match parsed {
+        Value::Object(map) => Ok(map),
+        other => {
+            crate::config::drop_value_nonrecursive(other);
+            Ok(Map::new())
         }
-    }
-
-    #[cfg(not(feature = "full-config"))]
-    {
-        let _ = input;
-        Ok(Map::new())
     }
 }
 
@@ -584,7 +565,6 @@ fn dedent_frontmatter_body<'a>(body: &'a str, indent: &str) -> Cow<'a, str> {
     Cow::Owned(out)
 }
 
-#[cfg(feature = "full-config")]
 fn frontmatter_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
@@ -595,7 +575,6 @@ fn frontmatter_truthy(value: &Value) -> bool {
     }
 }
 
-#[cfg(feature = "full-config")]
 fn frontmatter_to_string(value: &Value) -> String {
     match value {
         Value::String(value) => value.clone(),
@@ -607,7 +586,6 @@ fn frontmatter_to_string(value: &Value) -> String {
     }
 }
 
-#[cfg(feature = "full-config")]
 fn merge_top_level_frontmatter_diagram_configs(
     parsed_obj: &serde_json::Map<String, Value>,
     config: &mut MermaidConfig,
@@ -1074,18 +1052,9 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
 }
 
 fn parse_directive_config_value(input: &str) -> Result<Value> {
-    #[cfg(feature = "full-config")]
-    {
-        json5::from_str::<Value>(input).map_err(|e| Error::InvalidDirectiveJson {
-            message: e.to_string(),
-        })
-    }
-
-    #[cfg(not(feature = "full-config"))]
-    {
-        crate::inline_config::parse_inline_config_value(input)
-            .map_err(|e| Error::InvalidDirectiveJson { message: e })
-    }
+    json5::from_str::<Value>(input).map_err(|e| Error::InvalidDirectiveJson {
+        message: e.to_string(),
+    })
 }
 
 fn config_nesting_exceeds_limit(text: &str) -> bool {

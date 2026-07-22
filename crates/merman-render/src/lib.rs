@@ -283,10 +283,10 @@ fn layout_flowchart_elk_typed_by_feature(
 mod tests {
     use super::*;
     use merman_core::{Engine, ParseOptions};
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn flowchart_layout(
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
@@ -304,7 +304,7 @@ mod tests {
         .expect("flowchart layout")
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn class_layout(
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
@@ -342,7 +342,7 @@ mod tests {
             .to_owned()
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
         let session = crate::environment::RenderEnvironment::parity()
@@ -364,7 +364,7 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
         let session = crate::environment::RenderEnvironment::parity()
@@ -392,7 +392,7 @@ A-->B
         assert!(b.y > a.y);
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_rejects_flowchart_over_node_resource_limit() {
         let parsed = Engine::new()
@@ -425,7 +425,7 @@ A-->B
         assert_eq!(limit.limit, "max_flowchart_nodes");
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_uses_elk_for_class_layout_config() {
         let session = crate::environment::RenderEnvironment::parity()
@@ -462,7 +462,7 @@ Animal <|-- Duck
         );
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_model_dispatch_rejects_class_over_node_resource_limit() {
         let parsed = Engine::new()
@@ -494,7 +494,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_class_nodes");
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn typed_dispatch_rejects_flowchart_over_edge_resource_limit() {
         let parsed = Engine::new()
@@ -526,7 +526,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_flowchart_edges");
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn typed_dispatch_rejects_class_over_edge_resource_limit() {
         let parsed = Engine::new()
@@ -558,7 +558,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_class_edges");
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn canonical_svg_preserves_flowchart_elk_roledescription() {
         let svg = render_source(
@@ -599,7 +599,7 @@ Animal <|-- Duck
         assert!(edges_pos < labels_pos);
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn canonical_svg_uses_elk_adapter_dom_for_flowchart_layout_elk() {
         let svg = render_source(
@@ -645,7 +645,7 @@ A{A} --> B & C
         assert!(edges_pos < labels_pos);
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn canonical_svg_uses_right_angle_edges_for_flowchart_elk() {
         let svg = render_source(
@@ -662,7 +662,7 @@ A{A} --> B & C
         );
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn canonical_svg_keeps_source_ported_elk_rect_edge_boundary_points() {
         let svg = render_source(
@@ -696,7 +696,7 @@ id1(Start)-->id2(Stop)
         assert_eq!(points[1], (117.015625, 39.0));
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn canonical_svg_keeps_source_ported_elk_self_loop_edges() {
         let svg = render_source(
@@ -724,7 +724,7 @@ id1(Start)-->id2(Stop)
         assert!(svg.contains(r#"data-id="L_A_A_0" transform="translate(0,0)""#));
     }
 
-    #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
+    #[cfg(not(feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
         let session = crate::environment::RenderEnvironment::parity()
@@ -749,7 +749,7 @@ id1(Start)-->id2(Stop)
         ));
     }
 
-    #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
+    #[cfg(not(feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_rejects_class_elk_without_feature() {
         let session = crate::environment::RenderEnvironment::parity()
@@ -900,7 +900,7 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         );
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
         let id_attr = format!(r#"id="merman-{edge_id}""#);
         let id_start = svg.find(&id_attr).expect("edge id");
@@ -909,14 +909,14 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         &svg[path_start..path_end]
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn edge_path_d(path: &str) -> &str {
         let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
         let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
         &path[d_start..d_end]
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn edge_attr_value<'a>(path: &'a str, attr: &str) -> &'a str {
         let needle = format!(r#"{attr}=""#);
         let start = path.find(&needle).expect("edge attr") + needle.len();
@@ -924,7 +924,7 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         &path[start..end]
     }
 
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[cfg(feature = "elk-layout")]
     fn edge_data_points(path: &str) -> Vec<(f64, f64)> {
         use base64::Engine as _;
 

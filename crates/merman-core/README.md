@@ -112,9 +112,9 @@ successful grammar or the master built-in render input. Typed render models and 
 the same family semantic construction into purpose-specific shapes.
 
 The built-in Diagram Family catalog is the authoritative source for ids, aliases, detector order,
-tiny/full profiles, parser/editor/render capabilities, metadata, configuration namespaces, and
-authoring headers. Custom parser overlays remain explicit and do not inherit a built-in renderer or
-editor capability.
+parser/editor/render capabilities, metadata, configuration namespaces, and authoring headers. The
+pinned Mermaid catalog is complete and independent of Cargo feature selection. Custom
+parser overlays remain explicit and do not inherit a built-in renderer or editor capability.
 
 The public Rust flowchart render type is `diagrams::flowchart::FlowchartModel`. The former
 `FlowchartV2Model` type name was removed during the alpha architecture reset without a deprecated

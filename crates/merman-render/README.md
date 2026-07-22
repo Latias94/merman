@@ -12,13 +12,13 @@
 [merman](https://crates.io/crates/merman). It consumes typed `merman-core` family semantics and
 produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
-The default build stays host-agnostic while keeping Mermaid-compatible full configuration and
-sanitizer behavior through `core-full`. `core-full` also enables `cytoscape-layout`, the shared
-Architecture FCoSE and Mindmap COSE-Bilkent implementation backed by `manatee`. When this feature
-is enabled, Architecture and non-`tidy-tree` Mindmap diagrams always use those source-backed
-layouts. Builds without it report those families as unsupported. Disable default features for
+Mermaid-compatible language configuration and sanitizer behavior are always available. The default
+build enables `cytoscape-layout`, the shared Architecture FCoSE and Mindmap COSE-Bilkent
+implementation backed by `manatee`. When that backend is enabled, Architecture and non-`tidy-tree`
+Mindmap diagrams use those source-backed layouts. Builds without it report those families as
+unsupported while retaining their parsing and semantic capabilities. Disable default features for
 Typst and other size-sensitive pure-wasm consumers, then enable `cytoscape-layout` when those
-diagram families are needed. Enable the `host` feature when you want host clock access,
+diagram families need rendering. Enable the `host` feature when you want host clock access,
 host-seeded timing, and host randomness for diagnostic or browser-oriented builds.
 
 ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate and in

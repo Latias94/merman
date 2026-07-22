@@ -63,7 +63,6 @@ fn typst_capabilities_json() -> Vec<u8> {
         render: cfg!(feature = "render"),
         analysis: cfg!(feature = "analysis"),
         ascii: false,
-        core_full: cfg!(feature = "core-full"),
         core_host: cfg!(feature = "core-host"),
         elk_layout: cfg!(feature = "elk-layout"),
         ratex_math: false,
@@ -160,7 +159,6 @@ mod tests {
         assert_eq!(payload["render"], cfg!(feature = "render"));
         assert_eq!(payload["analysis"], cfg!(feature = "analysis"));
         assert_eq!(payload["ascii"], false);
-        assert_eq!(payload["core_full"], cfg!(feature = "core-full"));
         assert_eq!(payload["core_host"], cfg!(feature = "core-host"));
         assert_eq!(payload["elk_layout"], cfg!(feature = "elk-layout"));
         assert_eq!(payload["ratex_math"], false);
@@ -234,7 +232,7 @@ mod tests {
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_svg_json_renders_flowchart_elk_from_default_artifact() {
         let payload: Value = serde_json::from_slice(&render_svg_json(
@@ -246,6 +244,20 @@ mod tests {
         assert_eq!(payload["ok"], true);
         assert_eq!(payload["code_name"], "MERMAN_OK");
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
+    }
+
+    #[cfg(feature = "cytoscape-layout")]
+    #[test]
+    fn complete_typst_build_renders_architecture() {
+        let payload: Value = serde_json::from_slice(&render_svg_json(
+            b"architecture-beta\n  service api(server)[API service]\n",
+            b"",
+        ))
+        .expect("valid JSON payload");
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["code_name"], "MERMAN_OK");
+        assert!(payload["svg"].as_str().unwrap().contains("<svg"));
     }
 
     #[cfg(feature = "render")]

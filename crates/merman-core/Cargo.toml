@@ -14,14 +14,9 @@ keywords = ["mermaid", "diagrams", "parser", "ast"]
 categories = ["parser-implementations", "visualization"]
 
 [features]
-# `full` keeps Mermaid-compatible parser/config/sanitizer affordances on by default.
-# `host` keeps ambient host capabilities on by default.
-# Disable defaults for pure-WASM/Typst profiles.
-default = ["full", "host"]
-full = ["full-registry", "full-config", "full-sanitization"]
-full-registry = []
-full-config = ["dep:granit-parser", "dep:json5"]
-full-sanitization = ["dep:lol_html", "dep:url"]
+# Mermaid language parsing, configuration, sanitization, detection, and family facts are the
+# unconditional core contract. Features only describe ambient host capabilities.
+default = ["host"]
 host = ["host-clock", "host-random", "host-timing"]
 host-clock = ["chrono/clock", "chrono/wasmbind", "dep:jiff", "dep:sha2"]
 host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
@@ -34,12 +29,12 @@ indexmap.workspace = true
 lalrpop-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-granit-parser = { workspace = true, optional = true }
-json5 = { workspace = true, optional = true }
+granit-parser.workspace = true
+json5.workspace = true
 thiserror.workspace = true
 unicode-general-category.workspace = true
-lol_html = { workspace = true, optional = true }
-url = { workspace = true, optional = true }
+lol_html.workspace = true
+url.workspace = true
 uuid = { workspace = true, optional = true }
 chrono.workspace = true
 jiff = { workspace = true, optional = true }

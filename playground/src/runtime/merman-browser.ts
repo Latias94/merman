@@ -14,7 +14,6 @@ import {
   renderAscii,
   renderSvg,
   renderSvgWithTextMeasurer,
-  selectedRegistryProfile,
   supportedDiagrams,
   supportedThemes,
   UNAVAILABLE_DIAGRAM_DETECTION,
@@ -132,8 +131,6 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       );
       return parseJson(input.source, input.bindingOptions);
     },
-
-    registryProfile: selectedRegistryProfile,
 
     render(code, theme, configJson = DEFAULT_MERMAID_CONFIG, options) {
       const startedAt = performance.now();

@@ -57,21 +57,20 @@ policy.
 
 LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
 directly from `AnalysisResult`; the server does not round-trip serialized facts JSON. The separately
-exposed `AnalysisFactsPayload` version 1 is the equivalent parser-only wire contract for binding
+exposed `AnalysisFactsPayload` version 2 is the equivalent parser-only wire contract for binding
 consumers:
 
 - `fact_source: "text_scan"` is removed;
 - `fact_source: "unavailable"` means that no body semantic facts were produced;
-- every semantic item emitted by current writers has a family-owned `rename_policy`; older v1
-  entries that omit the additive field decode conservatively as `"none"`; and
+- every semantic item emitted by current writers has a family-owned `rename_policy`; and
 - parser-backed and recovered provenance remain explicit; parser-backed facts always carry exact
   original-source spans. The compatibility field `source_mapped_spans` is `true` for those facts
   and `false` only when the body fact source is unavailable.
 
 The TextScan-capable alpha shape shipped with Merman `0.8.0-alpha.3` is deleted rather than retained
-behind a decoder, executor, alias, or dual projection path. Consumers of that serialized shape must
-migrate to the current facts v1 schema even though the obsolete payload also used version 1. The
-diagnostics-only `AnalysisPayload` is a separate contract and independently remains version 1.
+behind a decoder, executor, alias, or dual projection path. Facts v1 is rejected at the version
+boundary, so consumers must migrate to facts v2. The diagnostics-only `AnalysisPayload` is a
+separate contract and independently remains version 1.
 
 These schema versions do not rename Mermaid grammar ids such as `flowchart-v2`,
 `stateDiagram-v2`, or `classDiagram-v2`. They are also unrelated to LSP

@@ -885,10 +885,9 @@ def minimal_web_descriptor() -> dict:
         "browser-render": ["render", "analysis"],
         "browser-render-only": ["render"],
         "browser-ascii": ["ascii"],
-        "browser-editor": ["core-full", "editor-language"],
+        "browser-editor": ["editor-language"],
         "browser-full": [],
         "browser-full-no-elk": [
-            "core-full",
             "core-host",
             "render",
             "analysis",
@@ -1012,8 +1011,7 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         name = "merman-wasm"
 
         [features]
-        default = ["core-full", "core-host", "render", "analysis", "ascii", "elk-layout", "editor-language"]
-        core-full = []
+        default = ["core-host", "render", "analysis", "ascii", "elk-layout", "editor-language"]
         core-host = []
         analysis = []
         ascii = []
@@ -1040,7 +1038,6 @@ def preset_capabilities(features: list[str], *, default_features: bool) -> dict[
     if default_features:
         enabled.update(
             {
-                "core-full",
                 "core-host",
                 "render",
                 "analysis",

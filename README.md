@@ -14,7 +14,8 @@ without launching a browser or JavaScript runtime. The current compatibility tar
 `mermaid@11.16.0`.
 
 > Merman is alpha software. Rust APIs and prerelease wire contracts can change before 1.0. The
-> native ABI identifier remains `2`, and analysis/facts schemas remain `1`, but those numeric
+> native ABI identifier remains `2`; diagnostics schema remains `1` and parser-facts schema is
+> `2`, but those numeric
 > identifiers do not imply stable compatibility across alpha releases.
 
 [Open the Playground](https://frankorz.com/merman/) |
@@ -57,7 +58,7 @@ also has a non-optional resolved-tree depth capability (256 native levels, 64 We
 and native conversion uses a bounded worker stack; raw parity SVG remains available beyond that
 backend boundary.
 
-Bindings expose runtime-contract schema `1` so hosts can discover the loaded ABI/package/options
+Bindings expose runtime-contract schema `2` so hosts can discover the loaded ABI/package/options
 versions, compiled features, registry facts, stable resource-limit ids, and exact profile values.
 General bindings default to `interactive`, the CLI to `trusted-native`, and Typst enforces
 `constrained`; Cargo features and raster/PDF/image allocation budgets remain separate concerns.
@@ -206,8 +207,6 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 | `analysis` | Diagnostics and lint metadata on transport crates |
 | `elk-layout` | Source-translated ELK layered layout |
 | `ratex-math` | Pure-Rust math layout and embedded KaTeX font assets |
-| `core-full` | Full registry, config/frontmatter, and sanitizer behavior |
-| `core-full-registry`, `core-full-config`, `core-full-sanitization` (language tooling) | Independently forwards only the named core concern through `merman-analysis`, `merman-editor-core`, and `merman-lsp` |
 | `core-host` | Host clock and randomness |
 
 Start from default features for normal native applications. Constrained WASM hosts should select a
@@ -215,10 +214,11 @@ documented build profile instead of assembling an accidental feature combination
 package enforces the fixed `constrained` resource policy and does not accept trusted or
 unbounded profiles from document input.
 
-Language-tooling crates can forward the three `core-full-*` concerns independently. A
-`merman-lsp --no-default-features` build remains a protocol-neutral library; add `stdio` when
-that build must include the bundled stdio binary. See the [complete feature matrix](docs/FEATURES.md)
-for crate-specific defaults and forwarding edges.
+All builds share the complete pinned Mermaid language catalog, including configuration,
+sanitization, detection, semantic parsing, and editor facts. A `merman-lsp --no-default-features`
+build remains a protocol-neutral library; add `stdio` when that build must include the bundled
+stdio binary. See the [complete feature matrix](docs/FEATURES.md) for crate-specific defaults and
+forwarding edges.
 
 ## Compatibility And Limits
 

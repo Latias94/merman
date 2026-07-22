@@ -30,7 +30,6 @@ mod theme;
 pub mod theme_color;
 pub mod time;
 pub mod utils;
-#[cfg(feature = "full-config")]
 mod yaml_config;
 
 pub use config::MermaidConfig;
@@ -70,45 +69,17 @@ pub fn supported_themes() -> &'static [&'static str] {
 
 /// Returns supported diagram metadata names for binding and host capability discovery.
 pub fn supported_diagrams() -> &'static [&'static str] {
-    supported_diagrams_for_profile(selected_baseline_registry_profile())
+    family::supported_diagram_metadata_ids()
 }
 
-/// Returns supported diagram metadata names for an explicit Mermaid registry profile.
-pub fn supported_diagrams_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [&'static str] {
-    family::supported_diagram_metadata_ids(profile)
-}
-
-/// Returns the complete family capability facts for Mermaid diagram ids in the selected pinned
-/// profile.
+/// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
-    diagram_family_capabilities_for_profile(selected_baseline_registry_profile())
+    family::diagram_family_capabilities()
 }
 
-/// Returns the complete family capability facts for Mermaid diagram ids in an explicit registry
-/// profile.
-pub fn diagram_family_capabilities_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [DiagramFamilyCapability] {
-    family::diagram_family_capabilities(profile)
-}
-
-/// Returns header completion facts for Mermaid diagram starters in the selected profile.
+/// Returns header completion facts for Mermaid diagram starters in the pinned baseline.
 pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
-    diagram_header_facts_for_profile(selected_baseline_registry_profile())
-}
-
-/// Returns header completion facts for Mermaid diagram starters in an explicit registry profile.
-pub fn diagram_header_facts_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [DiagramHeaderFact] {
-    family::diagram_header_facts(profile)
-}
-
-/// Returns the Mermaid registry profile selected by this crate's enabled feature set.
-pub fn selected_baseline_registry_profile() -> baseline::BaselineRegistryProfile {
-    family::selected_registry_profile()
+    family::diagram_header_facts()
 }
 
 fn build_default_effective_config(
@@ -187,9 +158,9 @@ impl Default for Engine {
         let default_effective_config = generated_default_effective_config();
 
         Self {
-            registry: DetectorRegistry::for_pinned_mermaid_baseline(),
-            diagram_registry: DiagramRegistry::for_pinned_mermaid_baseline(),
-            render_diagram_registry: RenderDiagramRegistry::for_pinned_mermaid_baseline(),
+            registry: DetectorRegistry::pinned_mermaid_baseline(),
+            diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
+            render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
             default_effective_config,
             fixed_today_local: None,

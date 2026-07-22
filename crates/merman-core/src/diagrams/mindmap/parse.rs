@@ -1,5 +1,5 @@
 use serde_json::Value;
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 use std::cell::Cell;
 
 use crate::{
@@ -17,17 +17,17 @@ use super::utils::{
 };
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 thread_local! {
     static MINDMAP_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 pub(crate) fn reset_mindmap_syntax_construction_count() {
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(0);
 }
 
-#[cfg(all(test, feature = "full"))]
+#[cfg(test)]
 pub(crate) fn mindmap_syntax_construction_count() -> usize {
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get()
 }
@@ -93,7 +93,7 @@ fn construct_mindmap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<MindmapSemanticSource, CombinedSemanticFailure> {
-    #[cfg(all(test, feature = "full"))]
+    #[cfg(test)]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut lexemes = EditorLexemeJournal::family_parser(code);

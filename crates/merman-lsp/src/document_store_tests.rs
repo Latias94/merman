@@ -1551,15 +1551,6 @@ fn architecture_documents_use_parser_facts() {
     );
     let index = &snapshot.fences[0].text_index;
 
-    if matches!(
-        merman_core::selected_baseline_registry_profile(),
-        merman_core::baseline::BaselineRegistryProfile::Tiny
-    ) {
-        assert_eq!(snapshot.fences[0].diagram_type, None);
-        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
-        return;
-    }
-
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
         Some("architecture")
@@ -2406,15 +2397,6 @@ fn mindmap_documents_use_parser_facts() {
     );
     let index = &snapshot.fences[0].text_index;
 
-    if matches!(
-        merman_core::selected_baseline_registry_profile(),
-        merman_core::baseline::BaselineRegistryProfile::Tiny
-    ) {
-        assert_eq!(snapshot.fences[0].diagram_type, None);
-        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
-        return;
-    }
-
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "root"));
     assert!(index.node_ids().any(|id| id == "child1"));
@@ -2431,15 +2413,6 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
     let index = &snapshot.fences[0].text_index;
-
-    if matches!(
-        merman_core::selected_baseline_registry_profile(),
-        merman_core::baseline::BaselineRegistryProfile::Tiny
-    ) {
-        assert_eq!(snapshot.fences[0].diagram_type, None);
-        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
-        return;
-    }
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "root"));

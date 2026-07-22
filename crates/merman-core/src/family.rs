@@ -3,7 +3,6 @@
 //! This module owns release-facing Mermaid family facts and projects them into detector,
 //! parser, render-model, and metadata surfaces.
 
-use crate::baseline::BaselineRegistryProfile;
 use crate::detect::DetectorFn;
 use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
 use crate::{EditorSemanticFacts, Error, MermaidConfig, ParseMetadata, Result};
@@ -198,22 +197,14 @@ pub(crate) struct CombinedParserFact {
     pub(crate) parser: CombinedSemanticParser,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SupportedDiagramFact {
-    pub(crate) metadata_id: &'static str,
-    pub(crate) render_parser_ids: Vec<&'static str>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DiagramHeaderFact {
-    /// Mermaid diagram type id used for profile gating.
+    /// Mermaid diagram type id owned by this catalog entry.
     pub diagram_type: &'static str,
     /// Header text suggested to the user.
     pub label: &'static str,
     /// Short description shown in completion details.
     pub detail: &'static str,
-    /// Whether this header should only appear in the full baseline profile.
-    pub full_only: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -228,13 +219,13 @@ pub struct DiagramFamilyCapability {
     pub render_model_kind: Option<&'static str>,
     /// Whether this id participates in automatic detection.
     pub has_detector: bool,
-    /// Whether the selected registry profile has a semantic parser for this diagram type.
+    /// Whether the pinned catalog has a semantic parser for this diagram type.
     pub has_semantic_parser: bool,
-    /// Whether the selected registry profile has parser-backed editor facts.
+    /// Whether the pinned catalog has parser-backed editor facts.
     pub has_editor_parser: bool,
     /// Whether JSON and editor facts share one combined semantic construction.
     pub has_combined_parser: bool,
-    /// Whether the selected registry profile has a typed render-model parser for this diagram type.
+    /// Whether the pinned catalog has a typed render-model parser for this diagram type.
     pub has_render_parser: bool,
     /// Whether this id contributes at least one authoring header.
     pub has_header: bool,
@@ -263,15 +254,13 @@ struct FamilyCatalogProjection {
     semantic_parser_facts: Vec<SemanticParserFact>,
     render_parser_facts: Vec<RenderParserFact>,
     combined_parser_facts: Vec<CombinedParserFact>,
-    #[cfg(test)]
-    supported_diagram_facts: Vec<SupportedDiagramFact>,
     supported_diagram_metadata_ids: Vec<&'static str>,
     diagram_header_facts: Vec<DiagramHeaderFact>,
     diagram_family_capabilities: Vec<DiagramFamilyCapability>,
 }
 
 impl FamilyCatalogProjection {
-    fn build(profile: BaselineRegistryProfile) -> Self {
+    fn build() -> Self {
         let mut detector_facts = Vec::<(u16, DetectorFact)>::new();
         let mut fast_detect_keyword_facts = Vec::<(u16, FastDetectKeywordFact)>::new();
         let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
@@ -281,7 +270,7 @@ impl FamilyCatalogProjection {
         let mut diagram_header_facts = Vec::<(u16, DiagramHeaderFact)>::new();
         let mut diagram_family_capabilities = Vec::<(u16, DiagramFamilyCapability)>::new();
 
-        for (family, variant) in variants_for_profile(profile) {
+        for (family, variant) in variants() {
             if let Some(ordered) = variant.detector {
                 detector_facts.push((
                     ordered.order,
@@ -344,7 +333,6 @@ impl FamilyCatalogProjection {
                         diagram_type: variant.id,
                         label: header.label,
                         detail: header.detail,
-                        full_only: variant.profile == VariantProfile::FullOnly,
                     },
                 ));
             }
@@ -374,23 +362,13 @@ impl FamilyCatalogProjection {
         let metadata_facts = ordered_values(metadata_facts);
         let diagram_header_facts = ordered_values(diagram_header_facts);
         let diagram_family_capabilities = ordered_values(diagram_family_capabilities);
-        let supported_diagram_facts = metadata_facts
+        let supported_diagram_metadata_ids = metadata_facts
             .into_iter()
-            .filter_map(|metadata_id| {
-                let render_parser_ids = render_parser_facts
+            .filter(|metadata_id| {
+                render_parser_facts
                     .iter()
-                    .filter_map(|fact| (fact.metadata_id == Some(metadata_id)).then_some(fact.id))
-                    .collect::<Vec<_>>();
-                (!render_parser_ids.is_empty()).then_some(SupportedDiagramFact {
-                    metadata_id,
-                    render_parser_ids,
-                })
+                    .any(|fact| fact.metadata_id == Some(*metadata_id))
             })
-            .collect::<Vec<_>>();
-        let supported_diagram_metadata_ids = supported_diagram_facts
-            .iter()
-            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
-            .map(|fact| fact.metadata_id)
             .collect();
 
         Self {
@@ -399,8 +377,6 @@ impl FamilyCatalogProjection {
             semantic_parser_facts,
             render_parser_facts,
             combined_parser_facts,
-            #[cfg(test)]
-            supported_diagram_facts,
             supported_diagram_metadata_ids,
             diagram_header_facts,
             diagram_family_capabilities,
@@ -413,27 +389,16 @@ fn ordered_values<T>(mut values: Vec<(u16, T)>) -> Vec<T> {
     values.into_iter().map(|(_, value)| value).collect()
 }
 
-fn family_catalog_projection(profile: BaselineRegistryProfile) -> &'static FamilyCatalogProjection {
-    static TINY: OnceLock<FamilyCatalogProjection> = OnceLock::new();
-    static FULL: OnceLock<FamilyCatalogProjection> = OnceLock::new();
-    match profile {
-        BaselineRegistryProfile::Tiny => {
-            TINY.get_or_init(|| FamilyCatalogProjection::build(profile))
-        }
-        BaselineRegistryProfile::Full => {
-            FULL.get_or_init(|| FamilyCatalogProjection::build(profile))
-        }
-    }
+fn family_catalog_projection() -> &'static FamilyCatalogProjection {
+    static CATALOG: OnceLock<FamilyCatalogProjection> = OnceLock::new();
+    CATALOG.get_or_init(FamilyCatalogProjection::build)
 }
 
-pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
-    family_catalog_projection(profile).detector_facts.as_slice()
+pub(crate) fn detector_facts() -> &'static [DetectorFact] {
+    family_catalog_projection().detector_facts.as_slice()
 }
 
-pub(crate) fn fast_detect_by_leading_keyword(
-    text: &str,
-    profile: BaselineRegistryProfile,
-) -> Option<&'static str> {
+pub(crate) fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
     fn has_boundary(rest: &str) -> bool {
         rest.is_empty()
             || rest
@@ -443,7 +408,7 @@ pub(crate) fn fast_detect_by_leading_keyword(
     }
 
     let trimmed = text.trim_start();
-    let keywords = fast_detect_keyword_facts(profile);
+    let keywords = fast_detect_keyword_facts();
 
     keywords.iter().find_map(|fact| {
         trimmed
@@ -452,83 +417,42 @@ pub(crate) fn fast_detect_by_leading_keyword(
     })
 }
 
-pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
-    #[cfg(feature = "full-registry")]
-    {
-        BaselineRegistryProfile::Full
-    }
-    #[cfg(not(feature = "full-registry"))]
-    {
-        BaselineRegistryProfile::Tiny
-    }
+pub(crate) fn semantic_parser_facts() -> &'static [SemanticParserFact] {
+    family_catalog_projection().semantic_parser_facts.as_slice()
 }
 
-pub(crate) fn semantic_parser_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [SemanticParserFact] {
-    family_catalog_projection(profile)
-        .semantic_parser_facts
-        .as_slice()
+pub(crate) fn render_parser_facts() -> &'static [RenderParserFact] {
+    family_catalog_projection().render_parser_facts.as_slice()
 }
 
-pub(crate) fn render_parser_facts(profile: BaselineRegistryProfile) -> &'static [RenderParserFact] {
-    family_catalog_projection(profile)
-        .render_parser_facts
-        .as_slice()
+pub(crate) fn combined_parser_facts() -> &'static [CombinedParserFact] {
+    family_catalog_projection().combined_parser_facts.as_slice()
 }
 
-pub(crate) fn combined_parser_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [CombinedParserFact] {
-    family_catalog_projection(profile)
-        .combined_parser_facts
-        .as_slice()
-}
-
-pub(crate) fn combined_parser(
-    profile: BaselineRegistryProfile,
-    diagram_type: &str,
-) -> Option<CombinedSemanticParser> {
-    combined_parser_facts(profile)
+pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticParser> {
+    combined_parser_facts()
         .iter()
         .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
 }
 
-#[cfg(test)]
-pub(crate) fn supported_diagram_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [SupportedDiagramFact] {
-    family_catalog_projection(profile)
-        .supported_diagram_facts
-        .as_slice()
-}
-
-pub(crate) fn supported_diagram_metadata_ids(
-    profile: BaselineRegistryProfile,
-) -> &'static [&'static str] {
-    family_catalog_projection(profile)
+pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
+    family_catalog_projection()
         .supported_diagram_metadata_ids
         .as_slice()
 }
 
-pub(crate) fn diagram_header_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [DiagramHeaderFact] {
-    family_catalog_projection(profile)
-        .diagram_header_facts
-        .as_slice()
+pub(crate) fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
+    family_catalog_projection().diagram_header_facts.as_slice()
 }
 
-pub(crate) fn diagram_family_capabilities(
-    profile: BaselineRegistryProfile,
-) -> &'static [DiagramFamilyCapability] {
-    family_catalog_projection(profile)
+pub(crate) fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
+    family_catalog_projection()
         .diagram_family_capabilities
         .as_slice()
 }
 
-fn fast_detect_keyword_facts(profile: BaselineRegistryProfile) -> &'static [FastDetectKeywordFact] {
-    family_catalog_projection(profile)
+fn fast_detect_keyword_facts() -> &'static [FastDetectKeywordFact] {
+    family_catalog_projection()
         .fast_detect_keyword_facts
         .as_slice()
 }
@@ -541,7 +465,7 @@ pub(crate) fn render_model_kind_supports_diagram_type(
     model_kind: &'static str,
     diagram_type: &str,
 ) -> bool {
-    render_parser_facts(BaselineRegistryProfile::Full)
+    render_parser_facts()
         .iter()
         .any(|fact| fact.id == diagram_type && fact.model_kind == model_kind)
 }
@@ -775,18 +699,6 @@ render_parser!(
     RenderSemanticModel::Wardley
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VariantProfile {
-    All,
-    FullOnly,
-}
-
-impl VariantProfile {
-    fn includes(self, profile: BaselineRegistryProfile) -> bool {
-        self == Self::All || profile == BaselineRegistryProfile::Full
-    }
-}
-
 #[derive(Clone, Copy)]
 struct Ordered<T> {
     order: u16,
@@ -848,7 +760,6 @@ enum DefaultEffect {
 #[derive(Clone, Copy)]
 struct FamilyVariantDefinition {
     id: &'static str,
-    profile: VariantProfile,
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
     fast_keywords: &'static [FastKeywordDefinition],
@@ -858,14 +769,12 @@ struct FamilyVariantDefinition {
     render_model_kind: Option<&'static str>,
     metadata: Option<MetadataDefinition>,
     headers: &'static [HeaderDefinition],
-    #[cfg_attr(not(feature = "full-config"), allow(dead_code))]
     frontmatter_alias_order: Option<u16>,
     known_type_effect: KnownTypeEffect,
     default_effect: DefaultEffect,
 }
 
 #[derive(Clone, Copy)]
-#[cfg_attr(not(feature = "full-config"), allow(dead_code))]
 struct FamilyConfigDefinition {
     namespace: &'static str,
     frontmatter_order: u16,
@@ -874,7 +783,6 @@ struct FamilyConfigDefinition {
 #[derive(Clone, Copy)]
 struct DiagramFamilyDefinition {
     logical_kind: &'static str,
-    #[cfg_attr(not(feature = "full-config"), allow(dead_code))]
     config: Option<FamilyConfigDefinition>,
     variants: &'static [FamilyVariantDefinition],
 }
@@ -882,7 +790,6 @@ struct DiagramFamilyDefinition {
 macro_rules! variant {
     (
         id: $id:literal,
-        profile: $profile:expr,
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
         fast: $fast:expr,
@@ -898,7 +805,6 @@ macro_rules! variant {
     ) => {
         FamilyVariantDefinition {
             id: $id,
-            profile: $profile,
             catalog_order: $catalog_order,
             detector: $detector,
             fast_keywords: $fast,
@@ -915,21 +821,15 @@ macro_rules! variant {
     };
 }
 
-fn variants_for_profile(
-    profile: BaselineRegistryProfile,
-) -> impl Iterator<
+fn variants() -> impl Iterator<
     Item = (
         &'static DiagramFamilyDefinition,
         &'static FamilyVariantDefinition,
     ),
 > {
-    FAMILY_CATALOG.iter().flat_map(move |family| {
-        family
-            .variants
-            .iter()
-            .filter(move |variant| variant.profile.includes(profile))
-            .map(move |variant| (family, variant))
-    })
+    FAMILY_CATALOG
+        .iter()
+        .flat_map(|family| family.variants.iter().map(move |variant| (family, variant)))
 }
 
 fn find_variant(
@@ -948,13 +848,11 @@ fn find_variant(
 }
 
 #[derive(Clone, Copy)]
-#[cfg(feature = "full-config")]
 pub(crate) struct FrontmatterConfigAliasFact {
     pub(crate) source: &'static str,
     pub(crate) namespace: &'static str,
 }
 
-#[cfg(feature = "full-config")]
 pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFact] {
     static FACTS: OnceLock<Vec<FrontmatterConfigAliasFact>> = OnceLock::new();
     FACTS
@@ -985,7 +883,6 @@ pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFa
         .as_slice()
 }
 
-#[cfg(feature = "full-config")]
 pub(crate) fn frontmatter_config_namespaces() -> &'static [&'static str] {
     static NAMESPACES: OnceLock<Vec<&'static str>> = OnceLock::new();
     NAMESPACES
@@ -1097,7 +994,6 @@ const FAST_EVENTMODELING: &[FastKeywordDefinition] = &[fast_keyword(14, "eventmo
 
 const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "error",
-    profile: VariantProfile::All,
     catalog_order: 0,
     detector: Some(ordered(0, crate::detect::detector_error)),
     fast: &[],
@@ -1115,7 +1011,6 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
         id: "flowchart-elk",
-        profile: VariantProfile::FullOnly,
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
         fast: &[],
@@ -1131,7 +1026,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "flowchart-v2",
-        profile: VariantProfile::All,
         catalog_order: 17,
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
         fast: &[],
@@ -1147,7 +1041,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "flowchart",
-        profile: VariantProfile::All,
         catalog_order: 18,
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
         fast: &[],
@@ -1165,7 +1058,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
 
 const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "swimlane",
-    profile: VariantProfile::All,
     catalog_order: 16,
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
     fast: &[],
@@ -1182,7 +1074,6 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "mindmap",
-    profile: VariantProfile::FullOnly,
     catalog_order: 3,
     detector: Some(ordered(3, crate::detect::detector_mindmap)),
     fast: FAST_MINDMAP,
@@ -1199,7 +1090,6 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "architecture",
-    profile: VariantProfile::FullOnly,
     catalog_order: 4,
     detector: Some(ordered(4, crate::detect::detector_architecture)),
     fast: FAST_ARCHITECTURE,
@@ -1216,7 +1106,6 @@ const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "zenuml",
-    profile: VariantProfile::All,
     catalog_order: 5,
     detector: Some(ordered(5, crate::detect::detector_zenuml)),
     fast: &[],
@@ -1233,7 +1122,6 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "sequence",
-    profile: VariantProfile::All,
     catalog_order: 15,
     detector: Some(ordered(15, crate::detect::detector_sequence)),
     fast: FAST_SEQUENCE,
@@ -1250,7 +1138,6 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "c4",
-    profile: VariantProfile::All,
     catalog_order: 6,
     detector: Some(ordered(6, crate::detect::detector_c4)),
     fast: &[],
@@ -1267,7 +1154,6 @@ const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "kanban",
-    profile: VariantProfile::All,
     catalog_order: 7,
     detector: Some(ordered(7, crate::detect::detector_kanban)),
     fast: &[],
@@ -1285,7 +1171,6 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
         id: "classDiagram",
-        profile: VariantProfile::All,
         catalog_order: 8,
         detector: Some(ordered(8, crate::detect::detector_class_v2)),
         fast: &[],
@@ -1301,7 +1186,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "class",
-        profile: VariantProfile::All,
         catalog_order: 9,
         detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
         fast: &[],
@@ -1320,7 +1204,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
 const ER_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
         id: "er",
-        profile: VariantProfile::All,
         catalog_order: 10,
         detector: Some(ordered(10, crate::detect::detector_er)),
         fast: FAST_ER,
@@ -1336,7 +1219,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "erDiagram",
-        profile: VariantProfile::All,
         catalog_order: 41,
         detector: None,
         fast: &[],
@@ -1354,7 +1236,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
 
 const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "gantt",
-    profile: VariantProfile::All,
     catalog_order: 11,
     detector: Some(ordered(11, crate::detect::detector_gantt)),
     fast: FAST_GANTT,
@@ -1371,7 +1252,6 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "info",
-    profile: VariantProfile::All,
     catalog_order: 12,
     detector: Some(ordered(12, crate::detect::detector_info)),
     fast: &[],
@@ -1388,7 +1268,6 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "pie",
-    profile: VariantProfile::All,
     catalog_order: 13,
     detector: Some(ordered(13, crate::detect::detector_pie)),
     fast: &[],
@@ -1405,7 +1284,6 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "requirement",
-    profile: VariantProfile::All,
     catalog_order: 14,
     detector: Some(ordered(14, crate::detect::detector_requirement)),
     fast: &[],
@@ -1422,7 +1300,6 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "timeline",
-    profile: VariantProfile::All,
     catalog_order: 19,
     detector: Some(ordered(19, crate::detect::detector_timeline)),
     fast: FAST_TIMELINE,
@@ -1439,7 +1316,6 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "gitGraph",
-    profile: VariantProfile::All,
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
     fast: FAST_GIT_GRAPH,
@@ -1457,7 +1333,6 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
         id: "stateDiagram",
-        profile: VariantProfile::All,
         catalog_order: 21,
         detector: Some(ordered(21, crate::detect::detector_state_v2)),
         fast: &[],
@@ -1473,7 +1348,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "state",
-        profile: VariantProfile::All,
         catalog_order: 22,
         detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
         fast: &[],
@@ -1491,7 +1365,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
 
 const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "journey",
-    profile: VariantProfile::All,
     catalog_order: 23,
     detector: Some(ordered(23, crate::detect::detector_journey)),
     fast: FAST_JOURNEY,
@@ -1508,7 +1381,6 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "quadrantChart",
-    profile: VariantProfile::All,
     catalog_order: 24,
     detector: Some(ordered(24, crate::detect::detector_quadrant)),
     fast: FAST_QUADRANT,
@@ -1525,7 +1397,6 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "sankey",
-    profile: VariantProfile::All,
     catalog_order: 25,
     detector: Some(ordered(25, crate::detect::detector_sankey)),
     fast: &[],
@@ -1542,7 +1413,6 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "packet",
-    profile: VariantProfile::All,
     catalog_order: 26,
     detector: Some(ordered(26, crate::detect::detector_packet)),
     fast: FAST_PACKET,
@@ -1559,7 +1429,6 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "xychart",
-    profile: VariantProfile::All,
     catalog_order: 27,
     detector: Some(ordered(27, crate::detect::detector_xychart)),
     fast: FAST_XYCHART,
@@ -1576,7 +1445,6 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "block",
-    profile: VariantProfile::All,
     catalog_order: 28,
     detector: Some(ordered(28, crate::detect::detector_block)),
     fast: &[],
@@ -1593,7 +1461,6 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "eventmodeling",
-    profile: VariantProfile::All,
     catalog_order: 29,
     detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
     fast: FAST_EVENTMODELING,
@@ -1610,7 +1477,6 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "treeView",
-    profile: VariantProfile::All,
     catalog_order: 30,
     detector: Some(ordered(30, crate::detect::detector_tree_view)),
     fast: FAST_TREE_VIEW,
@@ -1627,7 +1493,6 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "radar",
-    profile: VariantProfile::All,
     catalog_order: 31,
     detector: Some(ordered(31, crate::detect::detector_radar)),
     fast: &[],
@@ -1644,7 +1509,6 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "ishikawa",
-    profile: VariantProfile::All,
     catalog_order: 32,
     detector: Some(ordered(32, crate::detect::detector_ishikawa)),
     fast: FAST_ISHIKAWA,
@@ -1661,7 +1525,6 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "treemap",
-    profile: VariantProfile::All,
     catalog_order: 33,
     detector: Some(ordered(33, crate::detect::detector_treemap)),
     fast: &[],
@@ -1679,7 +1542,6 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
         id: "railroad",
-        profile: VariantProfile::All,
         catalog_order: 34,
         detector: Some(ordered(34, crate::detect::detector_railroad)),
         fast: &[],
@@ -1695,7 +1557,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "railroadEbnf",
-        profile: VariantProfile::All,
         catalog_order: 35,
         detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
         fast: &[],
@@ -1711,7 +1572,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "railroadAbnf",
-        profile: VariantProfile::All,
         catalog_order: 36,
         detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
         fast: &[],
@@ -1727,7 +1587,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
     },
     variant! {
         id: "railroadPeg",
-        profile: VariantProfile::All,
         catalog_order: 37,
         detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
         fast: &[],
@@ -1745,7 +1604,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
 
 const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "venn",
-    profile: VariantProfile::All,
     catalog_order: 38,
     detector: Some(ordered(38, crate::detect::detector_venn)),
     fast: &[],
@@ -1762,7 +1620,6 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "wardley",
-    profile: VariantProfile::All,
     catalog_order: 39,
     detector: Some(ordered(39, crate::detect::detector_wardley)),
     fast: &[],
@@ -1779,7 +1636,6 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "cynefin",
-    profile: VariantProfile::All,
     catalog_order: 40,
     detector: Some(ordered(40, crate::detect::detector_cynefin)),
     fast: &[],
@@ -2146,9 +2002,6 @@ mod catalog_tests {
             .filter(|family| family.config.is_some())
             .count();
         assert_eq!(config_orders.len(), config_count);
-        assert_eq!(
-            ids.len(),
-            diagram_family_capabilities(BaselineRegistryProfile::Full).len()
-        );
+        assert_eq!(ids.len(), diagram_family_capabilities().len());
     }
 }

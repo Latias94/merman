@@ -77,8 +77,8 @@ flowchart LR
    - The export gate distinguishes the five callable ABI operations from linker support metadata;
      only `memory` and the immutable `i32` globals `__data_end` and `__heap_base` may accompany
      those operations.
-   - The publish/default plugin artifact enables `render`, `analysis`, `core-full`, and
-     `elk-layout`; the public package API exposes canonical analysis schema 1 rather than the old
+  - The publish/default plugin artifact enables `render`, `analysis`, and `elk-layout`; the public
+    package API exposes canonical diagnostics analysis schema 1 rather than the old
      validation projection.
    - `--no-default-features` is the bridge-only protocol artifact.
    - Typst package builds never enable `core-host`.

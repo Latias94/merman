@@ -1919,8 +1919,7 @@ mod tests {
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         let mut changed = spec.clone();
-        changed.features.push("core-full".to_string());
-        changed.features.sort();
+        changed.features.retain(|feature| feature != "analysis");
 
         let error = verify_with_runtime(&changed, &mut fixture.runtime()).unwrap_err();
 

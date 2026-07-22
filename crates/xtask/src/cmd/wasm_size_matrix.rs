@@ -114,7 +114,6 @@ const WEB_SURFACE_DESCRIPTOR_SOURCE: &str =
 const WEB_CAPABILITY_NAMES: &[&str] = &[
     "analysis",
     "ascii",
-    "core_full",
     "core_host",
     "editor_language",
     "elk_layout",
@@ -689,7 +688,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(preset.surface, Surface::Browser);
-        assert_eq!(feature_names(preset), vec!["core-full", "editor-language"]);
+        assert_eq!(feature_names(preset), vec!["editor-language"]);
         assert!(preset.no_default_features);
     }
 
@@ -704,7 +703,7 @@ mod tests {
         assert_eq!(preset.surface, Surface::Typst);
         assert_eq!(
             feature_names(preset),
-            vec!["render", "analysis", "core-full", "elk-layout"]
+            vec!["render", "analysis", "cytoscape-layout", "elk-layout"]
         );
         assert!(preset.no_default_features);
     }

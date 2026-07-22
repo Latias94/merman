@@ -200,7 +200,8 @@ def main() -> None:
         )
     )
     if (
-        document_facts_json["source"]["kind"] != "markdown"
+        document_facts_json["version"] != 2
+        or document_facts_json["source"]["kind"] != "markdown"
         or document_facts_json["diagrams"][0]["source_id"] != "mermaid-fence-1"
     ):
         raise RuntimeError("document facts smoke failed")
@@ -322,7 +323,10 @@ def main() -> None:
     reusable_document_facts_json = json.loads(
         reusable.analyze_document_facts_json(document_source, "file:///tmp/example.md")
     )
-    if reusable_document_facts_json["source"]["kind"] != "markdown":
+    if (
+        reusable_document_facts_json["version"] != 2
+        or reusable_document_facts_json["source"]["kind"] != "markdown"
+    ):
         raise RuntimeError("reusable document facts smoke failed")
     reusable.set_text_measurer(setter_measurer)
     if "Hello" not in reusable.render_svg(source):

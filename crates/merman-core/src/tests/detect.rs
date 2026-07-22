@@ -3,41 +3,19 @@ use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::fmt::Write;
 
-#[cfg(feature = "full-registry")]
 #[test]
-fn full_build_detects_mindmap() {
+fn canonical_catalog_detects_mindmap() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("mindmap\n  root")).unwrap();
     assert_eq!(res.diagram_type, "mindmap");
 }
 
-#[cfg(not(feature = "full-registry"))]
 #[test]
-fn tiny_build_does_not_detect_mindmap() {
-    let engine = Engine::new();
-    let err = block_on(engine.parse_metadata("mindmap\n  root")).unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("No diagram type detected matching given configuration")
-    );
-}
-
-#[cfg(feature = "full-registry")]
-#[test]
-fn full_build_detects_flowchart_elk_and_sets_layout() {
+fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-elk");
     assert_eq!(res.effective_config.get_str("layout"), Some("elk"));
-}
-
-#[cfg(not(feature = "full-registry"))]
-#[test]
-fn tiny_build_flowchart_elk_falls_back_to_flowchart_v2() {
-    let engine = Engine::new();
-    let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
-    assert_eq!(res.diagram_type, "flowchart-v2");
-    assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
 }
 
 #[test]
@@ -179,7 +157,7 @@ fn detects_11_16_new_family_headers_for_metadata() {
 
 #[test]
 fn detects_11_16_new_family_headers_with_upstream_boundaries() {
-    let registry = DetectorRegistry::pinned_mermaid_baseline_full();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let mut config = MermaidConfig::empty_object();
 
     let cynefin = registry
@@ -249,7 +227,7 @@ fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
 
 #[test]
 fn detector_registry_strips_mermaid_comment_lines_without_regex() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let mut config = MermaidConfig::empty_object();
 
     for source in [
@@ -267,7 +245,7 @@ fn detector_registry_strips_mermaid_comment_lines_without_regex() {
 
 #[test]
 fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let result = preprocess_diagram("flowchart TD\nA-->B\n%% This is a comment", &registry)
         .expect("preprocess succeeds");
 
@@ -276,7 +254,7 @@ fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
 
 #[test]
 fn preprocess_normalizes_crlf_without_regex() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let result = preprocess_diagram("flowchart TD\r\nA-->B\r%% This is a comment", &registry)
         .expect("preprocess succeeds");
 
@@ -285,7 +263,7 @@ fn preprocess_normalizes_crlf_without_regex() {
 
 #[test]
 fn preprocess_encodes_entities_without_entity_regex() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let result = preprocess_diagram("flowchart TD\nA[#there;]\nB[#77653;]", &registry)
         .expect("preprocess succeeds");
 
@@ -303,7 +281,7 @@ fn preprocess_encodes_entities_without_entity_regex() {
 
 #[test]
 fn preprocess_rewrites_html_attributes_without_regex() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
     let result = preprocess_diagram(
         r#"flowchart TD
 A["<span title="alpha" data-empty="">Label</span>"]
@@ -340,7 +318,7 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
         text.push('}');
     }
     text.push_str("}\n---\nsequenceDiagram\nAlice->Bob: Hi\n");
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
 
     let handle = std::thread::Builder::new()
         .name("detector-deep-frontmatter-strip".to_string())
@@ -360,7 +338,7 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
 
 #[test]
 fn detector_registry_requires_matching_frontmatter_indentation() {
-    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
 
     let mut config = MermaidConfig::empty_object();
     let detected = registry

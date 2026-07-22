@@ -1,21 +1,12 @@
-use crate::baseline::BaselineRegistryProfile;
-use crate::{DetectorRegistry, DiagramRegistry, MermaidConfig, RenderDiagramRegistry};
+use crate::{
+    DetectorRegistry, DiagramRegistry, Engine, RenderDiagramRegistry, diagram_family_capabilities,
+    diagram_header_facts, supported_diagrams,
+};
 use std::collections::BTreeSet;
 
 const PINNED_SEMANTIC_WITHOUT_EDITOR: &[&str] = &["error"];
 const PINNED_WITHOUT_SEMANTICS: &[&str] = &[];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CharacterizationProfile {
-    All,
-    FullOnly,
-}
-
-impl CharacterizationProfile {
-    fn includes(self, profile: BaselineRegistryProfile) -> bool {
-        matches!(self, Self::All) || profile == BaselineRegistryProfile::Full
-    }
-}
+const MALFORMED_SOURCE: &str = "not-a-mermaid-diagram\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CharacterizedCapabilities {
@@ -37,6 +28,7 @@ const ERROR_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities 
     combined: false,
     typed: true,
 };
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MalformedContract {
     StrictAcceptsEditorAvailable,
@@ -50,1096 +42,237 @@ enum MalformedContract {
 struct FamilyCharacterization {
     variant_id: &'static str,
     logical_family: &'static str,
-    profile: CharacterizationProfile,
     representative_source: &'static str,
     malformed_source: &'static str,
     capabilities: CharacterizedCapabilities,
     malformed_contract: MalformedContract,
 }
 
-const MALFORMED_SOURCE: &str = "not-a-mermaid-diagram\n";
+macro_rules! combined_family {
+    ($variant_id:literal, $logical_family:literal, $representative_source:expr) => {
+        FamilyCharacterization {
+            variant_id: $variant_id,
+            logical_family: $logical_family,
+            representative_source: $representative_source,
+            malformed_source: MALFORMED_SOURCE,
+            capabilities: COMBINED_CAPABILITIES,
+            malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+        }
+    };
+}
 
+macro_rules! combined_family_accepting_malformed_source {
+    ($variant_id:literal, $logical_family:literal, $representative_source:expr) => {
+        FamilyCharacterization {
+            variant_id: $variant_id,
+            logical_family: $logical_family,
+            representative_source: $representative_source,
+            malformed_source: MALFORMED_SOURCE,
+            capabilities: COMBINED_CAPABILITIES,
+            malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
+        }
+    };
+}
+
+// This is deliberately one matrix. A Mermaid baseline is a single language catalog, so every
+// family gets the same parser/editor/typed-render admission contract regardless of Cargo features.
 const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
     FamilyCharacterization {
         variant_id: "error",
         logical_family: "error",
-        profile: CharacterizationProfile::All,
         representative_source: "error\n",
         malformed_source: MALFORMED_SOURCE,
         capabilities: ERROR_CAPABILITIES,
         malformed_contract: MalformedContract::StrictAcceptsEditorUnavailable,
     },
-    FamilyCharacterization {
-        variant_id: "flowchart-elk",
-        logical_family: "flowchart",
-        profile: CharacterizationProfile::FullOnly,
-        representative_source: "flowchart-elk TD\nA-->B\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "flowchart-v2",
-        logical_family: "flowchart",
-        profile: CharacterizationProfile::All,
-        representative_source: "flowchart TD\nA-->B\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "flowchart",
-        logical_family: "flowchart",
-        profile: CharacterizationProfile::All,
-        representative_source: "graph TD\nA-->B\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "swimlane",
-        logical_family: "swimlane",
-        profile: CharacterizationProfile::All,
-        representative_source: "swimlane-beta LR\nA-->B\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "mindmap",
-        logical_family: "mindmap",
-        profile: CharacterizationProfile::FullOnly,
-        representative_source: "mindmap\n  root\n    child\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "architecture",
-        logical_family: "architecture",
-        profile: CharacterizationProfile::FullOnly,
-        representative_source: "architecture-beta\n  service api(server)[API]\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "zenuml",
-        logical_family: "zenuml",
-        profile: CharacterizationProfile::All,
-        representative_source: "zenuml\n  Alice->Bob: Hello\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "sequence",
-        logical_family: "sequence",
-        profile: CharacterizationProfile::All,
-        representative_source: "sequenceDiagram\nAlice->>Bob: Hello\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "c4",
-        logical_family: "c4",
-        profile: CharacterizationProfile::All,
-        representative_source: "C4Context\nPerson(user, \"User\")\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "kanban",
-        logical_family: "kanban",
-        profile: CharacterizationProfile::All,
-        representative_source: "kanban\n  Todo\n    item1\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "classDiagram",
-        logical_family: "class",
-        profile: CharacterizationProfile::All,
-        representative_source: "classDiagram\nclass Animal\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "class",
-        logical_family: "class",
-        profile: CharacterizationProfile::All,
-        representative_source: "classDiagram\nclass Animal\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "er",
-        logical_family: "er",
-        profile: CharacterizationProfile::All,
-        representative_source: "erDiagram\nCUSTOMER\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "erDiagram",
-        logical_family: "er",
-        profile: CharacterizationProfile::All,
-        representative_source: "erDiagram\nCUSTOMER\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "gantt",
-        logical_family: "gantt",
-        profile: CharacterizationProfile::All,
-        representative_source: "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "info",
-        logical_family: "info",
-        profile: CharacterizationProfile::All,
-        representative_source: "info\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "pie",
-        logical_family: "pie",
-        profile: CharacterizationProfile::All,
-        representative_source: "pie\n\"A\": 1\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "requirement",
-        logical_family: "requirement",
-        profile: CharacterizationProfile::All,
-        representative_source: "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Test\n  risk: low\n  verifymethod: analysis\n}\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "timeline",
-        logical_family: "timeline",
-        profile: CharacterizationProfile::All,
-        representative_source: "timeline\n2024 : Event\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "gitGraph",
-        logical_family: "gitGraph",
-        profile: CharacterizationProfile::All,
-        representative_source: "gitGraph\ncommit\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "stateDiagram",
-        logical_family: "state",
-        profile: CharacterizationProfile::All,
-        representative_source: "stateDiagram-v2\n[*] --> Idle\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "state",
-        logical_family: "state",
-        profile: CharacterizationProfile::All,
-        representative_source: "stateDiagram\n[*] --> Idle\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "journey",
-        logical_family: "journey",
-        profile: CharacterizationProfile::All,
-        representative_source: "journey\nsection Work\nTask: 5\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "quadrantChart",
-        logical_family: "quadrantChart",
-        profile: CharacterizationProfile::All,
-        representative_source: "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nA: [0.5, 0.5]\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "sankey",
-        logical_family: "sankey",
-        profile: CharacterizationProfile::All,
-        representative_source: "sankey\nA,B,1\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "packet",
-        logical_family: "packet",
-        profile: CharacterizationProfile::All,
-        representative_source: "packet-beta\n0-7: \"A\"\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "xychart",
-        logical_family: "xychart",
-        profile: CharacterizationProfile::All,
-        representative_source: "xychart-beta\nline [10, 30, 20]\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "block",
-        logical_family: "block",
-        profile: CharacterizationProfile::All,
-        representative_source: "block\n  a b c\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "eventmodeling",
-        logical_family: "eventmodeling",
-        profile: CharacterizationProfile::All,
-        representative_source: "eventmodeling\ntf 01 ui Shop.Cart\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "treeView",
-        logical_family: "treeView",
-        profile: CharacterizationProfile::All,
-        representative_source: "treeView-beta\n  root\n    child\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "radar",
-        logical_family: "radar",
-        profile: CharacterizationProfile::All,
-        representative_source: "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "ishikawa",
-        logical_family: "ishikawa",
-        profile: CharacterizationProfile::All,
-        representative_source: "ishikawa-beta\n  Effect\n    Cause\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "treemap",
-        logical_family: "treemap",
-        profile: CharacterizationProfile::All,
-        representative_source: "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "railroad",
-        logical_family: "railroad",
-        profile: CharacterizationProfile::All,
-        representative_source: "railroad-beta\nrule = terminal(\"a\") ;\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "railroadEbnf",
-        logical_family: "railroad",
-        profile: CharacterizationProfile::All,
-        representative_source: "railroad-ebnf-beta\nrule = \"a\" ;\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "railroadAbnf",
-        logical_family: "railroad",
-        profile: CharacterizationProfile::All,
-        representative_source: "railroad-abnf-beta\nrule = \"a\" ;\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "railroadPeg",
-        logical_family: "railroad",
-        profile: CharacterizationProfile::All,
-        representative_source: "railroad-peg-beta\nrule <- \"a\" ;\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "venn",
-        logical_family: "venn",
-        profile: CharacterizationProfile::All,
-        representative_source: "venn-beta\nset Frontend\nset Backend\nunion Frontend,Backend[\"API\"]\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "wardley",
-        logical_family: "wardley",
-        profile: CharacterizationProfile::All,
-        representative_source: "wardley-beta\ncomponent API [0.6, 0.7]\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
-    FamilyCharacterization {
-        variant_id: "cynefin",
-        logical_family: "cynefin",
-        profile: CharacterizationProfile::All,
-        representative_source: "cynefin-beta\n  complex\n",
-        malformed_source: MALFORMED_SOURCE,
-        capabilities: COMBINED_CAPABILITIES,
-        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
-    },
+    combined_family!("flowchart-elk", "flowchart", "flowchart-elk TD\nA-->B\n"),
+    combined_family!("flowchart-v2", "flowchart", "flowchart TD\nA-->B\n"),
+    combined_family!("flowchart", "flowchart", "graph TD\nA-->B\n"),
+    combined_family!("swimlane", "swimlane", "swimlane-beta LR\nA-->B\n"),
+    combined_family!("mindmap", "mindmap", "mindmap\n  root\n    child\n"),
+    combined_family!(
+        "architecture",
+        "architecture",
+        "architecture-beta\n  service api(server)[API]\n"
+    ),
+    combined_family!("zenuml", "zenuml", "zenuml\n  Alice->Bob: Hello\n"),
+    combined_family!(
+        "sequence",
+        "sequence",
+        "sequenceDiagram\nAlice->>Bob: Hello\n"
+    ),
+    combined_family!("c4", "c4", "C4Context\nPerson(user, \"User\")\n"),
+    combined_family!("kanban", "kanban", "kanban\n  Todo\n    item1\n"),
+    combined_family!("classDiagram", "class", "classDiagram\nclass Animal\n"),
+    combined_family!("class", "class", "classDiagram\nclass Animal\n"),
+    combined_family!("er", "er", "erDiagram\nCUSTOMER\n"),
+    combined_family!("erDiagram", "er", "erDiagram\nCUSTOMER\n"),
+    combined_family!(
+        "gantt",
+        "gantt",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n"
+    ),
+    combined_family_accepting_malformed_source!("info", "info", "info\n"),
+    combined_family_accepting_malformed_source!("pie", "pie", "pie\n\"A\": 1\n"),
+    combined_family!(
+        "requirement",
+        "requirement",
+        "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Test\n  risk: low\n  verifymethod: analysis\n}\n"
+    ),
+    combined_family!("timeline", "timeline", "timeline\n2024 : Event\n"),
+    combined_family!("gitGraph", "gitGraph", "gitGraph\ncommit id:\"first\"\n"),
+    combined_family!("stateDiagram", "state", "stateDiagram-v2\n[*] --> Idle\n"),
+    combined_family!("state", "state", "stateDiagram\n[*] --> Idle\n"),
+    combined_family!("journey", "journey", "journey\nsection Work\nTask: 5\n"),
+    combined_family!(
+        "quadrantChart",
+        "quadrantChart",
+        "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nA: [0.5, 0.5]\n"
+    ),
+    combined_family!("sankey", "sankey", "sankey\nA,B,1\n"),
+    combined_family!("packet", "packet", "packet-beta\n0-7: \"A\"\n"),
+    combined_family!("xychart", "xychart", "xychart-beta\nline [10, 30, 20]\n"),
+    combined_family!("block", "block", "block\n  a b c\n"),
+    combined_family!(
+        "eventmodeling",
+        "eventmodeling",
+        "eventmodeling\ntf 01 ui Shop.Cart\n"
+    ),
+    combined_family!("treeView", "treeView", "treeView-beta\n  root\n    child\n"),
+    combined_family!(
+        "radar",
+        "radar",
+        "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n"
+    ),
+    combined_family!(
+        "ishikawa",
+        "ishikawa",
+        "ishikawa-beta\n  Effect\n    Cause\n"
+    ),
+    combined_family!(
+        "treemap",
+        "treemap",
+        "treemap-beta\n\"Root\"\n  \"Child\": 1\n"
+    ),
+    combined_family!(
+        "railroad",
+        "railroad",
+        "railroad-beta\nrule = terminal(\"a\") ;\n"
+    ),
+    combined_family!(
+        "railroadEbnf",
+        "railroad",
+        "railroad-ebnf-beta\nrule = \"a\" ;\n"
+    ),
+    combined_family!(
+        "railroadAbnf",
+        "railroad",
+        "railroad-abnf-beta\nrule = \"a\" ;\n"
+    ),
+    combined_family!(
+        "railroadPeg",
+        "railroad",
+        "railroad-peg-beta\nrule <- \"a\" ;\n"
+    ),
+    combined_family!(
+        "venn",
+        "venn",
+        "venn-beta\nset Frontend\nset Backend\nunion Frontend,Backend[\"API\"]\n"
+    ),
+    combined_family!(
+        "wardley",
+        "wardley",
+        "wardley-beta\ncomponent API [0.6, 0.7]\n"
+    ),
+    combined_family!("cynefin", "cynefin", "cynefin-beta\n  complex\n"),
 ];
 
 #[test]
-fn detector_registries_follow_family_fact_order() {
-    let full = DetectorRegistry::pinned_mermaid_baseline_full();
-    let full_actual: Vec<_> = full.detector_ids().collect();
-    let full_expected: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Full)
-        .iter()
-        .map(|fact| fact.id)
-        .collect();
-    assert_eq!(
-        full_actual,
-        with_frontmatter_guard_after_error(full_expected)
-    );
-
-    let tiny = DetectorRegistry::pinned_mermaid_baseline_tiny();
-    let tiny_actual: Vec<_> = tiny.detector_ids().collect();
-    let tiny_expected: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Tiny)
-        .iter()
-        .map(|fact| fact.id)
-        .collect();
-    assert_eq!(
-        tiny_actual,
-        with_frontmatter_guard_after_error(tiny_expected)
-    );
-}
-
-fn with_frontmatter_guard_after_error(mut family_ids: Vec<&'static str>) -> Vec<&'static str> {
-    let insert_at = family_ids
-        .iter()
-        .position(|id| *id == "error")
-        .expect("error detector")
-        + 1;
-    family_ids.insert(insert_at, "---");
-    family_ids
-}
-
-#[test]
-fn tiny_detector_projection_is_derived_from_full_detector_facts() {
-    let full_only = ["architecture", "flowchart-elk", "mindmap"];
-    let full_expected: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Full)
-        .iter()
-        .filter_map(|fact| (!full_only.contains(&fact.id)).then_some(fact.id))
-        .collect();
-    let tiny_actual: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Tiny)
-        .iter()
-        .map(|fact| fact.id)
-        .collect();
-
-    assert_eq!(tiny_actual, full_expected);
-    for id in full_only {
-        assert!(
-            crate::family::detector_facts(BaselineRegistryProfile::Full)
-                .iter()
-                .any(|fact| fact.id == id),
-            "{id} should stay registered in the full detector profile",
-        );
-        assert!(
-            !tiny_actual.contains(&id),
-            "{id} should stay excluded from the tiny detector profile",
-        );
-    }
-}
-
-#[test]
-fn fast_detector_respects_family_feature_profile() {
-    let mut config = MermaidConfig::empty_object();
-    let full = DetectorRegistry::pinned_mermaid_baseline_full();
-    assert_eq!(
-        full.detect_type_precleaned("mindmap\n  root", &mut config)
-            .unwrap(),
-        "mindmap"
-    );
-
-    let tiny = DetectorRegistry::pinned_mermaid_baseline_tiny();
-    let err = tiny
-        .detect_type_precleaned("mindmap\n  root", &mut config)
-        .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("No diagram type detected matching given configuration")
-    );
-}
-
-#[test]
-fn fast_detector_keywords_respect_family_feature_profile() {
-    assert_eq!(
-        crate::family::fast_detect_by_leading_keyword(
-            "sequenceDiagram\nA->>B: hi",
-            BaselineRegistryProfile::Full,
-        ),
-        Some("sequence")
-    );
-    assert_eq!(
-        crate::family::fast_detect_by_leading_keyword(
-            "sequenceDiagram\nA->>B: hi",
-            BaselineRegistryProfile::Tiny,
-        ),
-        Some("sequence")
-    );
-    assert_eq!(
-        crate::family::fast_detect_by_leading_keyword(
-            "mindmap\nroot",
-            BaselineRegistryProfile::Full,
-        ),
-        Some("mindmap")
-    );
-    assert_eq!(
-        crate::family::fast_detect_by_leading_keyword(
-            "mindmap\nroot",
-            BaselineRegistryProfile::Tiny,
-        ),
-        None
-    );
-}
-
-#[test]
-fn parser_registries_follow_family_fact_projection() {
-    for (profile, semantic, render) in [
-        (
-            BaselineRegistryProfile::Full,
-            DiagramRegistry::pinned_mermaid_baseline_full(),
-            RenderDiagramRegistry::pinned_mermaid_baseline_full(),
-        ),
-        (
-            BaselineRegistryProfile::Tiny,
-            DiagramRegistry::pinned_mermaid_baseline_tiny(),
-            RenderDiagramRegistry::pinned_mermaid_baseline_tiny(),
-        ),
-    ] {
-        let semantic_actual = sorted_set(semantic.parser_ids());
-        let semantic_expected = sorted_set(
-            crate::family::semantic_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        assert_eq!(semantic_actual, semantic_expected, "{profile:?}");
-
-        let render_actual = sorted_set(render.parser_ids());
-        let render_expected = sorted_set(
-            crate::family::render_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        assert_eq!(render_actual, render_expected, "{profile:?}");
-    }
-}
-
-#[test]
-fn family_catalog_projections_are_bidirectionally_aligned() {
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let detector_ids = sorted_set(
-            crate::family::detector_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let semantic_ids = sorted_set(
-            crate::family::semantic_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let headers = crate::diagram_header_facts_for_profile(profile);
-        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
-
-        for capability in capabilities {
-            assert!(
-                !capability.has_detector || detector_ids.contains(capability.diagram_type),
-                "capability {} declares a detector missing from {profile:?}",
-                capability.diagram_type,
-            );
-            assert!(
-                !capability.has_semantic_parser || semantic_ids.contains(capability.diagram_type),
-                "capability {} declares a semantic parser missing from {profile:?}",
-                capability.diagram_type,
-            );
-            assert!(
-                capability.has_header
-                    == headers
-                        .iter()
-                        .any(|header| header.diagram_type == capability.diagram_type),
-                "capability {} disagrees with its header projection in {profile:?}",
-                capability.diagram_type,
-            );
-        }
-
-        for header in headers {
-            assert!(
-                semantic_ids
-                    .iter()
-                    .any(|diagram_type| *diagram_type == header.diagram_type),
-                "header {} points to missing semantic parser {} in {profile:?}",
-                header.label,
-                header.diagram_type,
-            );
-        }
-    }
-
-    let tiny_ids = sorted_set(
-        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny)
-            .iter()
-            .map(|capability| capability.diagram_type),
-    );
-    for header in crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full) {
-        assert_eq!(
-            header.full_only,
-            !tiny_ids.contains(header.diagram_type),
-            "header {} has a feature-profile flag that disagrees with its family",
-            header.label,
-        );
-    }
-}
-
-#[test]
-fn selected_supported_diagrams_follow_feature_profile() {
-    assert_eq!(
-        crate::supported_diagrams(),
-        crate::supported_diagrams_for_profile(crate::selected_baseline_registry_profile())
-    );
-
-    #[cfg(feature = "full-registry")]
-    assert_eq!(
-        crate::supported_diagrams(),
-        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full)
-    );
-
-    #[cfg(not(feature = "full-registry"))]
-    assert_eq!(
-        crate::supported_diagrams(),
-        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny)
-    );
-}
-
-#[test]
-fn diagram_header_facts_follow_feature_profile() {
-    let full_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
-        .iter()
-        .map(|fact| fact.label)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        full_labels,
-        vec![
-            "flowchart TD",
-            "graph TD",
-            "sequenceDiagram",
-            "swimlane-beta",
-            "classDiagram",
-            "classDiagram-v2",
-            "stateDiagram-v2",
-            "stateDiagram",
-            "erDiagram",
-            "gantt",
-            "mindmap",
-            "info",
-            "journey",
-            "timeline",
-            "gitGraph",
-            "pie",
-            "requirementDiagram",
-            "sankey",
-            "packet",
-            "packet-beta",
-            "xychart",
-            "xychart-beta",
-            "treeView-beta",
-            "ishikawa-beta",
-            "eventmodeling",
-            "quadrantChart",
-            "venn-beta",
-            "zenuml",
-            "C4Context",
-            "C4Container",
-            "C4Component",
-            "C4Dynamic",
-            "C4Deployment",
-            "kanban",
-            "architecture-beta",
-            "block-beta",
-            "radar-beta",
-            "treemap-beta",
-            "railroad-beta",
-            "railroad-ebnf-beta",
-            "railroad-abnf-beta",
-            "railroad-peg-beta",
-            "wardley-beta",
-            "cynefin-beta",
-            "flowchart-elk TD",
-        ]
-    );
-
-    let full_only_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
-        .iter()
-        .filter(|fact| fact.full_only)
-        .map(|fact| fact.label)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        full_only_labels,
-        vec!["mindmap", "architecture-beta", "flowchart-elk TD"]
-    );
-
-    let tiny_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Tiny)
-        .iter()
-        .map(|fact| fact.label)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        tiny_labels,
-        vec![
-            "flowchart TD",
-            "graph TD",
-            "sequenceDiagram",
-            "swimlane-beta",
-            "classDiagram",
-            "classDiagram-v2",
-            "stateDiagram-v2",
-            "stateDiagram",
-            "erDiagram",
-            "gantt",
-            "info",
-            "journey",
-            "timeline",
-            "gitGraph",
-            "pie",
-            "requirementDiagram",
-            "sankey",
-            "packet",
-            "packet-beta",
-            "xychart",
-            "xychart-beta",
-            "treeView-beta",
-            "ishikawa-beta",
-            "eventmodeling",
-            "quadrantChart",
-            "venn-beta",
-            "zenuml",
-            "C4Context",
-            "C4Container",
-            "C4Component",
-            "C4Dynamic",
-            "C4Deployment",
-            "kanban",
-            "block-beta",
-            "radar-beta",
-            "treemap-beta",
-            "railroad-beta",
-            "railroad-ebnf-beta",
-            "railroad-abnf-beta",
-            "railroad-peg-beta",
-            "wardley-beta",
-            "cynefin-beta",
-        ]
-    );
-
-    for profile in [BaselineRegistryProfile::Tiny, BaselineRegistryProfile::Full] {
-        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
-        for header in crate::diagram_header_facts_for_profile(profile) {
-            assert!(
-                capabilities.iter().any(|capability| {
-                    capability.diagram_type == header.diagram_type && capability.has_semantic_parser
-                }),
-                "header {} must be backed by a semantic parser",
-                header.label
-            );
-        }
-    }
-}
-
-#[test]
-fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
-    assert_eq!(
-        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full),
-        &[
-            "architecture",
-            "block",
-            "c4",
-            "class",
-            "cynefin",
-            "er",
-            "eventmodeling",
-            "flowchart",
-            "gantt",
-            "gitgraph",
-            "info",
-            "ishikawa",
-            "journey",
-            "kanban",
-            "mindmap",
-            "packet",
-            "pie",
-            "quadrantchart",
-            "radar",
-            "railroad",
-            "railroadAbnf",
-            "railroadEbnf",
-            "railroadPeg",
-            "requirement",
-            "sankey",
-            "sequence",
-            "state",
-            "swimlane",
-            "timeline",
-            "treeView",
-            "treemap",
-            "venn",
-            "wardley",
-            "xychart",
-            "zenuml",
-        ]
-    );
-
-    assert_eq!(
-        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny),
-        &[
-            "block",
-            "c4",
-            "class",
-            "cynefin",
-            "er",
-            "eventmodeling",
-            "flowchart",
-            "gantt",
-            "gitgraph",
-            "info",
-            "ishikawa",
-            "journey",
-            "kanban",
-            "packet",
-            "pie",
-            "quadrantchart",
-            "radar",
-            "railroad",
-            "railroadAbnf",
-            "railroadEbnf",
-            "railroadPeg",
-            "requirement",
-            "sankey",
-            "sequence",
-            "state",
-            "swimlane",
-            "timeline",
-            "treeView",
-            "treemap",
-            "venn",
-            "wardley",
-            "xychart",
-            "zenuml",
-        ]
-    );
-
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let render_ids = sorted_set(
-            crate::family::render_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        for fact in crate::family::supported_diagram_facts(profile) {
-            for parser_id in &fact.render_parser_ids {
-                assert!(
-                    render_ids.contains(parser_id),
-                    "{} metadata points to missing render parser {parser_id}",
-                    fact.metadata_id
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
-    let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
-    let tiny = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny);
-
-    let gitgraph = family_capability(full, "gitGraph");
-    assert_eq!(gitgraph.metadata_id, Some("gitgraph"));
-    assert!(gitgraph.has_semantic_parser);
-    assert!(gitgraph.has_render_parser);
-
-    let tree_view = family_capability(full, "treeView");
-    assert_eq!(tree_view.metadata_id, Some("treeView"));
-    assert!(tree_view.has_semantic_parser);
-    assert!(tree_view.has_render_parser);
-
-    let error = family_capability(full, "error");
-    assert_eq!(error.metadata_id, None);
-    assert_eq!(error.render_model_kind, Some("error"));
-    assert!(error.has_semantic_parser);
-    assert!(error.has_render_parser);
-
-    let swimlane = family_capability(full, "swimlane");
-    assert_eq!(swimlane.metadata_id, Some("swimlane"));
-    assert_eq!(swimlane.render_model_kind, Some("flowchart"));
-    assert!(swimlane.has_semantic_parser);
-    assert!(swimlane.has_render_parser);
-
-    let railroad = family_capability(full, "railroad");
-    assert_eq!(railroad.metadata_id, Some("railroad"));
-    assert!(railroad.has_semantic_parser);
-    assert!(railroad.has_render_parser);
-
-    for (diagram_type, metadata_id) in [
-        ("railroadEbnf", "railroadEbnf"),
-        ("railroadAbnf", "railroadAbnf"),
-        ("railroadPeg", "railroadPeg"),
-    ] {
-        let capability = family_capability(full, diagram_type);
-        assert_eq!(capability.metadata_id, Some(metadata_id));
-        assert!(capability.has_semantic_parser);
-        assert!(capability.has_render_parser);
-    }
-
-    let cynefin = family_capability(full, "cynefin");
-    assert_eq!(cynefin.metadata_id, Some("cynefin"));
-    assert!(cynefin.has_semantic_parser);
-    assert!(cynefin.has_render_parser);
-
-    let wardley = family_capability(full, "wardley");
-    assert_eq!(wardley.metadata_id, Some("wardley"));
-    assert_eq!(wardley.render_model_kind, Some("wardley"));
-    assert!(wardley.has_semantic_parser);
-    assert!(wardley.has_editor_parser);
-    assert!(wardley.has_combined_parser);
-    assert!(wardley.has_render_parser);
-    assert_eq!(wardley.config_namespace, Some("wardley-beta"));
-
-    assert!(!full.iter().any(|fact| fact.diagram_type == "---"));
-    assert!(full.iter().any(|fact| fact.diagram_type == "mindmap"));
-    assert!(!tiny.iter().any(|fact| fact.diagram_type == "mindmap"));
-    assert!(!tiny.iter().any(|fact| fact.diagram_type == "architecture"));
-    assert!(!tiny.iter().any(|fact| fact.diagram_type == "flowchart-elk"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "swimlane"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "cynefin"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroad"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadEbnf"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadAbnf"));
-    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadPeg"));
-}
-
-#[test]
-fn every_catalog_variant_projects_all_declared_capabilities_in_full_and_tiny_profiles() {
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let detector_ids = sorted_set(
-            crate::family::detector_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let semantic_ids = sorted_set(
-            crate::family::semantic_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let combined_ids = sorted_set(
-            crate::family::combined_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let render_ids = sorted_set(
-            crate::family::render_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-        let header_ids = sorted_set(
-            crate::diagram_header_facts_for_profile(profile)
-                .iter()
-                .map(|fact| fact.diagram_type),
-        );
-
-        for capability in crate::diagram_family_capabilities_for_profile(profile) {
-            let id = capability.diagram_type;
-            assert_eq!(
-                capability.has_detector,
-                detector_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                capability.has_semantic_parser,
-                semantic_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                capability.has_editor_parser,
-                combined_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                capability.has_combined_parser,
-                combined_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                capability.has_render_parser,
-                render_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                capability.has_header,
-                header_ids.contains(id),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                crate::diagram_type_family_kind(id),
-                Some(capability.logical_family_kind),
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                crate::diagram_type_render_model_kind(id),
-                capability.render_model_kind,
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                crate::family::config_namespace_for_diagram_type(id),
-                capability.config_namespace,
-                "{profile:?} {id}"
-            );
-
-            let render_fact = crate::family::render_parser_facts(profile)
-                .iter()
-                .find(|fact| fact.id == id);
-            assert_eq!(
-                render_fact.and_then(|fact| fact.metadata_id),
-                capability.metadata_id,
-                "{profile:?} {id}"
-            );
-            assert_eq!(
-                render_fact.map(|fact| fact.model_kind),
-                capability.render_model_kind,
-                "{profile:?} {id}"
-            );
-        }
-    }
-
-    let full_ids = sorted_set(
-        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full)
-            .iter()
-            .map(|fact| fact.diagram_type),
-    );
-    let tiny_ids = sorted_set(
-        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny)
-            .iter()
-            .map(|fact| fact.diagram_type),
-    );
-    assert_eq!(
-        full_ids
-            .difference(&tiny_ids)
-            .copied()
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["architecture", "flowchart-elk", "mindmap"])
-    );
-    assert!(!full_ids.contains("---"));
-}
-
-#[test]
-fn registry_characterization_matrix_covers_every_variant_and_logical_family() {
+fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
+    let capabilities = diagram_family_capabilities();
     assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 41);
+    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
 
-    let variant_ids = FAMILY_CHARACTERIZATION_MATRIX
+    let expected_ids = FAMILY_CHARACTERIZATION_MATRIX
         .iter()
         .map(|row| row.variant_id)
+        .collect::<BTreeSet<_>>();
+    let actual_ids = capabilities
+        .iter()
+        .map(|fact| fact.diagram_type)
         .collect::<BTreeSet<_>>();
     let logical_families = FAMILY_CHARACTERIZATION_MATRIX
         .iter()
         .map(|row| row.logical_family)
         .collect::<BTreeSet<_>>();
-    assert_eq!(variant_ids.len(), 41, "variant ids must be unique");
-    assert_eq!(logical_families.len(), 33);
+    assert_eq!(expected_ids.len(), 41, "matrix variant ids must be unique");
+    assert_eq!(
+        logical_families.len(),
+        33,
+        "matrix logical families drifted"
+    );
+    assert_eq!(
+        actual_ids, expected_ids,
+        "canonical catalog admission drift"
+    );
 
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let actual = crate::diagram_family_capabilities_for_profile(profile);
-        let actual_ids = actual
+    for row in FAMILY_CHARACTERIZATION_MATRIX {
+        let fact = capabilities
             .iter()
-            .map(|fact| fact.diagram_type)
-            .collect::<BTreeSet<_>>();
-        let expected_ids = FAMILY_CHARACTERIZATION_MATRIX
-            .iter()
-            .filter_map(|row| row.profile.includes(profile).then_some(row.variant_id))
-            .collect::<BTreeSet<_>>();
-        assert_eq!(actual_ids, expected_ids, "{profile:?} admission drift");
-
-        for row in FAMILY_CHARACTERIZATION_MATRIX
-            .iter()
-            .filter(|row| row.profile.includes(profile))
-        {
-            let fact = family_capability(actual, row.variant_id);
-            assert_eq!(
-                fact.logical_family_kind, row.logical_family,
-                "{profile:?} {} logical family",
-                row.variant_id
-            );
-            assert_eq!(
-                CharacterizedCapabilities {
-                    semantic: fact.has_semantic_parser,
-                    editor: fact.has_editor_parser,
-                    combined: fact.has_combined_parser,
-                    typed: fact.has_render_parser,
-                },
-                row.capabilities,
-                "{profile:?} {} capability contract",
-                row.variant_id
-            );
-        }
+            .find(|fact| fact.diagram_type == row.variant_id)
+            .unwrap_or_else(|| panic!("missing capability for {}", row.variant_id));
+        assert_eq!(
+            fact.logical_family_kind, row.logical_family,
+            "{} logical family",
+            row.variant_id
+        );
+        assert_eq!(
+            CharacterizedCapabilities {
+                semantic: fact.has_semantic_parser,
+                editor: fact.has_editor_parser,
+                combined: fact.has_combined_parser,
+                typed: fact.has_render_parser,
+            },
+            row.capabilities,
+            "{} capability contract",
+            row.variant_id
+        );
     }
 }
 
 #[test]
-fn registry_characterization_matrix_executes_representative_and_malformed_contracts() {
-    let engine = crate::Engine::new();
-    let selected_profile = crate::selected_baseline_registry_profile();
+fn canonical_catalog_has_no_undeclared_semantic_or_editor_capability_gaps() {
+    let capabilities = diagram_family_capabilities();
+    let semantic_without_editor = capabilities
+        .iter()
+        .filter_map(|fact| {
+            (fact.has_semantic_parser && !fact.has_editor_parser).then_some(fact.diagram_type)
+        })
+        .collect::<BTreeSet<_>>();
+    let without_semantics = capabilities
+        .iter()
+        .filter_map(|fact| (!fact.has_semantic_parser).then_some(fact.diagram_type))
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        semantic_without_editor,
+        PINNED_SEMANTIC_WITHOUT_EDITOR.iter().copied().collect(),
+        "canonical catalog introduced an undeclared semantic/editor capability gap"
+    );
+    assert_eq!(
+        without_semantics,
+        PINNED_WITHOUT_SEMANTICS.iter().copied().collect(),
+        "canonical catalog introduced an undeclared semantic admission gap"
+    );
+}
+
+#[test]
+fn canonical_characterization_matrix_executes_representative_and_malformed_contracts() {
+    let engine = Engine::new();
     let mut malformed_contract_mismatches = Vec::new();
     let mut recovery_contract_mismatches = Vec::new();
 
-    for row in FAMILY_CHARACTERIZATION_MATRIX
-        .iter()
-        .filter(|row| row.profile.includes(selected_profile))
-    {
+    for row in FAMILY_CHARACTERIZATION_MATRIX {
         if row.capabilities.semantic {
             let parsed = engine
                 .parse_diagram_with_type_sync(
@@ -1147,9 +280,9 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                     row.representative_source,
                     crate::ParseOptions::strict(),
                 )
-                .unwrap_or_else(|err| {
+                .unwrap_or_else(|error| {
                     panic!(
-                        "{} representative semantic parse failed: {err}",
+                        "{} representative semantic parse failed: {error}",
                         row.variant_id
                     )
                 })
@@ -1164,9 +297,9 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                         row.variant_id,
                         row.representative_source,
                     )
-                    .unwrap_or_else(|err| {
+                    .unwrap_or_else(|error| {
                         panic!(
-                            "{} representative editor parse failed: {err}",
+                            "{} representative editor parse failed: {error}",
                             row.variant_id
                         )
                     })
@@ -1183,9 +316,9 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                     row.representative_source,
                     crate::ParseOptions::strict(),
                 )
-                .unwrap_or_else(|err| {
+                .unwrap_or_else(|error| {
                     panic!(
-                        "{} representative typed parse failed: {err}",
+                        "{} representative typed parse failed: {error}",
                         row.variant_id
                     )
                 })
@@ -1196,9 +329,9 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
         if row.capabilities.combined {
             let parsed = engine
                 .parse_diagram_snapshot_sync(row.representative_source)
-                .unwrap_or_else(|err| {
+                .unwrap_or_else(|error| {
                     panic!(
-                        "{} representative combined parse failed: {err}",
+                        "{} representative combined parse failed: {error}",
                         row.variant_id
                     )
                 })
@@ -1222,6 +355,7 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
         );
         let malformed_editor =
             engine.parse_editor_semantic_facts_with_type_sync(row.variant_id, row.malformed_source);
+
         if row.capabilities.combined {
             let snapshot = engine
                 .parse_diagram_snapshot_with_type_sync(row.variant_id, row.malformed_source)
@@ -1253,6 +387,7 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                 ));
             }
         }
+
         if let (Err(_), Ok(Some(facts))) = (&malformed_semantic, &malformed_editor) {
             if facts.completeness != crate::EditorSemanticCompleteness::Recovered {
                 recovery_contract_mismatches.push(format!(
@@ -1323,6 +458,7 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                 ));
             }
         }
+
         let observed_contract = match (&malformed_semantic, &malformed_editor) {
             (Ok(Some(_)), Ok(Some(_))) => MalformedContract::StrictAcceptsEditorAvailable,
             (Ok(Some(_)), Ok(None)) => MalformedContract::StrictAcceptsEditorUnavailable,
@@ -1358,80 +494,221 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
     );
 }
 
+fn ids(values: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
+    values.into_iter().collect()
+}
+
 #[test]
-fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
-    let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
+fn pinned_baseline_uses_one_catalog_for_all_registry_projections() {
+    let detector_ids = ids(DetectorRegistry::pinned_mermaid_baseline()
+        .detector_ids()
+        .collect::<Vec<_>>());
+    let semantic_ids = ids(DiagramRegistry::pinned_mermaid_baseline()
+        .parser_ids()
+        .collect::<Vec<_>>());
+    let render_ids = ids(RenderDiagramRegistry::pinned_mermaid_baseline()
+        .parser_ids()
+        .collect::<Vec<_>>());
+    let combined_ids = ids(crate::family::combined_parser_facts()
+        .iter()
+        .map(|fact| fact.id));
+    let header_ids = ids(diagram_header_facts().iter().map(|fact| fact.diagram_type));
 
-    let zenuml = family_capability(full, "zenuml");
-    assert_eq!(zenuml.logical_family_kind, "zenuml");
-    assert_eq!(zenuml.render_model_kind, Some("zenuml"));
+    let mut expected_detector_ids = ids(crate::family::detector_facts().iter().map(|fact| fact.id));
+    // Front-matter enters the detector registry as a protocol adapter, not as a Mermaid family.
+    expected_detector_ids.insert("---");
+    assert_eq!(detector_ids, expected_detector_ids);
+    assert_eq!(
+        semantic_ids,
+        ids(crate::family::semantic_parser_facts()
+            .iter()
+            .map(|fact| fact.id))
+    );
+    assert_eq!(
+        render_ids,
+        ids(crate::family::render_parser_facts()
+            .iter()
+            .map(|fact| fact.id))
+    );
 
-    for id in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
-        let fact = family_capability(full, id);
-        assert_eq!(fact.logical_family_kind, "railroad", "{id}");
-        assert_eq!(fact.render_model_kind, Some("railroad"), "{id}");
-        assert!(fact.has_semantic_parser && fact.has_editor_parser && fact.has_render_parser);
+    for capability in diagram_family_capabilities() {
+        let id = capability.diagram_type;
+        assert_eq!(capability.has_detector, detector_ids.contains(id), "{id}");
+        assert_eq!(
+            capability.has_semantic_parser,
+            semantic_ids.contains(id),
+            "{id}"
+        );
+        assert_eq!(
+            capability.has_editor_parser,
+            combined_ids.contains(id),
+            "{id}"
+        );
+        assert_eq!(
+            capability.has_combined_parser,
+            combined_ids.contains(id),
+            "{id}"
+        );
+        assert_eq!(
+            capability.has_render_parser,
+            render_ids.contains(id),
+            "{id}"
+        );
+        assert_eq!(capability.has_header, header_ids.contains(id), "{id}");
+
+        if capability.has_editor_parser {
+            assert!(
+                capability.has_semantic_parser,
+                "{id} exposes editor facts without a semantic parser"
+            );
+        }
+        if capability.has_render_parser && id != "error" {
+            assert!(
+                capability.has_semantic_parser && capability.has_combined_parser,
+                "{id} exposes typed rendering without the family-owned semantic construction"
+            );
+        }
     }
 
-    let swimlane = family_capability(full, "swimlane");
-    assert_eq!(swimlane.logical_family_kind, "swimlane");
-    assert!(swimlane.has_detector && swimlane.has_semantic_parser && swimlane.has_editor_parser);
-    assert!(swimlane.has_combined_parser);
-    assert!(swimlane.has_render_parser);
-    assert_eq!(swimlane.render_model_kind, Some("flowchart"));
-    assert_eq!(swimlane.metadata_id, Some("swimlane"));
+    for header in diagram_header_facts() {
+        assert!(
+            semantic_ids.contains(header.diagram_type),
+            "header {} has no semantic parser",
+            header.diagram_type
+        );
+    }
+}
 
-    let er_alias = family_capability(full, "erDiagram");
-    assert_eq!(er_alias.logical_family_kind, "er");
-    assert!(!er_alias.has_detector);
-    assert!(!er_alias.has_header);
-    assert!(
-        er_alias.has_semantic_parser
-            && er_alias.has_editor_parser
-            && er_alias.has_combined_parser
-            && er_alias.has_render_parser
-    );
+#[test]
+fn canonical_catalog_admits_every_mermaid_family() {
+    let capabilities = diagram_family_capabilities();
+    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
 
-    let error = family_capability(full, "error");
-    assert!(error.has_detector && error.has_semantic_parser && error.has_render_parser);
-    assert!(!error.has_editor_parser && !error.has_combined_parser);
-    assert_eq!(error.render_model_kind, Some("error"));
-
-    let wardley = family_capability(full, "wardley");
-    assert!(wardley.has_detector && wardley.has_header);
-    assert!(
-        wardley.has_semantic_parser
-            && wardley.has_editor_parser
-            && wardley.has_combined_parser
-            && wardley.has_render_parser
-    );
-    assert_eq!(wardley.render_model_kind, Some("wardley"));
-    assert_eq!(wardley.metadata_id, Some("wardley"));
-
-    let combined = full
+    for capability in capabilities
         .iter()
-        .filter_map(|fact| fact.has_combined_parser.then_some(fact.diagram_type))
-        .collect::<BTreeSet<_>>();
+        .filter(|capability| capability.diagram_type != "error")
+    {
+        assert!(
+            capability.has_semantic_parser,
+            "{} semantic parser missing",
+            capability.diagram_type
+        );
+        assert!(
+            capability.has_editor_parser,
+            "{} editor parser missing",
+            capability.diagram_type
+        );
+    }
+
+    for id in ["architecture", "flowchart-elk", "mindmap"] {
+        let capability = capabilities
+            .iter()
+            .find(|fact| fact.diagram_type == id)
+            .unwrap_or_else(|| panic!("{id} is missing from the canonical catalog"));
+        assert!(capability.has_detector, "{id} detector missing");
+        assert!(
+            capability.has_semantic_parser,
+            "{id} semantic parser missing"
+        );
+        assert!(capability.has_editor_parser, "{id} editor parser missing");
+    }
+
+    let supported = supported_diagrams();
+    assert!(supported.contains(&"architecture"));
+    assert!(supported.contains(&"mindmap"));
+    assert!(supported.contains(&"flowchart"));
+}
+
+#[test]
+fn canonical_header_facts_preserve_the_pinned_authoring_surface() {
+    let labels = diagram_header_facts()
+        .iter()
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
     assert_eq!(
-        combined,
-        BTreeSet::from([
+        labels,
+        vec![
+            "flowchart TD",
+            "graph TD",
+            "sequenceDiagram",
+            "swimlane-beta",
+            "classDiagram",
+            "classDiagram-v2",
+            "stateDiagram-v2",
+            "stateDiagram",
+            "erDiagram",
+            "gantt",
+            "mindmap",
+            "info",
+            "journey",
+            "timeline",
+            "gitGraph",
+            "pie",
+            "requirementDiagram",
+            "sankey",
+            "packet",
+            "packet-beta",
+            "xychart",
+            "xychart-beta",
+            "treeView-beta",
+            "ishikawa-beta",
+            "eventmodeling",
+            "quadrantChart",
+            "venn-beta",
+            "zenuml",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "kanban",
+            "architecture-beta",
+            "block-beta",
+            "radar-beta",
+            "treemap-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "wardley-beta",
+            "cynefin-beta",
+            "flowchart-elk TD",
+        ]
+    );
+    for header in diagram_header_facts() {
+        assert!(
+            diagram_family_capabilities().iter().any(|capability| {
+                capability.diagram_type == header.diagram_type && capability.has_semantic_parser
+            }),
+            "header {} must be backed by a semantic parser",
+            header.label
+        );
+    }
+}
+
+#[test]
+fn canonical_supported_diagrams_are_backed_by_typed_render_parsers() {
+    assert_eq!(
+        supported_diagrams(),
+        &[
             "architecture",
             "block",
             "c4",
             "class",
-            "classDiagram",
+            "cynefin",
+            "er",
+            "eventmodeling",
             "flowchart",
-            "flowchart-elk",
-            "flowchart-v2",
             "gantt",
-            "gitGraph",
+            "gitgraph",
             "info",
+            "ishikawa",
             "journey",
             "kanban",
             "mindmap",
             "packet",
             "pie",
-            "quadrantChart",
+            "quadrantchart",
             "radar",
             "railroad",
             "railroadAbnf",
@@ -1441,49 +718,80 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "sankey",
             "sequence",
             "state",
-            "stateDiagram",
             "swimlane",
             "timeline",
-            "cynefin",
-            "er",
-            "erDiagram",
-            "eventmodeling",
-            "ishikawa",
             "treeView",
             "treemap",
             "venn",
             "wardley",
             "xychart",
             "zenuml",
-        ])
+        ]
     );
+
+    let render_ids = ids(RenderDiagramRegistry::pinned_mermaid_baseline()
+        .parser_ids()
+        .collect::<Vec<_>>());
+    for capability in diagram_family_capabilities() {
+        if let Some(metadata_id) = capability.metadata_id {
+            assert!(
+                supported_diagrams().contains(&metadata_id),
+                "{metadata_id} has metadata but is not public"
+            );
+            assert!(
+                capability.has_render_parser && render_ids.contains(capability.diagram_type),
+                "{metadata_id} metadata is not backed by a typed render parser"
+            );
+        }
+    }
 }
 
 #[test]
-fn builtin_editor_and_render_capabilities_require_combined_semantic_ownership() {
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        for capability in crate::diagram_family_capabilities_for_profile(profile) {
-            if capability.has_semantic_parser && capability.has_editor_parser {
-                assert!(
-                    capability.has_combined_parser,
-                    "{} exposes semantic and editor parsers without one combined construction in {profile:?}",
-                    capability.diagram_type
-                );
-            }
+fn empty_registries_are_explicit_overlay_starting_points() {
+    assert_eq!(DetectorRegistry::new().detector_ids().count(), 0);
+    assert_eq!(DiagramRegistry::new().parser_ids().count(), 0);
+    assert_eq!(RenderDiagramRegistry::new().parser_ids().count(), 0);
+}
 
-            if capability.has_render_parser {
-                if capability.diagram_type == "error" {
-                    assert!(capability.has_semantic_parser);
-                    continue;
-                }
-                assert!(
-                    capability.has_semantic_parser && capability.has_combined_parser,
-                    "{} exposes a typed render parser without semantic + combined ownership in {profile:?}",
-                    capability.diagram_type
-                );
-            }
-        }
+#[test]
+fn engine_uses_the_canonical_catalog_regardless_of_host_features() {
+    let engine = Engine::new();
+    for (source, expected) in [
+        ("mindmap\n  root", "mindmap"),
+        (
+            "architecture-beta\n  service api(server)[API]",
+            "architecture",
+        ),
+        ("flowchart-elk TD\n  A-->B", "flowchart-elk"),
+    ] {
+        let metadata = engine
+            .parse_metadata_sync(source)
+            .unwrap_or_else(|error| panic!("{expected} detection failed: {error}"));
+        assert_eq!(metadata.diagram_type, expected);
+
+        let snapshot = engine
+            .parse_diagram_snapshot_sync(source)
+            .unwrap_or_else(|error| panic!("{expected} semantic construction failed: {error}"))
+            .unwrap_or_else(|| panic!("{expected} produced no diagram snapshot"));
+        assert!(
+            matches!(
+                snapshot.editor_facts(),
+                crate::ParsedEditorFacts::Available(_)
+            ),
+            "{expected} must keep parser-backed editor facts in the canonical catalog"
+        );
     }
+}
+
+fn assert_snapshot_has_editor_facts(source: &str, family: &str) {
+    let parsed = Engine::new()
+        .parse_diagram_snapshot_sync(source)
+        .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
+        .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
+    assert!(matches!(
+        parsed.editor_facts(),
+        crate::ParsedEditorFacts::Available(_)
+    ));
 }
 
 #[test]
@@ -1497,16 +805,7 @@ fn langium_family_combined_parse_constructs_syntax_once() {
         ("wardley", "wardley-beta\ncomponent API [0.6, 0.7]\n"),
     ] {
         crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
-
-        let parsed = crate::Engine::new()
-            .parse_diagram_snapshot_sync(source)
-            .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
-            .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
-
-        assert!(matches!(
-            parsed.editor_facts(),
-            crate::ParsedEditorFacts::Available(_)
-        ));
+        assert_snapshot_has_editor_facts(source, family);
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count(family),
             1,
@@ -1519,16 +818,7 @@ fn langium_family_combined_parse_constructs_syntax_once() {
 fn git_graph_combined_parse_constructs_syntax_once() {
     let family = "gitGraph";
     crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync("gitGraph\ncommit\n")
-        .expect("gitGraph combined parse succeeds")
-        .expect("gitGraph combined parse returns a diagram");
-
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
+    assert_snapshot_has_editor_facts("gitGraph\ncommit\n", family);
     assert_eq!(
         crate::diagrams::langium_common::family_syntax_construction_count(family),
         1,
@@ -1539,16 +829,7 @@ fn git_graph_combined_parse_constructs_syntax_once() {
 #[test]
 fn er_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::er::reset_er_syntax_construction_count();
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync("erDiagram\nCUSTOMER ||--o{ ORDER : places\n")
-        .expect("ER combined parse succeeds")
-        .expect("ER combined parse returns a diagram");
-
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
+    assert_snapshot_has_editor_facts("erDiagram\nCUSTOMER ||--o{ ORDER : places\n", "er");
     assert_eq!(
         crate::diagrams::er::er_syntax_construction_count(),
         1,
@@ -1559,16 +840,7 @@ fn er_combined_parse_constructs_family_syntax_once() {
 #[test]
 fn sequence_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
-        .expect("Sequence combined parse succeeds")
-        .expect("Sequence combined parse returns a diagram");
-
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
+    assert_snapshot_has_editor_facts("sequenceDiagram\nAlice->>Bob: Hello\n", "sequence");
     assert_eq!(
         crate::diagrams::sequence::sequence_syntax_construction_count(),
         1,
@@ -1579,19 +851,10 @@ fn sequence_combined_parse_constructs_family_syntax_once() {
 #[test]
 fn class_combined_parse_constructs_family_syntax_once() {
     crate::diagrams::class::reset_class_syntax_construction_count();
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync(
-            "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
-        )
-        .expect("Class combined parse succeeds")
-        .expect("Class combined parse returns a diagram");
-
-    assert_eq!(parsed.metadata().diagram_type, "classDiagram");
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
+    assert_snapshot_has_editor_facts(
+        "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
+        "class",
+    );
     assert_eq!(
         crate::diagrams::class::class_syntax_construction_count(),
         1,
@@ -1599,8 +862,48 @@ fn class_combined_parse_constructs_family_syntax_once() {
     );
 }
 
+#[test]
+fn mindmap_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
+    assert_snapshot_has_editor_facts("mindmap\n  root\n    child\n", "mindmap");
+    assert_eq!(
+        crate::diagrams::mindmap::mindmap_syntax_construction_count(),
+        1,
+        "one combined request must construct Mindmap syntax once"
+    );
+}
+
+#[test]
+fn railroad_combined_parse_constructs_family_syntax_once_for_every_dialect() {
+    for source in [
+        "railroad-beta\nrule = terminal(\"a\") ;\n",
+        "railroad-ebnf-beta\nrule = \"a\" ;\n",
+        "railroad-abnf-beta\nrule = \"a\" ;\n",
+        "railroad-peg-beta\nrule <- \"a\" ;\n",
+    ] {
+        crate::diagrams::railroad::reset_railroad_syntax_construction_count();
+        assert_snapshot_has_editor_facts(source, "railroad");
+        assert_eq!(
+            crate::diagrams::railroad::railroad_syntax_construction_count(),
+            1,
+            "one combined request must construct Railroad syntax once for {source:?}"
+        );
+    }
+}
+
+#[test]
+fn sankey_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::sankey::reset_sankey_syntax_construction_count();
+    assert_snapshot_has_editor_facts("sankey-beta\nA,B,1\n", "sankey");
+    assert_eq!(
+        crate::diagrams::sankey::sankey_syntax_construction_count(),
+        1,
+        "one combined request must construct Sankey syntax once"
+    );
+}
+
 fn assert_combined_projections_match_standalone(
-    engine: &crate::Engine,
+    engine: &Engine,
     family: &str,
     source: &str,
     volatile_top_level_json_field: Option<&str>,
@@ -1658,281 +961,81 @@ fn assert_combined_projections_match_standalone(
 }
 
 #[test]
-fn langium_combined_projections_match_standalone_public_entrypoints() {
-    let engine = crate::Engine::new();
-    for (family, source) in [
-        ("info", "info showInfo\n"),
-        ("pie", "pie showData\ntitle Breakdown\n\"A\": 1\n\"B\": 2\n"),
-        (
-            "packet",
-            "packet-beta\ntitle Header\n0-7: \"A\"\n8-15: \"B\"\n",
-        ),
-        (
-            "cynefin",
-            "cynefin-beta\ntitle Frame\ncomplex \"Probe\"\ncomplex --> clear : \"Move\"\n",
-        ),
-        (
-            "radar",
-            "radar-beta\ntitle Scores\naxis A,B\ncurve sample{1,2}\nticks 4\n",
-        ),
-        (
-            "gitGraph",
-            concat!(
-                "gitGraph TB:\n",
-                "title History\n",
-                "accTitle: Accessible history\n",
-                "commit id:\"duplicate\"\n",
-                "commit id:\"duplicate\"\n",
-                "branch later order: 2\n",
-                "branch first order: 1\n",
-            ),
-        ),
-    ] {
-        let standalone_model =
-            assert_combined_projections_match_standalone(&engine, family, source, None);
+fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_projections() {
+    let engine = Engine::new();
 
-        if family == "gitGraph" {
-            let warnings = standalone_model["warningFacts"].as_array().unwrap();
-            assert_eq!(warnings.len(), 1, "gitGraph warning projection fixture");
-            let branches = standalone_model["branches"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|branch| branch["name"].as_str().unwrap())
-                .collect::<Vec<_>>();
-            assert_eq!(branches, ["main", "first", "later"]);
-            assert_eq!(standalone_model["direction"], "TB");
-            assert_eq!(standalone_model["title"], "History");
-            assert_eq!(standalone_model["accTitle"], "Accessible history");
+    for row in FAMILY_CHARACTERIZATION_MATRIX
+        .iter()
+        .filter(|row| row.capabilities.combined)
+    {
+        let standalone = engine
+            .parse_diagram_with_type_sync(
+                row.variant_id,
+                row.representative_source,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{} standalone semantic parse failed: {error}",
+                    row.variant_id
+                )
+            })
+            .unwrap_or_else(|| panic!("{} standalone semantic parse was absent", row.variant_id));
+        let standalone_editor = engine
+            .parse_editor_semantic_facts_with_type_sync(row.variant_id, row.representative_source)
+            .unwrap_or_else(|error| {
+                panic!("{} standalone editor parse failed: {error}", row.variant_id)
+            })
+            .unwrap_or_else(|| panic!("{} standalone editor parse was absent", row.variant_id));
+        let combined = engine
+            .parse_diagram_snapshot_with_type_sync(row.variant_id, row.representative_source)
+            .unwrap_or_else(|error| {
+                panic!("{} combined semantic parse failed: {error}", row.variant_id)
+            })
+            .unwrap_or_else(|| panic!("{} combined semantic parse was absent", row.variant_id));
+
+        assert_eq!(standalone.meta.diagram_type, row.variant_id);
+        assert_eq!(combined.metadata().diagram_type, row.variant_id);
+
+        let mut standalone_model = standalone.model;
+        let mut combined_model = combined
+            .outcome()
+            .parsed_model()
+            .expect("combined parse must retain a model")
+            .clone();
+        if row.variant_id == "mindmap" {
+            let standalone_id = standalone_model
+                .as_object_mut()
+                .and_then(|model| model.remove("diagramId"));
+            let combined_id = combined_model
+                .as_object_mut()
+                .and_then(|model| model.remove("diagramId"));
+            assert!(
+                standalone_id.is_some_and(|value| value.is_string())
+                    && combined_id.is_some_and(|value| value.is_string()),
+                "mindmap diagramId must remain a string projection"
+            );
         }
-    }
-}
+        assert_eq!(
+            standalone_model, combined_model,
+            "{} JSON projection drift",
+            row.variant_id
+        );
 
-#[test]
-fn er_combined_projections_match_standalone_and_typed_public_entrypoints() {
-    let engine = crate::Engine::new();
-    let source = concat!(
-        "erDiagram\r\n",
-        "accTitle: <script>bad()</script><b>Entity map</b>\r\n",
-        "accDescr { <script>bad()</script>first line\r\n",
-        "  second line }\r\n",
-        "direction LR\r\n",
-        "CUSTOMER[Customer] {\r\n",
-        "  string id PK, FK \"primary key\"\r\n",
-        "  string name UK\r\n",
-        "}\r\n",
-        "ORDER[Order] {\r\n",
-        "  string id PK\r\n",
-        "}\r\n",
-        "CUSTOMER ||--o{ ORDER : places\r\n",
-        "CUSTOMER ||--|| CUSTOMER : refers\r\n",
-        "classDef emphasized fill:#fff,color:red\r\n",
-        "class CUSTOMER emphasized\r\n",
-        "style ORDER stroke:#000\r\n",
-    );
-    let mut compat = assert_combined_projections_match_standalone(&engine, "er", source, None);
-
-    let acc_title = compat["accTitle"].as_str().unwrap();
-    let acc_descr = compat["accDescr"].as_str().unwrap();
-    assert!(!acc_title.contains("<script>"));
-    assert!(!acc_descr.contains("<script>"));
-    assert!(acc_title.contains("Entity map"));
-    assert!(acc_descr.contains("first line"));
-    assert!(acc_descr.contains("second line"));
-    assert_eq!(compat["direction"], "LR");
-    assert_eq!(compat["entities"]["CUSTOMER"]["alias"], "Customer");
-    assert_eq!(
-        compat["entities"]["CUSTOMER"]["attributes"][0]["keys"],
-        serde_json::json!(["PK", "FK"])
-    );
-    assert_eq!(compat["relationships"].as_array().unwrap().len(), 2);
-    assert_eq!(compat["relationships"][0]["roleA"], "places");
-    assert_eq!(compat["relationships"][1]["roleA"], "refers");
-    assert!(
-        compat.get("warningFacts").is_none(),
-        "ER has no warning projection"
-    );
-
-    let typed = engine
-        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
-        .expect("ER typed parse succeeds")
-        .expect("ER typed parse returns a diagram");
-    let crate::RenderSemanticModel::Er(typed) = typed.model() else {
-        panic!("ER typed parse returned a different family");
-    };
-    let typed = serde_json::to_value(typed).expect("ER typed model serializes");
-    compat.as_object_mut().unwrap().remove("type");
-    compat.as_object_mut().unwrap().remove("constants");
-    assert_eq!(compat, typed, "ER JSON and typed projections drifted");
-}
-
-#[test]
-fn class_combined_projections_match_standalone_and_typed_public_entrypoints() {
-    let engine = crate::Engine::new().with_site_config({
-        let mut config = crate::MermaidConfig::empty_object();
-        config.set_value("securityLevel", serde_json::json!("loose"));
-        config
-    });
-    let source = concat!(
-        "---\r\n",
-        "config:\r\n",
-        "  securityLevel: loose\r\n",
-        "  class:\r\n",
-        "    hierarchicalNamespaces: true\r\n",
-        "---\r\n",
-        "%%{init: {\"theme\": \"default\"}}%%\r\n",
-        "classDiagram-v2\r\n",
-        "accTitle: <script>bad()</script><b>Class map</b>\r\n",
-        "accDescr: <script>bad()</script><b>Class relationships</b>\r\n",
-        "direction LR\r\n",
-        "namespace 公司.平台[\"Platform Layer\"] {\r\n",
-        "  class 顧客[\"Customer\"] {\r\n",
-        "    +id: String\r\n",
-        "    +find(value) Result~T~$\r\n",
-        "  }\r\n",
-        "  note for 顧客 \"Primary customer\"\r\n",
-        "}\r\n",
-        "class 訂單\r\n",
-        "顧客 \"1\" *-- \"many\" 訂單 : owns\r\n",
-        "<<service>> 顧客\r\n",
-        "note \"Floating note\"\r\n",
-        "classDef service fill:#fff,color:red\r\n",
-        "class 訂單:::service\r\n",
-        "cssClass \"顧客,訂單\" service\r\n",
-        "style 顧客 stroke:#000\r\n",
-        "click 顧客 call open(customerId) \"Open customer\"\r\n",
-        "link 訂單 \"https://example.com/orders\" \"Orders\" _blank\r\n",
-        "callback 訂單 \"refreshOrders\" \"Refresh orders\"\r\n",
-    );
-    let compat =
-        assert_combined_projections_match_standalone(&engine, "classDiagram", source, None);
-
-    let typed = engine
-        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
-        .expect("Class typed parse succeeds")
-        .expect("Class typed parse returns a diagram");
-    let crate::RenderSemanticModel::Class(typed) = typed.model() else {
-        panic!("Class typed parse returned a different family");
-    };
-    let typed = serde_json::to_value(typed).expect("Class typed model serializes");
-    assert_eq!(compat, typed, "Class JSON and typed projections drifted");
-
-    assert_eq!(typed["direction"], "LR");
-    assert_eq!(typed["classes"]["顧客"]["label"], "Customer");
-    assert_eq!(typed["classes"]["顧客"]["parent"], "公司.平台");
-    assert_eq!(typed["relations"][0]["relationTitle1"], "1");
-    assert_eq!(typed["relations"][0]["relationTitle2"], "many");
-    assert_eq!(typed["relations"][0]["title"], "owns");
-    assert_eq!(typed["notes"].as_array().unwrap().len(), 2);
-    assert_eq!(typed["notes"][0]["parent"], "公司.平台");
-    assert!(
-        typed["notes"][1].get("parent").is_none(),
-        "floating Class notes preserve Mermaid's absent parent field"
-    );
-    assert_eq!(typed["classes"]["顧客"]["callback"]["function"], "open");
-    assert_eq!(typed["classes"]["顧客"]["callbackEffective"], true);
-    assert_eq!(typed["classes"]["訂單"]["linkTarget"], "_blank");
-    for field in ["accTitle", "accDescr"] {
-        assert!(!typed[field].as_str().unwrap().contains("<script>"));
-    }
-}
-
-#[test]
-fn sequence_combined_projections_match_standalone_and_typed_public_entrypoints() {
-    let engine = crate::Engine::new();
-    let source = concat!(
-        "---\r\n",
-        "config:\r\n",
-        "  sequence:\r\n",
-        "    wrap: true\r\n",
-        "---\r\n",
-        "%%{init: {\"theme\": \"default\"}}%%\r\n",
-        "sequenceDiagram\r\n",
-        "title: <script>bad()</script><b>Unicode exchange</b>\r\n",
-        "accTitle: <script>bad()</script><b>Accessible sequence</b>\r\n",
-        "accDescr: <script>bad()</script><b>Ordered interactions</b>\r\n",
-        "box rgb(34, 56, 0) Team; participant 顧客 as Customer; actor サーバー as API; end\r\n",
-        "autonumber 3 2; 顧客->>+サーバー: 開始; Note over 顧客,サーバー: 確認; サーバー-->>-顧客: 完了\r\n",
-        "links 顧客: { \"Portal\": \"https://example.com/\" }\r\n",
-        "properties サーバー: { \"class\": \"internal\" }\r\n",
-        "loop [again]; 顧客->>サーバー: 繰り返す; end\r\n",
-    );
-    let mut compat =
-        assert_combined_projections_match_standalone(&engine, "sequence", source, None);
-
-    let typed = engine
-        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
-        .expect("Sequence typed parse succeeds")
-        .expect("Sequence typed parse returns a diagram");
-    let crate::RenderSemanticModel::Sequence(typed) = typed.model() else {
-        panic!("Sequence typed parse returned a different family");
-    };
-    let typed = serde_json::to_value(typed).expect("Sequence typed model serializes");
-    compat.as_object_mut().unwrap().remove("type");
-    compat.as_object_mut().unwrap().remove("constants");
-    assert_eq!(compat, typed, "Sequence JSON and typed projections drifted");
-
-    for field in ["title", "accTitle", "accDescr"] {
-        let value = typed[field].as_str().expect("sanitized common field");
-        assert!(!value.contains("<script>"), "unsanitized Sequence {field}");
-    }
-    assert_eq!(typed["actorOrder"], serde_json::json!(["顧客", "サーバー"]));
-    assert_eq!(
-        typed["boxes"][0]["actorKeys"],
-        serde_json::json!(["顧客", "サーバー"])
-    );
-    assert_eq!(typed["messages"][0]["type"], 26);
-    assert_eq!(typed["messages"][1]["message"], "開始");
-    assert_eq!(typed["messages"][2]["message"], "");
-    assert_eq!(typed["messages"][3]["message"], "確認");
-    assert_eq!(typed["messages"][4]["message"], "完了");
-
-    let editor = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", source)
-        .expect("Sequence editor parse succeeds")
-        .expect("Sequence editor parse returns facts");
-    for (name, detail) in [
-        ("Customer", "sequence participant label"),
-        ("API", "sequence participant label"),
-        ("Team", "sequence box"),
-        ("開始", "sequence message"),
-        ("確認", "sequence note"),
-        ("[again]", "sequence fragment label"),
-        ("繰り返す", "sequence message"),
-    ] {
-        assert!(
-            editor.symbols.iter().any(|symbol| {
-                symbol.name == name
-                    && symbol.detail.as_deref() == Some(detail)
-                    && symbol.role == crate::EditorSemanticRole::Payload
-            }),
-            "missing Sequence payload {name:?} ({detail})"
+        let crate::ParsedEditorFacts::Available(combined_editor) = combined.editor_facts() else {
+            panic!(
+                "{} combined parse returned unavailable editor facts",
+                row.variant_id
+            );
+        };
+        assert_eq!(
+            &standalone_editor, combined_editor,
+            "{} editor projection drift",
+            row.variant_id
         );
     }
 }
 
-#[cfg(feature = "full")]
-#[test]
-fn mindmap_combined_parse_constructs_family_syntax_once() {
-    crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync("mindmap\n  root\n    child\n")
-        .expect("mindmap combined parse succeeds")
-        .expect("mindmap combined parse returns a diagram");
-
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
-    assert_eq!(
-        crate::diagrams::mindmap::mindmap_syntax_construction_count(),
-        1,
-        "one combined request must construct Mindmap syntax once"
-    );
-}
-
-#[cfg(feature = "full")]
 #[test]
 fn mindmap_combined_projections_match_standalone_public_entrypoints() {
     let source = concat!(
@@ -1943,46 +1046,18 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
         "  child2\n",
     );
     let model = assert_combined_projections_match_standalone(
-        &crate::Engine::new(),
+        &Engine::new(),
         "mindmap",
         source,
         Some("diagramId"),
     );
-
     assert_eq!(model["rootNode"]["descr"], "Root Node");
     assert_eq!(model["rootNode"]["children"].as_array().unwrap().len(), 2);
 }
 
 #[test]
-fn railroad_combined_parse_constructs_family_syntax_once_for_every_dialect() {
-    for source in [
-        "railroad-beta\nrule = terminal(\"a\") ;\n",
-        "railroad-ebnf-beta\nrule = \"a\" ;\n",
-        "railroad-abnf-beta\nrule = \"a\" ;\n",
-        "railroad-peg-beta\nrule <- \"a\" ;\n",
-    ] {
-        crate::diagrams::railroad::reset_railroad_syntax_construction_count();
-
-        let parsed = crate::Engine::new()
-            .parse_diagram_snapshot_sync(source)
-            .expect("railroad combined parse succeeds")
-            .expect("railroad combined parse returns a diagram");
-
-        assert!(matches!(
-            parsed.editor_facts(),
-            crate::ParsedEditorFacts::Available(_)
-        ));
-        assert_eq!(
-            crate::diagrams::railroad::railroad_syntax_construction_count(),
-            1,
-            "one combined request must construct Railroad syntax once for {source:?}"
-        );
-    }
-}
-
-#[test]
 fn railroad_combined_projections_match_standalone_public_entrypoints() {
-    let engine = crate::Engine::new();
+    let engine = Engine::new();
     for (family, source) in [
         (
             "railroad",
@@ -2007,26 +1082,6 @@ fn railroad_combined_projections_match_standalone_public_entrypoints() {
 }
 
 #[test]
-fn sankey_combined_parse_constructs_family_syntax_once() {
-    crate::diagrams::sankey::reset_sankey_syntax_construction_count();
-
-    let parsed = crate::Engine::new()
-        .parse_diagram_snapshot_sync("sankey-beta\nA,B,1\n")
-        .expect("sankey combined parse succeeds")
-        .expect("sankey combined parse returns a diagram");
-
-    assert!(matches!(
-        parsed.editor_facts(),
-        crate::ParsedEditorFacts::Available(_)
-    ));
-    assert_eq!(
-        crate::diagrams::sankey::sankey_syntax_construction_count(),
-        1,
-        "one combined request must construct Sankey syntax once"
-    );
-}
-
-#[test]
 fn sankey_combined_projections_match_standalone_public_entrypoints() {
     let source = concat!(
         "sankey-beta\n",
@@ -2034,160 +1089,11 @@ fn sankey_combined_projections_match_standalone_public_entrypoints() {
         "Target,Done,2\n",
     );
     let model =
-        assert_combined_projections_match_standalone(&crate::Engine::new(), "sankey", source, None);
-
+        assert_combined_projections_match_standalone(&Engine::new(), "sankey", source, None);
     assert_eq!(model["graph"]["links"][0]["source"], "Source, Inc.");
     assert_eq!(model["graph"]["links"][0]["target"], "Target \"quoted\"");
 }
 
-#[test]
-fn every_admitted_semantic_variant_has_editor_facts_except_pinned_exceptions() {
-    let expected_semantic_without_editor = PINNED_SEMANTIC_WITHOUT_EDITOR
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    let expected_without_semantics = PINNED_WITHOUT_SEMANTICS
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
-        let semantic_without_editor = capabilities
-            .iter()
-            .filter_map(|fact| {
-                (fact.has_semantic_parser && !fact.has_editor_parser).then_some(fact.diagram_type)
-            })
-            .collect::<BTreeSet<_>>();
-        let without_semantics = capabilities
-            .iter()
-            .filter_map(|fact| (!fact.has_semantic_parser).then_some(fact.diagram_type))
-            .collect::<BTreeSet<_>>();
-
-        assert_eq!(
-            semantic_without_editor, expected_semantic_without_editor,
-            "{profile:?} introduced an undeclared semantic/editor capability gap"
-        );
-        assert_eq!(
-            without_semantics, expected_without_semantics,
-            "{profile:?} introduced an undeclared semantic admission gap"
-        );
-
-        for fact in capabilities {
-            if fact.has_semantic_parser
-                && !expected_semantic_without_editor.contains(fact.diagram_type)
-            {
-                assert!(
-                    fact.has_editor_parser,
-                    "{} must declare parser-backed editor facts in {profile:?}",
-                    fact.diagram_type
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn diagram_type_family_kind_maps_parser_ids_to_shared_family_kind() {
-    assert_eq!(
-        crate::diagram_type_family_kind("flowchart-v2"),
-        Some("flowchart")
-    );
-    assert_eq!(
-        crate::diagram_type_family_kind("flowchart"),
-        Some("flowchart")
-    );
-    assert_eq!(
-        crate::diagram_type_family_kind("flowchart-elk"),
-        Some("flowchart")
-    );
-    assert_eq!(
-        crate::diagram_type_family_kind("classDiagram"),
-        Some("class")
-    );
-    assert_eq!(crate::diagram_type_family_kind("unknown"), None);
-}
-
-#[test]
-fn tiny_parser_projection_excludes_full_only_large_features() {
-    let tiny_semantic = DiagramRegistry::pinned_mermaid_baseline_tiny();
-    assert!(tiny_semantic.get("mindmap").is_none());
-    assert!(tiny_semantic.get("architecture").is_none());
-    assert!(tiny_semantic.get("flowchart-elk").is_none());
-    assert!(tiny_semantic.get("flowchart-v2").is_some());
-    assert!(tiny_semantic.get("flowchart").is_some());
-
-    let tiny_render = RenderDiagramRegistry::pinned_mermaid_baseline_tiny();
-    assert!(!tiny_render.contains("mindmap"));
-    assert!(!tiny_render.contains("architecture"));
-    assert!(!tiny_render.contains("flowchart-elk"));
-    assert!(tiny_render.contains("flowchart-v2"));
-    assert!(tiny_render.contains("flowchart"));
-}
-
-#[cfg(not(feature = "full-registry"))]
-#[test]
-fn tiny_engine_rejects_full_only_known_type_parsers() {
-    let engine = crate::Engine::new();
-
-    for (expected_type, source) in [
-        ("mindmap", "mindmap\nroot\n"),
-        (
-            "architecture",
-            "architecture-beta\n  service a(server)[A]\n",
-        ),
-        ("flowchart-elk", "flowchart-elk TD\nA-->B;\n"),
-    ] {
-        let err = engine
-            .parse_diagram_with_type_sync(expected_type, source, crate::ParseOptions::strict())
-            .unwrap_err();
-        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
-            panic!("unexpected error for {expected_type}: {err}");
-        };
-        assert_eq!(diagram_type, expected_type);
-
-        let err = engine
-            .parse_diagram_for_render_model_with_type_sync(
-                expected_type,
-                source,
-                crate::ParseOptions::strict(),
-            )
-            .unwrap_err();
-        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
-            panic!("unexpected render error for {expected_type}: {err}");
-        };
-        assert_eq!(diagram_type, expected_type);
-
-        let err = engine
-            .parse_editor_semantic_facts_with_type_sync(expected_type, source)
-            .unwrap_err();
-        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
-            panic!("unexpected editor facts error for {expected_type}: {err}");
-        };
-        assert_eq!(diagram_type, expected_type);
-    }
-}
-
-#[test]
-fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
-    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
-        let render_ids = sorted_set(
-            crate::family::render_parser_facts(profile)
-                .iter()
-                .map(|fact| fact.id),
-        );
-
-        for fact in crate::family::semantic_parser_facts(profile) {
-            assert!(
-                render_ids.contains(fact.id),
-                "built-in semantic parser {} must not rely on JSON render fallback in {profile:?}",
-                fact.id
-            );
-        }
-    }
-}
-
-#[cfg(feature = "full")]
 #[test]
 fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
     let source = concat!(
@@ -2200,7 +1106,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
     crate::preprocess::reset_public_parse_preprocess_count();
     crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
 
-    let snapshot = crate::Engine::new()
+    let snapshot = Engine::new()
         .parse_diagram_snapshot_sync(source)
         .expect("snapshot operation")
         .expect("detected mindmap");
@@ -2228,18 +1134,4 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
         crate::diagrams::mindmap::mindmap_syntax_construction_count(),
         1
     );
-}
-
-fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
-    ids.into_iter().collect()
-}
-
-fn family_capability(
-    capabilities: &'static [crate::DiagramFamilyCapability],
-    diagram_type: &str,
-) -> &'static crate::DiagramFamilyCapability {
-    capabilities
-        .iter()
-        .find(|fact| fact.diagram_type == diagram_type)
-        .unwrap_or_else(|| panic!("missing family capability for {diagram_type}"))
 }

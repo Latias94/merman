@@ -527,7 +527,7 @@ fn parse_sequence_strict_failure_and_editor_recovery_share_exact_lexer_span() {
 }
 
 #[test]
-fn parse_sequence_tiny_signals_preserve_canonical_db_order_without_a_second_grammar() {
+fn parse_sequence_minimal_signals_preserve_canonical_db_order_without_a_second_grammar() {
     let engine = Engine::new();
     let text = concat!(
         "sequenceDiagram\n",
@@ -538,7 +538,7 @@ fn parse_sequence_tiny_signals_preserve_canonical_db_order_without_a_second_gram
     let parsed = engine
         .parse_diagram_sync(text, ParseOptions::strict())
         .unwrap()
-        .expect("tiny Sequence parse");
+        .expect("minimal Sequence parse");
     let messages = parsed.model["messages"].as_array().unwrap();
     assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
     assert_eq!(messages.len(), 4);

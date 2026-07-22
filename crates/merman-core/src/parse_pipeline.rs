@@ -188,9 +188,7 @@ impl<'a> ParsePipeline<'a> {
         let resolved = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let combined = resolved
             .filter(|resolved| resolved.owner == RegistryOwner::BuiltIn)
-            .and_then(|_| {
-                family::combined_parser(self.engine.diagram_registry.profile(), &meta.diagram_type)
-            });
+            .and_then(|_| family::combined_parser(&meta.diagram_type));
 
         let parse_start = runtime::timing_start(timing_enabled);
         let parse_res = self.with_local_time(|| {
@@ -267,11 +265,7 @@ impl<'a> ParsePipeline<'a> {
             ),
             (Some(RegistryOwner::BuiltIn), None) => {
                 debug_assert!(
-                    family::combined_parser(
-                        self.engine.diagram_registry.profile(),
-                        &meta.diagram_type,
-                    )
-                    .is_none(),
+                    family::combined_parser(&meta.diagram_type).is_none(),
                     "built-in families with editor capability must provide a combined semantic parser"
                 );
                 ParsedEditorFacts::Unavailable
@@ -417,10 +411,6 @@ impl<'a> ParsePipeline<'a> {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticModel> {
-        debug_assert_eq!(
-            self.engine.diagram_registry.profile(),
-            self.engine.render_diagram_registry.profile()
-        );
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
             .engine

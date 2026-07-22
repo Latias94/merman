@@ -193,11 +193,6 @@ pub fn runtime_contract() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[wasm_bindgen(js_name = selectedRegistryProfile)]
-pub fn selected_registry_profile() -> String {
-    merman_bindings_core::selected_registry_profile().to_string()
-}
-
 #[wasm_bindgen(js_name = diagramFamilyCapabilities)]
 pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&merman_bindings_core::diagram_family_capabilities())
@@ -775,7 +770,6 @@ mod tests {
         assert_eq!(capabilities.render, cfg!(feature = "render"));
         assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(capabilities.core_full, cfg!(feature = "core-full"));
         assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
@@ -788,7 +782,10 @@ mod tests {
     #[test]
     fn runtime_contract_uses_the_generated_wasm_abi_and_resource_catalog() {
         let contract = merman_bindings_core::runtime_contract(WASM_ABI_VERSION);
-        assert_eq!(contract.schema_version, 1);
+        assert_eq!(
+            contract.schema_version,
+            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
+        );
         assert_eq!(contract.abi_version, WASM_ABI_VERSION);
         assert_eq!(
             contract.features,
@@ -804,14 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn registry_profile_and_family_capabilities_are_exposed() {
-        let expected_profile = if cfg!(feature = "core-full") {
-            "full"
-        } else {
-            "tiny"
-        };
-        assert_eq!(selected_registry_profile(), expected_profile);
-
+    fn family_capabilities_expose_the_unique_catalog() {
         let capabilities = merman_bindings_core::diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
@@ -826,11 +816,10 @@ mod tests {
                 && !capability.has_header
                 && capability.config_namespace == Some("flowchart")
         }));
-        assert_eq!(
+        assert!(
             capabilities
                 .iter()
-                .any(|capability| capability.diagram_type == "mindmap"),
-            cfg!(feature = "core-full")
+                .any(|capability| capability.diagram_type == "mindmap")
         );
     }
 
