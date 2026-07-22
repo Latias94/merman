@@ -25,11 +25,11 @@ execution: code
 
 ### Summary
 
-Merman serves several different products from one codebase: an editor language service, a CI linter, a deterministic site renderer, an `mmdc` replacement, native SDKs, browser packages, and a Typst plugin. These users should choose an outcome they understand. They should not need to know that one diagram uses Manatee, one date path uses Jiff, or one output uses Krilla.
+Merman serves several different products from one codebase: an editor language service, a CI linter, a deterministic site renderer, an `mmdc` replacement, native SDKs, browser packages, a Typst plugin, and a future Node/SSG candidate. These users should choose an outcome they understand. They should not need to know that one diagram uses Manatee, one date path uses Jiff, or one output uses Krilla.
 
 The canonical Mermaid language surface will therefore become invariant. Every build that parses Mermaid will recognize all 35 admitted Mermaid 11.16 families and expose the same canonical semantics, source spans, and family vocabulary. Optional analysis and editor products project that vocabulary for all families without reparsing. Cargo features will select only observable product APIs, outputs, heavy layout or math engines, system adapters, and tool-only capabilities. Named `preset-*` aggregates will provide recommended combinations for common workflows, while runtime policy will select determinism, time, randomness, text measurement, and resource limits for each operation.
 
-Native bindings will replace the published alpha ABI 2 with ABI 3 so old hosts reject the new binary contract before calling it. Separate descriptors will own capability identity, native wire layout, text-measurement semantics, resource policy, and facts payloads; generated projections and a composite runtime contract will bind them without duplicating authority. Browser delivery will replace one 47 MB multi-WASM npm tarball with lockstep packages that each carry exactly one intended artifact. Dependency maintenance will remove deprecated or accidental closures, migrate the LSP to the maintained Tower fork, and admit Cytoscape, RaTeX, and Jiff updates with behavior evidence.
+Native bindings will replace the published alpha ABI 2 with ABI 3 so old hosts reject the new binary contract before calling it. Three linked contracts will own capability identity, exact artifact build recipes, and transport/wire ownership; generated projections and a composite runtime contract will bind them without duplicating authority. Browser delivery will replace one 47 MB multi-WASM npm tarball with lockstep packages that each carry exactly one intended artifact. Dependency maintenance will remove deprecated or accidental closures, migrate the LSP to the maintained Tower fork, and admit Cytoscape, RaTeX, and Jiff updates with behavior evidence.
 
 ### Problem Frame
 
@@ -54,6 +54,7 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 - A5. **Browser application author:** needs to install only the analysis, render, editor, ASCII, or full browser artifact used by the application.
 - A6. **Maintainer:** needs one reviewable capability catalog, exact feature/package closure gates, source-backed dependency admission, and atomic version governance across release surfaces.
 - A7. **Typst author:** needs one installable package with a stable document-facing API, deterministic pure-WASM behavior, useful diagnostics, and no requirement to understand maintainer build profiles.
+- A8. **Node/SSG integrator:** needs a Node-native SVG path with an honest runtime boundary, predictable installation, bounded lifecycle, and no accidental browser-WASM fallback.
 
 ### Requirements
 
@@ -63,7 +64,7 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 - R2. Public Cargo features must represent additive, user-observable capabilities. Diagram names and incidental dependency crate names are not public feature boundaries; named layout and math engines are allowed when users select those Mermaid behaviors directly.
 - R3. Remove `full`, `tiny`, `full-registry`, `core-full`, `core-host`, `render`, `raster`, `cytoscape-layout`, `elk-layout`, `ratex-math`, and negative profiles such as `*-no-elk`. Do not retain aliases outside a concise migration table.
 - R4. Use intuitive kebab-case leaf names: `svg`, `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. `math` names the user capability and hides RaTeX as its current implementation. Tool leaves such as `network-icons`, `parallel-markdown`, and `shell-completions` exist only where they control real compiled code.
-- R5. Provide workflow aggregates with the `preset-` prefix so they cannot be confused with leaves. The required user entries are `preset-native-svg`, `preset-static-svg`, `preset-editor`, `preset-ci-lint`, `preset-mmdc`, `preset-native-sdk`, and `preset-all`; browser artifact presets use the explicit `preset-web-*` namespace. `static` means the compiled closure omits system adapters; deterministic output additionally requires the explicit deterministic runtime constructor.
+- R5. Provide workflow aggregates with the `preset-` prefix so they cannot be confused with leaves. The required user entries are `preset-svg-basic`, `preset-native-svg`, `preset-static-svg`, `preset-editor`, `preset-ci-lint`, `preset-mmdc`, `preset-native-sdk`, and `preset-all`; browser artifact presets use the explicit `preset-web-*` namespace. Every preset is an additive Cargo bundle. `static` absence is promised only by an artifact build profile that uses `default-features = false`; deterministic output additionally requires the explicit deterministic runtime constructor.
 - R6. Low-level implementation crates must not rely on dependency defaults for capability ownership. `merman-core`, `merman-render`, and transport-neutral helper crates use empty defaults; product facades and binaries provide useful defaults through named presets. A normal `merman` dependency must render complete native SVG without additional feature study.
 
 #### Runtime policy and defaults
@@ -75,9 +76,9 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 
 #### Canonical descriptor and verification
 
-- R11. Add one machine-readable capability descriptor that owns stable capability IDs, user descriptions, implication rules, presets, expected runtime capability sets, target restrictions, and surface projections. Cargo manifests remain hand-written declarations and are verified against the descriptor through structured Cargo metadata.
-- R12. Generate Rust capability constants, runtime metadata, TypeScript declarations, C and UniFFI constants, platform projections, package preset manifests, and human-readable feature tables from the descriptor. Delete independent boolean catalogs and source-substring architecture guards.
-- R13. The descriptor verifier must prove feature implication, package-to-preset mapping, family/render admission, target legality, absence of phantom features, and dependency closure exclusions. A feature or package that claims a capability without its API, backend, or family evidence fails closed.
+- R11. Add one machine-readable capability descriptor that owns stable capability IDs, user descriptions, implication rules, additive presets, expected runtime capability sets, target restrictions, and public output IDs. Cargo manifests remain hand-written declarations and are verified against the descriptor through structured Cargo metadata.
+- R12. Add machine-readable artifact build profiles and transport contracts. Every Rust facade, CLI, LSP, C ABI, UniFFI consumer, Python wheel, Android AAR, Apple XCFramework, Flutter package, browser package, and Typst artifact must name an exact root package, `default-features` setting, Cargo feature set, target/runtime environment, resource-profile support, capability/output set, and wire-contract owner. Generated projections may reference these contracts, but neither duplicates Cargo manifests nor ABI layouts.
+- R13. The descriptor verifier must prove feature implication, artifact-profile-to-preset resolution, family/render admission, target legality, absence of phantom features, and dependency closure exclusions. A feature or package that claims a capability without its API, backend, family evidence, and observed artifact profile fails closed.
 
 #### Rust facade, CLI, and output backends
 
@@ -96,10 +97,10 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 
 #### Browser and Typst distribution
 
-- R23. Supersede ADR-0069's multi-artifact single-package decision with one required full convenience package, `@mermanjs/web`, plus independently admitted slim candidates: `@mermanjs/analysis`, `@mermanjs/render`, `@mermanjs/editor`, and `@mermanjs/ascii`. A slim candidate is published only when it owns a direct workflow and clears R27 after the final dependency graph; otherwise that workflow uses `@mermanjs/web` and no redundant package is released. Each retained package contains exactly one intended WASM artifact and its matching wrapper, declarations, manifest, legal material, and input provenance.
+- R23. Supersede ADR-0069's multi-artifact single-package decision with one required full convenience package, `@mermanjs/web`, plus independently admitted browser-named slim candidates: `@mermanjs/web-analysis`, `@mermanjs/web-render`, `@mermanjs/web-editor`, and `@mermanjs/web-ascii`. A slim candidate is published only when it owns a direct workflow and clears R27 after the final dependency graph; otherwise that workflow uses `@mermanjs/web` and no redundant package is released. Each retained package contains exactly one intended WASM artifact and its matching wrapper, declarations, manifest, legal material, and input provenance. Browser package names must not imply Node or SSR support.
 - R24. All admitted browser packages use one version and one release contract. Publishing uses a staged prerelease/dist-tag promotion flow that detects partial publication before moving the public tag; no package may silently depend on a different Merman version.
 - R25. The Playground consumes the admitted render/editor candidates or the full package according to the measured two-realm decision and displays exact package/runtime capability metadata. Custom WASM initialization keeps the current wasm-bindgen `module_or_path` object contract so consumers do not need downstream patches.
-- R26. Typst remains a distinct wasm-minimal-protocol transport. Its descriptor exposes only `bridge`, `svg`, and `publish` profiles; `publish` explicitly includes SVG, analysis, Cytoscape, and ELK while importing no system environment or browser capability.
+- R26. Typst remains a distinct wasm-minimal-protocol transport. Its descriptor exposes only `bridge`, `svg`, and `publish` profiles; `publish` explicitly includes SVG, analysis, Cytoscape, and ELK while importing no system environment or browser capability. `math` is absent from the Typst target and publish profile until U11c proves the separate pure-WASM import, font, license, hostile-input, and parity admission.
 - R27. Package and WASM evidence must measure the artifact a user installs after complete 35-family, ELK, Cytoscape, and math admission. `@mermanjs/web` must contain one WASM and no duplicate sibling artifact; its final packed and unpacked sizes must be published with an attributed comparison to the current roughly 47.4 MB multi-artifact package. The earlier 16 MB estimate is a planning forecast from the known one-artifact shape, not a correctness ceiling: no correct semantic, ICU, or backend behavior may be weakened merely to meet it. Each slim package must contain one WASM, be at least 15 percent smaller unpacked than the measured full package or be folded into it, and receive a new raw/gzip/brotli baseline only after U11a-U11c are final.
 
 #### Dependencies, generation, and release integrity
@@ -110,18 +111,25 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 - R31. Align Jiff to the selected maintained 0.2 release with separate system clock/time-zone ownership; admit Cytoscape 3.33.3 against Mermaid 11.16 source; and upgrade the RaTeX crate family in lockstep only after its parser, SVG, embedded-font, size, legal, and hostile-input matrix passes.
 - R32. Keep ICU4X, resvg/usvg, and Krilla when they remain the correct maintained backends. Isolate RustSec-unmaintained transitive font crates behind output/math capabilities and document their exact dependency paths; do not claim a local replacement until upstream behavior and parity can be preserved.
 - R33. Regenerate license inventories, notices, release contracts, size budgets, feature documentation, package READMEs/changelogs, and migration guidance from the final graph. Release verification must reject stale or ignored local artifacts.
-- R34. Rewrite `docs/FEATURES.md` as the canonical user-facing selection guide and link it prominently from the root README. It must provide copyable Rust/Cargo, CLI install, Web/npm, native SDK, and Typst examples organized by editor, lint/CI, static-site SVG, full CLI, SDK, and browser workflows; show exact preset contents and exclusions; distinguish compiled capability from runtime environment/resource policy; name dependency/size/license consequences; explain typed missing-capability errors; and include the one-time old-to-new migration table. Generate or verify matching concise sections in every public crate/package/platform README rather than maintaining divergent prose.
+- R34. Rewrite `docs/FEATURES.md` as the canonical user-facing selection guide and link it prominently from the root README. It must provide copyable Rust/Cargo, CLI install, Web/npm, native SDK, Typst, and any admitted Node examples organized by editor, lint/CI, basic SVG, static-site SVG, full CLI, SDK, and browser workflows; show exact preset inclusions and the artifact profile that proves exclusions; distinguish compiled capability from runtime environment/resource policy; name dependency/size/license consequences; explain typed missing-capability errors; and include the one-time old-to-new migration table. Generate or verify matching concise sections in every public crate/package/platform README rather than maintaining divergent prose.
+- R35. Presets are semantic inclusion bundles only. A public document or verifier may claim an excluded dependency, adapter, output, or engine only through an artifact build profile with `default-features = false` and an observed closure; a raw Cargo `features = ["preset-*"]` declaration never implies mutual exclusion.
+- R36. Artifact build profiles cover every release surface and transport contracts cover every protocol boundary. A profile is rejected when its exact Cargo invocation, target, capability/output projection, runtime environment, resource-profile support, wire versions, or typed missing-capability behavior disagrees with its compiled artifact or transport authority.
+- R37. `layout-cytoscape`, `layout-elk`, and `math` imply `svg` semantically. Add `preset-svg-basic` for SVG without either layout engine or math; requests for omitted engines return the existing typed missing-capability contract rather than silently selecting a substitute.
+- R38. The intermediate `merman-core` host default and `merman-render` Cytoscape default are not publishable feature surfaces. Release verification remains blocked until U5 replaces them with explicit artifact profile recipes and low-level empty defaults.
+- R39. Consider a Node/SSG product only after ABI 3. Compare Node-targeted WASM and napi-rs behind the same `merman-bindings-core` contract; publish `@mermanjs/node` only when one transport clears corpus parity, cold/warm/RSS, installation, target, concurrency, and error-behavior evidence.
+- R40. Admit any additional language transport only through a bounded evidence decision. It must demonstrate a real user workflow, direct `merman-bindings-core` ownership, capability/resource/error mapping, lifecycle and async/cancellation semantics, package delivery, target CI, generated-API drift protection, and a documented user benefit that justifies its incremental long-term maintenance cost over the incumbent transport. Keep one public transport per user surface; a rejected spike leaves no live package, generated API, or runtime dependency.
 
 ### Key Flows
 
 - F1. **Live editing:** source enters the canonical family parser once; analysis/editor facts drive LSP or browser editor APIs. No renderer, layout backend, rasterizer, system clock, or network stack is present.
 - F2. **CI lint:** the lint preset parses the complete language under deterministic policy, emits schema-1 diagnostics/fixes, and exits with stable CLI codes without compiling presentation backends.
-- F3. **Deterministic site render:** a site builder compiles `preset-static-svg`, constructs `DeterministicEnvironment`, supplies or accepts fixed operation inputs, and obtains byte-identical output across fresh processes even when a larger unified dependency graph compiled system adapters elsewhere.
+- F3. **Deterministic site render:** a site builder selects the `static-svg` artifact build profile, which invokes Cargo with `default-features = false` and `preset-static-svg`, constructs `DeterministicEnvironment`, supplies or accepts fixed operation inputs, and obtains byte-identical output across fresh processes even when a larger unified dependency graph compiled system adapters elsewhere.
 - F4. **Full CLI render:** the default CLI detects input/output, selects the requested layout/math/output capability, applies the trusted-native resource profile, and writes SVG, PNG, JPEG, PDF, or ASCII while network access stays explicitly authorized.
-- F5. **Native SDK output:** a host verifies ABI number, ABI-layout digest, and structure probes, records the capability-catalog digest as provenance, queries stable capability IDs, calls one output operation or sink, and receives raw bytes plus metadata or a typed unsupported error. Its language wrapper presents format-specific convenience methods.
-- F6. **Browser installation:** an application installs one admitted workflow-specific package when it provides a material saving, otherwise the full package. The selected package initializes its sole matching WASM, verifies provenance and capabilities, and never downloads sibling artifacts.
+- F5. **Native SDK output:** a host selects an artifact build profile and verifies its transport's ABI number, ABI-layout digest, and structure probes, records the capability-catalog digest as provenance, queries stable capability IDs, calls one output operation or sink, and receives raw bytes plus metadata or a typed unsupported error. Its language wrapper presents format-specific convenience methods.
+- F6. **Browser installation:** an application installs one admitted `@mermanjs/web-*` workflow package when it provides a material saving, otherwise `@mermanjs/web`. The selected browser-only package initializes its sole matching WASM, verifies provenance and capabilities, and never downloads sibling artifacts.
 - F7. **Maintainer admission:** a dependency or feature change updates the canonical descriptor or upstream lock, runs closure/parity/target/size/legal gates, regenerates projections, and fails if any package or runtime claim drifts.
-- F8. **Typst document render:** an author installs the published Typst package, imports its stable document API, renders Mermaid source under the package's deterministic resource policy, receives source-oriented diagnostics for invalid or unsupported input, and upgrades the package without selecting the internal `bridge`, `svg`, or `publish` build profile.
+- F8. **Typst document render:** an author installs the published Typst package, imports its stable document API, renders Mermaid source under the package's deterministic resource policy, receives source-oriented diagnostics for invalid or unsupported input, and upgrades the package without selecting the internal `bridge`, `svg`, or `publish` build profile. Math remains unavailable until the separate Typst math admission succeeds.
+- F9. **Node/SSG evaluation:** after ABI 3, a maintainer drives the same source and options through private Node-targeted WASM and napi-rs candidates, compares artifact and runtime evidence, and only then admits or rejects an `@mermanjs/node` static-SVG product.
 
 ### Acceptance Examples
 
@@ -130,24 +138,28 @@ The current branch already owns Mermaid 11.16 semantics, editor facts, typed ren
 - AE3. Two fresh processes built with `preset-all` use the explicit deterministic environment to render the same Gantt and mixed-family corpus to byte-identical SVG. A native environment resolves New York winter and summer dates with complete DST rules rather than a sampled offset.
 - AE4. The default CLI renders existing SVG, PNG, JPEG, PDF, ASCII, ELK, Cytoscape, RaTeX, Markdown batch, and large trusted-input fixtures. A build without PNG does not advertise PNG and returns a stable unsupported error if invoked through the generic binding operation.
 - AE5. C, UniFFI/Python, Swift, Kotlin, and Dart consume the same generated ABI 3 transport plus shared semantic descriptors. ABI-2 hosts reject the library before any callback. PNG begins with its magic bytes, JPEG and PDF have their expected signatures, SVG/ASCII remain UTF-8, and metadata identifies the media type and selected runtime policy. Large SVG/PDF can stream through the caller-owned sink without an additional full FFI buffer.
-- AE6. `npm pack --json` for every retained browser package lists exactly one `.wasm`. An admitted `@mermanjs/editor` cannot resolve renderer exports; an admitted `@mermanjs/render` does not install editor or ASCII WASM. A candidate below the 15-percent threshold is absent from the release contract and its documented workflow uses `@mermanjs/web`. The full package contains one WASM, not a duplicate `./full` artifact.
+- AE6. `npm pack --json` for every retained browser package lists exactly one `.wasm`. An admitted `@mermanjs/web-editor` cannot resolve renderer exports; an admitted `@mermanjs/web-render` does not install editor or ASCII WASM. A candidate below the 15-percent threshold is absent from the release contract and its documented workflow uses `@mermanjs/web`. The full package contains one WASM, not a duplicate `./full` artifact.
 - AE7. The Typst publish artifact reports the descriptor-selected capabilities, has only the allowed wasm-minimal-protocol imports/exports, and renders the package examples without system clock, time-zone, random, browser, or host-font imports.
 - AE8. YAML quick-fix goldens preserve quoting, nulls, multiline values, key order, document markers, and final newline after the `serde-saphyr` migration. LSP URI, pull-diagnostic, cancellation, refresh, loopback, and stdio fixtures remain wire-equivalent after the maintained fork migration.
 - AE9. Cytoscape 3.33.3 Architecture/Mindmap probes and parity evidence pass with synchronized source lock, ADR, comments, provenance, notices, and legal hashes. RaTeX and Jiff selected versions pass their named behavior and target matrices before the lock is accepted.
-- AE10. Structured verification finds no removed feature name in live manifests, generated catalogs, package docs, or release commands outside the migration table and superseded ADR history. Every preset's declared capability set equals its compiled runtime report.
+- AE10. Structured verification finds no removed feature name in live manifests, generated catalogs, package docs, or release commands outside the migration table and superseded ADR history. Every observed artifact profile's resolved capability set equals its compiled runtime report; a raw additive preset is never used as proof of absence.
+- AE11. A Cargo consumer that enables `preset-static-svg` without disabling defaults is not documented or verified as static. The `static-svg` artifact profile uses `default-features = false`, has no compiled `system-*` adapters in its observed closure, and still needs `DeterministicEnvironment` for deterministic output.
+- AE12. Every shipped facade, CLI, LSP, C ABI, UniFFI host, Python wheel, Android AAR, Apple XCFramework, Flutter package, browser package, and Typst artifact has exactly one artifact build profile and one transport contract. Its observed capability/output report equals the resolved profile; every omitted callable capability produces the descriptor-derived typed error.
+- AE13. Before U11c completes its Typst gate, the Typst publish artifact has no math capability, no RaTeX closure, and no browser import. A future re-admission changes the target, profile, provenance, and package evidence atomically only after the pure-WASM matrix passes.
+- AE14. A private Node candidate uses `preset-static-svg` through either Node-targeted WASM or napi-rs, never falls back to browser WASM, uses a bounded queue and `dispose()`, and reports the same SVG/error behavior as the native bindings corpus. The selected transport exposes Promise APIs by default; `renderSvgSync()` is limited to explicit SSG use and AbortSignal is documented as non-preemptive.
 
 ### Success Criteria
 
 - Complete parser/analysis/editor coverage is invariant across every supported feature preset.
 - Every public leaf either changes a callable capability/dependency closure or is deleted.
-- The lean lint, editor, static SVG, default CLI, native SDK, browser package, and Typst dependency closures pass explicit inclusion and exclusion gates; deterministic evidence additionally exercises the explicit deterministic runtime constructor.
+- The lean lint, editor, basic SVG, static SVG, default CLI, native SDK, browser package, and Typst dependency closures pass explicit artifact-profile inclusion and exclusion gates; deterministic evidence additionally exercises the explicit deterministic runtime constructor.
 - Every npm package contains one WASM; the full convenience package has no duplicate sibling artifact and publishes an attributed packed/unpacked comparison against the current 47.4 MB multi-artifact package. Correctness takes precedence over an unproven absolute size forecast.
 - The published-crate clean build no longer compiles LALRPOP, production UniFFI no longer includes Cargo metadata, and non-output users no longer include raster/PDF/math stacks.
-- ABI, schema, capability, package, resource, and Mermaid baseline versions are independently observable and generated from their authorities.
+- ABI, schema, capability, artifact-profile, transport, package, resource, and Mermaid baseline versions are independently observable and generated from their authorities.
 
 ### Scope Boundaries
 
-This plan does not upgrade Mermaid beyond 11.16, add or remove diagram semantics, publish the new packages, or promise binary compatibility with earlier `0.8.0-alpha.*` snapshots. It does not replace ICU, resvg/usvg, Krilla, Rustybuzz, or ttf-parser with behaviorally weaker code. It does not introduce per-diagram Cargo features, platform-specific forks of the capability vocabulary, or resource limits as compile-time features.
+This plan does not upgrade Mermaid beyond 11.16, add or remove diagram semantics, publish the new packages, or promise binary compatibility with earlier `0.8.0-alpha.*` snapshots. It does not replace ICU, resvg/usvg, Krilla, Rustybuzz, or ttf-parser with behaviorally weaker code. It does not introduce per-diagram Cargo features, platform-specific forks of the capability vocabulary, resource limits as compile-time features, a public Node package before evidence admission, or a browser package that claims Node/SSR support.
 
 ---
 
@@ -159,7 +171,7 @@ This plan does not upgrade Mermaid beyond 11.16, add or remove diagram semantics
 
 **Decision:** Public leaves use output, engine, environment, or tool vocabulary. Presets use a uniform `preset-*` prefix. Incidental dependencies remain hidden with `dep:` forwarding.
 
-A proposed public leaf is admitted only when all of the following are true: it changes a callable API, output, engine, or environment adapter that a user can name; disabling it produces a typed absence or removes that callable surface; it materially changes dependency, target, license, security, resource, build-time, or artifact-size closure; at least one supported product preset includes it and one excludes it; and measured build/artifact evidence verifies the distinction. A new diagram family alone never creates a feature. If an admitted family introduces a genuinely heavy companion dependency, the public boundary names the reusable backend capability rather than the diagram.
+A proposed public leaf is admitted only when all of the following are true: it changes a callable API, output, engine, or environment adapter that a user can name; disabling it produces a typed absence or removes that callable surface; it materially changes dependency, target, license, security, resource, build-time, or artifact-size closure; at least one artifact build profile includes it and another omits it; and measured build/artifact evidence verifies the distinction. A new diagram family alone never creates a feature. If an admitted family introduces a genuinely heavy companion dependency, the public boundary names the reusable backend capability rather than the diagram.
 
 **Why:** Users choose editor intelligence, deterministic SVG, PDF, ELK, or a CLI workflow. They do not choose a Rust crate graph. This keeps names stable when an implementation dependency changes.
 
@@ -183,46 +195,47 @@ A proposed public leaf is admitted only when all of the following are true: it c
 
 #### KTD4. Low-level defaults are empty; product defaults are named
 
-**Decision:** Core/render/export/helper crates use empty defaults. The `merman` facade defaults to `preset-native-svg`; the CLI defaults to `preset-mmdc`; LSP, native bindings, browser packages, and Typst name their intended preset explicitly in their artifact descriptor.
+**Decision:** Core/render/export/helper crates use empty defaults. The `merman` facade defaults to `preset-native-svg`; the CLI defaults to `preset-mmdc`; LSP, native bindings, browser packages, and Typst name their intended artifact build profile explicitly.
 
 **Why:** Empty implementation defaults prevent accidental feature unification. Named product presets keep common entry points usable without asking users to reconstruct an internal graph.
 
 **Rejected:** Empty defaults at every public product surface; relying on dependency defaults inside release artifacts; hidden full builds.
 
-The following table is normative. A preset not listed here is not public, and two presets with the same effective set must be merged rather than retained as aliases.
+The following table is normative. A preset not listed here is not public, and two presets with the same effective set must be merged rather than retained as aliases. The leaf set is an additive inclusion set only: a preset never proves that another Cargo feature is absent. Exact exclusions belong to a `default-features = false` artifact build profile and its observed dependency closure.
 
-| Preset | Exact public leaves | Default consumer | Explicitly excludes |
-| --- | --- | --- | --- |
-| `preset-native-svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` | default `merman` facade and normal native Rust examples | ASCII, analysis/editor APIs, PNG/JPEG/PDF, CLI-only tools |
-| `preset-static-svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` | static-site/native build examples using `DeterministicEnvironment` | every `system-*` adapter, other outputs, analysis/editor, CLI tools |
-| `preset-editor` | `analysis`, `editor` | editor library consumers and LSP library build | SVG/export/layout/math/system/network/parallel/completions |
-| `preset-ci-lint` | `analysis` | lean `merman-cli` lint binary | every renderer/export/layout/math/system/network/parallel/completion capability |
-| `preset-mmdc` | `preset-native-sdk`, `network-icons`, `parallel-markdown`, `shell-completions` | default CLI, cargo-dist, Homebrew | editor API; network remains runtime-disabled until authorized |
-| `preset-native-sdk` | SVG, analysis, ASCII, PNG, JPEG, PDF, both layouts, math, and every `system-*` adapter | C, UniFFI, Android, Apple, Flutter, and Python release artifacts | editor API, CLI-only tools, and browser/Typst transports |
-| `preset-all` | every non-tool leaf: SVG, analysis, editor, ASCII, PNG, JPEG, PDF, both layouts, math, and every `system-*` adapter | exhaustive Rust/build/test matrix only | CLI-only tools and transport-specific glue |
+| Preset | Additive public leaves | Intended consumer |
+| --- | --- | --- |
+| `preset-svg-basic` | `svg` | lightweight SVG users that accept typed layout/math absence |
+| `preset-native-svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` | default `merman` facade and normal native Rust examples |
+| `preset-static-svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` | static-site artifact profile using `DeterministicEnvironment` |
+| `preset-editor` | `analysis`, `editor` | editor library consumers and LSP library build |
+| `preset-ci-lint` | `analysis` | lean `merman-cli` lint artifact |
+| `preset-mmdc` | `preset-native-sdk`, `network-icons`, `parallel-markdown`, `shell-completions` | default CLI, cargo-dist, Homebrew |
+| `preset-native-sdk` | SVG, analysis, ASCII, PNG, JPEG, PDF, both layouts, math, and every `system-*` adapter | C, UniFFI, Android, Apple, Flutter, and Python artifacts |
+| `preset-all` | every non-tool leaf: SVG, analysis, editor, ASCII, PNG, JPEG, PDF, both layouts, math, and every `system-*` adapter | exhaustive Rust/build/test matrix |
 
 Browser and Typst mappings are also normative:
 
-| Artifact preset | Exact public leaves | Product |
+| Artifact preset | Additive public leaves | Product |
 | --- | --- | --- |
-| `preset-web-analysis` | `analysis` | `@mermanjs/analysis` |
-| `preset-web-render` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, browser time/random/timing adapters | `@mermanjs/render` |
-| `preset-web-editor` | `analysis`, `editor` | `@mermanjs/editor` |
-| `preset-web-ascii` | `ascii` | `@mermanjs/ascii` |
+| `preset-web-analysis` | `analysis` | `@mermanjs/web-analysis` |
+| `preset-web-render` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, browser time/random/timing adapters | `@mermanjs/web-render` |
+| `preset-web-editor` | `analysis`, `editor` | `@mermanjs/web-editor` |
+| `preset-web-ascii` | `ascii` | `@mermanjs/web-ascii` |
 | `preset-web-full` | union of all four Web presets in one fused WASM | `@mermanjs/web` |
 | Typst `bridge` | transport only | maintainer smoke artifact, not an end-user choice |
 | Typst `svg` | `svg` without system adapters | maintainer render artifact |
-| Typst `publish` | `svg`, `analysis`, `layout-cytoscape`, `layout-elk`, `math` without system adapters | published Typst package |
+| Typst `publish` | `svg`, `analysis`, `layout-cytoscape`, `layout-elk` without system adapters | published Typst package; math is withheld pending U11c |
 
 Current single-artifact evidence makes all four slim candidates plausible: analysis 2.65 MB, ASCII 2.78 MB, editor 3.45 MB, and render 7.75 MB versus the 10.20 MB non-math full WASM. It does not pre-admit them. Final admission repeats the independent-workflow and 15-percent comparison after invariant language, math, and dependency upgrades; rejected candidates are not published. The Playground keeps editor and renderer in separate realms only when its gate beats the realistic two-realm full baseline across download, compile cache, initialization, peak memory, and failure isolation.
 
 #### KTD5. The capability descriptor owns identity, not Cargo source
 
-**Decision:** A new `capabilities/feature-surface-v1.json` exclusively owns capability and output semantic IDs, descriptions, implications, presets, expected reports, and surface mappings. Cargo manifests own compilation declarations. `abi/merman-v3.json` references those semantic IDs and owns only native numeric discriminants, function-table entries, record layouts, ownership rules, and layout probes. The text-measurement and resource descriptors retain their independent semantic IDs and versions. `xtask` compares these authorities through structured metadata, while generated runtime/platform/docs projections carry separate digests plus a composite provenance digest.
+**Decision:** `capabilities/feature-surface-v1.json` exclusively owns capability and output semantic IDs, descriptions, implications, additive presets, and target legality. `capabilities/artifact-profiles-v1.json` owns release-surface build recipes and expected observed reports. `capabilities/transport-contracts-v1.json` owns transport identity and references its independent wire authority. Cargo manifests own compilation declarations. `abi/merman-v3.json` references semantic IDs and owns only native numeric discriminants, function-table entries, record layouts, ownership rules, and layout probes. The text-measurement and resource descriptors retain their independent semantic IDs and versions. `xtask` compares these authorities through typed metadata and executable artifact probes, while generated runtime/platform/docs projections carry separate digests plus a composite provenance digest.
 
 **Why:** Generating TOML would make ordinary Cargo tooling and reviews opaque. Treating every manifest and platform list as independent recreates shotgun surgery. The verifier is the contract between the two authorities.
 
-**Rejected:** Parsing Rust or TOML with source substrings; generating complete Cargo manifests; a descriptor that repeats dependency implementation details it cannot verify.
+**Rejected:** Parsing Rust or TOML with source substrings; generating complete Cargo manifests; using a preset's complement as an exclusion proof; or a descriptor that repeats dependency implementation details or ABI layout it cannot verify.
 
 #### KTD6. Published ABI 2 is retired and native ABI 3 is the final alpha redesign
 
@@ -272,17 +285,61 @@ Current single-artifact evidence makes all four slim candidates plausible: analy
 
 **Rejected:** Keeping LALRPOP in every published build; manually editing generated parser code; replacing source-backed grammars to save build time.
 
+#### KTD12. Presets compose; artifact profiles prove closure
+
+**Decision:** `preset-*` means an additive capability bundle and has no `excludes` semantics. An artifact build profile is a surface-owned recipe with a root package, target, exact Cargo feature list, `default-features` choice, environment family, resource-profile support, expected capability/output report, and derived missing-capability contract. Only an observed artifact profile may claim that a dependency or adapter is absent. (session-settled: user-directed — chosen over treating preset exclusions as Cargo exclusions: Cargo feature unification is additive.)
+
+**Why:** A consumer can enable `preset-static-svg` while default features remain active. Modeling that configuration as static would make the release contract and user documentation false.
+
+**Rejected:** Negative Cargo features; a separate feature per absence combination; relying on Cargo defaults or an `excludes` array to certify a product closure.
+
+#### KTD13. Capability, profile, and transport are separate authorities
+
+**Decision:** Keep three small linked contracts. The capability descriptor defines what can exist. Artifact profiles define what each distributable actually compiles and reports. Transport contracts identify the native, UniFFI, wasm-bindgen, Typst, and future Node protocol boundary and point to their wire authority without restating layouts. A verifier resolves all three, reads Cargo metadata structurally, executes the artifact, and derives missing-capability behavior from the capability descriptor. (session-settled: user-directed — chosen over Web/Typst-only mappings: every released surface needs the same auditable contract.)
+
+**Why:** Native wrappers, CLI, LSP, browser, Typst, and package delivery have different runtime and wire shapes. A Web-only mapping cannot detect a native artifact with the wrong closure or an ABI wrapper that reports stale capabilities.
+
+**Rejected:** A universal JSON schema that duplicates ABI records; generated Cargo manifests; separate handwritten boolean matrices in each platform package.
+
+#### KTD14. Typst math is an admission, not a promise
+
+**Decision:** Keep `math` out of the Typst target and publish artifact until U11c proves a pure-WASM RaTeX path with allowed imports, font behavior, hostile-input limits, parity, size, and license evidence. U11c may propose one atomic re-admission only after that evidence exists.
+
+**Why:** Declaring a capability in a descriptor before the target can safely ship it turns an intended experiment into a false public contract.
+
+**Rejected:** Treating native or browser math success as Typst evidence; silently compiling RaTeX into the Typst package; a permanent unsupported exception with no admission path.
+
+#### KTD15. Node is a separately admitted native product
+
+**Decision:** After ABI 3, compare a Node-targeted WASM implementation and a napi-rs implementation that both call `merman-bindings-core`. If napi-rs wins, publish a small `@mermanjs/node` loader plus exact-version `@mermanjs/node-<target>` optional-dependency packages, each with one `.node` artifact. The initial product is `preset-static-svg`, Promise-first, has an explicit bounded queue and `dispose()`, and offers `renderSvgSync()` only for an explicit SSG path. It neither accepts JS text-measurement callbacks nor promises that AbortSignal interrupts work already executing.
+
+**Why:** Satteri's patch demonstrates a Node/SSG transport boundary, not missing Mermaid semantics. A browser package with a corrected wasm-bindgen initialization call still is not a reliable Node product.
+
+**Rejected:** Reusing the C ABI from JavaScript; publishing browser WASM as Node support; root packages containing every platform binary; postinstall downloads; silent browser-WASM fallback; or naming a nonexistent resource profile `default`.
+
+#### KTD16. Transport admission prevents duplicate binding stacks
+
+**Decision:** Treat ABI 3 as the lowest common compatibility anchor. Use generated C bindings through Dart `ffigen` plus a handwritten Dart facade for Flutter; retain UniFFI for Swift, Kotlin, and Python; evaluate napi-rs only through U14. A future Flutter Rust Bridge spike may call `merman-bindings-core` directly, never C ABI -> Rust, and must compare its generated API, async and cancellation model, object lifetime, package delivery, target CI, corpus behavior, artifact closure, and maintenance burden against ABI 3 + `ffigen`. It replaces the Flutter path only if it wins the whole admission matrix; otherwise the spike and dependency are deleted. PyO3/maturin and a .NET-specific Rust bridge are intentionally out of this plan: Python keeps UniFFI delivery, and a future .NET package consumes ABI 3 through source-generated `LibraryImport` only after real user demand.
+
+**Why:** Convenience frameworks solve different transport and package-delivery problems. Adding one because its generated API is pleasant creates a permanent second semantic/error/resource path unless it demonstrably improves the user product enough to justify that cost.
+
+**Rejected:** Replacing ABI 3 before it exists; emitting handwritten Dart FFI signatures beside the C header; keeping C ABI and Flutter Rust Bridge facades in parallel indefinitely; translating Rust through C and back into Rust; adding PyO3 merely for a more Pythonic spelling; or treating a framework's Node-API ABI as cross-target binary portability.
+
 ### High-Level Technical Design
 
 ```mermaid
 flowchart TB
     Mermaid[Mermaid 11.16 family catalog] --> Language[Invariant language semantics and spans]
-    Capability[Capability descriptor v1] --> Verify[Cargo metadata and package verifier]
-    Manifests[Handwritten Cargo manifests] --> Verify
+    Capability[Capability descriptor v1] --> Presets[Additive preset vocabulary]
     Capability --> Runtime[Generated runtime CapabilitySet]
+    Capability --> Profiles[Artifact build profiles]
+    Capability --> Transports[Transport contracts]
+    Profiles --> Verify[Structured Cargo metadata and artifact verifier]
+    Transports --> Verify
+    Manifests[Handwritten Cargo manifests] --> Verify
     Capability --> Native[ABI 3 and native projections]
-    Capability --> Browser[Lockstep browser package profiles]
-    Capability --> Typst[Typst profile projection]
+    Profiles --> Browser[Lockstep browser package profiles]
+    Profiles --> Typst[Typst profile projection]
     Capability --> Docs[Feature and package documentation]
     Language --> Analysis[Analysis and editor]
     Language --> Svg[SVG renderer]
@@ -292,39 +349,45 @@ flowchart TB
     Environment[Explicit deterministic or native environment] --> Analysis
     Environment --> Svg
     Resources[Runtime resource profile] --> Svg
-    Verify --> Gates[Feature closure, target, size, ABI, legal, and parity gates]
+    Verify --> Gates[Profile closure, target, wire, size, ABI, legal, and parity gates]
+    Gates --> Release[Release fence]
 ```
 
-The descriptor does not decide runtime behavior and does not duplicate implementation dependencies. It declares the stable public vocabulary and expected closure. Cargo metadata proves the compiled feature graph, family capability reports prove semantic/render admission, package manifests prove artifact ownership, and runtime reports prove the active artifact.
+The capability descriptor does not decide runtime behavior, exact Cargo absence, or ABI layouts. It declares the stable public vocabulary, implications, target legality, and additive presets. Artifact profiles carry the exact `default-features` decision and observed build closure for every distributable. Transport contracts identify a protocol boundary and its independent wire authority without duplicating records. Cargo metadata proves the compiled feature graph, family capability reports prove semantic/render admission, package manifests prove artifact ownership, and runtime reports prove the active artifact. Until a profile has observed evidence, the release fence treats it as non-publishable.
 
 ### Dependency Order
 
 ```text
-U1 capability vocabulary and descriptor
+U1 capability vocabulary and initial descriptor
  +--> U2 invariant language and checked-in parsers
- +--> U3 system adapters and explicit runtime policy
+       +--> U13 artifact-profile and transport-contract hardening
 
-U2 + U3 --> U4 renderer, layout, math, and output leaves
-U2 + U3 + U4 --> U5 facade presets and CLI products
-U1 + U2 + U3 + U4 --> U6 ABI 3 and native bindings
+U13 + U2 --> U3 system adapters and explicit runtime policy
+U13 + U2 + U3 --> U4 renderer, layout, math, and output leaves
+U13 + U2 + U3 + U4 --> U5 facade presets and CLI products
+U13 + U2 + U3 + U4 --> U6 ABI 3 and native bindings
 
-U1 + U2 --> U9 dependency hygiene and generation cleanup
+U13 + U1 + U2 --> U9 dependency hygiene and generation cleanup
 U2 + U3 + U9 --> U10 maintained LSP migration
 U3 --> U11a source-backed Jiff admission
 U4 --> U11b source-backed Cytoscape admission
 U4 --> U11c source-backed RaTeX admission
 
-U1-U6 + U9-U11c --> U8 final browser and Typst artifact profiles
+U13 + U1-U6 + U9-U11c --> U8 final browser and Typst artifact profiles
 U8 + U11a-U11c --> U7 lockstep npm packages and Playground adoption
-U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
+U6 + U7 + U11c + U13 --> U14 Node/SSG transport evidence and admission decision
+U6 + U13 --> U15 Flutter transport evidence and admission decision
+U1-U15 --> U12 strict matrix, docs, legal projections, and cleanup
 ```
 
 ### System-Wide Impact
 
 - **Language identity:** Removing `tiny/full-registry` changes every capability count and generated catalog, but makes parser/editor behavior stable across products.
 - **Build graph:** Empty low-level defaults and explicit forwarding expose missing feature edges immediately. All workspace members, examples, benches, docs.rs metadata, release jobs, and platform build scripts must name their intended preset.
+- **Product closure:** Additive presets describe only what a consumer requests. Artifact profiles, rather than a preset complement, prove exact `default-features = false` builds and dependency absence. A profile that is still planned or has an unobserved closure cannot reach a release job.
 - **Runtime behavior:** Explicit environments prevent Cargo feature union from changing deterministic output. System time-zone support becomes a separate compiled adapter from clock access.
 - **Bindings:** The published ABI-2 C symbol/result/callback shape is replaced by ABI 3. Every generated wrapper and packaged native library must move atomically; old hosts reject version 3, while new hosts separately verify ABI-layout and semantic-catalog provenance.
+- **Transport ownership:** Native in-process, C ABI, UniFFI, Android JNI, wasm-bindgen browser, and Typst each retain their true wire authority. One transport contract records the relationship to its artifact profile; it does not recreate ABI records or platform package manifests.
 - **Distribution:** Multiple npm packages add release coordination but remove installation waste. Package status probes, dist tags, changelogs, and legal projections become a lockstep set.
 - **Security and resources:** Output splitting narrows the dependency and attack surface for lint/editor/SVG consumers. Runtime resource profiles and network authorization remain mandatory and independent.
 - **Evidence:** Source-backed layout/math/time updates alter upstream locks, provenance, notices, parity fixtures, and size baselines; each is admitted before the final lockfile is accepted.
@@ -335,6 +398,10 @@ U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
 | --- | --- | --- |
 | Full invariant language semantics increase the smallest parser artifact | Medium | Accept correctness as the base contract; measure the removed fake-tiny profile and optimize shared parser data internally rather than changing accepted syntax. |
 | Cargo feature unification reintroduces ambient behavior | High | Deterministic environment is an explicit runtime object tested inside a `preset-all` build; capability reports separate compiled adapters from selected policy. |
+| A preset complement is misrepresented as an exact product closure | High | Remove `excludes` from the capability descriptor. Require `default-features = false`, structured Cargo metadata, artifact execution, and a release-profile observation before documentation or a verifier claims absence. |
+| A transport surface drifts from the native ABI or capability set | High | Make every release artifact own exactly one profile and transport contract; validate independent wire versions/probes and typed missing-capability behavior against the compiled artifact. |
+| A convenience bridge creates a permanent duplicate Flutter or Node API | High | Require U14/U15 evidence against the incumbent transport, retain one public path per surface, and delete the losing spike plus its generated/package closure. |
+| Typst accidentally ships native/browser math closure | High | Keep math outside the Typst target and publish profile until U11c completes its pure-WASM import, font, hostile-input, parity, license, and size gate. |
 | ABI-2 alpha snapshots are mistaken for compatible artifacts | High | Report ABI 3, remove ABI-2 live symbols/headers, require the generated ABI-3 function table and probes, and test old-host/new-library plus new-host/old-library rejection. |
 | Multi-package npm publication or dist-tag promotion partially succeeds | High | Build and verify all tarballs first, publish under a staging tag, probe every exact version, then reconcile public tags from a recorded old/target set; restore and verify the old set on any promotion failure. |
 | Output splitting creates invalid feature combinations | High | Generate a pairwise/leaf/preset feature matrix and assert closure through Cargo metadata plus runtime capability reports. |
@@ -349,6 +416,8 @@ U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
 - Mermaid 11.16 remains the selected behavior baseline for this plan.
 - Current platform release workflows can be changed before the next formal release and no package publication occurs during implementation.
 - Existing resource profiles and family-owned semantic architecture remain authoritative unless a unit identifies a direct correctness conflict.
+- A future Node product is an evidence outcome, not a promised release surface: U14 may reject both candidate transports and record that no Node package is published.
+- Flutter Rust Bridge is likewise a comparison candidate, not a promised dependency; ABI 3 plus `ffigen` remains the fallback and may be the final Flutter result.
 
 ---
 
@@ -360,27 +429,30 @@ U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
 | --- | --- | --- | --- |
 | U1 | Canonical capability vocabulary and descriptor | `capabilities/`, `crates/xtask/`, ADRs | none |
 | U2 | Invariant language catalog and generated parsers | `crates/merman-core/` | U1 |
-| U3 | System adapters and deterministic runtime policy | `merman-core`, `merman-render`, `merman` | U1 |
-| U4 | Renderer, layout, math, and output leaves | `merman-render`, new `merman-export`, `merman` | U1-U3 |
-| U5 | Facade presets and CLI products | `merman`, `merman-cli` | U1-U4 |
-| U6 | Native ABI 3 and binding outputs | `abi/`, binding crates, platform wrappers | U1-U4 |
+| U13 | Artifact profile and transport-contract hardening | `capabilities/`, `xtask`, release descriptors | U1-U2 |
+| U3 | System adapters and deterministic runtime policy | `merman-core`, `merman-render`, `merman` | U2, U13 |
+| U4 | Renderer, layout, math, and output leaves | `merman-render`, new `merman-export`, `merman` | U2-U3, U13 |
+| U5 | Facade presets and CLI products | `merman`, `merman-cli` | U2-U4, U13 |
+| U6 | Native ABI 3 and binding outputs | `abi/`, binding crates, platform wrappers | U2-U4, U13 |
 | U7 | Lockstep npm package build and Playground adoption | `platforms/web`, `playground`, release workflows | U8, U11a-U11c |
-| U8 | Browser and Typst artifact profiles | WASM crates, profile descriptors, `xtask` | U1-U6, U9-U11c |
-| U9 | Dependency hygiene and parser build cleanup | workspace manifests, analysis, generation | U1-U2 |
+| U8 | Browser and Typst artifact profiles | WASM crates, profile descriptors, `xtask` | U1-U6, U9-U11c, U13 |
+| U9 | Dependency hygiene and parser build cleanup | workspace manifests, analysis, generation | U1-U2, U13 |
 | U10 | Maintained LSP transport migration | `merman-lsp`, VS Code/LSP docs | U2-U3, U9 |
 | U11a | Jiff time admission | time adapters, target matrix, lock/provenance | U3 |
 | U11b | Cytoscape 3.33.3 admission | upstream locks, Manatee, family parity | U4 |
 | U11c | RaTeX admission | math integration, fonts, legal/size matrix | U4 |
-| U12 | Strict matrix, user feature guide, release docs, legal sync, cleanup | CI, `docs/FEATURES.md`, READMEs/changelogs | U1-U11c |
+| U14 | Node/SSG transport evidence and admission decision | Node candidate harness, package/release docs | U6, U7, U11c, U13 |
+| U15 | Flutter transport evidence and admission decision | Flutter spike harness, generated binding/docs | U6, U13 |
+| U12 | Strict matrix, user feature guide, release docs, legal sync, cleanup | CI, `docs/FEATURES.md`, READMEs/changelogs | U1-U15 |
 
 ### U1. Establish the canonical capability vocabulary and descriptor
 
 - **Goal:** Create one durable public capability model before changing manifests or package APIs.
-- **Requirements:** R2-R6, R11-R13, R22, R33-R34.
+- **Requirements:** R2-R6, R11, R13, R22, R33-R34.
 - **Files:** Create `capabilities/feature-surface-v1.json`, `capabilities/README.md`, `docs/adr/0076-capability-driven-feature-and-package-surfaces.md`, and `crates/xtask/src/cmd/capability_surface.rs`; update `crates/xtask/src/cmd/mod.rs`, `docs/adr/0006-feature-flags-tiny-vs-full.md`, `docs/adr/0066-ffi-binding-strategy.md`, `docs/adr/0069-wasm-package-surface-semantics.md`, and `docs/adr/0074-browser-runtime-and-benchmark-ownership.md`.
-- **Approach:** Define stable leaf IDs, preset IDs, descriptions, target restrictions, implications, admission evidence, and expected runtime sets. Mark conflicting feature and package-surface decisions as superseded by ADR-0076; revise only ADR-0074's package-surface projection and retain its realm, runtime, benchmark, cache, and lifecycle ownership. Implement descriptor schema/generation and fixture validation first. U2-U8 migrate one consumer at a time, deleting that consumer's old catalog when its generated projection becomes live; a migration ledger makes unmigrated surfaces explicit without treating either catalog as a second authority. U12 removes the ledger and enables the strict whole-repository descriptor-to-manifest/runtime/package gate. Generate Rust/TypeScript/native constants and documentation, but keep Cargo manifests hand-written.
-- **Test scenarios:** In schema/fixture mode, reject an unknown capability, implication cycle, duplicate ID, negative feature name, diagram-specific public feature, preset referencing an unavailable target, descriptor leaf with no API/runtime evidence, and an invalid migration ledger. Per-surface migration tests reject a manifest feature missing from the descriptor and a package mapping whose compiled report differs from its preset. Strict mode rejects any remaining ledger entry or old catalog.
-- **Verification:** U1's schema/generator/fixture verifier passes on the target descriptor and fails each malformed fixture with a path-specific error; it does not claim current manifests have already migrated. Generated outputs are byte-stable. Each U2-U8 unit enables its surface-local structured check, and U12 proves the final strict mode plus `git diff` freshness with no parallel live catalog.
+- **Approach:** Define stable leaf IDs, preset IDs, descriptions, target restrictions, implications, admission evidence, and expected runtime sets. Mark conflicting feature and package-surface decisions as superseded by ADR-0076; revise only ADR-0074's package-surface projection and retain its realm, runtime, benchmark, cache, and lifecycle ownership. Implement descriptor schema/generation and fixture validation first. U2 migrates the invariant language consumer; U13 deliberately removes non-semantic `excludes` and surface build mappings from this initial descriptor into the dedicated artifact-profile and transport authorities. A migration ledger makes unmigrated surfaces explicit without treating either catalog as a second authority. U12 removes the ledger and enables the strict whole-repository descriptor-to-manifest/runtime/package gate. Generate Rust/TypeScript/native constants and documentation, but keep Cargo manifests hand-written.
+- **Test scenarios:** In schema/fixture mode, reject an unknown capability, implication cycle, duplicate ID, negative feature name, diagram-specific public feature, preset referencing an unavailable target, descriptor leaf with no API/runtime evidence, and an invalid migration ledger. Per-surface migration tests reject a manifest feature missing from the descriptor. U13 adds profile/transport fixtures; strict mode rejects any remaining ledger entry or old catalog.
+- **Verification:** U1's schema/generator/fixture verifier passes on the target descriptor and fails each malformed fixture with a path-specific error; it does not claim current manifests have already migrated. Generated outputs are byte-stable. Each downstream unit enables its surface-local structured check, and U12 proves the final strict mode plus `git diff` freshness with no parallel live catalog.
 
 ### U2. Make Mermaid language and editor semantics invariant
 
@@ -391,59 +463,72 @@ U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
 - **Test scenarios:** Parse every admitted family through every parser-capable preset and analyze/edit every family through products that include those APIs; parse Architecture/Mindmap/`flowchart-elk` without layout backends; preserve full YAML/JSON5/sanitization behavior; reject a facts-v1 payload before deep deserialization and round-trip facts v2 across Rust/WASM/native projections; detect stale generated parsers after changing a grammar; reject edits to generated output that do not match the grammar.
 - **Verification:** The family count, canonical semantic IDs, spans, and vocabulary are identical across parser-capable feature combinations; every enabled analysis/editor product reports the complete family set. `cargo tree` for published `merman-core` contains `lalrpop-util` but not `lalrpop`, and the complete parser/analysis/editor corpus remains green.
 
+### U13. Harden artifact build profiles and transport contracts
+
+- **Goal:** Correct the initial descriptor boundary before any public feature, ABI, or package migration: presets remain additive semantic bundles, while exact distributable closures and protocol ownership become independently verifiable contracts.
+- **Requirements:** R5, R9-R13, R19-R22, R26, R33-R39; F3, F5-F9; AE10-AE14.
+- **Files:** `capabilities/feature-surface-v1.json`, create `capabilities/artifact-profiles-v1.json`, create `capabilities/transport-contracts-v1.json`, `capabilities/README.md`, `docs/adr/0076-capability-driven-feature-and-package-surfaces.md`, `crates/xtask/src/cmd/capability_surface.rs` and dedicated profile/transport verifier modules as warranted, `crates/xtask/src/cmd/verify.rs`, `platforms/web/web-surface-descriptor.json`, `crates/merman-typst-plugin/wasm-profiles.json`, `docs/release/SURFACES.json`, `docs/release/PACKAGE_SURFACES.md`, and the ABI/protocol references that own the current wire versions.
+- **Approach:** Remove `excludes` and all surface build mappings from `feature-surface-v1.json`; a preset carries only additive leaves and its implication-closed semantic set. Add the `layout-cytoscape -> svg`, `layout-elk -> svg`, and `math -> svg` implications and add `preset-svg-basic` with only `svg`. Keep the corresponding Cargo feature edges handwritten, then prove they agree structurally through Cargo metadata. Move every distributable recipe into `artifact-profiles-v1.json`: profile ID, release surface/artifact identity, root Cargo package, target triple or target class, explicit `default_features` value, exact enabled features, selected capability/output IDs, expected runtime report, environment-policy family, resource-profile support, linked transport ID, wire-version references, and release state. The profile derives typed missing-capability behavior from the canonical capability descriptor instead of carrying handwritten message strings or a second diagram-to-layout table.
+
+  Define one transport contract for each real boundary: Rust in-process facade, CLI process, LSP library/stdio, C ABI, UniFFI, Android JNI, Flutter C-FFI facade, wasm-bindgen browser, and Typst wasm-minimal-protocol. The contract points to its independent wire authority (`abi/merman-v3.json`, UniFFI definition, LSP protocol, or Typst transport descriptor) rather than duplicating its records. Include every shipped Rust facade, CLI variant, LSP artifact, C library, UniFFI host/Python wheel, Android AAR, Apple XCFramework, Flutter package, browser package, and Typst package exactly once. Node is intentionally absent until U14 admits one candidate.
+
+  Profiles distinguish `planned`, `migration-required`, and `observed` evidence. The verifier treats all non-observed profiles, including the current core host and render Cytoscape defaults, as release-blocking. It reads Cargo metadata structurally, builds/probes the named artifact, checks runtime capability/output/resource reports and wire versions, and rejects profile-to-artifact drift. It must not parse source substrings or use a feature-name convention as proof. Typst profiles may reference SVG, analysis, Cytoscape, and ELK, but must reject `math` and any RaTeX/browser import until U11c re-admits all related target, profile, provenance, package, and license evidence atomically.
+- **Test scenarios:** Reject a descriptor that retains preset `excludes`, a preset that implicitly claims an omission, or a static profile with `default_features = true`. Reject missing SVG implications from either layout engine or math, and prove `preset-svg-basic` returns the existing typed missing-capability path for layout/math requests. Reject a Typst math target/profile or a Typst RaTeX closure before U11c. Reject an unowned/duplicated release surface, unknown transport, wrong Cargo root/default/features, wrong target/environment/resource support, mismatched runtime capability/output ID, stale wire version, and non-derived missing-capability contract. Exercise one intentionally invalid profile per C ABI, UniFFI/Python, Android, Apple, Flutter, CLI, LSP, browser, and Typst surface. Confirm that a profile does not require a second hardcoded diagram-to-layout table.
+- **Verification:** Generated projections are byte-stable. `xtask` validates all three authorities together, observes each currently migrated artifact, and reports any planned/migration-required profile as a release fence rather than a pass. The profile/transport verifier passes only when every currently released surface has exactly one valid profile and transport; U5/U6/U7/U8 later promote their own profiles to `observed`. The final strict matrix proves no `excludes`, surface mappings, duplicate capability booleans, or default-derived release claim remains.
+
 ### U3. Separate system adapters from operation policy
 
 - **Goal:** Make native convenience and deterministic reproducibility explicit, composable, and immune to feature union.
-- **Requirements:** R7-R10, R31; F2-F5; AE3, AE9.
+- **Requirements:** R7-R10, R31, R35-R38; F2-F5; AE3, AE9, AE11-AE12.
 - **Files:** `crates/merman-core/Cargo.toml`, `crates/merman-core/src/time.rs`, `crates/merman-core/src/runtime.rs`, `crates/merman-render/Cargo.toml`, `crates/merman-render/src/environment.rs`, `crates/merman-render/src/host_time.rs`, `crates/merman/src/render/mod.rs`, `crates/merman/src/render/operation.rs`, and native/browser/Typst time tests.
 - **Approach:** Replace `host`/`core-host` forwarding with `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Configure Jiff with target-owned features instead of workspace-wide `js` plus defaults. Add explicit deterministic/native environment constructors and attest the selected runtime policy separately from compiled capability.
 - **Test scenarios:** System DST gap/fold and winter/summer resolution; fixed offset versus system rules; UTC behavior without system-timezone; browser JS time without native tzdb assumptions; Typst with no ambient imports; deterministic output in a build that also compiled all system adapters; boundary years and provenance digest stability.
-- **Verification:** Closure tests prove deterministic/editor/lint/Typst presets omit Jiff/UUID/web-time where intended. Cross-process deterministic SVG is byte-identical and existing time-zone regressions pass.
+- **Verification:** Artifact-profile closure tests, rather than a raw preset complement, prove deterministic/editor/lint/Typst products omit Jiff/UUID/web-time where intended. Cross-process deterministic SVG is byte-identical and existing time-zone regressions pass. Current transitional defaults remain release-blocking until U5 admits the profile recipes.
 
 ### U4. Split renderer, layout, math, and output capabilities
 
 - **Goal:** Make each render capability callable, accurately reported, and isolated by real dependency/resource boundaries.
-- **Requirements:** R4-R5, R10, R14-R16, R32; AE1, AE4-AE5.
+- **Requirements:** R4-R5, R10, R14-R16, R32, R35-R37; AE1, AE4-AE5, AE11-AE12.
 - **Files:** `crates/merman-render/Cargo.toml`, `crates/merman-render/src/lib.rs`, `crates/merman-render/src/family.rs`, `crates/merman-render/src/mindmap.rs`, `crates/merman-render/src/swimlane/mod.rs`, new `crates/merman-export/`, `crates/merman/src/Cargo.toml`, `crates/merman/src/render/mod.rs`, removal of `crates/merman/src/render/raster.rs`, output tests, publish order/surfaces, size profiles, and docs.rs metadata.
-- **Approach:** Rename layout leaves and expose the implementation-neutral `math` capability, decouple tidy-tree from Manatee, and use typed unavailable-capability errors. Replace facade `render` with `svg`. Move the 2,400-line SVG conversion/export implementation into a deep `merman-export` crate that accepts only validated `ResvgCompatibleSvg`, has empty defaults, and exposes real `png`, `jpeg`, and `pdf` operations with shared private internals. The `merman` facade forwards those leaves and owns Mermaid-source orchestration only. Set resvg/usvg/Krilla defaults explicitly and retain required text/image behavior. Keep ICU collation mandatory for SVG; admit a smaller provider only with exact source-backed ordering and artifact evidence.
+- **Approach:** Rename layout leaves and expose the implementation-neutral `math` capability, each with an explicit semantic implication on `svg`; add `preset-svg-basic` as the SVG-only baseline and use typed unavailable-capability errors. Decouple tidy-tree from Manatee and replace facade `render` with `svg`. Move the 2,400-line SVG conversion/export implementation into a deep `merman-export` crate that accepts only validated `ResvgCompatibleSvg`, has empty defaults, and exposes real `png`, `jpeg`, and `pdf` operations with shared private internals. The `merman` facade forwards those leaves and owns Mermaid-source orchestration only. Set resvg/usvg/Krilla defaults explicitly and retain required text/image behavior. Keep ICU collation mandatory for SVG; admit a smaller provider only with exact source-backed ordering and artifact evidence.
 - **Test scenarios:** Tidy-tree without Cytoscape; Architecture/COSE/ELK missing-capability errors; mixed-case/accent/CJK/emoji Swimlane ordering; leaf and pairwise builds; PNG/JPEG/PDF signatures; text/system-font/embedded-image fixtures; huge SVG remains vector while bitmap/PDF limits remain format-specific; RaTeX disabled/enabled behavior.
 - **Verification:** Dependency closure proves PNG excludes Krilla/PDF, PDF does not imply bitmap output, analysis/editor exclude all render backends, and every reported output has a passing API test. SVG parity and resvg-safe suites remain green.
 
 ### U5. Build ergonomic facade and CLI presets
 
 - **Goal:** Make common Rust and command-line workflows obvious while preserving a truly lean lint product.
-- **Requirements:** R5-R6, R17-R18; F2-F4; AE2, AE4.
+- **Requirements:** R5-R6, R17-R18, R35-R38; F2-F4; AE2, AE4, AE11-AE12.
 - **Files:** `crates/merman/Cargo.toml`, `crates/merman/src/lib.rs`, `crates/merman-cli/Cargo.toml`, `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/commands.rs`, command modules, `dist-workspace.toml`, cargo-dist/Homebrew/release build configuration, CLI tests, README, and shell completion docs.
-- **Approach:** Default `merman` to the normative `preset-native-svg`. Define every native preset exactly as listed in KTD4: `preset-static-svg`, `preset-editor`, `preset-ci-lint`, `preset-native-sdk`, `preset-mmdc`, and `preset-all`; the static-site example must also select `DeterministicEnvironment`. Refactor CLI commands into capability-owned modules, generate help from compiled commands, and expose `capabilities --json` from the canonical descriptor. Release CLI builds select `preset-mmdc` explicitly, and U6 native artifacts select `preset-native-sdk` explicitly.
+- **Approach:** Default `merman` to the normative `preset-native-svg`. Define every native preset exactly as listed in KTD4, including `preset-svg-basic`, `preset-static-svg`, `preset-editor`, `preset-ci-lint`, `preset-native-sdk`, `preset-mmdc`, and `preset-all`; the static-site example must also select `DeterministicEnvironment`. Pair each product build with its U13 artifact profile using explicit `default-features` and exact Cargo features; a raw `preset-static-svg` consumer must never be documented as proving static absence. Refactor CLI commands into capability-owned modules, generate help from compiled commands, and expose `capabilities --json` from the canonical descriptor. Release CLI builds select the observed `preset-mmdc` profile explicitly, and U6 native artifacts select the observed `preset-native-sdk` profile explicitly. End U5 by replacing the transitional core/render defaults and clearing their release fence.
 - **Test scenarios:** Copyable default Rust SVG example; deterministic site example; lint-only help/exit codes/JSON/fixes/broken pipe; default mmdc format inference and compatibility; Markdown parallel and serial paths; shell completion presence only when compiled; network icon requests rejected until explicitly allowed.
-- **Verification:** Machine closure assertions prove the lint preset excludes every heavy dependency named in AE2. Default CLI compatibility, output, batch, performance, and resource tests pass; release manifests name the preset rather than relying on defaults.
+- **Verification:** Machine closure assertions prove the observed lint artifact profile excludes every heavy dependency named in AE2. Default CLI compatibility, output, batch, performance, and resource tests pass; release manifests name an observed profile rather than relying on defaults.
 
 ### U6. Introduce native ABI 3 and expose real native output capabilities
 
 - **Goal:** Establish the first formal-ready native ABI and ergonomic platform wrappers without phantom features.
-- **Requirements:** R9, R11-R13, R19-R22; F5; AE5, AE10.
+- **Requirements:** R9, R11-R13, R19-R22, R35-R36, R40; F5; AE5, AE10, AE12.
 - **Files:** create `abi/merman-v3.json`; split the current `abi/merman-v2.json` text-operation facts into an independently versioned text-measurement descriptor; generated ABI headers/projections; `crates/merman-bindings-core/`; `crates/merman-ffi/`; `crates/merman-uniffi/`; `platforms/android/`; `platforms/apple/`; `platforms/flutter/`; `platforms/python/merman/`; binding docs/changelogs; and platform smoke examples.
-- **Approach:** Build every release binding with `preset-native-sdk`. Generate a size-tagged ABI-3 function table, pointer-based text-measurement callbacks, stable output codes that reference capability semantic IDs, the generic render request/result, a result-free function, and a caller-owned chunk sink. Replace fixed capability booleans with stable-ID lists. Generate resource profile IDs, availability, and recommended-use projections into every binding. Keep the ABI-3 function set present across feature variants and return structured unsupported errors. Remove every live ABI-2 header, symbol, wrapper, and generated constant in the same unit while retaining migration history.
+- **Approach:** Build every release binding from its U13 artifact profile with `preset-native-sdk`; do not infer a native product's feature closure from a facade default. Generate a size-tagged ABI-3 function table, pointer-based text-measurement callbacks, stable output codes that reference capability semantic IDs, the generic render request/result, a result-free function, and a caller-owned chunk sink. Replace fixed capability booleans with stable-ID lists. Generate resource profile IDs, availability, and recommended-use projections into every binding. Keep the ABI-3 function set present across feature variants and return structured unsupported errors. Remove every live ABI-2 header, symbol, wrapper, and generated constant in the same unit while retaining migration history. Android moves dynamic native lookup to `JNI_OnLoad` plus `RegisterNatives`; Swift/Kotlin/Python remain direct UniFFI users, while Flutter keeps ABI 3 plus ffigen-generated low-level bindings and a handwritten Dart facade.
 - **Test scenarios:** Old ABI-2 host/new library and new host/old library rejection before callback; ABI-layout versus capability-catalog digest behavior; every size/alignment/field-offset/function/discriminant probe; unknown additive capability; zero-length/binary buffers; raw byte and chunk-sink equality; large-output peak RSS/copy counts; UTF-8 SVG/ASCII; PNG/JPEG/PDF signatures/metadata; versioned format options; output disabled at compile time; reusable engine plus host measurement; callback failure; resource-profile projections; Android/Swift/Dart/Python lifecycle, threading, and package compilation.
 - **Verification:** C compile/link/dynamic-load tests, UniFFI generation/wheel smoke, Kotlin/AAR, XCFramework/Swift, Flutter analyze/build, and cross-language examples consume ABI 3 and the generated semantic contracts. No platform keeps handwritten capability, output, resource, or measurement codes. The byte convenience path is proven to collect the same sink protocol rather than maintaining a second renderer.
 
 ### U7. Build one-WASM lockstep npm package surfaces
 
 - **Goal:** Make browser installation size follow the capability a user chose.
-- **Requirements:** R23-R25, R27, R33; F6; AE6.
+- **Requirements:** R23-R25, R27, R33, R35-R36; F6; AE6, AE12.
 - **Files:** `platforms/web/package.json`, new package manifests/directories under `platforms/web/packages/`, Web build/smoke/prepack scripts, TypeScript wrappers and public types, `playground/package.json`, Playground runtime imports, `.github/workflows/release-web.yml`, `docs/release/SURFACES.json`, release status/verifier scripts, package READMEs/changelogs, and legal projections.
-- **Approach:** Turn `platforms/web` into a private workspace/build owner and generate the required full package plus four slim candidates. Each wrapper binds one `preset-web-*` and one WASM; only candidates clearing the independent-workflow and 15-percent gates enter the public release contract. Delete public `./core`, `./render`, `./render-only`, `./ascii`, `./editor`, and `./full` multi-artifact exports from `@mermanjs/web`. Implement prerelease staging and dist-tag promotion as idempotent reconciliation: record old/target tags, verify every exact version, update and probe each tag, and restore the prior set on failure. This plan tests the workflow with dry runs or an isolated local registry only; it never mutates the real npm registry. Keep Playground editor/render in separate realms only after comparing split artifacts with the realistic two-realm full baseline.
+- **Approach:** Turn `platforms/web` into a private workspace/build owner and generate the required full package plus four browser-named slim candidates: `@mermanjs/web-analysis`, `@mermanjs/web-render`, `@mermanjs/web-editor`, and `@mermanjs/web-ascii`. Each wrapper binds one U13 artifact profile and one WASM; only candidates clearing the independent-workflow and 15-percent gates enter the public release contract. Delete public `./core`, `./render`, `./render-only`, `./ascii`, `./editor`, and `./full` multi-artifact exports from `@mermanjs/web`. Implement prerelease staging and dist-tag promotion as idempotent reconciliation: record old/target tags, verify every exact version, update and probe each tag, and restore the prior set on failure. This plan tests the workflow with dry runs or an isolated local registry only; it never mutates the real npm registry. Keep Playground editor/render in separate realms only after comparing split artifacts with the realistic two-realm full baseline. Browser package documentation explicitly rejects Node/SSR use rather than suggesting a loader workaround.
 - **Test scenarios:** Package file ownership, independent-workflow and 15-percent size admission, cross-version rejection, one-WASM invariant, absent sibling exports, custom `module_or_path` initialization, stale/corrupt cache retry, capability mismatch, partial publication and mid-promotion recovery, legal drift, Playground split/full download/compile/init/heap evidence, editor/render startup and failure isolation, and the current msfjarvis.dev loader-patch regression.
 - **Verification:** Build/test/smoke every package, run `npm pack --json` per package, enforce packed/unpacked/file-count and post-U11a-U11c measured WASM regression budgets, run Playground unit/build/browser smoke, and verify release contracts/status probes. The full package has one WASM and no duplicate full artifact; every retained slim package clears admission. Record and explain the final package-size delta rather than weakening correct behavior to meet the provisional 16 MB forecast. Registry operations stop at dry-run or isolated local-registry evidence.
 
 ### U8. Project capability presets into browser WASM and Typst
 
 - **Goal:** Make generated browser and Typst artifacts exact projections of the shared capability model.
-- **Requirements:** R11-R13, R24-R27; F8; AE6-AE7.
+- **Requirements:** R11-R13, R24-R27, R35-R38; F8; AE6-AE7, AE12-AE13.
 - **Files:** `crates/merman-wasm/Cargo.toml`, `crates/merman-wasm/src/lib.rs`, `crates/merman-typst-plugin/Cargo.toml`, `crates/merman-typst-plugin/wasm-profiles.json`, Typst package manifests/wrappers, `platforms/web/web-surface-descriptor.json`, WASM build scripts, `crates/xtask/src/cmd/wasm_size_matrix.rs`, and size budgets.
-- **Approach:** Replace repeated feature/capability booleans with references to the exact KTD4 artifact presets. Keep browser wasm-bindgen and Typst wasm-minimal-protocol transports separate. Generate package-specific browser artifacts after U11a-U11c finalize their dependency graphs. Reduce Typst maintainer artifacts to `bridge`, `svg`, and `publish`; end users install one published package and do not choose these internal profiles. Reject system adapters and unexpected imports in Typst.
-- **Test scenarios:** Every preset builds alone and reports the expected stable IDs; editor omits renderer exports; render omits editor/ASCII exports; Typst bridge has only protocol support; publish has exact callable/linker exports; the installed package's documented Typst API renders valid input and returns source-oriented errors for invalid/unsupported input without exposing profile names; wrong-preset artifact assembly fails; size provenance digest changes when an input changes.
-- **Verification:** Browser and Typst size matrices, wasm import/export gates, wasmi operation smoke, Typst package compile/preview/error fixtures, and descriptor freshness checks pass before U7 packages assemble.
+- **Approach:** Replace repeated feature/capability booleans with references to the exact U13 artifact build profiles. Keep browser wasm-bindgen and Typst wasm-minimal-protocol transports separate. Generate package-specific browser artifacts after U11a-U11c finalize their dependency graphs. Reduce Typst maintainer artifacts to `bridge`, `svg`, and `publish`; end users install one published package and do not choose these internal profiles. Reject system adapters, browser imports, and `math`/RaTeX closure from Typst until U11c makes an atomic re-admission through the capability target, Typst artifact profile, transport evidence, provenance, package contents, licenses, and size budget.
+- **Test scenarios:** Every artifact profile builds with its exact `default_features` choice and reports the expected stable IDs; editor omits renderer exports; render omits editor/ASCII exports; Typst bridge has only protocol support; publish has exact callable/linker exports but no math/RaTeX/browser import before U11c; the installed package's documented Typst API renders valid input and returns source-oriented errors for invalid/unsupported input without exposing profile names; wrong-profile artifact assembly fails; size provenance digest changes when an input changes.
+- **Verification:** Browser and Typst size matrices, wasm import/export gates, wasmi operation smoke, Typst package compile/preview/error fixtures, artifact-profile/transport freshness checks, and the no-math Typst gate pass before U7 packages assemble.
 
 ### U9. Remove accidental dependencies and generation costs
 
@@ -484,20 +569,38 @@ U1-U11c --> U12 strict matrix, docs, legal projections, and cleanup
 ### U11c. Admit the maintained RaTeX baseline
 
 - **Goal:** Upgrade the lockstep RaTeX family behind the public `math` capability with attributable behavior, size, and legal evidence.
-- **Requirements:** R31-R32; AE4, AE9.
+- **Requirements:** R26, R31-R32, R37; AE4, AE9, AE13.
 - **Files:** root manifests/lock, `merman-render` math integration, Web/Typst/native artifact profiles, math fixtures, size budgets, third-party components, notices, and font licenses.
-- **Approach:** Review the selected stable RaTeX release and update every RaTeX crate in lockstep. Keep embedded fonts and standalone SVG only where the product contract requires them; do not expose backend crate names as public features.
-- **Test scenarios:** Parser and SVG semantics, embedded/external font behavior, hostile input, native/browser/Typst targets, raw/gzip/brotli and native size, license payloads, and math-disabled typed errors.
-- **Verification:** The exact lock, runtime report, generated legal material, package contents, size matrix, and math parity pass independently before browser package budgets are frozen.
+- **Approach:** Review the selected stable RaTeX release and update every RaTeX crate in lockstep. Keep embedded fonts and standalone SVG only where the product contract requires them; do not expose backend crate names as public features. Treat Typst as a separate re-admission decision: until its pure-WASM import, font, hostile-input, parity, size, and license evidence passes, the Typst target and publish profile remain math-free even when native and browser math are admitted.
+- **Test scenarios:** Parser and SVG semantics, embedded/external font behavior, hostile input, native/browser targets, raw/gzip/brotli and native size, license payloads, and math-disabled typed errors. For a proposed Typst re-admission, additionally test allowed imports only, no browser dependency, font behavior, complete hostile-input/resource limits, corpus parity, legal payload, package contents, and exact profile/runtime report changes.
+- **Verification:** The exact lock, runtime report, generated legal material, package contents, size matrix, and math parity pass independently before browser package budgets are frozen. Typst math is not declared or packaged unless the separate pure-WASM matrix succeeds atomically.
+
+### U14. Evaluate and admit a Node/SSG transport only on evidence
+
+- **Goal:** Determine whether Node-targeted WASM or napi-rs provides a trustworthy Node/SSG SVG product, without pretending the browser package is a Node runtime or committing to a transport before comparative evidence exists.
+- **Requirements:** R9-R13, R19-R22, R34, R39-R40; F5, F9; AE5, AE12, AE14.
+- **Files:** create a private candidate harness under `platforms/node/` or an equivalent non-public workspace area; candidate package manifests/build scripts; `crates/merman-bindings-core/` integration seams; package/release contract fixtures; `capabilities/artifact-profiles-v1.json` and `capabilities/transport-contracts-v1.json` only after admission; Node README/changelog/release-surface documentation only if a product is selected.
+- **Approach:** Exercise the same `merman-bindings-core` requests/options/resource profile through a Node-targeted WASM candidate and a napi-rs candidate. Measure complete corpus parity, cold start, warm calls, RSS, packed/unpacked installation size, real target support, concurrent queue behavior, error behavior, and lifecycle. Do not publish a package merely because one candidate compiles. If napi-rs is selected, use an `@mermanjs/node` loader with exact-version `@mermanjs/node-<target>` optional dependencies, each containing one `.node`; the root package contains only the loader, declarations, and JS API. It has no postinstall download, no all-target binary bundle, and no silent browser-WASM fallback. The initial profile is the observed `preset-static-svg` product after U11c, with Promise APIs by default, explicit `dispose()`, a genuinely bounded queue, and an explicit SSG-only `renderSvgSync()` convenience. It does not expose JavaScript text measurement callbacks, promise preemptive cancellation of executing work, or invent a `default` resource profile. Node-API ABI compatibility is tested on each actual OS/CPU/libc target and is never represented as universal binary portability.
+- **Test scenarios:** Candidate corpus parity against the native binding corpus; a controlled cold/warm/RSS benchmark; `npm pack` ownership and optional-dependency resolution on each selected target; unsupported-target and missing-native-package errors; queue saturation, disposal, concurrent requests, process shutdown, non-preemptive AbortSignal documentation/behavior, text-measurement rejection, typed missing output/engine errors, and explicit `preset-static-svg` resource-profile use. Simulate a corrupt browser WASM package and verify no candidate silently falls back to it. If neither candidate clears the gate, verify no public Node surface remains in descriptors, release contracts, or user docs.
+- **Verification:** Record a reproducible comparison report with inputs, target matrix, version/digest provenance, corpus outcomes, timing/RSS distributions, package contents, and error/lifecycle results. Admit exactly one transport only when its profile and transport contract pass the U13 verifier and all selected target tests; otherwise commit the rejection evidence and leave Node out of the release surface. This evidence decision, not a predetermined package, completes U14.
+
+### U15. Evaluate Flutter Rust Bridge without weakening ABI 3
+
+- **Goal:** Decide, with a bounded direct comparison, whether Flutter Rust Bridge solves a real Flutter product problem that ABI 3 plus generated `ffigen` bindings and the handwritten Dart facade cannot solve economically.
+- **Requirements:** R9-R13, R19-R22, R34, R40; F5; AE5, AE12.
+- **Files:** `platforms/flutter/` ABI-3 header/ffigen configuration/facade/tests; a private, removable Flutter Rust Bridge spike under `platforms/flutter/spikes/` or another non-public workspace area; `crates/merman-bindings-core/` only for a direct candidate seam; platform build/CI fixtures; Flutter docs/release surfaces only if the spike is admitted.
+- **Approach:** First make ABI 3 plus `ffigen` the real baseline: generate raw Dart FFI declarations from the published C header, keep resource policy, engine lifecycle, capability querying, errors, and ergonomic output methods in one handwritten Dart facade, and eliminate handwritten raw signatures. Then build a private Flutter Rust Bridge candidate that calls `merman-bindings-core` directly. It is not allowed to call through C ABI or create a second semantic model. Compare the same requests, resources, output bytes, missing-capability errors, engine lifecycle, async scheduling, cancellation semantics, streaming/large-output path, package delivery, Android/iOS/macOS/Linux/Windows matrix, code-generation drift, artifact size, and CI maintenance cost. Do not expose a public bridge package or retain the candidate dependency before the evidence decision.
+- **Test scenarios:** Header-to-`ffigen` freshness and a zero-handwritten-raw-signature check; Dart facade capability/resource/error behavior against ABI 3 fixtures; UI-isolate responsiveness for bounded CPU work; dispose/reuse/queue saturation; large-output byte/sink behavior; platform package installation; candidate callback/async cancellation and object lifetime behavior; corpus equality with the existing Flutter path; generated API diff on an ABI change; candidate removal proving no production closure or release documentation remains when it loses.
+- **Verification:** Publish a repository-local comparison report with measurable inputs and per-target results. Promote Flutter Rust Bridge only if it passes all ABI-3 behavior gates and demonstrates a documented user-facing advantage that outweighs a second transport's package and CI cost. Otherwise delete the spike, keep ABI 3 + `ffigen` as the sole Flutter path, and leave no Flutter Rust Bridge feature, package, generated code, or release contract in the tree. This evidence decision completes U15.
 
 ### U12. Enforce the strict matrix and finish migration documentation
 
 - **Goal:** Prove the new architecture across every product surface and remove all obsolete feature/package/ABI paths.
-- **Requirements:** R1-R34; F1-F8; AE1-AE10.
+- **Requirements:** R1-R40; F1-F9; AE1-AE14.
 - **Files:** CI workflows, `crates/xtask/src/cmd/verify.rs`, capability/feature matrix fixtures, `docs/FEATURES.md`, `docs/development/PARSER_GENERATION.md`, `docs/release/PACKAGE_SURFACES.md`, release/security/upgrade docs, root and package READMEs/changelogs, platform docs, status generation, old workstreams, and every stale feature reference found by structured validation.
-- **Approach:** Add a bounded leaf, pairwise, preset, target, dependency-exclusion, runtime-report, package, ABI, size, parity, legal, and docs matrix to strict verification. Rewrite `docs/FEATURES.md` as the workflow-first user guide required by R34, link it from the root README, and generate/verify concise surface-specific projections. The root README keeps real rendered proof but routes Rust, CLI, browser, editor, lint, SDK, and Typst users to the one workflow guide; it does not duplicate feature graphs. Each public package README contains only installation, one minimal successful example, surface-specific lifecycle/limits, and links to the authority; ABI field tables, capability lists, and text-measurement operations are generated or centralized under `docs/bindings/`. U6 rewrites FFI/native examples from ABI 3 rather than editing ABI 2 fields in place. U7 replaces the single-package multi-WASM README with lockstep package-specific installation docs and an explicit browser-versus-Node/SSR boundary. U8 removes internal Typst profile choice from end-user docs. Keep implementation/source-provenance READMEs unless a real public contract changed. Add `docs/development/PARSER_GENERATION.md` as the maintained source for grammar regeneration and freshness verification, linked from core and contribution documentation. Delete obsolete aliases, old Web surface artifacts, ABI-2 live symbols, unreachable commands, superseded build scripts, and migration code made obsolete by U1-U11c.
-- **Test scenarios:** Every actor flow and acceptance example; user-guide examples compile/run; clean checkout generation; ignored/stale artifact rejection; all supported targets; missing package/feature/runtime capability; old-name allowlist limited to live surfaces while allowing explanatory references in this plan, the migration table, changelog, and superseded ADR history; release preflight without credentials; previous package imports produce actionable migration errors; root/package README link and code-example validation; release VSIX installation documentation must not claim a Marketplace publication that is not available.
-- **Verification:** The Verification Contract passes from a clean tree, `git diff --check` is clean, generated projections are stable, and code/docs/build/release paths made obsolete or unreachable by U1-U11c are removed. Unrelated historical cleanup is not a completion blocker.
+- **Approach:** Add a bounded leaf, pairwise, preset, artifact-profile, transport, target, dependency-exclusion, runtime-report, package, ABI, size, parity, legal, and docs matrix to strict verification. Reject a release profile unless it is observed, has `default-features = false` where it claims absence, resolves to exactly one transport contract, and its structural Cargo metadata plus executable artifact probe match. Rewrite `docs/FEATURES.md` as the workflow-first user guide required by R34, link it from the root README, and generate/verify concise surface-specific projections. The root README keeps real rendered proof but routes Rust, CLI, browser, editor, lint, SDK, Typst, and an admitted Node user to the one workflow guide; it does not duplicate feature graphs. Each public package README contains only installation, one minimal successful example, surface-specific lifecycle/limits, and links to the authority; ABI field tables, capability lists, and text-measurement operations are generated or centralized under `docs/bindings/`. U6 rewrites FFI/native examples from ABI 3 rather than editing ABI 2 fields in place. U7 replaces the single-package multi-WASM README with lockstep browser-package installation docs and an explicit browser-versus-Node/SSR boundary. U8 removes internal Typst profile choice and pre-admission math claims from end-user docs. U14 adds Node documentation only for an admitted product; U15 either records Flutter Rust Bridge as the single admitted Flutter transport or removes the spike; rejected comparisons leave precise non-support statements rather than speculative install paths. Keep implementation/source-provenance READMEs unless a real public contract changed. Add `docs/development/PARSER_GENERATION.md` as the maintained source for grammar regeneration and freshness verification, linked from core and contribution documentation. Delete obsolete aliases, old Web surface artifacts, ABI-2 live symbols, unreachable commands, superseded build scripts, and migration code made obsolete by U1-U15.
+- **Test scenarios:** Every actor flow and acceptance example; user-guide examples compile/run; clean checkout generation; ignored/stale artifact rejection; all supported targets; missing package/feature/runtime capability; raw-preset versus observed-profile distinction; one profile/transport per release surface; old-name allowlist limited to live surfaces while allowing explanatory references in this plan, the migration table, changelog, and superseded ADR history; release preflight without credentials; previous package imports produce actionable migration errors; root/package README link and code-example validation; release VSIX installation documentation must not claim a Marketplace publication that is not available.
+- **Verification:** The Verification Contract passes from a clean tree, `git diff --check` is clean, generated projections are stable, and code/docs/build/release paths made obsolete or unreachable by U1-U15 are removed. Unrelated historical cleanup is not a completion blocker.
 
 ---
 
@@ -511,12 +614,14 @@ cargo nextest run --workspace --no-fail-fast
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test -p merman --doc
 cargo run -p xtask -- verify-capability-surface --strict
+cargo run -p xtask -- verify-artifact-profiles --strict
+cargo run -p xtask -- verify-transport-contracts --strict
 cargo run -p xtask -- verify-feature-matrix --strict
 cargo run -p xtask -- verify-feature-docs --strict
 cargo run -p xtask -- verify --strict
 ```
 
-The feature matrix must build every public leaf alone where valid, every named preset, all backend/policy pairs, and a bounded pairwise set. It must compare Cargo metadata, dependency exclusions, family capabilities, runtime capability IDs, package manifests, and generated projections. It must not rely on source substrings or feature names alone.
+The feature matrix must build every public leaf alone where valid, every named preset, all backend/policy pairs, and a bounded pairwise set. It must compare Cargo metadata, dependency exclusions, family capabilities, runtime capability IDs, package manifests, artifact profiles, transport contracts, and generated projections. It must distinguish an additive preset from a `default-features = false` artifact profile, derive missing-capability behavior from the capability descriptor, and fail the release fence for planned or migration-required profiles. It must not rely on source substrings or feature names alone.
 
 ### Behavior and upstream gates
 
@@ -546,7 +651,7 @@ npm run smoke:browser --prefix playground
 cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-Each `npm pack --json` result must contain exactly one WASM, exact legal/provenance inputs, the descriptor-selected wrapper, and no sibling surface artifact. After U11a-U11c, `@mermanjs/web` publishes its measured packed/unpacked delta from the current multi-artifact package; the 16 MB forecast is not an acceptance ceiling. Each retained slim package must remain at least 15 percent smaller unpacked than the measured full package and receives raw/gzip/brotli regression budgets from the final graph rather than a guessed percentage.
+Each `npm pack --json` result must contain exactly one WASM, exact legal/provenance inputs, the artifact-profile-selected wrapper, and no sibling surface artifact. After U11a-U11c, `@mermanjs/web` publishes its measured packed/unpacked delta from the current multi-artifact package; the 16 MB forecast is not an acceptance ceiling. Each retained slim package must remain at least 15 percent smaller unpacked than the measured full package and receives raw/gzip/brotli regression budgets from the final graph rather than a guessed percentage. Browser package tests explicitly prove that none claims a Node/SSR runtime.
 
 ### Typst and native binding gates
 
@@ -558,13 +663,22 @@ python scripts/verify-ffi-publish-surface.py
 python scripts/verify-release-surfaces.py
 ```
 
-Run the existing C header/link/dynamic-load suite, Python wheel generation and isolated smoke, Kotlin/Android package smoke, Apple XCFramework plus Swift smoke, Flutter analyze/build/package checks, and every ABI output/capability fixture. The native gate records peak RSS and copy counts for representative large SVG/PDF byte and sink paths and proves the convenience buffer is a collector over the same sink protocol. Missing optional local toolchains must be reported explicitly and may not be represented as passing.
+Run the existing C header/link/dynamic-load suite, Python wheel generation and isolated smoke, Kotlin/Android package smoke, Apple XCFramework plus Swift smoke, Flutter analyze/build/package checks, and every ABI output/capability fixture. The native gate records peak RSS and copy counts for representative large SVG/PDF byte and sink paths and proves the convenience buffer is a collector over the same sink protocol. It also verifies the C ABI, UniFFI, Android JNI, Flutter, and Apple/Python contract references rather than inferring transport from package names. Missing optional local toolchains must be reported explicitly and may not be represented as passing.
+
+### Node candidate gate
+
+U14 runs only after ABI 3 and the static-SVG profile exist. It executes both candidate transports against the same corpus/options/resource-profile fixtures and records cold/warm latency, RSS, package footprint, target installs, queue/dispose behavior, and typed errors. A public Node package exists only if the selected candidate has an observed artifact profile and transport contract for every shipped target; otherwise the comparison report is the gate output and the release contract rejects `@mermanjs/node` references.
+
+### Flutter transport gate
+
+U15 first validates generated `ffigen` bindings from the ABI-3 header and the handwritten Dart facade against the common ABI fixtures. Its private Flutter Rust Bridge comparison uses the same bindings-core corpus and records isolate responsiveness, lifecycle, async/cancellation semantics, streamed output, target packaging, generated-code drift, artifact footprint, and CI maintenance. It admits at most one Flutter transport; a losing candidate is deleted before the strict release gate runs.
 
 ### Closure and cleanup gates
 
-- Parser/editor/lint closures contain no render, bitmap/PDF, layout, math, network, system-time, random, or package-generator dependencies beyond the exact preset contract.
+- Parser/editor/lint closures contain no render, bitmap/PDF, layout, math, network, system-time, random, or package-generator dependencies beyond the exact artifact-profile contract.
 - SVG-only closures contain no image encoder or Krilla PDF backend. PNG contains no PDF backend. Production UniFFI contains no Cargo metadata. Published core contains no LALRPOP generator.
-- Every browser package contains one WASM; no root/full duplicate remains; Typst contains no browser/system imports.
+- Every browser package contains one WASM; no root/full duplicate remains; Typst contains no browser/system or pre-admission math imports.
+- Every release surface resolves to exactly one observed artifact profile and one transport contract. A raw `preset-*` declaration, a planned profile, a default-derived profile, or source-text evidence is insufficient for publication.
 - Old feature/package/ABI names are absent from live code, manifests, generated artifacts, package READMEs, and release commands. Explanatory occurrences remain allowed only in the migration table, changelog, this plan, and explicitly superseded ADR history.
 - `git diff --check` and generated-file freshness checks pass after all formatters and generators.
 
@@ -572,15 +686,15 @@ Run the existing C header/link/dynamic-load suite, Python wheel generation and i
 
 ## Definition of Done
 
-- R1-R34 and AE1-AE10 are satisfied with repository evidence, not documentation claims alone.
-- U1-U12 each meet their test scenarios and verification outcome in dependency order.
+- R1-R40 and AE1-AE14 are satisfied with repository evidence, not documentation claims alone.
+- U1-U15 each meet their test scenarios and verification outcome in dependency order.
 - Complete Mermaid 11.16 detector/parser/semantic/span/vocabulary behavior is invariant across every parser-capable preset; whenever analysis, editor, or LSP is compiled, it covers that same full catalog without a second semantic path.
 - Feature names are intuitive, additive, and capability-based; removed aliases and fake profiles are absent from live surfaces.
 - Runtime policy remains explicit and deterministic under an all-capabilities build.
 - ABI 3 has one canonical wire descriptor, layout digest, probe set, generic output/sink operation, and synchronized platform wrappers; it references the separate capability catalog, while live ABI-2 shapes are deleted and old/new hosts reject each other before unsafe calls. Diagnostics remains schema 1 and incompatible facts use schema 2 with explicit boundary tests.
-- CLI lint and default mmdc products have measured, enforced dependency closures and truthful help/capability output.
-- Browser users install one intended WASM package, Typst remains a closed pure-WASM transport, and package/size/release probes are exact.
+- CLI lint and default mmdc products have measured, enforced artifact-profile dependency closures and truthful help/capability output.
+- Browser users install one intended browser-only WASM package, Typst remains a closed pure-WASM transport without math until separately admitted, and package/size/release probes are exact. Node is either admitted from U14 evidence with target-specific packages or explicitly absent.
 - Deprecated/dead dependencies and downstream parser generation are removed; maintained dependency migrations and upstream ports have source, parity, target, legal, and size evidence.
 - All strict, platform, package, parity, security, legal, and documentation gates pass, or any unavailable external tool is named with the successful lower-level evidence that remains.
-- Abandoned approaches, temporary compatibility shims, duplicate descriptors, stale generated artifacts, obsolete docs, and dead code made obsolete, touched, or replaced by U1-U11c are removed before the final commit set; unrelated repository archaeology is not a completion blocker.
+- Abandoned approaches, temporary compatibility shims, duplicate descriptors, stale generated artifacts, obsolete docs, and dead code made obsolete, touched, or replaced by U1-U15 are removed before the final commit set; unrelated repository archaeology is not a completion blocker.
 - No push, package publication, tag, release, or PR is created by this plan's execution.
