@@ -54,7 +54,7 @@ npm run build:wasm:render --prefix platforms/web
 npm run build:wasm:render-only --prefix platforms/web
 npm run build:wasm:ascii --prefix platforms/web
 npm run build:wasm:full --prefix platforms/web
-npm run build:wasm:ratex-math --prefix platforms/web
+npm run build:wasm:math --prefix platforms/web
 ```
 
 The generated module exports `bindingCapabilities()`, `diagramFamilyCapabilities()`, and

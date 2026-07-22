@@ -173,14 +173,14 @@ pub(super) fn info_css_with_config(
     out
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub(super) struct ArchitectureCssParts {
     pub(super) css: String,
     pub(super) font_family: String,
     pub(super) font_size: f64,
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub(super) fn architecture_css_parts_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -268,7 +268,7 @@ pub(super) fn architecture_css_parts_with_config(
     }
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn architecture_css_with_config(
     diagram_id: &str,

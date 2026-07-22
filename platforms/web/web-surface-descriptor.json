@@ -99,9 +99,9 @@
       "features": [
         "analysis",
         "ascii",
-        "cytoscape-layout",
+        "layout-cytoscape",
         "editor-language",
-        "elk-layout",
+        "layout-elk",
         "render"
       ],
       "capabilities": {
@@ -121,7 +121,7 @@
       "features": [
         "analysis",
         "ascii",
-        "cytoscape-layout",
+        "layout-cytoscape",
         "editor-language",
         "render"
       ],
@@ -136,16 +136,16 @@
       }
     },
     {
-      "name": "browser-ratex-math",
+      "name": "browser-math",
       "surface": "browser",
       "default_features": false,
       "features": [
         "analysis",
         "ascii",
-        "cytoscape-layout",
+        "layout-cytoscape",
         "editor-language",
-        "elk-layout",
-        "ratex-math",
+        "layout-elk",
+        "math",
         "render"
       ],
       "capabilities": {

@@ -96,7 +96,7 @@ const expectedCrateDirectories = {
     "merman-wasm",
     "roughr",
   ],
-  "browser-ratex-math": [
+  "browser-math": [
     "dugong",
     "dugong-graphlib",
     "manatee",

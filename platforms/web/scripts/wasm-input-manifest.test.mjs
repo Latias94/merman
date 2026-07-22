@@ -67,7 +67,7 @@ describe("WASM input manifest", () => {
     rmSync(resolve(fixture, "crates/merman-core/src/new_module.rs"));
 
     const changedPreset = buildManifest(fixture, {
-      features: ["editor-language", "elk-layout"],
+      features: ["editor-language", "layout-elk"],
     });
     assert.notEqual(changedPreset.input_digest, manifest.input_digest);
     const changedTool = buildManifest(fixture, {}, { rustc: "rustc 1.96.0" });

@@ -409,7 +409,7 @@ mod tests {
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_handles_multiple_formulas_on_one_line() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
@@ -431,7 +431,7 @@ mod tests {
         assert!(height > 0.0, "expected positive measured height");
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_ignores_unclosed_delimiters_on_plain_lines() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();

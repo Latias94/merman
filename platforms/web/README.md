@@ -36,7 +36,7 @@ public subpath mappings; build, generated-surface, release, and size gates consu
 | `browser-editor` | `npm run build:wasm:editor --prefix platforms/web` | Full 35-family catalog, analysis, and parser-backed editor-language APIs without SVG rendering, ASCII, host capabilities, or ELK. |
 | `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
 | `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
-| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
+| `browser-math` | `npm run build:wasm:math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
 
 Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
 package. The TypeScript build first runs `npm run check:contracts --prefix platforms/web`, which

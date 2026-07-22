@@ -1473,7 +1473,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn flowchart_source_backed_elk_uses_exported_edge_label_position() {
         let model = model(
             vec![
@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn flowchart_source_backed_elk_recursively_lays_out_directed_subgraphs() {
         let mut model = model(
             vec![

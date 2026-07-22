@@ -127,7 +127,7 @@ pub(super) enum RootSizing {
     Mermaid {
         use_max_width: bool,
     },
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     MermaidOrIntrinsic {
         use_max_width: bool,
     },
@@ -174,7 +174,7 @@ impl RootViewportSpec {
         }
     }
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     pub(super) fn mermaid_or_intrinsic(bounds: DiagramBounds, use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -290,7 +290,7 @@ impl DeferredRootSpec {
         }
     }
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -360,11 +360,11 @@ impl<'a> RootViewportContext<'a> {
             | RootSizing::Mermaid {
                 use_max_width: true,
             } => true,
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => true,
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => false,
@@ -668,7 +668,7 @@ impl<'a> RootViewportContext<'a> {
             RootSizing::Mermaid {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
@@ -696,7 +696,7 @@ impl<'a> RootViewportContext<'a> {
                 let (width, height) = fixed_dimensions()?;
                 (false, Some(width), Some(height))
             }
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => (false, None, None),

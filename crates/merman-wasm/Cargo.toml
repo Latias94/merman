@@ -21,15 +21,15 @@ default = []
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]
-cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
-elk-layout = ["merman-bindings-core/elk-layout"]
+layout-cytoscape = ["merman-bindings-core/layout-cytoscape"]
+layout-elk = ["merman-bindings-core/layout-elk"]
 editor-language = [
   "analysis",
   "dep:merman-analysis",
   "dep:merman-editor-core",
   "merman-bindings-core/editor-language",
 ]
-ratex-math = ["render", "merman-bindings-core/ratex-math"]
+math = ["render", "merman-bindings-core/math"]
 
 [dependencies]
 console_error_panic_hook.workspace = true

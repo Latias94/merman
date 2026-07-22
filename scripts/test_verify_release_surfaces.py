@@ -306,8 +306,8 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
             )
             write(
                 root,
-                "platforms/web/pkg/ratex-math/package.json",
-                json.dumps({"name": "@mermanjs/web-ratex-math"}),
+                "platforms/web/pkg/math/package.json",
+                json.dumps({"name": "@mermanjs/web-math"}),
             )
             contract = {
                 "surfaces": [
@@ -889,25 +889,25 @@ def minimal_web_descriptor() -> dict:
         "browser-full": [
             "analysis",
             "ascii",
-            "cytoscape-layout",
+            "layout-cytoscape",
             "editor-language",
-            "elk-layout",
+            "layout-elk",
             "render",
         ],
         "browser-full-no-elk": [
             "analysis",
             "ascii",
-            "cytoscape-layout",
+            "layout-cytoscape",
             "editor-language",
             "render",
         ],
-        "browser-ratex-math": [
+        "browser-math": [
             "analysis",
             "ascii",
-            "cytoscape-layout",
+            "layout-cytoscape",
             "editor-language",
-            "elk-layout",
-            "ratex-math",
+            "layout-elk",
+            "math",
             "render",
         ],
     }
@@ -958,7 +958,7 @@ def web_contract() -> dict:
                 "browser-editor",
                 "browser-full",
                 "browser-full-no-elk",
-                "browser-ratex-math",
+                "browser-math",
             ],
             "web_auxiliary_exports": {
                 ".": {"import": "./dist/index.js", "types": "./dist/index.d.ts"},
@@ -1027,10 +1027,10 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         analysis = []
         ascii = []
         render = []
-        cytoscape-layout = []
-        elk-layout = []
+        layout-cytoscape = []
+        layout-elk = []
         editor-language = ["analysis"]
-        ratex-math = ["render"]
+        math = ["render"]
         """,
     )
     for subdir in ["core", "render", "render-only", "ascii", "editor", "full"]:
@@ -1048,7 +1048,7 @@ def preset_capabilities(features: list[str]) -> dict[str, bool]:
     enabled = set(features)
     if "editor-language" in enabled:
         enabled.add("analysis")
-    if "ratex-math" in enabled:
+    if "math" in enabled:
         enabled.add("render")
     return {
         capability: feature in enabled

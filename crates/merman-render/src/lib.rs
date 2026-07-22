@@ -6,9 +6,9 @@
 //! - a layout JSON (geometry + routes)
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub mod architecture;
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub(crate) mod architecture_metrics;
 pub mod block;
 pub mod c4;
@@ -33,7 +33,6 @@ pub mod journey;
 pub mod kanban;
 pub mod math;
 mod mermaid_style;
-#[cfg(feature = "cytoscape-layout")]
 pub mod mindmap;
 pub mod model;
 pub mod packet;
@@ -61,13 +60,13 @@ pub mod xychart;
 pub mod zenuml;
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
-pub const fn cytoscape_layout_available() -> bool {
-    cfg!(feature = "cytoscape-layout")
+pub const fn layout_cytoscape_available() -> bool {
+    cfg!(feature = "layout-cytoscape")
 }
 
 /// Reports whether the ELK layout backend is present in this compiled renderer.
-pub const fn elk_layout_available() -> bool {
-    cfg!(feature = "elk-layout")
+pub const fn layout_elk_available() -> bool {
+    cfg!(feature = "layout-elk")
 }
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
@@ -87,6 +86,13 @@ pub use resources::{
 pub enum Error {
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
+    #[error(
+        "compiled renderer lacks capability `{capability}` required by diagram `{diagram_type}`"
+    )]
+    MissingCapability {
+        capability: &'static str,
+        diagram_type: String,
+    },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
     #[error(
@@ -181,12 +187,12 @@ impl<'a> LayoutExecution<'a> {
         self.session.local_time_zone()
     }
 
-    #[cfg(any(feature = "cytoscape-layout", feature = "elk-layout"))]
+    #[cfg(any(feature = "layout-cytoscape", feature = "layout-elk"))]
     pub(crate) fn operation_seed(&self) -> u64 {
         self.session.render_seed().get()
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     pub(crate) fn elk_random_policy(&self) -> merman_layout_elk::ElkRandomPolicy {
         // The ELK source port applies its own stable ELK-specific domain and graph-path
         // derivation. This root key merely keeps every layout backend tied to one immutable
@@ -221,7 +227,7 @@ pub(crate) fn layout_class_typed_by_engine(
     class::layout_class_diagram_typed_with_config(model, effective_config, options.text_measurer())
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn layout_class_elk_typed_by_feature(
     _diagram_type: &str,
     model: &ClassDiagram,
@@ -237,14 +243,15 @@ fn layout_class_elk_typed_by_feature(
     )
 }
 
-#[cfg(not(feature = "elk-layout"))]
+#[cfg(not(feature = "layout-elk"))]
 fn layout_class_elk_typed_by_feature(
     diagram_type: &str,
     _model: &ClassDiagram,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    Err(Error::UnsupportedDiagram {
+    Err(Error::MissingCapability {
+        capability: "layout-elk",
         diagram_type: diagram_type.to_string(),
     })
 }
@@ -272,7 +279,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     )
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
@@ -288,14 +295,15 @@ fn layout_flowchart_elk_typed_by_feature(
     )
 }
 
-#[cfg(not(feature = "elk-layout"))]
+#[cfg(not(feature = "layout-elk"))]
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    Err(Error::UnsupportedDiagram {
+    Err(Error::MissingCapability {
+        capability: "layout-elk",
         diagram_type: diagram_type.to_string(),
     })
 }
@@ -304,10 +312,10 @@ fn layout_flowchart_elk_typed_by_feature(
 mod tests {
     use super::*;
     use merman_core::{Engine, ParseOptions};
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn flowchart_layout(
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
@@ -325,7 +333,7 @@ mod tests {
         .expect("flowchart layout")
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn class_layout(
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
@@ -363,7 +371,7 @@ mod tests {
             .to_owned()
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_random_policy_is_operation_owned_and_replayable() {
         fn resolve(seed: u64, graph_path: &[&str], invocation: u64) -> i64 {
@@ -388,7 +396,7 @@ mod tests {
         assert_ne!(resolve(17, &["root"], 0), resolve(17, &["root"], 1));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -410,7 +418,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -438,7 +446,7 @@ A-->B
         assert!(b.y > a.y);
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_rejects_flowchart_over_node_resource_limit() {
         let parsed = Engine::new()
@@ -471,7 +479,7 @@ A-->B
         assert_eq!(limit.limit, "max_flowchart_nodes");
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_uses_elk_for_class_layout_config() {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -508,7 +516,7 @@ Animal <|-- Duck
         );
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_model_dispatch_rejects_class_over_node_resource_limit() {
         let parsed = Engine::new()
@@ -540,7 +548,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_class_nodes");
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn typed_dispatch_rejects_flowchart_over_edge_resource_limit() {
         let parsed = Engine::new()
@@ -572,7 +580,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_flowchart_edges");
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn typed_dispatch_rejects_class_over_edge_resource_limit() {
         let parsed = Engine::new()
@@ -604,7 +612,7 @@ Animal <|-- Duck
         assert_eq!(limit.limit, "max_class_edges");
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn canonical_svg_preserves_flowchart_elk_roledescription() {
         let svg = render_source(
@@ -645,7 +653,7 @@ Animal <|-- Duck
         assert!(edges_pos < labels_pos);
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn canonical_svg_uses_elk_adapter_dom_for_flowchart_layout_elk() {
         let svg = render_source(
@@ -658,20 +666,20 @@ A{A} --> B & C
 "#,
             &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
-                diagram_id: Some("elk-layout-smoke".to_string()),
+                diagram_id: Some("layout-elk-smoke".to_string()),
                 ..Default::default()
             },
         );
 
         assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
-        assert!(svg.contains("elk-layout-smoke_flowchart-v2-pointEnd"));
+        assert!(svg.contains("layout-elk-smoke_flowchart-v2-pointEnd"));
         assert!(!svg.contains(r#"<g class="root""#));
 
         let marker_pos = svg
-            .find(r#"<g><marker id="elk-layout-smoke_flowchart-v2-pointEnd""#)
+            .find(r#"<g><marker id="layout-elk-smoke_flowchart-v2-pointEnd""#)
             .expect("ELK marker group");
         let defs_pos = svg
-            .find(r#"<defs><filter id="elk-layout-smoke-drop-shadow""#)
+            .find(r#"<defs><filter id="layout-elk-smoke-drop-shadow""#)
             .expect("ELK shadow defs");
         let subgraphs_pos = svg
             .find(r#"<g class="subgraphs"/>"#)
@@ -691,7 +699,7 @@ A{A} --> B & C
         assert!(edges_pos < labels_pos);
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn canonical_svg_uses_right_angle_edges_for_flowchart_elk() {
         let svg = render_source(
@@ -708,7 +716,7 @@ A{A} --> B & C
         );
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn canonical_svg_keeps_source_ported_elk_rect_edge_boundary_points() {
         let svg = render_source(
@@ -742,7 +750,7 @@ id1(Start)-->id2(Stop)
         assert_eq!(points[1], (117.015625, 39.0));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn canonical_svg_keeps_source_ported_elk_self_loop_edges() {
         let svg = render_source(
@@ -770,7 +778,7 @@ id1(Start)-->id2(Stop)
         assert!(svg.contains(r#"data-id="L_A_A_0" transform="translate(0,0)""#));
     }
 
-    #[cfg(not(feature = "elk-layout"))]
+    #[cfg(not(feature = "layout-elk"))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -791,11 +799,12 @@ id1(Start)-->id2(Stop)
         };
         assert!(matches!(
             err,
-            Error::UnsupportedDiagram { diagram_type } if diagram_type == "flowchart-elk"
+            Error::MissingCapability { capability: "layout-elk", diagram_type }
+                if diagram_type == "flowchart-elk"
         ));
     }
 
-    #[cfg(not(feature = "elk-layout"))]
+    #[cfg(not(feature = "layout-elk"))]
     #[test]
     fn render_model_dispatch_rejects_class_elk_without_feature() {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -821,7 +830,8 @@ Animal <|-- Duck
         };
         assert!(matches!(
             err,
-            Error::UnsupportedDiagram { diagram_type } if diagram_type == "class"
+            Error::MissingCapability { capability: "layout-elk", diagram_type }
+                if diagram_type == "class"
         ));
     }
 
@@ -946,7 +956,7 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         );
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
         let id_attr = format!(r#"id="merman-{edge_id}""#);
         let id_start = svg.find(&id_attr).expect("edge id");
@@ -955,14 +965,14 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         &svg[path_start..path_end]
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn edge_path_d(path: &str) -> &str {
         let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
         let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
         &path[d_start..d_end]
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn edge_attr_value<'a>(path: &'a str, attr: &str) -> &'a str {
         let needle = format!(r#"{attr}=""#);
         let start = path.find(&needle).expect("edge attr") + needle.len();
@@ -970,7 +980,7 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         &path[start..end]
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     fn edge_data_points(path: &str) -> Vec<(f64, f64)> {
         use base64::Engine as _;
 

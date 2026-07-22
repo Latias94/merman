@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(preset.surface, Surface::Typst);
         assert_eq!(
             feature_names(preset),
-            vec!["render", "analysis", "cytoscape-layout", "elk-layout"]
+            vec!["render", "analysis", "layout-cytoscape", "layout-elk"]
         );
         assert!(preset.no_default_features);
     }
@@ -712,11 +712,7 @@ mod tests {
     fn typst_matrix_does_not_publish_the_host_font_ratex_surface() {
         let all_presets = all_presets().unwrap();
 
-        assert!(
-            all_presets
-                .iter()
-                .all(|preset| preset.name != "typst-ratex-math")
-        );
+        assert!(all_presets.iter().all(|preset| preset.name != "typst-math"));
     }
 
     #[test]

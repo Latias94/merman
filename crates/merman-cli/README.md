@@ -188,7 +188,7 @@ printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | merman-cli render --math-rendere
 
 Use `--no-default-features` only when you intentionally want to exclude default binary capabilities
 such as RaTeX and ASCII/Unicode. In that build, `--math-renderer ratex` remains unavailable unless
-the `ratex-math` feature is enabled explicitly, and ASCII/Unicode output remains unavailable unless
+the `math` feature is enabled explicitly, and ASCII/Unicode output remains unavailable unless
 the `ascii` feature is enabled explicitly.
 
 ### Developer Subcommands

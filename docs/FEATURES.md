@@ -37,19 +37,19 @@ process state themselves.
 | Product family | Features | Meaning |
 | --- | --- | --- |
 | `merman` | `render`, `ascii` | Typed layout/SVG and terminal-oriented output. |
-| `merman` | `cytoscape-layout`, `elk-layout` | Optional named layout engines. They imply `render`; use them when the selected diagram/layout requires that engine. |
-| `merman` | `ratex-math`, `raster` | Optional math rendering and PNG/JPEG/PDF conversion. `raster` is an umbrella for all current bitmap/PDF backends. |
+| `merman` | `layout-cytoscape`, `layout-elk` | Optional named layout engines. They imply `render`; use them when the selected diagram/layout requires that engine. |
+| `merman` | `math`, `raster` | Optional math rendering and PNG/JPEG/PDF conversion. `raster` is an umbrella for all current bitmap/PDF backends. |
 | `merman-analysis` | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional system adapters only; analysis semantics are always complete when this crate is present. |
 | `merman-editor-core` | matching `system-*` features | Optional system adapters only; it consumes the complete parser-backed facts catalog. |
 | `merman-lsp` | `stdio`, matching `system-*` features | `stdio` builds the bundled binary; the library remains protocol-neutral without it. |
 | `merman-bindings-core` | `analysis`, `render`, `ascii` | Shared native binding entry points. `editor-language` implies `analysis`. |
-| `merman-bindings-core` | `cytoscape-layout`, `elk-layout`, `ratex-math`, `raster` | Forwards optional render backends to native bindings. |
-| `merman-ffi` / `merman-uniffi` | `analysis`, `render`, `ascii`, `cytoscape-layout`, `elk-layout`, `ratex-math`, `raster` | Native transport products. Public symbols remain shape-stable and report an unsupported capability when the relevant product is absent. |
+| `merman-bindings-core` | `layout-cytoscape`, `layout-elk`, `math`, `raster` | Forwards optional render backends to native bindings. |
+| `merman-ffi` / `merman-uniffi` | `analysis`, `render`, `ascii`, `layout-cytoscape`, `layout-elk`, `math`, `raster` | Native transport products. Public symbols remain shape-stable and report an unsupported capability when the relevant product is absent. |
 | `merman-wasm` | `analysis`, `render`, `ascii`, `editor-language` | Browser wasm-bindgen products. `editor-language` implies `analysis`. |
-| `merman-wasm` | `cytoscape-layout`, `elk-layout`, `ratex-math` | Browser render backend choices. |
-| `merman-typst-plugin` | `render`, `analysis`, `cytoscape-layout`, `elk-layout` | Typst product leaves. The crate has no defaults and exposes no system adapters. Its publish recipe is defined by the artifact profile. |
+| `merman-wasm` | `layout-cytoscape`, `layout-elk`, `math` | Browser render backend choices. |
+| `merman-typst-plugin` | `render`, `analysis`, `layout-cytoscape`, `layout-elk` | Typst product leaves. The crate has no defaults and exposes no system adapters. Its publish recipe is defined by the artifact profile. |
 
-The `cytoscape-layout` and `elk-layout` features name user-observable Mermaid layout behavior, not
+The `layout-cytoscape` and `layout-elk` features name user-observable Mermaid layout behavior, not
 implementation crates. Do not infer family availability from them: semantic recognition is always
 available, while a missing optional backend currently fails through the render boundary. U4 makes
 that failure a stable typed missing-capability result.
@@ -67,7 +67,7 @@ merman-analysis = { version = "0.8.0-alpha.3", default-features = false }
 merman-lsp = { version = "0.8.0-alpha.3", default-features = false }
 
 # Render with an optional layout engine.
-merman = { version = "0.8.0-alpha.3", features = ["render", "elk-layout"] }
+merman = { version = "0.8.0-alpha.3", features = ["render", "layout-elk"] }
 ```
 
 WASM and Typst packaging should use their checked-in surface descriptors rather than hand-assembling

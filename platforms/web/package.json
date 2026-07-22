@@ -109,7 +109,7 @@
     "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
     "build:wasm:editor": "node scripts/build-wasm.mjs --preset browser-editor --out-dir-rel pkg/editor",
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
-    "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
+    "build:wasm:math": "node scripts/build-wasm.mjs --preset browser-math",
     "verify:wasm-inputs": "node scripts/verify-wasm-inputs.mjs",
     "test:wasm-inputs": "node --test scripts/wasm-input-manifest.test.mjs scripts/wasm-input-closure.test.mjs scripts/verify-wasm-inputs.test.mjs scripts/wasm-build-transaction.test.mjs scripts/package-ownership.test.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",

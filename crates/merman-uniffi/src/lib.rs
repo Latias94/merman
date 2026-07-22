@@ -1248,7 +1248,7 @@ mod tests {
         assert!(svg.contains("World"));
     }
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     #[test]
     fn complete_uniffi_build_renders_architecture() {
         let svg = engine()

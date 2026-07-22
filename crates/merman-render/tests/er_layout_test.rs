@@ -116,7 +116,7 @@ fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
     assert!((helper_2.y - line_item.y).abs() < 1e-9);
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn er_layout_config_selects_source_ported_elk_geometry() {
     let elk_source = r#"---

@@ -205,8 +205,8 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 | `ascii` | ASCII and Unicode output |
 | `raster` | PNG/JPG raster images and vector PDF export |
 | `analysis` | Diagnostics and lint metadata on transport crates |
-| `elk-layout` | Source-translated ELK layered layout |
-| `ratex-math` | Pure-Rust math layout and embedded KaTeX font assets |
+| `layout-elk` | Source-translated ELK layered layout |
+| `math` | Pure-Rust math layout and embedded KaTeX font assets |
 | `system-clock` | Capture wall-clock values into an operation policy |
 | `system-timezone` | Resolve a complete system time zone, including DST rules |
 | `system-random` | Seed an operation from the operating system |

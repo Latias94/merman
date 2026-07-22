@@ -1,12 +1,12 @@
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-#[cfg(feature = "cytoscape-layout")]
-use crate::model::{ArchitectureDiagramLayout, MindmapDiagramLayout};
+#[cfg(feature = "layout-cytoscape")]
+use crate::model::ArchitectureDiagramLayout;
 use crate::model::{
     BlockDiagramLayout, Bounds, ClassDiagramLayout, CynefinDiagramLayout, ErDiagramLayout,
     ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
-    IshikawaDiagramLayout, LayoutCluster, LayoutNode, PacketDiagramLayout, PieDiagramLayout,
-    QuadrantChartDiagramLayout, RadarDiagramLayout, RailroadDiagramLayout,
+    IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
+    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RailroadDiagramLayout,
     RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout,
     TimelineDiagramLayout, TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
 };
@@ -17,7 +17,7 @@ use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::fmt::Write as _;
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 mod architecture;
 mod block;
 mod c4;
@@ -37,7 +37,6 @@ mod ishikawa;
 mod journey;
 mod kanban;
 mod layout_debug;
-#[cfg(feature = "cytoscape-layout")]
 mod mindmap;
 mod packet;
 mod path_bounds;
@@ -67,7 +66,6 @@ use css::{
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-#[cfg(feature = "cytoscape-layout")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
@@ -487,7 +485,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
-        #[cfg(feature = "cytoscape-layout")]
+        #[cfg(feature = "layout-cytoscape")]
         BuiltinFamilyArtifact::Architecture(pair) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
                 pair.layout(),
@@ -535,7 +533,6 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        #[cfg(feature = "cytoscape-layout")]
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
                 pair.layout(),

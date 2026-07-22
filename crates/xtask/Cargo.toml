@@ -25,8 +25,8 @@ merman-editor-core.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true
 merman-render = { path = "../merman-render", features = [
-    "cytoscape-layout",
-    "elk-layout",
+    "layout-cytoscape",
+    "layout-elk",
     "font-metrics-generation",
 ] }
 merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false }

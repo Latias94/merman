@@ -29,7 +29,7 @@ fn layout_flowchart_render_model(
         || parsed.metadata().effective_config.get_str("layout") == Some("elk");
 
     if uses_elk {
-        #[cfg(feature = "elk-layout")]
+        #[cfg(feature = "layout-elk")]
         {
             return merman_render::flowchart::elk::layout_flowchart_elk_typed(
                 model,
@@ -38,7 +38,7 @@ fn layout_flowchart_render_model(
                 session.math_renderer(),
             );
         }
-        #[cfg(not(feature = "elk-layout"))]
+        #[cfg(not(feature = "layout-elk"))]
         {
             return Err(Error::UnsupportedDiagram {
                 diagram_type: parsed.metadata().diagram_type.clone(),
@@ -154,7 +154,7 @@ fn flowchart_dagre_preserves_operation_computed_length_precision() {
     assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_elk_preserves_operation_computed_length_precision() {
     let parsed = parse_flowchart_render_model(

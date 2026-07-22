@@ -135,7 +135,7 @@ mod tests {
         assert!(svg.contains("World"));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_svg_returns_svg_for_flowchart_elk() {
         let svg =
@@ -148,14 +148,14 @@ mod tests {
         assert!(!svg.contains("NaN"));
     }
 
-    #[cfg(not(feature = "elk-layout"))]
+    #[cfg(not(feature = "layout-elk"))]
     #[test]
     fn render_svg_flowchart_elk_follows_the_resolved_dependency_feature_set() {
         let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
         match result {
             Ok(svg) => {
-                // Cargo can unify `merman/elk-layout` from another selected workspace package even
+                // Cargo can unify `merman/layout-elk` from another selected workspace package even
                 // when the binding facade's own feature is disabled.
                 let svg = String::from_utf8(svg).expect("SVG is UTF-8");
                 assert!(svg.contains("<svg"));
@@ -1051,7 +1051,7 @@ Missing ref: id2,after missing,1d
             br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
-        if cfg!(feature = "ratex-math") {
+        if cfg!(feature = "math") {
             assert!(result.is_ok());
         } else {
             let err = result.unwrap_err();

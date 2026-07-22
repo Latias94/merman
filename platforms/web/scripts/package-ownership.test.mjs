@@ -29,20 +29,20 @@ describe("published WASM package ownership", () => {
 
   it("fails closed for stale or undeclared package directories", () => {
     const root = fixtureRoot();
-    mkdirSync(path.join(root, "ratex-math"));
+    mkdirSync(path.join(root, "math"));
     mkdirSync(path.join(root, "full-no-elk"));
     assert.throws(
       () => assertPackageOutputOwnership(root),
-      /pkg\/full-no-elk[\s\S]*pkg\/ratex-math/,
+      /pkg\/full-no-elk[\s\S]*pkg\/math/,
     );
   });
 
   it("lets a root rebuild remove only unowned generated directories", () => {
     const root = fixtureRoot();
     mkdirSync(path.join(root, "editor"));
-    mkdirSync(path.join(root, "ratex-math"));
+    mkdirSync(path.join(root, "math"));
     mkdirSync(path.join(root, ".editor.merman-wasm.lock"));
-    assert.deepEqual(pruneUnownedGeneratedDirectories(root), ["ratex-math"]);
+    assert.deepEqual(pruneUnownedGeneratedDirectories(root), ["math"]);
     assert.throws(() => assertPackageOutputOwnership(root), /\.editor\.merman-wasm\.lock/);
   });
 

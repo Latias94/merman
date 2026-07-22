@@ -13,17 +13,17 @@
 produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
 Mermaid-compatible language configuration and sanitizer behavior are always available. The default
-build enables `cytoscape-layout`, the shared Architecture FCoSE and Mindmap COSE-Bilkent
+build enables `layout-cytoscape`, the shared Architecture FCoSE and Mindmap COSE-Bilkent
 implementation backed by `manatee`. When that backend is enabled, Architecture and non-`tidy-tree`
 Mindmap diagrams use those source-backed layouts. Builds without it report those families as
 unsupported while retaining their parsing and semantic capabilities. Disable default features for
-Typst and other size-sensitive pure-wasm consumers, then enable `cytoscape-layout` when those
+Typst and other size-sensitive pure-wasm consumers, then enable `layout-cytoscape` when those
 diagram families need rendering. Enable the `host` feature when you want host clock access,
 host-seeded timing, and host randomness for diagnostic or browser-oriented builds.
 
-ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate and in
+ELK integration is kept behind the explicit `layout-elk` feature in this low-level crate and in
 the public `merman` facade. A plain `render` build does not pull it in; callers that need ELK must
-enable `elk-layout` explicitly. When enabled, Flowchart ELK, Class, and ER layout use the sole
+enable `layout-elk` explicitly. When enabled, Flowchart ELK, Class, and ER layout use the sole
 source-backed Rust implementation of Mermaid's ELK adapter and Eclipse ELK layered pipeline; no
 compatibility backend or runtime selector is retained.
 

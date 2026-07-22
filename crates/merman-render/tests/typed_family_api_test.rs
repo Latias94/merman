@@ -59,7 +59,7 @@ fn xychart_exposes_its_typed_layout_entry() {
     assert!(!layout.drawables.is_empty());
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("architecture-beta\n  service api(server)[API]\n");
@@ -78,9 +78,9 @@ fn architecture_prepared_artifact_renders_the_typed_family() {
     assert!(svg.svg().contains(r#"id="typed-architecture-service-api""#));
 }
 
-#[cfg(not(feature = "cytoscape-layout"))]
+#[cfg(not(feature = "layout-cytoscape"))]
 #[test]
-fn architecture_requires_the_cytoscape_layout_feature() {
+fn architecture_reports_the_missing_cytoscape_layout_capability() {
     let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
         "architecture",
         "architecture-beta\n  service api(server)[API]\n",
@@ -92,38 +92,47 @@ fn architecture_requires_the_cytoscape_layout_feature() {
     };
     let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
         Err(error) => error,
-        Ok(_) => panic!("Architecture must be rejected without cytoscape-layout"),
+        Ok(_) => panic!("Architecture must be rejected without layout-cytoscape"),
     };
 
-    assert!(matches!(
-        error,
-        merman_render::Error::UnsupportedDiagram { ref diagram_type }
-            if diagram_type == "architecture"
-    ));
+    assert_eq!(
+        error.to_string(),
+        "compiled renderer lacks capability `layout-cytoscape` required by diagram `architecture`"
+    );
 }
 
-#[cfg(not(feature = "cytoscape-layout"))]
+#[cfg(not(feature = "layout-cytoscape"))]
 #[test]
-fn mindmap_requires_the_cytoscape_layout_feature() {
+fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
     let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
         "mindmap",
-        "mindmap\n  Root\n    Child\n",
+        "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
         ParseOptions::strict(),
     ) {
         Ok(Some(parsed)) => parsed,
         Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
         result => panic!("unexpected Mindmap parse result: {result:?}"),
     };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+        .expect("tidy-tree Mindmap must not require layout-cytoscape");
+    assert_eq!(artifact.family_kind().as_str(), "mindmap");
+}
+
+#[cfg(not(feature = "layout-elk"))]
+#[test]
+fn elk_flowchart_reports_the_missing_layout_capability() {
+    let parsed = parse_for_render(
+        "---\nconfig:\n  layout: elk\n---\nflowchart TD\n  start[Start] --> finish[Finish]\n",
+    );
     let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
         Err(error) => error,
-        Ok(_) => panic!("Mindmap must be rejected without cytoscape-layout"),
+        Ok(_) => panic!("ELK Flowchart must be rejected without layout-elk"),
     };
 
-    assert!(matches!(
-        error,
-        merman_render::Error::UnsupportedDiagram { ref diagram_type }
-            if diagram_type == "mindmap"
-    ));
+    assert_eq!(
+        error.to_string(),
+        "compiled renderer lacks capability `layout-elk` required by diagram `flowchart-v2`"
+    );
 }
 
 #[test]

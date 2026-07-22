@@ -261,47 +261,58 @@ fn layout_mindmap_diagram_model(
 
     let use_tidy_tree =
         config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree");
-    let mut tidy_tree_edges = None;
-    if use_tidy_tree {
-        tidy_tree_edges = Some(tidy_tree::layout(
+    let tidy_tree_edges = if use_tidy_tree {
+        Some(tidy_tree::layout(
             &mut nodes,
             &model.nodes,
             &model.edges,
             &edge_indices,
-        )?);
+        )?)
     } else {
-        let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
-            .iter()
-            .map(|n| manatee::algo::cose_bilkent::IndexedNode {
-                width: n.width,
-                height: n.height,
-                x: n.x,
-                y: n.y,
-            })
-            .collect();
-        let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
-            Vec::with_capacity(model.edges.len());
-        for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
-            if a == b {
-                continue;
+        #[cfg(feature = "layout-cytoscape")]
+        {
+            let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
+                .iter()
+                .map(|n| manatee::algo::cose_bilkent::IndexedNode {
+                    width: n.width,
+                    height: n.height,
+                    x: n.x,
+                    y: n.y,
+                })
+                .collect();
+            let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
+                Vec::with_capacity(model.edges.len());
+            for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
+                if a == b {
+                    continue;
+                }
+                indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
+
+                // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
+                // enhance indexed validation error messages.
+                let _ = edge_idx;
             }
-            indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
 
-            // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
-            // enhance indexed validation error messages.
-            let _ = edge_idx;
+            let positions =
+                manatee::algo::cose_bilkent::layout_indexed(&indexed_nodes, &indexed_edges)
+                    .map_err(|e| Error::InvalidModel {
+                        message: format!("manatee layout failed: {e}"),
+                    })?;
+
+            for (n, p) in nodes.iter_mut().zip(positions) {
+                n.x = p.x;
+                n.y = p.y;
+            }
+            None
         }
-
-        let positions = manatee::algo::cose_bilkent::layout_indexed(&indexed_nodes, &indexed_edges)
-            .map_err(|e| Error::InvalidModel {
-                message: format!("manatee layout failed: {e}"),
-            })?;
-
-        for (n, p) in nodes.iter_mut().zip(positions) {
-            n.x = p.x;
-            n.y = p.y;
+        #[cfg(not(feature = "layout-cytoscape"))]
+        {
+            return Err(Error::MissingCapability {
+                capability: "layout-cytoscape",
+                diagram_type: "mindmap".to_string(),
+            });
         }
-    }
+    };
 
     // Mermaid's COSE-Bilkent post-layout normalizes to a positive coordinate space via
     // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before

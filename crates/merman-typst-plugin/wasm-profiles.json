@@ -70,7 +70,7 @@
     {
       "name": "typst-full-elk",
       "aliases": ["publish"],
-      "features": ["render", "analysis", "cytoscape-layout", "elk-layout"],
+      "features": ["render", "analysis", "layout-cytoscape", "layout-elk"],
       "capabilities": {
         "render": true,
         "analysis": true,

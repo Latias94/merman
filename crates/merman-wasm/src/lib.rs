@@ -774,8 +774,8 @@ mod tests {
             capabilities.system_adapter_ids.is_empty(),
             "browser WASM must not claim native system adapters"
         );
-        assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
-        assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
+        assert_eq!(capabilities.elk_layout, cfg!(feature = "layout-elk"));
+        assert_eq!(capabilities.ratex_math, cfg!(feature = "math"));
         assert_eq!(
             capabilities.editor_language,
             cfg!(feature = "editor-language")

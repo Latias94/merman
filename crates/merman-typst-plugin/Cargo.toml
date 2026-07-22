@@ -20,8 +20,8 @@ crate-type = ["cdylib", "rlib"]
 default = []
 analysis = ["merman-bindings-core/analysis", "dep:serde_json"]
 render = ["merman-bindings-core/render", "dep:serde_json"]
-cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
-elk-layout = ["merman-bindings-core/elk-layout"]
+layout-cytoscape = ["merman-bindings-core/layout-cytoscape"]
+layout-elk = ["merman-bindings-core/layout-elk"]
 
 [dependencies]
 merman-bindings-core.workspace = true

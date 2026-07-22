@@ -11,7 +11,7 @@ use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::sequence::layout_sequence_diagram_typed_with_title;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use std::sync::Arc;
 
 fn workspace_root() -> PathBuf {
@@ -1244,7 +1244,7 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn sequence_svg_renders_ratex_math_message_and_note_end_to_end() {
     let text = r#"sequenceDiagram
@@ -1283,7 +1283,7 @@ Note right of B: $$x^2$$
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
     let path = workspace_root()

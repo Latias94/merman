@@ -34,7 +34,7 @@
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
 //! - `raster`: PNG/JPG raster images and vector PDF output through
 //!   `merman::render::raster`; this implies `render`.
-//! - `ratex-math`: pure-Rust math label rendering for the SVG path; this implies
+//! - `math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `render`.
 //!
 //! The default feature set keeps Mermaid-compatible full core parsing and host

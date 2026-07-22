@@ -72,15 +72,15 @@ WEB_RUNTIME_PROFILES = {"core", "render", "render-only", "ascii", "editor", "ful
 EVIDENCE_ONLY_WEB_PRESETS = {
     "browser-bridge",
     "browser-full-no-elk",
-    "browser-ratex-math",
+    "browser-math",
 }
 WEB_CAPABILITY_FEATURES = {
     "render": "render",
     "analysis": "analysis",
     "ascii": "ascii",
-    "cytoscape_layout": "cytoscape-layout",
-    "elk_layout": "elk-layout",
-    "ratex_math": "ratex-math",
+    "cytoscape_layout": "layout-cytoscape",
+    "elk_layout": "layout-elk",
+    "ratex_math": "math",
     "editor_language": "editor-language",
 }
 WEB_RUNTIME_CAPABILITIES = {
@@ -1051,7 +1051,7 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
         )
 
     wasm_features = cargo_features(root, "crates/merman-wasm/Cargo.toml")
-    for feature in ["analysis", "ascii", "render", "cytoscape-layout", "elk-layout", "editor-language", "ratex-math"]:
+    for feature in ["analysis", "ascii", "render", "layout-cytoscape", "layout-elk", "editor-language", "math"]:
         if feature not in wasm_features:
             fail("crates/merman-wasm/Cargo.toml", f"missing wasm feature {feature}")
     for preset in descriptor["presets"]:

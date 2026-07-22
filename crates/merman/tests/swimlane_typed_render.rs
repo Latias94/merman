@@ -390,7 +390,7 @@ fn line_hops_run_after_neo_and_hand_drawn_edge_construction() {
     );
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn explicit_elk_override_uses_the_flowchart_artifact() {
     let source = format!("---\nconfig:\n  layout: elk\n---\n{}", DOCS_BASIC);

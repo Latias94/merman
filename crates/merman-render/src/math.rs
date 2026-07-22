@@ -5,9 +5,9 @@
 //! optional, pluggable backend.
 //!
 //! The default implementation is a no-op. For parity work, a Node.js-backed KaTeX renderer is
-//! provided, and the `ratex-math` feature enables a pure-Rust RaTeX renderer for supported labels.
+//! provided, and the `math` feature enables a pure-Rust RaTeX renderer for supported labels.
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
@@ -84,7 +84,7 @@ impl MathRenderer for NoopMathRenderer {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DelimitedMathFragment<'a> {
     pub(crate) leading_text: &'a str,
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     pub(crate) formula: &'a str,
     pub(crate) delimited: &'a str,
 }
@@ -109,7 +109,7 @@ pub(crate) fn parse_delimited_math_line(text: &str) -> Option<DelimitedMathLine<
         let end = end_start + 2;
         fragments.push(DelimitedMathFragment {
             leading_text: &text[search_from..start],
-            #[cfg(feature = "ratex-math")]
+            #[cfg(feature = "math")]
             formula: &text[content_start..end_start],
             delimited: &text[start..end],
         });
@@ -127,11 +127,11 @@ pub(crate) fn parse_delimited_math_line(text: &str) -> Option<DelimitedMathLine<
 /// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a
 /// single `$$...$$` formula. Sequence additionally supports formulas embedded in surrounding
 /// prose, matching Mermaid's `drawKatex(...)` shell.
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RatexMathRenderer;
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[derive(Debug, Clone)]
 struct RatexRenderedMath {
     width_em: f64,
@@ -139,7 +139,7 @@ struct RatexRenderedMath {
     line_count: usize,
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 impl RatexMathRenderer {
     fn normalized_text(text: &str) -> String {
         text.replace("\\\\", "\\")
@@ -286,7 +286,7 @@ impl RatexMathRenderer {
     }
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 impl MathRenderer for RatexMathRenderer {
     fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
         if !text.contains("$$") {
@@ -702,7 +702,7 @@ impl MathRenderer for NodeKatexMathRenderer {
 mod tests {
     use super::*;
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_renderer_splits_math_only_labels_with_source_br_shape() {
         assert_eq!(
@@ -715,7 +715,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_metrics_preserve_emitted_em_precision() {
         let rendered = RatexRenderedMath {
@@ -730,7 +730,7 @@ mod tests {
         assert_eq!(metrics.height, rendered.height_em * 16.0);
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_renderer_renders_pure_math_label_as_inline_svg() {
         let renderer = RatexMathRenderer;
@@ -779,7 +779,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_renderer_renders_multiple_formulas_on_one_line_independently() {
         let renderer = RatexMathRenderer;
@@ -816,7 +816,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_renderer_preserves_unclosed_delimiters_on_plain_lines() {
         let renderer = RatexMathRenderer;
@@ -847,7 +847,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "ratex-math")]
+    #[cfg(feature = "math")]
     #[test]
     fn ratex_math_measurements_match_emitted_svg_dimensions() {
         let renderer = RatexMathRenderer;

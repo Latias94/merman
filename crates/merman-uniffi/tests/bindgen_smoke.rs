@@ -281,7 +281,7 @@ fn build_cdylib(workspace_root: &Path) -> PathBuf {
             "merman-uniffi",
             "--no-default-features",
             "--features",
-            "analysis,ascii,bindgen-smoke,cytoscape-layout,render,system-clock,system-random,system-timezone,system-timing",
+            "analysis,ascii,bindgen-smoke,layout-cytoscape,render,system-clock,system-random,system-timezone,system-timing",
         ])
         .status()
         .expect("run cargo build for merman-uniffi cdylib");

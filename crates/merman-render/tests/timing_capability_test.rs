@@ -18,9 +18,9 @@ fn supported_sources() -> &'static [&'static str] {
         "flowchart TD\nA --> B\n",
         "classDiagram\nclass A\n",
         "stateDiagram-v2\n[*] --> Active\n",
-        #[cfg(feature = "cytoscape-layout")]
+        #[cfg(feature = "layout-cytoscape")]
         "architecture-beta\n  service api(server)[API]\n",
-        #[cfg(feature = "cytoscape-layout")]
+        #[cfg(feature = "layout-cytoscape")]
         "mindmap\n  Root\n    Child\n",
     ]
 }

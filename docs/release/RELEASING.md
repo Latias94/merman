@@ -245,7 +245,7 @@ wasm-bindgen, WASM, preset manifest, ABI 2, editor schema 1, complete 35-family 
 `browser-editor` size budget; it is not valid to publish only the wrapper declaration.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Its default and publish profile is public alias `publish`, canonical
-profile `typst-full-elk`, with exactly `render`, `analysis`, and `elk-layout`. Release
+profile `typst-full-elk`, with exactly `render`, `analysis`, and `layout-elk`. Release
 validation requires ABI 2, the closed export surface including `analyze_json`, and the profile-owned
 artifact at `target/typst-wasm-artifacts/typst-full-elk/`. That directory contains the stripped
 WASM and `manifest.json`; `--skip-wasm-build` is allowed only because it validates the manifest's

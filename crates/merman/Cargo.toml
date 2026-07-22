@@ -20,7 +20,7 @@ exclude = [
 ]
 
 [package.metadata.docs.rs]
-features = ["render", "ascii", "raster", "ratex-math"]
+features = ["render", "ascii", "raster", "math"]
 
 [features]
 default = ["system-clock", "system-timezone", "system-random", "system-timing"]
@@ -30,9 +30,9 @@ system-random = ["merman-core/system-random", "merman-ascii?/system-random", "me
 system-timing = ["merman-core/system-timing", "merman-ascii?/system-timing", "merman-render?/system-timing"]
 render = ["dep:merman-render", "dep:serde_json", "dep:thiserror"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
-cytoscape-layout = ["render", "merman-render/cytoscape-layout"]
-elk-layout = ["render", "merman-render/elk-layout"]
-ratex-math = ["render", "merman-render/ratex-math"]
+layout-cytoscape = ["render", "merman-render/layout-cytoscape"]
+layout-elk = ["render", "merman-render/layout-elk"]
+math = ["render", "merman-render/math"]
 raster = [
     "render",
     "dep:image",
@@ -86,7 +86,7 @@ required-features = [
 
 [[test]]
 name = "mermaid_11_16_corpus"
-required-features = ["elk-layout"]
+required-features = ["layout-elk"]
 
 [[bench]]
 name = "pipeline"
@@ -101,17 +101,17 @@ required-features = ["render"]
 [[bench]]
 name = "architecture_stress"
 harness = false
-required-features = ["cytoscape-layout"]
+required-features = ["layout-cytoscape"]
 
 [[bench]]
 name = "architecture_layout_stress"
 harness = false
-required-features = ["cytoscape-layout"]
+required-features = ["layout-cytoscape"]
 
 [[bench]]
 name = "mindmap_layout_stress"
 harness = false
-required-features = ["cytoscape-layout"]
+required-features = ["layout-cytoscape"]
 
 [[bench]]
 name = "text_measure_stress"

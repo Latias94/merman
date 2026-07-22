@@ -21,7 +21,7 @@
       "browser-editor",
       "browser-full",
       "browser-full-no-elk",
-      "browser-ratex-math"
+      "browser-math"
     ],
     "web_descriptor": "platforms/web/web-surface-descriptor.json",
     "web_default_preset": "browser-full",
@@ -627,7 +627,7 @@
         "wasm-minimal-protocol",
         "render-svg",
         "analysis",
-        "elk-layout",
+        "layout-elk",
         "abi-2",
         "analyze-json",
         "artifact-provenance",

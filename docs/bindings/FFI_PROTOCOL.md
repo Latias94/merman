@@ -30,8 +30,8 @@ include `crates/merman-ffi/include/merman.h` and link the platform-specific arti
 Feature examples:
 
 ```sh
-cargo build -p merman-ffi --release --features ratex-math
-cargo build -p merman-ffi --release --features raster,ratex-math
+cargo build -p merman-ffi --release --features math
+cargo build -p merman-ffi --release --features raster,math
 ```
 
 The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON,

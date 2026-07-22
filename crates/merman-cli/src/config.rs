@@ -120,15 +120,15 @@ pub(crate) fn math_renderer(
     match kind {
         MathRendererKind::None => Ok(None),
         MathRendererKind::Ratex => {
-            #[cfg(feature = "ratex-math")]
+            #[cfg(feature = "math")]
             {
                 Ok(Some(Arc::new(merman::render::RatexMathRenderer)))
             }
 
-            #[cfg(not(feature = "ratex-math"))]
+            #[cfg(not(feature = "math"))]
             {
                 Err(CliError::InvalidInput(
-                    "RaTeX math rendering requires building merman-cli with --features ratex-math."
+                    "RaTeX math rendering requires building merman-cli with --features math."
                         .to_string(),
                 ))
             }

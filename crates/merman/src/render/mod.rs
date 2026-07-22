@@ -55,7 +55,7 @@ pub use merman_render::environment::{
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
 };
 pub use merman_render::family::RenderFamilyKind;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::resources::{
@@ -82,8 +82,8 @@ pub use merman_render::text::{
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
-    Error as RenderError, LayoutOptions, Result as RenderResult, cytoscape_layout_available,
-    elk_layout_available,
+    Error as RenderError, LayoutOptions, Result as RenderResult, layout_cytoscape_available,
+    layout_elk_available,
 };
 
 mod operation;

@@ -116,16 +116,16 @@ fn build_renderer(
             match normalize_option(math_renderer).as_str() {
                 "none" => {}
                 "ratex" => {
-                    #[cfg(feature = "ratex-math")]
+                    #[cfg(feature = "math")]
                     {
                         environment = environment
                             .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
                     }
-                    #[cfg(not(feature = "ratex-math"))]
+                    #[cfg(not(feature = "math"))]
                     {
                         return Err(BindingError::new(
                             BindingStatus::UnsupportedFormat,
-                            "environment.math_renderer=ratex requires the ratex-math feature",
+                            "environment.math_renderer=ratex requires the math feature",
                         ));
                     }
                 }

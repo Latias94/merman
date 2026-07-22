@@ -94,7 +94,7 @@ fn rendered_svgs_do_not_contain_mermaid_entity_placeholders() {
         "timeline/timeline_stress_section_titles_with_hashes_colons_semicolons.mmd",
     ];
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     let fixtures = {
         let mut fixtures = fixtures;
         fixtures.extend([
@@ -125,7 +125,7 @@ fn rendered_svgs_do_not_contain_malformed_xml_entity_references() {
         "timeline/timeline_stress_section_titles_with_hashes_colons_semicolons.mmd",
     ];
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     let fixtures = {
         let mut fixtures = fixtures;
         fixtures.extend([

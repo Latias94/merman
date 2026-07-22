@@ -24,10 +24,10 @@ system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]
 system-timing = ["merman-core/system-timing"]
-cytoscape-layout = ["dep:manatee"]
-elk-layout = ["dep:merman-layout-elk"]
+layout-cytoscape = ["dep:manatee"]
+layout-elk = ["dep:merman-layout-elk"]
 font-metrics-generation = []
-ratex-math = [
+math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
   "dep:ratex-svg",

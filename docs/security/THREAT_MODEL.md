@@ -137,7 +137,7 @@ without consumer demand and sanitizer validation.
 | SVG cleanup coverage | `resvg_safe` output remains XML-parseable and free of known raster hazards | Pipeline and integration tests |
 | Raster budget coverage | Oversized intrinsic SVGs do not allocate unbounded PNG/JPG pixmaps | `cargo nextest run -p merman --features raster --test security_regression` |
 | PDF budget coverage | Oversized vector page geometry remains supported while filter bitmaps and embedded raster images stay within independent defaults | `cargo nextest run -p merman --features raster --test security_regression` plus PDF planning tests |
-| Render resource budget coverage | Oversized source/model/SVG failures classify as resource limits | `cargo nextest run -p merman --features render --test security_regression`; `cargo nextest run -p merman-bindings-core --features render,elk-layout` |
+| Render resource budget coverage | Oversized source/model/SVG failures classify as resource limits | `cargo nextest run -p merman --features render --test security_regression`; `cargo nextest run -p merman-bindings-core --features render,layout-elk` |
 | Advisory triage | Every relevant RustSec or upstream Mermaid advisory maps to mitigation, non-applicability, or follow-up | `Security Audit` CI plus updates to this document and `CHANGELOG.md` |
 
 ## Future Work

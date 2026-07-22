@@ -285,7 +285,7 @@ mod tests {
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_svg_json_renders_flowchart_elk_from_default_artifact() {
         let payload: Value = serde_json::from_slice(&render_svg_json(
@@ -299,7 +299,7 @@ mod tests {
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
     }
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     #[test]
     fn complete_typst_build_renders_architecture() {
         let payload: Value = serde_json::from_slice(&render_svg_json(

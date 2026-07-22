@@ -147,7 +147,7 @@ without extracting private JavaScript names or source formatting.
 | `browser-editor` | no | `editor-language` | Complete 35-family language catalog, analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, parse/layout JSON, ASCII, host, and ELK entry points are unavailable. |
 | `browser-full` | yes | none | Default npm artifact: browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
 | `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
-| `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
+| `browser-math` | yes | `math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
 `npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
 the hand-written TypeScript wrapper, `MermanWasmModule`, `bindSurfaceRuntime()`, and the generated
@@ -168,12 +168,12 @@ public API without reducing the WASM payload.
 
 Current release semantics are intentionally explicit:
 
-- Low-level Rust `merman/render` enables SVG/layout support only. `merman/elk-layout` is the
+- Low-level Rust `merman/render` enables SVG/layout support only. `merman/layout-elk` is the
   explicit feature that pulls `merman-layout-elk` and the EPL-2.0 `merman-elk-layered` source port.
-- CLI defaults remain compatibility-oriented and enable `elk-layout` through the CLI crate's own
+- CLI defaults remain compatibility-oriented and enable `layout-elk` through the CLI crate's own
   default feature set.
 - Native FFI defaults stay conservative: `render` does not imply ELK. Downstream native artifacts
-  that want ELK must enable `elk-layout` or publish a distinct full artifact.
+  that want ELK must enable `layout-elk` or publish a distinct full artifact.
 - Rust source callers that match `merman_core::Error::DiagramParse` must migrate from the old raw
   message field to `diagnostic: ParseDiagnostic`. The displayed error message remains compatible,
   and callers can use `diagnostic.message()`, `span()`, `span_kind()`, and `code()` for structured
@@ -206,7 +206,7 @@ Current release semantics are intentionally explicit:
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its Cargo default and public package
   profile `publish` both resolve to canonical profile `typst-full-elk`, built with exactly
-  `render`, `analysis`, `cytoscape-layout`, and `elk-layout`. The closed ABI 2 surface exports
+  `render`, `analysis`, `layout-cytoscape`, and `layout-elk`. The closed ABI 2 surface exports
   `abi_version`, `package_version`, `capabilities_json`, `render_svg_json`, and `analyze_json`.
   `--no-default-features` builds the internal protocol bridge only; it is not a public package
   profile. The Typst plugin replaces caller-provided `resources` with the fixed `constrained`
@@ -286,8 +286,8 @@ applied to `wasm-tools strip --all` output:
 | Browser | `browser-editor` | no | `editor-language` | 5,313,319 | 3,901,365 | 1,270,356 | 941,247 |
 | Browser | `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 12,670,877 | 9,702,444 | 3,119,444 | 2,111,940 |
 | Browser | `browser-full` | yes | none | 13,573,233 | 10,348,509 | 3,307,400 | 2,248,122 |
-| Browser | `browser-ratex-math` | yes | `ratex-math` | 16,842,133 | 13,069,360 | 4,252,461 | 2,927,677 |
+| Browser | `browser-math` | yes | `math` | 16,842,133 | 13,069,360 | 4,252,461 | 2,927,677 |
 | Typst | `typst-bridge` | no | none | 62,063 | 46,146 | 19,500 | 16,574 |
 | Typst | `typst-render-only-no-elk` | no | `render` | 8,796,764 | 7,009,094 | 2,212,276 | 1,484,121 |
 | Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 9,166,305 | 7,259,433 | 2,297,231 | 1,535,192 |
-| Typst | `typst-full-elk` (`publish`) | no | `render`, `analysis`, `cytoscape-layout`, `elk-layout` | 11,445,996 | 8,987,989 | 2,919,785 | 1,986,128 |
+| Typst | `typst-full-elk` (`publish`) | no | `render`, `analysis`, `layout-cytoscape`, `layout-elk` | 11,445,996 | 8,987,989 | 2,919,785 | 1,986,128 |

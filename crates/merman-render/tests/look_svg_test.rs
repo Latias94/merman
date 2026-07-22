@@ -127,7 +127,7 @@ kanban
         },
     ];
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     let cases = {
         let mut cases = cases;
         cases.push(LookDomCase {

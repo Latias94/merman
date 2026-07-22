@@ -15,11 +15,11 @@ categories = ["command-line-utilities", "visualization"]
 exclude = ["tests/**"]
 
 [features]
-default = ["ratex-math", "ascii", "cytoscape-layout", "elk-layout"]
+default = ["math", "ascii", "layout-cytoscape", "layout-elk"]
 ascii = ["merman/ascii"]
-cytoscape-layout = ["merman/cytoscape-layout"]
-elk-layout = ["merman/elk-layout"]
-ratex-math = ["merman/ratex-math"]
+layout-cytoscape = ["merman/layout-cytoscape"]
+layout-elk = ["merman/layout-elk"]
+math = ["merman/math"]
 
 [dependencies]
 clap.workspace = true

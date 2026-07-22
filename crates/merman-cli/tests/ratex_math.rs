@@ -21,7 +21,7 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
     child.wait_with_output().expect("wait cli")
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn cli_renders_ratex_math_svg_to_stdout() {
     let output = run_with_stdin(
@@ -45,7 +45,7 @@ fn cli_renders_ratex_math_svg_to_stdout() {
     );
 }
 
-#[cfg(not(feature = "ratex-math"))]
+#[cfg(not(feature = "math"))]
 #[test]
 fn cli_rejects_ratex_math_renderer_without_feature() {
     let output = run_with_stdin(
@@ -59,7 +59,7 @@ fn cli_rejects_ratex_math_renderer_without_feature() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("requires building merman-cli with --features ratex-math"),
+        stderr.contains("requires building merman-cli with --features math"),
         "unexpected stderr:\n{stderr}"
     );
 }

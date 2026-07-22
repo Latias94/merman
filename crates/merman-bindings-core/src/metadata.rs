@@ -125,9 +125,9 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         analysis: cfg!(feature = "analysis"),
         ascii: cfg!(feature = "ascii"),
         system_adapter_ids: merman::runtime::compiled_system_adapter_ids(),
-        cytoscape_layout: compiled_cytoscape_layout_available(),
-        elk_layout: compiled_elk_layout_available(),
-        ratex_math: cfg!(feature = "ratex-math"),
+        cytoscape_layout: compiled_layout_cytoscape_available(),
+        elk_layout: compiled_layout_elk_available(),
+        ratex_math: cfg!(feature = "math"),
         editor_language: cfg!(feature = "editor-language"),
         text_measurement: TextMeasurementCapabilities {
             vendored: cfg!(feature = "render"),
@@ -139,22 +139,22 @@ pub const fn binding_capabilities() -> BindingCapabilities {
 }
 
 #[cfg(feature = "render")]
-const fn compiled_cytoscape_layout_available() -> bool {
-    merman::render::cytoscape_layout_available()
+const fn compiled_layout_cytoscape_available() -> bool {
+    merman::render::layout_cytoscape_available()
 }
 
 #[cfg(not(feature = "render"))]
-const fn compiled_cytoscape_layout_available() -> bool {
+const fn compiled_layout_cytoscape_available() -> bool {
     false
 }
 
 #[cfg(feature = "render")]
-const fn compiled_elk_layout_available() -> bool {
-    merman::render::elk_layout_available()
+const fn compiled_layout_elk_available() -> bool {
+    merman::render::layout_elk_available()
 }
 
 #[cfg(not(feature = "render"))]
-const fn compiled_elk_layout_available() -> bool {
+const fn compiled_layout_elk_available() -> bool {
     false
 }
 
@@ -531,10 +531,10 @@ mod tests {
         );
         assert_eq!(
             capabilities.cytoscape_layout,
-            cfg!(feature = "cytoscape-layout")
+            cfg!(feature = "layout-cytoscape")
         );
-        assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
-        assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
+        assert_eq!(capabilities.elk_layout, cfg!(feature = "layout-elk"));
+        assert_eq!(capabilities.ratex_math, cfg!(feature = "math"));
         assert_eq!(
             capabilities.editor_language,
             cfg!(feature = "editor-language")
@@ -565,7 +565,7 @@ mod tests {
         assert_eq!(capabilities["analysis"], cfg!(feature = "analysis"));
         assert_eq!(
             capabilities["cytoscape_layout"],
-            cfg!(feature = "cytoscape-layout")
+            cfg!(feature = "layout-cytoscape")
         );
         assert_eq!(
             capabilities["text_measurement"]["vendored"],

@@ -52,7 +52,7 @@ fn font_only_theme_uses_one_resolved_palette_across_scale_consumers() {
         ("treemap", "treemap-beta\n\"Root\"\n  \"Child\": 1\n"),
     ];
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     let cases = {
         let mut cases = cases;
         cases.push(("mindmap", "mindmap\n  root((Root))\n    child(Child)\n"));

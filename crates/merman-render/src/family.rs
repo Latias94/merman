@@ -128,7 +128,6 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
-    #[cfg(feature = "cytoscape-layout")]
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
@@ -144,7 +143,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     ),
     Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
     Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     Architecture(
         Box<
             FamilyPair<
@@ -213,9 +212,8 @@ pub(crate) enum BuiltinFamilyArtifact {
 enum LayoutProjection<'a> {
     BlockDiagram(&'a BlockDiagramLayout),
     RequirementDiagram(&'a RequirementDiagramLayout),
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     ArchitectureDiagram(&'a ArchitectureDiagramLayout),
-    #[cfg(feature = "cytoscape-layout")]
     MindmapDiagram(&'a MindmapDiagramLayout),
     SankeyDiagram(&'a SankeyDiagramLayout),
     RadarDiagram(&'a RadarDiagramLayout),
@@ -270,14 +268,13 @@ impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
             Self::Error(_) => RenderFamilyKind::Error,
-            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
             Self::State(_) => RenderFamilyKind::State,
             Self::Sequence(_) => RenderFamilyKind::Sequence,
             Self::Zenuml(_) => RenderFamilyKind::Zenuml,
             Self::Flowchart(_) => RenderFamilyKind::Flowchart,
             Self::Swimlane(_) => RenderFamilyKind::Swimlane,
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(_) => RenderFamilyKind::Architecture,
             Self::Class(_) => RenderFamilyKind::Class,
             Self::C4(_) => RenderFamilyKind::C4,
@@ -313,14 +310,13 @@ impl BuiltinFamilyArtifact {
     ) -> merman_core::Result<serde_json::Value> {
         match self {
             Self::Error(pair) => pair.compatibility_json(metadata),
-            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
             Self::State(pair) => pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(pair) => pair.compatibility_json(metadata),
             Self::Swimlane(pair) => pair.compatibility_json(metadata),
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
             Self::Class(pair) => pair.compatibility_json(metadata),
             Self::C4(pair) => pair.compatibility_json(metadata),
@@ -353,14 +349,13 @@ impl BuiltinFamilyArtifact {
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
-            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
             Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
-            #[cfg(feature = "cytoscape-layout")]
+            #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
             Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
@@ -757,7 +752,6 @@ pub fn prepare(
                 )
             })?)
         }
-        #[cfg(feature = "cytoscape-layout")]
         RenderSemanticModel::Mindmap(model) => {
             BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
                 crate::mindmap::layout_mindmap_diagram_typed(
@@ -766,12 +760,6 @@ pub fn prepare(
                     execution.text_measurer(),
                 )
             })?)
-        }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        RenderSemanticModel::Mindmap(_) => {
-            return Err(Error::UnsupportedDiagram {
-                diagram_type: diagram_type.to_string(),
-            });
         }
         RenderSemanticModel::State(model) => {
             BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
@@ -820,7 +808,7 @@ pub fn prepare(
                 )
             })?)
         }
-        #[cfg(feature = "cytoscape-layout")]
+        #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
                 crate::architecture::layout_architecture_diagram_typed(
@@ -831,9 +819,10 @@ pub fn prepare(
                 )
             })?)
         }
-        #[cfg(not(feature = "cytoscape-layout"))]
+        #[cfg(not(feature = "layout-cytoscape"))]
         RenderSemanticModel::Architecture(_) => {
-            return Err(Error::UnsupportedDiagram {
+            return Err(Error::MissingCapability {
+                capability: "layout-cytoscape",
                 diagram_type: diagram_type.to_string(),
             });
         }
@@ -999,7 +988,7 @@ pub fn prepare(
             })?)
         }
         RenderSemanticModel::Er(model) => {
-            #[cfg(feature = "elk-layout")]
+            #[cfg(feature = "layout-elk")]
             {
                 BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
                     crate::er::layout_er_diagram_typed_with_elk_random_policy(
@@ -1010,7 +999,7 @@ pub fn prepare(
                     )
                 })?)
             }
-            #[cfg(not(feature = "elk-layout"))]
+            #[cfg(not(feature = "layout-elk"))]
             BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
                 crate::er::layout_er_diagram_typed(
                     model,
@@ -1180,7 +1169,7 @@ mod tests {
         assert_flowchart_node_limit(error, 2, 1);
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart-elk TD\nA --> B";

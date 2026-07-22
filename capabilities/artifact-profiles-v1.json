@@ -17,7 +17,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "cytoscape-layout", "render", "system-clock",
+          "analysis", "ascii", "layout-cytoscape", "render", "system-clock",
           "system-random", "system-timezone", "system-timing"
         ],
         "target": {
@@ -49,7 +49,7 @@
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["ascii", "cytoscape-layout", "elk-layout", "ratex-math"],
+        "features": ["ascii", "layout-cytoscape", "layout-elk", "math"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -270,7 +270,7 @@
         "manifest": "crates/merman-typst-plugin/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["analysis", "cytoscape-layout", "elk-layout", "render"],
+        "features": ["analysis", "layout-cytoscape", "layout-elk", "render"],
         "target": {
           "name": "merman_typst_plugin",
           "kinds": ["cdylib", "rlib"],
@@ -300,7 +300,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "cytoscape-layout", "render", "system-clock",
+          "analysis", "ascii", "layout-cytoscape", "render", "system-clock",
           "system-random", "system-timezone", "system-timing"
         ],
         "target": {
@@ -333,7 +333,7 @@
         "profile": "wasm-size",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "cytoscape-layout", "editor-language", "elk-layout", "render"
+          "analysis", "ascii", "editor-language", "layout-cytoscape", "layout-elk", "render"
         ],
         "target": {
           "name": "merman_wasm",

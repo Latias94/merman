@@ -1,4 +1,4 @@
-#![cfg(all(feature = "render", feature = "elk-layout"))]
+#![cfg(all(feature = "render", feature = "layout-elk"))]
 
 use merman::render::HeadlessRenderer;
 

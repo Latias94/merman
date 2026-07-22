@@ -20,7 +20,7 @@ Most applications should use one of the public packages instead:
   helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `raster` enables PNG/JPG/PDF conversion through the main facade.
-- `ratex-math` enables the RaTeX math label backend.
+- `math` enables the RaTeX math label backend.
 
 ## SVG Output Contract
 

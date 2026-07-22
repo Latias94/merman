@@ -341,7 +341,7 @@ are rejected; update requests rather than relying on an alias.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `environment.text_measurement` | string | `vendored` | `vendored`, `parity`, or `deterministic`. |
-| `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
+| `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
 Move them to `environment.text_measurement` and `environment.math_renderer`, respectively.

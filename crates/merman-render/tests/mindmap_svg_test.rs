@@ -1,4 +1,4 @@
-#![cfg(feature = "cytoscape-layout")]
+#![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;

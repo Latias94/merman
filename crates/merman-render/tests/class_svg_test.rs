@@ -553,7 +553,7 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
     );
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
     let svg = render_class_svg_from_text_with_engine(

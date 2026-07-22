@@ -17,7 +17,7 @@ use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
 };
 use std::path::PathBuf;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use std::sync::Arc;
 
 fn environment_with_measurer<M>(name: &str, measurer: M) -> RenderEnvironment
@@ -55,7 +55,7 @@ fn layout_flowchart_render_model(
         || parsed.metadata().effective_config.get_str("layout") == Some("elk");
 
     if uses_elk {
-        #[cfg(feature = "elk-layout")]
+        #[cfg(feature = "layout-elk")]
         {
             return merman_render::flowchart::elk::layout_flowchart_elk_typed(
                 model,
@@ -64,7 +64,7 @@ fn layout_flowchart_render_model(
                 session.math_renderer(),
             );
         }
-        #[cfg(not(feature = "elk-layout"))]
+        #[cfg(not(feature = "layout-elk"))]
         {
             return Err(merman_render::Error::UnsupportedDiagram {
                 diagram_type: parsed.metadata().diagram_type.clone(),
@@ -1985,7 +1985,7 @@ D@{ shape: datastore, label: "Datastore" }
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_svg_renders_ratex_math_labels_end_to_end() {
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -2024,7 +2024,7 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_svg_renders_ratex_mixed_math_labels_end_to_end() {
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -2059,7 +2059,7 @@ A["value: $$x^2$$"] -->|Solve: $$\sqrt{2+2}$$| B[Done]
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
     let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

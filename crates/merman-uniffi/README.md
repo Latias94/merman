@@ -53,7 +53,7 @@ See the [UniFFI contract](https://github.com/Latias94/merman/blob/main/docs/bind
 
 ## Features
 
-Defaults enable the full diagram registry, host environment, SVG rendering, analysis, and terminal output. `analysis`, `render`, and `ascii` can be selected independently; `ratex-math` and `raster` add their shared backends. `bindgen-smoke` is a development feature for the local Python generator.
+Defaults enable the full diagram registry, host environment, SVG rendering, analysis, and terminal output. `analysis`, `render`, and `ascii` can be selected independently; `math` and `raster` add their shared backends. `bindgen-smoke` is a development feature for the local Python generator.
 
 Unavailable feature-gated operations report a structured binding error. The generated API is synchronous, and each generated language wrapper remains responsible for native-library packaging and platform lifecycle integration.
 

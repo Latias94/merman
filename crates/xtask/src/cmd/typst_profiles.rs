@@ -9,7 +9,7 @@ const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PACKAGE: &str = "merman-typst-plugin";
 const EXPECTED_ARTIFACT: &str = "merman_typst_plugin.wasm";
 const REQUIRED_PUBLISH_FEATURES: &[&str] =
-    &["render", "analysis", "cytoscape-layout", "elk-layout"];
+    &["render", "analysis", "layout-cytoscape", "layout-elk"];
 const DESCRIPTOR_SOURCE: &str = include_str!("../../../merman-typst-plugin/wasm-profiles.json");
 
 #[derive(Debug, Clone, Deserialize)]
@@ -360,9 +360,9 @@ fn capabilities_for_features(features: &[String]) -> TypstProfileCapabilities {
         render,
         analysis: enabled("analysis"),
         ascii: enabled("ascii"),
-        cytoscape_layout: enabled("cytoscape-layout"),
-        elk_layout: enabled("elk-layout"),
-        ratex_math: enabled("ratex-math"),
+        cytoscape_layout: enabled("layout-cytoscape"),
+        elk_layout: enabled("layout-elk"),
+        ratex_math: enabled("math"),
         editor_language: enabled("editor-language"),
         text_measurement: TypstTextMeasurementCapabilities {
             vendored: render,
@@ -417,13 +417,13 @@ mod tests {
         );
         assert_eq!(
             publish.features(),
-            &["render", "analysis", "cytoscape-layout", "elk-layout"]
+            &["render", "analysis", "layout-cytoscape", "layout-elk"]
         );
         assert!(catalog.resolve_package(Some("default")).is_err());
         assert!(catalog.resolve_package(Some("full")).is_err());
         assert!(catalog.resolve_package(Some("full-elk")).is_err());
         assert!(catalog.resolve_package(Some("full-no-elk")).is_err());
-        assert!(catalog.resolve_package(Some("ratex-math")).is_err());
+        assert!(catalog.resolve_package(Some("math")).is_err());
         assert!(catalog.resolve_package(Some("typst-bridge")).is_err());
         assert!(catalog.resolve_package(Some("typst-full-elk")).is_err());
         assert_eq!(catalog.public_profile_names(), vec!["minimal", "publish"]);
@@ -459,7 +459,7 @@ mod tests {
     #[test]
     fn descriptor_rejects_cargo_default_drift() {
         let manifest = valid_manifest().replace(
-            "default = [\"render\", \"analysis\", \"cytoscape-layout\", \"elk-layout\"]",
+            "default = [\"render\", \"analysis\", \"layout-cytoscape\", \"layout-elk\"]",
             "default = [\"render\", \"analysis\"]",
         );
         let descriptor = valid_descriptor();
@@ -501,7 +501,7 @@ mod tests {
             {
               "name": "typst-full-elk",
               "aliases": ["publish"],
-              "features": ["render", "analysis", "cytoscape-layout", "elk-layout"],
+              "features": ["render", "analysis", "layout-cytoscape", "layout-elk"],
               "capabilities": {
                 "render": true,
                 "analysis": true,
@@ -535,11 +535,11 @@ mod tests {
           name = "merman-typst-plugin"
 
           [features]
-          default = ["render", "analysis", "cytoscape-layout", "elk-layout"]
+          default = ["render", "analysis", "layout-cytoscape", "layout-elk"]
           analysis = ["dep:serde_json"]
           render = ["dep:serde_json"]
-          cytoscape-layout = []
-          elk-layout = []
+          layout-cytoscape = []
+          layout-elk = []
         "#
     }
 }

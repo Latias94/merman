@@ -89,7 +89,7 @@ Default builds enable the full registry, host environment, SVG rendering, analys
 cargo build -p merman-ffi --release --no-default-features --features analysis
 cargo build -p merman-ffi --release --no-default-features --features render
 cargo build -p merman-ffi --release --no-default-features --features ascii
-cargo build -p merman-ffi --release --features elk-layout,ratex-math
+cargo build -p merman-ffi --release --features layout-elk,math
 ```
 
 Entry points remain exported when their feature is absent and return `MERMAN_UNSUPPORTED_FORMAT` with an operation-specific message. `merman_resource_options_json` is available when render, analysis, or ASCII is compiled and rejects limit IDs unavailable to that artifact; query `runtime_contract.features` and `runtime_contract.resources` before calling it. The `raster` Cargo feature prepares shared conversion support, but the C ABI does not yet expose raster byte-output functions.

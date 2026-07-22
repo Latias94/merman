@@ -1,4 +1,4 @@
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 pub(crate) mod config;
 use self::config::{ClassConfigView, ClassLayoutSettings};
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
@@ -41,7 +41,7 @@ pub(crate) fn class_member_create_text_input(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassLayoutEngine {
     Dagre,
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     Elk(elk::ElkRandomPolicy),
 }
 
@@ -1789,7 +1789,7 @@ pub fn layout_class_diagram_typed_with_config(
     )
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 pub fn layout_class_diagram_elk_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
@@ -1803,7 +1803,7 @@ pub fn layout_class_diagram_elk_typed_with_config(
     )
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 /// Lays out a Class diagram through ELK with explicit authority for ELK's `randomSeed = 0`
 /// sentinel.
 pub fn layout_class_diagram_elk_typed_with_config_and_random_policy(
@@ -2186,7 +2186,7 @@ fn layout_class_diagram_typed_inner(
         g.set_edge_named(note.id.clone(), class_id.clone(), Some(edge_id), Some(el));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     if let ClassLayoutEngine::Elk(random_policy) = engine {
         return layout_class_diagram_elk_from_graph(
             model,
@@ -2395,7 +2395,7 @@ fn validate_class_namespace_parent_cycles(model: &ClassDiagramModel) -> Result<(
     Ok(())
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 struct ClassElkLayoutSettings<'a> {
     namespace_padding: f64,
     title_margin_top: f64,
@@ -2405,7 +2405,7 @@ struct ClassElkLayoutSettings<'a> {
     random_policy: elk::ElkRandomPolicy,
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn layout_class_diagram_elk_from_graph(
     model: &ClassDiagramModel,
     effective_config: &Value,
@@ -2441,7 +2441,7 @@ fn layout_class_diagram_elk_from_graph(
     )
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn class_graph_to_elk_graph(
     model: &ClassDiagramModel,
     effective_config: &Value,
@@ -2526,7 +2526,7 @@ fn class_graph_to_elk_graph(
     }
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[allow(clippy::too_many_arguments)]
 fn class_layout_from_elk(
     model: &ClassDiagramModel,
@@ -2752,7 +2752,7 @@ fn class_layout_from_elk(
     })
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn apply_class_terminal_labels(
     edge: &mut LayoutEdge,
     meta: &EdgeTerminalMetrics,
@@ -2804,7 +2804,7 @@ fn apply_class_terminal_labels(
     }
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn class_elk_edge_label_position(points: &[LayoutPoint], label: elk::Label) -> Option<LayoutLabel> {
     calculate_point(points, class_elk_polyline_len(points) / 2.0).map(|point| LayoutLabel {
         x: point.x,
@@ -2814,7 +2814,7 @@ fn class_elk_edge_label_position(points: &[LayoutPoint], label: elk::Label) -> O
     })
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
     points
         .windows(2)
@@ -2822,7 +2822,7 @@ fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
         .sum::<f64>()
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn rank_dir_to_elk_direction(rank_dir: RankDir) -> elk::Direction {
     match rank_dir {
         RankDir::LR => elk::Direction::Right,
@@ -2832,7 +2832,7 @@ fn rank_dir_to_elk_direction(rank_dir: RankDir) -> elk::Direction {
     }
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn class_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
     let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
         .map(

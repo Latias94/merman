@@ -5,7 +5,7 @@ use crate::text::{
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -538,7 +538,7 @@ pub fn layout_er_diagram_typed(
     )
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 /// Lays out an ER diagram while giving ELK's upstream `randomSeed = 0` sentinel an
 /// operation-owned deterministic fallback.
 pub fn layout_er_diagram_typed_with_elk_random_policy(
@@ -558,7 +558,7 @@ pub fn layout_er_diagram_typed_with_elk_random_policy(
 #[derive(Debug, Clone, Copy)]
 enum ErElkAuthority {
     RequireExplicit,
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     Deterministic(elk::ElkRandomPolicy),
 }
 
@@ -571,7 +571,7 @@ fn layout_er_diagram_typed_with_elk_authority(
     let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
 
     if settings.algorithm == ErLayoutAlgorithm::Elk {
-        #[cfg(feature = "elk-layout")]
+        #[cfg(feature = "layout-elk")]
         {
             let random_policy = match elk_authority {
                 ErElkAuthority::RequireExplicit => elk::ElkRandomPolicy::require_explicit(),
@@ -585,7 +585,7 @@ fn layout_er_diagram_typed_with_elk_authority(
                 random_policy,
             );
         }
-        #[cfg(not(feature = "elk-layout"))]
+        #[cfg(not(feature = "layout-elk"))]
         {
             let _ = elk_authority;
             return Err(Error::UnsupportedDiagram {
@@ -951,7 +951,7 @@ fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds
     Bounds::from_points(points)
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn layout_er_diagram_elk_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
@@ -1149,7 +1149,7 @@ fn layout_er_diagram_elk_typed(
     })
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
     use crate::config::{config_bool, config_string};
 

@@ -357,7 +357,7 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     }
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     let svg = render_svg_from_text(
@@ -379,7 +379,7 @@ fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     assert_eq!(unique.len(), ids.len(), "{svg}");
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_builtin_icons_without_internal_ids_skip_iconify_id_scoping() {
     let svg = render_svg_from_text(

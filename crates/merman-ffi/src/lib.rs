@@ -1546,7 +1546,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "cytoscape-layout")]
+    #[cfg(feature = "layout-cytoscape")]
     #[test]
     fn complete_ffi_build_renders_architecture() {
         let result = call_render(
@@ -2051,7 +2051,7 @@ mod tests {
             br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
-        if cfg!(feature = "ratex-math") {
+        if cfg!(feature = "math") {
             assert_eq!(result.code, BindingStatus::Ok.code());
             unsafe { merman_buffer_free(result.data) };
         } else {
