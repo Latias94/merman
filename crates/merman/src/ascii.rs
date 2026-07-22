@@ -15,6 +15,8 @@ pub enum HeadlessAsciiError {
     Ascii(#[from] merman_ascii::AsciiError),
     #[error(transparent)]
     LocalTimeZone(#[from] merman_core::time::LocalTimeZoneError),
+    #[error(transparent)]
+    Resource(#[from] merman_core::resources::InputResourceLimitExceeded),
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessAsciiError>;
@@ -42,9 +44,27 @@ pub fn render_ascii_sync(
     parse_options: merman_core::ParseOptions,
     ascii_options: &AsciiRenderOptions,
 ) -> Result<Option<String>> {
+    render_ascii_with_resource_policy_sync(
+        engine,
+        text,
+        parse_options,
+        ascii_options,
+        &merman_core::resources::InputResourcePolicy::default(),
+    )
+}
+
+fn render_ascii_with_resource_policy_sync(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    ascii_options: &AsciiRenderOptions,
+    resources: &merman_core::resources::InputResourcePolicy,
+) -> Result<Option<String>> {
+    resources.check_source_bytes(text)?;
     let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
         return Ok(None);
     };
+    resources.check_render_model(parsed.model())?;
 
     Ok(Some(render_model_with_engine_time(
         engine,
@@ -73,6 +93,7 @@ pub struct HeadlessAsciiRenderer {
     pub engine: merman_core::Engine,
     pub parse: merman_core::ParseOptions,
     pub ascii: AsciiRenderOptions,
+    resources: merman_core::resources::InputResourcePolicy,
 }
 
 impl Default for HeadlessAsciiRenderer {
@@ -81,6 +102,7 @@ impl Default for HeadlessAsciiRenderer {
             engine: merman_core::Engine::new(),
             parse: merman_core::ParseOptions::default(),
             ascii: AsciiRenderOptions::default(),
+            resources: merman_core::resources::InputResourcePolicy::default(),
         }
     }
 }
@@ -88,6 +110,11 @@ impl Default for HeadlessAsciiRenderer {
 impl HeadlessAsciiRenderer {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
+        self.engine = engine;
+        self
     }
 
     pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
@@ -128,16 +155,38 @@ impl HeadlessAsciiRenderer {
         self
     }
 
+    pub fn with_resource_profile(
+        mut self,
+        profile: merman_core::resources::ResourceProfile,
+    ) -> Self {
+        self.resources = merman_core::resources::InputResourcePolicy::for_profile(profile);
+        self
+    }
+
+    pub fn with_resource_policy(
+        mut self,
+        resources: merman_core::resources::InputResourcePolicy,
+    ) -> Self {
+        self.resources = resources;
+        self
+    }
+
+    pub const fn resource_policy(&self) -> &merman_core::resources::InputResourcePolicy {
+        &self.resources
+    }
+
     pub fn with_charset(mut self, charset: AsciiCharset) -> Self {
         self.ascii.charset = charset;
         self
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
+        self.resources.check_source_bytes(text)?;
         Ok(self.engine.parse_metadata_sync(text)?)
     }
 
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
+        self.resources.check_source_bytes(text)?;
         Ok(self.engine.parse_diagram_sync(text, self.parse)?)
     }
 
@@ -145,15 +194,22 @@ impl HeadlessAsciiRenderer {
         &self,
         model: &merman_core::diagram::RenderSemanticModel,
     ) -> Result<String> {
+        self.resources.check_render_model(model)?;
         render_model_with_engine_time(&self.engine, model, &self.ascii)
     }
 
     pub fn render_ascii_sync(&self, text: &str) -> Result<Option<String>> {
-        render_ascii_sync(&self.engine, text, self.parse, &self.ascii)
+        render_ascii_with_resource_policy_sync(
+            &self.engine,
+            text,
+            self.parse,
+            &self.ascii,
+            &self.resources,
+        )
     }
 
     pub async fn render_ascii(&self, text: &str) -> Result<Option<String>> {
-        render_ascii_sync(&self.engine, text, self.parse, &self.ascii)
+        self.render_ascii_sync(text)
     }
 }
 
@@ -223,5 +279,23 @@ Task: task1, 2026-01-01, 1d
             rendered.contains("  - Task [2026-01-01 -> 2026-01-02]"),
             "{rendered}"
         );
+    }
+
+    #[test]
+    fn headless_ascii_renderer_owns_source_and_model_resource_checks() {
+        let resources = merman_core::resources::InputResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        )
+        .with_limit(
+            merman_core::resources::InputResourceLimitId::MaxFlowchartNodes,
+            1,
+        )
+        .unwrap();
+        let renderer = HeadlessAsciiRenderer::new().with_resource_policy(resources);
+
+        let error = renderer
+            .render_ascii_sync("flowchart TD\nA --> B")
+            .unwrap_err();
+        assert!(matches!(error, HeadlessAsciiError::Resource(_)));
     }
 }

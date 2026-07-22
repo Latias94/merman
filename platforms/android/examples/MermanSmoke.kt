@@ -216,7 +216,7 @@ fun runMermanSmoke() {
     }
     val runtimeContractJson = MermanEngine.runtimeContractJson()
     check(
-        runtimeContractJson.contains("\"schema_version\":2") &&
+        runtimeContractJson.contains("\"schema_version\":3") &&
             runtimeContractJson.contains("\"abi_version\":2") &&
             runtimeContractJson.contains("\"analysis\":1") &&
             runtimeContractJson.contains("\"analysis_facts\":2") &&

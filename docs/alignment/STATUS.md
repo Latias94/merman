@@ -14,8 +14,9 @@ planning, or coverage documents.
 | Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
-| Editor facts | All 35 full-profile families emit parser-owned lexemes through one token planner |
-| Current worktree gate | Focused gates are green; the final strict matrix waits for the active editor transport switch |
+| Language catalog | All 35 built-in families are available independently of optional render backends |
+| Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `2` |
+| Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
 
 Admission describes available capability and required evidence. It does not certify that every
 gate passes after the latest uncommitted changes.

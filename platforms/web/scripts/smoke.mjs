@@ -356,7 +356,7 @@ if (surfaceContract.render) {
 const capabilities = api.bindingCapabilities();
 const runtimeContract = api.runtimeContract();
 const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
-assert.equal(runtimeContract.schema_version, 2);
+assert.equal(runtimeContract.schema_version, 3);
 assert.equal(runtimeContract.abi_version, api.abiVersion());
 assert.equal(runtimeContract.package_version, api.packageVersion());
 assert.equal(runtimeContract.options_schema_version, 1);
@@ -365,18 +365,37 @@ assert.equal(
   runtimeContract.registry.diagram_family_count,
   api.diagramFamilyCapabilities().length
 );
-if (surfaceContract.render) {
+if (surfaceContract.render || surfaceContract.analysis || surfaceContract.ascii) {
   assert.equal(runtimeContract.resources.schema_version, 1);
   assert.equal(
     runtimeContract.resources.general_binding_default_profile,
     "interactive"
   );
   assert.equal(runtimeContract.resources.cli_default_profile, "trusted-native");
-  assert.ok(
-    runtimeContract.resources.limits.some(
-      (limit) => limit.id === "max_svg_tree_depth" && limit.hard_cap
-    )
-  );
+  const resourceLimitIds = runtimeContract.resources.limits
+    .map((limit) => limit.id)
+    .sort();
+  assert.ok(resourceLimitIds.includes("max_source_bytes"));
+  if (surfaceContract.render) {
+    assert.ok(
+      runtimeContract.resources.limits.some(
+        (limit) => limit.id === "max_svg_tree_depth" && limit.hard_cap
+      )
+    );
+  } else if (surfaceContract.ascii) {
+    assert.deepEqual(resourceLimitIds, [
+      "max_class_edges",
+      "max_class_namespaces",
+      "max_class_nodes",
+      "max_flowchart_edges",
+      "max_flowchart_nodes",
+      "max_flowchart_subgraphs",
+      "max_label_bytes",
+      "max_source_bytes",
+    ]);
+  } else {
+    assert.deepEqual(resourceLimitIds, ["max_source_bytes"]);
+  }
 } else {
   assert.equal(runtimeContract.resources, null);
 }
@@ -384,6 +403,7 @@ assert.equal(typeof capabilities.render, "boolean");
 assert.equal(typeof capabilities.analysis, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
+assert.equal(typeof capabilities.cytoscape_layout, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 assert.equal(typeof capabilities.editor_language, "boolean");
 assert.equal(typeof capabilities.text_measurement, "object");
@@ -1278,7 +1298,10 @@ async function runSameProcessSurfaceSmoke() {
     ),
   });
   assert.equal(core.bindingCapabilities().render, false);
-  assert.equal(core.runtimeContract().resources, null);
+  assert.deepEqual(
+    core.runtimeContract().resources.limits.map((limit) => limit.id),
+    ["max_source_bytes"]
+  );
   assert.equal(typeof core.renderSvg, "undefined");
 
   await full.initMerman({

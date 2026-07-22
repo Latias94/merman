@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 2;
+pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 3;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -26,6 +26,7 @@ pub struct BindingCapabilities {
     pub analysis: bool,
     pub ascii: bool,
     pub core_host: bool,
+    pub cytoscape_layout: bool,
     pub elk_layout: bool,
     pub ratex_math: bool,
     pub editor_language: bool,
@@ -124,7 +125,8 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         analysis: cfg!(feature = "analysis"),
         ascii: cfg!(feature = "ascii"),
         core_host: cfg!(feature = "core-host"),
-        elk_layout: cfg!(feature = "elk-layout"),
+        cytoscape_layout: compiled_cytoscape_layout_available(),
+        elk_layout: compiled_elk_layout_available(),
         ratex_math: cfg!(feature = "ratex-math"),
         editor_language: cfg!(feature = "editor-language"),
         text_measurement: TextMeasurementCapabilities {
@@ -134,6 +136,26 @@ pub const fn binding_capabilities() -> BindingCapabilities {
             font_assets: false,
         },
     }
+}
+
+#[cfg(feature = "render")]
+const fn compiled_cytoscape_layout_available() -> bool {
+    merman::render::cytoscape_layout_available()
+}
+
+#[cfg(not(feature = "render"))]
+const fn compiled_cytoscape_layout_available() -> bool {
+    false
+}
+
+#[cfg(feature = "render")]
+const fn compiled_elk_layout_available() -> bool {
+    merman::render::elk_layout_available()
+}
+
+#[cfg(not(feature = "render"))]
+const fn compiled_elk_layout_available() -> bool {
+    false
 }
 
 pub fn runtime_contract(abi_version: u32) -> RuntimeContract {
@@ -181,15 +203,18 @@ fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
         .collect();
     let profiles = merman::render::resource_profile_descriptors()
         .iter()
-        .map(|descriptor| RuntimeResourceProfile {
-            id: descriptor.id,
-            purpose: descriptor.purpose,
-            trust_assumption: descriptor.trust_assumption,
-            recommended_binding_default: descriptor.recommended_binding_default,
-            limits: merman::render::resource_limit_descriptors()
-                .iter()
-                .map(|limit| (limit.stable_id, descriptor.limits.value(limit.id)))
-                .collect(),
+        .map(|descriptor| {
+            let policy = merman::render::RenderResourcePolicy::for_profile(descriptor.profile);
+            RuntimeResourceProfile {
+                id: descriptor.id,
+                purpose: descriptor.purpose,
+                trust_assumption: descriptor.trust_assumption,
+                recommended_binding_default: descriptor.recommended_binding_default,
+                limits: merman::render::resource_limit_descriptors()
+                    .iter()
+                    .map(|limit| (limit.stable_id, policy.value(limit.id)))
+                    .collect(),
+            }
         })
         .collect();
     Some(RuntimeResourceContract {
@@ -202,7 +227,47 @@ fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
     })
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(all(not(feature = "render"), any(feature = "analysis", feature = "ascii")))]
+fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
+    let limits = merman::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
+        .iter()
+        .filter(|descriptor| crate::common::input_resource_limit_available_for_build(descriptor.id))
+        .map(|descriptor| RuntimeResourceLimit {
+            id: descriptor.stable_id,
+            phase: descriptor.phase.as_str(),
+            description: descriptor.description,
+            overridable: descriptor.overridable,
+            hard_cap: false,
+        })
+        .collect();
+    let profiles = merman::resources::RESOURCE_PROFILE_DESCRIPTORS
+        .iter()
+        .map(|descriptor| {
+            let policy = merman::resources::InputResourcePolicy::for_profile(descriptor.profile);
+            RuntimeResourceProfile {
+                id: descriptor.id,
+                purpose: descriptor.purpose,
+                trust_assumption: descriptor.trust_assumption,
+                recommended_binding_default: descriptor.recommended_binding_default,
+                limits: merman::resources::InputResourceLimitId::ALL
+                    .into_iter()
+                    .filter(|limit| crate::common::input_resource_limit_available_for_build(*limit))
+                    .map(|limit| (limit.as_str(), policy.value(limit)))
+                    .collect(),
+            }
+        })
+        .collect();
+    Some(RuntimeResourceContract {
+        schema_version: merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION,
+        general_binding_default_profile:
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
+        cli_default_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
+        limits,
+        profiles,
+    })
+}
+
+#[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
 const fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
     None
 }
@@ -461,6 +526,10 @@ mod tests {
         assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
         assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
+        assert_eq!(
+            capabilities.cytoscape_layout,
+            cfg!(feature = "cytoscape-layout")
+        );
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(
@@ -489,6 +558,10 @@ mod tests {
 
         assert_eq!(capabilities["render"], cfg!(feature = "render"));
         assert_eq!(capabilities["analysis"], cfg!(feature = "analysis"));
+        assert_eq!(
+            capabilities["cytoscape_layout"],
+            cfg!(feature = "cytoscape-layout")
+        );
         assert_eq!(
             capabilities["text_measurement"]["vendored"],
             cfg!(feature = "render")
@@ -553,7 +626,59 @@ mod tests {
                 Some(250_000)
             );
         }
-        #[cfg(not(feature = "render"))]
+        #[cfg(all(not(feature = "render"), feature = "analysis", not(feature = "ascii")))]
+        {
+            let resources = contract.resources.expect("input resource catalog");
+            assert_eq!(
+                resources.schema_version,
+                merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(resources.profiles.len(), 4);
+            assert_eq!(resources.limits.len(), 1);
+            assert_eq!(resources.limits[0].id, "max_source_bytes");
+            assert!(
+                resources
+                    .profiles
+                    .iter()
+                    .all(|profile| profile.limits.len() == 1)
+            );
+            assert_eq!(resources.general_binding_default_profile, "interactive");
+            assert_eq!(resources.cli_default_profile, "trusted-native");
+        }
+        #[cfg(all(not(feature = "render"), feature = "ascii"))]
+        {
+            let resources = contract.resources.expect("ASCII resource catalog");
+            let ids = resources
+                .limits
+                .iter()
+                .map(|limit| limit.id)
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                ids,
+                std::collections::BTreeSet::from([
+                    "max_source_bytes",
+                    "max_flowchart_nodes",
+                    "max_flowchart_edges",
+                    "max_flowchart_subgraphs",
+                    "max_class_nodes",
+                    "max_class_edges",
+                    "max_class_namespaces",
+                    "max_label_bytes",
+                ])
+            );
+            assert!(!ids.contains("max_zenuml_participants"));
+            assert!(!ids.contains("max_venn_areas"));
+            assert_eq!(resources.general_binding_default_profile, "interactive");
+            assert_eq!(resources.cli_default_profile, "trusted-native");
+            assert!(resources.limits.iter().all(|limit| !limit.hard_cap));
+            assert!(
+                resources
+                    .limits
+                    .iter()
+                    .all(|limit| limit.phase == "source" || limit.phase == "layout_model")
+            );
+        }
+        #[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
         assert!(contract.resources.is_none());
 
         let json: Value = serde_json::from_slice(&runtime_contract_json(2).unwrap()).unwrap();

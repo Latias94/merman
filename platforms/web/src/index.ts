@@ -1624,6 +1624,7 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
     analysis: Boolean(capabilities.analysis),
     ascii: Boolean(capabilities.ascii),
     core_host: Boolean(capabilities.core_host),
+    cytoscape_layout: Boolean(capabilities.cytoscape_layout),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
     editor_language: Boolean(capabilities.editor_language),
@@ -1635,7 +1636,7 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
 }
 
 function normalizeRuntimeContract(contract: RuntimeContract): RuntimeContract {
-  if (!contract || typeof contract !== "object" || contract.schema_version !== 2) {
+  if (!contract || typeof contract !== "object" || contract.schema_version !== 3) {
     throw new Error("Merman WASM returned an unsupported runtime contract schema.");
   }
   if (contract.options_schema_version !== 1) {

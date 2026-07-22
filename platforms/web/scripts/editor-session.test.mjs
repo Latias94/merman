@@ -198,6 +198,7 @@ function editorCapabilities() {
     analysis: true,
     ascii: false,
     core_host: false,
+    cytoscape_layout: false,
     elk_layout: false,
     ratex_math: false,
     editor_language: true,

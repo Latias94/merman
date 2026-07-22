@@ -9,6 +9,7 @@ const CAPABILITY_NAMES = Object.freeze([
   "analysis",
   "ascii",
   "core_host",
+  "cytoscape_layout",
   "elk_layout",
   "ratex_math",
   "editor_language",

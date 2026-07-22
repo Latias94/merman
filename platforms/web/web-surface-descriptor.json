@@ -12,6 +12,7 @@
         "analysis": false,
         "ascii": false,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": false
@@ -27,6 +28,7 @@
         "analysis": true,
         "ascii": false,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": false
@@ -42,6 +44,7 @@
         "analysis": true,
         "ascii": false,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": false
@@ -57,6 +60,7 @@
         "analysis": false,
         "ascii": false,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": false
@@ -72,6 +76,7 @@
         "analysis": false,
         "ascii": true,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": false
@@ -87,6 +92,7 @@
         "analysis": true,
         "ascii": false,
         "core_host": false,
+        "cytoscape_layout": false,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": true
@@ -102,6 +108,7 @@
         "analysis": true,
         "ascii": true,
         "core_host": true,
+        "cytoscape_layout": true,
         "elk_layout": true,
         "ratex_math": false,
         "editor_language": true
@@ -124,6 +131,7 @@
         "analysis": true,
         "ascii": true,
         "core_host": true,
+        "cytoscape_layout": true,
         "elk_layout": false,
         "ratex_math": false,
         "editor_language": true
@@ -139,6 +147,7 @@
         "analysis": true,
         "ascii": true,
         "core_host": true,
+        "cytoscape_layout": true,
         "elk_layout": true,
         "ratex_math": true,
         "editor_language": true

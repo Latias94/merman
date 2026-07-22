@@ -772,6 +772,7 @@ Missing ref: id2,after missing,1d
         assert!(json.get("layout").is_some());
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn validate_json_reports_success_and_errors_without_throwing() {
         let valid: Value =

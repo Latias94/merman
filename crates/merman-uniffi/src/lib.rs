@@ -890,6 +890,7 @@ mod tests {
     use super::*;
     #[cfg(feature = "analysis")]
     use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
+    #[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
     #[cfg(feature = "render")]
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1593,7 +1594,11 @@ mod tests {
             runtime_contract["features"]["render"],
             cfg!(feature = "render")
         );
-        if cfg!(feature = "render") {
+        if cfg!(any(
+            feature = "render",
+            feature = "analysis",
+            feature = "ascii"
+        )) {
             assert_eq!(
                 runtime_contract["resources"]["general_binding_default_profile"],
                 "interactive"
@@ -1605,7 +1610,7 @@ mod tests {
 
     #[test]
     fn typed_resource_options_builder_uses_the_shared_descriptor() {
-        #[cfg(feature = "render")]
+        #[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
         {
             let json = resource_options_json(
                 MermanResourceProfile::Constrained,
@@ -1620,10 +1625,10 @@ mod tests {
             assert_eq!(value["resources"]["profile"], "constrained");
             assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
         }
-        #[cfg(not(feature = "render"))]
+        #[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
         {
             let error = resource_options_json(MermanResourceProfile::Constrained, Vec::new())
-                .expect_err("analysis-only UniFFI must retain the typed resource endpoint");
+                .expect_err("a feature-empty UniFFI build has no resource-aware operation");
             let MermanError::Binding {
                 code,
                 code_name,
@@ -1631,7 +1636,10 @@ mod tests {
             } = error;
             assert_eq!(code, BindingStatus::UnsupportedFormat.code());
             assert_eq!(code_name, BindingStatus::UnsupportedFormat.code_name());
-            assert_eq!(message, "resource options requires the render feature");
+            assert_eq!(
+                message,
+                "resource options requires at least one resource-aware operation"
+            );
         }
     }
 

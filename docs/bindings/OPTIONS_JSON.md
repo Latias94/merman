@@ -430,9 +430,11 @@ exact value or `null` for every profile. This avoids copying profile values into
 ## Runtime Contract Discovery
 
 Query the loaded artifact rather than inferring capabilities or resource values from a package
-name. Runtime-contract schema `2` includes native ABI, package version, options schema, payload
-schemas, compiled features, complete language-catalog family count, plus the resource descriptor when
-rendering is compiled. Analysis-only artifacts return `resources: null`.
+name. Runtime-contract schema `3` includes native ABI, package version, options schema, payload
+schemas, compiled features, complete language-catalog family count, plus the resource descriptor
+for every compiled resource-aware operation. Render, analysis, and ASCII artifacts expose only
+the limit ids their operations can enforce; an artifact with none of those operations returns
+`resources: null`.
 
 | Surface | API |
 | --- | --- |

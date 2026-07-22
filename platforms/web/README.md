@@ -73,8 +73,9 @@ runs the wrapper/subpath contract check.
 Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
 Call `runtimeContract()` when you also need the loaded ABI/package/options schema, registry facts,
 or descriptor-driven resource profile values. Render-enabled artifacts include the complete
-resource catalog; analysis/editor/ascii-only artifacts return `resources: null`. Do not duplicate
-profile values in application code.
+resource catalog; analysis/editor and ASCII artifacts include only the input limits their compiled
+operations enforce. Only an artifact without render, analysis, or ASCII operations returns
+`resources: null`. Do not duplicate profile values in application code.
 Slim subpaths do not export wrappers for capabilities they intentionally omit. For example,
 `@mermanjs/web/core` has no `renderSvg()`, `renderAscii()`, or editor-language exports, and
 `@mermanjs/web/render` has no ASCII or editor-language exports.
@@ -325,7 +326,7 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 
 The package publishes subpaths for the core, render, ASCII, editor, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`analysis`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
+`analysis`, `core_host`, `cytoscape_layout`, `elk_layout`, `ratex_math`, or `editor_language`
 capabilities.
 The slim subpaths are capability-specific entry points, not full API aliases. They type-re-export
 the shared public option/result types and stable helper values, then export only the runtime

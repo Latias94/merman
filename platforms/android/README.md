@@ -71,7 +71,7 @@ val factsJson = MermanEngine.analyzeDocumentFactsJson(
 
 Use `diagramFamilyCapabilitiesJson()` and `asciiCapabilitiesJson()` instead of hard-coding support for a build profile or output format.
 Use `runtimeContractJson()` for the loaded ABI/package/options versions, feature set, registry
-facts, and exact resource profile values. The returned JSON uses runtime-contract schema `2`.
+facts, and exact resource profile values. The returned JSON uses runtime-contract schema `3`.
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then pass the generated options JSON:
 
 ```kotlin

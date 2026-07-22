@@ -54,10 +54,6 @@ impl DetectorRegistry {
         let no_directives = remove_directives(no_frontmatter.as_ref());
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
 
-        if let Some(id) = crate::family::fast_detect_by_leading_keyword(cleaned.as_ref()) {
-            return Ok(id);
-        }
-
         for det in self.detectors.iter() {
             if (det.detector)(cleaned.as_ref(), config) {
                 return Ok(det.id);
@@ -77,10 +73,6 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
-        if let Some(id) = crate::family::fast_detect_by_leading_keyword(text) {
-            return Ok(id);
-        }
-
         for det in self.detectors.iter() {
             if (det.detector)(text, config) {
                 return Ok(det.id);

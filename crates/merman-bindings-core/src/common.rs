@@ -635,11 +635,24 @@ pub(crate) fn binding_local_time_policy(
 pub(crate) fn analysis_options(
     options: &BindingOptions,
 ) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    #[cfg(feature = "render")]
-    let max_source_bytes = binding_resource_policy(options.analysis.resources.as_ref())?
-        .value(merman::render::ResourceLimitId::MaxSourceBytes);
-    #[cfg(not(feature = "render"))]
-    let max_source_bytes = analysis_only_max_source_bytes(options.analysis.resources.as_ref())?;
+    analysis_options_for_resource_operation(options, InputResourceOperation::Analysis)
+}
+
+#[cfg(feature = "analysis")]
+pub(crate) fn artifact_analysis_options(
+    options: &BindingOptions,
+) -> Result<merman_analysis::AnalysisOptions, BindingError> {
+    analysis_options_for_resource_operation(options, InputResourceOperation::ArtifactUnion)
+}
+
+#[cfg(feature = "analysis")]
+fn analysis_options_for_resource_operation(
+    options: &BindingOptions,
+    operation: InputResourceOperation,
+) -> Result<merman_analysis::AnalysisOptions, BindingError> {
+    let max_source_bytes =
+        binding_input_resource_policy(options.analysis.resources.as_ref(), operation)?
+            .value(merman::resources::InputResourceLimitId::MaxSourceBytes);
 
     let analysis = merman_analysis::AnalysisOptionsJson {
         fixed_today: options.analysis.fixed_today.clone(),
@@ -655,34 +668,137 @@ pub(crate) fn analysis_options(
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
 }
 
-#[cfg(all(feature = "analysis", not(feature = "render")))]
-fn analysis_only_max_source_bytes(
-    resources: Option<&ResourceOptionsJson>,
-) -> Result<Option<usize>, BindingError> {
-    let Some(resources) = resources else {
-        return Ok(None);
-    };
-    if resources.profile.is_some() {
-        return Err(render_resource_options_unavailable());
+#[cfg(any(feature = "analysis", feature = "ascii"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputResourceOperation {
+    // ABI 2 has one shared options object. One-shot calls validate their exact operation, while a
+    // cached multi-operation engine accepts the artifact union and projects only owned limits.
+    // ABI 3 moves this choice into each generic operation request.
+    #[cfg(feature = "analysis")]
+    Analysis,
+    #[cfg(feature = "ascii")]
+    Ascii,
+    ArtifactUnion,
+}
+
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+pub(crate) const fn input_resource_limit_available_for_build(
+    id: merman::resources::InputResourceLimitId,
+) -> bool {
+    if cfg!(feature = "render") {
+        return true;
     }
-    if let Some(unknown) = resources
-        .limits
-        .keys()
-        .find(|id| id.as_str() != "max_source_bytes")
+    match id {
+        merman::resources::InputResourceLimitId::MaxSourceBytes => {
+            cfg!(feature = "analysis") || cfg!(feature = "ascii")
+        }
+        merman::resources::InputResourceLimitId::MaxFlowchartNodes
+        | merman::resources::InputResourceLimitId::MaxFlowchartEdges
+        | merman::resources::InputResourceLimitId::MaxFlowchartSubgraphs
+        | merman::resources::InputResourceLimitId::MaxClassNodes
+        | merman::resources::InputResourceLimitId::MaxClassEdges
+        | merman::resources::InputResourceLimitId::MaxClassNamespaces
+        | merman::resources::InputResourceLimitId::MaxLabelBytes => cfg!(feature = "ascii"),
+        merman::resources::InputResourceLimitId::MaxZenumlParticipants
+        | merman::resources::InputResourceLimitId::MaxZenumlStatements
+        | merman::resources::InputResourceLimitId::MaxZenumlFragments => false,
+    }
+}
+
+#[cfg(any(feature = "analysis", feature = "ascii"))]
+const fn input_resource_limit_available_for_operation(
+    operation: InputResourceOperation,
+    id: merman::resources::InputResourceLimitId,
+) -> bool {
+    match operation {
+        InputResourceOperation::ArtifactUnion => input_resource_limit_available_for_build(id),
+        #[cfg(feature = "analysis")]
+        InputResourceOperation::Analysis => {
+            cfg!(feature = "analysis")
+                && matches!(id, merman::resources::InputResourceLimitId::MaxSourceBytes)
+        }
+        #[cfg(feature = "ascii")]
+        InputResourceOperation::Ascii => {
+            cfg!(feature = "ascii")
+                && matches!(
+                    id,
+                    merman::resources::InputResourceLimitId::MaxSourceBytes
+                        | merman::resources::InputResourceLimitId::MaxFlowchartNodes
+                        | merman::resources::InputResourceLimitId::MaxFlowchartEdges
+                        | merman::resources::InputResourceLimitId::MaxFlowchartSubgraphs
+                        | merman::resources::InputResourceLimitId::MaxClassNodes
+                        | merman::resources::InputResourceLimitId::MaxClassEdges
+                        | merman::resources::InputResourceLimitId::MaxClassNamespaces
+                        | merman::resources::InputResourceLimitId::MaxLabelBytes
+                )
+        }
+    }
+}
+
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+fn resource_limit_available_for_build(id: &str) -> bool {
+    if let Some(input_id) = merman::resources::InputResourceLimitId::from_stable_id(id) {
+        return input_resource_limit_available_for_build(input_id);
+    }
+    #[cfg(feature = "render")]
     {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!("unknown analysis-only resource limit id: {unknown}"),
-        ));
+        matches!(
+            merman::render::ResourceLimitId::from_stable_id(id),
+            Some(merman::render::ResourceLimitId::Render(_))
+        )
     }
-    let value = resources.limits.get("max_source_bytes").copied();
-    if value == Some(0) {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "resources.limits.max_source_bytes must be a positive integer",
-        ));
+    #[cfg(not(feature = "render"))]
+    false
+}
+
+#[cfg(any(feature = "analysis", feature = "ascii"))]
+pub(crate) fn binding_input_resource_policy(
+    resources: Option<&ResourceOptionsJson>,
+    operation: InputResourceOperation,
+) -> Result<merman::resources::InputResourcePolicy, BindingError> {
+    let profile = resources
+        .and_then(|resources| resources.profile.as_deref())
+        .map(|id| {
+            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported resources.profile: {id}"),
+                )
+            })
+        })
+        .transpose()?
+        .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
+    let mut policy = merman::resources::InputResourcePolicy::for_profile(profile);
+    if let Some(resources) = resources {
+        for (id, value) in &resources.limits {
+            if let Some(input_id) = merman::resources::InputResourceLimitId::from_stable_id(id) {
+                if !input_resource_limit_available_for_operation(operation, input_id) {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!(
+                            "resource limit id `{id}` is not available for the {operation:?} operation"
+                        ),
+                    ));
+                }
+                policy.apply_limit(input_id, *value).map_err(|error| {
+                    BindingError::new(BindingStatus::InvalidArgument, error.to_string())
+                })?;
+                continue;
+            }
+            if operation == InputResourceOperation::ArtifactUnion
+                && resource_limit_available_for_build(id)
+            {
+                continue;
+            }
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "resource limit id `{id}` is not available for the {operation:?} operation"
+                ),
+            ));
+        }
     }
-    Ok(value)
+    Ok(policy)
 }
 
 #[cfg(feature = "render")]
@@ -712,18 +828,21 @@ pub(crate) fn binding_resource_policy(
     Ok(limits)
 }
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
 pub fn resource_options_json(
     profile_id: &str,
     overrides: &[(&str, usize)],
 ) -> Result<Vec<u8>, BindingError> {
-    let profile = merman::render::RenderResourceProfile::from_id(profile_id).ok_or_else(|| {
+    let profile = merman::resources::ResourceProfile::from_id(profile_id).ok_or_else(|| {
         BindingError::new(
             BindingStatus::InvalidArgument,
             format!("unsupported resources.profile: {profile_id}"),
         )
     })?;
-    let mut policy = merman::render::RenderResourcePolicy::for_profile(profile);
+    #[cfg(feature = "render")]
+    let mut render_policy = merman::render::RenderResourcePolicy::for_profile(profile);
+    #[cfg(not(feature = "render"))]
+    let mut input_policy = merman::resources::InputResourcePolicy::for_profile(profile);
     let mut limits = BTreeMap::new();
     for &(id, value) in overrides {
         if limits.insert(id, value).is_some() {
@@ -732,7 +851,18 @@ pub fn resource_options_json(
                 format!("duplicate resource limit override: {id}"),
             ));
         }
-        policy.apply_override(id, value).map_err(|error| {
+        if !resource_limit_available_for_build(id) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!("resource limit id `{id}` is not available for this build"),
+            ));
+        }
+        #[cfg(feature = "render")]
+        render_policy.apply_override(id, value).map_err(|error| {
+            BindingError::new(BindingStatus::InvalidArgument, error.to_string())
+        })?;
+        #[cfg(not(feature = "render"))]
+        input_policy.apply_override(id, value).map_err(|error| {
             BindingError::new(BindingStatus::InvalidArgument, error.to_string())
         })?;
     }
@@ -749,7 +879,7 @@ pub fn resource_options_json(
     .map_err(internal_json_error)
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(any(feature = "analysis", feature = "render", feature = "ascii")))]
 pub fn resource_options_json(
     profile_id: &str,
     overrides: &[(&str, usize)],
@@ -759,7 +889,10 @@ pub fn resource_options_json(
 }
 
 pub fn render_resource_options_unavailable() -> BindingError {
-    feature_required_error("resource options", "render")
+    BindingError::new(
+        BindingStatus::UnsupportedFormat,
+        "resource options requires at least one resource-aware operation",
+    )
 }
 
 #[cfg(feature = "analysis")]
@@ -951,14 +1084,55 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "render"))]
+    #[cfg(all(
+        not(feature = "render"),
+        not(feature = "analysis"),
+        not(feature = "ascii")
+    ))]
     #[test]
-    fn resource_options_builder_reports_a_typed_missing_render_capability() {
+    fn resource_options_builder_reports_a_typed_missing_operation_capability() {
         let error = resource_options_json("constrained", &[]).unwrap_err();
         assert_eq!(error.status(), BindingStatus::UnsupportedFormat);
         assert_eq!(
             error.message(),
-            "resource options requires the render feature"
+            "resource options requires at least one resource-aware operation"
+        );
+    }
+
+    #[cfg(all(feature = "analysis", not(feature = "render"), not(feature = "ascii")))]
+    #[test]
+    fn analysis_only_resource_options_accept_only_the_source_limit() {
+        let json = resource_options_json("constrained", &[("max_source_bytes", 4096)]).unwrap();
+        let value: Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
+
+        let error =
+            resource_options_json("constrained", &[("max_flowchart_nodes", 1)]).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("not available for this build"));
+    }
+
+    #[cfg(all(feature = "analysis", feature = "ascii", not(feature = "render")))]
+    #[test]
+    fn operation_scope_rejects_sibling_limits_but_artifact_union_accepts_them() {
+        let options = parse_options(
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_flowchart_nodes": 1 } } }"#,
+        )
+        .unwrap();
+
+        let error = analysis_options(&options).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("Analysis operation"));
+
+        artifact_analysis_options(&options).unwrap();
+        let ascii = binding_input_resource_policy(
+            options.analysis.resources.as_ref(),
+            InputResourceOperation::Ascii,
+        )
+        .unwrap();
+        assert_eq!(
+            ascii.value(merman::resources::InputResourceLimitId::MaxFlowchartNodes),
+            Some(1)
         );
     }
 

@@ -1204,7 +1204,7 @@ fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<
         let event = reader.read_event().map_err(|_| RasterError::SvgParse)?;
         let element = match event {
             Event::Start(element) | Event::Empty(element)
-                if element.local_name().as_ref().eq_ignore_ascii_case(b"image") =>
+                if is_embedded_image_element(element.local_name().as_ref()) =>
             {
                 element
             }
@@ -1266,6 +1266,10 @@ fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<
         }
     }
     Ok(plan)
+}
+
+fn is_embedded_image_element(local_name: &[u8]) -> bool {
+    local_name.eq_ignore_ascii_case(b"image") || local_name.eq_ignore_ascii_case(b"feImage")
 }
 
 fn plan_embedded_images(
@@ -2132,6 +2136,50 @@ mod tests {
             .expect("data URL should be rejected before usvg parsing");
 
         assert!(error.to_string().contains("max_bytes_per_image"));
+    }
+
+    #[test]
+    fn filter_image_bytes_are_limited_before_usvg_decodes_data_urls() {
+        let href = png_data_uri_with_declared_size(1, 1);
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><filter id="f"><feImage href="{href}"/></filter></defs><rect width="10" height="10" filter="url(#f)"/></svg>"#
+        );
+        let raster_options = RasterOptions {
+            embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
+            ..RasterOptions::default()
+        };
+        let pdf_options = PdfOptions {
+            embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
+            ..PdfOptions::default()
+        };
+
+        let png_error = prepare_raster(&svg, &raster_options)
+            .err()
+            .expect("filter data URL should be rejected before raster usvg parsing");
+        let pdf_error = prepare_pdf(&svg, &pdf_options)
+            .err()
+            .expect("filter data URL should be rejected before PDF usvg parsing");
+
+        assert!(png_error.to_string().contains("max_bytes_per_image"));
+        assert!(pdf_error.to_string().contains("max_bytes_per_image"));
+    }
+
+    #[test]
+    fn filter_image_pixels_are_limited_after_header_decode() {
+        let href = png_data_uri_with_declared_size(100_000, 100_000);
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><filter id="f"><feImage href="{href}"/></filter></defs><rect width="10" height="10" filter="url(#f)"/></svg>"#
+        );
+
+        let png_error = prepare_raster(&svg, &RasterOptions::default())
+            .err()
+            .expect("filter image intrinsic pixels should be bounded for raster output");
+        let pdf_error = prepare_pdf(&svg, &PdfOptions::default())
+            .err()
+            .expect("filter image intrinsic pixels should be bounded for PDF output");
+
+        assert!(png_error.to_string().contains("max_pixels_per_image"));
+        assert!(pdf_error.to_string().contains("max_pixels_per_image"));
     }
 
     #[test]

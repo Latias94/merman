@@ -3,6 +3,10 @@ use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::fmt::Write;
 
+fn test_detector_always_matches(_text: &str, _config: &mut MermaidConfig) -> bool {
+    true
+}
+
 #[test]
 fn canonical_catalog_detects_mindmap() {
     let engine = Engine::new();
@@ -177,6 +181,38 @@ fn detects_11_16_new_family_headers_with_upstream_boundaries() {
         err.to_string()
             .contains("No diagram type detected matching given configuration"),
         "swimlane-beta uses JS word-boundary semantics: {err}"
+    );
+}
+
+#[test]
+fn supplied_detector_registry_preserves_upstream_first_match_order() {
+    let mut registry = DetectorRegistry::new();
+    registry.add_fn("host-first", test_detector_always_matches);
+    registry.add_fn("host-second", test_detector_always_matches);
+    let mut config = MermaidConfig::empty_object();
+
+    // Mermaid detectType iterates the supplied detector records and returns the first match.
+    let detected = registry
+        .detect_type("sequenceDiagram\nA ->> B: hello", &mut config)
+        .unwrap();
+
+    assert_eq!(detected, "host-first");
+}
+
+#[test]
+fn empty_detector_registry_rejects_builtin_leading_keywords() {
+    let registry = DetectorRegistry::new();
+    let mut config = MermaidConfig::empty_object();
+
+    let error = registry
+        .detect_type_precleaned("sequenceDiagram\nA ->> B: hello", &mut config)
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("No diagram type detected matching given configuration"),
+        "unexpected error: {error}"
     );
 }
 

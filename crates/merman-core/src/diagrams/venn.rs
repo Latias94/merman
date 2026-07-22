@@ -708,6 +708,15 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "title") {
+        let Some(separator) = rest.chars().next() else {
+            return Err(parse_error(meta, "expected title text"));
+        };
+        if !separator.is_whitespace()
+            || rest[separator.len_utf8()..].is_empty()
+            || rest.contains(['#', ';'])
+        {
+            return Err(parse_error(meta, "invalid Venn title syntax"));
+        }
         state.lexemes.keyword(SourceSpan::new(
             statement_start,
             statement_start + "title".len(),
@@ -1420,6 +1429,24 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn title_matches_the_upstream_lexer_boundary() {
+        assert_eq!(
+            parse("venn-beta\ntitle Valid title\n").title.as_deref(),
+            Some("Valid title")
+        );
+
+        for source in [
+            "venn-beta\ntitle: Invalid\n",
+            "venn-beta\ntitle Invalid; suffix\n",
+            "venn-beta\ntitle Invalid # suffix\n",
+        ] {
+            let error = parse_venn_model_for_render(source, &meta())
+                .expect_err("the pinned Venn lexer rejects this title form");
+            assert!(error.to_string().contains("title"), "{error}");
+        }
     }
 
     #[test]

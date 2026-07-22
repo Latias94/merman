@@ -102,7 +102,7 @@ The callback is isolate-local. Create, measure, render, and close the reusable e
 
 ## Runtime Contract
 
-Call `runtimeContract()` to inspect runtime-contract schema `2` from the loaded native library. It
+Call `runtimeContract()` to inspect runtime-contract schema `3` from the loaded native library. It
 reports the loaded ABI, package, and options versions together with compiled features, registry
 facts, and the exact values of every resource profile. Use this contract to choose an explicit
 profile for the host workload instead of duplicating limits in Dart or inferring capabilities from

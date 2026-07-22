@@ -32,10 +32,11 @@ Generated bindings provide `MermanEngine` for independent calls and `MermanReusa
 The package uses the same versioned options as the C ABI. Diagnostics remain schema `1` and
 parser-facts are schema `2`, independently of UniFFI ABI `2`; facts v1 is rejected at the version
 boundary and the removed TextScan alpha shape is not retained.
-Call `MermanEngine.runtime_contract_json()` to inspect runtime-contract schema `2`, including the
+Call `MermanEngine.runtime_contract_json()` to inspect runtime-contract schema `3`, including the
 loaded ABI/package/options versions, feature set, registry facts, and resource descriptor. This is
-the authoritative source for profile values; render-disabled generated artifacts report
-`resources: null`.
+the authoritative source for profile values. Render-, analysis-, and ASCII-capable artifacts each
+report the limits their compiled operations can enforce; only an artifact with none of those
+operations reports `resources: null`.
 
 ## Text Measurement Ownership
 

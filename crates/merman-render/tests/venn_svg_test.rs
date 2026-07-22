@@ -163,6 +163,82 @@ union A,B
 }
 
 #[test]
+fn venn_repeated_union_members_keep_upstream_constraints_and_finite_geometry() {
+    let input = r##"venn-beta
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,A,B["Repeated"]:3
+"##;
+
+    let (layout, svg) = render_typed_venn(input);
+    let (repeated_layout, repeated_svg) = render_typed_venn(input);
+
+    // Mermaid 11.16 enumerates member positions, then de-duplicates pair keys. Therefore A,A,B
+    // contributes exactly the A,A self-pair and the A,B pair to the layout-only constraints.
+    assert_eq!(
+        layout
+            .areas
+            .iter()
+            .map(|area| (area.sets.join("|"), area.size))
+            .collect::<Vec<_>>(),
+        [
+            ("A".to_string(), 20.0),
+            ("B".to_string(), 12.0),
+            ("A|A|B".to_string(), 3.0),
+            ("A|A".to_string(), 5.0),
+            ("A|B".to_string(), 3.0),
+        ]
+    );
+    assert_eq!(
+        serde_json::to_value(&layout).expect("serialize first typed layout"),
+        serde_json::to_value(&repeated_layout).expect("serialize repeated typed layout"),
+        "the source-backed Venn optimizer must remain deterministic"
+    );
+    assert_eq!(svg, repeated_svg);
+
+    for area in &layout.areas {
+        assert!(area.size.is_finite(), "non-finite size for {:?}", area.sets);
+        assert!(
+            area.text_x.is_finite() && area.text_y.is_finite(),
+            "non-finite label position for {:?}",
+            area.sets
+        );
+        assert!(!area.path.is_empty(), "missing path for {:?}", area.sets);
+        assert!(
+            !area.path.contains("NaN") && !area.path.contains("inf"),
+            "non-finite path for {:?}: {}",
+            area.sets,
+            area.path
+        );
+        assert_eq!(area.circles.len(), area.sets.len());
+        for circle in &area.circles {
+            assert!(
+                circle.x.is_finite()
+                    && circle.y.is_finite()
+                    && circle.radius.is_finite()
+                    && circle.radius > 0.0,
+                "non-finite circle for {:?}: {circle:?}",
+                area.sets
+            );
+        }
+    }
+
+    let document = roxmltree::Document::parse(&svg).expect("valid repeated-member Venn SVG");
+    let self_pair = find_venn_area(&document, "A_A", "venn-intersection");
+    let repeated_union = find_venn_area(&document, "A_A_B", "venn-intersection");
+    for area in [self_pair, repeated_union] {
+        let path = area
+            .children()
+            .find(|child| child.has_tag_name("path"))
+            .and_then(|path| path.attribute("d"))
+            .expect("rendered intersection path");
+        assert!(!path.is_empty());
+        assert!(!path.contains("NaN") && !path.contains("inf"));
+    }
+    assert_eq!(svg.matches(">Repeated</tspan></text>").count(), 1);
+}
+
+#[test]
 fn venn_hand_drawn_replaces_styled_areas_with_seeded_rough_paths() {
     let input = r##"---
 config:

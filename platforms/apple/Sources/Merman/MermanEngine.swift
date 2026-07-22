@@ -157,6 +157,7 @@ public struct MermanRuntimeFeatures: Decodable {
     public let analysis: Bool
     public let ascii: Bool
     public let coreHost: Bool
+    public let cytoscapeLayout: Bool
     public let elkLayout: Bool
     public let ratexMath: Bool
     public let editorLanguage: Bool
@@ -166,6 +167,7 @@ public struct MermanRuntimeFeatures: Decodable {
         case analysis
         case ascii
         case coreHost = "core_host"
+        case cytoscapeLayout = "cytoscape_layout"
         case elkLayout = "elk_layout"
         case ratexMath = "ratex_math"
         case editorLanguage = "editor_language"

@@ -172,12 +172,6 @@ pub(crate) struct DetectorFact {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct FastDetectKeywordFact {
-    keyword: &'static str,
-    id: &'static str,
-}
-
-#[derive(Clone, Copy)]
 pub(crate) struct SemanticParserFact {
     pub(crate) id: &'static str,
     pub(crate) parser: DiagramSemanticParser,
@@ -250,7 +244,6 @@ impl DiagramFamilyId {
 
 struct FamilyCatalogProjection {
     detector_facts: Vec<DetectorFact>,
-    fast_detect_keyword_facts: Vec<FastDetectKeywordFact>,
     semantic_parser_facts: Vec<SemanticParserFact>,
     render_parser_facts: Vec<RenderParserFact>,
     combined_parser_facts: Vec<CombinedParserFact>,
@@ -262,7 +255,6 @@ struct FamilyCatalogProjection {
 impl FamilyCatalogProjection {
     fn build() -> Self {
         let mut detector_facts = Vec::<(u16, DetectorFact)>::new();
-        let mut fast_detect_keyword_facts = Vec::<(u16, FastDetectKeywordFact)>::new();
         let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
         let mut render_parser_facts = Vec::<(u16, RenderParserFact)>::new();
         let mut combined_parser_facts = Vec::<(u16, CombinedParserFact)>::new();
@@ -277,15 +269,6 @@ impl FamilyCatalogProjection {
                     DetectorFact {
                         id: variant.id,
                         detector: ordered.value,
-                    },
-                ));
-            }
-            for keyword in variant.fast_keywords {
-                fast_detect_keyword_facts.push((
-                    keyword.order,
-                    FastDetectKeywordFact {
-                        keyword: keyword.keyword,
-                        id: variant.id,
                     },
                 ));
             }
@@ -355,7 +338,6 @@ impl FamilyCatalogProjection {
         }
 
         let detector_facts = ordered_values(detector_facts);
-        let fast_detect_keyword_facts = ordered_values(fast_detect_keyword_facts);
         let semantic_parser_facts = ordered_values(semantic_parser_facts);
         let render_parser_facts = ordered_values(render_parser_facts);
         let combined_parser_facts = ordered_values(combined_parser_facts);
@@ -373,7 +355,6 @@ impl FamilyCatalogProjection {
 
         Self {
             detector_facts,
-            fast_detect_keyword_facts,
             semantic_parser_facts,
             render_parser_facts,
             combined_parser_facts,
@@ -396,25 +377,6 @@ fn family_catalog_projection() -> &'static FamilyCatalogProjection {
 
 pub(crate) fn detector_facts() -> &'static [DetectorFact] {
     family_catalog_projection().detector_facts.as_slice()
-}
-
-pub(crate) fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
-    fn has_boundary(rest: &str) -> bool {
-        rest.is_empty()
-            || rest
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_whitespace() || c == ';')
-    }
-
-    let trimmed = text.trim_start();
-    let keywords = fast_detect_keyword_facts();
-
-    keywords.iter().find_map(|fact| {
-        trimmed
-            .strip_prefix(fact.keyword)
-            .and_then(|rest| has_boundary(rest).then_some(fact.id))
-    })
 }
 
 pub(crate) fn semantic_parser_facts() -> &'static [SemanticParserFact] {
@@ -448,12 +410,6 @@ pub(crate) fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 pub(crate) fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family_catalog_projection()
         .diagram_family_capabilities
-        .as_slice()
-}
-
-fn fast_detect_keyword_facts() -> &'static [FastDetectKeywordFact] {
-    family_catalog_projection()
-        .fast_detect_keyword_facts
         .as_slice()
 }
 
@@ -710,16 +666,6 @@ const fn ordered<T>(order: u16, value: T) -> Ordered<T> {
 }
 
 #[derive(Clone, Copy)]
-struct FastKeywordDefinition {
-    order: u16,
-    keyword: &'static str,
-}
-
-const fn fast_keyword(order: u16, keyword: &'static str) -> FastKeywordDefinition {
-    FastKeywordDefinition { order, keyword }
-}
-
-#[derive(Clone, Copy)]
 struct MetadataDefinition {
     id: &'static str,
     order: Option<u16>,
@@ -762,7 +708,6 @@ struct FamilyVariantDefinition {
     id: &'static str,
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
-    fast_keywords: &'static [FastKeywordDefinition],
     semantic: Option<Ordered<DiagramSemanticParser>>,
     combined: Option<Ordered<CombinedSemanticParser>>,
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
@@ -792,7 +737,6 @@ macro_rules! variant {
         id: $id:literal,
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
-        fast: $fast:expr,
         semantic: $semantic:expr,
         combined: $combined:expr,
         typed: $typed:expr,
@@ -807,7 +751,6 @@ macro_rules! variant {
             id: $id,
             catalog_order: $catalog_order,
             detector: $detector,
-            fast_keywords: $fast,
             semantic: $semantic,
             combined: $combined,
             typed_render: $typed,
@@ -974,29 +917,10 @@ const CYNEFIN_HEADERS: &[HeaderDefinition] = &[header(43, "cynefin-beta", "cynef
 const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
     &[header(44, "flowchart-elk TD", "elk flowchart header")];
 
-const FAST_SEQUENCE: &[FastKeywordDefinition] = &[fast_keyword(0, "sequenceDiagram")];
-const FAST_MINDMAP: &[FastKeywordDefinition] = &[fast_keyword(1, "mindmap")];
-const FAST_ARCHITECTURE: &[FastKeywordDefinition] = &[fast_keyword(2, "architecture")];
-const FAST_ER: &[FastKeywordDefinition] = &[fast_keyword(3, "erDiagram")];
-const FAST_GANTT: &[FastKeywordDefinition] = &[fast_keyword(4, "gantt")];
-const FAST_TIMELINE: &[FastKeywordDefinition] = &[fast_keyword(5, "timeline")];
-const FAST_JOURNEY: &[FastKeywordDefinition] = &[fast_keyword(6, "journey")];
-const FAST_GIT_GRAPH: &[FastKeywordDefinition] = &[fast_keyword(7, "gitGraph")];
-const FAST_QUADRANT: &[FastKeywordDefinition] = &[fast_keyword(8, "quadrantChart")];
-const FAST_PACKET: &[FastKeywordDefinition] = &[fast_keyword(9, "packet-beta")];
-const FAST_XYCHART: &[FastKeywordDefinition] = &[fast_keyword(10, "xychart-beta")];
-const FAST_TREE_VIEW: &[FastKeywordDefinition] = &[fast_keyword(11, "treeView-beta")];
-const FAST_ISHIKAWA: &[FastKeywordDefinition] = &[
-    fast_keyword(12, "ishikawa-beta"),
-    fast_keyword(13, "ishikawa"),
-];
-const FAST_EVENTMODELING: &[FastKeywordDefinition] = &[fast_keyword(14, "eventmodeling")];
-
 const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "error",
     catalog_order: 0,
     detector: Some(ordered(0, crate::detect::detector_error)),
-    fast: &[],
     semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
     combined: None,
     typed: Some(ordered(38, render_error)),
@@ -1013,7 +937,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "flowchart-elk",
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
-        fast: &[],
         semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
         combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(7, render_flowchart)),
@@ -1028,7 +951,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "flowchart-v2",
         catalog_order: 17,
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
-        fast: &[],
         semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
         combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(5, render_flowchart)),
@@ -1043,7 +965,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "flowchart",
         catalog_order: 18,
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
-        fast: &[],
         semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
         combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(6, render_flowchart)),
@@ -1060,7 +981,6 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "swimlane",
     catalog_order: 16,
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
-    fast: &[],
     semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
     combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
     typed: Some(ordered(39, render_flowchart)),
@@ -1076,7 +996,6 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "mindmap",
     catalog_order: 3,
     detector: Some(ordered(3, crate::detect::detector_mindmap)),
-    fast: FAST_MINDMAP,
     semantic: Some(ordered(22, crate::diagrams::mindmap::parse_mindmap)),
     combined: Some(ordered(5, crate::diagrams::mindmap::parse_mindmap_json_and_editor_facts)),
     typed: Some(ordered(0, render_mindmap)),
@@ -1092,7 +1011,6 @@ const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "architecture",
     catalog_order: 4,
     detector: Some(ordered(4, crate::detect::detector_architecture)),
-    fast: FAST_ARCHITECTURE,
     semantic: Some(ordered(27, crate::diagrams::architecture::parse_architecture)),
     combined: Some(ordered(4, crate::diagrams::architecture::parse_architecture_json_and_editor_facts)),
     typed: Some(ordered(16, render_architecture)),
@@ -1108,7 +1026,6 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "zenuml",
     catalog_order: 5,
     detector: Some(ordered(5, crate::detect::detector_zenuml)),
-    fast: &[],
     semantic: Some(ordered(15, crate::diagrams::zenuml::parse_zenuml)),
     combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
     typed: Some(ordered(3, render_zenuml)),
@@ -1124,7 +1041,6 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "sequence",
     catalog_order: 15,
     detector: Some(ordered(15, crate::detect::detector_sequence)),
-    fast: FAST_SEQUENCE,
     semantic: Some(ordered(8, crate::diagrams::sequence::parse_sequence)),
     combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
     typed: Some(ordered(4, render_sequence)),
@@ -1140,7 +1056,6 @@ const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "c4",
     catalog_order: 6,
     detector: Some(ordered(6, crate::detect::detector_c4)),
-    fast: &[],
     semantic: Some(ordered(6, crate::diagrams::c4::parse_c4)),
     combined: Some(ordered(28, crate::diagrams::c4::parse_c4_json_and_editor_facts)),
     typed: Some(ordered(10, render_c4)),
@@ -1156,7 +1071,6 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "kanban",
     catalog_order: 7,
     detector: Some(ordered(7, crate::detect::detector_kanban)),
-    fast: &[],
     semantic: Some(ordered(26, crate::diagrams::kanban::parse_kanban)),
     combined: Some(ordered(29, crate::diagrams::kanban::parse_kanban_json_and_editor_facts)),
     typed: Some(ordered(17, render_kanban)),
@@ -1173,7 +1087,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "classDiagram",
         catalog_order: 8,
         detector: Some(ordered(8, crate::detect::detector_class_v2)),
-        fast: &[],
         semantic: Some(ordered(16, crate::diagrams::class::parse_class)),
         combined: Some(ordered(20, crate::diagrams::class::parse_class_json_and_editor_facts)),
         typed: Some(ordered(8, render_class)),
@@ -1188,7 +1101,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "class",
         catalog_order: 9,
         detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
-        fast: &[],
         semantic: Some(ordered(17, crate::diagrams::class::parse_class)),
         combined: Some(ordered(21, crate::diagrams::class::parse_class_json_and_editor_facts)),
         typed: Some(ordered(9, render_class)),
@@ -1206,7 +1118,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "er",
         catalog_order: 10,
         detector: Some(ordered(10, crate::detect::detector_er)),
-        fast: FAST_ER,
         semantic: Some(ordered(18, crate::diagrams::er::parse_er)),
         combined: Some(ordered(17, crate::diagrams::er::parse_er_json_and_editor_facts)),
         typed: Some(ordered(29, render_er)),
@@ -1221,7 +1132,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "erDiagram",
         catalog_order: 41,
         detector: None,
-        fast: &[],
         semantic: Some(ordered(19, crate::diagrams::er::parse_er)),
         combined: Some(ordered(18, crate::diagrams::er::parse_er_json_and_editor_facts)),
         typed: Some(ordered(30, render_er)),
@@ -1238,7 +1148,6 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "gantt",
     catalog_order: 11,
     detector: Some(ordered(11, crate::detect::detector_gantt)),
-    fast: FAST_GANTT,
     semantic: Some(ordered(23, crate::diagrams::gantt::parse_gantt)),
     combined: Some(ordered(30, crate::diagrams::gantt::parse_gantt_json_and_editor_facts)),
     typed: Some(ordered(18, render_gantt)),
@@ -1254,7 +1163,6 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "info",
     catalog_order: 12,
     detector: Some(ordered(12, crate::detect::detector_info)),
-    fast: &[],
     semantic: Some(ordered(4, crate::diagrams::info::parse_info)),
     combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
     typed: Some(ordered(26, render_info)),
@@ -1270,7 +1178,6 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "pie",
     catalog_order: 13,
     detector: Some(ordered(13, crate::detect::detector_pie)),
-    fast: &[],
     semantic: Some(ordered(5, crate::diagrams::pie::parse_pie)),
     combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
     typed: Some(ordered(19, render_pie)),
@@ -1286,7 +1193,6 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "requirement",
     catalog_order: 14,
     detector: Some(ordered(14, crate::detect::detector_requirement)),
-    fast: &[],
     semantic: Some(ordered(7, crate::diagrams::requirement::parse_requirement)),
     combined: Some(ordered(31, crate::diagrams::requirement::parse_requirement_json_and_editor_facts)),
     typed: Some(ordered(23, render_requirement)),
@@ -1302,7 +1208,6 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "timeline",
     catalog_order: 19,
     detector: Some(ordered(19, crate::detect::detector_timeline)),
-    fast: FAST_TIMELINE,
     semantic: Some(ordered(24, crate::diagrams::timeline::parse_timeline)),
     combined: Some(ordered(32, crate::diagrams::timeline::parse_timeline_json_and_editor_facts)),
     typed: Some(ordered(21, render_timeline)),
@@ -1318,7 +1223,6 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "gitGraph",
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
-    fast: FAST_GIT_GRAPH,
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
@@ -1335,7 +1239,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "stateDiagram",
         catalog_order: 21,
         detector: Some(ordered(21, crate::detect::detector_state_v2)),
-        fast: &[],
         semantic: Some(ordered(20, crate::diagrams::state::parse_state)),
         combined: Some(ordered(26, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(1, render_state)),
@@ -1350,7 +1253,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "state",
         catalog_order: 22,
         detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
-        fast: &[],
         semantic: Some(ordered(21, crate::diagrams::state::parse_state)),
         combined: Some(ordered(27, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(2, render_state)),
@@ -1367,7 +1269,6 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "journey",
     catalog_order: 23,
     detector: Some(ordered(23, crate::detect::detector_journey)),
-    fast: FAST_JOURNEY,
     semantic: Some(ordered(25, crate::diagrams::journey::parse_journey)),
     combined: Some(ordered(33, crate::diagrams::journey::parse_journey_json_and_editor_facts)),
     typed: Some(ordered(22, render_journey)),
@@ -1383,7 +1284,6 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "quadrantChart",
     catalog_order: 24,
     detector: Some(ordered(24, crate::detect::detector_quadrant)),
-    fast: FAST_QUADRANT,
     semantic: Some(ordered(30, crate::diagrams::quadrant_chart::parse_quadrant_chart)),
     combined: Some(ordered(34, crate::diagrams::quadrant_chart::parse_quadrant_chart_json_and_editor_facts)),
     typed: Some(ordered(31, render_quadrant_chart)),
@@ -1399,7 +1299,6 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "sankey",
     catalog_order: 25,
     detector: Some(ordered(25, crate::detect::detector_sankey)),
-    fast: &[],
     semantic: Some(ordered(38, crate::diagrams::sankey::parse_sankey)),
     combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
     typed: Some(ordered(24, render_sankey)),
@@ -1415,7 +1314,6 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "packet",
     catalog_order: 26,
     detector: Some(ordered(26, crate::detect::detector_packet)),
-    fast: FAST_PACKET,
     semantic: Some(ordered(31, crate::diagrams::packet::parse_packet)),
     combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
     typed: Some(ordered(20, render_packet)),
@@ -1431,7 +1329,6 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "xychart",
     catalog_order: 27,
     detector: Some(ordered(27, crate::detect::detector_xychart)),
-    fast: FAST_XYCHART,
     semantic: Some(ordered(39, crate::diagrams::xychart::parse_xychart)),
     combined: Some(ordered(38, crate::diagrams::xychart::parse_xychart_json_and_editor_facts)),
     typed: Some(ordered(32, render_xychart)),
@@ -1447,7 +1344,6 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "block",
     catalog_order: 28,
     detector: Some(ordered(28, crate::detect::detector_block)),
-    fast: &[],
     semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
     combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
     typed: Some(ordered(28, render_block)),
@@ -1463,7 +1359,6 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "eventmodeling",
     catalog_order: 29,
     detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
-    fast: FAST_EVENTMODELING,
     semantic: Some(ordered(35, crate::diagrams::eventmodeling::parse_eventmodeling)),
     combined: Some(ordered(22, crate::diagrams::eventmodeling::parse_eventmodeling_json_and_editor_facts)),
     typed: Some(ordered(36, render_eventmodeling)),
@@ -1479,7 +1374,6 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "treeView",
     catalog_order: 30,
     detector: Some(ordered(30, crate::detect::detector_tree_view)),
-    fast: FAST_TREE_VIEW,
     semantic: Some(ordered(33, crate::diagrams::tree_view::parse_tree_view)),
     combined: Some(ordered(23, crate::diagrams::tree_view::parse_tree_view_json_and_editor_facts)),
     typed: Some(ordered(34, render_tree_view)),
@@ -1495,7 +1389,6 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "radar",
     catalog_order: 31,
     detector: Some(ordered(31, crate::detect::detector_radar)),
-    fast: &[],
     semantic: Some(ordered(32, crate::diagrams::radar::parse_radar)),
     combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
     typed: Some(ordered(25, render_radar)),
@@ -1511,7 +1404,6 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "ishikawa",
     catalog_order: 32,
     detector: Some(ordered(32, crate::detect::detector_ishikawa)),
-    fast: FAST_ISHIKAWA,
     semantic: Some(ordered(34, crate::diagrams::ishikawa::parse_ishikawa)),
     combined: Some(ordered(24, crate::diagrams::ishikawa::parse_ishikawa_json_and_editor_facts)),
     typed: Some(ordered(35, render_ishikawa)),
@@ -1527,7 +1419,6 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "treemap",
     catalog_order: 33,
     detector: Some(ordered(33, crate::detect::detector_treemap)),
-    fast: &[],
     semantic: Some(ordered(36, crate::diagrams::treemap::parse_treemap)),
     combined: Some(ordered(25, crate::diagrams::treemap::parse_treemap_json_and_editor_facts)),
     typed: Some(ordered(27, render_treemap)),
@@ -1544,7 +1435,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "railroad",
         catalog_order: 34,
         detector: Some(ordered(34, crate::detect::detector_railroad)),
-        fast: &[],
         semantic: Some(ordered(11, crate::diagrams::railroad::parse_railroad)),
         combined: Some(ordered(6, crate::diagrams::railroad::parse_railroad_json_and_editor_facts)),
         typed: Some(ordered(12, render_railroad)),
@@ -1559,7 +1449,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "railroadEbnf",
         catalog_order: 35,
         detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
-        fast: &[],
         semantic: Some(ordered(12, crate::diagrams::railroad::parse_railroad_ebnf)),
         combined: Some(ordered(7, crate::diagrams::railroad::parse_railroad_ebnf_json_and_editor_facts)),
         typed: Some(ordered(13, render_railroad_ebnf)),
@@ -1574,7 +1463,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "railroadAbnf",
         catalog_order: 36,
         detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
-        fast: &[],
         semantic: Some(ordered(13, crate::diagrams::railroad::parse_railroad_abnf)),
         combined: Some(ordered(8, crate::diagrams::railroad::parse_railroad_abnf_json_and_editor_facts)),
         typed: Some(ordered(14, render_railroad_abnf)),
@@ -1589,7 +1477,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         id: "railroadPeg",
         catalog_order: 37,
         detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
-        fast: &[],
         semantic: Some(ordered(14, crate::diagrams::railroad::parse_railroad_peg)),
         combined: Some(ordered(9, crate::diagrams::railroad::parse_railroad_peg_json_and_editor_facts)),
         typed: Some(ordered(15, render_railroad_peg)),
@@ -1606,7 +1493,6 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "venn",
     catalog_order: 38,
     detector: Some(ordered(38, crate::detect::detector_venn)),
-    fast: &[],
     semantic: Some(ordered(37, crate::diagrams::venn::parse_venn)),
     combined: Some(ordered(35, crate::diagrams::venn::parse_venn_json_and_editor_facts)),
     typed: Some(ordered(37, render_venn)),
@@ -1622,7 +1508,6 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "wardley",
     catalog_order: 39,
     detector: Some(ordered(39, crate::detect::detector_wardley)),
-    fast: &[],
     semantic: Some(ordered(40, crate::diagrams::wardley::parse_wardley)),
     combined: Some(ordered(39, crate::diagrams::wardley::parse_wardley_json_and_editor_facts)),
     typed: Some(ordered(40, render_wardley)),
@@ -1638,7 +1523,6 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "cynefin",
     catalog_order: 40,
     detector: Some(ordered(40, crate::detect::detector_cynefin)),
-    fast: &[],
     semantic: Some(ordered(10, crate::diagrams::cynefin::parse_cynefin)),
     combined: Some(ordered(13, crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts)),
     typed: Some(ordered(11, render_cynefin)),
@@ -1932,7 +1816,6 @@ mod catalog_tests {
         let mut ids = BTreeSet::new();
         let mut catalog_orders = BTreeSet::new();
         let mut detector_orders = BTreeSet::new();
-        let mut fast_orders = BTreeSet::new();
         let mut semantic_orders = BTreeSet::new();
         let mut combined_orders = BTreeSet::new();
         let mut render_orders = BTreeSet::new();
@@ -1971,9 +1854,6 @@ mod catalog_tests {
 
                 if let Some(fact) = variant.detector {
                     assert!(detector_orders.insert(fact.order));
-                }
-                for fact in variant.fast_keywords {
-                    assert!(fast_orders.insert(fact.order));
                 }
                 if let Some(fact) = variant.semantic {
                     assert!(semantic_orders.insert(fact.order));

@@ -115,6 +115,7 @@ const WEB_CAPABILITY_NAMES: &[&str] = &[
     "analysis",
     "ascii",
     "core_host",
+    "cytoscape_layout",
     "editor_language",
     "elk_layout",
     "ratex_math",

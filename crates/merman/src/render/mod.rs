@@ -63,9 +63,9 @@ pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RESOURCE_CONTRACT_SCHEMA_VERSION,
-    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ResourceProfileValues,
+    RenderResourceLimitId, RenderResourcePolicy, RenderResourceProfile,
+    RenderResourceProfileDescriptor, ResourceLimitDescriptor, ResourceLimitExceeded,
+    ResourceLimitId, ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
     resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
@@ -83,7 +83,10 @@ pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
-pub use merman_render::{Error as RenderError, LayoutOptions, Result as RenderResult};
+pub use merman_render::{
+    Error as RenderError, LayoutOptions, Result as RenderResult, cytoscape_layout_available,
+    elk_layout_available,
+};
 
 mod operation;
 pub use operation::{

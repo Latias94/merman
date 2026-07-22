@@ -426,7 +426,12 @@ fn is_geometry_attr(name: &str) -> bool {
     )
 }
 
-fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
+fn build_node(
+    n: roxmltree::Node<'_, '_>,
+    mode: DomMode,
+    decimals: u32,
+    preserve_browser_text_rows: bool,
+) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
     fn is_block_diagram(n: roxmltree::Node<'_, '_>) -> bool {
@@ -982,7 +987,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         if has_element_child {
             for c in n.children() {
                 if c.is_element() {
-                    children.push(build_node(c, mode, decimals));
+                    children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
                 } else if c.is_text()
                     && let Some(t) = c.text().and_then(normalize_text_node_text)
                 {
@@ -997,13 +1002,28 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         } else {
             text = n.text().and_then(normalize_text_node_text);
             for c in n.children().filter(|c| c.is_element()) {
-                children.push(build_node(c, mode, decimals));
+                children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
             }
         }
     } else {
         // Non-strict modes treat text as non-semantic and only track element structure.
         for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals));
+            children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+        }
+        if preserve_browser_text_rows
+            && n.tag_name().name() == "tspan"
+            && n.attribute("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|token| token == "text-outer-tspan")
+            })
+        {
+            let raw = n
+                .descendants()
+                .filter(|descendant| descendant.is_text())
+                .filter_map(|descendant| descendant.text())
+                .collect::<String>();
+            text = normalize_text_node_text(&raw);
         }
         if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
             && n.is_element()
@@ -1340,14 +1360,23 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
+fn dom_signature_with_browser_text_rows(
+    svg: &str,
+    mode: DomMode,
+    decimals: u32,
+    preserve_browser_text_rows: bool,
+) -> Result<SvgDomNode, String> {
     let svg = normalize_xml_entities(svg);
     let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
     let root = doc
         .descendants()
         .find(|n| n.has_tag_name("svg"))
         .ok_or_else(|| "missing <svg> root".to_string())?;
-    Ok(build_node(root, mode, decimals))
+    Ok(build_node(root, mode, decimals, preserve_browser_text_rows))
+}
+
+pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
+    dom_signature_with_browser_text_rows(svg, mode, decimals, false)
 }
 
 fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
@@ -1371,10 +1400,18 @@ fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
         return;
     }
 
+    // Row boundaries are safe to remove only when doing so preserves the exact normalized text.
+    // A boundary between `Hello` and `world` cannot prove whether the source contained a space, so
+    // whitespace remains semantic and that browser-dependent case stays a bounded residual.
+    let text = node
+        .children
+        .iter()
+        .filter_map(|child| child.text.as_deref())
+        .collect::<String>();
     node.children = vec![SvgDomNode {
         name: "tspan".to_string(),
         attrs: [("class".to_string(), "text-outer-tspan".to_string())].into(),
-        text: None,
+        text: (!text.is_empty()).then_some(text),
         children: Vec::new(),
     }];
 }
@@ -1396,7 +1433,12 @@ pub(crate) fn dom_signature_for_comparison(
     profile: DomComparisonProfile,
     decimals: u32,
 ) -> Result<SvgDomNode, String> {
-    let mut signature = dom_signature(svg, profile.descendants(), decimals)?;
+    let mut signature = dom_signature_with_browser_text_rows(
+        svg,
+        profile.descendants(),
+        decimals,
+        profile.normalizes_browser_text_wrapping(),
+    )?;
     if profile.normalizes_browser_text_wrapping() {
         normalize_browser_text_wrapping(&mut signature);
     }
@@ -2041,6 +2083,7 @@ mod tests {
     fn evidence_profile_normalizes_only_generated_browser_text_rows() {
         let one_row = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProbe</tspan></tspan></text></svg>"#;
         let two_rows = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProb</tspan></tspan><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">e</tspan></tspan></text></svg>"#;
+        let changed_text = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">DifferentLabel</tspan></tspan></text></svg>"#;
 
         assert_ne!(
             dom_signature(one_row, DomMode::Parity, 3).unwrap(),
@@ -2053,6 +2096,10 @@ mod tests {
             dom_signature_for_comparison(one_row, profile, 3).unwrap(),
             dom_signature_for_comparison(two_rows, profile, 3).unwrap()
         );
+        assert_ne!(
+            dom_signature_for_comparison(one_row, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_text, profile, 3).unwrap()
+        );
 
         let strict = DomComparisonProfile::from_mode(DomMode::Strict)
             .with_browser_text_wrapping_normalized();
@@ -2060,6 +2107,59 @@ mod tests {
         assert_ne!(
             dom_signature_for_comparison(one_row, strict, 3).unwrap(),
             dom_signature_for_comparison(two_rows, strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_real_text_and_normalizes_formatting_whitespace() {
+        let alpha = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Alpha</tspan></tspan></text></svg>"#;
+        let alpha_with_formatting_whitespace = r#"<svg>
+  <text>
+    <tspan class="text-outer-tspan row">
+      <tspan class="text-inner-tspan">
+        Alpha
+      </tspan>
+    </tspan>
+  </text>
+</svg>"#;
+        let beta = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Beta</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_eq!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(alpha_with_formatting_whitespace, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(beta, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_ambiguous_word_boundary_whitespace() {
+        let spaced = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Hello</tspan><tspan class="text-inner-tspan"> world</tspan></tspan></text></svg>"#;
+        let unspaced = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Helloworld</tspan></tspan></text></svg>"#;
+        let two_rows = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Hello</tspan></tspan><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">world</tspan></tspan></text></svg>"#;
+        let changed_word = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Goodbye</tspan></tspan><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">world</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_ne!(
+            dom_signature_for_comparison(spaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(spaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap()
+        );
+        assert_eq!(
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_word, profile, 3).unwrap()
         );
     }
 

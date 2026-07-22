@@ -1,8 +1,8 @@
-//! Cross-platform projections of the render resource policy descriptor.
+//! Cross-platform projections of the resource policy descriptors.
 //!
-//! The Rust descriptor in `merman-render` is the authority. This module only projects its stable
-//! identifiers and validation metadata into host-language builders; it does not define another
-//! budget table.
+//! The input descriptors in `merman-core` and render descriptors in `merman-render` are the
+//! authorities. This module only projects their stable identifiers and validation metadata into
+//! host-language builders; it does not define another budget table.
 
 use crate::XtaskError;
 use merman_render::{
@@ -72,7 +72,7 @@ fn profile_default() -> &'static str {
 
 fn generated_preamble(comment: &str) -> String {
     format!(
-        "{comment} {GENERATED_NOTICE}{comment} Do not edit directly; edit `crates/merman-render/src/resources.rs`.\n\n"
+        "{comment} {GENERATED_NOTICE}{comment} Do not edit directly; edit the authoritative descriptors in `crates/merman-core/src/resources.rs` and `crates/merman-render/src/resources.rs`.\n\n"
     )
 }
 
@@ -293,7 +293,7 @@ fn render_uniffi() -> String {
         writeln!(out, "    {},", profile_enum_name(profile.id)).unwrap();
     }
     out.push_str(
-        "}\n\n#[cfg(feature = \"render\")]\nimpl MermanResourceProfile {\n    fn id(self) -> &'static str { match self {\n",
+        "}\n\n#[cfg(any(feature = \"render\", feature = \"analysis\", feature = \"ascii\"))]\nimpl MermanResourceProfile {\n    fn id(self) -> &'static str { match self {\n",
     );
     for profile in profiles {
         writeln!(
@@ -309,7 +309,7 @@ fn render_uniffi() -> String {
         writeln!(out, "    {},", limit_enum_name(limit.stable_id)).unwrap();
     }
     out.push_str(
-        "}\n\n#[cfg(feature = \"render\")]\nimpl MermanResourceLimitId {\n    fn id(self) -> &'static str { match self {\n",
+        "}\n\n#[cfg(any(feature = \"render\", feature = \"analysis\", feature = \"ascii\"))]\nimpl MermanResourceLimitId {\n    fn id(self) -> &'static str { match self {\n",
     );
     for limit in limits {
         writeln!(
@@ -320,7 +320,7 @@ fn render_uniffi() -> String {
         )
         .unwrap();
     }
-    out.push_str("    } }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]\npub struct MermanResourceLimitOverride {\n    pub id: MermanResourceLimitId,\n    pub value: u64,\n}\n\n#[uniffi::export]\npub fn resource_options_json(\n    profile: MermanResourceProfile,\n    overrides: Vec<MermanResourceLimitOverride>,\n) -> Result<String, MermanError> {\n    #[cfg(feature = \"render\")]\n    {\n        let pairs = overrides\n            .iter()\n            .map(|override_| {\n                usize::try_from(override_.value)\n                    .map(|value| (override_.id.id(), value))\n                    .map_err(|_| MermanError::internal(\"resource override exceeds host usize\"))\n            })\n            .collect::<Result<Vec<_>, _>>()?;\n        let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)\n            .map_err(MermanError::from_binding)?;\n        String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))\n    }\n    #[cfg(not(feature = \"render\"))]\n    {\n        let _ = (profile, overrides);\n        Err(MermanError::from_binding(\n            merman_bindings_core::render_resource_options_unavailable(),\n        ))\n    }\n}\n");
+    out.push_str("    } }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]\npub struct MermanResourceLimitOverride {\n    pub id: MermanResourceLimitId,\n    pub value: u64,\n}\n\n#[uniffi::export]\npub fn resource_options_json(\n    profile: MermanResourceProfile,\n    overrides: Vec<MermanResourceLimitOverride>,\n) -> Result<String, MermanError> {\n    #[cfg(any(feature = \"render\", feature = \"analysis\", feature = \"ascii\"))]\n    {\n        let pairs = overrides\n            .iter()\n            .map(|override_| {\n                usize::try_from(override_.value)\n                    .map(|value| (override_.id.id(), value))\n                    .map_err(|_| MermanError::internal(\"resource override exceeds host usize\"))\n            })\n            .collect::<Result<Vec<_>, _>>()?;\n        let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)\n            .map_err(MermanError::from_binding)?;\n        String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))\n    }\n    #[cfg(not(any(feature = \"render\", feature = \"analysis\", feature = \"ascii\")))]\n    {\n        let _ = (profile, overrides);\n        Err(MermanError::from_binding(\n            merman_bindings_core::render_resource_options_unavailable(),\n        ))\n    }\n}\n");
     out
 }
 

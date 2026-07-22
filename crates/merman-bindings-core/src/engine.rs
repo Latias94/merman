@@ -27,7 +27,7 @@ impl BindingEngine {
             let options = common::parse_options(options_json)?;
             Ok(Self {
                 #[cfg(feature = "analysis")]
-                analyzer: Analyzer::with_options(common::analysis_options(&options)?),
+                analyzer: Analyzer::with_options(common::artifact_analysis_options(&options)?),
                 #[cfg(feature = "render")]
                 render: crate::render::CachedRenderEngine::new(&options)?,
                 #[cfg(feature = "ascii")]
@@ -227,6 +227,28 @@ mod tests {
                 crate::BindingStatus::UnsupportedFormat
             );
         }
+    }
+
+    #[cfg(all(feature = "render", feature = "ascii"))]
+    #[test]
+    fn cached_engine_accepts_render_only_resource_limits() {
+        let engine = BindingEngine::new(
+            br#"{
+                "resources": {
+                    "profile": "constrained",
+                    "limits": { "max_svg_bytes": 1048576 }
+                }
+            }"#,
+        )
+        .expect("a multi-operation engine must project each limit to its owning operation");
+
+        let ascii = String::from_utf8(
+            engine
+                .render_ascii(b"flowchart TD\nA --> B")
+                .expect("an unrelated render-only limit must not disable ASCII"),
+        )
+        .expect("ASCII output is UTF-8");
+        assert!(!ascii.is_empty());
     }
 
     #[cfg(feature = "analysis")]

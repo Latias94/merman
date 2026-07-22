@@ -1,13 +1,12 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_local_time_policy, binding_site_config, no_diagram_error,
-    parse_options, source_text,
+    BindingError, BindingStatus, InputResourceOperation, binding_input_resource_policy,
+    binding_local_time_policy, binding_site_config, no_diagram_error, parse_options, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
-    let renderer = build_ascii_renderer(&options)?;
-
+    let renderer = build_ascii_renderer(&options, InputResourceOperation::Ascii)?;
     render_ascii_with_renderer(&renderer, source)
 }
 
@@ -19,7 +18,7 @@ pub(crate) struct CachedAsciiEngine {
 impl CachedAsciiEngine {
     pub(crate) fn new(options: &crate::common::BindingOptions) -> Result<Self, BindingError> {
         Ok(Self {
-            renderer: build_ascii_renderer(options)?,
+            renderer: build_ascii_renderer(options, InputResourceOperation::ArtifactUnion)?,
         })
     }
 
@@ -31,6 +30,7 @@ impl CachedAsciiEngine {
 
 fn build_ascii_renderer(
     options: &crate::common::BindingOptions,
+    resource_operation: InputResourceOperation,
 ) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
         .parse
@@ -48,7 +48,11 @@ fn build_ascii_renderer(
         .with_fixed_today(time.today)
         .with_local_time_zone(time.time_zone)
         .with_parse_options(parse)
-        .with_ascii_options(ascii_options_from_json(options)?);
+        .with_ascii_options(ascii_options_from_json(options)?)
+        .with_resource_policy(binding_input_resource_policy(
+            options.analysis.resources.as_ref(),
+            resource_operation,
+        )?);
     if let Some(site_config) = binding_site_config(options)? {
         renderer = renderer.with_site_config(site_config);
     }
@@ -239,6 +243,9 @@ fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError 
         merman::ascii::HeadlessAsciiError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
+        merman::ascii::HeadlessAsciiError::Resource(err) => {
+            BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string())
+        }
         merman::ascii::HeadlessAsciiError::Ascii(err) => match err {
             merman::ascii::AsciiError::InvalidOption { .. } => {
                 BindingError::new(BindingStatus::InvalidArgument, err.to_string())
@@ -248,7 +255,7 @@ fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError 
                 BindingError::new(BindingStatus::UnsupportedFormat, err.to_string())
             }
             merman::ascii::AsciiError::RenderLimitExceeded { .. } => {
-                BindingError::new(BindingStatus::RenderError, err.to_string())
+                BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string())
             }
             _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
@@ -414,5 +421,53 @@ mod tests {
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("fixed_today"), "{err:?}");
+    }
+
+    #[test]
+    fn render_ascii_enforces_shared_source_limit_before_parsing() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_source_bytes": 4 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("max_source_bytes"), "{error:?}");
+    }
+
+    #[test]
+    fn render_ascii_enforces_shared_model_cardinality_limit() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_flowchart_nodes": 1 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("max_flowchart_nodes"), "{error:?}");
+    }
+
+    #[test]
+    fn ascii_only_resource_options_reject_limits_for_unsupported_models() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_zenuml_participants": 1 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("not available"), "{error:?}");
+    }
+
+    #[test]
+    fn render_ascii_grid_limit_uses_resource_limit_status() {
+        let error = render_ascii(
+            b"flowchart TD\nA[Hello] --> B[World]",
+            br#"{ "ascii": { "maxGridCells": 1 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("ASCII render grid"), "{error:?}");
     }
 }

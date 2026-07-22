@@ -6,12 +6,11 @@
 //! parser/render crates and shared binding facade remain safe Rust APIs.
 
 use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
+use std::collections::BTreeMap;
 use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::ptr::{self, NonNull};
-#[cfg(feature = "render")]
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::ptr;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, TryLockError};
 
 #[cfg(target_os = "android")]
 mod android_jni;
@@ -69,45 +68,48 @@ pub struct MermanResourceLimitOverride {
     pub value: usize,
 }
 
+// C receives a pointer-shaped opaque token. This type is never allocated or dereferenced.
+#[repr(C)]
 pub struct MermanEngine {
+    _private: [u8; 0],
+}
+
+struct FfiEngineState {
     #[cfg(feature = "render")]
     base: BindingEngine,
-    inner: BindingEngine,
-    lifecycle: Mutex<FfiEngineLifecycle>,
+    inner: RwLock<BindingEngine>,
 }
 
-#[derive(Debug, Default)]
-struct FfiEngineLifecycle {
-    active_calls: usize,
-    active_mutations: usize,
-    free_requested: bool,
+#[derive(Default)]
+struct FfiEngineRegistry {
+    last_token: usize,
+    engines: BTreeMap<usize, Arc<FfiEngineState>>,
 }
 
-struct FfiEngineCallGuard {
-    engine: NonNull<MermanEngine>,
-}
+impl FfiEngineRegistry {
+    fn register(&mut self, engine: Arc<FfiEngineState>) -> Result<*mut MermanEngine, BindingError> {
+        let token = self.last_token.checked_add(1).ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                "engine handle token space is exhausted",
+            )
+        })?;
+        self.last_token = token;
+        let previous = self.engines.insert(token, engine);
+        debug_assert!(previous.is_none(), "engine handle tokens are never reused");
+        Ok(ptr::without_provenance_mut(token))
+    }
 
-#[cfg(feature = "render")]
-struct FfiEngineMutationGuard {
-    engine: NonNull<MermanEngine>,
-}
+    fn acquire(&self, handle: usize) -> Option<Arc<FfiEngineState>> {
+        self.engines.get(&handle).map(Arc::clone)
+    }
 
-impl Drop for FfiEngineCallGuard {
-    fn drop(&mut self) {
-        unsafe {
-            release_engine_call(self.engine);
-        }
+    fn retire(&mut self, handle: usize) -> Option<Arc<FfiEngineState>> {
+        self.engines.remove(&handle)
     }
 }
 
-#[cfg(feature = "render")]
-impl Drop for FfiEngineMutationGuard {
-    fn drop(&mut self) {
-        unsafe {
-            release_engine_mutation(self.engine);
-        }
-    }
-}
+static ENGINE_REGISTRY: OnceLock<Mutex<FfiEngineRegistry>> = OnceLock::new();
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -400,7 +402,7 @@ pub extern "C" fn merman_host_text_measure_result_struct_size() -> usize {
 ///
 /// - `options_json` may be null only when `options_len == 0`.
 /// - Non-null pointers must be valid for reads of `options_len` bytes for the duration of the call.
-/// - A returned non-null engine must be released with `merman_engine_free`.
+/// - A returned non-null engine handle must be released with `merman_engine_free`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn merman_engine_new(
     options_json: *const u8,
@@ -415,17 +417,12 @@ pub unsafe extern "C" fn merman_engine_new(
 ///
 /// # Safety
 ///
-/// Non-null engines must have been returned by this crate and must not be freed more than once.
-/// Calling this function consumes the host handle. If a call is active, release is deferred until
-/// active calls return; callers must not use the pointer again after requesting release.
+/// Non-null engine handles must have been returned by this crate. Calling this function consumes
+/// the host handle. If a call is active, state destruction is deferred until its lease ends;
+/// callers must not use the handle again after requesting release.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn merman_engine_free(engine: *mut MermanEngine) {
-    if engine.is_null() {
-        return;
-    }
-    unsafe {
-        request_engine_free(engine);
-    }
+    retire_engine_handle(engine);
 }
 
 /// Install a host-provided text measurer on a reusable engine.
@@ -435,7 +432,7 @@ pub unsafe extern "C" fn merman_engine_free(engine: *mut MermanEngine) {
 ///
 /// # Safety
 ///
-/// - `engine` must be a live pointer returned by `merman_engine_new`.
+/// - `engine` must be a live handle returned by `merman_engine_new`.
 /// - `callback`, when non-null, must remain callable for as long as the engine can call it.
 /// - `user_data` is never dereferenced by merman; it is passed back unchanged.
 /// - Mutating the callback while any call or callback is active returns `MERMAN_INVALID_ARGUMENT`.
@@ -886,15 +883,10 @@ fn ffi_engine_result<F>(f: F) -> MermanEngineResult
 where
     F: FnOnce() -> Result<BindingEngine, BindingError>,
 {
-    match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(Ok(inner)) => MermanEngineResult {
+    match catch_unwind(AssertUnwindSafe(|| f().and_then(register_engine))) {
+        Ok(Ok(engine)) => MermanEngineResult {
             code: BindingStatus::Ok.code(),
-            engine: Box::into_raw(Box::new(MermanEngine {
-                #[cfg(feature = "render")]
-                base: inner.clone(),
-                inner,
-                lifecycle: Mutex::new(FfiEngineLifecycle::default()),
-            })),
+            engine,
             data: MermanBuffer::empty(),
         },
         Ok(Err(err)) => MermanEngineResult {
@@ -921,139 +913,71 @@ unsafe fn engine_new_impl(
     BindingEngine::new(options_bytes)
 }
 
-#[cfg(feature = "render")]
-unsafe fn engine_mut<'a>(engine: *mut MermanEngine) -> Result<&'a mut MermanEngine, BindingError> {
+fn engine_registry() -> &'static Mutex<FfiEngineRegistry> {
+    ENGINE_REGISTRY.get_or_init(|| Mutex::new(FfiEngineRegistry::default()))
+}
+
+fn lock_engine_registry() -> MutexGuard<'static, FfiEngineRegistry> {
+    engine_registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn register_engine(inner: BindingEngine) -> Result<*mut MermanEngine, BindingError> {
+    let engine = Arc::new(FfiEngineState {
+        #[cfg(feature = "render")]
+        base: inner.clone(),
+        inner: RwLock::new(inner),
+    });
+    lock_engine_registry().register(engine)
+}
+
+fn acquire_engine_lease(engine: *const MermanEngine) -> Result<Arc<FfiEngineState>, BindingError> {
     if engine.is_null() {
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,
-            "engine pointer is null",
+            "engine handle is null",
         ));
     }
-    Ok(unsafe { &mut *engine })
+    lock_engine_registry()
+        .acquire(engine.addr())
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InvalidArgument,
+                "engine handle is unknown or was already freed",
+            )
+        })
 }
 
-unsafe fn engine_ref<'a>(engine: *const MermanEngine) -> Result<&'a MermanEngine, BindingError> {
+fn retire_engine_handle(engine: *mut MermanEngine) {
     if engine.is_null() {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine pointer is null",
-        ));
-    }
-    Ok(unsafe { &*engine })
-}
-
-unsafe fn begin_engine_call(
-    engine: *const MermanEngine,
-) -> Result<FfiEngineCallGuard, BindingError> {
-    let ptr = NonNull::new(engine.cast_mut()).ok_or_else(|| {
-        BindingError::new(BindingStatus::InvalidArgument, "engine pointer is null")
-    })?;
-    let engine = unsafe { ptr.as_ref() };
-    let mut lifecycle = engine.lifecycle.lock().map_err(|_| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            "engine lifecycle lock poisoned",
-        )
-    })?;
-    if lifecycle.free_requested {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine free was requested during an active call",
-        ));
-    }
-    if lifecycle.active_mutations > 0 {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine cannot be used during an active mutation",
-        ));
-    }
-    lifecycle.active_calls += 1;
-    Ok(FfiEngineCallGuard { engine: ptr })
-}
-
-#[cfg(feature = "render")]
-unsafe fn begin_engine_mutation(
-    engine: *mut MermanEngine,
-) -> Result<FfiEngineMutationGuard, BindingError> {
-    let ptr = NonNull::new(engine).ok_or_else(|| {
-        BindingError::new(BindingStatus::InvalidArgument, "engine pointer is null")
-    })?;
-    let engine = unsafe { ptr.as_ref() };
-    let mut lifecycle = engine.lifecycle.lock().map_err(|_| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            "engine lifecycle lock poisoned",
-        )
-    })?;
-    if lifecycle.free_requested {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine free was requested during an active call",
-        ));
-    }
-    if lifecycle.active_calls > 0 || lifecycle.active_mutations > 0 {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine cannot be mutated during an active call",
-        ));
-    }
-    lifecycle.active_mutations += 1;
-    Ok(FfiEngineMutationGuard { engine: ptr })
-}
-
-unsafe fn release_engine_call(engine: NonNull<MermanEngine>) {
-    let should_free = unsafe { release_engine_lifecycle(engine, true) };
-    if should_free {
-        unsafe {
-            drop(Box::from_raw(engine.as_ptr()));
-        }
-    }
-}
-
-#[cfg(feature = "render")]
-unsafe fn release_engine_mutation(engine: NonNull<MermanEngine>) {
-    let should_free = unsafe { release_engine_lifecycle(engine, false) };
-    if should_free {
-        unsafe {
-            drop(Box::from_raw(engine.as_ptr()));
-        }
-    }
-}
-
-unsafe fn release_engine_lifecycle(engine: NonNull<MermanEngine>, call: bool) -> bool {
-    let engine_ref = unsafe { engine.as_ref() };
-    let Ok(mut lifecycle) = engine_ref.lifecycle.lock() else {
-        return false;
-    };
-    if call {
-        lifecycle.active_calls = lifecycle.active_calls.saturating_sub(1);
-    } else {
-        lifecycle.active_mutations = lifecycle.active_mutations.saturating_sub(1);
-    }
-    lifecycle.free_requested && lifecycle.active_calls == 0 && lifecycle.active_mutations == 0
-}
-
-unsafe fn request_engine_free(engine: *mut MermanEngine) {
-    let Some(ptr) = NonNull::new(engine) else {
         return;
-    };
-    let should_free = {
-        let engine_ref = unsafe { ptr.as_ref() };
-        let Ok(mut lifecycle) = engine_ref.lifecycle.lock() else {
-            return;
-        };
-        if lifecycle.active_calls > 0 || lifecycle.active_mutations > 0 {
-            lifecycle.free_requested = true;
-            false
-        } else {
-            true
-        }
-    };
-    if should_free {
-        unsafe {
-            drop(Box::from_raw(ptr.as_ptr()));
-        }
     }
+    let retired = lock_engine_registry().retire(engine.addr());
+    drop(retired);
+}
+
+fn with_engine_read<T>(
+    engine: *const MermanEngine,
+    f: impl FnOnce(&BindingEngine) -> Result<T, BindingError>,
+) -> Result<T, BindingError> {
+    let engine = acquire_engine_lease(engine)?;
+    let inner = match engine.inner.try_read() {
+        Ok(inner) => inner,
+        Err(TryLockError::WouldBlock) => {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "engine cannot be used during an active mutation",
+            ));
+        }
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(BindingError::new(
+                BindingStatus::InternalError,
+                "engine state lock is poisoned",
+            ));
+        }
+    };
+    f(&inner)
 }
 
 unsafe fn engine_set_text_measure_callback_impl(
@@ -1064,21 +988,35 @@ unsafe fn engine_set_text_measure_callback_impl(
     #[cfg(not(feature = "render"))]
     {
         let _ = (engine, callback, user_data);
-        return Err(BindingError::new(
+        Err(BindingError::new(
             BindingStatus::UnsupportedFormat,
             "host text measurement requires the render feature",
-        ));
+        ))
     }
 
     #[cfg(feature = "render")]
     {
-        let _guard = unsafe { begin_engine_mutation(engine)? };
-        let engine = unsafe { engine_mut(engine)? };
+        let engine = acquire_engine_lease(engine)?;
+        let mut inner = match engine.inner.try_write() {
+            Ok(inner) => inner,
+            Err(TryLockError::WouldBlock) => {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    "engine cannot be mutated during an active call",
+                ));
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                return Err(BindingError::new(
+                    BindingStatus::InternalError,
+                    "engine state lock is poisoned",
+                ));
+            }
+        };
         if let Some(callback) = callback {
             let measurer = FfiHostTextMeasurer::new(callback, user_data);
-            engine.inner = engine.inner.with_host_text_measurer(Arc::new(measurer));
+            *inner = inner.with_host_text_measurer(Arc::new(measurer));
         } else {
-            engine.inner = engine.base.clone();
+            *inner = engine.base.clone();
         }
         Ok(Vec::new())
     }
@@ -1093,10 +1031,10 @@ unsafe fn ffi_engine_source_call<F>(
 where
     F: FnOnce(&BindingEngine, &[u8]) -> Result<Vec<u8>, BindingError>,
 {
-    let _guard = unsafe { begin_engine_call(engine)? };
-    let engine = unsafe { engine_ref(engine)? };
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    f(&engine.inner, source_bytes)
+    with_engine_read(engine, |inner| {
+        let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+        f(inner, source_bytes)
+    })
 }
 
 unsafe fn ffi_engine_source_uri_call<F>(
@@ -1110,14 +1048,14 @@ unsafe fn ffi_engine_source_uri_call<F>(
 where
     F: FnOnce(&BindingEngine, &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
 {
-    let _guard = unsafe { begin_engine_call(engine)? };
-    let engine = unsafe { engine_ref(engine)? };
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let uri_bytes = unsafe { raw_bytes(uri, uri_len, "uri")? };
-    f(&engine.inner, source_bytes, uri_bytes)
+    with_engine_read(engine, |inner| {
+        let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+        let uri_bytes = unsafe { raw_bytes(uri, uri_len, "uri")? };
+        f(inner, source_bytes, uri_bytes)
+    })
 }
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
 unsafe fn resource_options_json_impl(
     profile: i32,
     overrides: *const MermanResourceLimitOverride,
@@ -1155,7 +1093,7 @@ unsafe fn resource_options_json_impl(
     merman_bindings_core::resource_options_json(profile, &overrides)
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
 unsafe fn resource_options_json_impl(
     profile: i32,
     overrides: *const MermanResourceLimitOverride,
@@ -1835,7 +1773,11 @@ mod tests {
             runtime_contract["features"]["render"],
             cfg!(feature = "render")
         );
-        if cfg!(feature = "render") {
+        if cfg!(any(
+            feature = "render",
+            feature = "analysis",
+            feature = "ascii"
+        )) {
             assert_eq!(
                 runtime_contract["resources"]["general_binding_default_profile"],
                 "interactive"
@@ -2006,7 +1948,11 @@ mod tests {
         let overrides = [MermanResourceLimitOverride { id: 0, value: 4096 }];
         let result =
             unsafe { merman_resource_options_json(1, overrides.as_ptr(), overrides.len()) };
-        if cfg!(feature = "render") {
+        if cfg!(any(
+            feature = "render",
+            feature = "analysis",
+            feature = "ascii"
+        )) {
             assert_eq!(result.code, BindingStatus::Ok.code());
             let value: Value = serde_json::from_str(&take_text(result.data)).unwrap();
             assert_eq!(value["version"], 1);
@@ -2025,7 +1971,7 @@ mod tests {
             );
             assert_eq!(
                 error["message"],
-                "resource options requires the render feature"
+                "resource options requires at least one resource-aware operation"
             );
         }
         assert_eq!(
@@ -2103,41 +2049,35 @@ mod tests {
 
     #[test]
     fn ffi_engine_source_call_decodes_engine_and_source() {
-        let base = BindingEngine::new(b"").unwrap();
-        let engine = MermanEngine {
-            #[cfg(feature = "render")]
-            base: base.clone(),
-            inner: base,
-            lifecycle: Mutex::new(FfiEngineLifecycle::default()),
-        };
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
         let source = b"flowchart TD\nA[Hello]";
         let output = unsafe {
-            ffi_engine_source_call(&engine, source.as_ptr(), source.len(), |_engine, source| {
-                Ok(source.to_vec())
-            })
+            ffi_engine_source_call(
+                engine.engine,
+                source.as_ptr(),
+                source.len(),
+                |_engine, source| Ok(source.to_vec()),
+            )
         }
         .unwrap();
 
         assert_eq!(output, source);
+        unsafe { merman_engine_free(engine.engine) };
     }
 
     #[cfg(feature = "render")]
     #[test]
     fn ffi_engine_source_call_rejects_active_mutation() {
-        let base = BindingEngine::new(b"").unwrap();
-        let engine = MermanEngine {
-            #[cfg(feature = "render")]
-            base: base.clone(),
-            inner: base,
-            lifecycle: Mutex::new(FfiEngineLifecycle::default()),
-        };
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        let lease = acquire_engine_lease(engine.engine).unwrap();
+        let mutation = lease.inner.try_write().unwrap();
         let source = b"flowchart TD\nA[Hello]";
-        let _mutation =
-            unsafe { begin_engine_mutation((&engine as *const MermanEngine).cast_mut()).unwrap() };
 
         let err = unsafe {
             ffi_engine_source_call(
-                &engine,
+                engine.engine,
                 source.as_ptr(),
                 source.len(),
                 |_engine, _source| Ok(Vec::new()),
@@ -2147,22 +2087,20 @@ mod tests {
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("active mutation"));
+        drop(mutation);
+        drop(lease);
+        unsafe { merman_engine_free(engine.engine) };
     }
 
     #[test]
     fn ffi_engine_source_uri_call_decodes_engine_source_and_uri() {
-        let base = BindingEngine::new(b"").unwrap();
-        let engine = MermanEngine {
-            #[cfg(feature = "render")]
-            base: base.clone(),
-            inner: base,
-            lifecycle: Mutex::new(FfiEngineLifecycle::default()),
-        };
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
         let source = b"flowchart TD\nA[Hello]";
         let uri = b"file:///tmp/example.mmd";
         let output = unsafe {
             ffi_engine_source_uri_call(
-                &engine,
+                engine.engine,
                 source.as_ptr(),
                 source.len(),
                 uri.as_ptr(),
@@ -2178,6 +2116,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, b"flowchart TD\nA[Hello]\nfile:///tmp/example.mmd");
+        unsafe { merman_engine_free(engine.engine) };
     }
 
     #[test]
@@ -2695,5 +2634,84 @@ mod tests {
         }
 
         unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[test]
+    fn engine_lease_survives_free_before_first_state_access() {
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+
+        let lease = acquire_engine_lease(engine.engine).expect("live handle should yield a lease");
+        let engine_addr = engine.engine as usize;
+        std::thread::spawn(move || unsafe {
+            merman_engine_free(engine_addr as *mut MermanEngine);
+        })
+        .join()
+        .unwrap();
+        assert_eq!(Arc::strong_count(&lease), 1);
+
+        let error = match acquire_engine_lease(engine.engine) {
+            Ok(_) => panic!("free must retire the handle"),
+            Err(error) => error,
+        };
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+
+        let state = lease
+            .inner
+            .try_read()
+            .expect("the pre-free lease must keep engine state alive");
+        let validation = state.validate_json(b"flowchart TD\nA");
+        if cfg!(feature = "analysis") {
+            assert!(validation.is_ok());
+        } else {
+            assert_eq!(
+                validation.unwrap_err().status(),
+                BindingStatus::UnsupportedFormat
+            );
+        }
+    }
+
+    #[test]
+    fn freed_engine_handle_never_rebinds_to_a_new_engine() {
+        let first = call_engine(b"");
+        assert_eq!(first.code, BindingStatus::Ok.code());
+        assert!(!first.engine.is_null());
+        let stale = first.engine;
+        unsafe { merman_engine_free(stale) };
+
+        let replacement = call_engine(b"");
+        assert_eq!(replacement.code, BindingStatus::Ok.code());
+        assert!(!replacement.engine.is_null());
+        assert_ne!(stale.addr(), replacement.engine.addr());
+
+        let error = match acquire_engine_lease(stale) {
+            Ok(_) => panic!("a retired handle must not identify a replacement engine"),
+            Err(error) => error,
+        };
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(acquire_engine_lease(replacement.engine).is_ok());
+
+        unsafe { merman_engine_free(replacement.engine) };
+    }
+
+    #[test]
+    fn engine_registry_rejects_token_exhaustion_without_reuse() {
+        let inner = BindingEngine::new(b"").unwrap();
+        let state = Arc::new(FfiEngineState {
+            #[cfg(feature = "render")]
+            base: inner.clone(),
+            inner: RwLock::new(inner),
+        });
+        let mut registry = FfiEngineRegistry {
+            last_token: usize::MAX,
+            engines: BTreeMap::new(),
+        };
+
+        let error = registry.register(state).unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InternalError);
+        assert_eq!(registry.last_token, usize::MAX);
+        assert!(registry.engines.is_empty());
     }
 }

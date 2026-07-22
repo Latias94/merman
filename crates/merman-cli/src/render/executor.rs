@@ -127,13 +127,12 @@ impl<'a> RenderRequest<'a> {
             }
         };
         let options = self.plan.apply_text_options(options)?;
-        let Some(rendered) = merman::ascii::render_ascii_sync(
-            self.renderer.engine(),
-            text,
-            self.renderer.parse_options(),
-            &options,
-        )?
-        else {
+        let ascii_renderer = merman::ascii::HeadlessAsciiRenderer::new()
+            .with_engine(self.renderer.engine().clone())
+            .with_parse_options(self.renderer.parse_options())
+            .with_ascii_options(options)
+            .with_resource_profile(self.plan.render.resource_profile);
+        let Some(rendered) = ascii_renderer.render_ascii_sync(text)? else {
             return Err(CliError::NoDiagram);
         };
         Ok(RenderedArtifact {

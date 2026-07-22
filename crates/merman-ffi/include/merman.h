@@ -163,8 +163,8 @@ size_t merman_resource_limit_override_struct_size(void);
  *
  * `overrides` may be NULL only when `overrides_len` is zero. The returned buffer follows the
  * normal MermanResult ownership rules and must be released with merman_buffer_free. This requires
- * render support. A render-disabled build returns MERMAN_UNSUPPORTED_FORMAT with the message
- * "resource options requires the render feature"; query runtime_contract.features.render first.
+ * at least one resource-aware operation: render, analysis, or ASCII. A build with none of those
+ * capabilities returns MERMAN_UNSUPPORTED_FORMAT; query runtime_contract.features first.
  */
 MermanResult merman_resource_options_json(
     MermanResourceProfile profile,

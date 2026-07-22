@@ -140,7 +140,7 @@ struct MermanAppleSmoke {
         }
 
         let runtimeContract = try engine.runtimeContract()
-        guard runtimeContract.schemaVersion == 2,
+        guard runtimeContract.schemaVersion == 3,
               runtimeContract.abiVersion == MermanEngine.abiVersion,
               runtimeContract.packageVersion == engine.packageVersion,
               runtimeContract.optionsSchemaVersion == 1,

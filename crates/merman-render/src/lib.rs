@@ -65,6 +65,16 @@ pub mod zenuml;
 
 pub(crate) use host_time::{Duration, Instant};
 
+/// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
+pub const fn cytoscape_layout_available() -> bool {
+    cfg!(feature = "cytoscape-layout")
+}
+
+/// Reports whether the ELK layout backend is present in this compiled renderer.
+pub const fn elk_layout_available() -> bool {
+    cfg!(feature = "elk-layout")
+}
+
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
@@ -72,10 +82,10 @@ use merman_core::models::class_diagram::ClassDiagram;
 pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RESOURCE_CONTRACT_SCHEMA_VERSION,
-    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ResourceProfileValues, ZenumlComplexity,
-    resource_limit_descriptors, resource_profile_descriptors,
+    RenderResourceLimitId, RenderResourcePolicy, RenderResourceProfile,
+    RenderResourceProfileDescriptor, ResourceLimitDescriptor, ResourceLimitExceeded,
+    ResourceLimitId, ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
+    ZenumlComplexity, resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]

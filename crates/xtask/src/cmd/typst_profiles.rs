@@ -41,6 +41,7 @@ pub(crate) struct TypstProfileCapabilities {
     pub(crate) analysis: bool,
     pub(crate) ascii: bool,
     pub(crate) core_host: bool,
+    pub(crate) cytoscape_layout: bool,
     pub(crate) elk_layout: bool,
     pub(crate) ratex_math: bool,
     pub(crate) editor_language: bool,
@@ -361,6 +362,7 @@ fn capabilities_for_features(features: &[String]) -> TypstProfileCapabilities {
         analysis: enabled("analysis"),
         ascii: enabled("ascii"),
         core_host: enabled("core-host"),
+        cytoscape_layout: enabled("cytoscape-layout"),
         elk_layout: enabled("elk-layout"),
         ratex_math: enabled("ratex-math"),
         editor_language: enabled("editor-language"),
@@ -429,6 +431,7 @@ mod tests {
         assert_eq!(catalog.public_profile_names(), vec!["minimal", "publish"]);
         assert!(publish.capabilities().render);
         assert!(publish.capabilities().analysis);
+        assert!(publish.capabilities().cytoscape_layout);
         assert!(publish.capabilities().elk_layout);
         assert!(!publish.capabilities().text_measurement.host_callback);
     }
@@ -506,6 +509,7 @@ mod tests {
                 "analysis": true,
                 "ascii": false,
                 "core_host": false,
+                "cytoscape_layout": true,
                 "elk_layout": true,
                 "ratex_math": false,
                 "editor_language": false,

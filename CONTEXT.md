@@ -51,9 +51,10 @@ Current contract:
 - The **Parse Pipeline** owns preprocessing, detection or known-type metadata projection, runtime
   date hooks, family dispatch, lenient error behavior, timing diagnostics, source remapping, and
   common sanitization. `Engine` remains the public facade; family modules own grammar meaning.
-- **Diagram Family Facts** are the single pinned-baseline catalog for ids, aliases, feature profile,
-  detector order, semantic/editor/render adapters, config namespaces, authoring headers, public
-  metadata, and admission capability. Registries and public capability metadata are projections.
+- **Diagram Family Facts** are the single pinned-baseline catalog for ids, aliases, detector order,
+  semantic/editor/render adapters, config namespaces, authoring headers, public metadata, and
+  admission capability. The complete language catalog is invariant across feature combinations;
+  registries and public family metadata are projections.
 - Each built-in family owns one successful semantic construction. Compatibility JSON,
   parser-backed editor facts, and typed render models project that construction rather than running
   parallel successful grammars.
@@ -68,8 +69,13 @@ Current contract:
   own root emission or consult fixture-derived root data.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
-- Analysis diagnostics and parser-only facts are independent schema v1 contracts. The
-  TextScan-capable alpha facts shape is removed rather than supported in parallel.
+- Analysis diagnostics remain schema `1`; parser-backed facts use the independently versioned,
+  incompatible schema `2`. Facts schema `1` and its TextScan-capable alpha shape are rejected at
+  the version boundary rather than supported in parallel.
+- **Capability and Artifact Profiles** are separate contracts. The capability descriptor owns
+  additive semantic vocabulary and implications; artifact profiles own exact Cargo build recipes.
+  Neither substitutes for the ABI, protocol, package, runtime, or release authority at the surface
+  that implements it.
 - **Admission Inventory** records which fixture/family surfaces are parser-only, layout-covered,
   SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why. Parser
   and typed-render capability evidence should be checked against Diagram Family Facts projections.

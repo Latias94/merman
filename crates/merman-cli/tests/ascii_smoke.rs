@@ -160,3 +160,39 @@ fn cli_renders_plain_ascii_output_to_file() {
     assert!(text.contains("DB"));
     assert!(text.contains("/"));
 }
+
+#[test]
+fn cli_applies_the_selected_resource_profile_to_text_output() {
+    let input = format!(
+        "%% {}\nflowchart TD\nA[Hello] --> B[World]\n",
+        "x".repeat(1024 * 1024)
+    );
+
+    let constrained = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-profile",
+            "constrained",
+            "-",
+        ],
+        &input,
+    );
+    assert!(!constrained.status.success());
+    let stderr = String::from_utf8(constrained.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("max_source_bytes"), "{stderr}");
+
+    let trusted = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-profile",
+            "trusted-native",
+            "-",
+        ],
+        &input,
+    );
+    assert!(trusted.status.success(), "stderr: {:?}", trusted.stderr);
+}

@@ -67,7 +67,7 @@ let factsJson = try engine.analyzeDocumentFactsJsonRaw(
 ```
 
 Use `diagramFamilyCapabilities()` and `asciiCapabilities()` instead of hard-coding support for a build profile or output format.
-Use `runtimeContract()` for a typed runtime-contract schema `2` value containing the loaded
+Use `runtimeContract()` for a typed runtime-contract schema `3` value containing the loaded
 ABI/package/options versions, feature set, registry facts, and exact resource profile values.
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
 

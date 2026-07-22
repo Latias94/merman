@@ -528,7 +528,7 @@ int merman_c_consumer_smoke(MermanApi api) {
     if (rc != 0) {
         return rc;
     }
-    rc = expect_ok_with(api.runtime_contract_json(), api.buffer_free, "\"schema_version\":2");
+    rc = expect_ok_with(api.runtime_contract_json(), api.buffer_free, "\"schema_version\":3");
     if (rc != 0) {
         return rc;
     }

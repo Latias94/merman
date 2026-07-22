@@ -195,7 +195,7 @@ fn wardley_svg_uses_family_theme_roles_without_a_css_postpass() {
 }
 
 #[test]
-fn wardley_svg_uses_annotation_theme_roles_without_a_css_postpass() {
+fn wardley_svg_projects_upstream_annotation_computed_styles_into_attributes() {
     let svg = render_wardley(
         concat!(
             "wardley-beta\n",
@@ -246,6 +246,13 @@ fn wardley_svg_uses_annotation_theme_roles_without_a_css_postpass() {
             .find(|node| node.has_tag_name("rect"))
             .and_then(|node| node.attribute("fill")),
         Some("#414243")
+    );
+    assert_eq!(
+        box_group
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .and_then(|node| node.attribute("stroke")),
+        Some("#212223")
     );
     assert_eq!(
         box_group

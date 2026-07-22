@@ -265,14 +265,28 @@ fn ensure_pairwise_subsets_for_layout(
     for area in areas.iter().filter(|area| area.sets.len() >= 3) {
         let mut members = area.sets.clone();
         members.sort();
-        members.dedup();
-        if members.len() < 2 {
+        let mut counted_members = Vec::<(String, usize)>::new();
+        for member in members {
+            if let Some((previous, count)) = counted_members.last_mut()
+                && previous == &member
+            {
+                *count = count.saturating_add(1);
+            } else {
+                counted_members.push((member, 1));
+            }
+        }
+        if counted_members.is_empty() {
             continue;
         }
-        for left_index in 0..members.len() - 1 {
-            for right_index in left_index + 1..members.len() {
-                let left = &members[left_index];
-                let right = &members[right_index];
+        for left_index in 0..counted_members.len() {
+            let right_start = if counted_members[left_index].1 >= 2 {
+                left_index
+            } else {
+                left_index + 1
+            };
+            for right_index in right_start..counted_members.len() {
+                let left = &counted_members[left_index].0;
+                let right = &counted_members[right_index].0;
                 let pair = canonical_pair(left, right);
                 if existing_pairs.contains(&pair) {
                     continue;
@@ -2410,7 +2424,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_set_members_do_not_multiply_private_pairwise_areas() {
+    fn duplicate_union_members_preserve_upstream_self_pairs_without_multiplying_work() {
         let duplicate_singletons = (0..1_000)
             .map(|_| VennArea::new(["A"], 10.0))
             .collect::<Vec<_>>();
@@ -2422,16 +2436,17 @@ mod tests {
         let expanded = ensure_pairwise_subsets_for_layout(
             vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxVennAreas, 4)
+                .with_limit(ResourceLimitId::MaxVennAreas, 6)
                 .unwrap(),
         )
-        .expect("three unique pairs plus the source area fit exactly");
-        assert_eq!(expanded.len(), 4);
-        assert!(
+        .expect("five upstream pair constraints plus the source area fit exactly");
+        assert_eq!(
             expanded
                 .iter()
                 .filter(|area| area.sets.len() == 2)
-                .all(|area| area.sets[0] != area.sets[1])
+                .map(|area| stable_sets_key(&area.sets))
+                .collect::<Vec<_>>(),
+            ["A|A", "A|B", "A|C", "B|B", "B|C"]
         );
     }
 }

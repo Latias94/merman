@@ -58,7 +58,7 @@ also has a non-optional resolved-tree depth capability (256 native levels, 64 We
 and native conversion uses a bounded worker stack; raw parity SVG remains available beyond that
 backend boundary.
 
-Bindings expose runtime-contract schema `2` so hosts can discover the loaded ABI/package/options
+Bindings expose runtime-contract schema `3` so hosts can discover the loaded ABI/package/options
 versions, compiled features, registry facts, stable resource-limit ids, and exact profile values.
 General bindings default to `interactive`, the CLI to `trusted-native`, and Typst enforces
 `constrained`; Cargo features and raster/PDF/image allocation budgets remain separate concerns.

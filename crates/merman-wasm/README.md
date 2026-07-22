@@ -59,7 +59,8 @@ npm run build:wasm:ratex-math --prefix platforms/web
 
 The generated module exports `bindingCapabilities()`, `diagramFamilyCapabilities()`, and
 `lintRuleCatalog()` so JavaScript callers can detect whether the current artifact includes
-`render`, `analysis`, `ascii`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
+`render`, `analysis`, `ascii`, `core_host`, `cytoscape_layout`, `elk_layout`, `ratex_math`, or
+`editor_language`
 support, inspect the complete pinned Mermaid language catalog, and discover configurable or
 authoring-only lint rules. Lint rule entries include evidence references so browser hosts can
 explain why a rule is classified as Mermaid-backed compatibility or Merman authoring guidance.

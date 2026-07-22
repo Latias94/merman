@@ -433,7 +433,7 @@ This ledger records findings revalidated against the current branch after the or
 | RV3 | Raw Typst `analysis` without `render` accepts compilation and then rejects its own constrained options | Make the combination valid or reject it at compile/profile validation time |
 | RV4 | Native raster/PDF preflight ignores data-backed `<feImage>` | Pre-usvg byte/pixel rejection fixtures for `<image>` and `<feImage>` |
 | RV5 | Runtime capability metadata omits Cytoscape | Cross-profile report test that changes only with the actual backend owner probe |
-| RV6 | Wardley annotations use local annotation roles instead of Mermaid 11.16 axis roles and white fill | Distinct-role source-backed theme parity fixture |
+| RV6 | Wardley headless output does not project Mermaid 11.16's scoped annotation CSS over the renderer's raw axis/white attributes | Distinct-role source-backed computed-style parity fixture |
 | RV7 | Venn union preparation deduplicates repeated members that upstream preserves | `union A,A,B` semantic and geometry fixture |
 | RV8 | `CONTEXT.md` still claims feature-profile family facts and facts schema 1 | Current semantic/facts contract documentation check |
 | RV9 | Alignment status still describes full-profile families and an unfinished editor switch | Regenerated readable current status without historical live claims |

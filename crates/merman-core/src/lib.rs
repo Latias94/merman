@@ -24,6 +24,7 @@ mod inline_config;
 pub mod models;
 mod parse_pipeline;
 pub mod preprocess;
+pub mod resources;
 mod runtime;
 pub mod sanitize;
 mod theme;

@@ -22,9 +22,9 @@ test("checked-in Web descriptor has one valid closed surface graph", () => {
     ({ name }) => name === "browser-bridge",
   );
   assert.deepEqual(bridge?.features, []);
-  assert.deepEqual(
-    Object.values(bridge?.capabilities ?? {}),
-    Array(7).fill(false),
+  assert.ok(
+    Object.keys(bridge?.capabilities ?? {}).length > 0 &&
+      Object.values(bridge?.capabilities ?? {}).every((value) => value === false),
   );
 
   const editor = webSurfaceDescriptor.presets.find(

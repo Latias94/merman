@@ -81,6 +81,7 @@ export interface BindingCapabilities {
   analysis: boolean;
   ascii: boolean;
   core_host: boolean;
+  cytoscape_layout: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
   editor_language: boolean;
@@ -99,6 +100,7 @@ interface BindingCapabilityFlags {
   analysis: boolean;
   ascii: boolean;
   core_host: boolean;
+  cytoscape_layout: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
   editor_language: boolean;
@@ -200,6 +202,7 @@ export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   analysis: true,
   ascii: false,
   core_host: false,
+  cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: false,
@@ -210,6 +213,7 @@ export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   analysis: true,
   ascii: false,
   core_host: false,
+  cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: false,
@@ -220,6 +224,7 @@ export const RENDER_ONLY_BINDING_CAPABILITIES: BindingCapabilities = bindingCapa
   analysis: false,
   ascii: false,
   core_host: false,
+  cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: false,
@@ -230,6 +235,7 @@ export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabiliti
   analysis: false,
   ascii: true,
   core_host: false,
+  cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: false,
@@ -240,6 +246,7 @@ export const EDITOR_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
   analysis: true,
   ascii: false,
   core_host: false,
+  cytoscape_layout: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: true,
@@ -250,6 +257,7 @@ export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
   analysis: true,
   ascii: true,
   core_host: true,
+  cytoscape_layout: true,
   elk_layout: true,
   ratex_math: false,
   editor_language: true,
