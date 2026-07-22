@@ -26,7 +26,9 @@ describe("analysis settings normalization", () => {
         },
       },
       resources: {
-        max_source_bytes: 1024,
+        limits: {
+          max_source_bytes: 1024,
+        },
       },
       lint: {
         profile: "core",

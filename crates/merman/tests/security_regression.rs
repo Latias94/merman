@@ -1,7 +1,7 @@
 #![cfg(feature = "render")]
 
 use merman::MermaidConfig;
-use merman::render::{HeadlessRenderer, RenderEnvironment, RenderResourceLimits};
+use merman::render::{HeadlessRenderer, RenderEnvironment, RenderResourcePolicy};
 #[cfg(feature = "raster")]
 use std::io::Cursor;
 use std::sync::Arc;
@@ -122,6 +122,43 @@ Rel(customer, system, \"Uses\")\n";
 }
 
 #[test]
+fn mindmap_render_drops_xml_forbidden_control_chars_before_serialization() {
+    let source = "mindmap\n  root((Root))\n    Parse\n    \u{1c}Layout\n";
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-mindmap-xml-controls");
+
+    let parity_svg = render_svg(&renderer, "security-mindmap-xml-controls", source);
+    assert_xml_parseable("security-mindmap-xml-controls", &parity_svg);
+    assert!(!parity_svg.contains('\u{1c}'), "{parity_svg}");
+
+    let resvg_svg = render_resvg_safe(&renderer, "security-mindmap-xml-controls", source);
+    assert_xml_parseable("security-mindmap-resvg-xml-controls", &resvg_svg);
+    assert!(!resvg_svg.contains('\u{1c}'), "{resvg_svg}");
+}
+
+#[test]
+fn raw_svg_options_cannot_bypass_diagram_id_normalization() {
+    let renderer = HeadlessRenderer::new().with_svg_options(merman::render::SvgRenderOptions {
+        diagram_id: Some("x]]>y".to_string()),
+        ..Default::default()
+    });
+
+    let outputs = [
+        render_svg(&renderer, "diagram-id-parity", "info"),
+        renderer
+            .render_svg_readable_sync("info")
+            .expect("readable render")
+            .expect("detected info diagram"),
+        render_resvg_safe(&renderer, "diagram-id-resvg-safe", "info"),
+    ];
+
+    for (index, svg) in outputs.iter().enumerate() {
+        assert_xml_parseable(&format!("diagram-id-output-{index}"), svg);
+        assert!(svg.contains("x-y"), "normalized diagram id missing: {svg}");
+        assert!(!svg.contains("x]]>y"), "raw diagram id survived: {svg}");
+    }
+}
+
+#[test]
 fn raw_resvg_safe_pipeline_strips_active_svg_content() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
 <script>alert(1)</script>
@@ -152,10 +189,11 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 
 #[test]
 fn render_resource_limit_rejects_oversized_source() {
-    let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
-        max_source_bytes: Some(8),
-        ..RenderResourceLimits::unbounded_for_trusted_input()
-    });
+    let renderer = HeadlessRenderer::new().with_resource_policy(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(merman::render::ResourceLimitId::MaxSourceBytes, 8)
+            .unwrap(),
+    );
 
     let err = renderer
         .render_svg_sync("flowchart TD\nA --> B")
@@ -166,10 +204,11 @@ fn render_resource_limit_rejects_oversized_source() {
 
 #[test]
 fn render_resource_limit_rejects_oversized_flowchart_model() {
-    let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
-        max_flowchart_edges: Some(1),
-        ..RenderResourceLimits::unbounded_for_trusted_input()
-    });
+    let renderer = HeadlessRenderer::new().with_resource_policy(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(merman::render::ResourceLimitId::MaxFlowchartEdges, 1)
+            .unwrap(),
+    );
 
     let err = renderer
         .render_svg_sync("flowchart TD\nA-->B\nB-->C")

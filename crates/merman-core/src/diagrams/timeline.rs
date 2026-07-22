@@ -35,8 +35,19 @@ pub struct TimelineRenderTask {
     pub events: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum TimelineDirection {
+    #[default]
+    #[serde(rename = "LR")]
+    LeftToRight,
+    #[serde(rename = "TD")]
+    TopDown,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct TimelineDiagramRenderModel {
+    #[serde(default)]
+    pub direction: TimelineDirection,
     pub title: Option<String>,
     #[serde(rename = "accTitle")]
     pub acc_title: Option<String>,
@@ -74,6 +85,7 @@ impl TimelineDiagramRenderModel {
 
 #[derive(Debug, Default)]
 struct TimelineDb {
+    direction: TimelineDirection,
     title: String,
     acc_title: String,
     acc_descr: String,
@@ -713,6 +725,7 @@ pub(crate) fn render_model_to_compat_json(
     }
     Ok(json!({
         "type": meta.diagram_type,
+        "direction": model.direction,
         "title": &model.title,
         "accTitle": &model.acc_title,
         "accDescr": &model.acc_descr,
@@ -826,6 +839,11 @@ fn parse_timeline_semantic_source(
                     || direction.text.eq_ignore_ascii_case("TD"));
             if valid_direction {
                 push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, direction.span());
+                db.direction = if direction.text.eq_ignore_ascii_case("TD") {
+                    TimelineDirection::TopDown
+                } else {
+                    TimelineDirection::LeftToRight
+                };
                 if trailing.text.starts_with('#') {
                     push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, trailing.span());
                     continue;
@@ -1010,6 +1028,7 @@ fn parse_timeline_semantic_source(
     }
 
     let model = header_seen.then(|| TimelineDiagramRenderModel {
+        direction: db.direction,
         title: (!db.title.is_empty()).then_some(db.title),
         acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
         acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
@@ -1474,6 +1493,31 @@ task2: event2: event3\n";
                 lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
                     && lexeme.producer().family().map(|family| family.as_str()) == Some("timeline")
             }));
+        }
+    }
+
+    #[test]
+    fn timeline_direction_is_preserved_in_semantic_and_compatibility_models() {
+        let engine = Engine::new();
+        for (source, expected) in [
+            ("timeline\n2026", TimelineDirection::LeftToRight),
+            ("timeline LR\n2026", TimelineDirection::LeftToRight),
+            ("timeline TD\n2026", TimelineDirection::TopDown),
+        ] {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .expect("Timeline parse succeeds")
+                .expect("Timeline is detected");
+            let crate::RenderSemanticModel::Timeline(model) = parsed.model() else {
+                panic!("expected Timeline render model");
+            };
+
+            assert_eq!(model.direction, expected, "direction for {source:?}");
+            assert_eq!(
+                render_model_to_compat_json(model, parsed.metadata()).expect("compatibility JSON")
+                    ["direction"],
+                serde_json::to_value(expected).expect("direction serializes")
+            );
         }
     }
 

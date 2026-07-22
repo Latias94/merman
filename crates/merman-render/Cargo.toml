@@ -40,6 +40,8 @@ chrono.workspace = true
 cssparser.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
+icu_collator.workspace = true
+icu_locale_core.workspace = true
 kurbo.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }

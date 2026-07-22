@@ -97,7 +97,7 @@ fn layout_class_with_dagre(
 ) -> ClassDiagramLayout {
     let model = class_model(parsed);
     session
-        .resource_limits()
+        .resource_policy()
         .check_class_complexity(model)
         .expect("class complexity within test limits");
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);

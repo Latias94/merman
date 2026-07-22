@@ -9,6 +9,9 @@ use crate::model::{
     Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
     VennTextAreaLayout, VennTextDebugCellLayout, VennTextNodeLayout,
 };
+use crate::resources::RenderResourcePolicy;
+#[cfg(test)]
+use crate::resources::ResourceLimitId;
 use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
@@ -27,6 +30,7 @@ pub fn layout_venn_diagram_typed(
     model: &VennDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<VennDiagramLayout> {
     let cfg = VennConfigView::new(effective_config).layout_settings();
     let title = model
@@ -54,7 +58,8 @@ pub fn layout_venn_diagram_typed(
                 label: subset.label.clone(),
             })
             .collect::<Vec<_>>(),
-    );
+        resource_limits,
+    )?;
     let layout_areas = if areas.is_empty() {
         Vec::new()
     } else {
@@ -92,7 +97,6 @@ pub fn layout_venn_diagram_typed(
                 })
                 .collect(),
             path: area.path.clone(),
-            distinct_path: area.distinct_path.clone(),
         })
         .collect::<Vec<_>>();
     let layout_by_key = layout_areas
@@ -241,14 +245,15 @@ fn stable_sets_key(sets: &[String]) -> String {
     sets.join("|")
 }
 
-fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea> {
-    let mut existing_keys = areas
+fn ensure_pairwise_subsets_for_layout(
+    mut areas: Vec<VennArea>,
+    resource_limits: RenderResourcePolicy,
+) -> Result<Vec<VennArea>> {
+    resource_limits.check_venn_areas(areas.len())?;
+    let mut existing_pairs = areas
         .iter()
-        .map(|area| {
-            let mut sets = area.sets.clone();
-            sets.sort();
-            sets.join("|")
-        })
+        .filter(|area| area.sets.len() == 2)
+        .map(|area| canonical_pair(&area.sets[0], &area.sets[1]))
         .collect::<HashSet<_>>();
     let singleton_sizes = areas
         .iter()
@@ -260,14 +265,25 @@ fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea>
     for area in areas.iter().filter(|area| area.sets.len() >= 3) {
         let mut members = area.sets.clone();
         members.sort();
+        members.dedup();
+        if members.len() < 2 {
+            continue;
+        }
         for left_index in 0..members.len() - 1 {
             for right_index in left_index + 1..members.len() {
                 let left = &members[left_index];
                 let right = &members[right_index];
-                let key = format!("{left}|{right}");
-                if !existing_keys.insert(key) {
+                let pair = canonical_pair(left, right);
+                if existing_pairs.contains(&pair) {
                     continue;
                 }
+                resource_limits.check_venn_areas(
+                    areas
+                        .len()
+                        .saturating_add(synthetic.len())
+                        .saturating_add(1),
+                )?;
+                existing_pairs.insert(pair);
 
                 let size = singleton_sizes
                     .get(left)
@@ -286,7 +302,35 @@ fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea>
     }
 
     areas.extend(synthetic);
-    areas
+
+    // `venn.js` also creates zero-sized pairwise areas for every pair of singleton sets inside
+    // its layout kernel. Prove that expansion fits before entering the ported algorithm, without
+    // allocating those private helper areas here or changing the public/rendered area list.
+    let mut singleton_ids = singleton_sizes.keys().collect::<Vec<_>>();
+    singleton_ids.sort();
+    let mut expanded_area_count = areas.len();
+    for left_index in 0..singleton_ids.len() {
+        for right_index in left_index + 1..singleton_ids.len() {
+            if existing_pairs.contains(&canonical_pair(
+                singleton_ids[left_index],
+                singleton_ids[right_index],
+            )) {
+                continue;
+            }
+            expanded_area_count = expanded_area_count.saturating_add(1);
+            resource_limits.check_venn_areas(expanded_area_count)?;
+        }
+    }
+
+    Ok(areas)
+}
+
+fn canonical_pair(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_owned(), right.to_owned())
+    } else {
+        (right.to_owned(), left.to_owned())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -346,7 +390,6 @@ pub struct VennLayoutArea {
     pub circles: Vec<VennCircle>,
     pub arcs: Vec<VennArc>,
     pub path: String,
-    pub distinct_path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -503,25 +546,7 @@ pub fn compute_venn_layout(
             circles: area_circles,
             arcs,
             path,
-            distinct_path: String::new(),
         });
-    }
-
-    for i in 0..helpers.len() {
-        let mut distinct_path = helpers[i].path.clone();
-        for j in 0..helpers.len() {
-            if helpers[j].data.sets.len() > helpers[i].data.sets.len()
-                && helpers[i]
-                    .data
-                    .sets
-                    .iter()
-                    .all(|set| helpers[j].data.sets.contains(set))
-            {
-                distinct_path.push(' ');
-                distinct_path.push_str(&helpers[j].path);
-            }
-        }
-        helpers[i].distinct_path = distinct_path;
     }
 
     Ok(helpers)
@@ -611,6 +636,7 @@ fn add_missing_areas(areas: &[VennArea], distinct: bool) -> Vec<VennArea> {
     }
 
     ids.sort();
+    ids.dedup();
     for i in 0..ids.len() {
         for j in i + 1..ids.len() {
             let a = &ids[i];
@@ -2314,8 +2340,13 @@ mod tests {
         };
         let original_model = model.clone();
 
-        let layout = layout_venn_diagram_typed(&model, None, &serde_json::json!({}))
-            .expect("three-set union layout");
+        let layout = layout_venn_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            RenderResourcePolicy::interactive(),
+        )
+        .expect("three-set union layout");
         let pairwise = layout
             .areas
             .iter()
@@ -2332,5 +2363,75 @@ mod tests {
             ]
         );
         assert_eq!(model, original_model);
+    }
+
+    #[test]
+    fn pairwise_expansion_is_rejected_before_it_can_exceed_the_area_budget() {
+        let members = (0..1_000).map(|index| format!("S{index}")).collect();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxVennAreas, 32)
+            .unwrap();
+        let error = ensure_pairwise_subsets_for_layout(
+            vec![VennArea {
+                sets: members,
+                size: 1.0,
+                weight: None,
+                label: None,
+            }],
+            limits,
+        )
+        .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn area resource limit");
+        };
+
+        assert_eq!(error.limit, "max_venn_areas");
+        assert_eq!(error.actual, 33);
+        assert_eq!(error.max, 32);
+    }
+
+    #[test]
+    fn private_singleton_pair_expansion_is_included_in_the_area_budget() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxVennAreas, 6)
+            .unwrap();
+        let areas = ["A", "B", "C", "D"]
+            .into_iter()
+            .map(|set| VennArea::new([set], 10.0))
+            .collect();
+        let error = ensure_pairwise_subsets_for_layout(areas, limits).unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn area resource limit");
+        };
+
+        assert_eq!(error.limit, "max_venn_areas");
+        assert_eq!(error.actual, 7);
+        assert_eq!(error.max, 6);
+    }
+
+    #[test]
+    fn duplicate_set_members_do_not_multiply_private_pairwise_areas() {
+        let duplicate_singletons = (0..1_000)
+            .map(|_| VennArea::new(["A"], 10.0))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            add_missing_areas(&duplicate_singletons, false).len(),
+            duplicate_singletons.len()
+        );
+
+        let expanded = ensure_pairwise_subsets_for_layout(
+            vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxVennAreas, 4)
+                .unwrap(),
+        )
+        .expect("three unique pairs plus the source area fit exactly");
+        assert_eq!(expanded.len(), 4);
+        assert!(
+            expanded
+                .iter()
+                .filter(|area| area.sets.len() == 2)
+                .all(|area| area.sets[0] != area.sets[1])
+        );
     }
 }

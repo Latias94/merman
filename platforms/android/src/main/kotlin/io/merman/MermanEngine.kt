@@ -18,6 +18,10 @@ object MermanEngine {
         nativeSupportedDiagramsJson()
     }
 
+    private val runtimeContractJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeRuntimeContractJson()
+    }
+
     private val asciiCapabilitiesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         nativeAsciiCapabilitiesJson()
     }
@@ -73,6 +77,11 @@ object MermanEngine {
     @JvmStatic
     fun supportedDiagramsJson(): String =
         supportedDiagramsJsonCache
+
+    /** Returns the versioned ABI, feature, registry, and resource contract. */
+    @JvmStatic
+    fun runtimeContractJson(): String =
+        runtimeContractJsonCache
 
     @JvmStatic
     fun asciiCapabilitiesJson(): String =
@@ -150,6 +159,9 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeSupportedDiagramsJson(): String
+
+    @JvmStatic
+    private external fun nativeRuntimeContractJson(): String
 
     @JvmStatic
     private external fun nativeAsciiCapabilitiesJson(): String

@@ -12,11 +12,14 @@ import type {
   LintRuleSeverity,
 } from "./public-catalog.js";
 import type { HostTextMeasurementOperation } from "./generated/text-measurement-abi.js";
+import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
+import type { ResourceOptions } from "./generated/resource-contract.js";
 
 export type {
   HostTextMeasurementOperation,
   HostTextMeasurementResultKind,
 } from "./generated/text-measurement-abi.js";
+export type { ResourceOptions } from "./generated/resource-contract.js";
 
 export interface ParseOptions {
   suppress_errors?: boolean;
@@ -32,24 +35,42 @@ export interface RenderEnvironmentOptions {
   math_renderer?: "none" | "ratex";
 }
 
-export interface ResourceOptions {
-  profile?:
-    | "interactive"
-    | "typst-package"
-    | "trusted-native"
-    | "unbounded-for-trusted-input";
-  max_source_bytes?: number;
-  max_svg_bytes?: number;
-  max_flowchart_nodes?: number;
-  max_flowchart_edges?: number;
-  max_flowchart_subgraphs?: number;
-  max_class_nodes?: number;
-  max_class_edges?: number;
-  max_class_namespaces?: number;
-  max_zenuml_participants?: number;
-  max_zenuml_statements?: number;
-  max_zenuml_fragments?: number;
-  max_label_bytes?: number;
+export interface RuntimeContract {
+  schema_version: number;
+  abi_version: number;
+  package_version: string;
+  options_schema_version: number;
+  payload_schemas: Record<string, number>;
+  features: BindingCapabilities;
+  registry: {
+    profile: string;
+    diagram_family_count: number;
+  };
+  resources: RuntimeResourceContract | null;
+}
+
+export interface RuntimeResourceContract {
+  schema_version: number;
+  general_binding_default_profile: string;
+  cli_default_profile: string;
+  limits: RuntimeResourceLimit[];
+  profiles: RuntimeResourceProfile[];
+}
+
+export interface RuntimeResourceLimit {
+  id: string;
+  phase: string;
+  description: string;
+  overridable: boolean;
+  hard_cap: boolean;
+}
+
+export interface RuntimeResourceProfile {
+  id: string;
+  purpose: string;
+  trust_assumption: string;
+  recommended_binding_default: boolean;
+  limits: Record<string, number | null>;
 }
 
 export interface SvgOptions {
@@ -120,7 +141,7 @@ export interface AnalysisBindingOptions {
 }
 
 export interface CommonBindingOptions extends AnalysisBindingOptions {
-  version?: number;
+  version?: 1;
   analysis?: AnalysisBindingOptions;
   merman?: AnalysisBindingOptions;
 }
@@ -396,13 +417,7 @@ export type AnalysisEditorSymbolKind =
 
 export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
 
-export type AnalysisRenamePolicy =
-  | "none"
-  | "identifier"
-  | "qualified_identifier"
-  | "event_modeling_id"
-  | "event_modeling_frame_id"
-  | string;
+export type AnalysisRenamePolicy = EditorRenamePolicy;
 
 export type AnalysisExpectedSyntaxKind =
   | "id_list"
@@ -807,8 +822,19 @@ export interface WasmSemanticTokenDescriptor {
   validModifierMask: number;
 }
 
+export type MermanWasmSource =
+  | RequestInfo
+  | URL
+  | Response
+  | BufferSource
+  | WebAssembly.Module;
+
+interface WasmBindgenInitEnvelope {
+  module_or_path: MermanWasmSource | Promise<MermanWasmSource>;
+}
+
 export interface MermanWasmModule {
-  default: (input?: unknown) => Promise<unknown>;
+  default: (input?: WasmBindgenInitEnvelope) => Promise<unknown>;
   EditorSession?: WasmEditorSessionConstructor;
   abiVersion: () => number;
   packageVersion: () => string;
@@ -919,6 +945,7 @@ export interface MermanWasmModule {
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   bindingCapabilities: () => BindingCapabilities;
+  runtimeContract: () => RuntimeContract;
   selectedRegistryProfile: () => string;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
@@ -931,7 +958,7 @@ export type MermanWasmLoader = () => Promise<MermanWasmModule>;
 
 export interface MermanInitOptions {
   loader?: MermanWasmLoader;
-  wasm?: unknown;
+  wasm?: MermanWasmSource | Promise<MermanWasmSource>;
 }
 
 export type MermanInitInput = MermanWasmLoader | MermanInitOptions;

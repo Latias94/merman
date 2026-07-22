@@ -57,31 +57,26 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 ## Fixture Coverage
 
-- `fixtures/treeView/upstream_docs_treeview_basic.mmd`
-  - source: `repo-ref/mermaid/docs/syntax/treeView.md`
-  - semantic snapshot: `fixtures/treeView/upstream_docs_treeview_basic.golden.json`
-  - layout snapshot: `fixtures/treeView/upstream_docs_treeview_basic.layout.golden.json`
-- Cypress rendering fixtures from `repo-ref/mermaid/cypress/integration/rendering/treeView/treeView.spec.ts`:
-  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001.mmd`
-  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.mmd`
-  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.mmd`
-  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.mmd`
-- Parser-source accessibility fixture from
-  `repo-ref/mermaid/packages/parser/tests/treeView.test.ts`:
-  - `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.mmd`
-  - semantic snapshot:
-    `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.golden.json`
-  - layout snapshot:
-    `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.layout.golden.json`
+- The active corpus contains 17 fixtures:
+  - 15 exact Mermaid Cypress render cases from
+    `repo-ref/mermaid/cypress/integration/rendering/treeView/treeView.spec.ts`, covering quoted and
+    bare labels, multiple roots, custom config, class annotations, descriptions, Iconify packs,
+    filename/extension icon maps, default-pack resolution, unknown-icon fallback, hidden icons,
+    Unicode/consecutive spaces, emoji icons, and combined annotations;
+  - `fixtures/treeView/upstream_docs_treeview_basic.mmd` from the syntax documentation;
+  - `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.mmd` from
+    `repo-ref/mermaid/packages/parser/tests/treeView.test.ts`, retaining title/accessibility parser
+    evidence in the snapshot lane.
+- Every active fixture has semantic/layout evidence and a pinned Mermaid SVG. The full 15-case
+  Cypress set is intentionally retained because the 11.16 icon and annotation behavior is not
+  reducible to the older four-example subset.
 
 ## Upstream SVG Baselines
 
-- `fixtures/upstream-svgs/treeView/upstream_docs_treeview_basic.svg`
-- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001.svg`
-- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.svg`
-- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.svg`
-- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.svg`
-- `fixtures/upstream-svgs/treeView/upstream_parser_treeview_title_accessibility_spec.svg`
+The 17 corresponding SVGs live under `fixtures/upstream-svgs/treeView/` with per-file input/output
+hashes and generated provenance. The fixture names are generated from the pinned source calls; the
+admission gate discovers them from the active directory rather than maintaining a second hand-written
+list.
 
 ## Compare Coverage
 
@@ -89,6 +84,13 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram treeView --check-dom --dom-mode parity --dom-decimals 3`
 - Current DOM gate: `compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3`
   passes for the committed baseline corpus.
+
+## Verification
+
+```text
+cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- check-upstream-svgs --diagram treeView --check-dom --dom-mode parity --dom-decimals 3
+```
 
 ## Root Viewport Residuals
 

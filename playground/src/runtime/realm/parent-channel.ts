@@ -5,11 +5,11 @@ import type {
 } from "../mermaid-realm-controller.ts";
 import { createAuthenticatedBrowserRealmChannel } from "./browser-realm-channel.ts";
 import {
-  COMPARE_OPERATION_STAGES,
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   RealmProtocolError,
   RealmTimeoutError,
+  advanceCompareOperationStage,
   isRealmMessageType,
   validateCompareRenderProgress,
   validateCompareRenderRequest,
@@ -105,11 +105,10 @@ export async function createBrowserCompareRealmSession(
         expectedSequence,
         pending.requestId
       );
-      const nextStageIndex = COMPARE_OPERATION_STAGES.indexOf(progress.stage);
-      if (nextStageIndex <= pending.stageIndex) {
-        throw new RealmProtocolError("Mermaid realm progress is out of order.");
-      }
-      pending.stageIndex = nextStageIndex;
+      pending.stageIndex = advanceCompareOperationStage(
+        pending.stageIndex,
+        progress.stage
+      );
       incomingSequence = expectedSequence;
       armStageTimer(pending, progress.stage);
       return;

@@ -51,13 +51,26 @@ jobs:
     runs-on: "ubuntu-24.04"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ github.ref_name }}
+      tag: ${{ steps.release.outputs.tag }}
       publishing: ${{ true }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
           submodules: recursive
+      - name: Validate release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          canonical_version="$(python3 scripts/release-version.py canonical --version "$RELEASE_TAG")"
+          if [[ "$RELEASE_TAG" != "v$canonical_version" ]]; then
+            echo "::error::Release tag must be v$canonical_version." >&2
+            exit 1
+          fi
+          python3 scripts/release-version.py check --version "$RELEASE_TAG"
+          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
@@ -70,8 +83,9 @@ jobs:
           path: ~/.cargo/bin/dist
       - id: plan
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
+          set -euo pipefail
           dist host --steps=create "--tag=$RELEASE_TAG" --output-format=json > plan-dist-manifest.json
           echo "dist ran successfully"
           cat plan-dist-manifest.json

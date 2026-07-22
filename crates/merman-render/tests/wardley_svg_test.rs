@@ -195,6 +195,68 @@ fn wardley_svg_uses_family_theme_roles_without_a_css_postpass() {
 }
 
 #[test]
+fn wardley_svg_uses_annotation_theme_roles_without_a_css_postpass() {
+    let svg = render_wardley(
+        concat!(
+            "wardley-beta\n",
+            "annotations [0.10, 0.20]\n",
+            "annotation 1,[0.78, 0.82] \"User touchpoints\"\n",
+        ),
+        serde_json::json!({
+            "themeVariables": {
+                "wardley": {
+                    "axisColor": "#010203",
+                    "axisTextColor": "#111213",
+                    "annotationStroke": "#212223",
+                    "annotationTextColor": "#313233",
+                    "annotationFill": "#414243"
+                }
+            }
+        }),
+        "wardley-annotation-theme",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Wardley XML");
+
+    let annotation_group = element_with_class(&document, "g", "wardley-annotation");
+    assert_eq!(
+        annotation_group
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .and_then(|node| node.attribute("fill")),
+        Some("#414243")
+    );
+    assert_eq!(
+        annotation_group
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .and_then(|node| node.attribute("stroke")),
+        Some("#212223")
+    );
+    assert_eq!(
+        annotation_group
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .and_then(|node| node.attribute("fill")),
+        Some("#313233")
+    );
+    let box_group = element_with_class(&document, "g", "wardley-annotations-box");
+    assert_eq!(
+        box_group
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .and_then(|node| node.attribute("fill")),
+        Some("#414243")
+    );
+    assert_eq!(
+        box_group
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .and_then(|node| node.attribute("fill")),
+        Some("#313233")
+    );
+}
+
+#[test]
 fn wardley_svg_uses_frontmatter_title_when_the_body_has_none() {
     let svg = render_wardley(
         r#"---

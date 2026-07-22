@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(scriptDir, "..");
-const repoRoot = path.resolve(packageDir, "..", "..");
 const vsceTargets = new Set([
   "win32-x64",
   "win32-arm64",
@@ -31,12 +30,11 @@ if (isDirectRun()) {
 
 export function main(argv, options = {}) {
   const packageRoot = options.packageDir ?? packageDir;
-  const workspaceRoot = options.repoRoot ?? repoRoot;
   const manifestPath = path.join(packageRoot, "package.json");
   const vsceCliPath = path.join(packageRoot, "node_modules", "@vscode", "vsce", "vsce");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const releaseVersion =
-    options.releaseVersion ?? process.env.MERMAN_RELEASE_VERSION ?? readWorkspacePackageVersion(workspaceRoot);
+    options.releaseVersion ?? process.env.MERMAN_VSCODE_RELEASE_VERSION ?? manifest.version;
   const { args, message } = buildVscePackageArgs({
     manifestVersion: manifest.version,
     releaseVersion,
@@ -57,15 +55,6 @@ export function main(argv, options = {}) {
     fail(`Failed to run local vsce CLI: ${result.error.message}`);
   }
   process.exit(result.status ?? 1);
-}
-
-function readWorkspacePackageVersion(root) {
-  const cargoToml = fs.readFileSync(path.join(root, "Cargo.toml"), "utf8");
-  const match = cargoToml.match(/^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"/m);
-  if (!match) {
-    fail("Could not find [workspace.package] version in Cargo.toml.");
-  }
-  return match[1];
 }
 
 export function buildVscePackageArgs({ manifestVersion, releaseVersion, userArgs, env = process.env }) {
@@ -93,7 +82,9 @@ export function parseSourceVersion(raw, label) {
   if (typeof raw !== "string") {
     throw new Error(`${label} must be a string.`);
   }
-  const match = raw.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  const match = raw.match(
+    /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:alpha|beta|rc)\.(?:0|[1-9][0-9]*)))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  );
   if (!match) {
     throw new Error(`${label} is not valid SemVer: ${JSON.stringify(raw)}.`);
   }

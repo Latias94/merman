@@ -225,7 +225,7 @@ fn js_to_uint32(value: f64) -> u64 {
 
 fn architecture_seed_policy(
     value: Option<&Value>,
-    ambient_seed: u64,
+    operation_seed: u64,
 ) -> manatee::FcoseRandomPolicy {
     let numeric_seed = value
         .and_then(json_f64)
@@ -235,14 +235,19 @@ fn architecture_seed_policy(
         .and_then(Value::as_f64)
         .is_some_and(|value| value == 0.0);
     let policy = if is_json_number_zero {
-        manatee::FcoseRandomPolicy::seeded(manatee::FcoseRandomSource::Mulberry32, ambient_seed)
+        // Mermaid leaves Math.random in place for architecture.seed=0. Merman captures that
+        // operation-owned stream at session start, then consumes it continuously across FCoSE
+        // reruns instead of introducing a second process-global random source.
+        manatee::FcoseRandomPolicy::seeded(manatee::FcoseRandomSource::Mulberry32, operation_seed)
+            .with_reset_seed_each_run(false)
     } else {
         manatee::FcoseRandomPolicy::seeded(
             manatee::FcoseRandomSource::Mulberry32,
             js_to_uint32(numeric_seed),
         )
+        .with_reset_seed_each_run(true)
     };
-    policy.with_seed_offset(0).with_reset_seed_each_run(true)
+    policy.with_seed_offset(0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1238,17 +1243,17 @@ pub fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    ambient_seed: u64,
+    operation_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(&model, effective_config, text_measurer, ambient_seed)
+    layout_architecture_diagram_model(&model, effective_config, text_measurer, operation_seed)
 }
 
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    ambient_seed: u64,
+    operation_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
@@ -1278,7 +1283,7 @@ fn layout_architecture_diagram_model(
         .unwrap_or(2500);
     let fcose_random_policy = architecture_seed_policy(
         value_at(effective_config, &["architecture", "seed"]),
-        ambient_seed,
+        operation_seed,
     );
 
     let node_bounds_extras =
@@ -1642,7 +1647,9 @@ mod tests {
     }
 
     #[test]
-    fn architecture_fcose_input_plan_uses_mermaid_11_16_seed_policy() {
+    fn architecture_seed_zero_uses_an_operation_owned_continuous_stream() {
+        let seed_zero = serde_json::json!(0);
+        let random_policy = super::architecture_seed_policy(Some(&seed_zero), 77);
         let model = super::ArchitectureModelView {
             nodes: vec![super::ArchitectureNodeView {
                 id: "api",
@@ -1669,11 +1676,7 @@ mod tests {
                 fcose_randomize: false,
                 fcose_node_separation: 75.0,
                 fcose_num_iter: 2500,
-                fcose_random_policy: manatee::FcoseRandomPolicy::ambient(
-                    manatee::FcoseRandomSource::Mulberry32,
-                )
-                .with_seed_offset(0)
-                .with_reset_seed_each_run(true),
+                fcose_random_policy: random_policy,
             })
             .expect("build Architecture FCoSE input plan");
 
@@ -1681,8 +1684,8 @@ mod tests {
             plan.random_policy.source(),
             manatee::FcoseRandomSource::Mulberry32
         );
-        assert!(plan.random_policy.resets_seed_each_run());
-        assert_eq!(plan.random_policy.seed(), None);
+        assert!(!plan.random_policy.resets_seed_each_run());
+        assert_eq!(plan.random_policy.seed(), Some(77));
         assert_eq!(plan.random_policy.seed_offset(), Some(0));
     }
 
@@ -1708,6 +1711,7 @@ mod tests {
         let string_policy = super::architecture_seed_policy(Some(&string_zero), 77);
 
         assert_eq!(number_policy.seed(), Some(77));
+        assert!(!number_policy.resets_seed_each_run());
         assert_eq!(string_policy.seed(), Some(0));
         assert_eq!(
             string_policy.source(),

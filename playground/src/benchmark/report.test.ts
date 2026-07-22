@@ -6,6 +6,7 @@ import {
   buildBenchmarkReport,
   downloadBenchmarkReport,
   projectBenchmarkRealmSample,
+  projectBenchmarkTransportFailure,
   serializeBenchmarkReport,
   type BenchmarkRunEvidence,
 } from "./report.ts";
@@ -59,6 +60,34 @@ test("failed samples remain in evidence but cannot produce a ratio", () => {
     report.aggregates.engines.mermaid.firstIsolatedPresentationMs,
     null
   );
+});
+
+test("transport failures preserve the engine source and structured error detail", () => {
+  const sample = projectBenchmarkTransportFailure(
+    { blockIndex: 0, orderIndex: 1, purpose: "measured" },
+    {
+      engine: "mermaid",
+      mode: "realm-cold",
+      requestId: "mermaid-reset",
+      role: "measured",
+      runId: "run-1",
+    },
+    {
+      message: "Mermaid realm reset while rendering.",
+      reason: { code: "REALM_RESET" },
+    },
+    "realm-reset"
+  );
+
+  assert.equal(sample.engine, "mermaid");
+  assert.equal(sample.outcome, "failure");
+  if (sample.outcome !== "failure") return;
+  assert.equal(sample.failure.kind, "transport");
+  assert.equal(sample.failure.stage, "realm-reset");
+  assert.equal(sample.failure.message, "Mermaid realm reset while rendering.");
+  assert.match(sample.failure.detail ?? "", /REALM_RESET/);
+  assert.doesNotMatch(sample.failure.message, /\[object Object\]/);
+  assert.doesNotMatch(sample.failure.detail ?? "", /\[object Object\]/);
 });
 
 test("cancelled and invalidated reports suppress all aggregates", () => {

@@ -1939,7 +1939,7 @@ mod tests {
 
     fn trusted_compatible_svg(svg: &str) -> super::super::ResvgCompatibleSvg {
         let session = super::super::RenderEnvironment::parity()
-            .with_resource_limits(merman_render::resources::RenderResourceLimits::trusted_native())
+            .with_resource_policy(merman_render::resources::RenderResourcePolicy::trusted_native())
             .begin_session()
             .unwrap();
         super::super::finalize_resvg_svg(svg, &session).unwrap()

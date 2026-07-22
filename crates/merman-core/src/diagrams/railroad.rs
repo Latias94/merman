@@ -1,8 +1,8 @@
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseMetadata, Result, SourceSpan,
+    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result, SourceSpan,
     editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use serde::de::{self, Visitor};
@@ -36,6 +36,14 @@ enum RailroadDialect {
 }
 
 impl RailroadDialect {
+    fn is_identifier_start(self, ch: char) -> bool {
+        ch.is_ascii_alphabetic() || (self != Self::Abnf && ch == '_')
+    }
+
+    fn is_identifier_continue(self, ch: char) -> bool {
+        ch.is_ascii_alphanumeric() || ch == '-' || (self != Self::Abnf && ch == '_')
+    }
+
     fn diagram_type(self) -> &'static str {
         match self {
             Self::Ir => "railroad",
@@ -62,6 +70,42 @@ impl RailroadDialect {
             Self::Peg => "railroad peg",
         }
     }
+
+    fn editor_rename_policy(self) -> EditorRenamePolicy {
+        match self {
+            Self::Ir => EditorRenamePolicy::RailroadIrRule,
+            Self::Ebnf => EditorRenamePolicy::RailroadEbnfRule,
+            Self::Abnf => EditorRenamePolicy::RailroadAbnfRule,
+            Self::Peg => EditorRenamePolicy::RailroadPegRule,
+        }
+    }
+}
+
+pub(crate) fn is_valid_editor_ir_rule_identifier(candidate: &str) -> bool {
+    is_valid_railroad_rule_identifier(candidate, RailroadDialect::Ir)
+        && railroad_rule_name_conflict(candidate, RailroadDialect::Ir).is_none()
+}
+
+pub(crate) fn is_valid_editor_ebnf_rule_identifier(candidate: &str) -> bool {
+    is_valid_railroad_rule_identifier(candidate, RailroadDialect::Ebnf)
+        && railroad_rule_name_conflict(candidate, RailroadDialect::Ebnf).is_none()
+}
+
+pub(crate) fn is_valid_editor_peg_rule_identifier(candidate: &str) -> bool {
+    is_valid_railroad_rule_identifier(candidate, RailroadDialect::Peg)
+        && railroad_rule_name_conflict(candidate, RailroadDialect::Peg).is_none()
+}
+
+pub(crate) fn is_valid_editor_abnf_rule_identifier(candidate: &str) -> bool {
+    is_valid_railroad_rule_identifier(candidate, RailroadDialect::Abnf)
+        && railroad_rule_name_conflict(candidate, RailroadDialect::Abnf).is_none()
+}
+
+fn is_valid_railroad_rule_identifier(candidate: &str, dialect: RailroadDialect) -> bool {
+    let mut chars = candidate.chars();
+    chars.next().is_some_and(|first| {
+        dialect.is_identifier_start(first) && chars.all(|ch| dialect.is_identifier_continue(ch))
+    })
 }
 
 /// A Mermaid Railroad repetition bound stored with JavaScript number semantics.
@@ -867,6 +911,29 @@ fn is_railroad_ir_keyword(value: &str) -> bool {
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RailroadRuleNameConflict {
+    TitleToken,
+    HeaderKeyword,
+    IrConstructor,
+}
+
+fn railroad_rule_name_conflict(
+    candidate: &str,
+    dialect: RailroadDialect,
+) -> Option<RailroadRuleNameConflict> {
+    if candidate.starts_with("title") {
+        return Some(RailroadRuleNameConflict::TitleToken);
+    }
+    if candidate == dialect.header() {
+        return Some(RailroadRuleNameConflict::HeaderKeyword);
+    }
+    if dialect == RailroadDialect::Ir && is_railroad_ir_keyword(candidate) {
+        return Some(RailroadRuleNameConflict::IrConstructor);
+    }
+    None
+}
+
 fn sanitize_ast_node(node: &mut RailroadAstNode, config: &crate::MermaidConfig) {
     match node {
         RailroadAstNode::Terminal { value, .. } => *value = sanitize_text(value, config),
@@ -901,6 +968,146 @@ struct RailroadParser<'a> {
     diagram_type: &'a str,
     dialect: RailroadDialect,
     trace: RailroadParserTrace,
+}
+
+#[derive(Clone, Copy)]
+enum RailroadIrExpressionFrameKind {
+    Optional,
+    OneOrMore,
+    ZeroOrMore,
+    Sequence,
+    Choice,
+}
+
+impl RailroadIrExpressionFrameKind {
+    fn is_variadic(self) -> bool {
+        matches!(self, Self::Sequence | Self::Choice)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Optional => "optional",
+            Self::OneOrMore => "oneOrMore",
+            Self::ZeroOrMore => "zeroOrMore",
+            Self::Sequence => "sequence",
+            Self::Choice => "choice",
+        }
+    }
+}
+
+struct RailroadIrExpressionFrame {
+    kind: RailroadIrExpressionFrameKind,
+    start: usize,
+    nesting_depth: usize,
+    elements: Vec<RailroadAstNode>,
+}
+
+#[derive(Clone, Copy)]
+enum RailroadEbnfFrameKind {
+    Root,
+    Group { start: usize },
+    Optional { start: usize },
+    Repetition { start: usize },
+}
+
+impl RailroadEbnfFrameKind {
+    fn closing_symbol(self) -> Option<char> {
+        match self {
+            Self::Root => None,
+            Self::Group { .. } => Some(')'),
+            Self::Optional { .. } => Some(']'),
+            Self::Repetition { .. } => Some('}'),
+        }
+    }
+
+    fn closing_message(self) -> &'static str {
+        match self {
+            Self::Root => "expected EBNF expression",
+            Self::Group { .. } => "expected ')' after EBNF group",
+            Self::Optional { .. } => "expected ']' after EBNF optional group",
+            Self::Repetition { .. } => "expected '}' after EBNF repetition",
+        }
+    }
+}
+
+enum RailroadEbnfFrameState {
+    ExpectPrimary,
+    Pending(RailroadAstNode),
+    ExpectExceptionRhs {
+        left: RailroadAstNode,
+        dash_span: SourceSpan,
+    },
+}
+
+struct RailroadEbnfFrame {
+    kind: RailroadEbnfFrameKind,
+    nesting_depth: usize,
+    alternatives: Vec<Vec<RailroadAstNode>>,
+    sequence: Vec<RailroadAstNode>,
+    state: RailroadEbnfFrameState,
+}
+
+#[derive(Clone, Copy)]
+enum RailroadAbnfFrameKind {
+    Root,
+    Group { start: usize },
+    Optional { start: usize },
+}
+
+impl RailroadAbnfFrameKind {
+    fn closing_symbol(self) -> Option<char> {
+        match self {
+            Self::Root => None,
+            Self::Group { .. } => Some(')'),
+            Self::Optional { .. } => Some(']'),
+        }
+    }
+
+    fn closing_message(self) -> &'static str {
+        match self {
+            Self::Root => "expected ABNF element",
+            Self::Group { .. } => "expected ')' after ABNF group",
+            Self::Optional { .. } => "expected ']' after ABNF optional group",
+        }
+    }
+}
+
+struct RailroadAbnfFrame {
+    kind: RailroadAbnfFrameKind,
+    nesting_depth: usize,
+    alternatives: Vec<Vec<RailroadAstNode>>,
+    sequence: Vec<RailroadAstNode>,
+    pending_repeat: Option<SpannedText>,
+}
+
+#[derive(Clone, Copy)]
+enum RailroadPegFrameKind {
+    Root,
+    Group { start: usize },
+}
+
+impl RailroadPegFrameKind {
+    fn closing_symbol(self) -> Option<char> {
+        match self {
+            Self::Root => None,
+            Self::Group { .. } => Some(')'),
+        }
+    }
+
+    fn closing_message(self) -> &'static str {
+        match self {
+            Self::Root => "expected PEG expression",
+            Self::Group { .. } => "expected ')' after PEG group",
+        }
+    }
+}
+
+struct RailroadPegFrame {
+    kind: RailroadPegFrameKind,
+    nesting_depth: usize,
+    alternatives: Vec<Vec<RailroadAstNode>>,
+    sequence: Vec<RailroadAstNode>,
+    pending_prefix: Option<(char, SourceSpan)>,
 }
 
 impl<'a> RailroadParser<'a> {
@@ -1027,7 +1234,7 @@ impl<'a> RailroadParser<'a> {
     }
 
     fn parse_rule(&mut self) -> Result<RailroadRuleModel> {
-        let name = self.expect_ident("expected railroad rule name")?;
+        let name = self.expect_rule_name()?;
         match self.dialect {
             RailroadDialect::Peg => self.expect_left_arrow("expected '<-' after PEG rule name")?,
             RailroadDialect::Ebnf => {
@@ -1041,10 +1248,10 @@ impl<'a> RailroadParser<'a> {
         }
 
         let definition = match self.dialect {
-            RailroadDialect::Ir => self.parse_ir_expression()?,
-            RailroadDialect::Ebnf => self.parse_ebnf_choice()?,
-            RailroadDialect::Abnf => self.parse_abnf_alternation()?,
-            RailroadDialect::Peg => self.parse_peg_ordered_choice()?,
+            RailroadDialect::Ir => self.parse_ir_expression(0)?,
+            RailroadDialect::Ebnf => self.parse_ebnf_choice(0)?,
+            RailroadDialect::Abnf => self.parse_abnf_alternation(0)?,
+            RailroadDialect::Peg => self.parse_peg_ordered_choice(0)?,
         };
         self.expect_symbol(';', "expected ';' after railroad rule definition")?;
 
@@ -1055,296 +1262,551 @@ impl<'a> RailroadParser<'a> {
         })
     }
 
-    fn parse_ir_expression(&mut self) -> Result<RailroadAstNode> {
-        let function = self.expect_ident("expected railroad expression")?;
-        self.expect_symbol('(', "expected '(' after railroad expression name")?;
+    fn parse_ir_expression(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+        let mut frames: Vec<RailroadIrExpressionFrame> = Vec::new();
+        let mut pending = None;
 
-        let node = match function.text.as_str() {
-            "terminal" => {
-                let value = self.expect_string("expected string argument for terminal")?;
-                self.expect_symbol(')', "expected ')' after terminal argument")?;
+        loop {
+            if let Some(node) = pending.take() {
+                let Some(frame) = frames.last_mut() else {
+                    return Ok(node);
+                };
+                frame.elements.push(node);
+
+                if frame.kind.is_variadic() && self.take_symbol(',') {
+                    continue;
+                }
+
+                let frame = frames.pop().expect("non-empty Railroad IR frame stack");
+                pending = Some(self.finish_ir_expression_frame(frame)?);
+                continue;
+            }
+
+            let expression_depth = frames
+                .last()
+                .map(|frame: &RailroadIrExpressionFrame| frame.nesting_depth.saturating_add(1))
+                .unwrap_or(nesting_depth);
+            self.ensure_nesting_depth(expression_depth)?;
+
+            let function = self.expect_ident("expected railroad expression")?;
+            self.expect_symbol('(', "expected '(' after railroad expression name")?;
+            let kind = match function.text.as_str() {
+                "optional" => Some(RailroadIrExpressionFrameKind::Optional),
+                "oneOrMore" => Some(RailroadIrExpressionFrameKind::OneOrMore),
+                "zeroOrMore" => Some(RailroadIrExpressionFrameKind::ZeroOrMore),
+                "sequence" => Some(RailroadIrExpressionFrameKind::Sequence),
+                "choice" => Some(RailroadIrExpressionFrameKind::Choice),
+                "terminal" => {
+                    let value = self.expect_string("expected string argument for terminal")?;
+                    self.expect_symbol(')', "expected ')' after terminal argument")?;
+                    pending = Some(RailroadAstNode::Terminal {
+                        value: value.text,
+                        span: value.span,
+                        selection: value.selection,
+                    });
+                    None
+                }
+                "nonterminal" => {
+                    let name = self.expect_string("expected string argument for nonterminal")?;
+                    self.expect_symbol(')', "expected ')' after nonterminal argument")?;
+                    pending = Some(RailroadAstNode::NonTerminal {
+                        name: name.text,
+                        span: name.span,
+                        selection: name.selection,
+                    });
+                    None
+                }
+                "special" => {
+                    let text = self.expect_string("expected string argument for special")?;
+                    self.expect_symbol(')', "expected ')' after special argument")?;
+                    pending = Some(RailroadAstNode::Special {
+                        text: text.text,
+                        span: text.span,
+                        selection: text.selection,
+                    });
+                    None
+                }
+                _ => {
+                    return Err(self.error_at_span(
+                        function.span,
+                        format!("unsupported railroad expression: {}", function.text),
+                    ));
+                }
+            };
+
+            if let Some(kind) = kind {
+                if kind.is_variadic() && self.check_symbol(')') {
+                    return Err(self.error_at_current(format!(
+                        "{} requires at least one argument",
+                        kind.name()
+                    )));
+                }
+                frames.push(RailroadIrExpressionFrame {
+                    kind,
+                    start: function.span.start,
+                    nesting_depth: expression_depth,
+                    elements: Vec::new(),
+                });
+            }
+        }
+    }
+
+    fn finish_ir_expression_frame(
+        &mut self,
+        mut frame: RailroadIrExpressionFrame,
+    ) -> Result<RailroadAstNode> {
+        let end = self.expect_symbol(
+            ')',
+            format!("expected ')' after {} arguments", frame.kind.name()),
+        )?;
+        let span = SourceSpan::new(frame.start, end.span.end);
+        match frame.kind {
+            RailroadIrExpressionFrameKind::Optional => Ok(RailroadAstNode::Optional {
+                element: Box::new(
+                    frame
+                        .elements
+                        .pop()
+                        .expect("optional Railroad IR frame has one argument"),
+                ),
+                span,
+            }),
+            RailroadIrExpressionFrameKind::OneOrMore => Ok(RailroadAstNode::Repetition {
+                element: Box::new(
+                    frame
+                        .elements
+                        .pop()
+                        .expect("oneOrMore Railroad IR frame has one argument"),
+                ),
+                min: RailroadRepeatBound::ONE,
+                max: RailroadRepeatBound::INFINITY,
+                separator: None,
+                span,
+            }),
+            RailroadIrExpressionFrameKind::ZeroOrMore => Ok(RailroadAstNode::Repetition {
+                element: Box::new(
+                    frame
+                        .elements
+                        .pop()
+                        .expect("zeroOrMore Railroad IR frame has one argument"),
+                ),
+                min: RailroadRepeatBound::ZERO,
+                max: RailroadRepeatBound::INFINITY,
+                separator: None,
+                span,
+            }),
+            RailroadIrExpressionFrameKind::Sequence => Ok(collapse_sequence(frame.elements, span)),
+            RailroadIrExpressionFrameKind::Choice => Ok(collapse_choice(frame.elements, span)),
+        }
+    }
+
+    fn parse_ebnf_choice(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+        let mut frames = vec![RailroadEbnfFrame {
+            kind: RailroadEbnfFrameKind::Root,
+            nesting_depth,
+            alternatives: Vec::new(),
+            sequence: Vec::new(),
+            state: RailroadEbnfFrameState::ExpectPrimary,
+        }];
+        let mut completed = None;
+
+        loop {
+            if let Some(node) = completed.take() {
+                let frame = frames
+                    .last_mut()
+                    .expect("Railroad EBNF parent frame exists for completed group");
+                Self::accept_ebnf_primary(frame, node);
+                continue;
+            }
+
+            let state_is_pending = matches!(
+                &frames
+                    .last()
+                    .expect("Railroad EBNF frame stack is non-empty")
+                    .state,
+                RailroadEbnfFrameState::Pending(_)
+            );
+
+            if state_is_pending {
+                if self.take_symbol('?') {
+                    let end = self.previous_end();
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Optional {
+                        span: SourceSpan::new(node.span().start, end),
+                        element: Box::new(node),
+                    });
+                    continue;
+                }
+                if self.take_symbol('*') {
+                    let end = self.previous_end();
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Repetition {
+                        span: SourceSpan::new(node.span().start, end),
+                        element: Box::new(node),
+                        min: RailroadRepeatBound::ZERO,
+                        max: RailroadRepeatBound::INFINITY,
+                        separator: None,
+                    });
+                    continue;
+                }
+                if self.take_symbol('+') {
+                    let end = self.previous_end();
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Repetition {
+                        span: SourceSpan::new(node.span().start, end),
+                        element: Box::new(node),
+                        min: RailroadRepeatBound::ONE,
+                        max: RailroadRepeatBound::INFINITY,
+                        separator: None,
+                    });
+                    continue;
+                }
+                if self.take_symbol('-') {
+                    let dash_span = self.previous_span();
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let left = Self::take_ebnf_pending(frame)?;
+                    frame.state = RailroadEbnfFrameState::ExpectExceptionRhs { left, dash_span };
+                    continue;
+                }
+                if self.take_symbol(',') {
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.sequence.push(node);
+                    continue;
+                }
+                if self.take_symbol('|') {
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.sequence.push(node);
+                    frame.alternatives.push(std::mem::take(&mut frame.sequence));
+                    continue;
+                }
+
+                let kind = frames.last().expect("Railroad EBNF frame exists").kind;
+                if let Some(closing) = kind.closing_symbol() {
+                    if self.check_symbol(closing) {
+                        let end = self.expect_symbol(closing, kind.closing_message())?;
+                        let frame = frames.pop().expect("Railroad EBNF frame exists");
+                        completed = Some(self.finish_ebnf_frame(frame, Some(end.span))?);
+                        continue;
+                    }
+                } else if self.check_symbol(';') || self.is_eof() {
+                    let frame = frames.pop().expect("Railroad EBNF root frame exists");
+                    return self.finish_ebnf_frame(frame, None);
+                }
+
+                if self.is_ebnf_primary_start() {
+                    let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+                    let node = Self::take_ebnf_pending(frame)?;
+                    frame.sequence.push(node);
+                    continue;
+                }
+
+                return Err(self.error_at_current(kind.closing_message()));
+            }
+
+            let (frame_depth, expects_exception_rhs) = {
+                let frame = frames
+                    .last()
+                    .expect("Railroad EBNF frame stack is non-empty");
+                (
+                    frame.nesting_depth,
+                    matches!(
+                        &frame.state,
+                        RailroadEbnfFrameState::ExpectExceptionRhs { .. }
+                    ),
+                )
+            };
+            self.ensure_nesting_depth(frame_depth)?;
+
+            if self.take_symbol('(') {
+                let start = self.previous_span().start;
+                frames.push(RailroadEbnfFrame {
+                    kind: RailroadEbnfFrameKind::Group { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    state: RailroadEbnfFrameState::ExpectPrimary,
+                });
+                continue;
+            }
+            if self.take_symbol('[') {
+                let start = self.previous_span().start;
+                frames.push(RailroadEbnfFrame {
+                    kind: RailroadEbnfFrameKind::Optional { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    state: RailroadEbnfFrameState::ExpectPrimary,
+                });
+                continue;
+            }
+            if self.take_symbol('{') {
+                let start = self.previous_span().start;
+                frames.push(RailroadEbnfFrame {
+                    kind: RailroadEbnfFrameKind::Repetition { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    state: RailroadEbnfFrameState::ExpectPrimary,
+                });
+                continue;
+            }
+
+            let node = if let Some(value) = self.take_string() {
                 RailroadAstNode::Terminal {
                     value: value.text,
                     span: value.span,
                     selection: value.selection,
                 }
-            }
-            "nonterminal" => {
-                let name = self.expect_string("expected string argument for nonterminal")?;
-                self.expect_symbol(')', "expected ')' after nonterminal argument")?;
-                RailroadAstNode::NonTerminal {
-                    name: name.text,
-                    span: name.span,
-                    selection: name.selection,
-                }
-            }
-            "special" => {
-                let text = self.expect_string("expected string argument for special")?;
-                self.expect_symbol(')', "expected ')' after special argument")?;
+            } else if let Some(value) = self.take_special_sequence() {
                 RailroadAstNode::Special {
-                    text: text.text,
-                    span: text.span,
-                    selection: text.selection,
+                    text: value.text,
+                    span: value.span,
+                    selection: value.selection,
                 }
-            }
-            "optional" => {
-                let start = function.span.start;
-                let element = self.parse_ir_expression()?;
-                let end = self.expect_symbol(')', "expected ')' after optional argument")?;
-                RailroadAstNode::Optional {
-                    element: Box::new(element),
-                    span: SourceSpan::new(start, end.span.end),
+            } else if let Some(value) = self.take_ident() {
+                RailroadAstNode::NonTerminal {
+                    name: value.text,
+                    span: value.span,
+                    selection: value.selection,
                 }
+            } else if expects_exception_rhs {
+                return Err(self.error_at_current("expected EBNF primary"));
+            } else {
+                return Err(self.error_at_current("expected EBNF expression"));
+            };
+            let frame = frames.last_mut().expect("Railroad EBNF frame exists");
+            Self::accept_ebnf_primary(frame, node);
+        }
+    }
+
+    fn accept_ebnf_primary(frame: &mut RailroadEbnfFrame, node: RailroadAstNode) {
+        let state = std::mem::replace(&mut frame.state, RailroadEbnfFrameState::ExpectPrimary);
+        frame.state = match state {
+            RailroadEbnfFrameState::ExpectPrimary => RailroadEbnfFrameState::Pending(node),
+            RailroadEbnfFrameState::ExpectExceptionRhs { left, dash_span } => {
+                let span = SourceSpan::new(left.span().start, node.span().end);
+                RailroadEbnfFrameState::Pending(RailroadAstNode::Sequence {
+                    elements: vec![
+                        left,
+                        RailroadAstNode::Terminal {
+                            value: "-".to_string(),
+                            span: dash_span,
+                            selection: dash_span,
+                        },
+                        node,
+                    ],
+                    span,
+                })
             }
-            "oneOrMore" => {
-                let start = function.span.start;
-                let element = self.parse_ir_expression()?;
-                let end = self.expect_symbol(')', "expected ')' after oneOrMore argument")?;
-                RailroadAstNode::Repetition {
-                    element: Box::new(element),
-                    min: RailroadRepeatBound::ONE,
-                    max: RailroadRepeatBound::INFINITY,
-                    separator: None,
-                    span: SourceSpan::new(start, end.span.end),
-                }
-            }
-            "zeroOrMore" => {
-                let start = function.span.start;
-                let element = self.parse_ir_expression()?;
-                let end = self.expect_symbol(')', "expected ')' after zeroOrMore argument")?;
-                RailroadAstNode::Repetition {
-                    element: Box::new(element),
-                    min: RailroadRepeatBound::ZERO,
-                    max: RailroadRepeatBound::INFINITY,
-                    separator: None,
-                    span: SourceSpan::new(start, end.span.end),
-                }
-            }
-            "sequence" => {
-                let start = function.span.start;
-                let elements = self.parse_ir_expression_list("sequence")?;
-                let end = self.expect_symbol(')', "expected ')' after sequence arguments")?;
-                collapse_sequence(elements, SourceSpan::new(start, end.span.end))
-            }
-            "choice" => {
-                let start = function.span.start;
-                let alternatives = self.parse_ir_expression_list("choice")?;
-                let end = self.expect_symbol(')', "expected ')' after choice arguments")?;
-                collapse_choice(alternatives, SourceSpan::new(start, end.span.end))
-            }
-            _ => {
-                return Err(self.error_at_span(
-                    function.span,
-                    format!("unsupported railroad expression: {}", function.text),
-                ));
+            RailroadEbnfFrameState::Pending(_) => {
+                unreachable!("Railroad EBNF accepts a primary only after committing the prior term")
             }
         };
-
-        Ok(node)
     }
 
-    fn parse_ir_expression_list(&mut self, function: &str) -> Result<Vec<RailroadAstNode>> {
-        if self.check_symbol(')') {
-            return Err(self.error_at_current(format!("{function} requires at least one argument")));
-        }
-
-        let mut elements = vec![self.parse_ir_expression()?];
-        while self.take_symbol(',') {
-            elements.push(self.parse_ir_expression()?);
-        }
-        Ok(elements)
-    }
-
-    fn parse_ebnf_choice(&mut self) -> Result<RailroadAstNode> {
-        let first = self.parse_ebnf_sequence()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut alternatives = vec![first];
-
-        while self.take_symbol('|') {
-            let next = self.parse_ebnf_sequence()?;
-            end = next.span().end;
-            alternatives.push(next);
-        }
-
-        Ok(collapse_choice(alternatives, SourceSpan::new(start, end)))
-    }
-
-    fn parse_ebnf_sequence(&mut self) -> Result<RailroadAstNode> {
-        if !self.is_ebnf_primary_start() {
-            return Err(self.error_at_current("expected EBNF expression"));
-        }
-
-        let first = self.parse_ebnf_term()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut elements = vec![first];
-
-        loop {
-            if self.take_symbol(',') && !self.is_ebnf_primary_start() {
-                return Err(self.error_at_current("expected EBNF term after ','"));
+    fn take_ebnf_pending(frame: &mut RailroadEbnfFrame) -> Result<RailroadAstNode> {
+        match std::mem::replace(&mut frame.state, RailroadEbnfFrameState::ExpectPrimary) {
+            RailroadEbnfFrameState::Pending(node) => Ok(node),
+            RailroadEbnfFrameState::ExpectPrimary
+            | RailroadEbnfFrameState::ExpectExceptionRhs { .. } => {
+                Err(Error::diagram_parse_fallback(
+                    "railroadEbnf".to_string(),
+                    "internal EBNF parser state expected a completed term".to_string(),
+                ))
             }
-            if !self.is_ebnf_primary_start() {
-                break;
-            }
-            let term = self.parse_ebnf_term()?;
-            end = term.span().end;
-            elements.push(term);
         }
-
-        Ok(collapse_sequence(elements, SourceSpan::new(start, end)))
     }
 
-    fn parse_ebnf_term(&mut self) -> Result<RailroadAstNode> {
-        let mut node = self.parse_ebnf_primary()?;
+    fn finish_ebnf_frame(
+        &mut self,
+        mut frame: RailroadEbnfFrame,
+        closing_span: Option<SourceSpan>,
+    ) -> Result<RailroadAstNode> {
+        let node = Self::take_ebnf_pending(&mut frame)?;
+        frame.sequence.push(node);
+        frame.alternatives.push(std::mem::take(&mut frame.sequence));
+        let alternatives = frame
+            .alternatives
+            .into_iter()
+            .map(collapse_nonempty_sequence)
+            .collect::<Vec<_>>();
+        let element = collapse_nonempty_choice(alternatives);
 
-        loop {
-            if self.take_symbol('?') {
-                let span = SourceSpan::new(node.span().start, self.previous_end());
-                node = RailroadAstNode::Optional {
-                    element: Box::new(node),
-                    span,
-                };
-                continue;
+        match frame.kind {
+            RailroadEbnfFrameKind::Root => Ok(element),
+            RailroadEbnfFrameKind::Group { start } => {
+                let end = closing_span.expect("EBNF group has a closing span");
+                Ok(with_outer_span(element, SourceSpan::new(start, end.end)))
             }
-            if self.take_symbol('*') {
-                let span = SourceSpan::new(node.span().start, self.previous_end());
-                node = RailroadAstNode::Repetition {
-                    element: Box::new(node),
+            RailroadEbnfFrameKind::Optional { start } => {
+                let end = closing_span.expect("EBNF optional group has a closing span");
+                Ok(RailroadAstNode::Optional {
+                    element: Box::new(element),
+                    span: SourceSpan::new(start, end.end),
+                })
+            }
+            RailroadEbnfFrameKind::Repetition { start } => {
+                let end = closing_span.expect("EBNF repetition has a closing span");
+                Ok(RailroadAstNode::Repetition {
+                    element: Box::new(element),
                     min: RailroadRepeatBound::ZERO,
                     max: RailroadRepeatBound::INFINITY,
                     separator: None,
-                    span,
-                };
+                    span: SourceSpan::new(start, end.end),
+                })
+            }
+        }
+    }
+
+    fn parse_abnf_alternation(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+        let mut frames = vec![RailroadAbnfFrame {
+            kind: RailroadAbnfFrameKind::Root,
+            nesting_depth,
+            alternatives: Vec::new(),
+            sequence: Vec::new(),
+            pending_repeat: None,
+        }];
+        let mut completed = None;
+
+        loop {
+            if let Some(node) = completed.take() {
+                let frame = frames
+                    .last_mut()
+                    .expect("Railroad ABNF parent frame exists for completed group");
+                self.append_abnf_element(frame, node)?;
                 continue;
             }
-            if self.take_symbol('+') {
-                let span = SourceSpan::new(node.span().start, self.previous_end());
-                node = RailroadAstNode::Repetition {
-                    element: Box::new(node),
-                    min: RailroadRepeatBound::ONE,
-                    max: RailroadRepeatBound::INFINITY,
-                    separator: None,
-                    span,
-                };
+
+            let (kind, frame_depth, has_elements, has_pending_repeat) = {
+                let frame = frames
+                    .last()
+                    .expect("Railroad ABNF frame stack is non-empty");
+                (
+                    frame.kind,
+                    frame.nesting_depth,
+                    !frame.sequence.is_empty(),
+                    frame.pending_repeat.is_some(),
+                )
+            };
+
+            if let Some(closing) = kind.closing_symbol() {
+                if self.check_symbol(closing) {
+                    if !has_elements || has_pending_repeat {
+                        return Err(self.error_at_current("expected ABNF element"));
+                    }
+                    let end = self.expect_symbol(closing, kind.closing_message())?;
+                    let frame = frames.pop().expect("Railroad ABNF frame exists");
+                    completed = Some(self.finish_abnf_frame(frame, Some(end.span))?);
+                    continue;
+                }
+            } else if self.check_symbol(';') || self.is_eof() {
+                if !has_elements || has_pending_repeat {
+                    return Err(self.error_at_current("expected ABNF element"));
+                }
+                let frame = frames.pop().expect("Railroad ABNF root frame exists");
+                return self.finish_abnf_frame(frame, None);
+            }
+
+            if self.take_symbol('/') {
+                if !has_elements || has_pending_repeat {
+                    return Err(self.error_at_current("expected ABNF element"));
+                }
+                let frame = frames.last_mut().expect("Railroad ABNF frame exists");
+                frame.alternatives.push(std::mem::take(&mut frame.sequence));
                 continue;
             }
-            if self.take_symbol('-') {
-                let op_span = self.previous_span();
-                let except = self.parse_ebnf_primary()?;
-                let span = SourceSpan::new(node.span().start, except.span().end);
-                let dash = RailroadAstNode::Terminal {
-                    value: "-".to_string(),
-                    span: op_span,
-                    selection: op_span,
-                };
-                node = RailroadAstNode::Sequence {
-                    elements: vec![node, dash, except],
-                    span,
-                };
+
+            if !self.is_abnf_element_start() {
+                if kind.closing_symbol().is_none() && has_elements && !has_pending_repeat {
+                    let frame = frames.pop().expect("Railroad ABNF root frame exists");
+                    return self.finish_abnf_frame(frame, None);
+                }
+                return Err(self.error_at_current(kind.closing_message()));
+            }
+
+            self.ensure_nesting_depth(frame_depth)?;
+            let repeat = self.take_abnf_repeat();
+            if self.take_symbol('(') {
+                let start = self.previous_span().start;
+                frames
+                    .last_mut()
+                    .expect("Railroad ABNF frame exists")
+                    .pending_repeat = repeat;
+                frames.push(RailroadAbnfFrame {
+                    kind: RailroadAbnfFrameKind::Group { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    pending_repeat: None,
+                });
                 continue;
             }
-            break;
-        }
+            if self.take_symbol('[') {
+                let start = self.previous_span().start;
+                frames
+                    .last_mut()
+                    .expect("Railroad ABNF frame exists")
+                    .pending_repeat = repeat;
+                frames.push(RailroadAbnfFrame {
+                    kind: RailroadAbnfFrameKind::Optional { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    pending_repeat: None,
+                });
+                continue;
+            }
 
-        Ok(node)
+            let primary = if let Some(value) = self.take_string() {
+                RailroadAstNode::Terminal {
+                    value: value.text,
+                    span: value.span,
+                    selection: value.selection,
+                }
+            } else if let Some(value) = self.take_num_val() {
+                RailroadAstNode::Terminal {
+                    value: value.text,
+                    span: value.span,
+                    selection: value.selection,
+                }
+            } else if let Some(value) = self.take_ident() {
+                RailroadAstNode::NonTerminal {
+                    name: value.text,
+                    span: value.span,
+                    selection: value.selection,
+                }
+            } else {
+                return Err(self.error_at_current("expected ABNF primary"));
+            };
+            let frame = frames.last_mut().expect("Railroad ABNF frame exists");
+            frame.pending_repeat = repeat;
+            self.append_abnf_element(frame, primary)?;
+        }
     }
 
-    fn parse_ebnf_primary(&mut self) -> Result<RailroadAstNode> {
-        if let Some(value) = self.take_string() {
-            return Ok(RailroadAstNode::Terminal {
-                value: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if let Some(value) = self.take_special_sequence() {
-            return Ok(RailroadAstNode::Special {
-                text: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if let Some(value) = self.take_ident() {
-            return Ok(RailroadAstNode::NonTerminal {
-                name: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if self.take_symbol('(') {
-            let start = self.previous_span().start;
-            let element = self.parse_ebnf_choice()?;
-            let end = self.expect_symbol(')', "expected ')' after EBNF group")?;
-            let span = SourceSpan::new(start, end.span.end);
-            return Ok(with_outer_span(element, span));
-        }
-        if self.take_symbol('[') {
-            let start = self.previous_span().start;
-            let element = self.parse_ebnf_choice()?;
-            let end = self.expect_symbol(']', "expected ']' after EBNF optional group")?;
-            return Ok(RailroadAstNode::Optional {
-                element: Box::new(element),
-                span: SourceSpan::new(start, end.span.end),
-            });
-        }
-        if self.take_symbol('{') {
-            let start = self.previous_span().start;
-            let element = self.parse_ebnf_choice()?;
-            let end = self.expect_symbol('}', "expected '}' after EBNF repetition")?;
-            return Ok(RailroadAstNode::Repetition {
-                element: Box::new(element),
-                min: RailroadRepeatBound::ZERO,
-                max: RailroadRepeatBound::INFINITY,
-                separator: None,
-                span: SourceSpan::new(start, end.span.end),
-            });
-        }
-
-        Err(self.error_at_current("expected EBNF primary"))
+    fn append_abnf_element(
+        &self,
+        frame: &mut RailroadAbnfFrame,
+        primary: RailroadAstNode,
+    ) -> Result<()> {
+        let repeat = frame.pending_repeat.take();
+        let element = self.apply_abnf_repeat(repeat, primary)?;
+        frame.sequence.push(element);
+        Ok(())
     }
 
-    fn parse_abnf_alternation(&mut self) -> Result<RailroadAstNode> {
-        let first = self.parse_abnf_concatenation()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut alternatives = vec![first];
-
-        while self.take_symbol('/') {
-            let next = self.parse_abnf_concatenation()?;
-            end = next.span().end;
-            alternatives.push(next);
-        }
-
-        Ok(collapse_choice(alternatives, SourceSpan::new(start, end)))
-    }
-
-    fn parse_abnf_concatenation(&mut self) -> Result<RailroadAstNode> {
-        if !self.is_abnf_element_start() {
-            return Err(self.error_at_current("expected ABNF element"));
-        }
-
-        let first = self.parse_abnf_element()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut elements = vec![first];
-
-        while self.is_abnf_element_start() {
-            let element = self.parse_abnf_element()?;
-            end = element.span().end;
-            elements.push(element);
-        }
-
-        Ok(collapse_sequence(elements, SourceSpan::new(start, end)))
-    }
-
-    fn parse_abnf_element(&mut self) -> Result<RailroadAstNode> {
-        let repeat = self.take_abnf_repeat();
-        let primary = self.parse_abnf_primary()?;
+    fn apply_abnf_repeat(
+        &self,
+        repeat: Option<SpannedText>,
+        primary: RailroadAstNode,
+    ) -> Result<RailroadAstNode> {
         let Some(repeat) = repeat else {
             return Ok(primary);
         };
-
         let (min, max) = parse_abnf_repeat_bounds(&repeat.text)
             .ok_or_else(|| self.error_at_span(repeat.span, "invalid ABNF repetition bound"))?;
         let span = SourceSpan::new(repeat.span.start, primary.span().end);
@@ -1354,7 +1816,6 @@ impl<'a> RailroadParser<'a> {
                 span,
             });
         }
-
         Ok(RailroadAstNode::Repetition {
             element: Box::new(primary),
             min,
@@ -1364,170 +1825,229 @@ impl<'a> RailroadParser<'a> {
         })
     }
 
-    fn parse_abnf_primary(&mut self) -> Result<RailroadAstNode> {
-        if let Some(value) = self.take_string() {
-            return Ok(RailroadAstNode::Terminal {
-                value: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if let Some(value) = self.take_num_val() {
-            return Ok(RailroadAstNode::Terminal {
-                value: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if let Some(value) = self.take_ident() {
-            return Ok(RailroadAstNode::NonTerminal {
-                name: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if self.take_symbol('(') {
-            let start = self.previous_span().start;
-            let element = self.parse_abnf_alternation()?;
-            let end = self.expect_symbol(')', "expected ')' after ABNF group")?;
-            let span = SourceSpan::new(start, end.span.end);
-            return Ok(with_outer_span(element, span));
-        }
-        if self.take_symbol('[') {
-            let start = self.previous_span().start;
-            let element = self.parse_abnf_alternation()?;
-            let end = self.expect_symbol(']', "expected ']' after ABNF optional group")?;
-            return Ok(RailroadAstNode::Optional {
-                element: Box::new(element),
-                span: SourceSpan::new(start, end.span.end),
-            });
-        }
+    fn finish_abnf_frame(
+        &mut self,
+        mut frame: RailroadAbnfFrame,
+        closing_span: Option<SourceSpan>,
+    ) -> Result<RailroadAstNode> {
+        frame.alternatives.push(std::mem::take(&mut frame.sequence));
+        let alternatives = frame
+            .alternatives
+            .into_iter()
+            .map(collapse_nonempty_sequence)
+            .collect::<Vec<_>>();
+        let element = collapse_nonempty_choice(alternatives);
 
-        Err(self.error_at_current("expected ABNF primary"))
+        match frame.kind {
+            RailroadAbnfFrameKind::Root => Ok(element),
+            RailroadAbnfFrameKind::Group { start } => {
+                let end = closing_span.expect("ABNF group has a closing span");
+                Ok(with_outer_span(element, SourceSpan::new(start, end.end)))
+            }
+            RailroadAbnfFrameKind::Optional { start } => {
+                let end = closing_span.expect("ABNF optional group has a closing span");
+                Ok(RailroadAstNode::Optional {
+                    element: Box::new(element),
+                    span: SourceSpan::new(start, end.end),
+                })
+            }
+        }
     }
 
-    fn parse_peg_ordered_choice(&mut self) -> Result<RailroadAstNode> {
-        let first = self.parse_peg_sequence()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut alternatives = vec![first];
+    fn parse_peg_ordered_choice(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+        let mut frames = vec![RailroadPegFrame {
+            kind: RailroadPegFrameKind::Root,
+            nesting_depth,
+            alternatives: Vec::new(),
+            sequence: Vec::new(),
+            pending_prefix: None,
+        }];
+        let mut completed = None;
 
-        while self.take_symbol('/') {
-            let next = self.parse_peg_sequence()?;
-            end = next.span().end;
-            alternatives.push(next);
+        loop {
+            if let Some(node) = completed.take() {
+                let frame = frames
+                    .last_mut()
+                    .expect("Railroad PEG parent frame exists for completed group");
+                self.append_peg_element(frame, node);
+                continue;
+            }
+
+            let (kind, frame_depth, has_elements, has_pending_prefix) = {
+                let frame = frames
+                    .last()
+                    .expect("Railroad PEG frame stack is non-empty");
+                (
+                    frame.kind,
+                    frame.nesting_depth,
+                    !frame.sequence.is_empty(),
+                    frame.pending_prefix.is_some(),
+                )
+            };
+
+            if let Some(closing) = kind.closing_symbol() {
+                if self.check_symbol(closing) {
+                    if !has_elements || has_pending_prefix {
+                        return Err(self.error_at_current("expected PEG expression"));
+                    }
+                    let end = self.expect_symbol(closing, kind.closing_message())?;
+                    let frame = frames.pop().expect("Railroad PEG frame exists");
+                    completed = Some(self.finish_peg_frame(frame, Some(end.span))?);
+                    continue;
+                }
+            } else if self.check_symbol(';') || self.is_eof() {
+                if !has_elements || has_pending_prefix {
+                    return Err(self.error_at_current("expected PEG expression"));
+                }
+                let frame = frames.pop().expect("Railroad PEG root frame exists");
+                return self.finish_peg_frame(frame, None);
+            }
+
+            if self.take_symbol('/') {
+                if !has_elements || has_pending_prefix {
+                    return Err(self.error_at_current("expected PEG expression"));
+                }
+                let frame = frames.last_mut().expect("Railroad PEG frame exists");
+                frame.alternatives.push(std::mem::take(&mut frame.sequence));
+                continue;
+            }
+
+            if !self.is_peg_prefix_start() {
+                if kind.closing_symbol().is_none() && has_elements && !has_pending_prefix {
+                    let frame = frames.pop().expect("Railroad PEG root frame exists");
+                    return self.finish_peg_frame(frame, None);
+                }
+                return Err(self.error_at_current(kind.closing_message()));
+            }
+
+            self.ensure_nesting_depth(frame_depth)?;
+            let prefix = if self.take_symbol('&') {
+                Some(('&', self.previous_span()))
+            } else if self.take_symbol('!') {
+                Some(('!', self.previous_span()))
+            } else {
+                None
+            };
+
+            if self.take_symbol('(') {
+                let start = self.previous_span().start;
+                frames
+                    .last_mut()
+                    .expect("Railroad PEG frame exists")
+                    .pending_prefix = prefix;
+                frames.push(RailroadPegFrame {
+                    kind: RailroadPegFrameKind::Group { start },
+                    nesting_depth: self.next_nesting_depth(frame_depth)?,
+                    alternatives: Vec::new(),
+                    sequence: Vec::new(),
+                    pending_prefix: None,
+                });
+                continue;
+            }
+
+            let primary = if let Some(value) = self.take_string() {
+                RailroadAstNode::Terminal {
+                    value: value.text,
+                    span: value.span,
+                    selection: value.selection,
+                }
+            } else if let Some(value) = self.take_ident() {
+                RailroadAstNode::NonTerminal {
+                    name: value.text,
+                    span: value.span,
+                    selection: value.selection,
+                }
+            } else if self.take_symbol('.') {
+                let span = self.previous_span();
+                RailroadAstNode::Special {
+                    text: ".".to_string(),
+                    span,
+                    selection: span,
+                }
+            } else {
+                return Err(self.error_at_current("expected PEG primary"));
+            };
+            let frame = frames.last_mut().expect("Railroad PEG frame exists");
+            frame.pending_prefix = prefix;
+            self.append_peg_element(frame, primary);
         }
-
-        Ok(collapse_choice(alternatives, SourceSpan::new(start, end)))
     }
 
-    fn parse_peg_sequence(&mut self) -> Result<RailroadAstNode> {
-        if !self.is_peg_prefix_start() {
-            return Err(self.error_at_current("expected PEG expression"));
-        }
-
-        let first = self.parse_peg_prefix()?;
-        let start = first.span().start;
-        let mut end = first.span().end;
-        let mut elements = vec![first];
-
-        while self.is_peg_prefix_start() {
-            let element = self.parse_peg_prefix()?;
-            end = element.span().end;
-            elements.push(element);
-        }
-
-        Ok(collapse_sequence(elements, SourceSpan::new(start, end)))
+    fn append_peg_element(&mut self, frame: &mut RailroadPegFrame, primary: RailroadAstNode) {
+        let suffix = self.apply_peg_suffix(primary);
+        let element = self.apply_peg_prefix(frame.pending_prefix.take(), suffix);
+        frame.sequence.push(element);
     }
 
-    fn parse_peg_prefix(&mut self) -> Result<RailroadAstNode> {
-        let prefix = if self.take_symbol('&') {
-            Some(('&', self.previous_span()))
-        } else if self.take_symbol('!') {
-            Some(('!', self.previous_span()))
-        } else {
-            None
-        };
-        let suffix = self.parse_peg_suffix()?;
+    fn apply_peg_suffix(&mut self, primary: RailroadAstNode) -> RailroadAstNode {
+        if self.take_symbol('?') {
+            return RailroadAstNode::Optional {
+                span: SourceSpan::new(primary.span().start, self.previous_end()),
+                element: Box::new(primary),
+            };
+        }
+        if self.take_symbol('*') {
+            return RailroadAstNode::Repetition {
+                span: SourceSpan::new(primary.span().start, self.previous_end()),
+                element: Box::new(primary),
+                min: RailroadRepeatBound::ZERO,
+                max: RailroadRepeatBound::INFINITY,
+                separator: None,
+            };
+        }
+        if self.take_symbol('+') {
+            return RailroadAstNode::Repetition {
+                span: SourceSpan::new(primary.span().start, self.previous_end()),
+                element: Box::new(primary),
+                min: RailroadRepeatBound::ONE,
+                max: RailroadRepeatBound::INFINITY,
+                separator: None,
+            };
+        }
+        primary
+    }
 
+    fn apply_peg_prefix(
+        &mut self,
+        prefix: Option<(char, SourceSpan)>,
+        suffix: RailroadAstNode,
+    ) -> RailroadAstNode {
         let Some((operator, span)) = prefix else {
-            return Ok(suffix);
+            return suffix;
         };
-
         let label = format!("{operator}{}", node_to_label(&suffix));
         let predicate_span = SourceSpan::new(span.start, suffix.span().end);
         self.trace.peg_predicates.push(RailroadPegPredicateTrace {
             span: predicate_span,
             inner: suffix.clone(),
         });
-        Ok(RailroadAstNode::Special {
+        RailroadAstNode::Special {
             text: label,
             span: predicate_span,
             selection: SourceSpan::new(span.start, suffix.selection().end),
-        })
+        }
     }
 
-    fn parse_peg_suffix(&mut self) -> Result<RailroadAstNode> {
-        let primary = self.parse_peg_primary()?;
-        if self.take_symbol('?') {
-            return Ok(RailroadAstNode::Optional {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-            });
-        }
-        if self.take_symbol('*') {
-            return Ok(RailroadAstNode::Repetition {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-                min: RailroadRepeatBound::ZERO,
-                max: RailroadRepeatBound::INFINITY,
-                separator: None,
-            });
-        }
-        if self.take_symbol('+') {
-            return Ok(RailroadAstNode::Repetition {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-                min: RailroadRepeatBound::ONE,
-                max: RailroadRepeatBound::INFINITY,
-                separator: None,
-            });
-        }
-        Ok(primary)
-    }
+    fn finish_peg_frame(
+        &mut self,
+        mut frame: RailroadPegFrame,
+        closing_span: Option<SourceSpan>,
+    ) -> Result<RailroadAstNode> {
+        frame.alternatives.push(std::mem::take(&mut frame.sequence));
+        let alternatives = frame
+            .alternatives
+            .into_iter()
+            .map(collapse_nonempty_sequence)
+            .collect::<Vec<_>>();
+        let element = collapse_nonempty_choice(alternatives);
 
-    fn parse_peg_primary(&mut self) -> Result<RailroadAstNode> {
-        if let Some(value) = self.take_string() {
-            return Ok(RailroadAstNode::Terminal {
-                value: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
+        match frame.kind {
+            RailroadPegFrameKind::Root => Ok(element),
+            RailroadPegFrameKind::Group { start } => {
+                let end = closing_span.expect("PEG group has a closing span");
+                Ok(with_outer_span(element, SourceSpan::new(start, end.end)))
+            }
         }
-        if let Some(value) = self.take_ident() {
-            return Ok(RailroadAstNode::NonTerminal {
-                name: value.text,
-                span: value.span,
-                selection: value.selection,
-            });
-        }
-        if self.take_symbol('(') {
-            let start = self.previous_span().start;
-            let element = self.parse_peg_ordered_choice()?;
-            let end = self.expect_symbol(')', "expected ')' after PEG group")?;
-            let span = SourceSpan::new(start, end.span.end);
-            return Ok(with_outer_span(element, span));
-        }
-        if self.take_symbol('.') {
-            let span = self.previous_span();
-            return Ok(RailroadAstNode::Special {
-                text: ".".to_string(),
-                span,
-                selection: span,
-            });
-        }
-
-        Err(self.error_at_current("expected PEG primary"))
     }
 
     fn is_ebnf_primary_start(&self) -> bool {
@@ -1581,6 +2101,34 @@ impl<'a> RailroadParser<'a> {
     fn expect_ident(&mut self, message: impl Into<String>) -> Result<SpannedText> {
         self.take_ident()
             .ok_or_else(|| self.error_at_current(message))
+    }
+
+    fn expect_rule_name(&mut self) -> Result<SpannedText> {
+        let name = self.expect_ident("expected railroad rule name")?;
+        if let Some(conflict) = railroad_rule_name_conflict(&name.text, self.dialect) {
+            let reason = match conflict {
+                RailroadRuleNameConflict::TitleToken => "is tokenized as railroad title metadata",
+                RailroadRuleNameConflict::HeaderKeyword => "is the railroad dialect header",
+                RailroadRuleNameConflict::IrConstructor => "is reserved for railroad expressions",
+            };
+            return Err(self.error_at_span(name.span, format!("`{}` {reason}", name.text)));
+        }
+        Ok(name)
+    }
+
+    fn ensure_nesting_depth(&self, nesting_depth: usize) -> Result<()> {
+        if nesting_depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(self.error_at_current(format!(
+                "railroad nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn next_nesting_depth(&self, nesting_depth: usize) -> Result<usize> {
+        let next = nesting_depth.saturating_add(1);
+        self.ensure_nesting_depth(next)?;
+        Ok(next)
     }
 
     fn take_ident(&mut self) -> Option<SpannedText> {
@@ -1946,6 +2494,30 @@ impl<'a> Lexer<'a> {
             return Ok(None);
         }
         let token_start = start + leading;
+        let title_end = token_start + "title".len();
+        if self.input[token_start..].starts_with("title")
+            && self.input[title_end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| !matches!(ch, ' ' | '\t' | '\r' | '\n'))
+        {
+            self.pos = title_end;
+            let span = SourceSpan::new(token_start, title_end);
+            return Ok(Some(Token {
+                kind: TokenKind::Common(ParsedCommonField {
+                    kind: CommonFieldKind::Title,
+                    value: SpannedText {
+                        text: String::new(),
+                        span: SourceSpan::new(title_end, title_end),
+                        selection: SourceSpan::new(title_end, title_end),
+                    },
+                    keyword_span: span,
+                    delimiter_spans: Vec::new(),
+                }),
+                span,
+                selection: SourceSpan::new(title_end, title_end),
+            }));
+        }
         let line_end = self.input[token_start..]
             .find(['\r', '\n'])
             .map(|rel| token_start + rel)
@@ -2150,25 +2722,13 @@ impl<'a> Lexer<'a> {
     fn take_identifier(&mut self) -> Option<Token> {
         let start = self.pos;
         let first = self.current_char()?;
-        let valid_start = match self.dialect {
-            RailroadDialect::Abnf => first.is_ascii_alphabetic(),
-            RailroadDialect::Ir | RailroadDialect::Ebnf | RailroadDialect::Peg => {
-                first.is_ascii_alphabetic() || first == '_'
-            }
-        };
-        if !valid_start {
+        if !self.dialect.is_identifier_start(first) {
             return None;
         }
 
         self.advance_char();
         while let Some(ch) = self.current_char() {
-            let valid = match self.dialect {
-                RailroadDialect::Abnf => ch.is_ascii_alphanumeric() || ch == '-',
-                RailroadDialect::Ir | RailroadDialect::Ebnf | RailroadDialect::Peg => {
-                    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
-                }
-            };
-            if !valid {
+            if !self.dialect.is_identifier_continue(ch) {
                 break;
             }
             self.advance_char();
@@ -2477,14 +3037,18 @@ fn collapse_common_spaces(value: &str) -> String {
 }
 
 fn normalize_multiline_common(value: &str) -> String {
-    let mut lines: Vec<_> = value.lines().map(|line| line.trim()).collect();
-    while lines.first().is_some_and(|line| line.is_empty()) {
-        lines.remove(0);
+    let mut normalized = String::with_capacity(value.len());
+    for line in value
+        .split(['\r', '\n'])
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if !normalized.is_empty() {
+            normalized.push('\n');
+        }
+        normalized.push_str(line);
     }
-    while lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-    lines.join("\n")
+    normalized
 }
 
 fn decode_wrapped_quoted_title(value: &str, dialect: RailroadDialect) -> Option<String> {
@@ -2625,6 +3189,34 @@ fn collapse_choice(alternatives: Vec<RailroadAstNode>, span: SourceSpan) -> Rail
     }
 }
 
+fn collapse_nonempty_sequence(elements: Vec<RailroadAstNode>) -> RailroadAstNode {
+    let start = elements
+        .first()
+        .expect("Railroad sequence frame has at least one element")
+        .span()
+        .start;
+    let end = elements
+        .last()
+        .expect("Railroad sequence frame has at least one element")
+        .span()
+        .end;
+    collapse_sequence(elements, SourceSpan::new(start, end))
+}
+
+fn collapse_nonempty_choice(alternatives: Vec<RailroadAstNode>) -> RailroadAstNode {
+    let start = alternatives
+        .first()
+        .expect("Railroad choice frame has at least one alternative")
+        .span()
+        .start;
+    let end = alternatives
+        .last()
+        .expect("Railroad choice frame has at least one alternative")
+        .span()
+        .end;
+    collapse_choice(alternatives, SourceSpan::new(start, end))
+}
+
 fn with_outer_span(mut node: RailroadAstNode, span: SourceSpan) -> RailroadAstNode {
     match &mut node {
         RailroadAstNode::Terminal { span: inner, .. }
@@ -2654,6 +3246,7 @@ fn editor_facts_from_model(
 ) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let detail_prefix = dialect.common_detail_prefix();
+    let rename_policy = dialect.editor_rename_policy();
 
     if let (Some(title), Some(span)) = (&model.title, model.title_span) {
         facts.push_directive_prefix("title");
@@ -2688,14 +3281,23 @@ fn editor_facts_from_model(
             EditorExpectedSyntaxKind::NodeIdentifier,
             rule.name_span,
         ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            rule.name.clone(),
-            Some(format!("{detail_prefix} rule")),
-            EditorSemanticKind::Function,
-            rule.name_span,
-            rule.name_span,
-        ));
-        push_ast_facts(&mut facts, &rule.definition, detail_prefix, trace);
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                rule.name.clone(),
+                Some(format!("{detail_prefix} rule")),
+                EditorSemanticKind::Function,
+                rule.name_span,
+                rule.name_span,
+            )
+            .with_rename_policy(rename_policy),
+        );
+        push_ast_facts(
+            &mut facts,
+            &rule.definition,
+            detail_prefix,
+            trace,
+            rename_policy,
+        );
     }
 
     facts
@@ -2706,6 +3308,7 @@ fn push_ast_facts(
     node: &RailroadAstNode,
     detail_prefix: &str,
     trace: &RailroadParserTrace,
+    rename_policy: EditorRenamePolicy,
 ) {
     match node {
         RailroadAstNode::Terminal {
@@ -2727,13 +3330,16 @@ fn push_ast_facts(
                 EditorExpectedSyntaxKind::NodeIdentifier,
                 *selection,
             ));
-            facts.push_symbol(EditorSemanticSymbol::new(
-                name.clone(),
-                Some(format!("{detail_prefix} nonterminal reference")),
-                EditorSemanticKind::Function,
-                *span,
-                *selection,
-            ));
+            facts.push_symbol(
+                EditorSemanticSymbol::new(
+                    name.clone(),
+                    Some(format!("{detail_prefix} nonterminal reference")),
+                    EditorSemanticKind::Function,
+                    *span,
+                    *selection,
+                )
+                .with_rename_policy(rename_policy),
+            );
         }
         RailroadAstNode::Special {
             text,
@@ -2745,7 +3351,7 @@ fn push_ast_facts(
                 .iter()
                 .find(|predicate| predicate.span == *span)
             {
-                push_ast_facts(facts, &predicate.inner, detail_prefix, trace);
+                push_ast_facts(facts, &predicate.inner, detail_prefix, trace, rename_policy);
             } else {
                 push_payload_fact(
                     facts,
@@ -2757,23 +3363,23 @@ fn push_ast_facts(
         }
         RailroadAstNode::Sequence { elements, .. } => {
             for element in elements {
-                push_ast_facts(facts, element, detail_prefix, trace);
+                push_ast_facts(facts, element, detail_prefix, trace, rename_policy);
             }
         }
         RailroadAstNode::Choice { alternatives, .. } => {
             for alternative in alternatives {
-                push_ast_facts(facts, alternative, detail_prefix, trace);
+                push_ast_facts(facts, alternative, detail_prefix, trace, rename_policy);
             }
         }
         RailroadAstNode::Optional { element, .. } => {
-            push_ast_facts(facts, element, detail_prefix, trace);
+            push_ast_facts(facts, element, detail_prefix, trace, rename_policy)
         }
         RailroadAstNode::Repetition {
             element, separator, ..
         } => {
-            push_ast_facts(facts, element, detail_prefix, trace);
+            push_ast_facts(facts, element, detail_prefix, trace, rename_policy);
             if let Some(separator) = separator {
-                push_ast_facts(facts, separator, detail_prefix, trace);
+                push_ast_facts(facts, separator, detail_prefix, trace, rename_policy);
             }
         }
     }
@@ -2844,6 +3450,45 @@ mod tests {
             .unwrap_or_else(|| panic!("missing {kind:?} lexeme for {needle:?} at {span:?}"))
     }
 
+    fn nested_rule_source(dialect: RailroadDialect, nesting_depth: usize) -> String {
+        let (assignment, terminal, groups): (&str, &str, &[(&str, &str)]) = match dialect {
+            RailroadDialect::Ir => ("=", "terminal(\"value\")", &[("optional(", ")")]),
+            RailroadDialect::Ebnf => ("=", "\"value\"", &[("(", ")"), ("[", "]"), ("{", "}")]),
+            RailroadDialect::Abnf => ("=", "\"value\"", &[("(", ")"), ("[", "]")]),
+            RailroadDialect::Peg => ("<-", "\"value\"", &[("(", ")")]),
+        };
+        let group_width = groups
+            .iter()
+            .map(|(opener, closer)| opener.len() + closer.len())
+            .max()
+            .unwrap_or_default();
+        let mut source = String::with_capacity(
+            dialect.header().len() + terminal.len() + group_width * nesting_depth,
+        );
+        source.push_str(dialect.header());
+        source.push_str("\nentry ");
+        source.push_str(assignment);
+        source.push(' ');
+        let mut closers = Vec::with_capacity(nesting_depth);
+        for index in 0..nesting_depth {
+            let (opener, closer) = groups[index % groups.len()];
+            source.push_str(opener);
+            closers.push(closer);
+        }
+        source.push_str(terminal);
+        for closer in closers.into_iter().rev() {
+            source.push_str(closer);
+        }
+        source.push_str(" ;\nafter ");
+        source.push_str(assignment);
+        source.push_str(if dialect == RailroadDialect::Ir {
+            " terminal(\"later\") ;\n"
+        } else {
+            " \"later\" ;\n"
+        });
+        source
+    }
+
     #[test]
     fn decodes_escaped_strings_for_non_abnf_dialects() {
         let mut pos = 0usize;
@@ -2897,6 +3542,230 @@ mod tests {
         let (min, max) = parse_abnf_repeat_bounds(&huge).expect("all-digit repeat bound");
         assert!(min.is_infinite());
         assert!(max.is_infinite());
+    }
+
+    #[test]
+    fn normalizes_multiline_accessibility_descriptions_like_mermaid() {
+        let source = concat!(
+            "railroad-beta\r\n",
+            "accDescr {\r\n",
+            "  first\r\n",
+            "\r\n",
+            "\r\n",
+            "  second\r\n",
+            "}\r\n",
+            "entry = terminal(\"value\") ;\r\n",
+        );
+
+        let parsed =
+            parse_railroad_semantic_source(source, &meta(RailroadDialect::Ir), RailroadDialect::Ir)
+                .unwrap_or_else(|error| panic!("railroad fixture failed: {error}"));
+        assert_eq!(parsed.model.acc_descr.as_deref(), Some("first\nsecond"));
+    }
+
+    #[test]
+    fn ir_constructor_keywords_cannot_be_rule_names_and_recover() {
+        for keyword in [
+            "sequence",
+            "choice",
+            "optional",
+            "oneOrMore",
+            "zeroOrMore",
+            "terminal",
+            "nonterminal",
+            "special",
+        ] {
+            let source = format!(
+                "railroad-beta\n{keyword} = terminal(\"invalid\") ;\nafter = terminal(\"later\") ;\n"
+            );
+            let error = match parse_railroad_semantic_source(
+                &source,
+                &meta(RailroadDialect::Ir),
+                RailroadDialect::Ir,
+            ) {
+                Ok(_) => panic!("{keyword} unexpectedly parsed as a Railroad IR rule name"),
+                Err(error) => error,
+            };
+            assert!(
+                error
+                    .to_string()
+                    .contains("is reserved for railroad expressions"),
+                "{error}"
+            );
+
+            let facts = combined_editor_facts(&source, RailroadDialect::Ir);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+        }
+    }
+
+    #[test]
+    fn rule_names_follow_dialect_keyword_token_precedence() {
+        for dialect in [
+            RailroadDialect::Ir,
+            RailroadDialect::Ebnf,
+            RailroadDialect::Abnf,
+            RailroadDialect::Peg,
+        ] {
+            let (assignment, expression) = match dialect {
+                RailroadDialect::Ir => ("=", "terminal(\"value\")"),
+                RailroadDialect::Ebnf | RailroadDialect::Abnf => ("=", "\"value\""),
+                RailroadDialect::Peg => ("<-", "\"value\""),
+            };
+
+            let split_title = format!(
+                "{}\ntitlecase {assignment} {expression} ;\n",
+                dialect.header()
+            );
+            let parsed = parse_railroad_semantic_source(&split_title, &meta(dialect), dialect)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} title prefix fixture failed: {error}",
+                        dialect.diagram_type()
+                    )
+                });
+            assert_eq!(parsed.model.title.as_deref(), Some(""));
+            assert_eq!(parsed.model.rules[0].name, "case");
+
+            let title_metadata =
+                format!("{}\ntitle {assignment} {expression} ;\n", dialect.header());
+            let parsed = parse_railroad_semantic_source(&title_metadata, &meta(dialect), dialect)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} title metadata fixture failed: {error}",
+                        dialect.diagram_type()
+                    )
+                });
+            assert!(parsed.model.rules.is_empty());
+
+            let header_rule = format!(
+                "{}\n{} {assignment} {expression} ;\n",
+                dialect.header(),
+                dialect.header()
+            );
+            assert!(
+                parse_railroad_semantic_source(&header_rule, &meta(dialect), dialect).is_err(),
+                "{} accepted its header as a rule name",
+                dialect.diagram_type()
+            );
+
+            for valid in ["Title".to_string(), format!("{}x", dialect.header())] {
+                let source = format!(
+                    "{}\n{valid} {assignment} {expression} ;\n",
+                    dialect.header()
+                );
+                let parsed = parse_railroad_semantic_source(&source, &meta(dialect), dialect)
+                    .unwrap_or_else(|error| {
+                        panic!("{} rejected {valid:?}: {error}", dialect.diagram_type())
+                    });
+                assert_eq!(parsed.model.rules[0].name, valid);
+            }
+
+            for invalid in ["title", "titlecase", dialect.header()] {
+                assert!(
+                    railroad_rule_name_conflict(invalid, dialect).is_some(),
+                    "{} rename validation accepted {invalid:?}",
+                    dialect.diagram_type()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn railroad_parsers_bound_nested_expressions_and_recover_later_rules() {
+        for dialect in [
+            RailroadDialect::Ir,
+            RailroadDialect::Ebnf,
+            RailroadDialect::Abnf,
+            RailroadDialect::Peg,
+        ] {
+            let max_depth = nested_rule_source(dialect, crate::MAX_DIAGRAM_NESTING_DEPTH);
+            let parsed = parse_railroad_semantic_source(&max_depth, &meta(dialect), dialect)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} max-depth fixture failed: {error}",
+                        dialect.diagram_type()
+                    )
+                });
+            assert_eq!(parsed.model.rules.len(), 2, "{}", dialect.diagram_type());
+
+            let compatibility_json =
+                parse_railroad_for_dialect(&max_depth, &meta(dialect), dialect).unwrap_or_else(
+                    |error| {
+                        panic!(
+                            "{} max-depth compatibility conversion failed: {error}",
+                            dialect.diagram_type()
+                        )
+                    },
+                );
+            assert_eq!(
+                compatibility_json["rules"].as_array().map(Vec::len),
+                Some(2),
+                "{}",
+                dialect.diagram_type()
+            );
+
+            let excessive_depth = nested_rule_source(dialect, crate::MAX_DIAGRAM_NESTING_DEPTH + 1);
+            let error =
+                match parse_railroad_semantic_source(&excessive_depth, &meta(dialect), dialect) {
+                    Ok(_) => panic!("{} accepted excessive nesting", dialect.diagram_type()),
+                    Err(error) => error,
+                };
+            assert!(
+                error.to_string().contains("railroad nesting depth exceeds"),
+                "{}: {error}",
+                dialect.diagram_type()
+            );
+
+            let facts = combined_editor_facts(&excessive_depth, dialect);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == "after"),
+                "{} did not retain the rule after the bounded parse failure",
+                dialect.diagram_type()
+            );
+        }
+    }
+
+    #[test]
+    fn railroad_editor_facts_use_dialect_specific_rename_policies() {
+        let cases = [
+            (
+                RailroadDialect::Ir,
+                "railroad-beta\nentry = terminal(\"value\") ;\n",
+                EditorRenamePolicy::RailroadIrRule,
+            ),
+            (
+                RailroadDialect::Ebnf,
+                "railroad-ebnf-beta\nentry = \"value\" ;\n",
+                EditorRenamePolicy::RailroadEbnfRule,
+            ),
+            (
+                RailroadDialect::Abnf,
+                "railroad-abnf-beta\nentry = \"value\" ;\n",
+                EditorRenamePolicy::RailroadAbnfRule,
+            ),
+            (
+                RailroadDialect::Peg,
+                "railroad-peg-beta\nentry <- \"value\" ;\n",
+                EditorRenamePolicy::RailroadPegRule,
+            ),
+        ];
+
+        for (dialect, source, expected_policy) in cases {
+            let facts = combined_editor_facts(source, dialect);
+            let entry = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "entry")
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{} is missing its entry rule symbol",
+                        dialect.diagram_type()
+                    )
+                });
+            assert_eq!(entry.rename_policy, expected_policy);
+        }
     }
 
     #[test]

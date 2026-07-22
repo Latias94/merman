@@ -8,11 +8,14 @@ import importlib.util
 import io
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
 from unittest import mock
+
+from scripts import release_projection
 
 
 MODULE_PATH = Path(__file__).with_name("release-status.py")
@@ -32,6 +35,17 @@ VERSION_SCRIPT_SPEC.loader.exec_module(release_version_script)
 SOURCE_SHA = "a" * 40
 
 
+def replace_once(text: str, old: str, new: str) -> str:
+    return replace_nth(text, old, new, 0)
+
+
+def replace_nth(text: str, old: str, new: str, occurrence: int) -> str:
+    parts = text.split(old)
+    if len(parts) <= occurrence + 1:
+        raise AssertionError(f"test fixture does not contain occurrence {occurrence} of {old!r}")
+    return old.join(parts[: occurrence + 1]) + new + old.join(parts[occurrence + 1 :])
+
+
 class ReleaseStatusVersionTests(unittest.TestCase):
     def test_release_kind_detects_stable_and_prerelease_versions(self) -> None:
         self.assertEqual(release_status.release_kind("0.8.0"), "stable")
@@ -48,7 +62,11 @@ class ReleaseStatusVersionTests(unittest.TestCase):
         self.assertEqual(version.canonical, "0.8.0-rc.4+build.7")
         self.assertEqual(version.tag, "v0.8.0-rc.4+build.7")
         self.assertEqual(version.channel, "rc")
-        self.assertEqual(version.to_vscode_manifest(), "0.8.0")
+        self.assertEqual(version.to_npm_dist_tag(), "rc")
+        self.assertEqual(
+            release_status.parse_release_version("0.8.0").to_npm_dist_tag(),
+            "latest",
+        )
 
     def test_release_parser_rejects_non_contract_versions(self) -> None:
         for version in ["0.8", "01.2.3", "vv1.2.3", "0.8.0a3", "0.8.0-dev.1", "0.8.0-"]:
@@ -58,10 +76,287 @@ class ReleaseStatusVersionTests(unittest.TestCase):
     def test_manifest_check_normalizes_a_tag_prefix(self) -> None:
         version = release_version_script.cargo_workspace_version()
 
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
             exit_code = release_version_script.check_versions(f"v{version}")
 
         self.assertEqual(exit_code, 0)
+        self.assertNotIn("VS Code extension", stdout.getvalue())
+
+
+class ReleaseProjectionTests(unittest.TestCase):
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_no_argument_verifier_covers_the_complete_current_projection(self) -> None:
+        result = release_projection.verify_repository(self.ROOT)
+
+        self.assertTrue(result.ok)
+        labels = {observation.label for observation in result.observations}
+        self.assertIn("Cargo workspace dependency merman-core", labels)
+        self.assertIn("Cargo.lock package merman-lsp", labels)
+        self.assertIn("fuzz/Cargo.lock package merman-ffi", labels)
+        self.assertIn("Web lock workspace package", labels)
+        self.assertIn("Playground local Web lock", labels)
+        self.assertIn("Playground license lock digest", labels)
+        self.assertIn("Python package", labels)
+        self.assertIn("Flutter Android package", labels)
+        self.assertIn("Flutter iOS Podspec", labels)
+        self.assertIn("Flutter macOS Podspec", labels)
+        self.assertIn("Flutter iOS framework bundle version", labels)
+
+    def test_cli_without_arguments_runs_the_authority_verifier(self) -> None:
+        authority = release_projection.verify_repository(self.ROOT).authority.canonical
+        stdout = io.StringIO()
+        with mock.patch.object(sys, "argv", ["release-version.py"]), contextlib.redirect_stdout(
+            stdout
+        ):
+            exit_code = release_version_script.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn(f"Cargo workspace authority: {authority}", stdout.getvalue())
+
+    def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
+        version = release_projection.verify_repository(self.ROOT).authority
+        canonical = version.canonical
+        mutations = [
+            (
+                Path("Cargo.toml"),
+                lambda text: replace_once(
+                    text,
+                    f'version = "{canonical}"',
+                    'version = "9.9.9"',
+                ),
+            ),
+            (
+                Path("Cargo.toml"),
+                lambda text: replace_once(
+                    text,
+                    f'merman-core = {{ path = "crates/merman-core", version = "{canonical}"',
+                    'merman-core = { path = "crates/merman-core", version = "9.9.9"',
+                ),
+            ),
+            (
+                Path("crates/merman-bindings-core/Cargo.toml"),
+                lambda text: replace_once(
+                    text,
+                    "version.workspace = true",
+                    'version = "9.9.9"',
+                ),
+            ),
+            (
+                Path("crates/merman-bindings-core/Cargo.toml"),
+                lambda text: replace_once(
+                    text,
+                    "merman.workspace = true",
+                    'merman = { path = "../merman", version = "9.9.9", '
+                    "default-features = false }",
+                ),
+            ),
+            (
+                Path("Cargo.lock"),
+                lambda text: replace_once(
+                    text,
+                    f'name = "merman"\nversion = "{canonical}"',
+                    'name = "merman"\nversion = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.FUZZ_LOCK,
+                lambda text: replace_once(
+                    text,
+                    f'name = "merman"\nversion = "{canonical}"',
+                    'name = "merman"\nversion = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.WEB_PACKAGE,
+                lambda text: replace_once(
+                    text,
+                    f'"version": "{canonical}"',
+                    '"version": "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.WEB_LOCK,
+                lambda text: replace_nth(
+                    text,
+                    f'"version": "{canonical}"',
+                    '"version": "9.9.9"',
+                    0,
+                ),
+            ),
+            (
+                release_projection.WEB_LOCK,
+                lambda text: replace_nth(
+                    text,
+                    f'"version": "{canonical}"',
+                    '"version": "9.9.9"',
+                    1,
+                ),
+            ),
+            (
+                release_projection.PLAYGROUND_LOCK,
+                lambda text: replace_once(
+                    text,
+                    (
+                        '"../platforms/web": {\n'
+                        '      "name": "@mermanjs/web",\n'
+                        f'      "version": "{canonical}"'
+                    ),
+                    (
+                        '"../platforms/web": {\n'
+                        '      "name": "@mermanjs/web",\n'
+                        '      "version": "9.9.9"'
+                    ),
+                ),
+            ),
+            (
+                release_projection.PLAYGROUND_LICENSE_REPORT,
+                lambda text: replace_once(
+                    text,
+                    f" - @mermanjs/web@{canonical}",
+                    " - @mermanjs/web@9.9.9",
+                ),
+            ),
+            (
+                release_projection.PYTHON_MANIFEST,
+                lambda text: replace_once(
+                    text,
+                    f'version = "{version.to_pep440()}"',
+                    'version = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.ANDROID_MANIFEST,
+                lambda text: replace_once(
+                    text,
+                    f'version = "{canonical}"',
+                    'version = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.FLUTTER_MANIFEST,
+                lambda text: replace_once(
+                    text,
+                    f"version: {canonical}",
+                    "version: 9.9.9",
+                ),
+            ),
+            (
+                release_projection.FLUTTER_ANDROID_MANIFEST,
+                lambda text: replace_once(
+                    text,
+                    f"version = '{canonical}'",
+                    "version = '9.9.9'",
+                ),
+            ),
+            *[
+                (
+                    podspec,
+                    lambda text, expected=canonical: replace_once(
+                        text,
+                        f"s.version          = '{expected}'",
+                        "s.version          = '9.9.9'",
+                    ),
+                )
+                for podspec in (
+                    release_projection.FLUTTER_IOS_PODSPEC,
+                    release_projection.FLUTTER_MACOS_PODSPEC,
+                )
+            ],
+            (
+                release_projection.FLUTTER_IOS_BUILD,
+                lambda text: replace_once(
+                    text,
+                    (
+                        "<key>CFBundleShortVersionString</key>\n"
+                        f"  <string>{version.base}</string>"
+                    ),
+                    (
+                        "<key>CFBundleShortVersionString</key>\n"
+                        "  <string>9.9.9</string>"
+                    ),
+                ),
+            ),
+            (
+                release_projection.FLUTTER_IOS_BUILD,
+                lambda text: replace_once(
+                    text,
+                    f"<key>CFBundleVersion</key>\n  <string>{version.base}</string>",
+                    "<key>CFBundleVersion</key>\n  <string>9.9.9</string>",
+                ),
+            ),
+        ]
+
+        for path, mutate in mutations:
+            with self.subTest(path=path):
+                original = (self.ROOT / path).read_text(encoding="utf-8")
+                drifted = mutate(original)
+                try:
+                    result = release_projection.verify_repository(
+                        self.ROOT,
+                        overrides={path: drifted},
+                    )
+                except release_projection.ReleaseProjectionError:
+                    continue
+                self.assertFalse(result.ok)
+
+    def test_transaction_plan_projects_one_authority_without_touching_independent_axes(self) -> None:
+        current = release_projection.verify_repository(self.ROOT).authority
+        next_version = f"{current.major}.{current.minor + 1}.0-alpha.1"
+
+        updates = release_projection.plan_version_update(self.ROOT, next_version)
+        result = release_projection.verify_repository(
+            self.ROOT,
+            expected_version=next_version,
+            overrides=updates,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn(Path("Cargo.toml"), updates)
+        self.assertIn(release_projection.FUZZ_LOCK, updates)
+        self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
+        self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
+        self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
+        self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
+
+    def test_multi_file_update_rolls_back_when_a_replace_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            first = root / "first.txt"
+            second = root / "second.txt"
+            first.write_text("first-old", encoding="utf-8")
+            second.write_text("second-old", encoding="utf-8")
+            real_replace = release_projection.os.replace
+            replace_count = 0
+
+            def replace_with_second_call_failure(source, destination):  # noqa: ANN001
+                nonlocal replace_count
+                replace_count += 1
+                if replace_count == 2:
+                    raise OSError("injected replace failure")
+                return real_replace(source, destination)
+
+            with mock.patch.object(
+                release_projection.os,
+                "replace",
+                side_effect=replace_with_second_call_failure,
+            ), self.assertRaisesRegex(OSError, "injected replace failure"):
+                release_projection._atomic_replace(
+                    root,
+                    {
+                        Path("first.txt"): "first-new",
+                        Path("second.txt"): "second-new",
+                    },
+                    expected={
+                        Path("first.txt"): "first-old",
+                        Path("second.txt"): "second-old",
+                    },
+                )
+
+            self.assertEqual(first.read_text(encoding="utf-8"), "first-old")
+            self.assertEqual(second.read_text(encoding="utf-8"), "second-old")
+            self.assertEqual(list(root.glob(".*.release-version-*")), [])
 
 
 class ReleaseStatusProbeTests(unittest.TestCase):
@@ -116,6 +411,26 @@ class ReleaseStatusProbeTests(unittest.TestCase):
         self.assertIn("alpha", result["reason"])
         self.assertIn("0.8.0-alpha.2", result["reason"])
 
+    def test_npm_probe_marks_malformed_dist_tag_value_unknown(self) -> None:
+        with mock.patch.object(
+            release_status.urllib.request,
+            "urlopen",
+            return_value=JsonResponse(
+                {
+                    "versions": {"0.8.0-alpha.3": {}},
+                    "dist-tags": {"alpha": ["0.8.0-alpha.3"]},
+                }
+            ),
+        ):
+            result = release_status.probe_npm(
+                "@mermanjs/web",
+                "0.8.0-alpha.3",
+                dist_tags(),
+            )
+
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("invalid", result["reason"])
+
     def test_npm_operational_failure_is_unknown(self) -> None:
         failure = urllib.error.HTTPError("url", 429, "rate limited", {}, None)
         with mock.patch.object(
@@ -128,6 +443,19 @@ class ReleaseStatusProbeTests(unittest.TestCase):
 
         self.assertEqual(result["state"], "unknown")
         self.assertIn("429", result["reason"])
+
+    def test_npm_malformed_versions_payload_is_unknown(self) -> None:
+        with mock.patch.object(
+            release_status.urllib.request,
+            "urlopen",
+            return_value=JsonResponse(
+                {"versions": ["0.8.0-alpha.3"], "dist-tags": {"alpha": "0.8.0-alpha.3"}}
+            ),
+        ):
+            result = release_status.probe_npm("@mermanjs/web", "0.8.0-alpha.3", dist_tags())
+
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("versions object", result["reason"])
 
     def test_pub_dev_probe_finds_prerelease_versions(self) -> None:
         original_urlopen = release_status.urllib.request.urlopen
@@ -153,6 +481,17 @@ class ReleaseStatusProbeTests(unittest.TestCase):
         self.assertEqual(result["state"], "found")
         self.assertEqual(captured["url"], "https://pub.dev/api/packages/merman")
         self.assertEqual(captured["timeout"], "10")
+
+    def test_pub_dev_malformed_versions_payload_is_unknown(self) -> None:
+        with mock.patch.object(
+            release_status.urllib.request,
+            "urlopen",
+            return_value=JsonResponse({"versions": {"version": "0.8.0-alpha.3"}}),
+        ):
+            result = release_status.probe_pub_dev("merman", "0.8.0-alpha.3")
+
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("valid versions list", result["reason"])
 
     def test_github_release_probe_requires_markers_and_exact_assets(self) -> None:
         payload = {
@@ -367,6 +706,37 @@ class ReleaseStatusProbeTests(unittest.TestCase):
 
         self.assertEqual(result["state"], "found")
 
+    def test_actions_artifact_probe_expands_independent_package_version(self) -> None:
+        responses = actions_artifact_responses(
+            event="workflow_dispatch",
+            package_version="0.1.0",
+        )
+        channel = {
+            "workflow": ".github/workflows/vscode-extension.yml",
+            "artifact_patterns": [
+                {
+                    "glob": (
+                        "merman-vscode-{package_version}-runtime-{version}-"
+                        "{channel}-{source_sha}-linux-x64"
+                    ),
+                    "min_matches": 1,
+                    "max_matches": 1,
+                }
+            ],
+        }
+        with mock.patch.object(
+            release_status.shutil, "which", return_value="/usr/bin/gh"
+        ), mock.patch.object(
+            release_status, "github_repository", return_value="Latias94/merman"
+        ), mock.patch.object(release_status.subprocess, "run", side_effect=responses):
+            result = release_status.probe_github_actions_artifacts(
+                channel,
+                "0.8.0-alpha.3",
+                package_version="0.1.0",
+            )
+
+        self.assertEqual(result["state"], "found")
+
     def test_actions_artifact_probe_marks_legacy_artifacts_unknown(self) -> None:
         responses = actions_artifact_responses(event="workflow_dispatch", source_sha=None)
         with mock.patch.object(
@@ -411,6 +781,27 @@ class ReleaseStatusProbeTests(unittest.TestCase):
 
         self.assertEqual(result["state"], "unknown")
         self.assertIn("metadata omitted event or head SHA", result["reason"])
+
+    def test_actions_artifact_probe_treats_malformed_artifact_response_as_unknown(self) -> None:
+        responses = actions_artifact_responses(event="workflow_dispatch")
+        responses[2] = subprocess.CompletedProcess(
+            args=["gh"],
+            returncode=0,
+            stdout=json.dumps([{"artifacts": [{"expired": False, "workflow_run": {"id": 42}}]}]),
+            stderr="",
+        )
+
+        with mock.patch.object(
+            release_status.shutil, "which", return_value="/usr/bin/gh"
+        ), mock.patch.object(
+            release_status, "github_repository", return_value="Latias94/merman"
+        ), mock.patch.object(release_status.subprocess, "run", side_effect=responses):
+            result = release_status.probe_github_actions_artifacts(
+                versioned_actions_channel(), "0.8.0-alpha.3"
+            )
+
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("malformed metadata", result["reason"])
 
 
 class ReleaseStatusContractTests(unittest.TestCase):
@@ -533,6 +924,12 @@ class ReleaseStatusContractTests(unittest.TestCase):
         self.assertNotIn("channels", projected[0])
         self.assertNotIn("docs", projected[0])
 
+    def test_maintainer_view_includes_protected_environment(self) -> None:
+        rows = release_status.build_rows(contract(), version="0.8.0", probe=False)
+
+        self.assertEqual(rows[0]["channels"][0]["environment"], "crates.io")
+        self.assertIn("Environment", release_status.render_maintainer(rows))
+
     def test_crates_probe_checks_every_crate_in_a_surface(self) -> None:
         original_probe_crates_io = release_status.probe_crates_io
         checked: list[str] = []
@@ -574,6 +971,38 @@ class ReleaseStatusContractTests(unittest.TestCase):
         )
 
         self.assertEqual(version, "0.12.1")
+
+    def test_vscode_artifact_probe_uses_its_independent_manifest_version(self) -> None:
+        observed: list[str] = []
+
+        def probe(
+            _channel: dict,
+            _target: release_status.ReleaseVersion,
+            *,
+            package_version: str | None = None,
+        ) -> dict[str, str]:
+            observed.append(package_version or "")
+            return {"state": "found", "reason": "ok"}
+
+        with mock.patch.object(release_status, "probe_github_actions_artifacts", side_effect=probe):
+            result = release_status.channel_probe(
+                {"kind": "github-actions-artifact"},
+                {
+                    "id": "vscode",
+                    "packages": [
+                        {
+                            "kind": "vscode",
+                            "name": "merman-vscode",
+                            "manifest": "tools/vscode-extension/package.json",
+                            "version_source": "manifest",
+                        }
+                    ],
+                },
+                "0.8.0-alpha.3",
+            )
+
+        self.assertEqual(result["state"], "found")
+        self.assertEqual(observed, ["0.1.0"])
 
     def test_pub_dev_probe_checks_flutter_package(self) -> None:
         original_probe_pub_dev = release_status.probe_pub_dev
@@ -630,6 +1059,14 @@ class ReleaseStatusContractTests(unittest.TestCase):
         del missing_kind["surfaces"][0]["channels"][0]["kind"]
         cases.append((missing_kind, "missing string field kind"))
 
+        unknown_channel_kind = contract()
+        unknown_channel_kind["surfaces"][0]["channels"][0]["kind"] = "future-registry"
+        cases.append((unknown_channel_kind, "unsupported channel kind"))
+
+        unknown_package_kind = contract()
+        unknown_package_kind["surfaces"][0]["packages"][0]["kind"] = "future-package"
+        cases.append((unknown_package_kind, "unsupported package kind"))
+
         extra_channel = contract()
         extra_channel["surfaces"][0]["channels"][0]["surprise"] = True
         cases.append((extra_channel, "unknown fields"))
@@ -653,6 +1090,20 @@ class ReleaseStatusContractTests(unittest.TestCase):
         invalid_release_kind = contract()
         invalid_release_kind["surfaces"][0]["channels"][0]["release_kinds"] = ["nightly"]
         cases.append((invalid_release_kind, "unsupported values"))
+
+        invalid_npm_dist_tags = contract(
+            surfaces=[surface(channels=[channel(kind="npm")])]
+        )
+        invalid_npm_dist_tags["surfaces"][0]["channels"][0]["dist_tags"]["alpha"] = "latest"
+        cases.append((invalid_npm_dist_tags, "canonical stable/alpha/beta/rc mapping"))
+
+        empty_release_asset_group = contract(
+            surfaces=[surface(channels=[channel(kind="github-release-assets")])]
+        )
+        empty_release_asset_group["surfaces"][0]["channels"][0]["asset_patterns"] = [
+            {"glob": "asset.zip", "min_matches": 0, "max_matches": 1}
+        ]
+        cases.append((empty_release_asset_group, "at least one asset"))
 
         for data, message in cases:
             with self.subTest(message=message), self.assertRaisesRegex(
@@ -678,6 +1129,23 @@ class ReleaseStatusContractTests(unittest.TestCase):
         with self.assertRaisesRegex(release_status.SurfaceError, "not_applicable_reason"):
             release_status.validate_contract(data)
 
+    def test_contract_requires_literal_environment_for_protected_publication(self) -> None:
+        missing_environment = contract()
+        del missing_environment["surfaces"][0]["channels"][0]["environment"]
+        dynamic_environment = contract()
+        dynamic_environment["surfaces"][0]["channels"][0]["environment"] = (
+            "${{ inputs.environment }}"
+        )
+
+        for data, message in [
+            (missing_environment, "missing string field environment"),
+            (dynamic_environment, "environment must be a literal identifier"),
+        ]:
+            with self.subTest(message=message), self.assertRaisesRegex(
+                release_status.SurfaceError, message
+            ):
+                release_status.validate_contract(data)
+
     def test_invalid_cli_version_is_reported_without_traceback(self) -> None:
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -690,7 +1158,7 @@ class ReleaseStatusContractTests(unittest.TestCase):
 
 def contract(*, surfaces: list[dict] | None = None) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "states": [
             "published",
             "artifact-only",
@@ -759,7 +1227,7 @@ def surface(
 def channel(
     *,
     channel_id: str = "example-channel",
-    kind: str = "example",
+    kind: str = "homebrew",
     declared_state: str = "published",
     release_kinds: list[str] | None = None,
 ) -> dict:
@@ -772,6 +1240,15 @@ def channel(
         "workflow_job": "publish",
         "credential": None,
     }
+    environment = {
+        "crates.io": "crates.io",
+        "github-release-assets": "github-release",
+        "npm": "npm",
+        "pypi": "pypi",
+        "pub.dev": "pub.dev",
+    }.get(kind)
+    if environment is not None:
+        result["environment"] = environment
     if kind == "npm":
         result["dist_tags"] = dist_tags()
     return result
@@ -800,7 +1277,10 @@ def versioned_actions_channel() -> dict:
 
 
 def actions_artifact_responses(
-    *, event: str | None, source_sha: str | None = SOURCE_SHA
+    *,
+    event: str | None,
+    source_sha: str | None = SOURCE_SHA,
+    package_version: str | None = None,
 ) -> list[subprocess.CompletedProcess[str]]:
     run = {
         "id": 42,
@@ -810,10 +1290,15 @@ def actions_artifact_responses(
     }
     if event is not None:
         run["event"] = event
+    artifact_prefix = (
+        f"merman-vscode-{package_version}-runtime-0.8.0-alpha.3-alpha"
+        if package_version is not None
+        else "merman-vscode-0.8.0-alpha.3-alpha"
+    )
     artifact_name = (
-        f"merman-vscode-0.8.0-alpha.3-alpha-{SOURCE_SHA}-linux-x64"
+        f"{artifact_prefix}-{SOURCE_SHA}-linux-x64"
         if source_sha is not None
-        else "merman-vscode-0.8.0-alpha.3-alpha-linux-x64"
+        else f"{artifact_prefix}-linux-x64"
     )
     responses = [
         subprocess.CompletedProcess(

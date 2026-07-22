@@ -14,6 +14,6 @@ Current source baseline:
 - elkjs: https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436
 - Eclipse ELK: https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e
 
-The initial implementation exposes the layered graph, option model, and
-processor assembly scaffold. Layout phases are ported incrementally from the
-pinned Eclipse ELK sources rather than approximated from fixture output.
+The crate contains the production layered graph, option model, processor assembly, and layout
+phases used by `merman-layout-elk`. Corrections and new behavior must continue to follow the pinned
+Eclipse ELK sources rather than approximating fixture output.

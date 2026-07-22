@@ -1,6 +1,12 @@
-use crate::common::{BindingError, internal_json_error};
+use crate::common::{
+    BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError,
+    internal_json_error,
+};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
+
+pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 1;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -33,6 +39,51 @@ pub struct TextMeasurementCapabilities {
     pub deterministic: bool,
     pub host_callback: bool,
     pub font_assets: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeContract {
+    pub schema_version: u32,
+    pub abi_version: u32,
+    pub package_version: &'static str,
+    pub options_schema_version: u32,
+    pub payload_schemas: BTreeMap<&'static str, u32>,
+    pub features: BindingCapabilities,
+    pub registry: RuntimeRegistryContract,
+    pub resources: Option<RuntimeResourceContract>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeRegistryContract {
+    pub profile: &'static str,
+    pub diagram_family_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeResourceContract {
+    pub schema_version: u32,
+    pub general_binding_default_profile: &'static str,
+    pub cli_default_profile: &'static str,
+    pub limits: Vec<RuntimeResourceLimit>,
+    pub profiles: Vec<RuntimeResourceProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeResourceLimit {
+    pub id: &'static str,
+    pub phase: &'static str,
+    pub description: &'static str,
+    pub overridable: bool,
+    pub hard_cap: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeResourceProfile {
+    pub id: &'static str,
+    pub purpose: &'static str,
+    pub trust_assumption: &'static str,
+    pub recommended_binding_default: bool,
+    pub limits: BTreeMap<&'static str, Option<usize>>,
 }
 
 pub use merman::DiagramFamilyCapability as BindingDiagramFamilyCapability;
@@ -86,6 +137,78 @@ pub const fn binding_capabilities() -> BindingCapabilities {
             font_assets: false,
         },
     }
+}
+
+pub fn runtime_contract(abi_version: u32) -> RuntimeContract {
+    let payload_schemas = BTreeMap::from([("binding_result", BINDING_RESULT_PAYLOAD_VERSION)]);
+    #[cfg(feature = "analysis")]
+    let payload_schemas = {
+        let mut payload_schemas = payload_schemas;
+        payload_schemas.insert("analysis", merman_analysis::ANALYSIS_PAYLOAD_VERSION);
+        payload_schemas.insert(
+            "analysis_facts",
+            merman_analysis::ANALYSIS_FACTS_PAYLOAD_VERSION,
+        );
+        payload_schemas
+    };
+
+    RuntimeContract {
+        schema_version: RUNTIME_CONTRACT_SCHEMA_VERSION,
+        abi_version,
+        package_version: env!("CARGO_PKG_VERSION"),
+        options_schema_version: BINDING_OPTIONS_SCHEMA_VERSION,
+        payload_schemas,
+        features: binding_capabilities(),
+        registry: RuntimeRegistryContract {
+            profile: selected_registry_profile(),
+            diagram_family_count: diagram_family_capabilities().len(),
+        },
+        resources: runtime_resource_contract(),
+    }
+}
+
+pub fn runtime_contract_json(abi_version: u32) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&runtime_contract(abi_version)).map_err(internal_json_error)
+}
+
+#[cfg(feature = "render")]
+fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
+    let limits = merman::render::resource_limit_descriptors()
+        .iter()
+        .map(|descriptor| RuntimeResourceLimit {
+            id: descriptor.stable_id,
+            phase: descriptor.phase.as_str(),
+            description: descriptor.description,
+            overridable: descriptor.overridable,
+            hard_cap: descriptor.hard_cap,
+        })
+        .collect();
+    let profiles = merman::render::resource_profile_descriptors()
+        .iter()
+        .map(|descriptor| RuntimeResourceProfile {
+            id: descriptor.id,
+            purpose: descriptor.purpose,
+            trust_assumption: descriptor.trust_assumption,
+            recommended_binding_default: descriptor.recommended_binding_default,
+            limits: merman::render::resource_limit_descriptors()
+                .iter()
+                .map(|limit| (limit.stable_id, descriptor.limits.value(limit.id)))
+                .collect(),
+        })
+        .collect();
+    Some(RuntimeResourceContract {
+        schema_version: merman::render::RESOURCE_CONTRACT_SCHEMA_VERSION,
+        general_binding_default_profile: merman::render::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE
+            .id(),
+        cli_default_profile: merman::render::CLI_DEFAULT_RESOURCE_PROFILE.id(),
+        limits,
+        profiles,
+    })
+}
+
+#[cfg(not(feature = "render"))]
+const fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
+    None
 }
 
 pub fn selected_registry_profile() -> &'static str {
@@ -392,6 +515,56 @@ mod tests {
             cfg!(feature = "render")
         );
         assert_eq!(capabilities["text_measurement"]["font_assets"], false);
+    }
+
+    #[test]
+    fn runtime_contract_is_versioned_and_projects_the_resource_descriptor() {
+        let contract = runtime_contract(2);
+        assert_eq!(contract.schema_version, RUNTIME_CONTRACT_SCHEMA_VERSION);
+        assert_eq!(contract.abi_version, 2);
+        assert_eq!(contract.package_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            contract.options_schema_version,
+            BINDING_OPTIONS_SCHEMA_VERSION
+        );
+        assert_eq!(contract.features, binding_capabilities());
+        assert_eq!(contract.registry.profile, selected_registry_profile());
+
+        #[cfg(feature = "render")]
+        {
+            let resources = contract.resources.expect("render resource catalog");
+            assert_eq!(
+                resources.schema_version,
+                merman::render::RESOURCE_CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(resources.profiles.len(), 4);
+            assert_eq!(resources.limits.len(), 16);
+            assert_eq!(resources.general_binding_default_profile, "interactive");
+            assert_eq!(resources.cli_default_profile, "trusted-native");
+            let tree_depth = resources
+                .limits
+                .iter()
+                .find(|limit| limit.id == "max_svg_tree_depth")
+                .expect("tree-depth capability");
+            assert!(tree_depth.hard_cap);
+            assert!(!tree_depth.overridable);
+            let interactive = resources
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "interactive")
+                .expect("interactive profile");
+            assert_eq!(interactive.limits["max_venn_areas"], Some(8_000));
+            assert_eq!(
+                interactive.limits["max_swimlane_line_hop_segment_pairs"],
+                Some(250_000)
+            );
+        }
+        #[cfg(not(feature = "render"))]
+        assert!(contract.resources.is_none());
+
+        let json: Value = serde_json::from_slice(&runtime_contract_json(2).unwrap()).unwrap();
+        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["abi_version"], 2);
     }
 
     #[test]

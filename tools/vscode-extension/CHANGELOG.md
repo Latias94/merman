@@ -1,11 +1,13 @@
 # Changelog
 
+The extension has not yet been published. These entries remain `Unreleased` for the planned first `0.1.0` release.
+
 ## Unreleased
 
 ### Breaking changes
 
 - Removed `merman.analysis.parse.suppress_errors`. Remove the setting when upgrading; use `merman.diagnostics.enabled` to hide Problems while retaining language intelligence.
-- Custom `merman-lsp` binaries must match the extension's editor schema, semantic-token descriptor digest, packed-token encoding, and legend. Upgrade the extension and server together; a mismatch now stops language intelligence instead of applying stale token meanings.
+- Custom `merman-lsp` binaries must match the extension's editor schema, semantic-token descriptor digest, packed-token encoding, and negotiated legend projection. Upgrade the extension and server together; a mismatch now stops language intelligence instead of applying stale token meanings.
 
 ### Added
 

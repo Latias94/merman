@@ -2,7 +2,7 @@
 // Do not edit it directly; edit `editor-language/token-descriptor-v1.json` instead.
 
 pub const SEMANTIC_TOKEN_DESCRIPTOR_DIGEST: &str =
-    "sha256:f57cf49d66fc2cade424dde25fdad7ca593dc3234ab2140bca9d9151bdddecb1";
+    "sha256:f72e872bc49ba658c0c3cd249995c8817bd76fb1e5f7ee56d9e024b733f14399";
 pub const SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN: usize = 5;
 pub const SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX: u32 = 21;
 pub const SEMANTIC_TOKEN_VALID_MODIFIER_MASK: u32 = 511;

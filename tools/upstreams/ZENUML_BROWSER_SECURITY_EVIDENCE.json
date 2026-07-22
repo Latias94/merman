@@ -45,11 +45,11 @@
     },
     {
       "path": "playground/src/runtime/realm/browser-realm-channel.ts",
-      "sha256": "88cb42178c313878f29d08f0791db042336b8d23e512bb87fef735cdd0c8ebf4"
+      "sha256": "043daaa88694ad5505c56c592fa5850b2f4c47894d5eaf7feeb7810d7cdf9b8b"
     },
     {
       "path": "playground/src/runtime/realm/channel-protocol.ts",
-      "sha256": "854c814d340ce0bf5a0d1cc8b82996580aee2c713adadd1b23d8be310ddc8fba"
+      "sha256": "cf74f88597d62b23748c0368f39b471f445a45396b92462421663b90d1768e27"
     },
     {
       "path": "playground/src/runtime/realm/opaque-realm-artifacts.ts",

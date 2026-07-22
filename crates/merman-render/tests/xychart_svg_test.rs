@@ -5,7 +5,7 @@ use merman_core::{ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 use merman_render::family;
-use merman_render::model::XyChartDiagramLayout;
+use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::xychart::layout_xychart_diagram_typed;
 
@@ -85,6 +85,47 @@ xychart
     assert!(layout.show_data_label);
     assert!(layout.show_data_label_outside_bar);
     assert_eq!(layout.label_data, vec!["73"]);
+}
+
+#[test]
+fn xychart_horizontal_line_point_label_offsets_from_the_screen_point() {
+    let layout = layout_xychart_from_text(
+        r#"xychart horizontal
+  x-axis [A]
+  y-axis 0 --> 100
+  line [73 "point"]
+"#,
+    );
+
+    let path = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Path { data, .. } => data.first(),
+            _ => None,
+        })
+        .expect("line path");
+    let point = path
+        .path
+        .strip_prefix('M')
+        .and_then(|value| value.strip_suffix('Z'))
+        .and_then(|value| value.split_once(','))
+        .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
+        .expect("single-point path coordinates");
+    let label = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Text { data, .. } => {
+                data.iter().find(|label| label.text == "point")
+            }
+            _ => None,
+        })
+        .expect("point label");
+
+    assert_eq!(label.x, point.0 + 10.0);
+    assert_eq!(label.y, point.1);
+    assert_eq!(label.horizontal_pos, "left");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { projectSafeInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
@@ -75,6 +76,16 @@ test("projects binding and cyclic object failures without object coercion", () =
   assert.equal(parserProjection.summary, "Parse error on line 2");
   assert.match(parserProjection.detail ?? "", /"token": "INVALID"/);
   assert.match(parserProjection.detail ?? "", /"first_line": 2/);
+
+  const crossRealmError = runInNewContext(
+    'Object.assign(new Error("Cross-realm Merman failure."), { code: "MERMAN_CROSS_REALM" })'
+  );
+  assert.equal(crossRealmError instanceof Error, false);
+  const crossRealmProjection = projectError(crossRealmError);
+  assert.equal(crossRealmProjection.summary, "Cross-realm Merman failure.");
+  assert.match(crossRealmProjection.detail ?? "", /MERMAN_CROSS_REALM/);
+  assert.doesNotMatch(crossRealmProjection.summary, /\[object Object\]/);
+  assert.doesNotMatch(crossRealmProjection.detail ?? "", /\[object Object\]/);
 
   const oversizedBinding = projectError({
     version: 2,
@@ -316,6 +327,80 @@ test("render failures retain binding details in the completed batch", async () =
   assert.doesNotMatch(state.merman.message, /\[object Object\]/);
 });
 
+test("normalizes raw Merman Error and object payloads before publication", async () => {
+  const nativeFailure = Object.assign(
+    new Error("Native Merman render failure."),
+    { code: "MERMAN_RENDER_ERROR" }
+  );
+  const structuredFailure = {
+    message: "Structured Merman render failure.",
+    reason: { code: "MERMAN_PARSE_ERROR" },
+  };
+
+  for (const [failure, message, detail] of [
+    [nativeFailure, "Native Merman render failure.", "MERMAN_RENDER_ERROR"],
+    [
+      structuredFailure,
+      "Structured Merman render failure.",
+      "MERMAN_PARSE_ERROR",
+    ],
+  ] as const) {
+    const coordinator = createRenderCoordinator({
+      compare: fakeCompare([]),
+      compareViewport: VIEWPORT,
+      debounceMs: 0,
+      validateSvg: () => {},
+    });
+    coordinator.setInput(input("broken", rawFailureFacade(failure)));
+    await waitFor(() => coordinator.store.getState().status === "failed");
+
+    const state = coordinator.store.getState();
+    assert.equal(state.status, "failed");
+    if (state.status !== "failed") continue;
+    assert.equal(state.merman.message, message);
+    assert.match(state.merman.detail ?? "", new RegExp(detail));
+    assert.doesNotMatch(state.merman.message, /\[object Object\]/);
+    assert.doesNotMatch(state.merman.detail ?? "", /\[object Object\]/);
+    coordinator.dispose();
+  }
+});
+
+test("normalizes an unprojected ASCII failure without failing the SVG result", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+    validateSvg: () => {},
+  });
+  coordinator.setInput(
+    input("ascii", {
+      ...facade(),
+      renderAscii() {
+        return {
+          ascii: null,
+          error: {
+            message: "Structured Merman ASCII failure.",
+            reason: { code: "MERMAN_ASCII_ERROR" },
+          },
+          status: "failure",
+        } as unknown as ReturnType<MermanDomainFacade["renderAscii"]>;
+      },
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.merman.ascii, null);
+  assert.equal(
+    state.merman.asciiError?.summary,
+    "Structured Merman ASCII failure."
+  );
+  assert.match(state.merman.asciiError?.detail ?? "", /MERMAN_ASCII_ERROR/);
+  assert.doesNotMatch(state.merman.asciiError?.detail ?? "", /\[object Object\]/);
+});
+
 function input(
   source: string,
   domainFacade: MermanDomainFacade = facade()
@@ -355,6 +440,20 @@ function bindingFailureFacade(): MermanDomainFacade {
         code_name: "MERMAN_PARSE_ERROR",
         message: "Source is invalid.",
       };
+    },
+  };
+}
+
+function rawFailureFacade(error: unknown): MermanDomainFacade {
+  return {
+    ...facade(),
+    render() {
+      return {
+        error,
+        renderTime: 0,
+        status: "failure",
+        svg: null,
+      } as unknown as ReturnType<MermanDomainFacade["render"]>;
     },
   };
 }

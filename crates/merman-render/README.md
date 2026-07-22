@@ -21,11 +21,11 @@ Typst and other size-sensitive pure-wasm consumers, then enable `cytoscape-layou
 diagram families are needed. Enable the `host` feature when you want host clock access,
 host-seeded timing, and host randomness for diagnostic or browser-oriented builds.
 
-ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate. The
-public `merman` render facade enables that feature for ordinary render builds, while direct
-`merman-render` users can keep it disabled for minimal custom stacks. When enabled, Flowchart ELK,
-Class, and ER layout use the sole source-backed Rust implementation of Mermaid's ELK adapter and
-Eclipse ELK layered pipeline; no compatibility backend or runtime selector is retained.
+ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate and in
+the public `merman` facade. A plain `render` build does not pull it in; callers that need ELK must
+enable `elk-layout` explicitly. When enabled, Flowchart ELK, Class, and ER layout use the sole
+source-backed Rust implementation of Mermaid's ELK adapter and Eclipse ELK layered pipeline; no
+compatibility backend or runtime selector is retained.
 
 Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use
 `merman-render` directly when you need lower-level control over layout, text measurement, SVG

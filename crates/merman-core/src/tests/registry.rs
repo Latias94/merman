@@ -578,19 +578,83 @@ fn parser_registries_follow_family_fact_projection() {
 }
 
 #[test]
+fn family_catalog_projections_are_bidirectionally_aligned() {
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let detector_ids = sorted_set(
+            crate::family::detector_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let semantic_ids = sorted_set(
+            crate::family::semantic_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let headers = crate::diagram_header_facts_for_profile(profile);
+        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
+
+        for capability in capabilities {
+            assert!(
+                !capability.has_detector || detector_ids.contains(capability.diagram_type),
+                "capability {} declares a detector missing from {profile:?}",
+                capability.diagram_type,
+            );
+            assert!(
+                !capability.has_semantic_parser || semantic_ids.contains(capability.diagram_type),
+                "capability {} declares a semantic parser missing from {profile:?}",
+                capability.diagram_type,
+            );
+            assert!(
+                capability.has_header
+                    == headers
+                        .iter()
+                        .any(|header| header.diagram_type == capability.diagram_type),
+                "capability {} disagrees with its header projection in {profile:?}",
+                capability.diagram_type,
+            );
+        }
+
+        for header in headers {
+            assert!(
+                semantic_ids
+                    .iter()
+                    .any(|diagram_type| *diagram_type == header.diagram_type),
+                "header {} points to missing semantic parser {} in {profile:?}",
+                header.label,
+                header.diagram_type,
+            );
+        }
+    }
+
+    let tiny_ids = sorted_set(
+        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny)
+            .iter()
+            .map(|capability| capability.diagram_type),
+    );
+    for header in crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full) {
+        assert_eq!(
+            header.full_only,
+            !tiny_ids.contains(header.diagram_type),
+            "header {} has a feature-profile flag that disagrees with its family",
+            header.label,
+        );
+    }
+}
+
+#[test]
 fn selected_supported_diagrams_follow_feature_profile() {
     assert_eq!(
         crate::supported_diagrams(),
         crate::supported_diagrams_for_profile(crate::selected_baseline_registry_profile())
     );
 
-    #[cfg(feature = "full")]
+    #[cfg(feature = "full-registry")]
     assert_eq!(
         crate::supported_diagrams(),
         crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full)
     );
 
-    #[cfg(not(feature = "full"))]
+    #[cfg(not(feature = "full-registry"))]
     assert_eq!(
         crate::supported_diagrams(),
         crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny)
@@ -620,6 +684,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "info",
             "journey",
             "timeline",
+            "gitGraph",
             "pie",
             "requirementDiagram",
             "sankey",
@@ -683,6 +748,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "info",
             "journey",
             "timeline",
+            "gitGraph",
             "pie",
             "requirementDiagram",
             "sankey",
@@ -713,6 +779,19 @@ fn diagram_header_facts_follow_feature_profile() {
             "cynefin-beta",
         ]
     );
+
+    for profile in [BaselineRegistryProfile::Tiny, BaselineRegistryProfile::Full] {
+        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
+        for header in crate::diagram_header_facts_for_profile(profile) {
+            assert!(
+                capabilities.iter().any(|capability| {
+                    capability.diagram_type == header.diagram_type && capability.has_semantic_parser
+                }),
+                "header {} must be backed by a semantic parser",
+                header.label
+            );
+        }
+    }
 }
 
 #[test]
@@ -2046,7 +2125,7 @@ fn tiny_parser_projection_excludes_full_only_large_features() {
     assert!(tiny_render.contains("flowchart"));
 }
 
-#[cfg(not(feature = "full"))]
+#[cfg(not(feature = "full-registry"))]
 #[test]
 fn tiny_engine_rejects_full_only_known_type_parsers() {
     let engine = crate::Engine::new();

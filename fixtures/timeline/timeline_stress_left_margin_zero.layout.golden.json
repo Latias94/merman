@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
+      "direction": "LR",
       "bounds": {
         "min_x": -50.0,
         "min_y": -61.0,
@@ -44,13 +45,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 145.0,
-                "y1": 235.6,
-                "x2": 145.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 145.0,
+                  "y1": 235.6,
+                  "x2": 145.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 50.0,
@@ -85,13 +88,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 345.0,
-                "y1": 235.6,
-                "x2": 345.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 345.0,
+                  "y1": 235.6,
+                  "x2": 345.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 250.0,

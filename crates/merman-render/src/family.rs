@@ -543,7 +543,7 @@ impl RenderedFamilySvg {
             &self.session,
         )?;
         self.session
-            .resource_limits()
+            .resource_policy()
             .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
         Ok(self)
     }
@@ -557,7 +557,7 @@ impl RenderedFamilySvg {
             &self.session,
         )?;
         self.session
-            .resource_limits()
+            .resource_policy()
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
@@ -662,17 +662,18 @@ impl FamilyRenderArtifact {
             family,
             session,
         } = self;
+        let options = options.normalized();
         let svg = crate::svg::render_builtin_family_artifact(
             &family,
             &metadata.effective_config,
             &metadata.diagram_type,
             metadata.title.as_deref(),
             &session,
-            options,
+            &options,
             debug,
         )?;
         session
-            .resource_limits()
+            .resource_policy()
             .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
 
         Ok(RenderedFamilySvg {
@@ -736,11 +737,11 @@ pub fn prepare(
 
     if let RenderSemanticModel::Flowchart(model) = &model {
         session
-            .resource_limits()
+            .resource_policy()
             .check_flowchart_complexity(model)?;
     }
     if let RenderSemanticModel::Zenuml(model) = &model {
-        session.resource_limits().check_zenuml_complexity(model)?;
+        session.resource_policy().check_zenuml_complexity(model)?;
     }
 
     let execution = LayoutExecution::new(options, &session);
@@ -826,7 +827,7 @@ pub fn prepare(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.ambient_seed(),
+                    execution.operation_seed(),
                 )
             })?)
         }
@@ -1061,7 +1062,12 @@ pub fn prepare(
         }
         RenderSemanticModel::Venn(model) => {
             BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
-                crate::venn::layout_venn_diagram_typed(model, title, effective_config)
+                crate::venn::layout_venn_diagram_typed(
+                    model,
+                    title,
+                    effective_config,
+                    execution.resource_policy(),
+                )
             })?)
         }
         RenderSemanticModel::CustomJson(_) => {
@@ -1113,10 +1119,14 @@ mod tests {
             .unwrap()
             .expect("flowchart source should produce a render model");
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(crate::resources::RenderResourceLimits {
-                max_flowchart_nodes: Some(max_flowchart_nodes),
-                ..crate::resources::RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(
+                        crate::resources::ResourceLimitId::MaxFlowchartNodes,
+                        max_flowchart_nodes,
+                    )
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
         prepare(parsed, &LayoutOptions::default(), session)

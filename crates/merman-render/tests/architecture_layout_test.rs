@@ -172,6 +172,41 @@ fn architecture_default_layout_options_execute_fcose_layout() {
 }
 
 #[test]
+fn architecture_conflicting_row_hints_fail_before_svg_projection() {
+    let source = r#"architecture-beta
+  service a(server)[A]
+  service b(server)[B]
+  align row a b
+  align row b a
+"#;
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let RenderSemanticModel::Architecture(model) = parsed.model() else {
+        panic!("expected architecture render model");
+    };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    let error = layout_architecture_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &measurer,
+        session.seed().seed().get(),
+    )
+    .expect_err("contradictory row constraints must fail at layout");
+
+    assert!(
+        error
+            .to_string()
+            .contains("horizontal constraints are infeasible"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn architecture_parse_for_render_model_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);

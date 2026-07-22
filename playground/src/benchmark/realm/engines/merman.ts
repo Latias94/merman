@@ -61,7 +61,9 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     let options: string;
     let version: string;
     try {
-      await runBenchmarkEngineStage("initialize", () => module.default(wasm));
+      await runBenchmarkEngineStage("initialize", () =>
+        module.default({ module_or_path: wasm })
+      );
       measurement = await runBenchmarkEngineStage("initialize", () =>
         web.createBrowserTextMeasurementSession()
       );

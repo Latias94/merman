@@ -26,8 +26,8 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 
 ## Decision
 
-- Pin DOMPurify baseline to Mermaid's resolved dependency version (`dompurify@3.4.0` for
-  `mermaid@11.16.0`).
+- Pin the shared browser, reference-CLI, and Rust generation baseline to the release-contract
+  version (`dompurify@3.4.12` for `mermaid@11.16.0`).
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`

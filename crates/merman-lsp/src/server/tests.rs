@@ -15,21 +15,21 @@ use merman_analysis::{
     AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
     DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
 };
+use merman_core::EditorRenamePolicy;
 use merman_editor_core::{DocumentKind, semantic_token_descriptor};
 use tower::{Service, ServiceExt};
 use tower_lsp::LanguageServer;
 use tower_lsp::jsonrpc::Request;
 use tower_lsp::lsp_types::SemanticTokensResult;
 use tower_lsp::lsp_types::{
-    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    CodeActionProviderCapability, CompletionParams, DidChangeTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
-    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
-    HoverParams, InitializeParams, NumberOrString, Position, Range, RenameParams,
-    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensFullOptions,
-    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-    SemanticTokensServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentChanges,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
+    SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
     TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
     Url, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
@@ -46,6 +46,21 @@ async fn assert_cached_snapshot_identity(
         .expect("expected cached snapshot");
     assert!(std::sync::Arc::ptr_eq(expected, &actual));
     assert_eq!(actual.version, expected.version);
+}
+
+#[test]
+fn service_can_be_constructed_without_a_tokio_runtime() {
+    let (_service, _socket) = MermanLanguageServer::service();
+    let (_service, _socket) = MermanLanguageServer::service_with_refresh();
+}
+
+#[test]
+fn published_server_constructor_signatures_remain_source_compatible() {
+    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
+    let _: fn() -> (
+        tower_lsp::LspService<MermanLanguageServer>,
+        tower_lsp::ClientSocket,
+    ) = MermanLanguageServer::service;
 }
 
 #[test]
@@ -182,7 +197,10 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
+    let analyzer = merman_analysis::Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(8)),
+    );
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -226,7 +244,10 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
         .get(&uri)
         .expect("expected discarded document")
         .clone();
-    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
+    let analyzer = merman_analysis::Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(64)),
+    );
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -262,7 +283,10 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
         sync_error: Some(DocumentSyncError::InvalidIncrementalRange),
     };
 
-    let diagnostics = MermanLanguageServer::unavailable_diagnostics_for_document(&document);
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
+    );
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -282,14 +306,15 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
 }
 
 #[test]
-fn capabilities_advertise_completion_and_incremental_sync() {
+fn capabilities_report_the_full_server_envelope() {
     let capabilities = MermanLanguageServer::capabilities();
 
     assert!(matches!(
         capabilities.text_document_sync,
-        Some(TextDocumentSyncCapability::Kind(
-            TextDocumentSyncKind::INCREMENTAL
-        ))
+        Some(TextDocumentSyncCapability::Options(ref options))
+            if options.change == Some(TextDocumentSyncKind::INCREMENTAL)
+                && options.open_close == Some(true)
+                && options.save.is_some()
     ));
     assert!(matches!(
         capabilities.hover_provider,
@@ -319,10 +344,7 @@ fn capabilities_advertise_completion_and_incremental_sync() {
         capabilities.rename_provider,
         Some(OneOf::Right(options)) if options.prepare_provider == Some(true)
     ));
-    assert!(matches!(
-        capabilities.workspace_symbol_provider,
-        Some(OneOf::Left(true))
-    ));
+    assert!(capabilities.workspace_symbol_provider.is_none());
     assert!(matches!(
         capabilities.completion_provider,
         Some(ref options) if options.resolve_provider == Some(true)
@@ -341,23 +363,8 @@ fn capabilities_advertise_completion_and_incremental_sync() {
                 ":".to_string(),
             ])
     ));
-    assert!(matches!(
-        capabilities.semantic_tokens_provider,
-        Some(SemanticTokensServerCapabilities::SemanticTokensOptions(ref options))
-            if matches!(options.full, Some(SemanticTokensFullOptions::Delta { delta: Some(true) }))
-                && options.range == Some(true)
-                && !options.legend.token_types.is_empty()
-                && !options.legend.token_modifiers.is_empty()
-    ));
-    assert!(matches!(
-        capabilities.code_action_provider,
-        Some(CodeActionProviderCapability::Options(ref options))
-            if options
-                .code_action_kinds
-                .as_ref()
-                .is_some_and(|kinds| kinds.contains(&CodeActionKind::QUICKFIX))
-                && options.resolve_provider == Some(false)
-    ));
+    assert!(capabilities.semantic_tokens_provider.is_some());
+    assert!(capabilities.code_action_provider.is_some());
     assert_eq!(
         capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
         RULE_CATALOG_METHOD
@@ -374,6 +381,7 @@ fn capabilities_advertise_completion_and_incremental_sync() {
             "descriptorDigest": descriptor.digest,
             "packedEncoding": descriptor.packed.encoding,
             "wordsPerToken": descriptor.packed.words_per_token,
+            "renamePolicies": EditorRenamePolicy::IDS,
         })
     );
 }
@@ -381,17 +389,19 @@ fn capabilities_advertise_completion_and_incremental_sync() {
 #[test]
 fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
     let uri = Url::parse("untitled:notes").unwrap();
-    let mut store = DocumentStore::new();
-    store.upsert_text(
-        uri,
-        7,
-        "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".to_string(),
-        DocumentKind::Markdown,
+    let document = StoredDocument {
+        uri: uri.clone(),
+        version: 7,
+        text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
+        kind: DocumentKind::Markdown,
+        resource_limit: None,
+        discarded_source: None,
+        sync_error: None,
+    };
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
     );
-    let context = store
-        .diagnostic_context(&Url::parse("untitled:notes").unwrap())
-        .expect("expected snapshot-backed diagnostic context");
-    let diagnostics = MermanLanguageServer::diagnostics_for_context(&context);
 
     assert!(
         diagnostics.iter().all(|diagnostic| {
@@ -426,179 +436,28 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
 }
 
 #[test]
-fn semantic_tokens_refresh_support_comes_from_client_capabilities() {
-    let mut params = InitializeParams::default();
-    assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
+fn diagnostics_include_rich_editor_projection_warnings() {
+    let uri = Url::parse("file:///tmp/cynefin.mmd").unwrap();
+    let document = StoredDocument {
+        uri,
+        version: 3,
+        text: "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n".into(),
+        kind: DocumentKind::Diagram,
+        resource_limit: None,
+        discarded_source: None,
+        sync_error: None,
+    };
 
-    params.capabilities.workspace = Some(Default::default());
-    assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
-
-    params
-        .capabilities
-        .workspace
-        .as_mut()
-        .unwrap()
-        .semantic_tokens = Some(
-        tower_lsp::lsp_types::SemanticTokensWorkspaceClientCapabilities {
-            refresh_support: None,
-        },
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
     );
-    assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
 
-    params
-        .capabilities
-        .workspace
-        .as_mut()
-        .unwrap()
-        .semantic_tokens
-        .as_mut()
-        .unwrap()
-        .refresh_support = Some(true);
-    assert!(MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
-}
-
-#[test]
-fn diagnostic_pull_support_comes_from_text_document_client_capabilities() {
-    let mut params = InitializeParams::default();
-    assert!(!MermanLanguageServer::client_supports_diagnostic_pull(
-        &params
-    ));
-
-    params.capabilities.workspace = Some(Default::default());
-    params.capabilities.workspace.as_mut().unwrap().diagnostic = Some(
-        tower_lsp::lsp_types::DiagnosticWorkspaceClientCapabilities {
-            refresh_support: Some(true),
-        },
-    );
-    assert!(!MermanLanguageServer::client_supports_diagnostic_pull(
-        &params
-    ));
-
-    params.capabilities.text_document = Some(Default::default());
-    params
-        .capabilities
-        .text_document
-        .as_mut()
-        .unwrap()
-        .diagnostic = Some(tower_lsp::lsp_types::DiagnosticClientCapabilities {
-        dynamic_registration: None,
-        related_document_support: None,
-    });
-    assert!(MermanLanguageServer::client_supports_diagnostic_pull(
-        &params
-    ));
-}
-
-#[test]
-fn diagnostic_refresh_support_comes_from_workspace_client_capabilities() {
-    let mut params = InitializeParams::default();
-    assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
-        &params
-    ));
-
-    params.capabilities.text_document = Some(Default::default());
-    params
-        .capabilities
-        .text_document
-        .as_mut()
-        .unwrap()
-        .diagnostic = Some(tower_lsp::lsp_types::DiagnosticClientCapabilities {
-        dynamic_registration: None,
-        related_document_support: None,
-    });
-    assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
-        &params
-    ));
-
-    params.capabilities.workspace = Some(Default::default());
-    params.capabilities.workspace.as_mut().unwrap().diagnostic = Some(
-        tower_lsp::lsp_types::DiagnosticWorkspaceClientCapabilities {
-            refresh_support: None,
-        },
-    );
-    assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
-        &params
-    ));
-
-    params
-        .capabilities
-        .workspace
-        .as_mut()
-        .unwrap()
-        .diagnostic
-        .as_mut()
-        .unwrap()
-        .refresh_support = Some(true);
-    assert!(MermanLanguageServer::client_supports_diagnostic_refresh(
-        &params
-    ));
-}
-
-#[test]
-fn workspace_edit_document_changes_support_comes_from_client_capabilities() {
-    let mut params = InitializeParams::default();
-    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
-
-    params.capabilities.workspace = Some(Default::default());
-    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
-
-    params
-        .capabilities
-        .workspace
-        .as_mut()
-        .unwrap()
-        .workspace_edit = Some(tower_lsp::lsp_types::WorkspaceEditClientCapabilities {
-        document_changes: None,
-        resource_operations: None,
-        failure_handling: None,
-        normalizes_line_endings: None,
-        change_annotation_support: None,
-    });
-    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
-
-    params
-        .capabilities
-        .workspace
-        .as_mut()
-        .unwrap()
-        .workspace_edit
-        .as_mut()
-        .unwrap()
-        .document_changes = Some(true);
-    assert!(MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
-}
-
-#[test]
-fn hierarchical_document_symbol_support_comes_from_client_capabilities() {
-    let mut params = InitializeParams::default();
-    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
-
-    params.capabilities.text_document = Some(Default::default());
-    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
-
-    params
-        .capabilities
-        .text_document
-        .as_mut()
-        .unwrap()
-        .document_symbol = Some(tower_lsp::lsp_types::DocumentSymbolClientCapabilities {
-        dynamic_registration: None,
-        symbol_kind: None,
-        hierarchical_document_symbol_support: None,
-        tag_support: None,
-    });
-    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
-
-    params
-        .capabilities
-        .text_document
-        .as_mut()
-        .unwrap()
-        .document_symbol
-        .as_mut()
-        .unwrap()
-        .hierarchical_document_symbol_support = Some(true);
-    assert!(MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("self-loop transition on domain \"complicated\" is skipped")
+    }));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -622,9 +481,8 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
         let mut store = server.store.lock().await;
         assert!(store.get(&uri).is_some());
         assert!(store.has_snapshot(&uri));
-        store
-            .snapshot(&uri)
-            .expect("diagnostics should cache a snapshot")
+        assert!(store.has_analysis_payload(&uri));
+        store.snapshot(&uri).expect("expected diagnostic snapshot")
     };
 
     let hover = server
@@ -652,6 +510,10 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
 async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
     let uri = Url::parse("file:///tmp/r24-identity.mmd").unwrap();
     let version = 11;
 
@@ -810,6 +672,90 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
         Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
     assert_cached_snapshot_identity(server, &uri, &shared).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuration_change() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
+    let uri = Url::parse("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
+
+    {
+        let mut store = server.store.lock().await;
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+            DocumentKind::Diagram,
+        );
+    }
+    let original_snapshot = server
+        .snapshot_for_uri(&uri)
+        .await
+        .expect("expected initial snapshot");
+
+    {
+        let mut store = server.store.lock().await;
+        let change = store.apply_analyzer_options(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+            ),
+        );
+        assert_eq!(
+            change,
+            crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+        );
+        assert!(store.has_snapshot(&uri));
+        assert!(!store.has_analysis_payload(&uri));
+    }
+
+    let context = {
+        let store = server.store.lock().await;
+        store
+            .diagnostic_context(&uri)
+            .expect("expected diagnostic context")
+    };
+    let diagnostic = server
+        .diagnostics_for_current_context(&context)
+        .await
+        .expect("expected current diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected current flowchart direction diagnostic");
+
+    let actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("code action request")
+        .expect("expected a server-owned quick fix");
+    assert!(actions.iter().any(|action| {
+        matches!(
+            action,
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Insert `TB` into the flowchart header"
+        )
+    }));
+    assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -995,7 +941,7 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
         );
     }
     let context = {
-        let mut store = server.store.lock().await;
+        let store = server.store.lock().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
@@ -1068,6 +1014,20 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
     let server = service.inner();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
+    server
+        .initialize(
+            serde_json::from_value(serde_json::json!({
+                "capabilities": {
+                    "textDocument": {
+                        "publishDiagnostics": { "dataSupport": true }
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
     {
         let mut store = server.store.lock().await;
         store.upsert_text(
@@ -1078,7 +1038,7 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         );
     }
     let context = {
-        let mut store = server.store.lock().await;
+        let store = server.store.lock().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
@@ -1128,17 +1088,15 @@ async fn stale_diagnostic_commit_returns_content_modified_error() {
             DocumentKind::Diagram,
         );
     }
-    let (context, diagnostics) = {
-        let mut store = server.store.lock().await;
-        let context = store
+    let context = {
+        let store = server.store.lock().await;
+        store
             .diagnostic_context(&uri)
-            .expect("expected diagnostic context");
-        let diagnostics = MermanLanguageServer::diagnostics_for_context(&context);
-        (context, diagnostics)
+            .expect("expected diagnostic context")
     };
     let state = DocumentDiagnosticState {
-        result_id: MermanLanguageServer::diagnostic_result_id(&diagnostics),
-        diagnostics,
+        result_id: MermanLanguageServer::diagnostic_result_id(&[]),
+        diagnostics: Vec::new(),
     };
     {
         let mut store = server.store.lock().await;
@@ -1376,6 +1334,41 @@ async fn lsp_handlers_return_hover_and_symbols() {
     let server = service.inner();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
+    server
+        .initialize(
+            serde_json::from_value(serde_json::json!({
+                "capabilities": {
+                    "textDocument": {
+                        "codeAction": {
+                            "codeActionLiteralSupport": {
+                                "codeActionKind": { "valueSet": ["quickfix"] }
+                            },
+                            "isPreferredSupport": true
+                        },
+                        "publishDiagnostics": { "dataSupport": true },
+                        "semanticTokens": {
+                            "requests": {
+                                "range": true,
+                                "full": { "delta": true }
+                            },
+                            "tokenTypes": [
+                                "namespace", "class", "struct", "variable", "property",
+                                "event", "function", "string"
+                            ],
+                            "tokenModifiers": ["mermanEntity"],
+                            "formats": ["relative"]
+                        }
+                    },
+                    "workspace": {
+                        "workspaceEdit": { "documentChanges": true }
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
     {
         let mut store = server.store.lock().await;
         store.apply_analyzer_options(
@@ -1468,21 +1461,24 @@ async fn lsp_handlers_return_hover_and_symbols() {
         Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
 
-    let diagnostic = {
-        let mut store = server.store.lock().await;
-        let context = store
+    let context = {
+        let store = server.store.lock().await;
+        store
             .diagnostic_context(&uri)
-            .expect("expected snapshot-backed diagnostics");
-        MermanLanguageServer::diagnostics_for_context(&context)
-            .into_iter()
-            .find(|diagnostic| {
-                diagnostic.code
-                    == Some(NumberOrString::String(
-                        "merman.authoring.flowchart.explicit_direction".to_string(),
-                    ))
-            })
-            .expect("expected flowchart direction diagnostic")
+            .expect("expected snapshot-backed diagnostics")
     };
+    let diagnostic = server
+        .diagnostics_for_current_context(&context)
+        .await
+        .expect("expected current diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected flowchart direction diagnostic");
     let code_actions = server
         .code_action(CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },

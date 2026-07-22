@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
     paths:
       - Cargo.lock
       - Cargo.toml
@@ -23,13 +22,36 @@ on:
   schedule:
     - cron: "41 3 * * 2"
   workflow_dispatch:
+    inputs:
+      target:
+        description: Fuzz target to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - parse_mermaid
+          - render_mermaid
+          - svg_pipeline
+          - ffi_api
+      preset:
+        description: Bounded fuzzing budget
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - extended
+          - long
 
 permissions:
   contents: read
 
 concurrency:
-  group: fuzz-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR and push smoke runs supersede older runs for the same PR/ref. Scheduled and manual
+  # discovery runs get a unique group so a main push cannot discard their coverage budget.
+  group: fuzz-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   CARGO_FUZZ_VERSION: "0.13.2"
@@ -38,44 +60,116 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  libfuzzer-asan:
-    name: libFuzzer ASan (${{ matrix.target }})
+  resolve-fuzz-plan:
+    name: Resolve fuzz plan
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      profile: ${{ steps.plan.outputs.profile }}
+    steps:
+      - id: plan
+        name: Select bounded target and budget
+        shell: bash
+        env:
+          FUZZ_EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TARGET: ${{ inputs.target }}
+          DISPATCH_PRESET: ${{ inputs.preset }}
+        run: |
+          case "$FUZZ_EVENT_NAME" in
+            pull_request|push)
+              selected_targets=all
+              profile=smoke
+              ;;
+            schedule)
+              selected_targets=all
+              profile=scheduled
+              ;;
+            workflow_dispatch)
+              case "$DISPATCH_TARGET" in
+                all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api)
+                  selected_targets="$DISPATCH_TARGET"
+                  ;;
+                *)
+                  echo "unsupported fuzz target" >&2
+                  exit 1
+                  ;;
+              esac
+              case "$DISPATCH_PRESET" in
+                smoke|extended|long)
+                  profile="$DISPATCH_PRESET"
+                  ;;
+                *)
+                  echo "unsupported fuzz preset" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "unsupported workflow event: $FUZZ_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          case "$selected_targets" in
+            all) targets='parse_mermaid render_mermaid svg_pipeline ffi_api' ;;
+            parse_mermaid|render_mermaid|svg_pipeline|ffi_api) targets="$selected_targets" ;;
+            *)
+              echo "unsupported resolved fuzz target" >&2
+              exit 1
+              ;;
+          esac
+
+          matrix='{"include":['
+          separator=''
+          for target in $targets; do
+            case "$target" in
+              parse_mermaid)
+                entry='{"target":"parse_mermaid","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
+                ;;
+              render_mermaid)
+                entry='{"target":"render_mermaid","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":32768}'
+                ;;
+              svg_pipeline)
+                entry='{"target":"svg_pipeline","seed":"fuzz/seeds/svg","dictionary":"fuzz/dictionaries/svg.dict","max_len":262144}'
+                ;;
+              ffi_api)
+                entry='{"target":"ffi_api","seed":"fuzz/seeds/ffi","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
+                ;;
+              *)
+                echo "unsupported resolved matrix target" >&2
+                exit 1
+                ;;
+            esac
+            matrix+="$separator$entry"
+            separator=','
+          done
+          matrix+=']}'
+
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'profile=%s\n' "$profile" >> "$GITHUB_OUTPUT"
+
+  libfuzzer:
+    needs: resolve-fuzz-plan
+    name: libFuzzer (${{ matrix.target }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - target: parse_mermaid
-            seed: fuzz/seeds/mermaid
-            dictionary: fuzz/dictionaries/mermaid.dict
-            max_len: 262144
-          - target: render_mermaid
-            seed: fuzz/seeds/mermaid
-            dictionary: fuzz/dictionaries/mermaid.dict
-            max_len: 32768
-          - target: svg_pipeline
-            seed: fuzz/seeds/svg
-            dictionary: fuzz/dictionaries/svg.dict
-            max_len: 262144
-          - target: ffi_api
-            seed: fuzz/seeds/ffi
-            dictionary: fuzz/dictionaries/mermaid.dict
-            max_len: 16384
+      matrix: ${{ fromJSON(needs.resolve-fuzz-plan.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 1.97.1 patch release
         with:
           toolchain: ${{ env.FUZZ_NIGHTLY }}
           components: rust-src
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           cache-targets: false
           workspaces: |
@@ -88,21 +182,56 @@ jobs:
       - name: Check fuzz workspace lockfile
         run: cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml --locked
 
-      - name: Choose libFuzzer run length
-        id: run-length
+      - name: Resolve libFuzzer budget
+        id: fuzz-budget
         shell: bash
+        env:
+          FUZZ_PROFILE: ${{ needs.resolve-fuzz-plan.outputs.profile }}
         run: |
-          if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "args=-max_total_time=300 -timeout=10 -max_len=${{ matrix.max_len }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "args=-runs=64 -timeout=10 -max_len=${{ matrix.max_len }}" >> "$GITHUB_OUTPUT"
-          fi
+          case "$FUZZ_PROFILE" in
+            smoke|scheduled|extended|long) ;;
+            *)
+              echo "unsupported resolved fuzz profile" >&2
+              exit 1
+              ;;
+          esac
+          printf 'profile=%s\n' "$FUZZ_PROFILE" >> "$GITHUB_OUTPUT"
 
       - name: Prepare corpus directory
-        run: mkdir -p "fuzz/corpus/${{ matrix.target }}"
+        run: mkdir -p "fuzz/corpus/${{ matrix.target }}" fuzz/logs
 
-      - name: Run libFuzzer with ASan
+      - name: Run libFuzzer with AddressSanitizer enabled
+        id: fuzz-run
+        continue-on-error: true
+        shell: bash
+        env:
+          FUZZ_PROFILE: ${{ steps.fuzz-budget.outputs.profile }}
+          FUZZ_MAX_LEN: ${{ matrix.max_len }}
         run: |
+          case "$FUZZ_MAX_LEN" in
+            16384|32768|262144) ;;
+            *)
+              echo "unsupported matrix max_len" >&2
+              exit 1
+              ;;
+          esac
+          case "$FUZZ_PROFILE" in
+            smoke)
+              fuzz_args=(-runs=64)
+              ;;
+            extended)
+              fuzz_args=(-max_total_time=300)
+              ;;
+            scheduled|long)
+              fuzz_args=(-max_total_time=900)
+              ;;
+            *)
+              echo "unsupported resolved fuzz profile" >&2
+              exit 1
+              ;;
+          esac
+          fuzz_args+=(-timeout=10 "-max_len=$FUZZ_MAX_LEN")
+          set -o pipefail
           cargo +"$FUZZ_NIGHTLY" fuzz run \
             --fuzz-dir fuzz \
             --sanitizer address \
@@ -112,13 +241,44 @@ jobs:
             "${{ matrix.seed }}" \
             -- \
             "-dict=${{ matrix.dictionary }}" \
-            ${{ steps.run-length.outputs.args }}
+            "${fuzz_args[@]}" 2>&1 | tee "fuzz/logs/${{ matrix.target }}.log"
+
+      - name: Classify fuzz result
+        if: always()
+        shell: bash
+        env:
+          FUZZ_OUTCOME: ${{ steps.fuzz-run.outcome }}
+          FUZZ_PROFILE: ${{ steps.fuzz-budget.outputs.profile }}
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: |
+          log="fuzz/logs/$FUZZ_TARGET.log"
+          {
+            echo "## libFuzzer: \`$FUZZ_TARGET\`"
+            echo
+            echo "Profile: \`$FUZZ_PROFILE\`"
+            echo
+            if [[ "$FUZZ_OUTCOME" == "success" ]]; then
+              echo "Result: completed without a detected finding."
+            elif [[ -f "$log" ]] && grep -Eq '(^|[[:space:]])(ERROR|SUMMARY): (AddressSanitizer|UndefinedBehaviorSanitizer)' "$log"; then
+              echo "Result: sanitizer finding detected."
+            elif [[ -f "$log" ]] && grep -Eq "thread '.*' panicked at|panicked at" "$log"; then
+              echo "Result: non-sanitizer Rust or harness panic; inspect the log and artifact before classifying it as a memory-safety finding."
+            else
+              echo "Result: non-sanitizer target failure; inspect the log and artifact before classifying it as a memory-safety finding."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$FUZZ_OUTCOME" != "success" ]]; then
+            exit 1
+          fi
 
       - name: Upload fuzz artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-artifacts-${{ matrix.target }}
-          path: fuzz/artifacts/**
+          path: |
+            fuzz/artifacts/**
+            fuzz/logs/**
           if-no-files-found: ignore
           retention-days: 14

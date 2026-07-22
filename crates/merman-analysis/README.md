@@ -40,8 +40,10 @@ contracts with separate version constants. `AnalysisPayload` remains version 1. 
 `AnalysisFactsPayload` is the sole version 1 facts contract.
 
 Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
-not manufacture body semantic items. Every `semantic_items[]` entry includes the required
-`rename_policy` field so consumers can enforce the owning diagram family's identifier grammar.
+not manufacture body semantic items. Current writers include `rename_policy` on every
+`semantic_items[]` entry so consumers can enforce the owning diagram family's identifier grammar.
+Readers accept older v1 entries that omit this additive field and conservatively decode them as
+`"none"`; missing metadata must never enable a rename operation.
 
 Merman `0.8.0-alpha.3` exposed a superseded TextScan-capable alpha shape with the same numeric
 discriminator. That implementation is deleted: there is no legacy decoder, executor, deprecated

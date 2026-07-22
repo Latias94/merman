@@ -37,8 +37,7 @@ private fun smokeTextMeasurementResult(
     MermanTextMeasurementOperation.MEASURE,
     MermanTextMeasurementOperation.WRAPPED,
     MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS ->
-        MermanTextMeasureResult(
-            resultKind = MermanTextMeasurementResultKind.METRICS,
+        MermanTextMeasureResult.metrics(
             width = width,
             height = height,
             lineCount = 1,
@@ -50,37 +49,25 @@ private fun smokeTextMeasurementResult(
     MermanTextMeasurementOperation.TSPAN_BBOX_WIDTH,
     MermanTextMeasurementOperation.WRAP_PROBE_BBOX_WIDTH,
     MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH ->
-        MermanTextMeasureResult(
-            resultKind = MermanTextMeasurementResultKind.LENGTH,
-            length = width,
-        )
+        MermanTextMeasureResult.length(width)
     MermanTextMeasurementOperation.TSPAN_BBOX_HEIGHT,
     MermanTextMeasurementOperation.SIMPLE_BBOX_HEIGHT,
     MermanTextMeasurementOperation.RAW_BBOX_HEIGHT ->
-        MermanTextMeasureResult(
-            resultKind = MermanTextMeasurementResultKind.LENGTH,
-            length = height,
-        )
+        MermanTextMeasureResult.length(height)
     MermanTextMeasurementOperation.CREATE_TEXT_BBOX_Y_OFFSET,
     MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET ->
-        MermanTextMeasureResult(
-            resultKind = MermanTextMeasurementResultKind.LENGTH,
-            length = -1.0,
-        )
+        MermanTextMeasureResult.length(-1.0)
     MermanTextMeasurementOperation.BBOX_X,
     MermanTextMeasurementOperation.BBOX_X_WITH_ASCII_OVERHANG,
-    MermanTextMeasurementOperation.TITLE_BBOX_X -> MermanTextMeasureResult(
-        resultKind = MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
-        bboxLeft = width / 2.0,
-        bboxRight = width / 2.0,
+    MermanTextMeasurementOperation.TITLE_BBOX_X -> MermanTextMeasureResult.horizontalExtents(
+        left = width / 2.0,
+        right = width / 2.0,
     )
-    MermanTextMeasurementOperation.WRAPPED_WITH_RAW_WIDTH -> MermanTextMeasureResult(
-        resultKind = MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
+    MermanTextMeasurementOperation.WRAPPED_WITH_RAW_WIDTH -> MermanTextMeasureResult.wrappedWithRawWidth(
         width = width,
         height = height,
         lineCount = 1,
         rawWidth = width,
-        hasRawWidth = true,
     )
     else -> null
 }
@@ -91,6 +78,25 @@ fun runMermanSmoke() {
 
     check(textMeasurementOperations.contentEquals(IntArray(19) { it })) {
         "text measurement operation constants are not the contiguous ABI range 0..18"
+    }
+    check(
+        runCatching {
+            MermanTextMeasureResult.metrics(width = 42.0, height = 24.0, lineCount = 0)
+        }.exceptionOrNull() is IllegalArgumentException,
+    ) {
+        "metrics must reject a zero line count"
+    }
+    check(
+        runCatching { MermanTextMeasureResult.length(Double.NaN) }
+            .exceptionOrNull() is IllegalArgumentException,
+    ) {
+        "length must reject non-finite values"
+    }
+    check(
+        runCatching { MermanTextMeasureResult.horizontalExtents(left = -1.0, right = 21.0) }
+            .exceptionOrNull() is IllegalArgumentException,
+    ) {
+        "horizontal extents must reject negative dimensions"
     }
     check(
         smokeTextMeasurementResult(
@@ -204,6 +210,14 @@ fun runMermanSmoke() {
     }
     check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
+    }
+    val runtimeContractJson = MermanEngine.runtimeContractJson()
+    check(
+        runtimeContractJson.contains("\"schema_version\":1") &&
+            runtimeContractJson.contains("\"abi_version\":2") &&
+            runtimeContractJson.contains("\"general_binding_default_profile\":\"interactive\""),
+    ) {
+        "runtime contract smoke failed"
     }
     check(MermanEngine.lintRuleCatalogJson().contains("\"version\":1")) {
         "lint rule catalog envelope smoke failed"

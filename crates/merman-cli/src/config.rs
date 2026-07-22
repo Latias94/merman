@@ -150,8 +150,8 @@ pub(crate) fn renderer_for(
     let time = ResolvedCliTimePolicy::new(parse)?;
     let mut environment = RenderEnvironment::host()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
-        .with_resource_limits(merman::render::RenderResourceLimits::for_profile(
-            render.resource_profile.into(),
+        .with_resource_policy(merman::render::RenderResourcePolicy::for_profile(
+            render.resource_profile,
         ));
     if let Some(renderer) = math_renderer(render.math_renderer)? {
         environment = environment.with_math_renderer(renderer);

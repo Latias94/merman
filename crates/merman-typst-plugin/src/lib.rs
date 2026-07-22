@@ -115,7 +115,7 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Typst
 #[cfg(any(feature = "render", feature = "analysis"))]
 fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
     if options_json.is_empty() {
-        return br#"{"resources":{"profile":"typst-package"}}"#.to_vec();
+        return br#"{"resources":{"profile":"constrained"}}"#.to_vec();
     }
 
     let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(options_json) else {
@@ -126,7 +126,7 @@ fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
     };
     object.insert(
         "resources".to_string(),
-        serde_json::json!({ "profile": "typst-package" }),
+        serde_json::json!({ "profile": "constrained" }),
     );
     serde_json::to_vec(&value).expect("serde_json::Value serialization is infallible")
 }
@@ -180,11 +180,11 @@ mod tests {
     #[cfg(any(feature = "render", feature = "analysis"))]
     #[test]
     fn typst_resource_policy_replaces_caller_resource_options() {
-        let options = typst_options_json(br#"{"resources":{"max_source_bytes":4096}}"#);
+        let options = typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#);
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
-        assert_eq!(payload["resources"]["profile"], "typst-package");
-        assert!(payload["resources"].get("max_source_bytes").is_none());
+        assert_eq!(payload["resources"]["profile"], "constrained");
+        assert!(payload["resources"].get("limits").is_none());
     }
 
     #[cfg(any(feature = "render", feature = "analysis"))]
@@ -193,7 +193,7 @@ mod tests {
         let options = typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#);
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
-        assert_eq!(payload["resources"]["profile"], "typst-package");
+        assert_eq!(payload["resources"]["profile"], "constrained");
     }
 
     #[cfg(any(feature = "render", feature = "analysis"))]
@@ -202,18 +202,19 @@ mod tests {
         let options = typst_options_json(br#"{"resources":null}"#);
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
-        assert_eq!(payload["resources"]["profile"], "typst-package");
+        assert_eq!(payload["resources"]["profile"], "constrained");
     }
 
     #[cfg(any(feature = "render", feature = "analysis"))]
     #[test]
     fn null_resource_profile_cannot_bypass_the_typst_limits() {
-        let options =
-            typst_options_json(br#"{"resources":{"profile":null,"max_source_bytes":4096}}"#);
+        let options = typst_options_json(
+            br#"{"resources":{"profile":null,"limits":{"max_source_bytes":4096}}}"#,
+        );
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
-        assert_eq!(payload["resources"]["profile"], "typst-package");
-        assert!(payload["resources"].get("max_source_bytes").is_none());
+        assert_eq!(payload["resources"]["profile"], "constrained");
+        assert!(payload["resources"].get("limits").is_none());
     }
 
     #[cfg(feature = "render")]

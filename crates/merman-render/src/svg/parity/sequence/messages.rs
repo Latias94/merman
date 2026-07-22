@@ -303,9 +303,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
+            let label_start_x = p0.x.min(p1.x);
             let (label_x, label_anchor) = match ctx.message_align {
-                "right" => (p1.x - 10.0, "end"),
-                "left" => (p0.x + 10.0, "start"),
+                "right" => (label_start_x + bounded_width - ctx.wrap_padding, "end"),
+                "left" => (label_start_x + ctx.wrap_padding, "start"),
                 _ => (lbl.x, "middle"),
             };
             if let Some(katex) = sequence_katex_label(

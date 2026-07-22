@@ -1,9 +1,42 @@
-use crate::diagnostics::analysis_payload_to_diagnostics;
-use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticSeverity,
-    SourceDescriptor,
+use crate::client_profile::ClientProtocolProfile;
+use crate::diagnostics::{
+    analysis_payload_to_diagnostics, analysis_payload_to_diagnostics_with_profile,
 };
-use tower_lsp::lsp_types::{DiagnosticTag, NumberOrString, Url};
+use merman_analysis::{
+    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticRelated,
+    DiagnosticSeverity, SourceDescriptor, SourceMap,
+};
+use tower_lsp::lsp_types::{ClientCapabilities, DiagnosticTag, NumberOrString, Url};
+
+#[test]
+fn diagnostics_projection_omits_unnegotiated_extension_fields() {
+    let map = SourceMap::new("bad");
+    let span = map.whole_source_span().unwrap();
+    let diagnostic = AnalysisDiagnostic {
+        related: vec![DiagnosticRelated {
+            message: "related".to_string(),
+            span: Some(span.clone()),
+        }],
+        ..AnalysisDiagnostic::new(
+            "merman.compatibility.config.deprecated_test",
+            DiagnosticSeverity::Warning,
+            DiagnosticCategory::Config,
+            "deprecated option",
+        )
+        .with_span(span)
+    };
+    let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let profile = ClientProtocolProfile::negotiate(&ClientCapabilities::default());
+
+    let diagnostics = analysis_payload_to_diagnostics_with_profile(&payload, &uri, &profile);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].related_information.is_none());
+    assert!(diagnostics[0].tags.is_none());
+    assert!(diagnostics[0].code_description.is_none());
+    assert!(diagnostics[0].data.is_none());
+}
 
 #[test]
 fn diagnostics_projection_preserves_uri_and_message() {
@@ -120,7 +153,7 @@ fn class_and_er_parse_spans_project_to_lsp_diagnostics() {
 }
 
 #[test]
-fn diagnostics_projection_preserves_rule_metadata_in_data() {
+fn diagnostics_projection_exposes_identity_without_rule_metadata() {
     let payload = Analyzer::new().analyze("flowchart TD\nA-->B\n");
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
@@ -144,9 +177,12 @@ fn diagnostics_projection_preserves_rule_metadata_in_data() {
     let data = diagnostics[0].data.as_ref().expect("diagnostic data");
 
     assert_eq!(data["id"], "merman.test.info");
-    assert_eq!(data["category"], "config");
-    assert_eq!(data["diagramType"], "flowchart-v2");
-    assert_eq!(data["help"], "See rule docs.");
+    assert!(data.get("code").is_none());
+    assert!(data.get("codeName").is_none());
+    assert!(data.get("category").is_none());
+    assert!(data.get("diagramType").is_none());
+    assert!(data.get("help").is_none());
+    assert!(data.get("fixes").is_none());
 }
 
 #[test]

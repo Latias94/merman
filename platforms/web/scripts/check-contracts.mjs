@@ -13,6 +13,12 @@ const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
 const publicEntry = path.join(root, "src", "index.ts");
 const publicCatalog = path.join(root, "src", "public-catalog.ts");
 const publicTypes = path.join(root, "src", "public-types.ts");
+const generatedTokenDescriptor = path.join(
+  root,
+  "src",
+  "generated",
+  "token-descriptor.ts",
+);
 const surfaceRuntime = path.join(root, "src", "surface-runtime.ts");
 const surfaceEntries = surfaces.map((surface) => surface.entry);
 
@@ -107,9 +113,43 @@ const requiredTypeProperties = new Map([
     ],
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
+  ["ResourceOptions", ["profile", "limits"]],
   [
-    "ResourceOptions",
-    ["max_class_nodes", "max_class_edges", "max_class_namespaces"],
+    "RuntimeContract",
+    [
+      "schema_version",
+      "abi_version",
+      "package_version",
+      "options_schema_version",
+      "payload_schemas",
+      "features",
+      "registry",
+      "resources",
+    ],
+  ],
+  [
+    "RuntimeResourceContract",
+    [
+      "schema_version",
+      "general_binding_default_profile",
+      "cli_default_profile",
+      "limits",
+      "profiles",
+    ],
+  ],
+  [
+    "RuntimeResourceLimit",
+    ["id", "phase", "description", "overridable", "hard_cap"],
+  ],
+  [
+    "RuntimeResourceProfile",
+    [
+      "id",
+      "purpose",
+      "trust_assumption",
+      "recommended_binding_default",
+      "limits",
+    ],
   ],
   [
     "AsciiRenderOptions",
@@ -144,15 +184,14 @@ const requiredTypeStringLiterals = new Map([
       "parser_recovered",
     ],
   ],
+]);
+const exactTypeStringLiterals = new Map([
   [
     "AnalysisRenamePolicy",
-    [
-      "none",
-      "identifier",
-      "qualified_identifier",
-      "event_modeling_id",
-      "event_modeling_frame_id",
-    ],
+    contract.exportedStringLiteralMembers(
+      generatedTokenDescriptor,
+      "EditorRenamePolicy",
+    ),
   ],
 ]);
 const requiredTypePropertyTypes = [
@@ -225,6 +264,22 @@ for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
   failed ||= reportMissing(
     `check-contracts: ${typeName} is missing required string members`,
     requiredLiterals.filter((literal) => !literals.has(literal)),
+  );
+}
+
+for (const [typeName, expectedLiterals] of exactTypeStringLiterals) {
+  const literals = contract.exportedStringLiteralMembers(publicEntry, typeName);
+  failed ||= reportPolicyFailure(
+    `check-contracts: ${typeName} must be a closed generated string-literal union`,
+    !contract.exportedTypeIsStringLiteralUnion(publicEntry, typeName),
+  );
+  failed ||= reportMissing(
+    `check-contracts: ${typeName} is missing generated string members`,
+    difference(expectedLiterals, literals),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: ${typeName} has members outside the generated contract`,
+    difference(literals, expectedLiterals),
   );
 }
 

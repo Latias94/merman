@@ -33,6 +33,7 @@ export const {
   getMerman,
   isMermanInitialized,
   bindingCapabilities,
+  runtimeContract,
   selectedRegistryProfile,
   supportedDiagrams,
   diagramFamilyCapabilities,

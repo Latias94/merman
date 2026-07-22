@@ -157,13 +157,6 @@ export function createMermaidRealmController({
     }
 
     const activeSession = session;
-    try {
-      await activeSession.setViewport(input.viewport);
-    } catch (error) {
-      disposeSession();
-      return failure("presentation", error);
-    }
-
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let operationTimedOut = false;
     const timeoutFailure = failure(
@@ -181,7 +174,18 @@ export function createMermaidRealmController({
       }, operationTimeoutMs);
     });
 
+    let failureStage: CompareFailureStage = "presentation";
     try {
+      const viewportResult = await Promise.race([
+        activeSession.setViewport(input.viewport),
+        cancellation.promise,
+        timedOut,
+      ]);
+      if (viewportResult !== undefined) {
+        return viewportResult;
+      }
+
+      failureStage = "protocol";
       const result = await Promise.race([
         activeSession.render(input, requestId),
         cancellation.promise,
@@ -202,7 +206,7 @@ export function createMermaidRealmController({
       disposeActiveSession(activeSession);
       if (operationTimedOut) return timeoutFailure;
       return failure(
-        error instanceof RealmTimeoutError ? "timeout" : "protocol",
+        error instanceof RealmTimeoutError ? "timeout" : failureStage,
         error
       );
     } finally {

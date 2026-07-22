@@ -88,6 +88,65 @@ use util::{
     theme_token,
 };
 
+/// Converts arbitrary host input into the single conservative SVG id grammar used by every
+/// family renderer.
+pub fn sanitize_svg_id(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "m-untitled".to_string();
+    }
+
+    let mut iter = raw.chars();
+    let Some(first_raw) = iter.next() else {
+        return "m-untitled".to_string();
+    };
+
+    let sanitize_char = |ch: char| {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':' | '.') {
+            ch
+        } else {
+            '-'
+        }
+    };
+    let first = sanitize_char(first_raw);
+    let mut out = String::with_capacity(raw.len() + 2);
+    let mut previous_was_dash = false;
+
+    if !first.is_ascii_alphabetic() {
+        out.push('m');
+        if first != '-' {
+            out.push('-');
+            previous_was_dash = true;
+        }
+    }
+
+    let push = |ch: char, out: &mut String, previous_was_dash: &mut bool| {
+        if ch == '-' {
+            if *previous_was_dash {
+                return;
+            }
+            *previous_was_dash = true;
+        } else {
+            *previous_was_dash = false;
+        }
+        out.push(ch);
+    };
+
+    push(first, &mut out, &mut previous_was_dash);
+    for ch in iter {
+        push(sanitize_char(ch), &mut out, &mut previous_was_dash);
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+
+    if out.is_empty() || out == "m" {
+        "m-untitled".to_string()
+    } else {
+        out
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.
@@ -101,6 +160,15 @@ impl Default for SvgRenderOptions {
         Self {
             viewbox_padding: 8.0,
             diagram_id: None,
+        }
+    }
+}
+
+impl SvgRenderOptions {
+    pub(crate) fn normalized(&self) -> Self {
+        Self {
+            viewbox_padding: self.viewbox_padding,
+            diagram_id: self.diagram_id.as_deref().map(sanitize_svg_id),
         }
     }
 }
@@ -178,14 +246,26 @@ impl<'a> SvgExecution<'a> {
         self.session.seed().seed().get()
     }
 
+    pub(crate) const fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
+        self.session.resource_policy()
+    }
+
     fn effective_config_value<'b>(
         &self,
         effective_config: &'b serde_json::Value,
     ) -> Cow<'b, serde_json::Value> {
         let configured = effective_config
             .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_u64);
-        if configured.is_some_and(|seed| seed != 0) {
+            .and_then(serde_json::Value::as_f64);
+        let replacement = match configured {
+            Some(seed) if seed != 0.0 => u64::from(javascript_to_uint32(seed)),
+            _ => self.seed(),
+        };
+        if effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_u64)
+            == Some(replacement)
+        {
             return Cow::Borrowed(effective_config);
         }
         let Some(object) = effective_config.as_object() else {
@@ -194,7 +274,7 @@ impl<'a> SvgExecution<'a> {
         let mut object = object.clone();
         object.insert(
             "handDrawnSeed".to_string(),
-            serde_json::Value::Number(self.seed().into()),
+            serde_json::Value::Number(replacement.into()),
         );
         Cow::Owned(serde_json::Value::Object(object))
     }
@@ -208,6 +288,13 @@ impl<'a> SvgExecution<'a> {
             Cow::Owned(value) => Cow::Owned(merman_core::MermaidConfig::from_value(value)),
         }
     }
+}
+
+fn javascript_to_uint32(value: f64) -> u32 {
+    if !value.is_finite() || value == 0.0 {
+        return 0;
+    }
+    value.trunc().rem_euclid(4_294_967_296.0) as u32
 }
 
 impl std::ops::Deref for SvgExecution<'_> {
@@ -549,5 +636,25 @@ mod operation_time_tests {
         let execution = SvgExecution::new(&request, &debug, &session);
 
         assert_eq!(execution.unix_ms(), session.time().unix_ms());
+    }
+
+    #[test]
+    fn svg_execution_normalizes_nonzero_hand_drawn_seeds_like_javascript() {
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .expect("begin render session");
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session);
+
+        for (seed, expected) in [
+            (serde_json::json!(-1), u64::from(u32::MAX)),
+            (serde_json::json!(1.75), 1),
+            (serde_json::json!(4_294_967_297_u64), 1),
+        ] {
+            let config = serde_json::json!({ "handDrawnSeed": seed });
+            let effective = execution.effective_config_value(&config);
+            assert_eq!(effective["handDrawnSeed"].as_u64(), Some(expected));
+        }
     }
 }

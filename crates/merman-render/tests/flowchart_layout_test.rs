@@ -22,7 +22,7 @@ fn layout_flowchart_render_model(
 ) -> merman_render::Result<FlowchartLayout> {
     let model = flowchart_model(parsed);
     session
-        .resource_limits()
+        .resource_policy()
         .check_flowchart_complexity(model)?;
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"

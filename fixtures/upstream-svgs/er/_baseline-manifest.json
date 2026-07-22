@@ -1,17 +1,44 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "mermaid_version": "11.16.0",
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "c2bafdce0ea92dfb1be2f0c04af15ba631767e4f04eb66a482c83b79a713838b",
-    "package_lock_sha256": "a31d2880cdc0e38a5158165f50da99ebca0dde8d177bcea5329d0e1c0d523f23",
+    "package_json_sha256": "4966c730e449d114b8f8e37a22cb47fe0647920761eaecd6f18de8fa0756ed42",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v2"
+    "renderer_revision": "xtask-upstream-svg-v3"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
@@ -32,7 +59,7 @@
     },
     "stress_er_font_size_precedence_001": {
       "input_sha256": "a42a3c7121f5d193c89d06f421961b543b62834a3cc963f8e2a445ebaceada41",
-      "svg_sha256": "e66df5912a27afa44d21ce56327cd3292ebe9b2655a5dcfae562054959c0b1c3",
+      "svg_sha256": "6e57188dd682a68ecd67f21b9c6ce825e2df42213dc551741e44c721cdf3234c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_accessibility_multiline_spec": {
@@ -47,12 +74,12 @@
     },
     "upstream_attribute_blocks_whitespace_spec": {
       "input_sha256": "a7a0db881dec700cb321de0cc141d63d5833a80cf535cd388fda56e7baa41c04",
-      "svg_sha256": "6f09bb39bc8fa5973fb6ca4fc496a0bf7c5069ab24628c91e315cd7166cf8633",
+      "svg_sha256": "c69f923e151c20a56e243b6a6d3f232b5fa48e18a01548dc4a212e465833b36d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_attributes_styles_classes": {
       "input_sha256": "f7fd1a19efb3305a82a3f435f8a0f30dcd11ad04c42fc827691f6984b1322f5e",
-      "svg_sha256": "6142aba5609e6734fd57f42c17af01a58138c1d53ec5aa5c6f4f9479d09c699c",
+      "svg_sha256": "938520bd4cd87150138a9d13a24c8a8b8a3aaba8ea41e6253d6d6960ddf4209f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009": {
@@ -62,7 +89,7 @@
     },
     "upstream_cypress_erdiagram_spec_has_a_label_with_char_sequence_graph_012": {
       "input_sha256": "9801760458c453f3d130531dcaf3e9614221706a0f1b282001161ea94b59f8c5",
-      "svg_sha256": "9d55721417ce1e4fa43b4e8dfb5cfa7db13c5ae5d64707d40ff476100a23c16f",
+      "svg_sha256": "165b8665d148fb159e843b42eb4096516b26c387e39a11b855b25c73c466da8f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_spec_should_render_a_cyclical_er_diagram_004": {
@@ -97,17 +124,17 @@
     },
     "upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019": {
       "input_sha256": "3fe6711f9b8215704807e5143fd5e6647a958278ccb3ada275192a103c0b8a8c",
-      "svg_sha256": "eb66f17ca1cf32a21cc4687a97479904238b26bb9e48e00eef7788b80f4b4e2b",
+      "svg_sha256": "5512867290b15405d7e09010bcad24d3bda19410a596402328bb6423f95bdba9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_spec_should_render_entities_with_attributes_that_begin_with_asterisk_008": {
       "input_sha256": "207d619a4e27aa24b5015a8c47a09ce0902124fe61db5cd18822266d5f9cb81e",
-      "svg_sha256": "8c4d8f629edba400691307369251460ea74b381b2721a158212425975f70a455",
+      "svg_sha256": "c639610c5bf16e504d99b9308125c446f4a9aa0f52a77e329efd6dee797724aa",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_spec_should_render_entities_with_entity_name_aliases_010": {
       "input_sha256": "5566ad25d68c3107d204b59d397f5f6e949e5d9b3c6a3589c4a076dfce3bfe8b",
-      "svg_sha256": "8672b0fd0faeef17c5067112be7fe9f80fbbff97a68c84eec86887e1e4ddf70b",
+      "svg_sha256": "22d0b27ca5998794cdf100990b1f2877acf7cf32c8664b19309644c8d3e6390d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020": {
@@ -127,12 +154,12 @@
     },
     "upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011": {
       "input_sha256": "1ed001aeb61e286b8a8f869877fc410453e18b77f1601a482b6372bb26d2bb21",
-      "svg_sha256": "b4caaaa248c0ba83f55e434baec2f6723b084bed8bc883126f7d689d64c0df8b",
+      "svg_sha256": "0fbae86bb6fa48f35934ddd626db0f10e85915ed9a3c7110a0b06f740d568baf",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_erdiagram_unified_spec_example_014": {
       "input_sha256": "287f2ee92065b1e326dcfb65b31d83b39a454165713f548b8d7b65edbd4afb15",
-      "svg_sha256": "3f63acc25e4df49ba7fff96df68a1aa34e314a83e86ea99d8cef01a592cf6d90",
+      "svg_sha256": "6b59121fb81163d6d1425a150d4ce6ef75db22777bb6b5b6cfd8a812cdac3819",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_theme_spec_should_render_a_er_diagram_005": {
@@ -152,42 +179,42 @@
     },
     "upstream_docs_entityrelationshipdiagram_attribute_keys_and_comments_020": {
       "input_sha256": "0bce57d423be8f2e4dc0d127a4ad45f7ac77f4447c0cde4da9e4993f80833ecf",
-      "svg_sha256": "82145b543d540fa3214c2e2df25c07b23309e096f0bdd568f89f37cf063ff8b4",
+      "svg_sha256": "df25a35e72733501916b1dab9957c07521a42a036aef391eb1d0e9fd5d54538c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_attributes_015": {
       "input_sha256": "38d6e4a4399d6bef178dd6d0bd0fe1ce0abb141f33a33c09bdef37c6c6edb8bb",
-      "svg_sha256": "266506446b9d2d9c6ad09725b4297e72eb6abf9afd74bc01eaffde2d89072bd4",
+      "svg_sha256": "a5a0a2660ec397cebe586f230a31e4098a7ead0702d127607382123e55ad76b5",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_classes_034": {
       "input_sha256": "685e5730a5e743fa0fecfbddd1fb0af0ca4354d6981d21a62bebad0a53604151",
-      "svg_sha256": "a5cff383b1ca4a2bcb00ebe1b8f243babe06bf5470714a4784226f92d7dc94f3",
+      "svg_sha256": "d83e3e0cdf2f6184665da5d548965c1d8b372f4f86bd9a4f91a13cc0ab9c9c61",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_classes_036": {
       "input_sha256": "cd17cfb2345a33fbc8360bcaacc9ea2ed7ebb273293691416cff75824273c3ed",
-      "svg_sha256": "117534e61f32ad211e829d69583507133f5ce595305f253c317b41115504175b",
+      "svg_sha256": "154357b51b7bc45f75b3d1c8f5b186dc9636b45dfda6648aad9e17e7c77751d9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_default_class_025": {
       "input_sha256": "1838b7a479e5110008e068a1f1f4ef1cb1f2b5629ec2101180e5370cc4d223cf",
-      "svg_sha256": "b97c8d1e49eb11d93cf12213238f25e66ae02585c6c2de41190cfaf9f12792c1",
+      "svg_sha256": "8e92359a6bb7769ce0d5c9331482ff7792dd9818553b8c5c5773300a422e3969",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_direction_012": {
       "input_sha256": "84744d9ec428f780102ec75a15ff6362d8ac7a275046846abbe53e3c761a68a3",
-      "svg_sha256": "0cc2a762b53addf1f50934647b5c3f2d83d62eee24777216c8b52cc1103a87ab",
+      "svg_sha256": "f2dd94c7488a609377ab9f44ec150c27d44be641a646ecde2b193d37fc430e76",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_direction_013": {
       "input_sha256": "4accb2527f09e89b73929bc3250671e1dfed23c48b027d7f3dc5bea7a80f839a",
-      "svg_sha256": "4eabb8afe224534cf25babfa5c9efaa55db5308003efa29bcdc07dd1ed418b20",
+      "svg_sha256": "0e78352509afd5fa8fafbbf9c866922f31454698efe0407ca3ce0052abd92ea3",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_entity_name_aliases_017": {
       "input_sha256": "48baec41314cb4f555a1cf7e444450a6bf0928bc615fff065b2651bacaf98004",
-      "svg_sha256": "0bcadf4732c4dc052794951f97dbf9aa99bf99e11dafddf0cea58f308e240fa2",
+      "svg_sha256": "4b00205f97896583f98b461e5f3ea4bdc2f90f8fb5f3fcb1fc74b3ae578238f4",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_001": {
@@ -197,7 +224,7 @@
     },
     "upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_004": {
       "input_sha256": "421f7b70668e1fe69e7b60664dc713d1e5ee3cd39cfbcab8feb709e15ddd59ab",
-      "svg_sha256": "4538bd032cf47b9e3809f5e2a7a3337d265c1967b64161e5f39adf88988234df",
+      "svg_sha256": "a21202eaf4010d4afe2662c868ebc652a54c89bbe09ad651b254efcb0e4fae58",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_entityrelationshipdiagram_identification_011": {
@@ -227,7 +254,7 @@
     },
     "upstream_docs_entityrelationshipdiagram_unicode_text_007": {
       "input_sha256": "99e1dfb4c158699e33a425420c1e9f3c85fa63c0c2274e46ee393970416065fc",
-      "svg_sha256": "457a3c924bd222ed65bfac9facd539ad558919f06763f5722493985d392dcf4a",
+      "svg_sha256": "fe4480664b608b2f2d04301df0126da8a0763a1a5b10eed0f646f0396ae70a6a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_examples_entity_relationship_diagram_exclamation_experimental_syntax_enti_006": {
@@ -242,52 +269,52 @@
     },
     "upstream_examples_er_basic_er_schema_001": {
       "input_sha256": "6c6ecac0afe2cceeee625456fbbc7037b06c911fbb59609850d914bb6ae1cead",
-      "svg_sha256": "17239f5d2f8178f91c4c98e1cd9160e36f955b8a5a28611c01bc78943360dad6",
+      "svg_sha256": "893988a3ebf863ffb0efe3d73516b1c0639c62bdce682d01508b6ae5f04fd95d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_001": {
       "input_sha256": "3b806a39bd49cc2079fc54167f0ab9d8fe78df64160e142f7f089d827136e5b7",
-      "svg_sha256": "529a01eba131653913db10c115c57a50fff280b71416afaafd9ff311cbd41f54",
+      "svg_sha256": "78b730b42dcf382ebde2ca5ab63200559003e5324af358823d9a539065d8eb0a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_002": {
       "input_sha256": "276ca1c448e447e6c45eae9d5b67cd55568c84e1240f24ad689701015fe15f91",
-      "svg_sha256": "a37bc5d1454edacc1d9e32ffc86192c92f279abc49638a5e8b61c5dec5e85f0a",
+      "svg_sha256": "8a0b874455bb8696faef8a045cf51167e9f592097db7e46dd8168a32f6221965",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_003": {
       "input_sha256": "0a04ab394b8f9c2815e3813191c7e4f760f93fcd61a7f7d053617ebc2321ca40",
-      "svg_sha256": "7bdf87009dddf156945179f3ab6046b28221e3a5679b071c623125dd1e9f9710",
+      "svg_sha256": "899e853b292bb7b3abdc379eb8fd05d33ec77556eddbdf2913a8ff0a1b3aeb50",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_004": {
       "input_sha256": "d0c169e5daacb8165a6a97bce2b5a3717069bdb05c0edcbea234cd0bd7a91826",
-      "svg_sha256": "2b8042a0318882d8a199260bc24c056951df7ccb22fdebb03f585831310ac340",
+      "svg_sha256": "2d8a7b321313dc4cb8adc7a859b87270395604664e9db654334fc06c87bcb04d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_005": {
       "input_sha256": "ee3063c099c7c1edabbe884dfe42390ce91d82fed12fa079f52d48662deb33d1",
-      "svg_sha256": "9eac3159219eb2fad080b3eefbeb278fc8bee59bc608d0574d3be583531a596f",
+      "svg_sha256": "2f3b8abc253243c11d917726be5f184bec3aba63cae945daaf3ed7add8c95c75",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_006": {
       "input_sha256": "5b56a64ee740fc22146d0d369d21a22a4b1998a91bcf4199b4b21b07de41dbaf",
-      "svg_sha256": "ce203b49713d8a3576d9fb9cdd6ba90851b86c5fee29e7057a8802d107e4afad",
+      "svg_sha256": "2aa3a4b8d3b0a8df4c5ef40ed1e8a532c23c81b82455aa83b94a0b3476995acb",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_example_007": {
       "input_sha256": "dd02aeaec5233a62626e7d67ef924c610601550ac587bd23dd8f3464b54d0f58",
-      "svg_sha256": "6c0dd221ff423c6053cc11b91e00436654659dca3b288e20d9e519e181be4b4d",
+      "svg_sha256": "234584ddc0cf6df1aba29fe2ece390eec535e15c20a77b6f3b2f226026851732",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_multiline_example_001": {
       "input_sha256": "28470cd172032a45c3d4ce115f187949c89418d889566d00be600bf2bc72b4f3",
-      "svg_sha256": "99c3f7867a03c9a163e791f511de82594f9c00fabfad2f619012accc424454e6",
+      "svg_sha256": "539adca08f637381ca14fe17d7bb0835058a719e9ad4c60d349de92f0db2343d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_er_multiline_example_002": {
       "input_sha256": "fd1d93920d33968de20c1afc4806eef0a8ac2050cae7196fe2ed11614f34d96c",
-      "svg_sha256": "17f790d33d62c6eb1cd0cb419cc578ed82bb34f4581776f9d631dfe4725b287f",
+      "svg_sha256": "3a387b602f2b87ada7fdd284b9ec624801d940d671e58487f4c4092218b1969a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_error_example_001": {
@@ -297,7 +324,7 @@
     },
     "upstream_pkgtests_diagram_orchestration_spec_004": {
       "input_sha256": "2e7a2df67252b23e0feb3b3c1775bce3971fabf394caa715b81059201b4946a4",
-      "svg_sha256": "3c276e45a5ed4457b5681a3fe6aabbdfb0b29abede3b1ae62b165cb4ca55b6a3",
+      "svg_sha256": "152e3cced26effd5a95b108f932d51aad7fe3b5816924c5838a4896bfa9d4764",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_diagram_orchestration_spec_030": {
@@ -517,7 +544,7 @@
     },
     "zed_pr_57644_er": {
       "input_sha256": "1a350285bcbe7dcf4b31317aaec118b97660e016f8be586a47ce4a15882c7655",
-      "svg_sha256": "7ead722f0736aab9fb3d71bb995ca3f1529e0e263802880a44c58f3370f13f44",
+      "svg_sha256": "b448f76304214e3e18c27514ec87ef81be04de3cb8b4fbc332d02ffa0a207710",
       "renderer_profile": "mmdc-default"
     }
   },

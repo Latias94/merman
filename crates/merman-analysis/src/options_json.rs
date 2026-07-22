@@ -7,6 +7,7 @@ use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 
@@ -20,20 +21,10 @@ pub struct AnalysisOptionsJson {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResourceOptionsJson {
-    pub profile: Option<String>,
-    pub max_source_bytes: Option<usize>,
-    pub max_svg_bytes: Option<usize>,
-    pub max_flowchart_nodes: Option<usize>,
-    pub max_flowchart_edges: Option<usize>,
-    pub max_flowchart_subgraphs: Option<usize>,
-    pub max_class_nodes: Option<usize>,
-    pub max_class_edges: Option<usize>,
-    pub max_class_namespaces: Option<usize>,
-    pub max_zenuml_participants: Option<usize>,
-    pub max_zenuml_statements: Option<usize>,
-    pub max_zenuml_fragments: Option<usize>,
-    pub max_label_bytes: Option<usize>,
+    #[serde(default)]
+    pub limits: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,11 +170,24 @@ impl AnalysisOptionsJson {
     }
 
     pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
-        let max_source_bytes = self
-            .resources
-            .as_ref()
-            .and_then(|resources| resources.max_source_bytes)
-            .filter(|max_source_bytes| *max_source_bytes > 0);
+        let Some(resources) = self.resources.as_ref() else {
+            return Ok(None);
+        };
+        if let Some(unknown) = resources
+            .limits
+            .keys()
+            .find(|id| id.as_str() != "max_source_bytes")
+        {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "unknown analysis resource limit id: {unknown}"
+            )));
+        }
+        let max_source_bytes = resources.limits.get("max_source_bytes").copied();
+        if max_source_bytes == Some(0) {
+            return Err(AnalysisOptionsJsonError::new(
+                "resources.limits.max_source_bytes must be a positive integer",
+            ));
+        }
         Ok(max_source_bytes)
     }
 
@@ -606,28 +610,23 @@ mod tests {
     }
 
     #[test]
-    fn shared_analysis_options_json_treats_zero_source_limit_as_default() {
+    fn shared_analysis_options_json_requires_positive_source_limit_values() {
         let zero = serde_json::json!({
             "analysis": {
                 "resources": {
-                    "max_source_bytes": 0
+                    "limits": { "max_source_bytes": 0 }
                 }
             }
         });
         let positive = serde_json::json!({
             "analysis": {
                 "resources": {
-                    "max_source_bytes": 1024
+                    "limits": { "max_source_bytes": 1024 }
                 }
             }
         });
 
-        assert_eq!(
-            analysis_options_from_json_value(&zero)
-                .unwrap()
-                .max_source_bytes,
-            None
-        );
+        assert!(analysis_options_from_json_value(&zero).is_err());
         assert_eq!(
             analysis_options_from_json_value(&positive)
                 .unwrap()
@@ -646,7 +645,7 @@ mod tests {
             },
             "analysis": {
                 "resources": {
-                    "max_source_bytes": 1024
+                    "limits": { "max_source_bytes": 1024 }
                 }
             }
         });
@@ -664,7 +663,7 @@ mod tests {
     fn shared_analysis_options_json_rejects_mixed_direct_and_namespaced_options() {
         let mixed = serde_json::json!({
             "resources": {
-                "max_source_bytes": 1024
+                "limits": { "max_source_bytes": 1024 }
             },
             "analysis": {
                 "lint": {

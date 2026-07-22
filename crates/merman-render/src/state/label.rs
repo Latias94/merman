@@ -33,6 +33,9 @@ fn escape_xml_attribute(value: &str) -> String {
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());
     for ch in decoded.chars() {
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),

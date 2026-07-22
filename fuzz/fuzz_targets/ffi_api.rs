@@ -16,6 +16,8 @@ use merman_ffi::{
     merman_render_ascii, merman_render_svg, merman_result_struct_size,
     merman_supported_diagrams_json, merman_supported_host_theme_presets_json,
     merman_supported_themes_json, merman_validate_json,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH,
 };
 use std::ptr;
 
@@ -24,8 +26,9 @@ const MAX_OPTIONS_BYTES: usize = 256;
 const MERMAN_OK: i32 = 0;
 const MERMAN_PANIC: i32 = 8;
 
-const FIXED_OPTIONS: &[u8] = br#"{"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_flowchart_nodes":256,"max_flowchart_edges":512,"max_flowchart_subgraphs":64,"max_class_nodes":256,"max_class_edges":512,"max_class_namespaces":64,"max_label_bytes":65536}}"#;
-const MALFORMED_OPTIONS: &[u8] = br#"{"resources":{"max_source_bytes":"bad"}}"#;
+const FIXED_OPTIONS: &[u8] = br#"{"version":1,"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"limits":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_flowchart_nodes":256,"max_flowchart_edges":512,"max_flowchart_subgraphs":64,"max_class_nodes":256,"max_class_edges":512,"max_class_namespaces":64,"max_label_bytes":65536}}}"#;
+const MALFORMED_OPTIONS: &[u8] =
+    br#"{"version":1,"resources":{"limits":{"max_source_bytes":"bad"}}}"#;
 const DEFAULT_URI: &[u8] = b"file:///fuzz.mmd";
 
 fuzz_target!(|data: &[u8]| {
@@ -343,10 +346,36 @@ unsafe extern "C" fn fuzz_measure_text(
     let width = (text.len().min(1024) as f64 * font_size * 0.5).max(font_size);
     let height = font_size * 1.25;
 
+    let Some(&result_kind) = usize::try_from(request.operation)
+        .ok()
+        .and_then(|operation| MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS.get(operation))
+    else {
+        return MermanHostTextMeasureResult {
+            handled: 0,
+            has_raw_width: 0,
+            result_kind: 0,
+            width: 0.0,
+            height: 0.0,
+            length: 0.0,
+            bbox_left: 0.0,
+            bbox_right: 0.0,
+            raw_width: 0.0,
+            line_count: 0,
+        };
+    };
+
     MermanHostTextMeasureResult {
         handled: 1,
+        has_raw_width: u8::from(
+            result_kind == MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH,
+        ),
+        result_kind,
         width,
         height,
+        length: width,
+        bbox_left: width / 2.0,
+        bbox_right: width / 2.0,
+        raw_width: width,
         line_count: 1,
     }
 }

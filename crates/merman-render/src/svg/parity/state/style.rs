@@ -685,50 +685,8 @@ pub(super) fn state_node_label_html_with_style(
     )
 }
 
-fn state_is_valid_html_entity(entity: &str) -> bool {
-    if entity.is_empty() {
-        return false;
-    }
-    if let Some(hex) = entity
-        .strip_prefix("#x")
-        .or_else(|| entity.strip_prefix("#X"))
-    {
-        return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-    }
-    if let Some(dec) = entity.strip_prefix('#') {
-        return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-    }
-    let mut it = entity.chars();
-    let Some(first) = it.next() else {
-        return false;
-    };
-    if !first.is_ascii_alphabetic() {
-        return false;
-    }
-    it.all(|c| c.is_ascii_alphanumeric())
-}
-
 fn state_escape_amp_preserving_entities(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut i = 0usize;
-    while let Some(rel) = raw[i..].find('&') {
-        let amp = i + rel;
-        out.push_str(&raw[i..amp]);
-        let tail = &raw[amp + 1..];
-        if let Some(semi_rel) = tail.find(';') {
-            let semi = amp + 1 + semi_rel;
-            let entity = &raw[amp + 1..semi];
-            if state_is_valid_html_entity(entity) {
-                out.push_str(&raw[amp..=semi]);
-                i = semi + 1;
-                continue;
-            }
-        }
-        out.push_str("&amp;");
-        i = amp + 1;
-    }
-    out.push_str(&raw[i..]);
-    out
+    crate::xml::normalize_html_entities_for_xml(raw).into_owned()
 }
 
 fn state_normalize_br_tags(raw: &str) -> String {

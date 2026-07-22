@@ -161,8 +161,50 @@ describe("language intelligence adoption", () => {
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.minimum, -1439);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.maximum, 1439);
     assert.equal(properties["merman.analysis.site_config"]?.type, "object");
-    assert.equal(properties["merman.analysis.resources.max_source_bytes"]?.type, "integer");
-    assert.equal(properties["merman.analysis.resources.max_source_bytes"]?.minimum, 0);
+    assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.type, "integer");
+    assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.minimum, 0);
+  });
+
+  it("does not advertise resource overrides for settings consumed as one global profile", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration:
+          | {
+              properties: Record<string, { scope?: string }>;
+            }
+          | Array<{
+              properties: Record<string, { scope?: string }>;
+            }>;
+      };
+    };
+    const properties = configurationProperties(pkg.contributes.configuration);
+    const globalProfileSettings = [
+      "merman.languageIntelligence.enabled",
+      "merman.diagnostics.enabled",
+      "merman.analysis.fixed_today",
+      "merman.analysis.fixed_local_offset_minutes",
+      "merman.analysis.site_config",
+      "merman.analysis.resources.limits.max_source_bytes",
+      "merman.analysis.lint.profile",
+      "merman.analysis.lint.enable_rules",
+      "merman.analysis.lint.disable_rules",
+      "merman.analysis.lint.rule_severities",
+      "merman.preview.diagramTheme",
+      "merman.preview.displayMode",
+      "merman.preview.background",
+    ];
+
+    for (const setting of globalProfileSettings) {
+      assert.equal(properties[setting]?.scope, "window", setting);
+    }
+    assert.equal(
+      properties["merman.analysis.parse.suppress_errors"],
+      undefined,
+      "removed analysis settings must not be advertised again",
+    );
+    assert.equal(properties["merman.sourceActions.enabled"]?.scope, "resource");
   });
 
   it("declares preview defaults in the native settings schema", () => {
@@ -199,7 +241,7 @@ describe("language intelligence adoption", () => {
       "transparent",
       "dark",
     ]);
-    assert.equal(properties["merman.preview.background"]?.scope, "resource");
+    assert.equal(properties["merman.preview.background"]?.scope, "window");
   });
 
   it("groups settings by LSP-style product areas", () => {

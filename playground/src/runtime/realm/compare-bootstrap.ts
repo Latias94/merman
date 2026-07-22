@@ -1,6 +1,7 @@
 import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
+  RealmBudgetError,
   RealmProtocolError,
   assertEncodedMessageBudget,
   createOneTimeRealmInitGate,
@@ -10,6 +11,7 @@ import {
   validateRealmHello,
   type CompareFailureStage,
   type CompareOperationStage,
+  type CompareRenderResponse,
   type RealmBootIdentity,
   type RealmEngineArtifactIdentity,
   type RealmIdentity,
@@ -49,7 +51,7 @@ export async function startCompareRealm(
         init.engineArtifact,
         validateCompareEngineModule
       );
-      servePort(event.ports[0], init, loadEngine);
+      serveCompareRealmPort(event.ports[0], init, loadEngine);
     } catch {
       for (const port of event.ports) port.close();
       window.removeEventListener("message", onInit);
@@ -68,7 +70,7 @@ export async function startCompareRealm(
   window.parent.postMessage(hello, "*");
 }
 
-function servePort(
+export function serveCompareRealmPort(
   port: MessagePort,
   init: RealmIdentity,
   loadEngine: () => Promise<CompareEngineModule>
@@ -89,26 +91,64 @@ function servePort(
   let outgoingSequence = 0;
   let closed = false;
 
-  const post = (message: unknown) => {
-    if (closed) return;
+  const post = (message: unknown): void => {
+    if (closed) {
+      throw new RealmProtocolError("Compare realm transport is closed.");
+    }
     assertEncodedMessageBudget(message);
     port.postMessage(message);
   };
-  const postValidated = (message: unknown) => {
-    if (!closed) port.postMessage(message);
+  const postSequenced = (sequence: number, message: unknown): void => {
+    if (sequence !== outgoingSequence + 1) {
+      throw new RealmProtocolError("Compare realm response sequence is invalid.");
+    }
+    if (closed) {
+      throw new RealmProtocolError("Compare realm transport is closed.");
+    }
+    port.postMessage(message);
+    outgoingSequence = sequence;
   };
   const fatal = (error: unknown) => {
     if (closed) return;
-    outgoingSequence += 1;
-    post({
-      type: "realm-fatal",
-      protocol: REALM_PROTOCOL_VERSION,
-      ...identity,
-      sequence: outgoingSequence,
-      message: boundedErrorMessage(error),
-    });
-    closed = true;
-    port.close();
+    const sequence = outgoingSequence + 1;
+    try {
+      const message = {
+        type: "realm-fatal",
+        protocol: REALM_PROTOCOL_VERSION,
+        ...identity,
+        sequence,
+        message: boundedErrorMessage(error),
+      };
+      assertEncodedMessageBudget(message);
+      postSequenced(sequence, message);
+    } catch {
+      // Closing the transport is the only remaining fail-closed action.
+    } finally {
+      closed = true;
+      port.close();
+    }
+  };
+  const postFailure = (requestId: string, error: unknown): void => {
+    const sequence = outgoingSequence + 1;
+    const stage = error instanceof RealmOperationError ? error.stage : "render";
+    const projection =
+      error instanceof RealmOperationError ? error.error : projectError(error);
+    const response = validateCompareRenderResponse(
+      {
+        type: "render-failure",
+        protocol: REALM_PROTOCOL_VERSION,
+        ...identity,
+        sequence,
+        requestId,
+        stage,
+        message: projection.summary,
+        detail: projection.detail,
+      },
+      identity,
+      sequence,
+      requestId
+    );
+    postSequenced(sequence, response);
   };
 
   port.onmessageerror = () => fatal("Realm port could not clone a message.");
@@ -131,48 +171,56 @@ function servePort(
     void queue
       .enqueue(async () => {
         const reportStage = (stage: CompareOperationStage) => {
-          outgoingSequence += 1;
-          post({
+          const sequence = outgoingSequence + 1;
+          const message = {
             type: "render-progress",
             protocol: REALM_PROTOCOL_VERSION,
             ...identity,
-            sequence: outgoingSequence,
+            sequence,
             requestId: request.requestId,
             stage,
-          });
+          };
+          assertEncodedMessageBudget(message);
+          postSequenced(sequence, message);
         };
 
-        reportStage("fonts");
-        await document.fonts.ready;
-        reportStage("adapter-import");
-        let engine: CompareEngineModule;
+        let result: Awaited<ReturnType<CompareEngineModule["renderWithMermaid"]>>;
         try {
-          engine = await loadEngine();
-        } catch (error) {
-          throw new RealmOperationError("adapter-import", projectError(error));
-        }
-        try {
-          return await engine.renderWithMermaid(
-            request.payload,
-            host,
-            reportStage
-          );
-        } catch (error) {
-          if (isCompareEngineError(error)) {
-            throw new RealmOperationError(error.stage, error.error);
+          reportStage("fonts");
+          await document.fonts.ready;
+          reportStage("adapter-import");
+          let engine: CompareEngineModule;
+          try {
+            engine = await loadEngine();
+          } catch (error) {
+            throw new RealmOperationError("adapter-import", projectError(error));
           }
-          throw error;
+          try {
+            result = await engine.renderWithMermaid(
+              request.payload,
+              host,
+              reportStage
+            );
+          } catch (error) {
+            if (isCompareEngineError(error)) {
+              throw new RealmOperationError(error.stage, error.error);
+            }
+            throw error;
+          }
+        } catch (error) {
+          postFailure(request.requestId, error);
+          return;
         }
-      })
-      .then(
-        (result) => {
-          outgoingSequence += 1;
-          const response = validateCompareRenderResponse(
+
+        const sequence = outgoingSequence + 1;
+        let response: CompareRenderResponse;
+        try {
+          response = validateCompareRenderResponse(
             {
               type: "render-success",
               protocol: REALM_PROTOCOL_VERSION,
               ...identity,
-              sequence: outgoingSequence,
+              sequence,
               requestId: request.requestId,
               svg: result.svg,
               prepareTimeMs: result.prepareTimeMs,
@@ -181,38 +229,24 @@ function servePort(
               version: result.version,
             },
             identity,
-            outgoingSequence,
+            sequence,
             request.requestId
           );
-          postValidated(response);
-        },
-        (error) => {
-          outgoingSequence += 1;
-          const stage =
-            error instanceof RealmOperationError ? error.stage : "render";
-          const projection =
-            error instanceof RealmOperationError
-              ? error.error
-              : projectError(error);
-          const response = validateCompareRenderResponse(
-            {
-              type: "render-failure",
-              protocol: REALM_PROTOCOL_VERSION,
-              ...identity,
-              sequence: outgoingSequence,
-              requestId: request.requestId,
-              stage,
-              message: projection.summary,
-              detail: projection.detail,
-            },
-            identity,
-            outgoingSequence,
-            request.requestId
-          );
-          postValidated(response);
+        } catch (error) {
+          if (error instanceof RealmBudgetError) {
+            postFailure(
+              request.requestId,
+              new RealmOperationError("svg-budget", projectError(error))
+            );
+            return;
+          }
+          throw error;
         }
-      );
+        postSequenced(sequence, response);
+      })
+      .catch(fatal);
   };
+
   port.start();
   post({
     type: "realm-ready",

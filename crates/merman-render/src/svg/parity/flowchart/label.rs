@@ -35,6 +35,7 @@ fn flowchart_label_html_impl(
             .replace("</br/>", "<br />")
             .replace("</br />", "<br />")
             .replace("</br >", "<br />");
+        let input = crate::xml::normalize_html_entities_for_xml(&input);
 
         fn is_xhtml_void_tag(name: &str) -> bool {
             matches!(
@@ -151,7 +152,8 @@ fn flowchart_label_html_impl(
                             _ => break,
                         }
                     }
-                    if ok {
+                    let entity = tail.strip_suffix(';').unwrap_or(&tail);
+                    if ok && crate::xml::is_valid_xml_entity_reference(entity) {
                         out.push('&');
                         out.push_str(&tail);
                     } else {

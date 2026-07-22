@@ -53,7 +53,11 @@ pub(crate) fn render_railroad_diagram_svg_model(
             escape_xml_display(descr)
         );
     }
-    let _ = write!(&mut out, "<style>{}</style>", railroad_css(&style));
+    let _ = write!(
+        &mut out,
+        "<style>{}</style>",
+        railroad_css(&style, diagram_id)
+    );
     out.push_str("<g/>");
 
     for (rule_index, rule) in layout.rules.iter().enumerate() {
@@ -186,21 +190,34 @@ fn push_element(out: &mut String, element: &RailroadElementLayout, transform: Op
     );
 }
 
-fn railroad_css(style: &crate::railroad::RailroadStyle) -> String {
+fn railroad_css_scope(diagram_id: &str) -> String {
+    let mut scope = String::with_capacity(diagram_id.len() + 1);
+    scope.push('#');
+    for ch in diagram_id.chars() {
+        if matches!(ch, '.' | ':') {
+            scope.push('\\');
+        }
+        scope.push(ch);
+    }
+    scope
+}
+
+fn railroad_css(style: &crate::railroad::RailroadStyle, diagram_id: &str) -> String {
+    let scope = railroad_css_scope(diagram_id);
     format!(
-        ".railroad-diagram{{font-family:{};font-size:{}px;}}\
-.railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-nonterminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-nonterminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-line{{stroke:{};stroke-width:{}px;fill:none;}}\
-.railroad-start circle,.railroad-end circle{{fill:{};}}\
-.railroad-comment ellipse{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-comment text{{fill:{};font-style:italic;font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-special rect{{fill:{};stroke:{};stroke-width:{}px;stroke-dasharray:5,3;}}\
-.railroad-special text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-rule-name{{font-weight:bold;fill:{};font-family:{};font-size:{}px;}}\
-.railroad-group{{}}",
+        "{scope}.railroad-diagram{{font-family:{};font-size:{}px;}}\
+{scope} .railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-nonterminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-nonterminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-line{{stroke:{};stroke-width:{}px;fill:none;}}\
+{scope} .railroad-start circle,{scope} .railroad-end circle{{fill:{};}}\
+{scope} .railroad-comment ellipse{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-comment text{{fill:{};font-style:italic;font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-special rect{{fill:{};stroke:{};stroke-width:{}px;stroke-dasharray:5,3;}}\
+{scope} .railroad-special text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-rule-name{{font-weight:bold;fill:{};font-family:{};font-size:{}px;}}\
+{scope} .railroad-group{{}}",
         style.font_family,
         fmt(style.font_size),
         style.terminal_fill,

@@ -14,6 +14,7 @@ import {
   type RealmKind,
   type RealmViewport,
 } from "./channel-protocol.ts";
+import { projectError } from "../error-projection.ts";
 
 export interface AuthenticatedBrowserRealmChannel {
   readonly identity: RealmIdentity;
@@ -113,6 +114,7 @@ export async function createAuthenticatedBrowserRealmChannel(
   let rejectHandshake: ((error: unknown) => void) | null = null;
   let resolveHandshake: (() => void) | null = null;
   let terminalFailure: Error | null = null;
+  const viewportAbort = new AbortController();
   const isReady = () => state === "ready";
 
   const cleanupHandshake = () => {
@@ -124,6 +126,12 @@ export async function createAuthenticatedBrowserRealmChannel(
     }
   };
   const closeTransport = () => {
+    if (!viewportAbort.signal.aborted) {
+      viewportAbort.abort(
+        terminalFailure ??
+          new RealmProtocolError(`${label} viewport host is unavailable.`)
+      );
+    }
     cleanupHandshake();
     iframe.removeEventListener("error", onIframeError);
     iframe.removeEventListener("load", onIframeLoad);
@@ -136,8 +144,7 @@ export async function createAuthenticatedBrowserRealmChannel(
   };
   const fail = (error: unknown) => {
     if (state === "disposed") return;
-    const failure =
-      error instanceof Error ? error : new RealmProtocolError(String(error));
+    const failure = asRealmError(error);
     const wasHandshaking = state === "handshaking";
     terminalFailure = failure;
     state = "disposed";
@@ -261,8 +268,8 @@ export async function createAuthenticatedBrowserRealmChannel(
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
       applyViewport(iframe, normalized);
-      await nextAnimationFrame();
-      await nextAnimationFrame();
+      await nextAnimationFrame(viewportAbort.signal, label);
+      await nextAnimationFrame(viewportAbort.signal, label);
       if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
@@ -320,6 +327,85 @@ function assertMatchingViewport(
   }
 }
 
-function nextAnimationFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+function asRealmError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  const projection = projectError(error);
+  const failure = new RealmProtocolError(projection.summary);
+  if (projection.detail !== null) {
+    Object.defineProperty(failure, "detail", {
+      configurable: true,
+      enumerable: true,
+      value: projection.detail,
+      writable: false,
+    });
+  }
+  return failure;
+}
+
+function nextAnimationFrame(signal: AbortSignal, label: string): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(viewportAbortError(signal, label));
+  }
+
+  if (document.visibilityState !== "visible") {
+    return nextTask(signal, label);
+  }
+
+  return new Promise((resolve, reject) => {
+    let frameId: number | null = null;
+    let settled = false;
+    let onAbort = () => {};
+    let onVisibilityChange = () => {};
+
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    onAbort = () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      settle(() => reject(viewportAbortError(signal, label)));
+    };
+    onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      settle(() => {
+        void nextTask(signal, label).then(resolve, reject);
+      });
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    frameId = requestAnimationFrame(() => settle(resolve));
+    if (signal.aborted) onAbort();
+  });
+}
+
+function nextTask(signal: AbortSignal, label: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onAbort = () => settle(() => reject(viewportAbortError(signal, label)));
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => settle(resolve), 0);
+    if (signal.aborted) onAbort();
+  });
+}
+
+function viewportAbortError(signal: AbortSignal, label: string): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new RealmProtocolError(`${label} viewport host is unavailable.`);
 }

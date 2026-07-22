@@ -334,6 +334,61 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 }
 
 #[test]
+fn sequence_control_structure_label_box_uses_configured_width() {
+    let svg = render_sequence_svg_from_text(
+        r#"---
+config:
+  sequence:
+    labelBoxWidth: 96
+---
+sequenceDiagram
+    Alice->>Bob: Start
+    loop Retry
+        Alice->>Bob: Again
+    end
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let polygon = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("polygon")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "labelBox")
+                })
+        })
+        .expect("control-structure label box");
+    let points = polygon
+        .attribute("points")
+        .expect("label box points")
+        .split_whitespace()
+        .map(|point| {
+            point
+                .split_once(',')
+                .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert!((points[1].0 - points[0].0 - 96.0).abs() <= f64::EPSILON);
+
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "labelText")
+                })
+        })
+        .expect("control-structure label text");
+    let label_x = label
+        .attribute("x")
+        .expect("label x")
+        .parse::<f64>()
+        .unwrap();
+    assert!((label_x - (points[0].0 + 48.0).round()).abs() <= f64::EPSILON);
+}
+
+#[test]
 fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
     let cases = [
         "activation_explicit.mmd",
@@ -469,6 +524,73 @@ fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
             && root.contains(r#"viewBox="-50 -10 550 244""#),
         "expected fresh Mermaid 11.16 font-size root geometry: {root}"
     );
+}
+
+#[test]
+fn sequence_reverse_message_align_uses_the_normalized_message_interval() {
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nB->>A: reverse\n";
+    let wrap_padding = 17.0;
+    let render_with_align = |align: &str| {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "sequence": { "messageAlign": align, "wrapPadding": wrap_padding }
+        })));
+        render_sequence_svg_from_text_with_engine(engine, source)
+    };
+    let message_position = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "messageText")
+                    })
+            })
+            .expect("message text");
+        let line = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("line")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class.starts_with("messageLine"))
+                    })
+                    && node.attribute("data-et") == Some("message")
+            })
+            .expect("message line");
+        let endpoint = |name: &str| {
+            line.attribute(name)
+                .unwrap_or_else(|| panic!("message {name}"))
+                .parse::<f64>()
+                .unwrap_or_else(|_| panic!("numeric message {name}"))
+        };
+        let x1 = endpoint("x1");
+        let x2 = endpoint("x2");
+        (
+            text.attribute("x")
+                .expect("message x")
+                .parse::<f64>()
+                .expect("numeric message x"),
+            text.attribute("text-anchor")
+                .expect("message anchor")
+                .to_string(),
+            x1.min(x2),
+            x1.max(x2),
+        )
+    };
+
+    let left_svg = render_with_align("left");
+    let right_svg = render_with_align("right");
+    let (left_x, left_anchor, left_edge, _) = message_position(&left_svg);
+    let (right_x, right_anchor, _, right_edge) = message_position(&right_svg);
+
+    assert_eq!(left_anchor, "start");
+    assert_eq!(right_anchor, "end");
+    assert!((left_x - (left_edge + wrap_padding)).abs() < f64::EPSILON);
+    assert!((right_x - (right_edge - wrap_padding)).abs() < f64::EPSILON);
 }
 
 #[test]

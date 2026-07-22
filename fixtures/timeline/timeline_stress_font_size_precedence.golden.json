@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Font size should follow themeVariables.fontSize",
     "accTitle": null,
     "accDescr": null,

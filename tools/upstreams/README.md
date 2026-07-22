@@ -16,8 +16,12 @@ Typical layout:
 - `repo-ref/zenuml-core-3.50.1` (matrix-selected compatible ZenUML Core behavior source)
 
 `MERMAID_REFERENCE_BUNDLE.json` is the machine-readable release graph. It records npm integrity,
-source provenance, external diagram/layout packages, the selected compatible behavior source, and
-generated projections. `ZENUML_CORE_ADMISSION.json` keeps the oracle-to-candidate decision evidence,
+source provenance, the ordered built-in diagram/default-layout registry inventory, external
+diagram/layout packages, the selected compatible behavior source, installed content hashes for the
+complete materialized runtime graph, and generated projections. The
+built-in inventory is extracted from the pinned Mermaid checkout during materialized verification;
+an added, removed, renamed, or reordered upstream registration is a release-graph change rather
+than a local admission-only decision. `ZENUML_CORE_ADMISSION.json` keeps the oracle-to-candidate decision evidence,
 `ZENUML_BROWSER_SECURITY_EVIDENCE.json` records executable desktop/mobile isolation and security
 observations, and `ZENUML_CORE_V4_DEFERRED_ADMISSION.json` binds the outside-range `4.2.0` identity
 to a separate unfinished major-admission inventory. The package-manager lockfiles remain generated
@@ -56,7 +60,8 @@ that work into `pre*` or `post*` hooks because `ignore-scripts=true` intentional
 Use `cargo run -p xtask -- verify-mermaid-reference` for the clean-clone static contract (bundle,
 locks, provenance, admission evidence, and generated projections). After populating `repo-ref/`
 and running scriptless npm installs, add `--materialized` to verify checkout commits, installed
-package versions, and content hashes.
+package versions, the content of Mermaid, parser, sanitizer, CLI, external diagram/layout, and
+selected behavior packages, and the source-extracted built-in registration inventory.
 
 Verify the selected ZenUML graph without regenerating evidence:
 
@@ -81,6 +86,9 @@ Do not hand-edit probe counts, pass states, source hashes, or candidate summarie
 derives them from the probe contract and per-project observations.
 
 After reviewed render evidence confirms a new reference graph, run
-`cargo run -p xtask -- gen-mermaid-reference --refresh-provenance` to update the owned upstream SVG
-manifests. The ordinary generator deliberately leaves provenance stale so a dependency-only lock
-change cannot silently re-attest existing baselines.
+`cargo run -p xtask -- gen-mermaid-reference --refresh-provenance` to freshly render every primary
+upstream SVG family. The command holds each canonical family lock, stages SVGs and its manifest in
+the destination filesystem, and commits them atomically. It records Chromium's resolved locale and
+timezone as part of the render identity and fails if any primary-family manifest is absent. It does
+not relabel existing SVGs. The ordinary generator deliberately leaves provenance stale so a
+dependency-only lock change cannot silently re-attest existing baselines.

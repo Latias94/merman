@@ -290,6 +290,11 @@ recommendations, and the default `core` profile does not enable Merman authoring
   invalid input/config/output CLI contracts, and `3` for direct I/O failures. Broken stdout pipes
   are treated as normal pipeline termination and do not print a generic I/O diagnostic.
 - `--text-measurer deterministic|vendored` controls text measurement.
+- `--resource-profile interactive|constrained|trusted-native|unbounded-for-trusted-input`
+  selects semantic/SVG work budgets. The CLI defaults to `trusted-native` for local `mmdc`
+  workloads; use `interactive` only for cooperative local editing and `constrained` for untrusted,
+  public, or multi-tenant input. This does not alter PNG/JPG, PDF-filter, embedded-image, or
+  aggregate encoding budgets.
 - `--math-renderer none|ratex` controls math label rendering.
 - `--svg-pipeline parity|readable|resvg-safe` selects the SVG output contract for SVG files.
   Raster/PDF formats keep the built-in `resvg-safe` export path.

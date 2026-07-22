@@ -6,14 +6,10 @@ import * as vscode from "vscode";
 import {
   SEMANTIC_TOKEN_DESCRIPTOR,
   SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
-  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
   SEMANTIC_TOKEN_RECORD_WIDTH,
-  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
   SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
-  SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
-  VSCODE_CUSTOM_TOKEN_MODIFIERS,
-  VSCODE_CUSTOM_TOKEN_TYPES,
 } from "./generated/token-descriptor.js";
+import { assertSemanticTokenLegendProjection } from "./semantic-token-contract.js";
 
 const EXTENSION_ID = "latias94.merman-vscode";
 const PROVIDER_TIMEOUT_MS = 15_000;
@@ -121,13 +117,11 @@ export async function run(): Promise<void> {
     (value): value is vscode.SemanticTokensLegend => value !== undefined,
     "expected the generated Merman semantic-token legend",
   );
-  assert.deepEqual(legend.tokenTypes, [...SEMANTIC_TOKEN_TYPE_LSP_NAMES]);
-  assert.deepEqual(legend.tokenModifiers, [...SEMANTIC_TOKEN_MODIFIER_LSP_NAMES]);
-  assert.ok(legend.tokenTypes.includes("mermanIdentifier"));
-  assert.ok(legend.tokenModifiers.includes("mermanEntity"));
+  assertSemanticTokenLegendProjection(legend);
 
   const semanticTokens = await semanticTokensFor(editorDocument);
-  assertPackedTokens(semanticTokens.data);
+  assert.ok(semanticTokens.data.length > 0, "expected parser-backed semantic tokens from Merman");
+  assertPackedTokens(semanticTokens.data, legend);
   const symbols = await vscode.commands.executeCommand<
     Array<vscode.DocumentSymbol | vscode.SymbolInformation> | undefined
   >("vscode.executeDocumentSymbolProvider", editorDocument.uri);
@@ -208,42 +202,19 @@ export async function run(): Promise<void> {
   assert.equal(tokenEquivalenceEvidence.words_per_token, SEMANTIC_TOKEN_RECORD_WIDTH);
   assert.equal(tokenEquivalenceEvidence.family_cases.length, 35);
   assert.equal(tokenEquivalenceEvidence.recovery_cases.length, 1);
-  const customTypeNames = new Set<string>(VSCODE_CUSTOM_TOKEN_TYPES.map(({ id }) => id));
-  const customTypeCodes = new Set<number>(
-    SEMANTIC_TOKEN_DESCRIPTOR.tokenTypes
-      .filter(({ lspName }) => customTypeNames.has(lspName))
-      .map(({ code }) => code),
-  );
-  const customModifierNames = new Set<string>(
-    VSCODE_CUSTOM_TOKEN_MODIFIERS.map(({ id }) => id),
-  );
-  const customModifierMask = SEMANTIC_TOKEN_DESCRIPTOR.modifiers
-    .filter(({ lspName }) => customModifierNames.has(lspName))
-    .reduce((mask, { bit }) => mask | bit, 0);
-  let observedCustomType = false;
-  let observedCustomModifier = false;
   for (const tokenCase of tokenEquivalenceEvidence.family_cases) {
     const familyDocument = await vscode.workspace.openTextDocument({
       language: "mermaid",
       content: tokenCase.source,
     });
     const actual = await semanticTokensFor(familyDocument);
-    for (let offset = 0; offset < actual.data.length; offset += SEMANTIC_TOKEN_RECORD_WIDTH) {
-      observedCustomType ||= customTypeCodes.has(actual.data[offset + 3]!);
-      observedCustomModifier ||=
-        (actual.data[offset + 4]! & customModifierMask) !== 0;
-    }
+    assertPackedTokens(actual.data, legend);
     assert.deepEqual(
       Array.from(actual.data),
-      tokenCase.packed_words,
-      `${tokenCase.id} (${tokenCase.family}) VS Code packed token sequence`,
+      projectPackedTokens(tokenCase.packed_words, legend),
+      `${tokenCase.id} (${tokenCase.family}) VS Code semantic-token projection`,
     );
   }
-  assert.ok(observedCustomType, "expected VS Code to transport a generated custom token type");
-  assert.ok(
-    observedCustomModifier,
-    "expected VS Code to transport a generated custom token modifier",
-  );
 
   const recovery = tokenEquivalenceEvidence.recovery_cases[0]!;
   const recoveryDocument = await vscode.workspace.openTextDocument({
@@ -251,9 +222,11 @@ export async function run(): Promise<void> {
     content: recovery.source,
   });
   await vscode.window.showTextDocument(recoveryDocument);
+  const recoveryTokens = await semanticTokensFor(recoveryDocument);
+  assertPackedTokens(recoveryTokens.data, legend);
   assert.deepEqual(
-    Array.from((await semanticTokensFor(recoveryDocument)).data),
-    recovery.packed_words,
+    Array.from(recoveryTokens.data),
+    projectPackedTokens(recovery.packed_words, legend),
     "recoverable Flowchart VS Code packed token sequence",
   );
   const recoveryDiagnostics = await eventually(
@@ -275,19 +248,85 @@ async function semanticTokensFor(document: vscode.TextDocument): Promise<vscode.
         "vscode.provideDocumentSemanticTokens",
         document.uri,
       ),
-    (value): value is vscode.SemanticTokens => value !== undefined && value.data.length > 0,
-    "expected parser-backed semantic tokens from Merman",
+    (value): value is vscode.SemanticTokens => value !== undefined,
+    "expected a semantic-token response from Merman",
   );
 }
 
-function assertPackedTokens(words: Uint32Array): void {
-  assert.ok(words.length > 0);
+function assertPackedTokens(words: Uint32Array, legend: vscode.SemanticTokensLegend): void {
   assert.equal(words.length % SEMANTIC_TOKEN_RECORD_WIDTH, 0);
+  const validModifierMask = legend.tokenModifiers.reduce(
+    (mask, _modifier, index) => mask | (1 << index),
+    0,
+  );
   for (let offset = 0; offset < words.length; offset += SEMANTIC_TOKEN_RECORD_WIDTH) {
     assert.ok(words[offset + 2]! > 0);
-    assert.ok(words[offset + 3]! <= SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX);
-    assert.equal(words[offset + 4]! & ~SEMANTIC_TOKEN_VALID_MODIFIER_MASK, 0);
+    assert.ok(words[offset + 3]! < legend.tokenTypes.length);
+    assert.equal(words[offset + 4]! & ~validModifierMask, 0);
   }
+}
+
+function projectPackedTokens(
+  canonicalWords: readonly number[],
+  legend: vscode.SemanticTokensLegend,
+): number[] {
+  assert.equal(canonicalWords.length % SEMANTIC_TOKEN_RECORD_WIDTH, 0);
+
+  const projectedWords: number[] = [];
+  let canonicalLine = 0;
+  let canonicalStart = 0;
+  let projectedPreviousLine = 0;
+  let projectedPreviousStart = 0;
+
+  for (let offset = 0; offset < canonicalWords.length; offset += SEMANTIC_TOKEN_RECORD_WIDTH) {
+    const deltaLine = canonicalWords[offset]!;
+    canonicalLine += deltaLine;
+    canonicalStart =
+      deltaLine === 0
+        ? canonicalStart + canonicalWords[offset + 1]!
+        : canonicalWords[offset + 1]!;
+    const length = canonicalWords[offset + 2]!;
+    const canonicalTypeCode = canonicalWords[offset + 3]!;
+    const canonicalModifierBits = canonicalWords[offset + 4]!;
+    assert.equal(canonicalModifierBits & ~SEMANTIC_TOKEN_VALID_MODIFIER_MASK, 0);
+
+    const descriptorType = SEMANTIC_TOKEN_DESCRIPTOR.tokenTypes.find(
+      ({ code }) => code === canonicalTypeCode,
+    );
+    assert.ok(descriptorType, `unknown descriptor token type code ${canonicalTypeCode}`);
+    const projectedType = legend.tokenTypes.indexOf(descriptorType.lspName);
+    if (projectedType === -1) {
+      continue;
+    }
+
+    let projectedModifierBits = 0;
+    for (const modifier of SEMANTIC_TOKEN_DESCRIPTOR.modifiers) {
+      if ((canonicalModifierBits & modifier.bit) === 0) {
+        continue;
+      }
+      const projectedModifier = legend.tokenModifiers.indexOf(modifier.lspName);
+      if (projectedModifier !== -1) {
+        projectedModifierBits |= 1 << projectedModifier;
+      }
+    }
+
+    const projectedDeltaLine = canonicalLine - projectedPreviousLine;
+    const projectedDeltaStart =
+      projectedDeltaLine === 0
+        ? canonicalStart - projectedPreviousStart
+        : canonicalStart;
+    projectedWords.push(
+      projectedDeltaLine,
+      projectedDeltaStart,
+      length,
+      projectedType,
+      projectedModifierBits,
+    );
+    projectedPreviousLine = canonicalLine;
+    projectedPreviousStart = canonicalStart;
+  }
+
+  return projectedWords;
 }
 
 function diagnosticCode(diagnostic: vscode.Diagnostic): string | number | undefined {

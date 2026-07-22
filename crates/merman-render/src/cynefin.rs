@@ -36,7 +36,7 @@ pub(crate) struct CynefinLayoutSettings {
     pub padding: f64,
     pub show_domain_descriptions: bool,
     pub boundary_amplitude: f64,
-    pub seed: Option<i32>,
+    pub seed: Option<f64>,
     pub use_max_width: bool,
 }
 
@@ -64,8 +64,7 @@ pub(crate) fn cynefin_layout_settings(
     effective_config: &serde_json::Value,
 ) -> CynefinLayoutSettings {
     let seed = config_f64(effective_config, &["cynefin", "seed"])
-        .filter(|value| value.is_finite() && *value != 0.0)
-        .map(|value| value as i32);
+        .filter(|value| value.is_finite() && *value != 0.0);
     CynefinLayoutSettings {
         width: config_f64(effective_config, &["cynefin", "width"])
             .unwrap_or(800.0)
@@ -219,14 +218,14 @@ pub(crate) fn domain_fill<'a>(theme: &'a CynefinTheme, name: &str) -> &'a str {
     }
 }
 
-pub(crate) fn resolve_seed(configured_seed: Option<i32>, id: &str) -> i32 {
-    configured_seed.unwrap_or_else(|| hash_string(id))
+pub(crate) fn resolve_seed(configured_seed: Option<f64>, id: &str) -> f64 {
+    configured_seed.unwrap_or_else(|| f64::from(hash_string(id)))
 }
 
 pub(crate) fn generate_fold_path(
     width: f64,
     height: f64,
-    seed: i32,
+    seed: f64,
     amplitude_override: Option<f64>,
 ) -> String {
     let cx = width / 2.0;
@@ -235,9 +234,7 @@ pub(crate) fn generate_fold_path(
     let seg_height = height / segments as f64;
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
-        let jitter =
-            seeded_random(seed.wrapping_add((i as i32).wrapping_mul(17))) * amplitude * 2.0
-                - amplitude;
+        let jitter = seeded_random(seed + i as f64 * 17.0) * amplitude * 2.0 - amplitude;
         points.push((cx + jitter, i as f64 * seg_height));
     }
     let mut d = format!("M{},{}", fmt_number(points[0].0), fmt_number(points[0].1));
@@ -246,10 +243,7 @@ pub(crate) fn generate_fold_path(
         let p1 = points[i + 1];
         let mid_y = (p0.1 + p1.1) / 2.0;
         let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
-        let offset = amplitude
-            * 1.5
-            * dir
-            * seeded_random(seed.wrapping_add((i as i32).wrapping_mul(31).wrapping_add(7)));
+        let offset = amplitude * 1.5 * dir * seeded_random(seed + i as f64 * 31.0 + 7.0);
         d.push_str(&format!(
             " C{},{} {},{} {},{}",
             fmt_number(p0.0 + offset),
@@ -266,7 +260,7 @@ pub(crate) fn generate_fold_path(
 pub(crate) fn generate_horizontal_boundary(
     width: f64,
     height: f64,
-    seed: i32,
+    seed: f64,
     amplitude_override: Option<f64>,
 ) -> String {
     let cy = height / 2.0;
@@ -275,9 +269,7 @@ pub(crate) fn generate_horizontal_boundary(
     let seg_width = width / segments as f64;
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
-        let jitter =
-            seeded_random(seed.wrapping_add((i as i32).wrapping_mul(23))) * amplitude * 2.0
-                - amplitude;
+        let jitter = seeded_random(seed + i as f64 * 23.0) * amplitude * 2.0 - amplitude;
         points.push((i as f64 * seg_width, cy + jitter));
     }
     let mut d = format!("M{},{}", fmt_number(points[0].0), fmt_number(points[0].1));
@@ -286,10 +278,7 @@ pub(crate) fn generate_horizontal_boundary(
         let p1 = points[i + 1];
         let mid_x = (p0.0 + p1.0) / 2.0;
         let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
-        let offset = amplitude
-            * 1.5
-            * dir
-            * seeded_random(seed.wrapping_add((i as i32).wrapping_mul(37).wrapping_add(11)));
+        let offset = amplitude * 1.5 * dir * seeded_random(seed + i as f64 * 37.0 + 11.0);
         d.push_str(&format!(
             " C{},{} {},{} {},{}",
             fmt_number(mid_x),
@@ -560,11 +549,18 @@ fn layout_transitions(
     out
 }
 
-fn seeded_random(seed: i32) -> f64 {
-    let mut t = (seed as u32).wrapping_add(0x6d2b_79f5);
+fn seeded_random(seed: f64) -> f64 {
+    let mut t = javascript_to_uint32(seed + f64::from(0x6d2b_79f5_u32));
     t = (t ^ (t >> 15)).wrapping_mul(t | 1);
     t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
     ((t ^ (t >> 14)) as f64) / 4_294_967_296.0
+}
+
+fn javascript_to_uint32(value: f64) -> u32 {
+    if !value.is_finite() || value == 0.0 {
+        return 0;
+    }
+    value.trunc().rem_euclid(4_294_967_296.0) as u32
 }
 
 fn hash_string(value: &str) -> i32 {
@@ -615,9 +611,17 @@ mod tests {
 
     #[test]
     fn cynefin_boundary_seed_is_stable() {
-        assert_eq!(seeded_random(42), seeded_random(42));
+        assert_eq!(seeded_random(42.0), seeded_random(42.0));
         assert_ne!(hash_string("cynefin-1"), hash_string("cynefin-2"));
-        assert_eq!(resolve_seed(Some(7), "a"), resolve_seed(Some(7), "b"));
+        assert_eq!(resolve_seed(Some(7.0), "a"), resolve_seed(Some(7.0), "b"));
+    }
+
+    #[test]
+    fn cynefin_seed_uses_ecmascript_to_uint32_semantics() {
+        assert_eq!(seeded_random(4_294_967_297.0), seeded_random(1.0));
+        assert_eq!(javascript_to_uint32(-1.0), u32::MAX);
+        assert_eq!(javascript_to_uint32(-1.5), u32::MAX);
+        assert_eq!(javascript_to_uint32(f64::INFINITY), 0);
     }
 
     #[test]

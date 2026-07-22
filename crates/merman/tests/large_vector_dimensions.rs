@@ -14,6 +14,7 @@ xychart-beta
   line [1, 9]
 "#;
 
+#[cfg(feature = "raster")]
 const EXTREME_VECTOR_SOURCE: &str = r#"---
 config:
   xyChart:

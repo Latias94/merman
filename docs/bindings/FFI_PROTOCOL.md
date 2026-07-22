@@ -541,11 +541,13 @@ invalid options JSON, panics, and internal serialization failures remain non-zer
 `MermanResult.code` values.
 
 The diagnostics-only `*_analyze*_json` payload remains schema version 1. The richer
-`*_facts_json` payload is the current parser-only facts version 1 contract. The TextScan-capable
-alpha shape from `0.8.0-alpha.3` is not supported by the current library; native consumers must
-update their schema handling even though that obsolete shape also used version 1, and must handle
-`fact_source: "unavailable"` plus the required semantic-item `rename_policy`. This facts schema
-version does not change the C ABI version, LSP document revisions, or Mermaid `*-v2` ids.
+`*_facts_json` payload is the current parser-only facts version 1 contract. Current writers always
+emit the semantic-item `rename_policy`; readers map an omitted additive policy in an older v1
+semantic item to `none`, so absent metadata can never authorize rename. The TextScan-capable alpha
+shape from `0.8.0-alpha.3` is not supported by the current library even though that obsolete shape
+also used version 1: native consumers must handle `fact_source: "unavailable"` and cannot rely on a
+legacy TextScan decoder or execution path. This facts schema version does not change the C ABI
+version, LSP document revisions, or Mermaid `*-v2` ids.
 
 The default analyzer is expected to be render-free. Optional layout or render checks may be added
 later behind feature/profile controls, but must use the same payload shape and report disabled

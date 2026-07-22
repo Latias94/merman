@@ -1243,8 +1243,8 @@ pub fn layout_xychart_diagram_typed(
                                 let (x, y, vertical_pos, horizontal_pos) =
                                     if chart_cfg.chart_orientation == "horizontal" {
                                         (
-                                            py + label_offset,
-                                            *px,
+                                            px + label_offset,
+                                            *py,
                                             "middle".to_string(),
                                             "left".to_string(),
                                         )

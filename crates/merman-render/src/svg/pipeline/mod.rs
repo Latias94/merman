@@ -180,7 +180,7 @@ impl SvgPipeline {
     ) -> Result<Cow<'a, str>> {
         let mut current = svg;
         session
-            .resource_limits()
+            .resource_policy()
             .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
@@ -195,7 +195,7 @@ impl SvgPipeline {
                 .process(current, &ctx)
                 .map_err(|err| Error::svg_postprocess(postprocessor.name(), err.to_string()))?;
             session
-                .resource_limits()
+                .resource_policy()
                 .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         }
 
@@ -206,13 +206,19 @@ impl SvgPipeline {
             session,
             self.drop_native_duplicate_fallbacks,
         );
+        let finalized = crate::xml::strip_forbidden_xml_1_0_chars_cow(finalized);
         session
-            .resource_limits()
+            .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         if self.preset == SvgPipelinePreset::ResvgSafe {
             final_validation::validate_resvg_compatible_svg(
                 finalized.as_ref(),
-                session.resource_limits(),
+                session.resource_policy(),
+            )?;
+        } else {
+            final_validation::validate_well_formed_svg(
+                finalized.as_ref(),
+                session.resource_policy(),
             )?;
         }
         Ok(finalized)
@@ -331,6 +337,43 @@ mod tests {
     }
 
     #[test]
+    fn every_pipeline_preset_enforces_the_xml_1_0_character_contract() {
+        let svg = "<svg><text>A\u{0}B\u{1c}C\u{fffe}D</text></svg>";
+        let session = render_session();
+
+        for preset in [
+            SvgPipelinePreset::Parity,
+            SvgPipelinePreset::Readable,
+            SvgPipelinePreset::ResvgSafe,
+        ] {
+            let out = SvgPipeline::from_preset(preset)
+                .process_to_string(svg, &session)
+                .unwrap();
+            assert_eq!(out, "<svg><text>ABCD</text></svg>", "{preset:?}");
+            roxmltree::Document::parse(&out).expect("pipeline output must remain XML 1.0");
+        }
+    }
+
+    #[test]
+    fn every_pipeline_preset_rejects_unknown_xml_entities() {
+        let session = render_session();
+
+        for preset in [
+            SvgPipelinePreset::Parity,
+            SvgPipelinePreset::Readable,
+            SvgPipelinePreset::ResvgSafe,
+        ] {
+            let error = SvgPipeline::from_preset(preset)
+                .process_to_string("<svg><text>&unknown;</text></svg>", &session)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("invalid XML"),
+                "{preset:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn readable_pipeline_matches_foreign_object_fallback() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10,20)"><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><p>Layer 7\nHTTP</p></div></foreignObject></g></svg>"#;
         let session = render_session();
@@ -369,6 +412,22 @@ mod tests {
         assert!(out.contains(r#"height="12""#));
         assert!(out.contains("stroke:#333"));
         assert!(out.contains(">Hello</text>"));
+    }
+
+    #[test]
+    fn resvg_safe_pipeline_sanitizes_url_attributes_after_malformed_text() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+"#shape"/>
+  <path stroke="url(javascript:alert(1))" style="filterBurl('file://юmp/xter:');svroke:#033"/>
+</svg>"##;
+        let session = render_session();
+
+        let out = SvgPipeline::resvg_safe()
+            .process_to_string(svg, &session)
+            .expect("resvg-safe pipeline should sanitize the fuzz regression input");
+
+        assert!(!out.to_ascii_lowercase().contains("javascript"), "{out}");
+        assert!(!out.contains(r#"stroke="url("#), "{out}");
     }
 
     struct AppendPass(&'static str);
@@ -462,10 +521,11 @@ mod tests {
         }
 
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(crate::resources::RenderResourceLimits {
-                max_svg_bytes: Some(64),
-                ..crate::resources::RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 64)
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
         let error = SvgPipeline::resvg_safe()

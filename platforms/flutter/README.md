@@ -88,13 +88,39 @@ try {
 
 Merman owns a deterministic vendored text measurer by default. Server-like Dart workloads, tests, and documentation builds should normally keep it. Flutter previews can call `setTextMeasurer` when layout must match the final Flutter or WebView font stack.
 
-ABI 2 exposes 19 exact operations (`0..18`) and requires the tagged `MermanTextMeasurementResultKind` associated with `request.operation`. Return `null` when the current isolate cannot answer an operation synchronously and faithfully. Invalid results and callback exceptions fall back for that operation.
+ABI 2 exposes 19 exact operations (`0..18`). Construct handled results with
+`MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or
+`.wrappedWithRawWidth`; each factory requires and validates the fields used by that result shape.
+Return `null` when the current isolate cannot answer an operation synchronously and faithfully.
+Wrong-kind results and callback exceptions fall back for that operation.
 
 The callback is isolate-local. Create, measure, render, and close the reusable engine on the same isolate; do not call back into that engine from its measurer. Calling `close()` during a callback defers native disposal until the call returns. See the [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for operation shapes and cache guidance.
 
 ## Analysis Contract
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; `analyzeDocumentFactsJson` returns parser-backed facts schema `1`. These schema versions are independent of native ABI `2`. The removed TextScan alpha facts shape is not retained.
+
+## Runtime Contract
+
+Call `runtimeContract()` to inspect runtime-contract schema `1` from the loaded native library. It
+reports the loaded ABI, package, and options versions together with compiled features, registry
+facts, and the exact values of every resource profile. Use this contract to choose an explicit
+profile for the host workload instead of duplicating limits in Dart or inferring capabilities from
+package versions.
+
+Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then pass the generated builder output:
+
+```dart
+final resourceOptions = MermanResourceOptionsBuilder()
+  ..setProfile(MermanResourceProfile.constrained);
+final svg = engine.renderSvg(
+  source,
+  optionsJson: resourceOptions.build().toOptionsJson(),
+);
+```
+
+Use `constrained` for untrusted, public, or multi-tenant input; `interactive` is for cooperative
+local editing. The native CLI's default is intentionally separate (`trusted-native`).
 
 Document analysis accepts the full Markdown/MDX-like source and a URI:
 

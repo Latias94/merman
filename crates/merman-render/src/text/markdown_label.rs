@@ -449,31 +449,11 @@ pub(crate) fn mermaid_markdown_to_html_label_fragment(
     mermaid_markdown_to_label_fragment(markdown, markdown_auto_wrap, false)
 }
 fn escape_xml_text_preserving_entities(raw: &str) -> String {
-    fn is_valid_entity(entity: &str) -> bool {
-        if entity.is_empty() {
-            return false;
-        }
-        if let Some(hex) = entity
-            .strip_prefix("#x")
-            .or_else(|| entity.strip_prefix("#X"))
-        {
-            return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-        }
-        if let Some(dec) = entity.strip_prefix('#') {
-            return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-        }
-        let mut it = entity.chars();
-        let Some(first) = it.next() else {
-            return false;
-        };
-        if !first.is_ascii_alphabetic() {
-            return false;
-        }
-        it.all(|c| c.is_ascii_alphanumeric())
-    }
-
     fn escape_xml_segment(out: &mut String, raw: &str) {
         for ch in raw.chars() {
+            if !crate::xml::is_xml_1_0_char(ch) {
+                continue;
+            }
             match ch {
                 '&' => out.push_str("&amp;"),
                 '<' => out.push_str("&lt;"),
@@ -483,6 +463,8 @@ fn escape_xml_text_preserving_entities(raw: &str) -> String {
         }
     }
 
+    let raw = crate::xml::normalize_html_entities_for_xml(raw);
+    let raw = raw.as_ref();
     let mut out = String::with_capacity(raw.len());
     let mut i = 0usize;
     while let Some(rel) = raw[i..].find('&') {
@@ -492,7 +474,7 @@ fn escape_xml_text_preserving_entities(raw: &str) -> String {
         if let Some(semi_rel) = tail.find(';') {
             let semi = amp + 1 + semi_rel;
             let entity = &raw[amp + 1..semi];
-            if is_valid_entity(entity) {
+            if crate::xml::is_valid_xml_entity_reference(entity) {
                 out.push('&');
                 out.push_str(entity);
                 out.push(';');

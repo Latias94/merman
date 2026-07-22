@@ -30,3 +30,28 @@ pub(crate) use fixture_files::{
 };
 pub(crate) use html::import_upstream_html;
 pub(crate) use pkg_tests::import_upstream_pkg_tests;
+
+fn normalize_imported_diagram_dir(detected: &str) -> Option<&'static str> {
+    merman_core::diagram_type_metadata_id(detected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_imported_diagram_dir;
+    use merman_core::baseline::BaselineRegistryProfile;
+
+    #[test]
+    fn imported_fixture_routing_is_owned_by_the_family_catalog() {
+        for capability in
+            merman_core::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full)
+        {
+            let expected = capability.metadata_id;
+            assert_eq!(
+                normalize_imported_diagram_dir(capability.diagram_type),
+                expected,
+                "diagram type {}",
+                capability.diagram_type
+            );
+        }
+    }
+}

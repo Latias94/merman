@@ -664,6 +664,21 @@ fn is_architecture_reserved_id(id: &str) -> bool {
             .is_some_and(|first| matches!(first, b'L' | b'R' | b'T' | b'B'))
 }
 
+pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
+    let mut last_was_word = false;
+    for (index, ch) in candidate.chars().enumerate() {
+        let is_word = ch.is_ascii_alphanumeric() || ch == '_';
+        if index == 0 && !is_word {
+            return false;
+        }
+        if !is_word && ch != '-' {
+            return false;
+        }
+        last_was_word = is_word;
+    }
+    !candidate.is_empty() && last_was_word && !is_architecture_reserved_id(candidate)
+}
+
 fn architecture_reserved_id_message(id: &str) -> String {
     format!("reserved architecture keyword [{id}] cannot be used as an id")
 }
@@ -1158,6 +1173,27 @@ mod tests {
                 Some(SourceSpan::new(offset, offset + reserved.len()))
             );
         }
+    }
+
+    #[test]
+    fn architecture_entity_facts_use_the_architecture_rename_policy() {
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            "architecture-beta\nservice api\n",
+            &test_meta(),
+        );
+        let api = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "api" && symbol.detail.as_deref() == Some("architecture service")
+            })
+            .expect("architecture service fact");
+
+        assert_eq!(
+            api.rename_policy,
+            crate::EditorRenamePolicy::ArchitectureIdentifier
+        );
     }
 
     #[test]

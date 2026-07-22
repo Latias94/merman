@@ -10,6 +10,10 @@ expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
 
 fn render_railroad(site_config: Value) -> (String, Value) {
+    render_railroad_with_id(site_config, "railroad-theme")
+}
+
+fn render_railroad_with_id(site_config: Value, diagram_id: &str) -> (String, Value) {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(RAILROAD_SOURCE, ParseOptions::strict())
@@ -22,7 +26,7 @@ fn render_railroad(site_config: Value) -> (String, Value) {
     let rendered = artifact
         .render_svg(
             &SvgRenderOptions {
-                diagram_id: Some("railroad-theme".to_string()),
+                diagram_id: Some(diagram_id.to_string()),
                 ..Default::default()
             },
             &SvgDebugOptions::default(),
@@ -33,14 +37,42 @@ fn render_railroad(site_config: Value) -> (String, Value) {
 }
 
 fn railroad_style(svg: &str) -> &str {
-    let start = svg
-        .find("<style>.railroad-diagram")
-        .expect("railroad style element");
+    let start = svg.find("<style>").expect("railroad style element");
     let end = svg[start..]
         .find("</style>")
         .map(|offset| start + offset)
         .expect("railroad style element closes");
     &svg[start..end]
+}
+
+#[test]
+fn railroad_svg_scopes_every_family_selector_to_the_root_id() {
+    let (svg, _) = render_railroad(json!({}));
+    let style = railroad_style(&svg)
+        .strip_prefix("<style>")
+        .expect("style element prefix");
+
+    for rule in style.split('}').filter(|rule| !rule.is_empty()) {
+        let selector = rule
+            .split_once('{')
+            .map(|(selector, _)| selector)
+            .expect("complete CSS rule");
+        for selector in selector.split(',') {
+            assert!(
+                selector.starts_with("#railroad-theme"),
+                "Railroad selector escaped the root SVG scope: {selector:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn railroad_svg_escapes_css_significant_characters_in_the_root_id_selector() {
+    let (svg, _) = render_railroad_with_id(json!({}), "railroad.theme:one");
+    let style = railroad_style(&svg);
+
+    assert!(style.contains(r#"#railroad\.theme\:one.railroad-diagram{"#));
+    assert!(style.contains(r#"#railroad\.theme\:one .railroad-terminal rect{"#));
 }
 
 fn theme_string<'a>(config: &'a Value, key: &str) -> &'a str {

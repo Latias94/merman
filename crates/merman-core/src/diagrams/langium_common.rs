@@ -40,6 +40,10 @@ pub(crate) struct LangiumString {
     pub(crate) consumed: usize,
 }
 
+pub(crate) fn is_ecmascript_line_terminator(ch: char) -> bool {
+    matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LangiumLexeme {
     kind: EditorLexemeKind,
@@ -145,6 +149,9 @@ pub(crate) fn parse_langium_string(input: &str, input_start: usize) -> Option<La
     let mut escaped = false;
     for (index, ch) in chars {
         if escaped {
+            if is_ecmascript_line_terminator(ch) {
+                return None;
+            }
             value.push(ch);
             escaped = false;
             continue;
@@ -626,6 +633,18 @@ mod tests {
                 parsed.value_span,
                 SourceSpan::new(11, 9 + source.len()),
                 "source: {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn langium_string_rejects_escaped_ecmascript_line_terminators() {
+        for line_terminator in ['\n', '\r', '\u{2028}', '\u{2029}'] {
+            let source = format!("\"before\\{line_terminator}after\"");
+            assert_eq!(
+                parse_langium_string(&source, 0),
+                None,
+                "escaped line terminator: {line_terminator:?}"
             );
         }
     }

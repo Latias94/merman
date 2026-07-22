@@ -42,8 +42,8 @@ export interface PreviewSettings {
   background: PreviewBackground;
 }
 
-export function getMermanConfiguration(): vscode.WorkspaceConfiguration {
-  return vscode.workspace.getConfiguration("merman");
+export function getMermanConfiguration(resource?: vscode.Uri): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration("merman", resource);
 }
 
 export function getTraceSetting(): TraceSetting {
@@ -76,8 +76,8 @@ export function getDiagnosticsSettings(): DiagnosticsSettings {
   };
 }
 
-export function getSourceActionSettings(): SourceActionSettings {
-  const config = getMermanConfiguration();
+export function getSourceActionSettings(resource: vscode.Uri): SourceActionSettings {
+  const config = getMermanConfiguration(resource);
   return {
     enabled: config.get<boolean>("sourceActions.enabled", true),
   };
@@ -107,7 +107,7 @@ export function getAnalysisSettings(): AnalysisSettings {
     fixedToday: analysisConfig.get<unknown>("fixed_today", ""),
     fixedLocalOffsetMinutes: analysisConfig.get<unknown>("fixed_local_offset_minutes", null),
     siteConfig: analysisConfig.get<unknown>("site_config", {}),
-    maxSourceBytes: analysisConfig.get<unknown>("resources.max_source_bytes", 0),
+    maxSourceBytes: analysisConfig.get<unknown>("resources.limits.max_source_bytes", 0),
     lintProfile: analysisConfig.get<string>("lint.profile", "core"),
     enableRules: analysisConfig.get<unknown[]>("lint.enable_rules", []),
     disableRules: analysisConfig.get<unknown[]>("lint.disable_rules", []),

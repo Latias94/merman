@@ -476,6 +476,70 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             .replace(&gradient_prefix, "linearGradient-")
     }
 
+    fn is_vertical_timeline_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+        let Some(svg) = n.ancestors().find(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor
+                    .attribute("aria-roledescription")
+                    .is_some_and(|value| value == "timeline")
+        }) else {
+            return false;
+        };
+        let Some(activity_line) = svg.descendants().find(|descendant| {
+            descendant.is_element()
+                && descendant.tag_name().name() == "line"
+                && descendant
+                    .parent()
+                    .and_then(|parent| parent.attribute("class"))
+                    .is_some_and(|class| {
+                        class.split_whitespace().any(|token| token == "lineWrapper")
+                    })
+                && descendant.attribute("stroke-width") == Some("4")
+        }) else {
+            return false;
+        };
+        activity_line.attribute("x1") == activity_line.attribute("x2")
+    }
+
+    fn normalize_vertical_timeline_internal_value(
+        n: roxmltree::Node<'_, '_>,
+        key: &str,
+        val: &str,
+    ) -> Option<String> {
+        if !is_vertical_timeline_diagram(n) {
+            return None;
+        }
+
+        if n.tag_name().name() == "marker"
+            && key == "id"
+            && (val == "undefined-arrowhead" || val.ends_with("-arrowhead"))
+        {
+            return Some("<timeline-arrowhead>".to_string());
+        }
+        if n.tag_name().name() == "line"
+            && key == "marker-end"
+            && (val == "url(#arrowhead)" || val.ends_with("-arrowhead)"))
+        {
+            return Some("url(#<timeline-arrowhead>)".to_string());
+        }
+        if n.tag_name().name() == "path"
+            && key == "id"
+            && n.attribute("class").is_some_and(|class| {
+                class.split_whitespace().any(|token| token == "node-bkg")
+                    && class
+                        .split_whitespace()
+                        .any(|token| token == "node-undefined")
+            })
+            && let Some((_, ordinal)) = val.rsplit_once("-node-")
+            && !ordinal.is_empty()
+            && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Some(format!("<timeline-node-{ordinal}>"));
+        }
+        None
+    }
+
     if n.is_element() {
         fn is_mindmap_diagram(n: roxmltree::Node<'_, '_>) -> bool {
             for a in n.ancestors() {
@@ -793,6 +857,11 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             if key == "class" {
                 val = normalize_class_list(&val, mode);
                 val = normalize_gitgraph_dynamic_commit_ids(&val);
+            }
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && let Some(normalized) = normalize_vertical_timeline_internal_value(n, &key, &val)
+            {
+                val = normalized;
             }
             if matches!(
                 mode,
@@ -2062,6 +2131,32 @@ mod tests {
         let bare_dom = dom_signature(bare, DomMode::Parity, 3).unwrap();
 
         assert_eq!(prefixed_dom, bare_dom);
+    }
+
+    #[test]
+    fn parity_normalizes_only_vertical_timeline_broken_upstream_ids() {
+        let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+        let local = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(local, DomMode::Parity, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_preserves_horizontal_timeline_ids() {
+        let left = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs></svg>"#;
+        let right = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs></svg>"#;
+
+        assert_ne!(
+            dom_signature(left, DomMode::Parity, 3).unwrap(),
+            dom_signature(right, DomMode::Parity, 3).unwrap()
+        );
     }
 
     #[test]

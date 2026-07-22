@@ -12,6 +12,7 @@
     "@mermaid-js/layout-tidy-tree": "0.2.2",
     "@mermaid-js/mermaid-zenuml": "0.2.3",
     "@zenuml/core": "3.50.1",
+    "dompurify": "3.4.12",
     "mermaid": "11.16.0"
   }
 }

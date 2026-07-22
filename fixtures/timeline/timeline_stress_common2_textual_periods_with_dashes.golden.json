@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Textual periods with dashes/underscores",
     "accTitle": null,
     "accDescr": null,

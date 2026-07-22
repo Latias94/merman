@@ -7,6 +7,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -208,10 +209,31 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             checkout_count = text.count("uses: actions/checkout")
             validated_ref_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_ref }}")
             pinned_ref_count = text.count("ref: ${{ needs.preflight.outputs.source_sha }}")
+            workflow_ref_count = text.count("ref: ${{ github.workflow_sha }}")
             with self.subTest(workflow=path.name):
-                self.assertEqual(validated_ref_count + pinned_ref_count, checkout_count)
+                self.assertEqual(
+                    validated_ref_count + pinned_ref_count + workflow_ref_count,
+                    checkout_count,
+                )
+                self.assertEqual(
+                    workflow_ref_count,
+                    indented_block(text, "validate-inputs:").count(
+                        "ref: ${{ github.workflow_sha }}"
+                    ),
+                )
                 self.assertNotIn("ref: ${{ inputs.source_ref }}", text)
                 self.assertNotIn("inputs.source_ref ||", text)
+
+    def test_release_web_validation_uses_the_trusted_canonical_version_parser(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+        validate_job = indented_block(text, "validate-inputs:")
+
+        self.assertIn("uses: actions/checkout@v6", validate_job)
+        self.assertIn("ref: ${{ github.workflow_sha }}", validate_job)
+        self.assertIn("persist-credentials: false", validate_job)
+        self.assertIn("scripts/release-version.py canonical", validate_job)
+        self.assertIn("scripts/release-version.py npm-dist-tag", validate_job)
+        self.assertNotIn("is_release_version()", validate_job)
 
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -287,8 +309,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = WORKFLOW_ROOT / "release-web.yml"
         cases = [
             "v1.2.3-",
+            "v1.2.3.",
             "v1.2.3-alpha",
             "v1.2.3-alpha.1.2",
+            "v1.2.3-alpha.1.",
+            "v1.2.3+build.",
             "v1.2.3-dev.1",
         ]
 
@@ -424,6 +449,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertTrue(
                     ("semver_re=" in validate_job and "0|[1-9]" in validate_job)
                     or ("is_uint()" in validate_job and "is_release_version()" in validate_job)
+                    or "scripts/release-version.py canonical" in validate_job
                 )
                 self.assertIn("source_ref tag must match", validate_job)
                 self.assertIn("refs/tags/<release-tag>", validate_job)
@@ -562,7 +588,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('registry-url: "https://registry.npmjs.org"', publish_job)
         self.assertIn("package-manager-cache: false", publish_job)
         self.assertIn("actions/download-artifact", publish_job)
-        self.assertIn('npm publish "$package_file"', publish_job)
+        self.assertIn('npm publish "${package_files[0]}"', publish_job)
         self.assertIn("NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}", publish_job)
         self.assertIn('--tag "$NPM_DIST_TAG"', publish_job)
         for forbidden in [
@@ -599,8 +625,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(upload["with"]["path"], "${{ steps.pack.outputs.package_file }}")
         self.assertEqual(download["uses"], "actions/download-artifact@v7")
         self.assertEqual(download["with"]["name"], "merman-web-npm-package")
-        self.assertIn("find target/npm-package -maxdepth 1 -type f -name '*.tgz'", publish_step["run"])
-        self.assertIn('npm publish "$package_file" --ignore-scripts', publish_step["run"])
+        self.assertEqual(publish_step["shell"], "bash")
+        self.assertIn("shopt -s nullglob", publish_step["run"])
+        self.assertIn("package_files=(target/npm-package/*.tgz)", publish_step["run"])
+        self.assertIn("if (( ${#package_files[@]} != 1 )); then", publish_step["run"])
+        self.assertNotIn("find ", publish_step["run"])
+        self.assertIn('npm publish "${package_files[0]}" --ignore-scripts', publish_step["run"])
 
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
@@ -720,7 +750,20 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     self.assertNotIn("GH_TOKEN", step["env"])
 
         plan_step = workflow_step(plan, step_id="plan")
-        self.assertEqual(plan_step["env"]["RELEASE_TAG"], "${{ github.ref_name }}")
+        validate_tag = workflow_step(plan, name="Validate release tag")
+        install_dist = workflow_step(plan, name="Install dist")
+        self.assertEqual(validate_tag["env"]["RELEASE_TAG"], "${{ github.ref_name }}")
+        self.assertIn(
+            'scripts/release-version.py canonical --version "$RELEASE_TAG"',
+            validate_tag["run"],
+        )
+        self.assertIn(
+            'scripts/release-version.py check --version "$RELEASE_TAG"',
+            validate_tag["run"],
+        )
+        self.assertIn("Install dist", install_dist["name"])
+        self.assertLess(plan["steps"].index(validate_tag), plan["steps"].index(install_dist))
+        self.assertEqual(plan_step["env"]["RELEASE_TAG"], "${{ steps.release.outputs.tag }}")
         self.assertIn('dist host --steps=create "--tag=$RELEASE_TAG"', plan_step["run"])
         self.assertNotIn("github.event.pull_request", text)
         self.assertNotIn("tag-flag", text)
@@ -752,10 +795,15 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('release_args+=(-- "$RELEASE_TAG" "${assets[@]}")', create_release["run"])
         self.assertIn('gh release create "${release_args[@]}"', create_release["run"])
 
-    def test_cargo_dist_tag_is_passed_as_one_literal_argument(self) -> None:
+    def test_cargo_dist_rejects_noncanonical_tags_before_dist(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
         plan = workflow_job(workflow, "plan")
-        plan_step = workflow_step(plan, step_id="plan")
+        validate_tag = workflow_step(plan, name="Validate release tag")
+        release_version = ROOT / "scripts" / "release-version.py"
+        validation_script = str(validate_tag["run"]).replace(
+            "python3 scripts/release-version.py",
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(release_version))}",
+        )
 
         cases = [
             "v1.2.3$(printf injected > exploit-marker)",
@@ -765,24 +813,15 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         for release_tag in cases:
             with self.subTest(release_tag=release_tag), tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
-                captured_args = temp / "captured-args.txt"
                 github_output = temp / "github-output.txt"
-                script = "\n".join(
-                    [
-                        'dist() { printf \'%s\\n\' "$@" > "$CAPTURED_ARGS"; printf \'{}\\n\'; }',
-                        'jq() { printf \'{}\'; }',
-                        str(plan_step["run"]),
-                    ]
-                )
                 env = {
                     "PATH": "/usr/bin:/bin",
                     "RELEASE_TAG": release_tag,
-                    "CAPTURED_ARGS": str(captured_args),
                     "GITHUB_OUTPUT": str(github_output),
                 }
 
                 result = subprocess.run(
-                    ["bash", "-c", script],
+                    ["bash", "-c", validation_script],
                     cwd=temp,
                     env=env,
                     text=True,
@@ -791,9 +830,52 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     check=False,
                 )
 
-                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                self.assertNotEqual(result.returncode, 0, msg=result.stderr)
                 self.assertFalse((temp / "exploit-marker").exists())
-                self.assertIn(f"--tag={release_tag}", captured_args.read_text(encoding="utf-8").splitlines())
+                self.assertFalse(github_output.exists())
+
+    def test_cargo_dist_passes_valid_tag_as_one_literal_argument(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
+        plan = workflow_job(workflow, "plan")
+        plan_step = workflow_step(plan, step_id="plan")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            captured_args = temp / "captured-args.txt"
+            github_output = temp / "github-output.txt"
+            script = "\n".join(
+                [
+                    'dist() { printf \'%s\\n\' "$@" > "$CAPTURED_ARGS"; printf \'{}\\n\'; }',
+                    'jq() { printf \'{}\'; }',
+                    str(plan_step["run"]),
+                ]
+            )
+            env = {
+                "PATH": "/usr/bin:/bin",
+                "RELEASE_TAG": "v1.2.3",
+                "CAPTURED_ARGS": str(captured_args),
+                "GITHUB_OUTPUT": str(github_output),
+            }
+
+            result = subprocess.run(
+                ["bash", "-c", script],
+                cwd=temp,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(
+                captured_args.read_text(encoding="utf-8").splitlines()[0:2],
+                ["host", "--steps=create"],
+            )
+            self.assertIn(
+                "--tag=v1.2.3",
+                captured_args.read_text(encoding="utf-8").splitlines(),
+            )
 
     def test_workflow_contract_parser_rejects_ambiguous_security_shapes(self) -> None:
         cases = {
@@ -906,10 +988,10 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         text = read_workflow(WORKFLOW_ROOT / "ci.yml")
 
         self.assertIn("repository: mermaid-js/mermaid", text)
-        self.assertIn(
-            "ref: 7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-            text,
-        )
+        self.assertIn("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json", text)
+        self.assertIn("ref: ${{ steps.mermaid-source.outputs.commit }}", text)
+        self.assertIn("MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}", text)
+        self.assertNotRegex(text, r"ref: [0-9a-f]{40}")
         for source in (
             "cypress/integration/rendering/treeView/treeView.spec.ts",
             "cypress/integration/rendering/cynefin/cynefin.spec.js",

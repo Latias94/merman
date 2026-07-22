@@ -37,6 +37,7 @@ pub const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
 pub const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
 
 include!("generated/text_measurement_abi.rs");
+include!("generated/resource_contract.rs");
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +60,13 @@ impl MermanBuffer {
 pub struct MermanResult {
     pub code: i32,
     pub data: MermanBuffer,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MermanResourceLimitOverride {
+    pub id: i32,
+    pub value: usize,
 }
 
 pub struct MermanEngine {
@@ -329,6 +337,27 @@ pub extern "C" fn merman_package_version() -> *const c_char {
     PACKAGE_VERSION.as_ptr().cast()
 }
 
+/// Return the versioned runtime contract as UTF-8 JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_runtime_contract_json() -> MermanResult {
+    ffi_result(|| merman_bindings_core::runtime_contract_json(MERMAN_ABI_VERSION))
+}
+
+/// Build versioned options JSON from typed resource-profile and limit identifiers.
+///
+/// # Safety
+///
+/// `overrides` may be null only when `overrides_len == 0`; otherwise it must point to a readable
+/// contiguous array of `MermanResourceLimitOverride` values for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_resource_options_json(
+    profile: i32,
+    overrides: *const MermanResourceLimitOverride,
+    overrides_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe { resource_options_json_impl(profile, overrides, overrides_len) })
+}
+
 /// Return the Rust-side size of `MermanBuffer`.
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_buffer_struct_size() -> usize {
@@ -339,6 +368,12 @@ pub extern "C" fn merman_buffer_struct_size() -> usize {
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_result_struct_size() -> usize {
     std::mem::size_of::<MermanResult>()
+}
+
+/// Return the Rust-side size of `MermanResourceLimitOverride`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_resource_limit_override_struct_size() -> usize {
+    std::mem::size_of::<MermanResourceLimitOverride>()
 }
 
 /// Return the Rust-side size of `MermanEngineResult`.
@@ -1082,6 +1117,43 @@ where
     f(&engine.inner, source_bytes, uri_bytes)
 }
 
+unsafe fn resource_options_json_impl(
+    profile: i32,
+    overrides: *const MermanResourceLimitOverride,
+    overrides_len: usize,
+) -> Result<Vec<u8>, BindingError> {
+    let profile = profile_id(profile).ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("unknown resource profile code: {profile}"),
+        )
+    })?;
+    let overrides = if overrides_len == 0 {
+        &[]
+    } else {
+        if overrides.is_null() {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "resource overrides pointer is null while overrides_len is non-zero",
+            ));
+        }
+        unsafe { std::slice::from_raw_parts(overrides, overrides_len) }
+    };
+    let overrides = overrides
+        .iter()
+        .map(|override_| {
+            let id = limit_id(override_.id).ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unknown resource limit code: {}", override_.id),
+                )
+            })?;
+            Ok((id, override_.value))
+        })
+        .collect::<Result<Vec<_>, BindingError>>()?;
+    merman_bindings_core::resource_options_json(profile, &overrides)
+}
+
 unsafe fn ffi_source_options_call<F>(
     source: *const u8,
     source_len: usize,
@@ -1327,6 +1399,22 @@ mod tests {
     ) -> MermanResult {
         unsafe {
             merman_engine_analyze_document_json(
+                engine,
+                source.as_ptr(),
+                source.len(),
+                uri.as_ptr(),
+                uri.len(),
+            )
+        }
+    }
+
+    fn call_engine_analyze_document_facts(
+        engine: *const MermanEngine,
+        source: &[u8],
+        uri: &[u8],
+    ) -> MermanResult {
+        unsafe {
+            merman_engine_analyze_document_facts_json(
                 engine,
                 source.as_ptr(),
                 source.len(),
@@ -1605,7 +1693,7 @@ mod tests {
                 json["diagrams"][0]["syntax"]["semantic_items"]
                     .as_array()
                     .is_some_and(|items| items.iter().any(|item| {
-                        item["name"] == "A" && item["rename_policy"] == "identifier"
+                        item["name"] == "A" && item["rename_policy"] == "flowchart_node_id"
                     }))
             );
 
@@ -1633,8 +1721,49 @@ mod tests {
     }
 
     #[test]
+    fn malformed_directives_never_return_ffi_panic() {
+        // This first input is the minimized source from fuzz run 29806388495. The rest
+        // cover the directive forms which previously reached the same editor-only panic.
+        let sources: &[&[u8]] = &[
+            b"\x00\x36arjav  A --> B\n%$aboxscriD\n  uchart TD\n  %%{init[A:API] Orl(> B\n",
+            b"%%{unknown-directive: {\"theme\": \"dark\"}}%%\nflowchart TD\nA --> B\n",
+            b"%%{init[A:API] Orl(> B\nflowchart TD\nA --> B\n",
+            b"%%{initialize: {\"theme\": }}%%\nflowchart TD\nA --> B\n",
+        ];
+        let uri = b"file:///tmp/malformed-directive.mmd";
+
+        for source in sources {
+            let result = call_analyze_document_facts(source, b"", uri);
+            assert_ne!(
+                result.code,
+                BindingStatus::Panic.code(),
+                "one-shot document facts API returned MERMAN_PANIC for {source:?}"
+            );
+            let _ = take_buffer(result.data);
+        }
+
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+        let _ = take_buffer(engine.data);
+
+        for source in sources {
+            let result = call_engine_analyze_document_facts(engine.engine, source, uri);
+            assert_ne!(
+                result.code,
+                BindingStatus::Panic.code(),
+                "reusable document facts API returned MERMAN_PANIC for {source:?}"
+            );
+            let _ = take_buffer(result.data);
+        }
+
+        unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[test]
     fn metadata_entry_points_return_json_contracts() {
         let diagrams = merman_supported_diagrams_json();
+        let runtime_contract = merman_runtime_contract_json();
         let ascii_capabilities = merman_ascii_capabilities_json();
         let family_capabilities = merman_diagram_family_capabilities_json();
         let lint_rules = merman_lint_rule_catalog_json();
@@ -1642,6 +1771,7 @@ mod tests {
         let host_theme_presets = merman_supported_host_theme_presets_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
+        assert_eq!(runtime_contract.code, BindingStatus::Ok.code());
         assert_eq!(ascii_capabilities.code, BindingStatus::Ok.code());
         assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
         let lint_rules_json = if cfg!(feature = "analysis") {
@@ -1655,6 +1785,8 @@ mod tests {
         assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
         let diagrams: Value = serde_json::from_str(&take_text(diagrams.data)).unwrap();
+        let runtime_contract: Value =
+            serde_json::from_str(&take_text(runtime_contract.data)).unwrap();
         let ascii_capabilities: Value =
             serde_json::from_str(&take_text(ascii_capabilities.data)).unwrap();
         let family_capabilities: Value =
@@ -1668,6 +1800,13 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .contains(&Value::String("flowchart".to_string()))
+        );
+        assert_eq!(runtime_contract["schema_version"], 1);
+        assert_eq!(runtime_contract["abi_version"], MERMAN_ABI_VERSION);
+        assert_eq!(runtime_contract["options_schema_version"], 1);
+        assert_eq!(
+            runtime_contract["resources"]["general_binding_default_profile"],
+            "interactive"
         );
         let ascii_capabilities = ascii_capabilities.as_array().unwrap();
         if cfg!(feature = "ascii") {
@@ -1806,7 +1945,7 @@ mod tests {
     fn render_resource_limit_error_uses_dedicated_status() {
         let result = call_render(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
         );
 
         if cfg!(feature = "render") {
@@ -1825,6 +1964,26 @@ mod tests {
         } else {
             expect_render_feature_error(result);
         }
+    }
+
+    #[test]
+    fn typed_resource_options_builder_returns_versioned_json_and_rejects_invalid_codes() {
+        let overrides = [MermanResourceLimitOverride { id: 0, value: 4096 }];
+        let result =
+            unsafe { merman_resource_options_json(1, overrides.as_ptr(), overrides.len()) };
+        assert_eq!(result.code, BindingStatus::Ok.code());
+        let value: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["resources"]["profile"], "constrained");
+        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
+
+        let invalid = unsafe { merman_resource_options_json(99, std::ptr::null(), 0) };
+        assert_eq!(invalid.code, BindingStatus::InvalidArgument.code());
+        unsafe { merman_buffer_free(invalid.data) };
+        assert_eq!(
+            merman_resource_limit_override_struct_size(),
+            std::mem::size_of::<MermanResourceLimitOverride>()
+        );
     }
 
     #[test]

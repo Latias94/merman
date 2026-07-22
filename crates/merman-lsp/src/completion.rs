@@ -1,33 +1,58 @@
-use crate::protocol::{core_position_from_lsp, range_to_lsp};
+use crate::client_profile::{ClientProtocolProfile, MarkupPreference};
+use crate::protocol::{core_position_from_lsp, generated_markdown_to_plain_text, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
-    CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
-    CompletionList as CoreCompletionList, CompletionResolveData, completion_documentation,
+    CompletionInsertTextFormat, CompletionItemKind, CompletionList as CoreCompletionList,
+    CompletionResolveData, completion_documentation,
     completion_for_snapshot as core_completion_for_snapshot,
 };
-use serde_json::json;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind as LspCompletionItemKind, CompletionItemLabelDetails,
     CompletionList, CompletionTextEdit, Documentation, InsertTextFormat, MarkupContent, MarkupKind,
     Position, TextEdit,
 };
 
+#[cfg(test)]
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
-    core_completion_to_lsp(core_completion_for_snapshot(
-        snapshot.as_editor(),
-        core_position_from_lsp(position),
-    ))
+    completion_for_snapshot_with_profile(snapshot, position, &ClientProtocolProfile::permissive())
 }
 
-fn core_completion_to_lsp(list: CoreCompletionList) -> CompletionList {
+pub(crate) fn completion_for_snapshot_with_profile(
+    snapshot: &DocumentSnapshot,
+    position: Position,
+    profile: &ClientProtocolProfile,
+) -> CompletionList {
+    core_completion_to_lsp(
+        core_completion_for_snapshot(snapshot.as_editor(), core_position_from_lsp(position)),
+        profile,
+    )
+}
+
+fn core_completion_to_lsp(
+    list: CoreCompletionList,
+    profile: &ClientProtocolProfile,
+) -> CompletionList {
     CompletionList {
         is_incomplete: list.is_incomplete,
-        items: list.items.into_iter().map(core_item_to_lsp).collect(),
+        items: list
+            .items
+            .into_iter()
+            .filter_map(|item| core_item_to_lsp(item, profile))
+            .collect(),
     }
 }
 
-fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem {
-    CompletionItem {
+fn core_item_to_lsp(
+    item: merman_editor_core::CompletionItem,
+    profile: &ClientProtocolProfile,
+) -> Option<CompletionItem> {
+    if item.insert_text_format == CompletionInsertTextFormat::Snippet
+        && !profile.completion_snippets
+    {
+        return None;
+    }
+
+    Some(CompletionItem {
         label: item.label.clone(),
         kind: Some(match item.kind {
             CompletionItemKind::Keyword => LspCompletionItemKind::KEYWORD,
@@ -36,12 +61,7 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
             CompletionItemKind::Snippet => LspCompletionItemKind::SNIPPET,
         }),
         detail: item.detail,
-        data: item.data.map(|data| {
-            json!({
-                "kind": data.kind,
-                "label": data.label,
-            })
-        }),
+        data: item.data.and_then(|data| serde_json::to_value(data).ok()),
         insert_text: item.insert_text,
         insert_text_format: Some(match item.insert_text_format {
             CompletionInsertTextFormat::PlainText => InsertTextFormat::PLAIN_TEXT,
@@ -50,17 +70,28 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
         text_edit: item.text_edit.map(|edit| {
             CompletionTextEdit::from(TextEdit::new(range_to_lsp(edit.range), edit.new_text))
         }),
-        label_details: item
-            .label_details
-            .map(|details| CompletionItemLabelDetails {
-                description: details.description,
-                detail: details.detail,
-            }),
+        label_details: if profile.completion_label_details {
+            item.label_details
+                .map(|details| CompletionItemLabelDetails {
+                    description: details.description,
+                    detail: details.detail,
+                })
+        } else {
+            None
+        },
         ..CompletionItem::default()
-    }
+    })
 }
 
-pub fn resolve_completion_item(mut item: CompletionItem) -> CompletionItem {
+#[cfg(test)]
+pub fn resolve_completion_item(item: CompletionItem) -> CompletionItem {
+    resolve_completion_item_with_profile(item, &ClientProtocolProfile::permissive())
+}
+
+pub(crate) fn resolve_completion_item_with_profile(
+    mut item: CompletionItem,
+    profile: &ClientProtocolProfile,
+) -> CompletionItem {
     if item.documentation.is_some() {
         return item;
     }
@@ -73,16 +104,21 @@ pub fn resolve_completion_item(mut item: CompletionItem) -> CompletionItem {
         return item;
     };
 
-    item.documentation = Some(Documentation::MarkupContent(MarkupContent {
-        kind: MarkupKind::Markdown,
-        value: completion_documentation(&data),
-    }));
+    let documentation = completion_documentation(&data);
+    item.documentation = Some(match profile.completion_documentation {
+        MarkupPreference::Markdown => Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: documentation,
+        }),
+        MarkupPreference::PlainText => Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::PlainText,
+            value: generated_markdown_to_plain_text(&documentation),
+        }),
+        MarkupPreference::String => {
+            Documentation::String(generated_markdown_to_plain_text(&documentation))
+        }
+    });
     item
-}
-
-#[allow(dead_code)]
-fn _assert_completion_data_kind_is_lsp_serializable(kind: CompletionDataKind) -> serde_json::Value {
-    json!(kind)
 }
 
 #[cfg(test)]

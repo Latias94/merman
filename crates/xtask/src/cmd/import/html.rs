@@ -287,28 +287,6 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         Ok(())
     }
 
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
-            _ => None,
-        }
-    }
-
     fn complexity_score(body: &str, diagram_dir: &str) -> i64 {
         let line_count = body.lines().count() as i64;
         let mut score = line_count * 1_000 + (body.len() as i64);
@@ -481,7 +459,8 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     continue;
                 }
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 skipped.push(format!(
                     "skip (unsupported detected type '{detected}'): {}",
                     b.source_html.display()

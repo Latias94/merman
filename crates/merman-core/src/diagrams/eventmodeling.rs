@@ -635,28 +635,16 @@ impl<'a> EventModelingCursor<'a> {
 
     fn record_qualified_identifier(
         &mut self,
-        field: &EventModelingFieldSpan,
+        segments: &[SourceSpan],
+        delimiters: &[SourceSpan],
         modifier: Option<EditorLexemeModifier>,
     ) {
-        let mut segment_start = 0usize;
-        for (offset, ch) in field.text.char_indices() {
-            if ch != '.' {
-                continue;
-            }
-            self.record_identifier(
-                SourceSpan::new(field.span.start + segment_start, field.span.start + offset),
-                modifier,
-            );
-            self.lexemes.push(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(field.span.start + offset, field.span.start + offset + 1),
-            );
-            segment_start = offset + 1;
+        for span in segments {
+            self.record_identifier(*span, modifier);
         }
-        self.record_identifier(
-            SourceSpan::new(field.span.start + segment_start, field.span.end),
-            modifier,
-        );
+        for span in delimiters {
+            self.lexemes.push(EditorLexemeKind::Delimiter, *span);
+        }
     }
 
     fn skip_hidden(&mut self, meta: &ParseMetadata) -> Result<()> {
@@ -718,8 +706,6 @@ impl<'a> EventModelingCursor<'a> {
                 continue;
             }
             if rest.starts_with("---")
-                && (self.offset == 0
-                    || self.source.as_bytes().get(self.offset.wrapping_sub(1)) == Some(&b'\n'))
                 && let Some(end) = eventmodeling_yaml_end(self.source, self.offset)
             {
                 self.offset = end;
@@ -764,7 +750,20 @@ impl<'a> EventModelingCursor<'a> {
 }
 
 fn eventmodeling_yaml_end(source: &str, start: usize) -> Option<usize> {
-    let (_, mut cursor) = physical_line_at(source, start);
+    let rest = source.get(start..)?;
+    let opening_newline = rest.find('\n')?;
+    let opening = rest[..opening_newline]
+        .strip_suffix('\r')
+        .unwrap_or(&rest[..opening_newline]);
+    if !opening
+        .strip_prefix("---")?
+        .bytes()
+        .all(|byte| matches!(byte, b' ' | b'\t'))
+    {
+        return None;
+    }
+
+    let mut cursor = start + opening_newline + 1;
     while cursor <= source.len() {
         let (line, next) = physical_line_at(source, cursor);
         if line.trim_end_matches([' ', '\t']) == "---" {
@@ -816,10 +815,6 @@ fn is_eventmodeling_id(value: &str) -> bool {
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
-fn is_eventmodeling_qualified_name(value: &str) -> bool {
-    !value.is_empty() && value.split('.').all(is_eventmodeling_id)
-}
-
 fn take_eventmodeling_id_cursor(
     cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
@@ -841,13 +836,57 @@ fn take_eventmodeling_qualified_name_cursor(
     expected: &str,
     modifier: Option<EditorLexemeModifier>,
 ) -> Result<EventModelingFieldSpan> {
-    let field = cursor.take_token(meta, expected)?;
-    if !is_eventmodeling_qualified_name(&field.text) {
-        cursor.lexemes.push(EditorLexemeKind::Literal, field.span);
-        return Err(eventmodeling_exact_error(meta, expected, field.span));
+    cursor.skip_hidden(meta)?;
+    let start = cursor.offset;
+    let mut text = String::new();
+    let mut segments = Vec::new();
+    let mut delimiters = Vec::new();
+
+    loop {
+        let segment_start = cursor.offset;
+        let Some(first) = cursor.source[cursor.offset..].chars().next() else {
+            return Err(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                expected,
+                cursor.offset,
+            ));
+        };
+        if first != '_' && !first.is_ascii_alphabetic() {
+            let invalid = cursor.take_token(meta, expected)?;
+            let span = SourceSpan::new(start, invalid.span.end);
+            cursor.lexemes.push(EditorLexemeKind::Literal, span);
+            return Err(eventmodeling_exact_error(meta, expected, span));
+        }
+        cursor.offset += first.len_utf8();
+        while let Some(ch) = cursor.source[cursor.offset..].chars().next() {
+            if ch != '_' && !ch.is_ascii_alphanumeric() {
+                break;
+            }
+            cursor.offset += ch.len_utf8();
+        }
+        let segment_span = SourceSpan::new(segment_start, cursor.offset);
+        if !text.is_empty() {
+            text.push('.');
+        }
+        text.push_str(&cursor.source[segment_span.start..segment_span.end]);
+        segments.push(segment_span);
+
+        cursor.skip_hidden(meta)?;
+        if !cursor.source[cursor.offset..].starts_with('.') {
+            break;
+        }
+        let delimiter_start = cursor.offset;
+        cursor.offset += 1;
+        delimiters.push(SourceSpan::new(delimiter_start, cursor.offset));
+        cursor.skip_hidden(meta)?;
     }
-    cursor.record_qualified_identifier(&field, modifier);
-    Ok(field)
+
+    let end = segments.last().map_or(start, |span| span.end);
+    cursor.record_qualified_identifier(&segments, &delimiters, modifier);
+    Ok(EventModelingFieldSpan {
+        text,
+        span: SourceSpan::new(start, end),
+    })
 }
 
 fn take_eventmodeling_frame_id_cursor(
@@ -1785,6 +1824,61 @@ tf 03 evt Cart.ItemAdded ->> 01 ->> 02
         assert_eq!(model.frames[1].frame_kind, "resetframe");
         assert_eq!(model.frames[1].entity_identifier, "Product.PriceChanged");
         assert_eq!(model.frames[2].source_frames, ["01", "02"]);
+    }
+
+    #[test]
+    fn qualified_names_allow_hidden_trivia_around_dots_and_normalize_segments() {
+        let text = concat!(
+            "eventmodeling\n",
+            "entity Sales /* bounded context */ . Order\n",
+            "tf 01 evt Sales \t.\n Order\n",
+        );
+        let model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
+
+        assert_eq!(model.frames[0].entity_identifier, "Sales.Order");
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+        let identifier_texts: Vec<_> = facts
+            .lexemes()
+            .iter()
+            .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Identifier)
+            .map(|lexeme| &text[lexeme.span().start..lexeme.span().end])
+            .collect();
+        assert!(
+            identifier_texts
+                .windows(2)
+                .any(|pair| pair == ["Sales", "Order"])
+        );
+        for (dot, _) in text.match_indices('.') {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                lexeme.kind() == EditorLexemeKind::Delimiter
+                    && lexeme.span() == SourceSpan::new(dot, dot + 1)
+            }));
+        }
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "Sales.Order")
+        );
+    }
+
+    #[test]
+    fn yaml_is_hidden_where_the_upstream_terminal_can_start() {
+        let text = concat!(
+            "eventmodeling ---\n",
+            "title: hidden document metadata\n",
+            "---\n",
+            "entity Cart\n",
+            "tf 01 evt Cart\n",
+        );
+        let model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
+
+        assert_eq!(model.frames[0].entity_identifier, "Cart");
     }
 
     #[test]

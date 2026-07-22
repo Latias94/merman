@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Medical Device Lifecycle",
     "accTitle": null,
     "accDescr": null,

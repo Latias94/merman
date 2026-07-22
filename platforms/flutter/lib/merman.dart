@@ -9,6 +9,12 @@ export 'src/generated/text_measurement_abi.dart'
         MermanTextMeasurementOperation,
         MermanTextMeasurementResultKind,
         mermanAbiVersion;
+export 'src/generated/resource_options.dart'
+    show
+        MermanResourceLimitId,
+        MermanResourceOptions,
+        MermanResourceOptionsBuilder,
+        MermanResourceProfile;
 export 'src/merman_ffi.dart'
     show
         Merman,

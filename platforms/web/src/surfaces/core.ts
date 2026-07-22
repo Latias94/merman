@@ -40,6 +40,7 @@ export const {
   analyzeDocumentFacts,
   validate,
   bindingCapabilities,
+  runtimeContract,
   selectedRegistryProfile,
   supportedDiagrams,
   diagramFamilyCapabilities,

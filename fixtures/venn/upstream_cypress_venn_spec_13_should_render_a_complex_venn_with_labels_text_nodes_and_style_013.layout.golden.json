@@ -1,0 +1,403 @@
+{
+  "diagramType": "venn",
+  "layout": {
+    "VennDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 450.0
+      },
+      "width": 800.0,
+      "height": 450.0,
+      "diagram_height": 426.0,
+      "title_height": 24.0,
+      "scale": 0.5,
+      "padding": 8.0,
+      "use_max_width": true,
+      "use_debug_layout": false,
+      "areas": [
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "size": 10.0,
+          "label": "Frontend",
+          "text_x": 271.0,
+          "text_y": 311.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Frontend",
+              "x": 316.303,
+              "y": 285.483,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 316.3 285.48 \nm -132.52 0 \na 132.52 132.52 0 1 0 265.04 0 \na 132.52 132.52 0 1 0 -265.04 0"
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "size": 10.0,
+          "label": "Backend",
+          "text_x": 528.0,
+          "text_y": 311.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 483.697,
+              "y": 285.483,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 483.7 285.48 \nm -132.52 0 \na 132.52 132.52 0 1 0 265.04 0 \na 132.52 132.52 0 1 0 -265.04 0"
+        },
+        {
+          "sets": [
+            "DevOps"
+          ],
+          "size": 10.0,
+          "label": "DevOps",
+          "text_x": 400.0,
+          "text_y": 89.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "DevOps",
+              "x": 400.0,
+              "y": 140.517,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 400 140.52 \nm -132.52 0 \na 132.52 132.52 0 1 0 265.04 0 \na 132.52 132.52 0 1 0 -265.04 0"
+        },
+        {
+          "sets": [
+            "Backend",
+            "Frontend"
+          ],
+          "size": 2.5,
+          "label": "Fullstack",
+          "text_x": 399.0,
+          "text_y": 316.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 483.697,
+              "y": 285.483,
+              "radius": 132.517
+            },
+            {
+              "set": "Frontend",
+              "x": 316.303,
+              "y": 285.483,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 400 388.22 \nA 132.52 132.52 0 0 1 400 182.74 \nA 132.52 132.52 0 0 1 400 388.22"
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps"
+          ],
+          "size": 2.5,
+          "text_x": 468.0,
+          "text_y": 197.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 483.697,
+              "y": 285.483,
+              "radius": 132.517
+            },
+            {
+              "set": "DevOps",
+              "x": 400.0,
+              "y": 140.517,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 352.87 264.37 \nA 132.52 132.52 0 0 1 530.82 161.63 \nA 132.52 132.52 0 0 1 352.87 264.37"
+        },
+        {
+          "sets": [
+            "DevOps",
+            "Frontend"
+          ],
+          "size": 2.5,
+          "text_x": 331.0,
+          "text_y": 197.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "DevOps",
+              "x": 400.0,
+              "y": 140.517,
+              "radius": 132.517
+            },
+            {
+              "set": "Frontend",
+              "x": 316.303,
+              "y": 285.483,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 269.18 161.63 \nA 132.52 132.52 0 0 1 447.13 264.37 \nA 132.52 132.52 0 0 1 269.18 161.63"
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps",
+            "Frontend"
+          ],
+          "size": 1.111,
+          "text_x": 399.0,
+          "text_y": 237.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 483.697,
+              "y": 285.483,
+              "radius": 132.517
+            },
+            {
+              "set": "DevOps",
+              "x": 400.0,
+              "y": 140.517,
+              "radius": 132.517
+            },
+            {
+              "set": "Frontend",
+              "x": 316.303,
+              "y": 285.483,
+              "radius": 132.517
+            }
+          ],
+          "path": "\nM 352.87 264.37 \nA 132.52 132.52 0 0 1 400 182.74 \nA 132.52 132.52 0 0 1 447.13 264.37 \nA 132.52 132.52 0 0 1 352.87 264.37"
+        }
+      ],
+      "text_areas": [
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "center_x": 271.712,
+          "center_y": 311.23,
+          "inner_radius": 81.026,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "center_x": 528.289,
+          "center_y": 311.229,
+          "inner_radius": 81.026,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "DevOps"
+          ],
+          "center_x": 400.0,
+          "center_y": 89.026,
+          "inner_radius": 81.026,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "Backend",
+            "Frontend"
+          ],
+          "center_x": 400.0,
+          "center_y": 316.345,
+          "inner_radius": 43.311,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps"
+          ],
+          "center_x": 468.575,
+          "center_y": 197.569,
+          "inner_radius": 43.312,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "DevOps",
+            "Frontend"
+          ],
+          "center_x": 331.425,
+          "center_y": 197.569,
+          "inner_radius": 43.312,
+          "font_size": 20.0,
+          "debug_cells": []
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps",
+            "Frontend"
+          ],
+          "center_x": 400.0,
+          "center_y": 237.161,
+          "inner_radius": 35.872,
+          "font_size": 20.0,
+          "debug_cells": []
+        }
+      ],
+      "text_nodes": [
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "id": "React",
+          "x": 198.585,
+          "y": 254.103,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "id": "CSS",
+          "x": 275.56,
+          "y": 254.103,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "id": "HTML",
+          "x": 198.585,
+          "y": 331.078,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "id": "Node.js",
+          "x": 455.162,
+          "y": 254.103,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "id": "SQL",
+          "x": 532.137,
+          "y": 254.103,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "id": "APIs",
+          "x": 455.162,
+          "y": 331.078,
+          "width": 69.278,
+          "height": 69.278
+        },
+        {
+          "sets": [
+            "DevOps"
+          ],
+          "id": "Docker",
+          "x": 326.874,
+          "y": 50.749,
+          "width": 69.277,
+          "height": 138.555
+        },
+        {
+          "sets": [
+            "DevOps"
+          ],
+          "id": "CI/CD",
+          "x": 403.849,
+          "y": 50.749,
+          "width": 69.277,
+          "height": 138.555
+        },
+        {
+          "sets": [
+            "Backend",
+            "Frontend"
+          ],
+          "id": "REST",
+          "x": 360.912,
+          "y": 305.142,
+          "width": 37.031,
+          "height": 74.062
+        },
+        {
+          "sets": [
+            "Backend",
+            "Frontend"
+          ],
+          "id": "GraphQL",
+          "x": 402.057,
+          "y": 305.142,
+          "width": 37.031,
+          "height": 74.062
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps"
+          ],
+          "id": "Monitoring",
+          "x": 431.544,
+          "y": 175.538,
+          "width": 74.063,
+          "height": 74.063
+        },
+        {
+          "sets": [
+            "DevOps",
+            "Frontend"
+          ],
+          "id": "Performance",
+          "x": 294.393,
+          "y": 175.538,
+          "width": 74.063,
+          "height": 74.063
+        },
+        {
+          "sets": [
+            "Backend",
+            "DevOps",
+            "Frontend"
+          ],
+          "id": "Architecture",
+          "x": 369.329,
+          "y": 221.491,
+          "width": 61.342,
+          "height": 61.342
+        }
+      ]
+    }
+  }
+}

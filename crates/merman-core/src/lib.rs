@@ -44,11 +44,12 @@ pub use diagram::{
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure,
-    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer,
-    EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
+    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme,
+    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorLexemeProducer, EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, EditorSpanCoordinateSpace,
+    SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{

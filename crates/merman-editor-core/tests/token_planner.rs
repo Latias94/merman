@@ -1,5 +1,6 @@
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentWorkspace, PlannedTokenKind, Position, Range,
+    plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_range,
 };
 
 #[test]
@@ -60,6 +61,63 @@ fn markdown_fences_are_preprocessor_owned_delimiter_tokens() {
         2,
         "only the opening and closing Markdown fence markers are global delimiter tokens"
     );
+}
+
+#[test]
+fn range_planner_visits_only_overlapping_markdown_fences() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/range.md",
+        1,
+        concat!(
+            "```mermaid\n",
+            "flowchart TD\n",
+            "first --> hidden\n",
+            "```\n",
+            "between\n",
+            "```mermaid\n",
+            "sequenceDiagram\n",
+            "Alice->>Bob: visible\n",
+            "```\n",
+        )
+        .to_string(),
+        DocumentKind::Markdown,
+    );
+    let range = Range::new(Position::new(5, 0), Position::new(9, 0));
+
+    let plan =
+        plan_semantic_tokens_for_snapshot_range(&snapshot, range).expect("valid range token plan");
+
+    assert!(!plan.tokens().is_empty());
+    assert!(
+        plan.tokens()
+            .iter()
+            .all(|token| (5..9).contains(&token.line))
+    );
+    assert_eq!(plan.packed().len(), plan.tokens().len() * 5);
+}
+
+#[test]
+fn range_planner_prunes_candidates_inside_one_large_fence() {
+    let mut workspace = DocumentWorkspace::new();
+    let mut source = String::from("```mermaid\nflowchart TD\n");
+    for index in 0..128 {
+        source.push_str(&format!("node{index} --> node{}\n", index + 1));
+    }
+    source.push_str("```\n");
+    let snapshot = workspace.upsert(
+        "file:///tmp/large-range.md",
+        1,
+        source,
+        DocumentKind::Markdown,
+    );
+    let range = Range::new(Position::new(64, 0), Position::new(65, 0));
+
+    let plan = plan_semantic_tokens_for_snapshot_range(&snapshot, range)
+        .expect("valid in-fence range token plan");
+
+    assert!(!plan.tokens().is_empty());
+    assert!(plan.tokens().iter().all(|token| token.line == 64));
 }
 
 #[test]

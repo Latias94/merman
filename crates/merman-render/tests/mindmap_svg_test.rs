@@ -49,7 +49,7 @@ fn layout_mindmap_typed(
 }
 
 fn deep_mindmap_chain(depth: usize) -> String {
-    let mut input = String::from("mindmap\n");
+    let mut input = String::from("---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n");
     for level in 0..depth {
         input.push_str(&" ".repeat(level));
         input.push_str(&format!("n{level}\n"));
@@ -91,6 +91,19 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
             && svg.contains(r#"id="m15-mindmap-drop-shadow-small""#),
         "expected Mermaid 11.15 Mindmap scoped drop-shadow defs: {svg}"
     );
+}
+
+#[test]
+fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
+    for (source, expected) in [
+        ("mindmap\n  root[&#x41;]\n", "<p>&amp;&amp;x41;</p>"),
+        ("mindmap\n  root[&#X41;]\n", "<p>&amp;&amp;X41;</p>"),
+    ] {
+        let svg = render_mindmap_svg_from_text(source, "mindmap-hex-entity");
+
+        assert!(svg.contains(expected), "expected {expected:?}: {svg}");
+        roxmltree::Document::parse(&svg).expect("Mindmap SVG must be well-formed XML");
+    }
 }
 
 #[test]

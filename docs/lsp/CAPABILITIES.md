@@ -22,7 +22,9 @@ Semantic-token codes, modifier bits, legend indices, and the five-word relative 
 owned by `editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
 extension. LSP initialization publishes the descriptor digest and packed encoding under
 `capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
-the standard LSP legend differs. The same descriptor projects custom VS Code token declarations,
+the standard LSP legend differs. The same capability publishes the descriptor-owned rename-policy
+list, which the extension also validates exactly before enabling language intelligence. The same
+descriptor projects custom VS Code token declarations,
 theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-highlighting defaults;
 standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
 the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
@@ -60,7 +62,8 @@ consumers:
 
 - `fact_source: "text_scan"` is removed;
 - `fact_source: "unavailable"` means that no body semantic facts were produced;
-- every semantic item has a required family-owned `rename_policy`; and
+- every semantic item emitted by current writers has a family-owned `rename_policy`; older v1
+  entries that omit the additive field decode conservatively as `"none"`; and
 - parser-backed and recovered provenance remain explicit; parser-backed facts always carry exact
   original-source spans. The compatibility field `source_mapped_spans` is `true` for those facts
   and `false` only when the body fact source is unavailable.
@@ -189,10 +192,10 @@ Remaining fallback ledger:
   unlocatable parser failures.
 - LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
   stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
-  Numeric `code` / `codeName`, category, `diagramType`, help text, and fix metadata remain in
-  diagnostic `data` for compatibility and code actions. Editor-core and LSP do not keep a
-  number-or-string compatibility enum and do not deduplicate projected diagnostics; they preserve
-  analysis payload cardinality. Document pull diagnostics are enabled only when the client
+  When diagnostic data is negotiated, it contains only the diagnostic id and current document
+  version used to validate a code-action request; fix plans and auxiliary rule metadata stay
+  server-owned. Editor-core and LSP do not keep a number-or-string compatibility enum and do not
+  deduplicate projected diagnostics; they preserve analysis payload cardinality. Document pull diagnostics are enabled only when the client
   advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised and
   `workspace/diagnostic` is not implemented because unopened workspace-file scanning is not
   implemented. Push diagnostics are cleared on `didClose`, and `workspace/diagnostic/refresh` is

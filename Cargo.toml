@@ -38,6 +38,9 @@ repository = "https://github.com/Latias94/merman"
 homepage = "https://github.com/Latias94/merman"
 rust-version = "1.95"
 
+[workspace.metadata.merman-release]
+independent-packages = ["roughr-merman"]
+
 [workspace.dependencies]
 base64 = "0.22.1"
 data-url = "0.3.2"
@@ -61,6 +64,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["blocking"
 rayon = "1.12.0"
 roxmltree = "0.21.1"
 quick-xml = "0.41.0"
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines", "simd"] }
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1", default-features = false }
@@ -81,6 +85,8 @@ tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
 uniffi = "0.32.0"
 futures = "0.3.31"
 hashbrown = "0.17.1"
+icu_collator = "2.2.1"
+icu_locale_core = "2.2.0"
 lol_html = "3.0"
 url = "2.5.4"
 uuid = { version = "1.23", default-features = false, features = ["std"] }

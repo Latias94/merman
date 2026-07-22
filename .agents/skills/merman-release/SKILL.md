@@ -43,22 +43,27 @@ items, and explains new user-facing surfaces without turning into a commit log.
 
 ## Version Sync
 
-Update every release-facing version before preflight:
+Treat `Cargo.toml` `[workspace.package].version` as the only workspace release authority. Project
+and verify its registry-specific forms with:
 
-- Rust workspace version in `Cargo.toml`.
-- Cargo crate versions and workspace dependency pins implied by the release.
-- `platforms/web/package.json`.
-- `platforms/flutter/pubspec.yaml`.
-- `platforms/android/build.gradle.kts`.
-- `platforms/python/merman/pyproject.toml`, using PEP 440 for prereleases such as `0.8.0a3`.
-- `tools/vscode-extension/package.json`; VS Code uses stable SemVer in the manifest and marks
-  prerelease VSIX builds during packaging.
-- Platform changelogs and package README compatibility sections when the published surface changes.
-- `packages/typst/merman/README.md` version mapping when the Typst package embeds a new workspace
-  renderer line.
+```bash
+python3 scripts/release-version.py set --version <version>
+python3 scripts/release-version.py
+```
 
-Completion criterion: every release-facing manifest and compatibility table names the same intended
-workspace release, with platform-specific spelling only where the registry requires it.
+The transaction updates Cargo dependency requirements, workspace and fuzz lock metadata, Web
+package and lock metadata, Python's PEP 440 form, Android and Flutter manifests, CocoaPods
+metadata, and iOS framework versions. Do not edit those projections independently.
+
+The VS Code extension, Typst package wrapper, and `roughr-merman` have independent version axes.
+Do not derive them from the workspace release. Update their versions only for a release of that
+specific package, and record the bundled workspace renderer through artifact provenance or the
+Typst compatibility mapping. Update platform changelogs and package README compatibility sections
+when the published surface changes.
+
+Completion criterion: every workspace-coupled manifest names the root release, with
+registry-specific spelling only where required, while each independent package version and bundled
+workspace-runtime provenance are internally consistent.
 
 ## Preflight
 

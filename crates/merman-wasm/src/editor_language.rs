@@ -903,7 +903,9 @@ fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
     match source {
         FenceTextIndexSource::Unavailable => "unavailable",
         FenceTextIndexSource::ParserComplete => "parser_complete",
+        FenceTextIndexSource::ParserCompleteDegradedSpans => "parser_complete_degraded_spans",
         FenceTextIndexSource::ParserRecovered => "parser_recovered",
+        FenceTextIndexSource::ParserRecoveredDegradedSpans => "parser_recovered_degraded_spans",
     }
 }
 
@@ -917,6 +919,18 @@ fn rename_error_to_js(err: RenameError) -> JsValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fact_source_names_preserve_degraded_span_provenance() {
+        assert_eq!(
+            fact_source_name(FenceTextIndexSource::ParserCompleteDegradedSpans),
+            "parser_complete_degraded_spans"
+        );
+        assert_eq!(
+            fact_source_name(FenceTextIndexSource::ParserRecoveredDegradedSpans),
+            "parser_recovered_degraded_spans"
+        );
+    }
 
     fn reset_editor_document_context_cache_for_tests() {
         EDITOR_DOCUMENT_CONTEXT_CACHE.with(|cache| {

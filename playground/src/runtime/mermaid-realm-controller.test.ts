@@ -102,6 +102,66 @@ test("timeout destroys the old realm before a later operation creates one", asyn
   assert.equal(second.disposeCalls, 0);
 });
 
+test("timeout interrupts a stalled viewport update before rendering", async () => {
+  const stuckViewport = deferred<void>();
+  let renderCalls = 0;
+  const first = fakeSession(
+    async () => {
+      renderCalls += 1;
+      return success("unreachable");
+    },
+    undefined,
+    () => stuckViewport.promise,
+  );
+  const second = fakeSession(async () => success("recovered"));
+  const sessions = [first, second];
+  const controller = createMermaidRealmController({
+    kind: "compare",
+    createSession: async () => sessions.shift()!,
+    operationTimeoutMs: 5,
+  });
+
+  assert.deepEqual(
+    await controller.render(INPUT),
+    failure("timeout", "Mermaid realm operation timed out."),
+  );
+  assert.equal(first.disposeCalls, 1);
+  assert.equal(renderCalls, 0);
+  assert.equal((await controller.render(INPUT)).status, "success");
+});
+
+test("reset interrupts a stalled viewport update before rendering", async () => {
+  const stuckViewport = deferred<void>();
+  let viewportStarted = false;
+  let renderCalls = 0;
+  const session = fakeSession(
+    async () => {
+      renderCalls += 1;
+      return success("unreachable");
+    },
+    undefined,
+    () => {
+      viewportStarted = true;
+      return stuckViewport.promise;
+    },
+  );
+  const controller = createMermaidRealmController({
+    kind: "compare",
+    createSession: async () => session,
+  });
+
+  const pending = controller.render(INPUT);
+  await waitFor(() => viewportStarted);
+  controller.reset();
+
+  assert.deepEqual(
+    await pending,
+    failure("disposed", "Mermaid realm operation was reset."),
+  );
+  assert.equal(session.disposeCalls, 1);
+  assert.equal(renderCalls, 0);
+});
+
 test("timeout remains classified when disposing rejects the active render", async () => {
   const stuck = deferred<MermaidRealmExecutionResult>();
   const session = fakeSession(
@@ -200,12 +260,13 @@ function failure(
 
 function fakeSession(
   render: MermaidRealmSession["render"],
-  onDispose?: () => void
+  onDispose?: () => void,
+  setViewport: MermaidRealmSession["setViewport"] = async () => undefined,
 ): MermaidRealmSession & { disposeCalls: number } {
   return {
     disposeCalls: 0,
     render,
-    async setViewport() {},
+    setViewport,
     dispose() {
       this.disposeCalls += 1;
       onDispose?.();

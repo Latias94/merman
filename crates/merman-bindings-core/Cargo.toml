@@ -29,8 +29,8 @@ raster = ["merman/raster"]
 [dependencies]
 chrono.workspace = true
 merman-analysis = { workspace = true, optional = true }
-merman = { path = "../merman", version = "0.8.0-alpha.3", default-features = false }
-merman-render = { path = "../merman-render", version = "0.8.0-alpha.3", optional = true, default-features = false }
+merman.workspace = true
+merman-render = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 

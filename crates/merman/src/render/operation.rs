@@ -27,28 +27,9 @@ impl RenderExecutionPath {
 /// Immutable evidence emitted only after a typed headless SVG operation completes successfully.
 ///
 /// A fresh render session yields [`RenderSessionReport`], which cannot be substituted for this
-/// completed operation report.
-///
-/// ```compile_fail
-/// use merman::render::{RenderEnvironment, RenderOperationReport};
-///
-/// fn retain_completed(_: &RenderOperationReport) {}
-/// let snapshot = RenderEnvironment::parity().begin_session().unwrap().report();
-/// retain_completed(&snapshot);
-/// ```
-///
-/// The report also cannot be forged from a fresh session because its completion fields are
-/// private:
-///
-/// ```compile_fail
-/// use merman::render::{RenderEnvironment, RenderExecutionPath, RenderOperationReport};
-///
-/// let snapshot = RenderEnvironment::parity().begin_session().unwrap().report();
-/// let forged = RenderOperationReport {
-///     execution_path: RenderExecutionPath::HeadlessOperationTyped,
-///     session: snapshot,
-/// };
-/// ```
+/// completed operation report. Its completion fields are private, so external callers cannot
+/// forge one from a fresh session. The public [`crate::render`] module documentation carries the
+/// compile-fail contract tests for both boundaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderOperationReport {
     execution_path: RenderExecutionPath,
@@ -148,23 +129,8 @@ impl PreparedSemantic {
 /// The artifact exposes metadata, a stable semantic family label, and compatibility layout JSON.
 /// SVG rendering consumes it, which prevents the prepared parse/layout result from being rendered
 /// more than once while keeping the typed semantic/layout pair opaque and internally consistent.
-///
-/// ```compile_fail
-/// use merman::render::{LayoutOptions, SvgRenderOptions, prepare_render_sync};
-/// use merman::{Engine, ParseOptions};
-///
-/// let prepared = prepare_render_sync(
-///     &Engine::new(),
-///     "info",
-///     ParseOptions::strict(),
-///     &LayoutOptions::headless_svg_defaults(),
-/// )
-/// .unwrap()
-/// .unwrap();
-/// let options = SvgRenderOptions::default();
-/// let _first = prepared.render_svg(&options);
-/// let _second = prepared.render_svg(&options); // `prepared` was consumed above.
-/// ```
+/// The public [`crate::render`] module documentation carries the compile-fail contract test for
+/// this consuming boundary.
 pub struct PreparedRender {
     artifact: merman_render::family::FamilyRenderArtifact,
 }
@@ -368,7 +334,7 @@ impl<'a> HeadlessOperation<'a> {
 
     pub(super) fn prepare_semantic(self) -> Result<Option<PreparedSemantic>> {
         self.session
-            .resource_limits()
+            .resource_policy()
             .check_source_bytes(self.text)
             .map_err(resource_limit_error)?;
         let Some(parsed) = self

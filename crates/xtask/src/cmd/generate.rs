@@ -2,7 +2,7 @@ use crate::XtaskError;
 #[cfg(test)]
 use crate::cmd::read_bounded_child_pipe;
 use crate::cmd::{
-    PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
+    PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
     ensure_content_addressed_js_script, ensure_upstream_svg_puppeteer_config,
     spawn_timeout_managed_child, upstream_svg_package_tree_sha256, wait_with_bounded_output,
     wait_with_timeout,
@@ -20,8 +20,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const DOMPURIFY_BASELINE_VERSION: &str = "3.4.0";
-const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
+pub(crate) const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
     "er",
     "flowchart",
     "state",
@@ -361,7 +360,58 @@ fn probe_upstream_svg_render_environment(
     validate_upstream_svg_render_probe(probe, &installed_mermaid_version(tools_root)?)
 }
 
-fn create_upstream_svg_check_output_root(target_root: &Path) -> Result<PathBuf, XtaskError> {
+#[derive(Debug)]
+struct UpstreamSvgCheckOutput {
+    path: PathBuf,
+    cleaned: bool,
+}
+
+impl UpstreamSvgCheckOutput {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn cleanup(&mut self) -> Result<(), XtaskError> {
+        match fs::remove_dir_all(&self.path) {
+            Ok(()) => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(source) => Err(XtaskError::WriteFile {
+                path: self.path.display().to_string(),
+                source,
+            }),
+        }
+    }
+
+    fn finish<T>(mut self, result: Result<T, XtaskError>) -> Result<T, XtaskError> {
+        let cleanup = self.cleanup();
+        match (result, cleanup) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(_), Err(cleanup)) => Err(cleanup),
+            (Err(error), Err(cleanup)) => Err(XtaskError::UpstreamSvgFailed(format!(
+                "{error}; failed to remove owned upstream SVG check corpus: {cleanup}"
+            ))),
+        }
+    }
+}
+
+impl Drop for UpstreamSvgCheckOutput {
+    fn drop(&mut self) {
+        if !self.cleaned {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+fn create_upstream_svg_check_output_root(
+    target_root: &Path,
+) -> Result<UpstreamSvgCheckOutput, XtaskError> {
     let check_root = target_root.join("upstream-svgs-check");
     fs::create_dir_all(&check_root).map_err(|source| XtaskError::WriteFile {
         path: check_root.display().to_string(),
@@ -377,7 +427,12 @@ fn create_upstream_svg_check_output_root(target_root: &Path) -> Result<PathBuf, 
         let output_root =
             check_root.join(format!("run-{}-{timestamp}-{sequence}", std::process::id()));
         match fs::create_dir(&output_root) {
-            Ok(()) => return Ok(output_root),
+            Ok(()) => {
+                return Ok(UpstreamSvgCheckOutput {
+                    path: output_root,
+                    cleaned: false,
+                });
+            }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(source) => {
                 return Err(XtaskError::WriteFile {
@@ -1063,10 +1118,11 @@ fn gen_upstream_svgs_impl(
     let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
     let render_probe = probe_upstream_svg_render_environment(&tools_root)?;
     println!(
-        "upstream SVG render environment: {}/{} (revision {}, timezone {}), Puppeteer {}, font probe {}",
+        "upstream SVG render environment: {}/{} (revision {}, locale {}, timezone {}), Puppeteer {}, font probe {}",
         render_probe.render_environment.browser.product,
         render_probe.render_environment.browser.version,
         render_probe.render_environment.browser.revision,
+        render_probe.render_environment.browser.locale,
         render_probe.render_environment.browser.timezone,
         render_probe.render_environment.puppeteer.version,
         render_probe.render_environment.font_probe.sha256
@@ -1645,207 +1701,213 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let selected_diagrams =
         select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
     let baseline_root = fixtures_root.join("upstream-svgs");
-    let out_root = create_upstream_svg_check_output_root(&crate::cmd::target_root())?;
+    let output = create_upstream_svg_check_output_root(&crate::cmd::target_root())?;
+    let result = (|| {
+        let out_root = output.path();
 
-    let mut gen_args: Vec<String> = vec![
-        "--diagram".to_string(),
-        diagram.clone(),
-        "--out".to_string(),
-        out_root.to_string_lossy().to_string(),
-        "--fresh-output".to_string(),
-    ];
-    if let Some(f) = &filter {
-        gen_args.push("--filter".to_string());
-        gen_args.push(f.clone());
-    }
-    if install {
-        gen_args.push("--install".to_string());
-    }
-
-    gen_upstream_svgs(gen_args)?;
-    let current_selection =
-        select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
-    if current_selection != selected_diagrams {
-        return Err(XtaskError::UpstreamSvgFailed(
-            "upstream SVG family selection changed while running the fresh baseline check"
-                .to_string(),
-        ));
-    }
-
-    struct UpstreamSvgCheck<'a> {
-        baseline_root: &'a Path,
-        out_root: &'a Path,
-        diagram: &'a str,
-        filter: Option<&'a str>,
-        check_dom: bool,
-        dom_mode: svgdom::DomMode,
-        dom_decimals: u32,
-    }
-
-    fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
-        let UpstreamSvgCheck {
-            baseline_root,
-            out_root,
-            diagram,
-            filter,
-            check_dom,
-            dom_mode,
-            dom_decimals,
-        } = ctx;
-        let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
-        let baseline_dir = baseline_root.join(diagram);
-        let out_dir = out_root.join(diagram);
-        let _baseline_family_lock = crate::cmd::acquire_upstream_svg_family_lock(&baseline_dir)?;
-        let provenance = crate::cmd::load_upstream_svg_provenance(
-            diagram,
-            &fixtures_dir,
-            &baseline_dir,
-            filter.is_none(),
-        )?;
-        let generated_provenance = crate::cmd::load_upstream_svg_provenance(
-            diagram,
-            &fixtures_dir,
-            &out_dir,
-            filter.is_none(),
-        )?;
-        provenance.require_same_generated_environment(&generated_provenance)?;
-
-        let fixture_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, false);
-        let (mmd_files, excluded_fixtures) =
-            partition_upstream_svg_fixtures(diagram, fixture_files)?;
-        let mut mismatches: Vec<String> = Vec::new();
-        for (fixture_path, reason) in &excluded_fixtures {
-            let Some(stem) = fixture_path.file_stem().and_then(|stem| stem.to_str()) else {
-                mismatches.push(format!(
-                    "invalid fixture filename {}",
-                    fixture_path.display()
-                ));
-                continue;
-            };
-            let baseline_path = baseline_dir.join(format!("{stem}.svg"));
-            let generated_path = out_dir.join(format!("{stem}.svg"));
-            if let Err(err) =
-                provenance.validate_excluded_fixture(fixture_path, reason, &baseline_path)
-            {
-                mismatches.push(err);
-            }
-            if let Err(err) = generated_provenance.validate_excluded_fixture(
-                fixture_path,
-                reason,
-                &generated_path,
-            ) {
-                mismatches.push(err);
-            }
+        let mut gen_args: Vec<String> = vec![
+            "--diagram".to_string(),
+            diagram.clone(),
+            "--out".to_string(),
+            out_root.to_string_lossy().to_string(),
+            "--fresh-output".to_string(),
+        ];
+        if let Some(f) = &filter {
+            gen_args.push("--filter".to_string());
+            gen_args.push(f.clone());
+        }
+        if install {
+            gen_args.push("--install".to_string());
         }
 
-        if mmd_files.is_empty() {
-            if !excluded_fixtures.is_empty() {
-                println!(
-                    "skipped {} upstream svg check fixture(s) for {diagram}: excluded by baseline policy",
-                    excluded_fixtures.len()
-                );
-                return if mismatches.is_empty() {
-                    Ok(())
-                } else {
-                    Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+        gen_upstream_svgs(gen_args)?;
+        let current_selection =
+            select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
+        if current_selection != selected_diagrams {
+            return Err(XtaskError::UpstreamSvgFailed(
+                "upstream SVG family selection changed while running the fresh baseline check"
+                    .to_string(),
+            ));
+        }
+
+        struct UpstreamSvgCheck<'a> {
+            baseline_root: &'a Path,
+            out_root: &'a Path,
+            diagram: &'a str,
+            filter: Option<&'a str>,
+            check_dom: bool,
+            dom_mode: svgdom::DomMode,
+            dom_decimals: u32,
+        }
+
+        fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
+            let UpstreamSvgCheck {
+                baseline_root,
+                out_root,
+                diagram,
+                filter,
+                check_dom,
+                dom_mode,
+                dom_decimals,
+            } = ctx;
+            let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
+            let baseline_dir = baseline_root.join(diagram);
+            let out_dir = out_root.join(diagram);
+            let _baseline_family_lock =
+                crate::cmd::acquire_upstream_svg_family_lock(&baseline_dir)?;
+            let provenance = crate::cmd::load_upstream_svg_provenance(
+                diagram,
+                &fixtures_dir,
+                &baseline_dir,
+                filter.is_none(),
+            )?;
+            let generated_provenance = crate::cmd::load_upstream_svg_provenance(
+                diagram,
+                &fixtures_dir,
+                &out_dir,
+                filter.is_none(),
+            )?;
+            provenance.require_same_generated_environment(&generated_provenance)?;
+
+            let fixture_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, false);
+            let (mmd_files, excluded_fixtures) =
+                partition_upstream_svg_fixtures(diagram, fixture_files)?;
+            let mut mismatches: Vec<String> = Vec::new();
+            for (fixture_path, reason) in &excluded_fixtures {
+                let Some(stem) = fixture_path.file_stem().and_then(|stem| stem.to_str()) else {
+                    mismatches.push(format!(
+                        "invalid fixture filename {}",
+                        fixture_path.display()
+                    ));
+                    continue;
                 };
-            }
-            return Err(XtaskError::UpstreamSvgFailed(format!(
-                "no .mmd fixtures matched under {}",
-                fixtures_dir.display()
-            )));
-        }
-
-        for mmd_path in mmd_files {
-            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-                mismatches.push(format!("invalid fixture filename {}", mmd_path.display()));
-                continue;
-            };
-
-            let baseline_path = baseline_dir.join(format!("{stem}.svg"));
-            let out_path = out_dir.join(format!("{stem}.svg"));
-
-            if let Err(err) = provenance.validate_fixture(&mmd_path, &baseline_path) {
-                mismatches.push(err);
-                continue;
+                let baseline_path = baseline_dir.join(format!("{stem}.svg"));
+                let generated_path = out_dir.join(format!("{stem}.svg"));
+                if let Err(err) =
+                    provenance.validate_excluded_fixture(fixture_path, reason, &baseline_path)
+                {
+                    mismatches.push(err);
+                }
+                if let Err(err) = generated_provenance.validate_excluded_fixture(
+                    fixture_path,
+                    reason,
+                    &generated_path,
+                ) {
+                    mismatches.push(err);
+                }
             }
 
-            let baseline_svg = match fs::read_to_string(&baseline_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    mismatches.push(format!(
-                        "missing baseline svg: {} ({err})",
-                        baseline_path.display()
-                    ));
-                    continue;
+            if mmd_files.is_empty() {
+                if !excluded_fixtures.is_empty() {
+                    println!(
+                        "skipped {} upstream svg check fixture(s) for {diagram}: excluded by baseline policy",
+                        excluded_fixtures.len()
+                    );
+                    return if mismatches.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+                    };
                 }
-            };
-            let out_svg = match fs::read_to_string(&out_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    mismatches.push(format!(
-                        "missing generated svg: {} ({err})",
-                        out_path.display()
-                    ));
-                    continue;
-                }
-            };
+                return Err(XtaskError::UpstreamSvgFailed(format!(
+                    "no .mmd fixtures matched under {}",
+                    fixtures_dir.display()
+                )));
+            }
 
-            if let Some(mode) = upstream_svg_check_dom_mode(diagram, stem, check_dom, dom_mode) {
-                let a = match svgdom::dom_signature(&baseline_svg, mode, dom_decimals) {
+            for mmd_path in mmd_files {
+                let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                    mismatches.push(format!("invalid fixture filename {}", mmd_path.display()));
+                    continue;
+                };
+
+                let baseline_path = baseline_dir.join(format!("{stem}.svg"));
+                let out_path = out_dir.join(format!("{stem}.svg"));
+
+                if let Err(err) = provenance.validate_fixture(&mmd_path, &baseline_path) {
+                    mismatches.push(err);
+                    continue;
+                }
+
+                let baseline_svg = match fs::read_to_string(&baseline_path) {
                     Ok(v) => v,
                     Err(err) => {
                         mismatches.push(format!(
-                            "{diagram}/{stem}: baseline dom parse failed: {err}"
+                            "missing baseline svg: {} ({err})",
+                            baseline_path.display()
                         ));
                         continue;
                     }
                 };
-                let b = match svgdom::dom_signature(&out_svg, mode, dom_decimals) {
+                let out_svg = match fs::read_to_string(&out_path) {
                     Ok(v) => v,
                     Err(err) => {
                         mismatches.push(format!(
-                            "{diagram}/{stem}: generated dom parse failed: {err}"
+                            "missing generated svg: {} ({err})",
+                            out_path.display()
                         ));
                         continue;
                     }
                 };
-                if a != b {
-                    mismatches.push(format!("{diagram}/{stem}: dom differs from baseline"));
+
+                if let Some(mode) = upstream_svg_check_dom_mode(diagram, stem, check_dom, dom_mode)
+                {
+                    let a = match svgdom::dom_signature(&baseline_svg, mode, dom_decimals) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            mismatches.push(format!(
+                                "{diagram}/{stem}: baseline dom parse failed: {err}"
+                            ));
+                            continue;
+                        }
+                    };
+                    let b = match svgdom::dom_signature(&out_svg, mode, dom_decimals) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            mismatches.push(format!(
+                                "{diagram}/{stem}: generated dom parse failed: {err}"
+                            ));
+                            continue;
+                        }
+                    };
+                    if a != b {
+                        mismatches.push(format!("{diagram}/{stem}: dom differs from baseline"));
+                    }
+                } else if baseline_svg != out_svg {
+                    mismatches.push(format!("{diagram}/{stem}: output differs from baseline"));
                 }
-            } else if baseline_svg != out_svg {
-                mismatches.push(format!("{diagram}/{stem}: output differs from baseline"));
+            }
+
+            if mismatches.is_empty() {
+                Ok(())
+            } else {
+                Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
             }
         }
 
-        if mismatches.is_empty() {
+        let filter = filter.as_deref();
+        let parsed_dom_mode = svgdom::DomMode::parse(&dom_mode);
+        let mut failures: Vec<String> = Vec::new();
+        for target in selected_diagrams {
+            if let Err(err) = check_one(UpstreamSvgCheck {
+                baseline_root: &baseline_root,
+                out_root,
+                diagram: target,
+                filter,
+                check_dom,
+                dom_mode: parsed_dom_mode,
+                dom_decimals,
+            }) {
+                failures.push(format!("{target}: {err}"));
+            }
+        }
+        if failures.is_empty() {
             Ok(())
         } else {
-            Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+            Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
         }
-    }
-
-    let filter = filter.as_deref();
-    let parsed_dom_mode = svgdom::DomMode::parse(&dom_mode);
-    let mut failures: Vec<String> = Vec::new();
-    for target in selected_diagrams {
-        if let Err(err) = check_one(UpstreamSvgCheck {
-            baseline_root: &baseline_root,
-            out_root: &out_root,
-            diagram: target,
-            filter,
-            check_dom,
-            dom_mode: parsed_dom_mode,
-            dom_decimals,
-        }) {
-            failures.push(format!("{target}: {err}"));
-        }
-    }
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
-    }
+    })();
+    output.finish(result)
 }
 
 fn ensure_upstream_svg_render_environment_probe_script() -> Result<PathBuf, XtaskError> {
@@ -2058,16 +2120,19 @@ async function fingerprintFonts(browser) {
   }
 }
 
-async function resolveBrowserTimezone(browser) {
+async function resolveBrowserLocaleAndTimezone(browser) {
   const page = await browser.newPage();
   try {
-    const timezone = await page.evaluate(
-      () => Intl.DateTimeFormat().resolvedOptions().timeZone
+    const { locale, timeZone: timezone } = await page.evaluate(() =>
+      Intl.DateTimeFormat().resolvedOptions()
     );
+    if (typeof locale !== 'string' || locale.trim().length === 0) {
+      throw new Error(`browser returned an invalid resolved locale: ${JSON.stringify(locale)}`);
+    }
     if (typeof timezone !== 'string' || timezone.trim().length === 0) {
       throw new Error(`browser returned an invalid resolved timezone: ${JSON.stringify(timezone)}`);
     }
-    return timezone;
+    return { locale, timezone };
   } finally {
     await page.close();
   }
@@ -2095,7 +2160,7 @@ async function resolveBrowserTimezone(browser) {
     if (separator <= 0) {
       throw new Error(`CDP returned an invalid browser product: ${JSON.stringify(browserVersion.product)}`);
     }
-    const timezone = await resolveBrowserTimezone(browser);
+    const { locale, timezone } = await resolveBrowserLocaleAndTimezone(browser);
 
     const output = {
       render_environment: {
@@ -2103,6 +2168,7 @@ async function resolveBrowserTimezone(browser) {
           product: browserVersion.product.slice(0, separator),
           version: browserVersion.product.slice(separator + 1),
           revision: String(browserVersion.revision || ''),
+          locale,
           timezone,
         },
         puppeteer: {
@@ -2940,7 +3006,7 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
 
 fn dompurify_reference_checkout_message(src_path: &Path) -> String {
     format!(
-        "DOMPurify dist is missing at `{}`. Materialize `repo-ref/dompurify` at DOMPurify {DOMPURIFY_BASELINE_VERSION} from `tools/upstreams/REPOS.lock.json`, or pass `--src <purify.cjs.js>` to `gen-dompurify-defaults`.",
+        "DOMPurify dist is missing at `{}`. Materialize `repo-ref/dompurify` at DOMPurify {PINNED_DOMPURIFY_VERSION} from `tools/upstreams/REPOS.lock.json`, or pass `--src <purify.cjs.js>` to `gen-dompurify-defaults`.",
         src_path.display()
     )
 }
@@ -2976,12 +3042,15 @@ pub(crate) fn render_dompurify_defaults_rs(
     let mut out = String::new();
     out.push_str("// This file is @generated by `cargo run -p xtask -- gen-dompurify-defaults`.\n");
     out.push_str(&format!(
-        "// Source: `repo-ref/dompurify/dist/purify.cjs.js` (DOMPurify {DOMPURIFY_BASELINE_VERSION})\n\n"
+        "// Source: `repo-ref/dompurify/dist/purify.cjs.js` (DOMPurify {PINNED_DOMPURIFY_VERSION})\n\n"
     ));
     out.push_str(&render_slice("DEFAULT_ALLOWED_TAGS", allowed_tags));
     out.push_str(&render_slice("DEFAULT_ALLOWED_ATTR", allowed_attrs));
     out.push_str(&render_slice("DEFAULT_URI_SAFE_ATTRIBUTES", uri_safe_attrs));
     out.push_str(&render_slice("DEFAULT_DATA_URI_TAGS", data_uri_tags));
+    // Generated Rust files end with exactly one newline.
+    let removed = out.pop();
+    debug_assert_eq!(removed, Some('\n'));
     out
 }
 
@@ -3199,10 +3268,10 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DOMPURIFY_BASELINE_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256,
-        PINNED_MERMAID_PACKAGE_SHA256, PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE,
-        UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots,
-        absolutize_workspace_path, captures_parse_error_svg, create_upstream_svg_check_output_root,
+        PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
+        PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS,
+        UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots, absolutize_workspace_path,
+        captures_parse_error_svg, create_upstream_svg_check_output_root,
         ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
         ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
@@ -3218,6 +3287,7 @@ mod tests {
         validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
         wait_with_bounded_output, wait_with_timeout,
     };
+    use crate::XtaskError;
     use crate::cmd::{
         acquire_upstream_svg_family_lock, acquire_upstream_svg_family_lock_with_timeout,
     };
@@ -3343,7 +3413,9 @@ mod tests {
     fn dompurify_generated_header_uses_current_baseline_version() {
         let rust = render_dompurify_defaults_rs(&[], &[], &[], &[]);
 
-        assert!(rust.contains(&format!("DOMPurify {DOMPURIFY_BASELINE_VERSION}")));
+        assert!(rust.contains(&format!("DOMPurify {PINNED_DOMPURIFY_VERSION}")));
+        assert!(rust.ends_with('\n'));
+        assert!(!rust.ends_with("\n\n"));
     }
 
     #[test]
@@ -3353,7 +3425,7 @@ mod tests {
         ));
 
         assert!(message.contains("repo-ref/dompurify"));
-        assert!(message.contains(DOMPURIFY_BASELINE_VERSION));
+        assert!(message.contains(PINNED_DOMPURIFY_VERSION));
         assert!(message.contains("tools/upstreams/REPOS.lock.json"));
     }
 
@@ -3703,8 +3775,12 @@ mod tests {
         let script = fs::read_to_string(script_path).expect("read render-environment probe script");
 
         assert!(
-            script.contains("Intl.DateTimeFormat().resolvedOptions().timeZone"),
-            "the probe must read Chromium's timezone instead of Node's host timezone"
+            script.contains("Intl.DateTimeFormat().resolvedOptions()"),
+            "the probe must read Chromium's locale and timezone instead of Node's host identity"
+        );
+        assert!(
+            script.contains("locale,"),
+            "the resolved locale must be emitted in the browser attestation"
         );
         assert!(
             script.contains("timezone,"),
@@ -4393,20 +4469,47 @@ mod tests {
     fn upstream_svg_check_output_is_unique_and_starts_empty() {
         let target_root = unique_test_root("upstream-svg-check-output");
         let first = create_upstream_svg_check_output_root(&target_root).expect("first check root");
-        fs::write(first.join("stale.svg"), "stale").expect("write stale marker");
+        let first_path = first.path().to_path_buf();
+        fs::write(first.path().join("stale.svg"), "stale").expect("write stale marker");
 
         let second =
             create_upstream_svg_check_output_root(&target_root).expect("second check root");
+        let second_path = second.path().to_path_buf();
 
-        assert_ne!(first, second);
-        assert!(second.is_dir());
+        assert_ne!(first.path(), second.path());
+        assert!(second.path().is_dir());
         assert!(
-            fs::read_dir(&second)
+            fs::read_dir(second.path())
                 .expect("read second check root")
                 .next()
                 .is_none(),
             "a new upstream SVG check must not see artifacts from an earlier run"
         );
+
+        first
+            .finish(Ok::<_, XtaskError>(()))
+            .expect("clean successful check output");
+        let expected_failure = XtaskError::UpstreamSvgFailed("expected check failure".to_string());
+        let failure = second
+            .finish::<()>(Err(expected_failure))
+            .expect_err("preserve the check failure after cleanup");
+        assert!(failure.to_string().contains("expected check failure"));
+        assert!(!first_path.exists());
+        assert!(!second_path.exists());
+        remove_test_root(&target_root);
+    }
+
+    #[test]
+    fn abandoned_upstream_svg_check_output_is_removed_on_drop() {
+        let target_root = unique_test_root("upstream-svg-check-output-drop");
+        let output = create_upstream_svg_check_output_root(&target_root).expect("check root");
+        let path = output.path().to_path_buf();
+        fs::write(path.join("large-corpus.bin"), vec![0_u8; 1024 * 1024])
+            .expect("write owned corpus marker");
+
+        drop(output);
+
+        assert!(!path.exists());
         remove_test_root(&target_root);
     }
 
@@ -4522,6 +4625,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                locale: "en-US".to_string(),
                 timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {
@@ -4620,6 +4724,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                locale: "en-US".to_string(),
                 timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {

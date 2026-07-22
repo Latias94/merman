@@ -40,6 +40,7 @@ pub(crate) struct UpstreamSvgBrowserEnvironment {
     pub(crate) product: String,
     pub(crate) version: String,
     pub(crate) revision: String,
+    pub(crate) locale: String,
     pub(crate) timezone: String,
 }
 
@@ -84,6 +85,7 @@ impl UpstreamSvgRenderEnvironment {
             ("browser.product", self.browser.product.as_str()),
             ("browser.version", self.browser.version.as_str()),
             ("browser.revision", self.browser.revision.as_str()),
+            ("browser.locale", self.browser.locale.as_str()),
             ("browser.timezone", self.browser.timezone.as_str()),
             ("puppeteer.version", self.puppeteer.version.as_str()),
             (
@@ -234,5 +236,59 @@ impl UpstreamSvgManifest {
             fixtures: BTreeMap::new(),
             excluded: BTreeMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn render_environment_json() -> serde_json::Value {
+        serde_json::json!({
+            "browser": {
+                "product": "HeadlessChrome",
+                "version": "1",
+                "revision": "revision",
+                "timezone": "UTC"
+            },
+            "puppeteer": { "version": "1" },
+            "operating_system": {
+                "platform": "test",
+                "arch": "test",
+                "release": "test"
+            },
+            "mermaid_runtime": {
+                "esm_version": "11.16.0",
+                "iife_version": "11.16.0",
+                "mermaid_package_sha256": "a".repeat(64),
+                "mermaid_cli_package_sha256": "b".repeat(64)
+            },
+            "font_probe": {
+                "revision": "probe-v1",
+                "sha256": "c".repeat(64)
+            }
+        })
+    }
+
+    #[test]
+    fn render_environment_requires_the_browser_resolved_locale() {
+        let error =
+            serde_json::from_value::<UpstreamSvgRenderEnvironment>(render_environment_json())
+                .expect_err("locale is part of the reproducible render identity");
+
+        assert!(error.to_string().contains("locale"));
+    }
+
+    #[test]
+    fn render_environment_rejects_a_blank_browser_locale() {
+        let mut value = render_environment_json();
+        value["browser"]["locale"] = serde_json::Value::String("  ".to_string());
+        let environment = serde_json::from_value::<UpstreamSvgRenderEnvironment>(value)
+            .expect("decode render environment");
+
+        let error = environment
+            .validate()
+            .expect_err("blank locale must not attest a corpus");
+        assert!(error.to_string().contains("browser.locale"));
     }
 }

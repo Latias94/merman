@@ -110,6 +110,27 @@ enum Mode {
     StateId,
 }
 
+fn note_block_terminator_range(input: &str) -> Option<(usize, usize)> {
+    let mut line_start = 0usize;
+    for line_with_ending in input.split_inclusive('\n') {
+        let line_end = line_start + line_with_ending.trim_end_matches(['\r', '\n']).len();
+        if line_start > 0 {
+            let line = &input[line_start..line_end];
+            let leading = line.len() - line.trim_start_matches(char::is_whitespace).len();
+            let content = &line[leading..];
+            if content
+                .trim_end_matches(char::is_whitespace)
+                .eq_ignore_ascii_case("end note")
+            {
+                let marker_start = line_start + leading;
+                return Some((marker_start, marker_start + "end note".len()));
+            }
+        }
+        line_start += line_with_ending.len();
+    }
+    None
+}
+
 struct Lexer<'input, 'journal> {
     input: &'input str,
     lexemes: &'journal mut EditorLexemeJournal<'input>,
@@ -452,6 +473,14 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     }
 
     fn record_note_text(&mut self, start: usize, end: usize) {
+        if let Some(raw) = self.input.get(start..end)
+            && let Some((marker_start, marker_end)) = note_block_terminator_range(raw)
+        {
+            self.record_trimmed(EditorLexemeKind::String, start, start + marker_start, None);
+            self.record_keyword_words(start + marker_start, start + marker_end, 2);
+            return;
+        }
+
         let Some((trimmed_start, trimmed_end)) = self.trimmed_bounds(start, end) else {
             return;
         };
@@ -464,18 +493,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             self.record_prefixed_text(trimmed_start, trimmed_end, b':');
             return;
         }
-        let lower = raw.to_ascii_lowercase();
-        if let Some(marker) = lower.rfind("end note") {
-            self.record_trimmed(
-                EditorLexemeKind::String,
-                trimmed_start,
-                trimmed_start + marker,
-                None,
-            );
-            self.record_keyword_words(trimmed_start + marker, trimmed_end, 2);
-        } else {
-            self.push_lexeme(EditorLexemeKind::String, trimmed_start, trimmed_end);
-        }
+        self.push_lexeme(EditorLexemeKind::String, trimmed_start, trimmed_end);
     }
 
     fn record_typed_state_token(&mut self, start: usize, end: usize) {
@@ -949,14 +967,13 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                         "Internal lexer error: invalid UTF-8 boundary",
                     )));
                 };
-                let rest_lower = rest.to_ascii_lowercase();
-                let Some(idx) = rest_lower.find("end note") else {
+                let Some((marker_start, marker_end)) = note_block_terminator_range(rest) else {
                     return Some(Err(LexError::new(
                         "Unterminated note block; missing 'end note'",
                     )));
                 };
-                let t = Self::normalize_note_block_text(&rest[..idx]);
-                self.pos += idx + "end note".len();
+                let t = Self::normalize_note_block_text(&rest[..marker_start]);
+                self.pos += marker_end;
                 t
             };
 

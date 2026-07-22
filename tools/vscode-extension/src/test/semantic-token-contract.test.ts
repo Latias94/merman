@@ -5,15 +5,20 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 
 import {
+  EDITOR_RENAME_POLICIES,
   SEMANTIC_TOKEN_DESCRIPTOR,
   SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
-  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
-  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
   VSCODE_CUSTOM_TOKEN_MODIFIERS,
   VSCODE_CUSTOM_TOKEN_TYPES,
   VSCODE_MERMAID_SEMANTIC_HIGHLIGHTING_ENABLED,
 } from "../generated/token-descriptor.js";
-import { assertLanguageServerEditorContract } from "../semantic-token-contract.js";
+import {
+  VSCODE_LANGUAGECLIENT_STANDARD_TOKEN_MODIFIERS,
+  VSCODE_LANGUAGECLIENT_STANDARD_TOKEN_TYPES,
+  VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_MODIFIERS,
+  VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_TYPES,
+  assertLanguageServerEditorContract,
+} from "../semantic-token-contract.js";
 
 interface TokenEquivalenceCase {
   source: string;
@@ -50,6 +55,7 @@ interface MutableInitializeResult {
           descriptorDigest: string;
           packedEncoding: string;
           wordsPerToken: number;
+          renamePolicies: string[];
         };
       };
     };
@@ -57,13 +63,34 @@ interface MutableInitializeResult {
 }
 
 describe("generated semantic-token contract", () => {
-  it("accepts the exact LSP legend and editor identity consumed by VS Code", () => {
+  it("accepts the canonical VS Code legend projection and editor identity", () => {
     assert.doesNotThrow(() =>
       assertLanguageServerEditorContract(validInitializeResult()),
     );
   });
 
-  it("fails closed on stale digest, reordered legend, or incompatible packing", () => {
+  it("derives the VS Code capability projection from descriptor canonical order", () => {
+    const supportedTypes = new Set<string>(VSCODE_LANGUAGECLIENT_STANDARD_TOKEN_TYPES);
+    const supportedModifiers = new Set<string>(VSCODE_LANGUAGECLIENT_STANDARD_TOKEN_MODIFIERS);
+    assert.deepEqual(
+      VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_TYPES,
+      SEMANTIC_TOKEN_DESCRIPTOR.tokenTypes
+        .filter(({ lspName }) => supportedTypes.has(lspName))
+        .map(({ lspName }) => lspName),
+    );
+    assert.deepEqual(
+      VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_MODIFIERS,
+      SEMANTIC_TOKEN_DESCRIPTOR.modifiers
+        .filter(({ lspName }) => supportedModifiers.has(lspName))
+        .map(({ lspName }) => lspName),
+    );
+    assert.deepEqual(
+      SEMANTIC_TOKEN_DESCRIPTOR.renamePolicies,
+      EDITOR_RENAME_POLICIES,
+    );
+  });
+
+  it("fails closed on stale contract identity or invalid legend projections", () => {
     const staleDigest = validInitializeResult();
     staleDigest.capabilities.experimental.merman.editorLanguage.descriptorDigest =
       "sha256:stale";
@@ -72,11 +99,65 @@ describe("generated semantic-token contract", () => {
       /editor descriptor digest/,
     );
 
+    const reorderedRenamePolicies = validInitializeResult();
+    reorderedRenamePolicies.capabilities.experimental.merman.editorLanguage.renamePolicies.reverse();
+    assert.throws(
+      () => assertLanguageServerEditorContract(reorderedRenamePolicies),
+      /rename policies/,
+    );
+
     const reorderedLegend = validInitializeResult();
     reorderedLegend.capabilities.semanticTokensProvider.legend.tokenTypes.reverse();
     assert.throws(
       () => assertLanguageServerEditorContract(reorderedLegend),
       /semantic token types/,
+    );
+
+    const duplicateLegendItem = validInitializeResult();
+    duplicateLegendItem.capabilities.semanticTokensProvider.legend.tokenTypes.splice(
+      1,
+      0,
+      duplicateLegendItem.capabilities.semanticTokensProvider.legend.tokenTypes[0]!,
+    );
+    assert.throws(
+      () => assertLanguageServerEditorContract(duplicateLegendItem),
+      /canonical order/,
+    );
+
+    const unknownLegendItem = validInitializeResult();
+    unknownLegendItem.capabilities.semanticTokensProvider.legend.tokenTypes.push("unknown");
+    assert.throws(
+      () => assertLanguageServerEditorContract(unknownLegendItem),
+      /outside descriptor/,
+    );
+
+    const unnegotiatedLegendItem = validInitializeResult();
+    unnegotiatedLegendItem.capabilities.semanticTokensProvider.legend.tokenTypes.splice(
+      3,
+      0,
+      "mermanDelimiter",
+    );
+    assert.throws(
+      () => assertLanguageServerEditorContract(unnegotiatedLegendItem),
+      /not declared by vscode-languageclient@10\.0\.1/,
+    );
+
+    const unnegotiatedModifier = validInitializeResult();
+    unnegotiatedModifier.capabilities.semanticTokensProvider.legend.tokenModifiers.splice(
+      2,
+      0,
+      "mermanReference",
+    );
+    assert.throws(
+      () => assertLanguageServerEditorContract(unnegotiatedModifier),
+      /not declared by vscode-languageclient@10\.0\.1/,
+    );
+
+    const missingStandardLegendItem = validInitializeResult();
+    missingStandardLegendItem.capabilities.semanticTokensProvider.legend.tokenModifiers.pop();
+    assert.throws(
+      () => assertLanguageServerEditorContract(missingStandardLegendItem),
+      /VS Code supported descriptor items/,
     );
 
     const incompatiblePacking = validInitializeResult();
@@ -171,8 +252,8 @@ function validInitializeResult(): MutableInitializeResult {
     capabilities: {
       semanticTokensProvider: {
         legend: {
-          tokenTypes: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
-          tokenModifiers: [...SEMANTIC_TOKEN_MODIFIER_LSP_NAMES],
+          tokenTypes: [...VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_TYPES],
+          tokenModifiers: [...VSCODE_LANGUAGECLIENT_DESCRIPTOR_TOKEN_MODIFIERS],
         },
       },
       experimental: {
@@ -182,6 +263,7 @@ function validInitializeResult(): MutableInitializeResult {
             descriptorDigest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
             packedEncoding: SEMANTIC_TOKEN_DESCRIPTOR.packed.encoding,
             wordsPerToken: SEMANTIC_TOKEN_DESCRIPTOR.packed.recordWidth,
+            renamePolicies: [...EDITOR_RENAME_POLICIES],
           },
         },
       },

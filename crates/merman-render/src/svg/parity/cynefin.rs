@@ -131,7 +131,7 @@ fn push_backgrounds(
 fn push_boundaries(
     out: &mut String,
     layout: &CynefinDiagramLayout,
-    seed: i32,
+    seed: f64,
     theme: &crate::cynefin::CynefinTheme,
 ) {
     out.push_str(r#"<g class="cynefin-boundaries">"#);
@@ -144,7 +144,7 @@ fn push_boundaries(
     let horizontal_path = crate::cynefin::generate_horizontal_boundary(
         layout.width,
         layout.height,
-        seed.wrapping_add(100),
+        seed + 100.0,
         Some(layout.boundary_amplitude),
     );
     let cliff_path = crate::cynefin::generate_cliff_path(layout.width, layout.height);

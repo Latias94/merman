@@ -494,9 +494,14 @@ pub struct AnalysisSemanticItemFacts {
     pub detail: Option<String>,
     pub kind: crate::EditorSymbolKind,
     pub role: crate::FenceSemanticRole,
+    #[serde(default = "missing_rename_policy")]
     pub rename_policy: crate::FenceRenamePolicy,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
+}
+
+fn missing_rename_policy() -> crate::FenceRenamePolicy {
+    crate::FenceRenamePolicy::None
 }
 
 impl AnalysisSemanticItemFacts {

@@ -1,6 +1,7 @@
 use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
+use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
     SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, semantic_token_descriptor,
@@ -18,6 +19,20 @@ pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
 pub enum WorkspaceEditEncoding {
     DocumentChanges,
     Changes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiagnosticIdentityData {
+    pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) document_version: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiagnosticVersionData {
+    pub(crate) document_version: i32,
 }
 
 impl WorkspaceEditEncoding {
@@ -64,6 +79,16 @@ impl ConfigSchemaResponse {
 
 pub fn experimental_capabilities() -> serde_json::Value {
     let editor_language = semantic_token_descriptor();
+    let diagram_families = merman_core::diagram_family_capabilities()
+        .iter()
+        .map(|family| {
+            json!({
+                "diagramType": family.diagram_type,
+                "semanticParser": family.has_semantic_parser,
+                "renderParser": family.has_render_parser,
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "merman": {
             "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
@@ -71,7 +96,12 @@ pub fn experimental_capabilities() -> serde_json::Value {
                 "schemaVersion": editor_language.schema_version,
                 "descriptorDigest": SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
                 "packedEncoding": editor_language.packed.encoding,
-                "wordsPerToken": editor_language.packed.words_per_token
+                "wordsPerToken": editor_language.packed.words_per_token,
+                "renamePolicies": EditorRenamePolicy::IDS,
+            },
+            "diagramSupport": {
+                "profile": merman_core::selected_baseline_registry_profile().as_str(),
+                "families": diagram_families,
             },
             "requests": {
                 "ruleCatalog": RULE_CATALOG_METHOD,
@@ -99,6 +129,27 @@ pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
 pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
     let uri = document_uri_to_lsp(&location.uri, fallback_uri);
     Location::new(uri, range_to_lsp(location.range))
+}
+
+pub(crate) fn generated_markdown_to_plain_text(markdown: &str) -> String {
+    let mut plain = String::with_capacity(markdown.len());
+    for (index, line) in markdown.lines().enumerate() {
+        if index > 0 {
+            plain.push('\n');
+        }
+        let line = line.strip_prefix("### ").unwrap_or(line);
+        let mut chars = line.chars();
+        while let Some(character) = chars.next() {
+            if character == '\\' {
+                if let Some(next) = chars.next() {
+                    plain.push(next);
+                }
+            } else if character != '`' {
+                plain.push(character);
+            }
+        }
+    }
+    plain.trim_end().to_string()
 }
 
 fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
@@ -183,13 +234,19 @@ fn analysis_options_schema(
                     },
                     "resources": {
                         "type": "object",
-                        "additionalProperties": true,
+                        "additionalProperties": false,
                         "properties": {
-                            "max_source_bytes": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
-                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Use 0 or omit the field to use the LSP default."
+                            "limits": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                    "max_source_bytes": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
+                                        "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
+                                    }
+                                }
                             }
                         }
                     },
@@ -311,6 +368,7 @@ mod tests {
         let capabilities = experimental_capabilities();
         let descriptor = semantic_token_descriptor();
 
+        assert_eq!(EXPERIMENTAL_SCHEMA_VERSION, 1);
         assert_eq!(
             capabilities["merman"]["requests"]["ruleCatalog"],
             RULE_CATALOG_METHOD
@@ -330,7 +388,26 @@ mod tests {
                 "descriptorDigest": descriptor.digest,
                 "packedEncoding": descriptor.packed.encoding,
                 "wordsPerToken": descriptor.packed.words_per_token,
+                "renamePolicies": EditorRenamePolicy::IDS,
             })
+        );
+        assert_eq!(
+            capabilities["merman"]["diagramSupport"]["profile"],
+            merman_core::selected_baseline_registry_profile().as_str()
+        );
+        let families = capabilities["merman"]["diagramSupport"]["families"]
+            .as_array()
+            .expect("diagram family capabilities");
+        assert!(families.iter().any(|family| {
+            family["diagramType"] == "gitGraph"
+                && family["semanticParser"] == true
+                && family["renderParser"] == true
+        }));
+        #[cfg(not(any(feature = "core-full", feature = "core-full-registry")))]
+        assert!(
+            families
+                .iter()
+                .all(|family| family["diagramType"] != "mindmap")
         );
     }
 
@@ -374,8 +451,8 @@ mod tests {
             json!(["error", "warning", "info", "hint"])
         );
         assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["max_source_bytes"]
-                ["default"],
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_source_bytes"]["default"],
             json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
         );
         assert!(

@@ -87,12 +87,33 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve pinned Mermaid source
+        id: mermaid-source
+        if: matrix.parity
+        shell: bash
+        run: |
+          commit="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          bundle = json.loads(
+              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
+          )
+          print(bundle["release"]["source"]["commit"])
+          PY
+          )"
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid Mermaid source commit in reference bundle: $commit" >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
         name: Checkout pinned Mermaid Cypress sources
         if: matrix.parity
         with:
           repository: mermaid-js/mermaid
-          ref: 7c0cafcf42e76bfaf79d0cbbd12edb986612f014
+          ref: ${{ steps.mermaid-source.outputs.commit }}
           path: repo-ref/mermaid
           persist-credentials: false
           sparse-checkout: |
@@ -104,9 +125,11 @@ jobs:
       - name: Verify pinned Mermaid source checkout
         if: matrix.parity
         shell: bash
+        env:
+          MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}
         run: |
           actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
-          test "$actual" = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014"
+          test "$actual" = "$MERMAID_SOURCE_COMMIT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

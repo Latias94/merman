@@ -25,6 +25,41 @@ cssClass "C1" styleClass
 }
 
 #[test]
+fn parse_diagram_class_supports_inline_annotation_after_class_identifier() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass Shape <<interface>>\n";
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.model["classes"]["Shape"]["annotations"],
+        json!(["interface"])
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("class", text)
+        .unwrap()
+        .expect("class editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "interface"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("class annotation")
+    }));
+
+    let with_members = "classDiagram\nclass Shape <<interface>> {\n  noOfVertices\n  draw()\n}\n";
+    let res = block_on(engine.parse_diagram(with_members, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let shape = &res.model["classes"]["Shape"];
+    assert_eq!(shape["annotations"], json!(["interface"]));
+    assert_eq!(shape["members"].as_array().unwrap().len(), 1);
+    assert_eq!(shape["methods"].as_array().unwrap().len(), 1);
+}
+
+#[test]
 fn parse_diagram_class_multibyte_name_does_not_panic() {
     let engine = Engine::new();
     let text = r#"classDiagram

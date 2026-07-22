@@ -9,8 +9,7 @@ MermanTextMeasureResult? _smokeTextMeasurementResult(
     MermanTextMeasurementOperation.measure ||
     MermanTextMeasurementOperation.wrapped ||
     MermanTextMeasurementOperation.mermaidCalculateTextDimensions =>
-      MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.metrics,
+      MermanTextMeasureResult.metrics(
         width: width,
         height: height,
         lineCount: 1,
@@ -22,34 +21,23 @@ MermanTextMeasureResult? _smokeTextMeasurementResult(
     MermanTextMeasurementOperation.tspanBBoxWidth ||
     MermanTextMeasurementOperation.wrapProbeBBoxWidth ||
     MermanTextMeasurementOperation.canvasMeasureTextWidth =>
-      MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.length,
-        length: width,
-      ),
+      MermanTextMeasureResult.length(length: width),
     MermanTextMeasurementOperation.tspanBBoxHeight ||
     MermanTextMeasurementOperation.simpleBBoxHeight ||
     MermanTextMeasurementOperation.rawBBoxHeight =>
-      MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.length,
-        length: height,
-      ),
+      MermanTextMeasureResult.length(length: height),
     MermanTextMeasurementOperation.createTextBBoxYOffset ||
     MermanTextMeasurementOperation.createTextMiddleBBoxYOffset =>
-      const MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.length,
-        length: -1,
-      ),
+      MermanTextMeasureResult.length(length: -1),
     MermanTextMeasurementOperation.bboxX ||
     MermanTextMeasurementOperation.bboxXWithAsciiOverhang ||
     MermanTextMeasurementOperation.titleBBoxX =>
-      MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.horizontalExtents,
-        bboxLeft: width / 2,
-        bboxRight: width / 2,
+      MermanTextMeasureResult.horizontalExtents(
+        left: width / 2,
+        right: width / 2,
       ),
     MermanTextMeasurementOperation.wrappedWithRawWidth =>
-      MermanTextMeasureResult(
-        resultKind: MermanTextMeasurementResultKind.wrappedWithRawWidth,
+      MermanTextMeasureResult.wrappedWithRawWidth(
         width: width,
         height: height,
         lineCount: 1,

@@ -1,14 +1,14 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "mermaid_version": "11.16.0",
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "c2bafdce0ea92dfb1be2f0c04af15ba631767e4f04eb66a482c83b79a713838b",
-    "package_lock_sha256": "a31d2880cdc0e38a5158165f50da99ebca0dde8d177bcea5329d0e1c0d523f23",
+    "package_json_sha256": "4966c730e449d114b8f8e37a22cb47fe0647920761eaecd6f18de8fa0756ed42",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v2"
+    "renderer_revision": "xtask-upstream-svg-v3"
   },
   "attestation": {
     "mode": "generated",
@@ -17,6 +17,7 @@
         "product": "HeadlessChrome",
         "version": "131.0.6778.204",
         "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {

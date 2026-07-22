@@ -36,6 +36,34 @@ STATE_ORDER = {
     "not-applicable": 6,
 }
 RELEASE_KINDS = {"stable", "prerelease"}
+NPM_DIST_TAGS = {
+    "stable": "latest",
+    "alpha": "alpha",
+    "beta": "beta",
+    "rc": "rc",
+}
+PACKAGE_KINDS = {"android", "crate", "flutter", "npm", "python", "swiftpm", "typst", "vscode"}
+CHANNEL_KINDS = {
+    "crates.io",
+    "github-actions-artifact",
+    "github-release-assets",
+    "homebrew",
+    "maven-central",
+    "npm",
+    "pub.dev",
+    "pypi",
+    "swiftpm",
+    "typst-registry",
+    "vs-marketplace",
+}
+PROTECTED_PUBLICATION_KINDS = {
+    "crates.io",
+    "github-release-assets",
+    "npm",
+    "pypi",
+    "pub.dev",
+}
+ENVIRONMENT_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 TOP_LEVEL_KEYS = {"schema_version", "states", "release_kinds", "feature_contract", "surfaces"}
 FEATURE_CONTRACT_KEYS = {
     "docs",
@@ -68,6 +96,7 @@ CHANNEL_KEYS = {
     "release_kinds",
     "workflow",
     "workflow_job",
+    "environment",
     "credential",
     "blocker",
     "not_applicable_reason",
@@ -109,8 +138,8 @@ def validate_contract(data: dict[str, Any]) -> None:
     if not isinstance(data, dict):
         raise SurfaceError("SURFACES.json root must be an object")
     reject_unknown_keys(data, TOP_LEVEL_KEYS, "SURFACES.json")
-    if data.get("schema_version") != 1:
-        raise SurfaceError("SURFACES.json schema_version must be 1")
+    if data.get("schema_version") != 2:
+        raise SurfaceError("SURFACES.json schema_version must be 2")
     states = require_string_set(data, "states", "SURFACES.json")
     if states != set(STATE_ORDER):
         raise SurfaceError("SURFACES.json states must exactly match the supported state catalog")
@@ -170,6 +199,8 @@ def validate_contract(data: dict[str, Any]) -> None:
             owner = f"{surface_id}/{channel_id}"
             reject_unknown_keys(channel, CHANNEL_KEYS, owner)
             kind = require_str(channel, "kind", owner)
+            if kind not in CHANNEL_KINDS:
+                raise SurfaceError(f"{owner}: unsupported channel kind {kind!r}")
             state = require_str(channel, "declared_state", f"{surface_id}/{channel_id}")
             if state not in states:
                 raise SurfaceError(f"{surface_id}/{channel_id}: unknown declared_state {state!r}")
@@ -191,6 +222,12 @@ def validate_contract(data: dict[str, Any]) -> None:
                 require_str(channel, "workflow_job", owner)
             elif channel.get("workflow_job") is not None:
                 require_str(channel, "workflow_job", owner)
+            environment = channel.get("environment")
+            if kind in PROTECTED_PUBLICATION_KINDS and state in {"published", "artifact-only"}:
+                environment = require_str(channel, "environment", owner)
+            if environment is not None:
+                if not isinstance(environment, str) or not ENVIRONMENT_IDENTIFIER_RE.fullmatch(environment):
+                    raise SurfaceError(f"{owner}: environment must be a literal identifier")
             credential = channel.get("credential")
             if credential is not None and (not isinstance(credential, str) or not credential.strip()):
                 raise SurfaceError(f"{owner}: credential must be null or a non-empty string")
@@ -248,7 +285,9 @@ def validate_package(package: Any, surface_id: str) -> None:
     name = require_str(package, "name", surface_id)
     owner = f"{surface_id}/{name}"
     reject_unknown_keys(package, PACKAGE_KEYS, owner)
-    require_str(package, "kind", owner)
+    kind = require_str(package, "kind", owner)
+    if kind not in PACKAGE_KINDS:
+        raise SurfaceError(f"{owner}: unsupported package kind {kind!r}")
     require_str(package, "manifest", owner)
     version_source = package.get("version_source", "target")
     if version_source not in {"target", "manifest"}:
@@ -258,10 +297,10 @@ def validate_package(package: Any, surface_id: str) -> None:
 def validate_probe_contract(channel: dict[str, Any], kind: str, owner: str) -> None:
     if kind == "npm":
         dist_tags = channel.get("dist_tags")
-        if not isinstance(dist_tags, dict) or set(dist_tags) != {"stable", "alpha", "beta", "rc"}:
-            raise SurfaceError(f"{owner}: dist_tags must define stable, alpha, beta, and rc")
-        if not all(isinstance(value, str) and value.strip() for value in dist_tags.values()):
-            raise SurfaceError(f"{owner}: dist_tags values must be non-empty strings")
+        if dist_tags != NPM_DIST_TAGS:
+            raise SurfaceError(
+                f"{owner}: dist_tags must exactly match the canonical stable/alpha/beta/rc mapping"
+            )
     required_pattern_field = {
         "github-release-assets": "asset_patterns",
         "github-actions-artifact": "artifact_patterns",
@@ -282,6 +321,7 @@ def validate_probe_contract(channel: dict[str, Any], kind: str, owner: str) -> N
             unknown_placeholders = placeholders - {
                 "version",
                 "python_version",
+                "package_version",
                 "tag",
                 "channel",
                 "source_sha",
@@ -297,6 +337,10 @@ def validate_probe_contract(channel: dict[str, Any], kind: str, owner: str) -> N
                 raise SurfaceError(f"{pattern_owner}: min_matches must be a non-negative integer")
             if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < minimum:
                 raise SurfaceError(f"{pattern_owner}: max_matches must be an integer >= min_matches")
+            if kind in {"github-release-assets", "github-actions-artifact"} and minimum < 1:
+                raise SurfaceError(
+                    f"{pattern_owner}: release artifact patterns must require at least one asset"
+                )
     if kind == "github-actions-artifact":
         patterns = channel["artifact_patterns"]
         if not all(
@@ -362,7 +406,11 @@ def channel_probe(channel: dict[str, Any], surface: dict[str, Any], version: str
     if kind == "github-release-assets":
         return probe_github_release(channel, target)
     if kind == "github-actions-artifact":
-        return probe_github_actions_artifacts(channel, target)
+        return probe_github_actions_artifacts(
+            channel,
+            target,
+            package_version=artifact_package_version(surface, target),
+        )
     return {"state": "unknown", "reason": f"no probe implemented for {kind}"}
 
 
@@ -389,13 +437,33 @@ def package_registry_version(package: dict[str, Any], target: ReleaseVersion) ->
     except ValueError as exc:
         raise SurfaceError(f"{package['name']}: manifest escapes the repository") from exc
     try:
-        with manifest.open("rb") as handle:
-            package_version = tomllib.load(handle)["package"]["version"]
-    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
+        if manifest.suffix == ".json":
+            package_version = json.loads(manifest.read_text(encoding="utf-8"))["version"]
+        else:
+            with manifest.open("rb") as handle:
+                package_version = tomllib.load(handle)["package"]["version"]
+    except (OSError, KeyError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
         raise SurfaceError(f"{package['name']}: cannot read package version from {package['manifest']}") from exc
     if not isinstance(package_version, str):
         raise SurfaceError(f"{package['name']}: manifest version is not a string")
     return package_version
+
+
+def artifact_package_version(surface: dict[str, Any], target: ReleaseVersion) -> str:
+    manifest_owned = [
+        package
+        for package in surface.get("packages", [])
+        if package.get("version_source", "target") == "manifest"
+    ]
+    if not manifest_owned:
+        return target.canonical
+    versions = {package_registry_version(package, target) for package in manifest_owned}
+    if len(versions) != 1:
+        raise SurfaceError(
+            f"{surface['id']}: independently versioned artifact packages disagree: "
+            + ", ".join(sorted(versions))
+        )
+    return versions.pop()
 
 
 def probe_many(packages: list[tuple[str, str]], probe: Any) -> dict[str, str]:
@@ -458,13 +526,20 @@ def probe_npm(
     if not isinstance(data, dict):
         return {"state": "unknown", "reason": "npm response is not an object"}
     versions = data.get("versions")
-    if not isinstance(versions, dict) or target.canonical not in versions:
+    if not isinstance(versions, dict):
+        return {"state": "unknown", "reason": "npm response did not contain a versions object"}
+    if target.canonical not in versions:
         return {"state": "missing", "reason": f"npm version {target.canonical} not found"}
     expected_dist_tag = dist_tags[target.channel]
     observed_dist_tags = data.get("dist-tags")
     if not isinstance(observed_dist_tags, dict):
         return {"state": "unknown", "reason": "npm response did not contain dist-tags"}
     observed_version = observed_dist_tags.get(expected_dist_tag)
+    if observed_version is not None and not isinstance(observed_version, str):
+        return {
+            "state": "unknown",
+            "reason": f"npm dist-tag {expected_dist_tag!r} has an invalid version value",
+        }
     if observed_version != target.canonical:
         return {
             "state": "missing",
@@ -495,9 +570,9 @@ def probe_pub_dev(package: str, version: str) -> dict[str, str]:
     if not isinstance(data, dict):
         return {"state": "unknown", "reason": "pub.dev response is not an object"}
     versions = data.get("versions")
-    if isinstance(versions, list) and any(
-        item.get("version") == version for item in versions if isinstance(item, dict)
-    ):
+    if not isinstance(versions, list) or not all(isinstance(item, dict) for item in versions):
+        return {"state": "unknown", "reason": "pub.dev response did not contain a valid versions list"}
+    if any(item.get("version") == version for item in versions):
         return {"state": "found", "reason": "pub.dev package version exists"}
     return {"state": "missing", "reason": "pub.dev package version not found"}
 
@@ -627,8 +702,11 @@ def probe_github_release(
 def probe_github_actions_artifacts(
     channel: dict[str, Any],
     version: ReleaseVersion | str,
+    *,
+    package_version: str | None = None,
 ) -> dict[str, str]:
     target = parse_release_version(version) if isinstance(version, str) else version
+    package_version = package_version or target.canonical
     patterns = channel["artifact_patterns"]
     if not all(
         ("{version}" in pattern["glob"] or "{tag}" in pattern["glob"])
@@ -667,12 +745,14 @@ def probe_github_actions_artifacts(
     run_ids: list[int] = []
     malformed_successful_run = False
     for run in runs:
-        if (
-            not isinstance(run, dict)
-            or run.get("conclusion") != "success"
-            or run.get("status") != "completed"
-            or not isinstance(run.get("id"), int)
-        ):
+        if not isinstance(run, dict):
+            malformed_successful_run = True
+            continue
+        if run.get("conclusion") != "success" or run.get("status") != "completed":
+            malformed_successful_run = True
+            continue
+        if not isinstance(run.get("id"), int) or isinstance(run.get("id"), bool):
+            malformed_successful_run = True
             continue
         event = run.get("event")
         head_sha = run.get("head_sha")
@@ -698,15 +778,24 @@ def probe_github_actions_artifacts(
     if failure is not None:
         return failure
     artifacts_by_run: dict[int, list[dict[str, Any]]] = {run_id: [] for run_id in run_ids}
+    malformed_artifact = False
     for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            malformed_artifact = True
+            continue
+        if artifact.get("expired") is True:
+            continue
         if (
-            not isinstance(artifact, dict)
-            or not isinstance(artifact.get("name"), str)
+            not isinstance(artifact.get("name"), str)
             or artifact.get("expired") is not False
             or not isinstance(artifact.get("workflow_run"), dict)
         ):
+            malformed_artifact = True
             continue
         run_id = artifact["workflow_run"].get("id")
+        if not isinstance(run_id, int) or isinstance(run_id, bool):
+            malformed_artifact = True
+            continue
         if run_id in artifacts_by_run:
             artifacts_by_run[run_id].append(artifact)
 
@@ -731,6 +820,7 @@ def probe_github_actions_artifacts(
             patterns,
             target,
             source_sha=source_sha,
+            package_version=package_version,
             noun="GitHub Actions artifact",
         )
         if pattern_result is None:
@@ -752,11 +842,18 @@ def probe_github_actions_artifacts(
             all_names,
             legacy_patterns,
             target,
+            package_version=package_version,
             noun="GitHub Actions artifact",
         ) is None:
             legacy_provenance = True
         expanded_target_patterns = [
-            expand_pattern(pattern["glob"], target, source_sha=source_sha) for pattern in patterns
+            expand_pattern(
+                pattern["glob"],
+                target,
+                source_sha=source_sha,
+                package_version=package_version,
+            )
+            for pattern in patterns
         ]
         if any(
             any(fnmatch.fnmatchcase(name, glob) for glob in expanded_target_patterns)
@@ -772,6 +869,16 @@ def probe_github_actions_artifacts(
         return {
             "state": "unknown",
             "reason": "target artifacts omitted a positive size_in_bytes",
+        }
+    if malformed_successful_run:
+        return {
+            "state": "unknown",
+            "reason": f"successful {workflow} run response contained malformed metadata",
+        }
+    if malformed_artifact:
+        return {
+            "state": "unknown",
+            "reason": "GitHub Actions artifact response contained malformed metadata",
         }
     return {
         "state": "missing",
@@ -883,12 +990,18 @@ def probe_name_patterns(
     patterns: list[dict[str, Any]],
     version: ReleaseVersion,
     source_sha: str | None = None,
+    package_version: str | None = None,
     *,
     noun: str,
 ) -> dict[str, str] | None:
     failures: list[str] = []
     for pattern in patterns:
-        glob = expand_pattern(pattern["glob"], version, source_sha=source_sha)
+        glob = expand_pattern(
+            pattern["glob"],
+            version,
+            source_sha=source_sha,
+            package_version=package_version,
+        )
         count = sum(fnmatch.fnmatchcase(name, glob) for name in names)
         minimum = pattern["min_matches"]
         maximum = pattern["max_matches"]
@@ -904,10 +1017,12 @@ def expand_pattern(
     version: ReleaseVersion,
     *,
     source_sha: str | None = None,
+    package_version: str | None = None,
 ) -> str:
     expanded = (
         pattern.replace("{version}", version.canonical)
         .replace("{python_version}", version.to_pep440())
+        .replace("{package_version}", package_version or version.canonical)
         .replace("{tag}", version.tag)
         .replace("{channel}", version.channel)
     )
@@ -950,6 +1065,7 @@ def build_rows(data: dict[str, Any], *, version: str | None, probe: bool) -> lis
                 "kind": channel["kind"],
                 "declared_state": channel_state,
                 "workflow": channel.get("workflow"),
+                "environment": channel.get("environment"),
                 "credential": channel.get("credential"),
                 "blocker": channel.get("blocker"),
             }
@@ -1009,8 +1125,8 @@ def render_public(rows: list[dict[str, Any]]) -> str:
 
 def render_maintainer(rows: list[dict[str, Any]]) -> str:
     lines = [
-        "Surface | Channel | State | Workflow | Credential | Blocker | Observation",
-        "--- | --- | --- | --- | --- | --- | ---",
+        "Surface | Channel | State | Workflow | Environment | Credential | Blocker | Observation",
+        "--- | --- | --- | --- | --- | --- | --- | ---",
     ]
     for row in rows:
         for channel in row["channels"]:
@@ -1025,6 +1141,7 @@ def render_maintainer(rows: list[dict[str, Any]]) -> str:
                         channel["id"],
                         state,
                         channel.get("workflow") or "",
+                        channel.get("environment") or "",
                         channel.get("credential") or "",
                         channel.get("blocker") or "",
                         observed.get("reason", "") if observed else "",

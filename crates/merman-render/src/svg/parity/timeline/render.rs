@@ -1,5 +1,6 @@
 use super::super::theme::TimelineTheme;
 use super::super::*;
+use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
 fn timeline_css(
@@ -248,6 +249,77 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("</text></g></g>");
     }
 
+    fn render_connector(out: &mut String, connector: &TimelineLineLayout, marker_url: &str) {
+        let _ = write!(
+            out,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
+            x1 = fmt(connector.x1),
+            y1 = fmt(connector.y1),
+            x2 = fmt(connector.x2),
+            y2 = fmt(connector.y2),
+            marker_end = escape_attr(marker_url),
+        );
+    }
+
+    fn render_event(
+        out: &mut String,
+        diagram_id: &str,
+        node_count: &mut usize,
+        event: &TimelineNodeLayout,
+        is_redux_theme: bool,
+    ) {
+        let _ = write!(
+            out,
+            r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
+            x = fmt(event.x),
+            y = fmt(event.y)
+        );
+        render_node(out, diagram_id, node_count, event, is_redux_theme, true);
+        out.push_str("</g>");
+    }
+
+    fn render_task(
+        out: &mut String,
+        diagram_id: &str,
+        node_count: &mut usize,
+        task: &TimelineTaskLayout,
+        direction: merman_core::diagrams::timeline::TimelineDirection,
+        is_redux_theme: bool,
+        arrowhead_url: &str,
+    ) {
+        let node = &task.node;
+        let _ = write!(
+            out,
+            r#"<g class="taskWrapper" transform="translate({x}, {y})">"#,
+            x = fmt(node.x),
+            y = fmt(node.y)
+        );
+        render_node(out, diagram_id, node_count, node, is_redux_theme, false);
+        out.push_str("</g>");
+
+        match direction {
+            merman_core::diagrams::timeline::TimelineDirection::LeftToRight => {
+                for connector in &task.connectors {
+                    render_connector(out, connector, arrowhead_url);
+                }
+                for event in &task.events {
+                    render_event(out, diagram_id, node_count, event, is_redux_theme);
+                }
+            }
+            merman_core::diagrams::timeline::TimelineDirection::TopDown => {
+                for (index, event) in task.events.iter().enumerate() {
+                    render_event(out, diagram_id, node_count, event, is_redux_theme);
+                    if let Some(connector) = task.connectors.get(index) {
+                        render_connector(out, connector, arrowhead_url);
+                    }
+                }
+                for connector in task.connectors.iter().skip(task.events.len()) {
+                    render_connector(out, connector, arrowhead_url);
+                }
+            }
+        }
+    }
+
     let root_bounds = root_svg::DiagramBounds::from_extents(
         bounds.min_x,
         bounds.min_y,
@@ -274,13 +346,28 @@ fn render_timeline_diagram_svg_inner(
                 ..root_svg::RootChrome::new(diagram_id, "timeline")
             },
         )?;
+    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
+    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+
+    // Mermaid's vertical renderer lowers the activity axis to the first root child. Preserve that
+    // observable DOM order while retaining Merman's diagram-scoped marker reference.
+    if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
+        let _ = write!(
+            &mut out,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/></g>"#,
+            x1 = fmt(layout.activity_line.x1),
+            y1 = fmt(layout.activity_line.y1),
+            x2 = fmt(layout.activity_line.x2),
+            y2 = fmt(layout.activity_line.y2),
+            marker_end = escape_attr(&arrowhead_url),
+        );
+    }
+
     let css = timeline_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g/>"#);
     let mut node_count = 0usize;
-    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
-    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
@@ -306,98 +393,28 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("</g>");
 
         for task in &section.tasks {
-            let task_node = &task.node;
-            let _ = write!(
-                &mut out,
-                r#"<g class="taskWrapper" transform="translate({x}, {y})">"#,
-                x = fmt(task_node.x),
-                y = fmt(task_node.y)
-            );
-            render_node(
+            render_task(
                 &mut out,
                 diagram_id,
                 &mut node_count,
-                task_node,
+                task,
+                layout.direction,
                 is_redux_theme,
-                false,
+                &arrowhead_url,
             );
-            out.push_str("</g>");
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
-                x1 = fmt(task.connector.x1),
-                y1 = fmt(task.connector.y1),
-                x2 = fmt(task.connector.x2),
-                y2 = fmt(task.connector.y2),
-                marker_end = escape_attr(&arrowhead_url),
-            );
-
-            for ev in &task.events {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
-                    x = fmt(ev.x),
-                    y = fmt(ev.y)
-                );
-                render_node(
-                    &mut out,
-                    diagram_id,
-                    &mut node_count,
-                    ev,
-                    is_redux_theme,
-                    true,
-                );
-                out.push_str("</g>");
-            }
         }
     }
 
     for task in &layout.orphan_tasks {
-        let task_node = &task.node;
-        let _ = write!(
-            &mut out,
-            r#"<g class="taskWrapper" transform="translate({x}, {y})">"#,
-            x = fmt(task_node.x),
-            y = fmt(task_node.y)
-        );
-        render_node(
+        render_task(
             &mut out,
             diagram_id,
             &mut node_count,
-            task_node,
+            task,
+            layout.direction,
             is_redux_theme,
-            false,
+            &arrowhead_url,
         );
-        out.push_str("</g>");
-
-        let _ = write!(
-            &mut out,
-            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
-            x1 = fmt(task.connector.x1),
-            y1 = fmt(task.connector.y1),
-            x2 = fmt(task.connector.x2),
-            y2 = fmt(task.connector.y2),
-            marker_end = escape_attr(&arrowhead_url),
-        );
-
-        for ev in &task.events {
-            let _ = write!(
-                &mut out,
-                r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
-                x = fmt(ev.x),
-                y = fmt(ev.y)
-            );
-            render_node(
-                &mut out,
-                diagram_id,
-                &mut node_count,
-                ev,
-                is_redux_theme,
-                true,
-            );
-            out.push_str("</g>");
-        }
     }
 
     if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
@@ -410,15 +427,17 @@ fn render_timeline_diagram_svg_inner(
         );
     }
 
-    let _ = write!(
-        &mut out,
-        r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/></g>"#,
-        x1 = fmt(layout.activity_line.x1),
-        y1 = fmt(layout.activity_line.y1),
-        x2 = fmt(layout.activity_line.x2),
-        y2 = fmt(layout.activity_line.y2),
-        marker_end = escape_attr(&arrowhead_url),
-    );
+    if layout.direction == merman_core::diagrams::timeline::TimelineDirection::LeftToRight {
+        let _ = write!(
+            &mut out,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/></g>"#,
+            x1 = fmt(layout.activity_line.x1),
+            y1 = fmt(layout.activity_line.y1),
+            x2 = fmt(layout.activity_line.x2),
+            y2 = fmt(layout.activity_line.y2),
+            marker_end = escape_attr(&arrowhead_url),
+        );
+    }
 
     out.push_str("</svg>\n");
     root_document.complete(out)
@@ -432,6 +451,7 @@ mod tests {
     #[test]
     fn timeline_root_honors_disabled_max_width() {
         let layout = TimelineDiagramLayout {
+            direction: merman_core::diagrams::timeline::TimelineDirection::LeftToRight,
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: 0.0,

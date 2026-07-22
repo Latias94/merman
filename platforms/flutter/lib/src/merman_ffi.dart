@@ -358,8 +358,7 @@ class MermanTextMeasureRequest {
 
 /// Dart result for a handled text-measurement request.
 class MermanTextMeasureResult {
-  /// Creates a handled text-measurement result.
-  const MermanTextMeasureResult({
+  const MermanTextMeasureResult._({
     required this.resultKind,
     this.width = 0,
     this.height = 0,
@@ -369,6 +368,89 @@ class MermanTextMeasureResult {
     this.bboxRight,
     this.rawWidth,
   });
+
+  /// Creates a metrics result with every field required by the native protocol.
+  factory MermanTextMeasureResult.metrics({
+    required double width,
+    required double height,
+    required int lineCount,
+  }) {
+    _requireNonNegativeFinite(width, 'width');
+    _requireNonNegativeFinite(height, 'height');
+    if (lineCount <= 0) {
+      throw RangeError.value(lineCount, 'lineCount', 'must be greater than 0');
+    }
+    return MermanTextMeasureResult._(
+      resultKind: MermanTextMeasurementResultKind.metrics,
+      width: width,
+      height: height,
+      lineCount: lineCount,
+    );
+  }
+
+  /// Creates a finite scalar result.
+  ///
+  /// Signed values are accepted because the two baseline-offset operations
+  /// require them. The native operation contract rejects negative values for
+  /// every other scalar operation.
+  factory MermanTextMeasureResult.length({required double length}) {
+    _requireFinite(length, 'length');
+    return MermanTextMeasureResult._(
+      resultKind: MermanTextMeasurementResultKind.length,
+      length: length,
+    );
+  }
+
+  /// Creates a non-negative horizontal-extents result.
+  factory MermanTextMeasureResult.horizontalExtents({
+    required double left,
+    required double right,
+  }) {
+    _requireNonNegativeFinite(left, 'left');
+    _requireNonNegativeFinite(right, 'right');
+    return MermanTextMeasureResult._(
+      resultKind: MermanTextMeasurementResultKind.horizontalExtents,
+      bboxLeft: left,
+      bboxRight: right,
+    );
+  }
+
+  /// Creates wrapped metrics with an optional natural, unwrapped width.
+  factory MermanTextMeasureResult.wrappedWithRawWidth({
+    required double width,
+    required double height,
+    required int lineCount,
+    double? rawWidth,
+  }) {
+    _requireNonNegativeFinite(width, 'width');
+    _requireNonNegativeFinite(height, 'height');
+    if (lineCount <= 0) {
+      throw RangeError.value(lineCount, 'lineCount', 'must be greater than 0');
+    }
+    if (rawWidth != null) {
+      _requireNonNegativeFinite(rawWidth, 'rawWidth');
+    }
+    return MermanTextMeasureResult._(
+      resultKind: MermanTextMeasurementResultKind.wrappedWithRawWidth,
+      width: width,
+      height: height,
+      lineCount: lineCount,
+      rawWidth: rawWidth,
+    );
+  }
+
+  static void _requireFinite(double value, String name) {
+    if (!value.isFinite) {
+      throw ArgumentError.value(value, name, 'must be finite');
+    }
+  }
+
+  static void _requireNonNegativeFinite(double value, String name) {
+    _requireFinite(value, name);
+    if (value < 0) {
+      throw RangeError.value(value, name, 'must be non-negative');
+    }
+  }
 
   /// Tagged shape carried by this result.
   final MermanTextMeasurementResultKind resultKind;
@@ -1274,7 +1356,7 @@ class MermanReusableEngine {
     nativeResult.bboxLeft = result.bboxLeft ?? 0;
     nativeResult.bboxRight = result.bboxRight ?? 0;
     nativeResult.rawWidth = result.rawWidth ?? 0;
-    nativeResult.lineCount = result.lineCount < 0 ? 0 : result.lineCount;
+    nativeResult.lineCount = result.lineCount;
     return nativeResult;
   }
 
@@ -1301,6 +1383,7 @@ class Merman {
       Merman.fromDynamicLibrary(openMermanLibraryFromPath(path));
 
   final _MermanBindings _bindings;
+  Map<String, Object?>? _runtimeContractCache;
   List<String>? _supportedDiagramsCache;
   List<MermanAsciiCapability>? _asciiCapabilitiesCache;
   List<MermanDiagramFamilyCapability>? _diagramFamilyCapabilitiesCache;
@@ -1310,6 +1393,15 @@ class Merman {
 
   /// Native `merman-ffi` package version.
   String get packageVersion => _bindings.packageVersion();
+
+  /// Returns the versioned ABI, feature, registry, and resource contract.
+  Map<String, Object?> runtimeContract() {
+    return _runtimeContractCache ??= Map.unmodifiable(
+      _decodeJsonMap(
+        _decodeText(_bindings.metadata(_bindings.runtimeContractJson)),
+      ),
+    );
+  }
 
   /// Creates a reusable engine using the same native library.
   MermanReusableEngine reusableEngine({String? optionsJson}) {
@@ -1690,6 +1782,10 @@ class _MermanBindings {
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_supported_diagrams_json',
         ),
+        runtimeContractJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_runtime_contract_json',
+        ),
         asciiCapabilitiesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_ascii_capabilities_json',
@@ -1742,6 +1838,7 @@ class _MermanBindings {
   final _MermanDocumentCallDart analyzeDocumentFactsJson;
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
+  final _MermanMetadataDart runtimeContractJson;
   final _MermanMetadataDart asciiCapabilitiesJson;
   final _MermanMetadataDart diagramFamilyCapabilitiesJson;
   final _MermanMetadataDart lintRuleCatalogJson;

@@ -48,7 +48,7 @@ fn layout_flowchart_render_model(
 ) -> merman_render::Result<FlowchartLayout> {
     let model = flowchart_model(parsed);
     session
-        .resource_limits()
+        .resource_policy()
         .check_flowchart_complexity(model)?;
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
@@ -112,7 +112,7 @@ fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> Str
 }
 
 #[test]
-fn flowchart_root_escapes_accessibility_attributes_once() {
+fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
     let source =
         "flowchart TD\naccTitle: Accessible title\naccDescr: Accessible description\nA-->B\n";
     let diagram_id = r#"flow&"root"#;
@@ -134,18 +134,22 @@ fn flowchart_root_escapes_accessibility_attributes_once() {
     )
     .expect("render svg");
 
-    assert!(svg.starts_with(r#"<svg id="flow&amp;&quot;root""#));
+    assert!(svg.starts_with(r#"<svg id="flow-root""#));
     assert!(svg.contains(
-        r#"aria-describedby="chart-desc-flow&amp;&quot;root" aria-labelledby="chart-title-flow&amp;&quot;root""#
+        r#"aria-describedby="chart-desc-flow-root" aria-labelledby="chart-title-flow-root""#
     ));
-    assert!(
-        svg.contains(r#"<title id="chart-title-flow&amp;&quot;root">Accessible title</title>"#)
-    );
-    assert!(
-        svg.contains(r#"<desc id="chart-desc-flow&amp;&quot;root">Accessible description</desc>"#)
-    );
-    assert!(!svg.contains("&amp;amp;"));
-    assert!(!svg.contains("&amp;quot;"));
+    assert!(svg.contains(r#"<title id="chart-title-flow-root">Accessible title</title>"#));
+    assert!(svg.contains(r#"<desc id="chart-desc-flow-root">Accessible description</desc>"#));
+    assert!(!svg.contains(diagram_id));
+}
+
+#[test]
+fn flowchart_html_labels_serialize_unknown_html_entities_as_well_formed_xml() {
+    let svg = render_flowchart_svg_from_text("flowchart TD\nA[\"&#x41;\"]\n");
+
+    roxmltree::Document::parse(&svg).expect("Flowchart SVG must be well-formed XML");
+    assert!(svg.contains("<p>&amp;&amp;x41;</p>"), "{svg}");
+    assert!(!svg.contains("&amp;&x41;"), "{svg}");
 }
 
 #[test]

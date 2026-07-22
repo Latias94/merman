@@ -564,7 +564,7 @@ function renderMerman(
       if (asciiResult.status === "success") {
         ascii = asciiResult.ascii;
       } else {
-        asciiError = asciiResult.error;
+        asciiError = normalizeErrorProjection(asciiResult.error);
       }
     }
   } catch (error) {
@@ -706,15 +706,38 @@ function mermanFailure(
 
 function projectedMermanFailure(
   stage: MermanRenderFailure["stage"],
-  error: ErrorProjection
+  error: unknown
 ): MermanRenderFailure {
+  const projection = normalizeErrorProjection(error);
   return {
     status: "failure",
     engine: "merman",
     stage,
-    message: error.summary,
-    detail: error.detail,
+    message: projection.summary,
+    detail: projection.detail,
   };
+}
+
+function normalizeErrorProjection(error: unknown): ErrorProjection {
+  try {
+    if (error && typeof error === "object") {
+      const candidate = error as { detail?: unknown; summary?: unknown };
+      const summary = candidate.summary;
+      const detail = candidate.detail;
+      if (
+        typeof summary === "string" &&
+        (detail === null || typeof detail === "string")
+      ) {
+        return {
+          summary,
+          detail,
+        };
+      }
+    }
+  } catch {
+    // Fall through to the defensive projector for hostile realm values.
+  }
+  return projectError(error);
 }
 
 function mermaidFailure(

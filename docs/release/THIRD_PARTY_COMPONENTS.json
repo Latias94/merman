@@ -310,11 +310,11 @@
     {
       "id": "dompurify",
       "name": "DOMPurify",
-      "version": "3.4.0",
+      "version": "3.4.12",
       "source": {
         "repository": "https://github.com/cure53/DOMPurify.git",
-        "ref": "3.4.0",
-        "commit": "5b16e0b892e82b1779d62b9928b43c4c4ff290b9",
+        "ref": "3.4.12",
+        "commit": "a9ca1e537422319a557a9a2aa61f003b23b4a197",
         "path": "."
       },
       "relationships": ["generated", "translated"],
@@ -324,14 +324,14 @@
       "license_files": [
         {
           "path": "THIRD_PARTY_LICENSES/dompurify/LICENSE",
-          "sha256": "1b02e03c3fb4f87d476c128f0eb9def1f5a1709d28b180465228bd41574623b7",
-          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/5b16e0b892e82b1779d62b9928b43c4c4ff290b9/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/a9ca1e537422319a557a9a2aa61f003b23b4a197/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
       ],
       "locks": [{"type": "repository", "repository_id": "dompurify"}],
-      "notice": "Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream dual-license file is preserved."
+      "notice": "Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved."
     },
     {
       "id": "eclipse-elk",

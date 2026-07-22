@@ -202,7 +202,7 @@ fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
 }
 
 #[test]
-fn analysis_facts_v1_rejects_semantic_items_without_rename_policy() {
+fn analysis_facts_v1_disables_rename_when_older_payload_omits_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]
         .as_array_mut()
@@ -213,8 +213,22 @@ fn analysis_facts_v1_rejects_semantic_items_without_rename_policy() {
         .expect("semantic item should be an object")
         .remove("rename_policy");
 
-    let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
-    assert!(error.to_string().contains("rename_policy"));
+    let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
+        .expect("older facts v1 payload should remain readable");
+    assert_eq!(
+        payload.diagrams[0].syntax.semantic_items[0].rename_policy,
+        merman_analysis::FenceRenamePolicy::None
+    );
+}
+
+#[test]
+fn analysis_facts_v1_writers_always_emit_rename_policy() {
+    let value = parser_backed_facts_json();
+    assert!(
+        value["diagrams"][0]["syntax"]["semantic_items"][0]
+            .get("rename_policy")
+            .is_some()
+    );
 }
 
 #[test]

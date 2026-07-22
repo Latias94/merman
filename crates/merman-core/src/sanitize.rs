@@ -156,7 +156,7 @@ fn is_dompurify_data_attr_name(name: &str) -> bool {
 
 #[cfg(feature = "full-sanitization")]
 fn is_dompurify_data_attr_suffix_char(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
+    // Source: DOMPurify 3.4.12 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
     matches!(
         ch,
         '-' | '.' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z'
@@ -174,7 +174,7 @@ fn is_dompurify_aria_attr_name(name: &str) -> bool {
 
 #[cfg(feature = "full-sanitization")]
 fn is_dompurify_aria_attr_suffix_char(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `ARIA_ATTR = /^aria-[\-\w]+$/`.
+    // Source: DOMPurify 3.4.12 `ARIA_ATTR = /^aria-[\-\w]+$/`.
     matches!(ch, '-' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z')
 }
 
@@ -199,7 +199,7 @@ fn remove_dompurify_attr_whitespace(input: &str) -> std::borrow::Cow<'_, str> {
 
 #[cfg(feature = "full-sanitization")]
 fn is_dompurify_attr_whitespace(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `ATTR_WHITESPACE`.
+    // Source: DOMPurify 3.4.12 `ATTR_WHITESPACE`.
     matches!(
         ch,
         '\u{0000}'..='\u{0020}'
@@ -214,7 +214,7 @@ fn is_dompurify_attr_whitespace(ch: char) -> bool {
 
 #[cfg(feature = "full-sanitization")]
 fn is_dompurify_script_or_data_uri(value: &str) -> bool {
-    // Source: DOMPurify 3.4.0 `IS_SCRIPT_OR_DATA = /^(?:\w+script|data):/i`.
+    // Source: DOMPurify 3.4.12 `IS_SCRIPT_OR_DATA = /^(?:\w+script|data):/i`.
     let Some(colon) = value.find(':') else {
         return false;
     };
@@ -239,7 +239,7 @@ fn is_dompurify_script_or_data_uri(value: &str) -> bool {
 
 #[cfg(feature = "full-sanitization")]
 fn is_dompurify_allowed_uri(value: &str) -> bool {
-    // Source: DOMPurify 3.4.0 `IS_ALLOWED_URI`.
+    // Source: DOMPurify 3.4.12 `IS_ALLOWED_URI`.
     if value.is_empty() {
         return false;
     }
@@ -452,10 +452,13 @@ fn dompurify_is_valid_attribute(
     lc_name: &str,
     value: &str,
 ) -> bool {
-    if cfg.allow_data_attr
-        && !cfg.forbid_attr.contains(lc_name)
-        && is_dompurify_data_attr_name(lc_name)
-    {
+    // DOMPurify applies FORBID_ATTR before its data-* and aria-* convenience paths.
+    // Keeping that priority here makes every accepted attribute route obey one policy.
+    if cfg.forbid_attr.contains(lc_name) {
+        return false;
+    }
+
+    if cfg.allow_data_attr && is_dompurify_data_attr_name(lc_name) {
         return true;
     }
 
@@ -463,7 +466,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    if !cfg.allowed_attr.contains(lc_name) || cfg.forbid_attr.contains(lc_name) {
+    if !cfg.allowed_attr.contains(lc_name) {
         return false;
     }
 
@@ -1199,6 +1202,26 @@ mod tests {
             "dompurifyConfig": { "FORBID_ATTR": ["href"] }
         }));
         assert_eq!(sanitize_text(r#"<a href="/x">y</a>"#, &cfg), "<a>y</a>");
+    }
+
+    #[cfg(feature = "full-sanitization")]
+    #[test]
+    fn sanitize_text_dompurify_forbid_attr_overrides_aria_and_data_defaults() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true },
+            "dompurifyConfig": {
+                "FORBID_ATTR": ["aria-label", "data-secret"]
+            }
+        }));
+
+        assert_eq!(
+            sanitize_text(
+                r#"<span aria-label="visible" data-secret="hidden" title="kept">text</span>"#,
+                &cfg,
+            ),
+            r#"<span title="kept">text</span>"#,
+        );
     }
 
     #[cfg(feature = "full-sanitization")]

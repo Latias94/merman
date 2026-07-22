@@ -453,6 +453,48 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
 }
 
 #[test]
+fn apply_text_changes_updates_line_index_between_batched_edits() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\r\nA[🤓]\rB\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 2), Position::new(1, 4))),
+                range_length: None,
+                text: "C\nD".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(2, 0), Position::new(2, 1))),
+                range_length: None,
+                text: "E".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(
+                    Position::new(3, 10_000),
+                    Position::new(3, 10_000),
+                )),
+                range_length: None,
+                text: "-->C".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(stored.text.as_ref(), "flowchart TD\r\nA[C\nE]\rB-->C\n");
+}
+
+#[test]
 fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
@@ -569,7 +611,38 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
 }
 
 #[test]
-fn apply_text_changes_rejects_utf16_positions_past_line_end() {
+fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(1, 4), Position::new(1, 2))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(
+        stored.sync_error,
+        Some(DocumentSyncError::InvalidIncrementalRange)
+    );
+}
+
+#[test]
+fn apply_text_changes_clamps_utf16_positions_past_line_end() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -593,13 +666,11 @@ fn apply_text_changes_rejects_utf16_positions_past_line_end() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::InvalidRange);
-    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
-    assert_eq!(
-        stored.sync_error,
-        Some(DocumentSyncError::InvalidIncrementalRange)
-    );
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA[🤓]-->Bbad\n");
+    assert_eq!(stored.sync_error, None);
 }
 
 #[test]
@@ -996,7 +1067,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_stales_all_snapshot_derived_state() {
+fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1024,10 +1095,17 @@ fn diagnostic_only_analyzer_update_stales_all_snapshot_derived_state() {
         ),
     );
 
-    assert!(!store.is_snapshot_context_current(&snapshot_context));
+    assert!(store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_analysis_context_current(&snapshot_context));
     assert!(!store.is_diagnostic_context_current(&diagnostic_context));
-    assert!(!store.has_snapshot(&uri));
-    assert!(store.semantic_tokens_state(&uri).is_none());
+    assert!(store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
 }
 
 #[test]
@@ -1217,7 +1295,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_rebuilds_the_analysis_bundle() {
+fn diagnostic_only_analyzer_update_reuses_snapshot_and_rebuilds_analysis_payload() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1258,12 +1336,25 @@ fn diagnostic_only_analyzer_update_rebuilds_the_analysis_bundle() {
         ),
     );
 
-    assert!(!store.has_snapshot(&uri));
-    assert!(store.semantic_tokens_state(&uri).is_none());
-    let rebuilt = store
-        .snapshot(&uri)
-        .expect("expected rebuilt snapshot after diagnostic-only update");
-    assert!(!std::sync::Arc::ptr_eq(&snapshot, &rebuilt));
+    assert!(store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
+
+    let request = store
+        .snapshot_build_request(&uri)
+        .expect("expected analysis rebuild request");
+    let rebuilt_context = store
+        .insert_built_analysis(&request, request.build())
+        .expect("expected rebuilt analysis payload");
+    let rebuilt = std::sync::Arc::clone(&rebuilt_context.snapshot);
+    assert!(std::sync::Arc::ptr_eq(&snapshot, &rebuilt));
+    assert!(store.has_analysis_payload(&uri));
+    assert!(store.is_analysis_context_current(&rebuilt_context));
     assert_eq!(
         rebuilt.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
@@ -1459,6 +1550,15 @@ fn architecture_documents_use_parser_facts() {
         .to_string(),
     );
     let index = &snapshot.fences[0].text_index;
+
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
+        return;
+    }
 
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
@@ -2306,6 +2406,15 @@ fn mindmap_documents_use_parser_facts() {
     );
     let index = &snapshot.fences[0].text_index;
 
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
+        return;
+    }
+
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "root"));
     assert!(index.node_ids().any(|id| id == "child1"));
@@ -2322,6 +2431,15 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
     let index = &snapshot.fences[0].text_index;
+
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::Unavailable);
+        return;
+    }
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "root"));

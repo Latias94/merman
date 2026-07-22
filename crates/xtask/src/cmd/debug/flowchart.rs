@@ -27,7 +27,7 @@ fn layout_flowchart_render_model(
 ) -> Result<FlowchartLayout, XtaskError> {
     let model = flowchart_model(parsed)?;
     session
-        .resource_limits()
+        .resource_policy()
         .check_flowchart_complexity(model)
         .map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))?;
 

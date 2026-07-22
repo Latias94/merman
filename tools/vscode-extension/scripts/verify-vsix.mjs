@@ -43,8 +43,7 @@ const canonicalLicenseRoot = path.join(repositoryRoot, "THIRD_PARTY_LICENSES");
 const canonicalLicenseFiles = walkFiles(canonicalLicenseRoot);
 const expectedSourceVersion =
   args.version ??
-  process.env.MERMAN_RELEASE_VERSION ??
-  readWorkspacePackageVersion() ??
+  process.env.MERMAN_VSCODE_RELEASE_VERSION ??
   sourceManifest.version ??
   null;
 const expectedVersion = expectedSourceVersion === null ? null : parseSourceVersion(expectedSourceVersion);
@@ -340,7 +339,9 @@ function assertEqual(actual, expected, label) {
 }
 
 function parseSourceVersion(version) {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  const match = version.match(
+    /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:alpha|beta|rc)\.(?:0|[1-9][0-9]*)))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  );
   if (!match) {
     fail(`Expected source version is not valid SemVer: ${JSON.stringify(version)}.`);
   }
@@ -349,16 +350,6 @@ function parseSourceVersion(version) {
     vsixVersion: `${match[1]}.${match[2]}.${match[3]}`,
     preRelease: match[4] !== undefined,
   };
-}
-
-function readWorkspacePackageVersion() {
-  const cargoTomlPath = path.resolve(process.cwd(), "..", "..", "Cargo.toml");
-  if (!fs.existsSync(cargoTomlPath)) {
-    return null;
-  }
-  const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
-  const match = cargoToml.match(/^\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"/m);
-  return match?.[1] ?? null;
 }
 
 function readVsixIdentityVersion(manifestXml) {

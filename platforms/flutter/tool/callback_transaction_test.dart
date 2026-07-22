@@ -1,6 +1,8 @@
 import 'package:merman/src/merman_ffi.dart';
+import 'package:merman/src/generated/text_measurement_abi.dart';
 
 void main() {
+  textMeasurementFactoriesRequireCompleteValidShapes();
   replaceFailureKeepsPreviousCallbackAlive();
   clearFailureKeepsPreviousCallbackAlive();
   replaceSuccessClosesPreviousCallback();
@@ -11,6 +13,65 @@ void main() {
   lifecycleCallsAfterCloseThrowStableError();
 
   print('callback transaction tests passed');
+}
+
+void textMeasurementFactoriesRequireCompleteValidShapes() {
+  final metrics = MermanTextMeasureResult.metrics(
+    width: 21,
+    height: 13,
+    lineCount: 2,
+  );
+  expectEquals(metrics.resultKind, MermanTextMeasurementResultKind.metrics,
+      'metrics factory should set its protocol kind');
+  expectEquals(metrics.lineCount, 2, 'metrics factory should preserve lines');
+
+  final length = MermanTextMeasureResult.length(length: -1.25);
+  expectEquals(length.resultKind, MermanTextMeasurementResultKind.length,
+      'length factory should set its protocol kind');
+  expectEquals(length.length, -1.25,
+      'length factory should preserve signed baseline offsets');
+
+  final extents = MermanTextMeasureResult.horizontalExtents(
+    left: 3,
+    right: 18,
+  );
+  expectEquals(
+      extents.resultKind,
+      MermanTextMeasurementResultKind.horizontalExtents,
+      'extents factory should set its protocol kind');
+  expectEquals(extents.bboxLeft, 3, 'extents factory should preserve left');
+  expectEquals(extents.bboxRight, 18, 'extents factory should preserve right');
+
+  final wrapped = MermanTextMeasureResult.wrappedWithRawWidth(
+    width: 21,
+    height: 26,
+    lineCount: 2,
+    rawWidth: 34,
+  );
+  expectEquals(
+      wrapped.resultKind,
+      MermanTextMeasurementResultKind.wrappedWithRawWidth,
+      'wrapped factory should set its protocol kind');
+  expectEquals(wrapped.rawWidth, 34,
+      'wrapped factory should preserve optional raw width');
+
+  expectThrows<RangeError>(() {
+    MermanTextMeasureResult.metrics(width: 21, height: 13, lineCount: 0);
+  });
+  expectThrows<ArgumentError>(() {
+    MermanTextMeasureResult.length(length: double.nan);
+  });
+  expectThrows<RangeError>(() {
+    MermanTextMeasureResult.horizontalExtents(left: -1, right: 18);
+  });
+  expectThrows<ArgumentError>(() {
+    MermanTextMeasureResult.wrappedWithRawWidth(
+      width: 21,
+      height: 26,
+      lineCount: 2,
+      rawWidth: double.infinity,
+    );
+  });
 }
 
 void replaceFailureKeepsPreviousCallbackAlive() {

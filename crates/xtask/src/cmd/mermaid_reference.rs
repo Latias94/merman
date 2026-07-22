@@ -1,16 +1,17 @@
 use crate::XtaskError;
 use base64::Engine as _;
+use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 const BUNDLE_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json";
 const REPOS_LOCK_RELATIVE_PATH: &str = "tools/upstreams/REPOS.lock.json";
-const EXPECTED_SCHEMA_VERSION: u32 = crate::cmd::MERMAID_REFERENCE_BUNDLE_SCHEMA_VERSION;
+const EXPECTED_SCHEMA_VERSION: u32 = 3;
 const CORE_PROJECTION_RELATIVE_PATH: &str = "crates/merman-core/src/generated/mermaid_reference.rs";
 const XTASK_PROJECTION_RELATIVE_PATH: &str = "crates/xtask/src/generated/mermaid_reference.rs";
 const TYPESCRIPT_PROJECTION_RELATIVE_PATH: &str = "playground/src/generated/mermaid-reference.ts";
@@ -41,6 +42,8 @@ struct MermaidReferenceBundle {
     projection_schema_version: u32,
     release: PackageReference,
     parser: PackageReference,
+    sanitizer: PackageReference,
+    builtin_registry: BuiltinRegistryInventory,
     external_diagrams: Vec<ExternalDiagramReference>,
     external_layouts: Vec<PackageReference>,
     playground: WorkspaceGraph,
@@ -135,6 +138,26 @@ struct RuntimeRegistration {
     source_sha256: String,
 }
 
+/// A source-backed inventory of Mermaid registrations owned by the core package.
+///
+/// External packages have their own runtime registrations. Built-ins must be listed here so an
+/// upstream upgrade cannot silently add, remove, or rename a family or default layout while the
+/// local admission inventory remains self-consistent.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BuiltinRegistryInventory {
+    diagrams: RegistryInventory,
+    layouts: RegistryInventory,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RegistryInventory {
+    source_path: String,
+    source_sha256: String,
+    ids: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SourceReference {
@@ -223,6 +246,7 @@ fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference>
     let mut references = vec![
         &bundle.release,
         &bundle.parser,
+        &bundle.sanitizer,
         &bundle.reference_cli.package,
     ];
     references.extend(bundle.external_layouts.iter());
@@ -239,6 +263,40 @@ fn selected_behavior_source(behavior: &BehaviorSource) -> Option<&PackageReferen
     [&behavior.oracle, &behavior.candidate]
         .into_iter()
         .find(|reference| reference.version == behavior.selected_version)
+}
+
+fn materialized_runtime_references(
+    bundle: &MermaidReferenceBundle,
+) -> Result<Vec<&PackageReference>, XtaskError> {
+    let mut references = vec![
+        &bundle.release,
+        &bundle.parser,
+        &bundle.sanitizer,
+        &bundle.reference_cli.package,
+    ];
+    references.extend(bundle.external_layouts.iter());
+    for diagram in &bundle.external_diagrams {
+        let selected = selected_behavior_source(&diagram.behavior_source).ok_or_else(|| {
+            XtaskError::MermaidReference(format!(
+                "{} selectedVersion must identify a materialized behavior package",
+                diagram.id
+            ))
+        })?;
+        references.extend([&diagram.plugin, selected]);
+    }
+
+    let mut packages = BTreeMap::new();
+    for reference in references {
+        if let Some(previous) = packages.insert(reference.package.as_str(), reference)
+            && previous.version != reference.version
+        {
+            return Err(XtaskError::MermaidReference(format!(
+                "materialized runtime package {} has conflicting versions {} and {}",
+                reference.package, previous.version, reference.version
+            )));
+        }
+    }
+    Ok(packages.into_values().collect())
 }
 
 fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
@@ -260,6 +318,23 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
     }
     if bundle.parser.package != "@mermaid-js/parser" || bundle.parser.role != "parser" {
         failures.push("parser must describe @mermaid-js/parser".to_string());
+    }
+    if bundle.sanitizer.package != "dompurify" || bundle.sanitizer.role != "sanitizer" {
+        failures.push("sanitizer must describe the shared DOMPurify package".to_string());
+    }
+    let required_sanitizer_surfaces =
+        BTreeSet::from(["playground", "reference-cli", "rust-sanitizer"]);
+    let sanitizer_surfaces = bundle
+        .sanitizer
+        .required_surfaces
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if !required_sanitizer_surfaces.is_subset(&sanitizer_surfaces) {
+        failures.push(
+            "sanitizer must cover the Playground, reference CLI, and Rust sanitizer surfaces"
+                .to_string(),
+        );
     }
     let Some(zenuml) = bundle
         .external_diagrams
@@ -315,6 +390,15 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         failures
             .push("externalLayouts must contain only owned external-layout packages".to_string());
     }
+    for reference in materialized_runtime_references(bundle)? {
+        if reference.installed_content_sha256.is_none() {
+            failures.push(format!(
+                "materialized runtime package {}@{} must record installedContentSha256",
+                reference.package, reference.version
+            ));
+        }
+    }
+    validate_builtin_registry_inventory(&bundle.builtin_registry, &mut failures);
     validate_runtime_registrations(bundle, zenuml, &mut failures);
     if bundle.reference_cli.package.package != "@mermaid-js/mermaid-cli"
         || bundle.reference_cli.package.role != "reference-cli"
@@ -559,6 +643,36 @@ fn validate_runtime_registrations(
     }
 }
 
+fn validate_builtin_registry_inventory(
+    inventory: &BuiltinRegistryInventory,
+    failures: &mut Vec<String>,
+) {
+    for (kind, registry) in [
+        ("built-in diagram", &inventory.diagrams),
+        ("built-in layout", &inventory.layouts),
+    ] {
+        if registry.ids.is_empty()
+            || !is_owned_relative_path(&registry.source_path)
+            || !registry.source_path.starts_with("packages/mermaid/")
+            || !crate::util::is_canonical_sha256(&registry.source_sha256)
+            || registry.source_sha256.bytes().all(|byte| byte == b'0')
+        {
+            failures.push(format!(
+                "{kind} registry inventory has an invalid source or is empty"
+            ));
+        }
+
+        let mut ids = BTreeSet::new();
+        for id in &registry.ids {
+            if id.trim().is_empty() || id.trim() != id || !ids.insert(id.as_str()) {
+                failures.push(format!(
+                    "{kind} registry inventory contains a duplicate, blank, or untrimmed id {id:?}"
+                ));
+            }
+        }
+    }
+}
+
 fn is_sorted_unique(values: &[String]) -> bool {
     values.windows(2).all(|pair| pair[0] < pair[1])
 }
@@ -611,16 +725,18 @@ fn render_xtask_projection(bundle: &MermaidReferenceBundle) -> Result<String, Xt
                 "reference CLI installedContentSha256 is required".to_string(),
             )
         })?;
-    let mut output = format!(
+    let mut output = String::from(
         "// This file is @generated by `cargo run -p xtask -- gen-mermaid-reference`.\n\
-         // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.\n\n\
-         pub(crate) const MERMAID_REFERENCE_BUNDLE_SCHEMA_VERSION: u32 = {};\n",
-        bundle.schema_version,
+         // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.\n\n",
     );
     for (name, value) in [
         ("PINNED_MERMAID_PACKAGE_SHA256", mermaid_content),
         ("PINNED_MERMAID_CLI_PACKAGE_SHA256", cli_content),
         ("PINNED_MERMAID_VERSION", bundle.release.version.as_str()),
+        (
+            "PINNED_DOMPURIFY_VERSION",
+            bundle.sanitizer.version.as_str(),
+        ),
         (
             "PINNED_MERMAID_CLI_VERSION",
             bundle.reference_cli.package.version.as_str(),
@@ -913,28 +1029,47 @@ fn expected_provenance_source(bundle: &MermaidReferenceBundle) -> BTreeMap<&'sta
 }
 
 fn upstream_provenance_manifests(root: &Path) -> Result<Vec<PathBuf>, XtaskError> {
+    upstream_provenance_manifests_for(root, crate::cmd::UPSTREAM_SVG_DIAGRAMS)
+}
+
+fn upstream_provenance_manifests_for(
+    root: &Path,
+    primary_families: &[&str],
+) -> Result<Vec<PathBuf>, XtaskError> {
     let provenance_root = root.join(UPSTREAM_SVG_PROVENANCE_RELATIVE_PATH);
-    let mut manifests = Vec::new();
-    for entry in fs::read_dir(&provenance_root).map_err(|source| XtaskError::ReadFile {
-        path: provenance_root.display().to_string(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| XtaskError::ReadFile {
-            path: provenance_root.display().to_string(),
-            source,
-        })?;
-        let manifest = entry.path().join("_baseline-manifest.json");
-        if manifest.is_file() {
-            manifests.push(manifest);
-        }
+    let manifests = primary_families
+        .iter()
+        .map(|family| provenance_root.join(family).join("_baseline-manifest.json"))
+        .collect::<Vec<_>>();
+    let missing = primary_families
+        .iter()
+        .zip(&manifests)
+        .filter(|(_, manifest)| !manifest.is_file())
+        .map(|(family, manifest)| format!("{family}: {}", manifest.display()))
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(XtaskError::MermaidReference(format!(
+            "missing primary upstream SVG provenance manifests: {}",
+            missing.join(", ")
+        )));
     }
-    manifests.sort();
     if manifests.is_empty() {
         return Err(XtaskError::MermaidReference(
-            "no upstream SVG provenance manifests were found".to_string(),
+            "primary upstream SVG family inventory is empty".to_string(),
         ));
     }
     Ok(manifests)
+}
+
+fn regenerate_upstream_provenance_with<F>(regenerate: F) -> Result<(), XtaskError>
+where
+    F: FnOnce(Vec<String>) -> Result<(), XtaskError>,
+{
+    regenerate(vec!["--diagram".to_string(), "all".to_string()])
+}
+
+fn regenerate_upstream_provenance() -> Result<(), XtaskError> {
+    regenerate_upstream_provenance_with(crate::cmd::gen_upstream_svgs)
 }
 
 fn verify_upstream_provenance_sources(
@@ -958,38 +1093,6 @@ fn verify_upstream_provenance_sources(
                 ));
             }
         }
-    }
-    Ok(())
-}
-
-fn refresh_upstream_provenance_sources(
-    root: &Path,
-    bundle: &MermaidReferenceBundle,
-) -> Result<(), XtaskError> {
-    let expected = expected_provenance_source(bundle);
-    for manifest_path in upstream_provenance_manifests(root)? {
-        let mut manifest = read_json(&manifest_path)?;
-        let source = manifest
-            .get_mut("source")
-            .and_then(JsonValue::as_object_mut)
-            .ok_or_else(|| {
-                XtaskError::MermaidReference(format!(
-                    "{} has no provenance source object",
-                    manifest_path.display()
-                ))
-            })?;
-        for (field, expected) in &expected {
-            let value = source.get_mut(*field).ok_or_else(|| {
-                XtaskError::MermaidReference(format!(
-                    "{} is missing source.{field}",
-                    manifest_path.display()
-                ))
-            })?;
-            *value = JsonValue::String((*expected).to_string());
-        }
-        let mut contents = serde_json::to_string_pretty(&manifest)?;
-        contents.push('\n');
-        write_projection(&manifest_path, &contents)?;
     }
     Ok(())
 }
@@ -1086,6 +1189,319 @@ fn verify_source_checkouts(
     Ok(())
 }
 
+fn verify_builtin_registry_inventory(
+    root: &Path,
+    bundle: &MermaidReferenceBundle,
+    materialized: bool,
+    failures: &mut Vec<String>,
+) {
+    if !materialized {
+        return;
+    }
+
+    let Some(checkout_path) = bundle.release.source.checkout_path.as_deref() else {
+        failures.push(
+            "Mermaid release must materialize a source checkout for registry inventory".to_string(),
+        );
+        return;
+    };
+    let checkout = root.join(checkout_path);
+    if !checkout.is_dir() {
+        // `verify_source_checkouts` reports the missing checkout with the pinned source identity.
+        return;
+    }
+
+    for (kind, registry) in [
+        ("built-in diagram", &bundle.builtin_registry.diagrams),
+        ("built-in layout", &bundle.builtin_registry.layouts),
+    ] {
+        let source_path = checkout.join(&registry.source_path);
+        if !source_path.is_file() {
+            failures.push(format!(
+                "{kind} registry source is missing: {}",
+                source_path.display()
+            ));
+            continue;
+        }
+        let source = match fs::read_to_string(&source_path) {
+            Ok(source) => source,
+            Err(error) => {
+                failures.push(format!(
+                    "cannot read {kind} registry source {}: {error}",
+                    source_path.display()
+                ));
+                continue;
+            }
+        };
+        let actual_sha256 = crate::util::sha256_hex(source.as_bytes());
+        if actual_sha256 != registry.source_sha256 {
+            failures.push(format!(
+                "{kind} registry source digest drift for {}: expected {}, found {actual_sha256}",
+                source_path.display(),
+                registry.source_sha256
+            ));
+        }
+
+        let actual_ids = if kind == "built-in diagram" {
+            extract_builtin_diagram_ids(
+                &source,
+                Path::new(&registry.source_path),
+                |relative_source_path| {
+                    let path = checkout.join(relative_source_path);
+                    fs::read_to_string(&path)
+                        .map_err(|error| format!("{}: {error}", path.display()))
+                },
+            )
+        } else {
+            extract_builtin_layout_ids(&source)
+        };
+        match actual_ids {
+            Ok(actual_ids) if actual_ids != registry.ids => failures.push(format!(
+                "{kind} registry inventory drift at {}: expected {:?}, found {actual_ids:?}",
+                source_path.display(),
+                registry.ids
+            )),
+            Ok(_) => {}
+            Err(reason) => failures.push(format!(
+                "cannot extract {kind} registry inventory from {}: {reason}",
+                source_path.display()
+            )),
+        }
+    }
+}
+
+fn extract_builtin_diagram_ids(
+    orchestration_source: &str,
+    orchestration_path: &Path,
+    mut read_detector_source: impl FnMut(&Path) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let imports = diagram_detector_imports(orchestration_source, orchestration_path)?;
+    let direct_re =
+        Regex::new(r#"(?s)registerDiagram\s*\(\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')"#)
+            .expect("built-in direct registry regex is valid");
+    let lazy_re = Regex::new(r"(?s)registerLazyLoadedDiagrams\s*\((?P<args>.*?)\)\s*;")
+        .expect("built-in lazy registry regex is valid");
+    let direct_call_re =
+        Regex::new(r"registerDiagram\s*\(").expect("direct registry call regex is valid");
+    let lazy_call_re =
+        Regex::new(r"registerLazyLoadedDiagrams\s*\(").expect("lazy registry call regex is valid");
+    let mut registrations = Vec::new();
+    let mut direct_registration_count = 0usize;
+    let mut lazy_registration_count = 0usize;
+
+    for captures in direct_re.captures_iter(orchestration_source) {
+        direct_registration_count += 1;
+        let id = captures
+            .name("double")
+            .or_else(|| captures.name("single"))
+            .expect("static direct diagram id is captured")
+            .as_str()
+            .to_string();
+        registrations.push((
+            captures
+                .get(0)
+                .expect("direct registration is captured")
+                .start(),
+            vec![id],
+        ));
+    }
+    for captures in lazy_re.captures_iter(orchestration_source) {
+        lazy_registration_count += 1;
+        let arguments = captures
+            .name("args")
+            .expect("lazy registration arguments are captured")
+            .as_str();
+        let mut ids = Vec::new();
+        for binding in arguments
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if !is_typescript_identifier(binding) {
+                return Err(format!(
+                    "lazy diagram registration argument {binding:?} is not a static imported identifier"
+                ));
+            }
+            let source_path = imports.get(binding).ok_or_else(|| {
+                format!("lazy diagram registration {binding:?} has no supported static import")
+            })?;
+            let detector_source = read_detector_source(source_path)?;
+            ids.push(detector_id_from_source(&detector_source, source_path)?);
+        }
+        registrations.push((
+            captures
+                .get(0)
+                .expect("lazy registration is captured")
+                .start(),
+            ids,
+        ));
+    }
+    if direct_registration_count != direct_call_re.find_iter(orchestration_source).count() {
+        return Err("a registerDiagram call does not use a static string id".to_string());
+    }
+    if lazy_registration_count != lazy_call_re.find_iter(orchestration_source).count() {
+        return Err("a registerLazyLoadedDiagrams call has unsupported syntax".to_string());
+    }
+    registrations.sort_by_key(|(offset, _)| *offset);
+    let ids = registrations
+        .into_iter()
+        .flat_map(|(_, ids)| ids)
+        .collect::<Vec<_>>();
+
+    ensure_unique_registry_ids(&ids, "diagram")?;
+    if ids.is_empty() {
+        return Err(
+            "no registerDiagram or registerLazyLoadedDiagrams calls were found".to_string(),
+        );
+    }
+    Ok(ids)
+}
+
+fn diagram_detector_imports(
+    source: &str,
+    orchestration_path: &Path,
+) -> Result<BTreeMap<String, PathBuf>, String> {
+    let import_re = Regex::new(
+        r#"(?m)^import\s+(?:(?P<default>[A-Za-z_$][A-Za-z0-9_$]*)|\{\s*(?P<named>[A-Za-z_$][A-Za-z0-9_$]*)\s*\})\s+from\s+['\"](?P<path>\.[^'\"]+)['\"];\s*$"#,
+    )
+    .expect("built-in registry import regex is valid");
+    let mut imports = BTreeMap::new();
+    for captures in import_re.captures_iter(source) {
+        let binding = captures
+            .name("default")
+            .or_else(|| captures.name("named"))
+            .expect("supported import captures one binding")
+            .as_str();
+        let import_path = captures
+            .name("path")
+            .expect("supported import captures a path")
+            .as_str();
+        if !import_path.starts_with("../diagrams/") {
+            continue;
+        }
+        let source_path = resolve_typescript_import(orchestration_path, import_path)?;
+        if imports.insert(binding.to_string(), source_path).is_some() {
+            return Err(format!("duplicate detector import binding {binding:?}"));
+        }
+    }
+    Ok(imports)
+}
+
+fn resolve_typescript_import(base: &Path, import_path: &str) -> Result<PathBuf, String> {
+    if !import_path.starts_with("../diagrams/") {
+        return Err(format!(
+            "detector import {import_path:?} is outside Mermaid's built-in diagram tree"
+        ));
+    }
+    let parent = base
+        .parent()
+        .ok_or_else(|| format!("registry source path {} has no parent", base.display()))?;
+    let mut normalized = PathBuf::new();
+    for component in parent.join(import_path).components() {
+        match component {
+            Component::Normal(component) => normalized.push(component),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err(format!(
+                        "detector import {import_path:?} escapes its checkout"
+                    ));
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "detector import {import_path:?} is not a relative path"
+                ));
+            }
+        }
+    }
+    if normalized
+        .extension()
+        .is_some_and(|extension| extension == "js")
+    {
+        normalized.set_extension("ts");
+    }
+    Ok(normalized)
+}
+
+fn is_typescript_identifier(value: &str) -> bool {
+    let mut characters = value.chars();
+    matches!(characters.next(), Some('_' | '$' | 'a'..='z' | 'A'..='Z'))
+        && characters
+            .all(|character| matches!(character, '_' | '$' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
+}
+
+fn detector_id_from_source(source: &str, source_path: &Path) -> Result<String, String> {
+    let id_re = Regex::new(
+        r#"(?m)^\s*(?:export\s+)?const\s+id\s*=\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')\s*;"#,
+    )
+    .expect("detector id regex is valid");
+    let mut ids = id_re.captures_iter(source).filter_map(|captures| {
+        captures
+            .name("double")
+            .or_else(|| captures.name("single"))
+            .map(|id| id.as_str().to_string())
+    });
+    let id = ids.next().ok_or_else(|| {
+        format!(
+            "detector {} does not declare a static `const id = ...`",
+            source_path.display()
+        )
+    })?;
+    if ids.next().is_some() {
+        return Err(format!(
+            "detector {} declares more than one static `id`",
+            source_path.display()
+        ));
+    }
+    Ok(id)
+}
+
+fn extract_builtin_layout_ids(source: &str) -> Result<Vec<String>, String> {
+    let start = source
+        .find("const registerDefaultLayoutLoaders")
+        .ok_or_else(|| "missing registerDefaultLayoutLoaders declaration".to_string())?;
+    let tail = &source[start..];
+    let end = tail
+        .find("registerDefaultLayoutLoaders();")
+        .ok_or_else(|| "missing registerDefaultLayoutLoaders invocation".to_string())?;
+    let registry = &tail[..end];
+    let name_re =
+        Regex::new(r#"(?m)^\s*name\s*:\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')\s*,?\s*$"#)
+            .expect("layout name regex is valid");
+    let name_property_re =
+        Regex::new(r"(?m)^\s*name\s*:").expect("layout name property regex is valid");
+    let ids = name_re
+        .captures_iter(registry)
+        .filter_map(|captures| {
+            captures
+                .name("double")
+                .or_else(|| captures.name("single"))
+                .map(|id| id.as_str().to_string())
+        })
+        .collect::<Vec<_>>();
+    if ids.len() != name_property_re.find_iter(registry).count() {
+        return Err("a default layout name is not a static string literal".to_string());
+    }
+    ensure_unique_registry_ids(&ids, "layout")?;
+    if ids.is_empty() {
+        return Err("no static layout names were found".to_string());
+    }
+    Ok(ids)
+}
+
+fn ensure_unique_registry_ids(ids: &[String], kind: &str) -> Result<(), String> {
+    let mut seen = BTreeSet::new();
+    for id in ids {
+        if id.trim().is_empty() || id.trim() != id || !seen.insert(id.as_str()) {
+            return Err(format!(
+                "{kind} registry has a duplicate, blank, or untrimmed id {id:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn package_lock_entries<'a>(lock: &'a JsonValue, package: &str) -> Vec<(&'a str, &'a JsonValue)> {
     let marker = format!("node_modules/{package}");
     lock.get("packages")
@@ -1137,11 +1553,77 @@ fn verify_manifest_requirement(
     }
 }
 
+fn verify_manifest_overrides(
+    manifest: &JsonValue,
+    workspace: &str,
+    required_overrides: &[&PackageReference],
+    failures: &mut Vec<String>,
+) {
+    for package in required_overrides {
+        let actual = manifest
+            .get("overrides")
+            .and_then(|value| value.get(&package.package))
+            .and_then(JsonValue::as_str);
+        if actual != Some(package.version.as_str()) {
+            failures.push(format!(
+                "{workspace}/package.json must override {} to {}, found {:?}",
+                package.package, package.version, actual
+            ));
+        }
+    }
+}
+
 struct WorkspaceGraphExpectation<'a> {
     workspace: &'a str,
-    direct_dependencies: &'a [&'a PackageReference],
-    expected_packages: &'a [&'a PackageReference],
+    direct_dependencies: Vec<&'a PackageReference>,
+    expected_packages: Vec<&'a PackageReference>,
+    required_overrides: Vec<&'a PackageReference>,
+}
+
+fn workspace_graph_expectations<'a>(
+    bundle: &'a MermaidReferenceBundle,
+    zenuml: &'a ExternalDiagramReference,
     selected_behavior: &'a PackageReference,
+) -> Vec<WorkspaceGraphExpectation<'a>> {
+    let layout_refs = bundle.external_layouts.iter().collect::<Vec<_>>();
+
+    let mut playground_direct = vec![&bundle.release, &zenuml.plugin];
+    playground_direct.extend(layout_refs.iter().copied());
+    let mut playground_expected = vec![
+        &bundle.release,
+        &bundle.parser,
+        &zenuml.plugin,
+        selected_behavior,
+        &bundle.sanitizer,
+    ];
+    playground_expected.extend(layout_refs.iter().copied());
+
+    let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin];
+    cli_direct.extend(layout_refs.iter().copied());
+    let mut cli_expected = vec![
+        &bundle.reference_cli.package,
+        &bundle.release,
+        &bundle.parser,
+        &zenuml.plugin,
+        selected_behavior,
+        &bundle.sanitizer,
+    ];
+    cli_expected.extend(layout_refs.iter().copied());
+
+    vec![
+        WorkspaceGraphExpectation {
+            workspace: "playground",
+            direct_dependencies: playground_direct,
+            expected_packages: playground_expected,
+            required_overrides: vec![selected_behavior, &bundle.sanitizer],
+        },
+        WorkspaceGraphExpectation {
+            workspace: &bundle.reference_cli.workspace,
+            direct_dependencies: cli_direct,
+            expected_packages: cli_expected,
+            required_overrides: vec![selected_behavior, &bundle.sanitizer],
+        },
+    ]
 }
 
 fn verify_workspace_graph(
@@ -1159,20 +1641,15 @@ fn verify_workspace_graph(
     } else {
         "devDependencies"
     };
-    for package in expectation.direct_dependencies {
+    for package in &expectation.direct_dependencies {
         verify_manifest_requirement(&manifest, workspace, direct_section, package, failures);
     }
-    if manifest
-        .get("overrides")
-        .and_then(|value| value.get("@zenuml/core"))
-        .and_then(JsonValue::as_str)
-        != Some(expectation.selected_behavior.version.as_str())
-    {
-        failures.push(format!(
-            "{workspace}/package.json must override @zenuml/core to {}",
-            expectation.selected_behavior.version
-        ));
-    }
+    verify_manifest_overrides(
+        &manifest,
+        workspace,
+        &expectation.required_overrides,
+        failures,
+    );
     let npmrc = fs::read_to_string(workspace_root.join(".npmrc")).map_err(|source| {
         XtaskError::ReadFile {
             path: workspace_root.join(".npmrc").display().to_string(),
@@ -1193,7 +1670,7 @@ fn verify_workspace_graph(
 
     let lock = read_json(&workspace_root.join("package-lock.json"))?;
     verify_lock_registry_sources(&lock, workspace, failures);
-    for package in expectation.expected_packages {
+    for package in &expectation.expected_packages {
         let entries = package_lock_entries(&lock, &package.package);
         if entries.is_empty() {
             failures.push(format!(
@@ -2861,23 +3338,42 @@ fn verify_installed_content(
     bundle: &MermaidReferenceBundle,
     failures: &mut Vec<String>,
 ) -> Result<(), XtaskError> {
-    for (reference, relative) in [
-        (&bundle.release, "tools/mermaid-cli/node_modules/mermaid"),
-        (
-            &bundle.reference_cli.package,
-            "tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli",
-        ),
-    ] {
-        let Some(expected) = reference.installed_content_sha256.as_deref() else {
-            continue;
-        };
-        let actual = crate::cmd::upstream_svg_package_tree_sha256(&root.join(relative))?;
-        if actual != expected {
-            failures.push(format!(
-                "installed {}@{} content drift: expected {expected}, found {actual}",
-                reference.package, reference.version
-            ));
-        }
+    let node_modules = root.join("tools/mermaid-cli/node_modules");
+    for reference in materialized_runtime_references(bundle)? {
+        let expected = reference
+            .installed_content_sha256
+            .as_deref()
+            .ok_or_else(|| {
+                XtaskError::MermaidReference(format!(
+                    "materialized runtime package {}@{} has no installedContentSha256",
+                    reference.package, reference.version
+                ))
+            })?;
+        let package_root = node_modules.join(&reference.package);
+        verify_installed_package_content(
+            &package_root,
+            &reference.package,
+            &reference.version,
+            expected,
+            failures,
+        )?;
+    }
+    Ok(())
+}
+
+fn verify_installed_package_content(
+    package_root: &Path,
+    package: &str,
+    version: &str,
+    expected: &str,
+    failures: &mut Vec<String>,
+) -> Result<(), XtaskError> {
+    let actual = crate::cmd::upstream_svg_package_tree_sha256(package_root)?;
+    if actual != expected {
+        failures.push(format!(
+            "installed {package}@{version} content drift at {}: expected {expected}, found {actual}",
+            package_root.display()
+        ));
     }
     Ok(())
 }
@@ -2892,6 +3388,7 @@ fn verify_repository_state(
     verify_reference_cli_files(root, bundle, &mut failures)?;
     verify_upstream_provenance_sources(root, bundle, &mut failures)?;
     verify_source_checkouts(root, bundle, materialized, &mut failures)?;
+    verify_builtin_registry_inventory(root, bundle, materialized, &mut failures);
     let zenuml = bundle
         .external_diagrams
         .iter()
@@ -2907,42 +3404,9 @@ fn verify_repository_state(
         &mut failures,
     )?;
 
-    let layout_refs = bundle.external_layouts.iter().collect::<Vec<_>>();
-    let mut playground_direct = vec![&bundle.release, &zenuml.plugin];
-    playground_direct.extend(layout_refs.iter().copied());
-    let mut playground_expected = vec![&bundle.release, &bundle.parser, &zenuml.plugin, selected];
-    playground_expected.extend(layout_refs.iter().copied());
-    let playground_expectation = WorkspaceGraphExpectation {
-        workspace: "playground",
-        direct_dependencies: &playground_direct,
-        expected_packages: &playground_expected,
-        selected_behavior: selected,
-    };
-    verify_workspace_graph(
-        root,
-        &playground_expectation,
-        bundle,
-        materialized,
-        &mut failures,
-    )?;
-
-    let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin];
-    cli_direct.extend(layout_refs.iter().copied());
-    let mut cli_expected = vec![
-        &bundle.reference_cli.package,
-        &bundle.release,
-        &bundle.parser,
-        &zenuml.plugin,
-        selected,
-    ];
-    cli_expected.extend(layout_refs.iter().copied());
-    let cli_expectation = WorkspaceGraphExpectation {
-        workspace: &bundle.reference_cli.workspace,
-        direct_dependencies: &cli_direct,
-        expected_packages: &cli_expected,
-        selected_behavior: selected,
-    };
-    verify_workspace_graph(root, &cli_expectation, bundle, materialized, &mut failures)?;
+    for expectation in workspace_graph_expectations(bundle, zenuml, selected) {
+        verify_workspace_graph(root, &expectation, bundle, materialized, &mut failures)?;
+    }
     if materialized {
         verify_installed_content(root, bundle, &mut failures)?;
     }
@@ -2979,7 +3443,7 @@ pub(crate) fn gen_mermaid_reference(args: Vec<String>) -> Result<(), XtaskError>
         write_projection(&crate::cmd::workspace_root().join(relative), &contents)?;
     }
     if refresh_provenance {
-        refresh_upstream_provenance_sources(&crate::cmd::workspace_root(), &bundle)?;
+        regenerate_upstream_provenance()?;
     }
     Ok(())
 }
@@ -3019,6 +3483,121 @@ mod tests {
         })
     }
 
+    #[test]
+    fn provenance_inventory_fails_closed_when_a_primary_family_manifest_is_missing() {
+        let temporary = tempfile::tempdir().expect("temporary provenance root");
+        let provenance_root = temporary.path().join(UPSTREAM_SVG_PROVENANCE_RELATIVE_PATH);
+        let flowchart = provenance_root.join("flowchart");
+        fs::create_dir_all(&flowchart).expect("create flowchart provenance directory");
+        fs::write(flowchart.join("_baseline-manifest.json"), "{}\n")
+            .expect("write flowchart manifest");
+
+        let error = upstream_provenance_manifests_for(temporary.path(), &["flowchart", "state"])
+            .expect_err("the absent state manifest must fail closed");
+
+        assert!(error.to_string().contains("state"));
+        assert!(error.to_string().contains("missing"));
+    }
+
+    #[test]
+    fn provenance_refresh_delegates_to_a_complete_svg_regeneration() {
+        let mut observed = None;
+
+        regenerate_upstream_provenance_with(|args| {
+            observed = Some(args);
+            Ok(())
+        })
+        .expect("delegate provenance refresh");
+
+        assert_eq!(
+            observed,
+            Some(vec!["--diagram".to_string(), "all".to_string()])
+        );
+    }
+
+    #[test]
+    fn bundle_requires_installed_content_hashes_for_dynamic_runtime_companions() {
+        let root = crate::cmd::workspace_root();
+        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let zenuml = bundle
+            .external_diagrams
+            .iter_mut()
+            .find(|diagram| diagram.id == "zenuml")
+            .expect("ZenUML reference");
+        zenuml.plugin.installed_content_sha256 = None;
+
+        let error = validate_bundle(&bundle).expect_err("missing companion digest must fail");
+
+        assert!(error.to_string().contains("@mermaid-js/mermaid-zenuml"));
+        assert!(error.to_string().contains("installedContentSha256"));
+    }
+
+    #[test]
+    fn materialized_runtime_graph_covers_every_imported_companion() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let packages = materialized_runtime_references(&bundle)
+            .expect("resolve materialized runtime graph")
+            .into_iter()
+            .map(|reference| reference.package.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            packages,
+            BTreeSet::from([
+                "@mermaid-js/layout-elk",
+                "@mermaid-js/layout-tidy-tree",
+                "@mermaid-js/mermaid-cli",
+                "@mermaid-js/mermaid-zenuml",
+                "@mermaid-js/parser",
+                "@zenuml/core",
+                "dompurify",
+                "mermaid",
+            ])
+        );
+    }
+
+    #[test]
+    fn installed_companion_content_drift_fails_materialized_verification() {
+        let temporary = tempfile::tempdir().expect("temporary installed package");
+        fs::write(
+            temporary.path().join("index.js"),
+            "export const value = 1;\n",
+        )
+        .expect("write companion package");
+        let expected = crate::cmd::upstream_svg_package_tree_sha256(temporary.path())
+            .expect("hash companion package");
+        let mut failures = Vec::new();
+
+        verify_installed_package_content(
+            temporary.path(),
+            "@mermaid-js/layout-test",
+            "1.0.0",
+            &expected,
+            &mut failures,
+        )
+        .expect("verify matching companion content");
+        assert!(failures.is_empty());
+
+        fs::write(
+            temporary.path().join("index.js"),
+            "export const value = 2;\n",
+        )
+        .expect("mutate companion package");
+        verify_installed_package_content(
+            temporary.path(),
+            "@mermaid-js/layout-test",
+            "1.0.0",
+            &expected,
+            &mut failures,
+        )
+        .expect("verify changed companion content");
+
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("@mermaid-js/layout-test@1.0.0"));
+        assert!(failures[0].contains("content drift"));
+    }
+
     fn retained_oracle_statuses() -> Vec<(&'static str, &'static str)> {
         ZENUML_ADMISSION_GATES
             .into_iter()
@@ -3040,6 +3619,148 @@ mod tests {
     }
 
     #[test]
+    fn shared_sanitizer_is_bound_to_every_workspace_graph() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        validate_bundle(&bundle).expect("validate bundle");
+
+        assert_eq!(bundle.sanitizer.package, "dompurify");
+        assert_eq!(bundle.sanitizer.role, "sanitizer");
+        assert!(
+            package_references(&bundle)
+                .iter()
+                .any(|reference| reference.id == bundle.sanitizer.id)
+        );
+
+        let zenuml = bundle
+            .external_diagrams
+            .iter()
+            .find(|diagram| diagram.id == "zenuml")
+            .expect("ZenUML diagram reference");
+        let selected = selected_behavior_source(&zenuml.behavior_source)
+            .expect("selected ZenUML behavior reference");
+
+        for expectation in workspace_graph_expectations(&bundle, zenuml, selected) {
+            assert!(
+                expectation
+                    .required_overrides
+                    .iter()
+                    .any(|package| package.id == bundle.sanitizer.id)
+            );
+            assert!(
+                expectation
+                    .expected_packages
+                    .iter()
+                    .any(|package| package.id == bundle.sanitizer.id)
+            );
+
+            let mut failures = Vec::new();
+            verify_workspace_graph(&root, &expectation, &bundle, false, &mut failures)
+                .expect("read workspace graph");
+            assert!(
+                failures.is_empty(),
+                "{} workspace graph drifted: {failures:?}",
+                expectation.workspace
+            );
+        }
+    }
+
+    #[test]
+    fn shared_sanitizer_workspace_contract_rejects_override_or_lock_drift() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let temporary = tempfile::tempdir().expect("temporary workspace root");
+        let workspace = "sanitizer-contract";
+        let workspace_root = temporary.path().join(workspace);
+        fs::create_dir_all(&workspace_root).expect("create temporary workspace");
+        fs::write(
+            workspace_root.join(".npmrc"),
+            "ignore-scripts=true\nregistry=https://registry.npmjs.org/\n",
+        )
+        .expect("write npm configuration");
+        fs::write(
+            workspace_root.join("package.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "overrides": { "dompurify": bundle.sanitizer.version.as_str() }
+            }))
+            .expect("serialize package manifest"),
+        )
+        .expect("write package manifest");
+
+        let expectation = WorkspaceGraphExpectation {
+            workspace,
+            direct_dependencies: Vec::new(),
+            expected_packages: vec![&bundle.sanitizer],
+            required_overrides: vec![&bundle.sanitizer],
+        };
+        fs::write(
+            workspace_root.join("package-lock.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "packages": {
+                    "": {},
+                    "node_modules/dompurify": {
+                        "version": "3.4.11",
+                        "integrity": bundle.sanitizer.integrity.as_str(),
+                        "resolved": bundle.sanitizer.tarball_url.as_str()
+                    }
+                }
+            }))
+            .expect("serialize package lock"),
+        )
+        .expect("write package lock");
+
+        let mut failures = Vec::new();
+        verify_workspace_graph(
+            temporary.path(),
+            &expectation,
+            &bundle,
+            false,
+            &mut failures,
+        )
+        .expect("read temporary workspace graph");
+        assert!(failures.iter().any(|failure| {
+            failure.contains("must resolve dompurify@") && failure.contains("recorded integrity")
+        }));
+
+        fs::write(
+            workspace_root.join("package-lock.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "packages": {
+                    "": {},
+                    "node_modules/dompurify": {
+                        "version": bundle.sanitizer.version.as_str(),
+                        "integrity": bundle.sanitizer.integrity.as_str(),
+                        "resolved": bundle.sanitizer.tarball_url.as_str()
+                    }
+                }
+            }))
+            .expect("serialize corrected package lock"),
+        )
+        .expect("write corrected package lock");
+        fs::write(
+            workspace_root.join("package.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "overrides": { "dompurify": "3.4.11" }
+            }))
+            .expect("serialize stale package manifest"),
+        )
+        .expect("write stale package manifest");
+
+        failures.clear();
+        verify_workspace_graph(
+            temporary.path(),
+            &expectation,
+            &bundle,
+            false,
+            &mut failures,
+        )
+        .expect("read temporary workspace graph");
+        assert!(failures.iter().any(|failure| {
+            failure.contains("must override dompurify to") && failure.contains("3.4.11")
+        }));
+    }
+
+    #[test]
     fn committed_projections_are_exact_generator_outputs() {
         let root = crate::cmd::workspace_root();
         let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
@@ -3051,6 +3772,171 @@ mod tests {
                 "regenerate with `cargo run -p xtask -- gen-mermaid-reference`"
             );
         }
+    }
+
+    #[test]
+    fn builtin_diagram_inventory_extractor_keeps_upstream_registration_order() {
+        let orchestration = r#"
+import alpha from '../diagrams/alpha/detector.js';
+import { beta } from '../diagrams/beta/detector.js';
+
+const addDiagrams = () => {
+  registerDiagram(
+    'error',
+    {} as never,
+  );
+  registerLazyLoadedDiagrams(alpha, beta);
+};
+"#;
+        let ids = extract_builtin_diagram_ids(
+            orchestration,
+            Path::new("packages/mermaid/src/diagram-api/diagram-orchestration.ts"),
+            |path| match path.to_string_lossy().as_ref() {
+                "packages/mermaid/src/diagrams/alpha/detector.ts" => {
+                    Ok("const id = 'alpha';".to_string())
+                }
+                "packages/mermaid/src/diagrams/beta/detector.ts" => {
+                    Ok("const id = 'beta';".to_string())
+                }
+                other => Err(format!("unexpected detector path {other}")),
+            },
+        )
+        .expect("extract static registry entries");
+
+        assert_eq!(ids, ["error", "alpha", "beta"]);
+    }
+
+    #[test]
+    fn builtin_diagram_inventory_extractor_fails_closed_on_nonstatic_registration() {
+        let source = r#"
+const id = 'untracked';
+registerDiagram(id, {} as never);
+"#;
+
+        let error = extract_builtin_diagram_ids(
+            source,
+            Path::new("packages/mermaid/src/diagram-api/diagram-orchestration.ts"),
+            |_| unreachable!("no detector source should be read"),
+        )
+        .expect_err("non-static registration must fail");
+
+        assert!(error.contains("registerDiagram call does not use a static string id"));
+    }
+
+    #[test]
+    fn builtin_layout_inventory_extractor_includes_conditional_default_loaders() {
+        let source = r#"
+const registerDefaultLayoutLoaders = () => {
+  registerLayoutLoaders([
+    {
+      name: 'dagre',
+    },
+    ...(injected.includeLargeFeatures
+      ? [
+          {
+            name: 'cose-bilkent',
+          },
+        ]
+      : []),
+  ]);
+};
+
+registerDefaultLayoutLoaders();
+"#;
+
+        assert_eq!(
+            extract_builtin_layout_ids(source).expect("extract default layouts"),
+            ["dagre", "cose-bilkent"]
+        );
+    }
+
+    #[test]
+    fn builtin_registry_inventory_validation_rejects_duplicate_or_missing_ids() {
+        let root = crate::cmd::workspace_root();
+        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        bundle
+            .builtin_registry
+            .diagrams
+            .ids
+            .push("error".to_string());
+        bundle.builtin_registry.layouts.ids.clear();
+
+        let error = validate_bundle(&bundle).expect_err("invalid registry inventory must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("built-in diagram registry inventory contains a duplicate")
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("built-in layout registry inventory has an invalid source or is empty")
+        );
+    }
+
+    #[test]
+    fn materialized_registry_gate_rejects_an_unrecorded_upstream_registration() {
+        let repository_root = crate::cmd::workspace_root();
+        let mut bundle =
+            load_bundle(&repository_root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let temporary = tempfile::tempdir().expect("temporary checkout root");
+        let checkout = temporary.path().join(
+            bundle
+                .release
+                .source
+                .checkout_path
+                .as_deref()
+                .expect("Mermaid checkout path"),
+        );
+        let diagrams = r#"
+import alpha from '../diagrams/alpha/detector.js';
+import beta from '../diagrams/beta/detector.js';
+
+registerLazyLoadedDiagrams(alpha, beta);
+"#;
+        let layouts = r#"
+const registerDefaultLayoutLoaders = () => {
+  registerLayoutLoaders([
+    {
+      name: 'dagre',
+    },
+  ]);
+};
+registerDefaultLayoutLoaders();
+"#;
+        let diagram_source_path = checkout.join(&bundle.builtin_registry.diagrams.source_path);
+        let layout_source_path = checkout.join(&bundle.builtin_registry.layouts.source_path);
+        let alpha_path = checkout.join("packages/mermaid/src/diagrams/alpha/detector.ts");
+        let beta_path = checkout.join("packages/mermaid/src/diagrams/beta/detector.ts");
+        for path in [
+            &diagram_source_path,
+            &layout_source_path,
+            &alpha_path,
+            &beta_path,
+        ] {
+            fs::create_dir_all(path.parent().expect("source parent"))
+                .expect("create source parent");
+        }
+        fs::write(&diagram_source_path, diagrams).expect("write diagram registry");
+        fs::write(&layout_source_path, layouts).expect("write layout registry");
+        fs::write(&alpha_path, "const id = 'alpha';").expect("write alpha detector");
+        fs::write(&beta_path, "const id = 'beta';").expect("write beta detector");
+        bundle.builtin_registry.diagrams.ids = vec!["alpha".to_string(), "beta".to_string()];
+        bundle.builtin_registry.diagrams.source_sha256 =
+            crate::util::sha256_hex(diagrams.as_bytes());
+        bundle.builtin_registry.layouts.ids = vec!["dagre".to_string()];
+        bundle.builtin_registry.layouts.source_sha256 = crate::util::sha256_hex(layouts.as_bytes());
+
+        let mut failures = Vec::new();
+        verify_builtin_registry_inventory(temporary.path(), &bundle, true, &mut failures);
+        assert!(failures.is_empty(), "{failures:?}");
+
+        bundle.builtin_registry.diagrams.ids.pop();
+        verify_builtin_registry_inventory(temporary.path(), &bundle, true, &mut failures);
+        assert!(failures.iter().any(|failure| {
+            failure.contains("built-in diagram registry inventory drift")
+                && failure.contains("beta")
+        }));
     }
 
     #[test]

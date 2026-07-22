@@ -1,7 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::algo::FcoseOptions;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
 use nalgebra as na;
@@ -362,6 +362,7 @@ pub fn layout_indexed_with_random_policy(
 
     let constraints_start = timing_enabled.then(web_time::Instant::now);
     let constraints = Constraints::from_indexed_opts(&sim, opts);
+    constraints.validate(sim.nodes.len())?;
     if let Some(s) = constraints_start {
         timings.constraints = s.elapsed();
     }
@@ -580,12 +581,69 @@ pub fn layout_indexed_with_random_policy(
         );
     }
 
-    Ok(IndexedLayoutResult {
+    let result = IndexedLayoutResult {
         node_positions,
         compound_positions,
         compound_bounds,
         debug_stages,
-    })
+    };
+    validate_indexed_layout_result(&result)?;
+    Ok(result)
+}
+
+fn validate_indexed_layout_result(result: &IndexedLayoutResult) -> Result<()> {
+    fn point_is_finite(point: Point) -> bool {
+        point.x.is_finite() && point.y.is_finite()
+    }
+
+    fn rect_is_finite(rect: LayoutRect) -> bool {
+        rect.left.is_finite()
+            && rect.top.is_finite()
+            && rect.width.is_finite()
+            && rect.height.is_finite()
+    }
+
+    if !result.node_positions.iter().copied().all(point_is_finite) {
+        return Err(Error::NonFiniteLayout {
+            field: "node_positions",
+        });
+    }
+    if !result
+        .compound_positions
+        .iter()
+        .copied()
+        .all(point_is_finite)
+    {
+        return Err(Error::NonFiniteLayout {
+            field: "compound_positions",
+        });
+    }
+    if !result.compound_bounds.iter().copied().all(rect_is_finite) {
+        return Err(Error::NonFiniteLayout {
+            field: "compound_bounds",
+        });
+    }
+    for stage in &result.debug_stages {
+        if stage.bbox.is_some_and(|bounds| !rect_is_finite(bounds))
+            || !stage.node_bounds.iter().copied().all(rect_is_finite)
+            || !stage
+                .node_displacements
+                .iter()
+                .copied()
+                .all(point_is_finite)
+            || !stage.compound_bounds.iter().copied().all(rect_is_finite)
+            || stage.relocate.is_some_and(|relocate| {
+                !point_is_finite(relocate.original_center)
+                    || !point_is_finite(relocate.rect_center)
+                    || !point_is_finite(relocate.delta)
+            })
+        {
+            return Err(Error::NonFiniteLayout {
+                field: "debug_stages",
+            });
+        }
+    }
+    Ok(())
 }
 
 fn graph_to_indexed(graph: &Graph, opts: &FcoseOptions) -> (IndexedGraph, IndexedFcoseOptions) {
@@ -934,6 +992,123 @@ impl Constraints {
             relative,
         }
     }
+
+    fn validate(&self, node_count: usize) -> Result<()> {
+        validate_axis_constraint_graph(
+            node_count,
+            &self.align_vertical,
+            self.relative.iter().filter_map(|constraint| {
+                Some((constraint.left?, constraint.right?, constraint.gap))
+            }),
+            "horizontal",
+        )?;
+        validate_axis_constraint_graph(
+            node_count,
+            &self.align_horizontal,
+            self.relative.iter().filter_map(|constraint| {
+                Some((constraint.top?, constraint.bottom?, constraint.gap))
+            }),
+            "vertical",
+        )
+    }
+}
+
+fn validate_axis_constraint_graph(
+    node_count: usize,
+    alignment_groups: &[Vec<usize>],
+    relative: impl Iterator<Item = (usize, usize, f64)>,
+    axis: &'static str,
+) -> Result<()> {
+    let mut parent: Vec<usize> = (0..node_count).collect();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        while parent[node] != node {
+            parent[node] = parent[parent[node]];
+            node = parent[node];
+        }
+        node
+    }
+
+    for group in alignment_groups {
+        let Some((&first, rest)) = group.split_first() else {
+            continue;
+        };
+        if first >= node_count {
+            continue;
+        }
+        for &node in rest {
+            if node >= node_count {
+                continue;
+            }
+            let first_root = find(&mut parent, first);
+            let node_root = find(&mut parent, node);
+            if first_root != node_root {
+                parent[node_root] = first_root;
+            }
+        }
+    }
+    for node in 0..node_count {
+        let root = find(&mut parent, node);
+        parent[node] = root;
+    }
+
+    let edges = relative
+        .filter(|(from, to, _)| *from < node_count && *to < node_count)
+        .map(|(from, to, gap)| (parent[from], parent[to], gap.max(0.0)))
+        .collect::<Vec<_>>();
+    let mut outgoing = vec![Vec::new(); node_count];
+    let mut incoming = vec![Vec::new(); node_count];
+    for &(from, to, _) in &edges {
+        outgoing[from].push(to);
+        incoming[to].push(from);
+    }
+
+    let mut visited = vec![false; node_count];
+    let mut finish_order = Vec::with_capacity(node_count);
+    for start in 0..node_count {
+        if parent[start] != start || visited[start] {
+            continue;
+        }
+        visited[start] = true;
+        let mut stack = vec![(start, 0usize)];
+        while let Some((node, next_edge)) = stack.pop() {
+            if let Some(&next) = outgoing[node].get(next_edge) {
+                stack.push((node, next_edge + 1));
+                if !visited[next] {
+                    visited[next] = true;
+                    stack.push((next, 0));
+                }
+            } else {
+                finish_order.push(node);
+            }
+        }
+    }
+
+    let mut component = vec![usize::MAX; node_count];
+    let mut component_id = 0usize;
+    for &start in finish_order.iter().rev() {
+        if component[start] != usize::MAX {
+            continue;
+        }
+        component[start] = component_id;
+        let mut stack = vec![start];
+        while let Some(node) = stack.pop() {
+            for &next in &incoming[node] {
+                if component[next] == usize::MAX {
+                    component[next] = component_id;
+                    stack.push(next);
+                }
+            }
+        }
+        component_id += 1;
+    }
+
+    if edges.iter().any(|&(from, to, gap)| {
+        gap > 0.0 && component[from] != usize::MAX && component[from] == component[to]
+    }) {
+        return Err(Error::InfeasibleConstraints { axis });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -4825,6 +5000,63 @@ mod tests {
                 y: group_bounds.top + group_bounds.height / 2.0,
             },
         );
+    }
+
+    #[test]
+    fn indexed_layout_rejects_positive_relative_constraint_cycles() {
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 100.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(1),
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 1]],
+                vertical: Vec::new(),
+            }),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 40.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(1),
+                    right: Some(0),
+                    top: None,
+                    bottom: None,
+                    gap: 40.0,
+                },
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+
+        let error = layout_indexed(&graph, &options).expect_err("constraint cycle must fail");
+        assert!(matches!(
+            error,
+            crate::error::Error::InfeasibleConstraints { axis: "horizontal" }
+        ));
     }
 
     #[test]

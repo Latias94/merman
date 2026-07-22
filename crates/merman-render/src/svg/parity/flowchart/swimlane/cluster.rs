@@ -2,6 +2,118 @@ use super::super::*;
 use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::model::{SwimlaneDirection, SwimlaneLaneLayout};
 
+const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
+const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+
+fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
+    let mut out = String::new();
+    for declaration in node_style.split(';') {
+        let declaration = declaration.trim();
+        let Some((key, _)) = declaration.split_once(':') else {
+            continue;
+        };
+        if !keep(key.trim()) {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str(declaration);
+    }
+    out
+}
+
+fn parse_css_px_f32(value: Option<&String>, fallback: f32) -> f32 {
+    value
+        .and_then(|raw| raw.trim_end_matches("px").trim().parse::<f32>().ok())
+        .unwrap_or(fallback)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_swimlane_rect(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    compiled: &FlowchartCompiledStyles,
+    class_name: &str,
+    node_style: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    fill: Option<&str>,
+    stroke: &str,
+) {
+    if flowchart_config_look(ctx.config) == "handDrawn" {
+        let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
+        let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
+        let seed = ctx
+            .config
+            .as_value()
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        // RoughJS creates the outline before the fill. Generating both paths
+        // and omitting the fill path for the body therefore preserves the
+        // exact seeded outline used by `fill: none` upstream.
+        if let Some((fill_d, stroke_d)) =
+            super::super::render::node::roughjs::roughjs_hachure_paths_for_rect(
+                x,
+                y,
+                width,
+                height,
+                fill.unwrap_or("#000000"),
+                stroke,
+                stroke_width,
+                stroke_dasharray,
+                SWIMLANE_HAND_DRAWN_FILL_WEIGHT,
+                SWIMLANE_HAND_DRAWN_HACHURE_GAP,
+                SWIMLANE_HAND_DRAWN_ROUGHNESS,
+                seed,
+            )
+        {
+            out.push_str("<g>");
+            if let Some(fill) = fill {
+                let background_style = rough_style_from_node_style(node_style, |key| key == "fill")
+                    .replace("fill", "stroke");
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
+                    escape_xml_display(&fill_d),
+                    escape_xml_display(fill),
+                    fmt_display(SWIMLANE_HAND_DRAWN_FILL_WEIGHT as f64),
+                    OptionalStyleXmlAttr(&background_style),
+                );
+            }
+            let border_style =
+                rough_style_from_node_style(node_style, |key| key.contains("stroke"));
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                escape_xml_display(&stroke_d),
+                escape_xml_display(stroke),
+                fmt_display(stroke_width as f64),
+                escape_xml_display(stroke_dasharray),
+                OptionalStyleXmlAttr(&border_style),
+            );
+            return;
+        }
+    }
+
+    let _ = write!(
+        out,
+        r#"<rect class="{}" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
+        escape_xml_display(class_name),
+        escape_xml_display(node_style),
+        fmt_display(x),
+        fmt_display(y),
+        fmt_display(width),
+        fmt_display(height),
+        escape_xml_display(fill.unwrap_or("none")),
+        escape_xml_display(stroke),
+    );
+}
+
 fn lane_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
     lane: &SwimlaneLaneLayout,
@@ -121,26 +233,31 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_width = desired_title_size.max(label_height + 2.0 * title_padding_y);
         let body_x = lane_left + title_width;
         let body_width = (width - title_width).max(0.0);
-        let _ = write!(
+        write_swimlane_rect(
             out,
-            r#"<rect class="swimlane-body" style="{}" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}"/>"#,
-            escape_xml_display(node_style),
-            fmt_display(body_x),
-            fmt_display(lane_top),
-            fmt_display(body_width),
-            fmt_display(height),
-            escape_xml_display(&theme.cluster_border),
+            ctx,
+            &compiled,
+            "swimlane-body",
+            node_style,
+            body_x,
+            lane_top,
+            body_width,
+            height,
+            None,
+            &theme.cluster_border,
         );
-        let _ = write!(
+        write_swimlane_rect(
             out,
-            r#"<rect class="swimlane-title" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
-            escape_xml_display(node_style),
-            fmt_display(lane_left),
-            fmt_display(lane_top),
-            fmt_display(title_width),
-            fmt_display(height),
-            escape_xml_display(&theme.cluster_bkg),
-            escape_xml_display(&theme.cluster_border),
+            ctx,
+            &compiled,
+            "swimlane-title",
+            node_style,
+            lane_left,
+            lane_top,
+            title_width,
+            height,
+            Some(&theme.cluster_bkg),
+            &theme.cluster_border,
         );
         let center_x = lane_left + title_width / 2.0;
         let center_y = lane.y + ctx.ty - origin_y;
@@ -160,26 +277,31 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_height = desired_title_size.min(header_max_height);
         let body_y = lane_top + title_height;
         let body_height = (lane_bottom - body_y).max(0.0);
-        let _ = write!(
+        write_swimlane_rect(
             out,
-            r#"<rect class="swimlane-body" style="{}" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}"/>"#,
-            escape_xml_display(node_style),
-            fmt_display(lane_left),
-            fmt_display(body_y),
-            fmt_display(width),
-            fmt_display(body_height),
-            escape_xml_display(&theme.cluster_border),
+            ctx,
+            &compiled,
+            "swimlane-body",
+            node_style,
+            lane_left,
+            body_y,
+            width,
+            body_height,
+            None,
+            &theme.cluster_border,
         );
-        let _ = write!(
+        write_swimlane_rect(
             out,
-            r#"<rect class="swimlane-title" style="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
-            escape_xml_display(node_style),
-            fmt_display(lane_left),
-            fmt_display(lane_top),
-            fmt_display(width),
-            fmt_display(title_height),
-            escape_xml_display(&theme.cluster_bkg),
-            escape_xml_display(&theme.cluster_border),
+            ctx,
+            &compiled,
+            "swimlane-title",
+            node_style,
+            lane_left,
+            lane_top,
+            width,
+            title_height,
+            Some(&theme.cluster_bkg),
+            &theme.cluster_border,
         );
         (
             lane.x - label_width / 2.0 + ctx.tx - origin_x,

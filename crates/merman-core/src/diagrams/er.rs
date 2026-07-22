@@ -1500,7 +1500,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             self.pos += "one".len();
             return Some((start, Tok::OnlyOne, self.pos));
         }
-        if lower.starts_with('1') {
+        if self.one_starts_numeric_cardinality() {
             self.pos += 1;
             return Some((start, Tok::OnlyOne, self.pos));
         }
@@ -1552,6 +1552,36 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         }
 
         None
+    }
+
+    fn one_starts_numeric_cardinality(&self) -> bool {
+        let Some(after_one) = self.input[self.pos..].strip_prefix('1') else {
+            return false;
+        };
+
+        if ["--", "..", ".-", "-."]
+            .iter()
+            .any(|operator| after_one.starts_with(operator))
+        {
+            return true;
+        }
+
+        let Some(first) = after_one.chars().next() else {
+            return false;
+        };
+        if !first.is_whitespace() {
+            return false;
+        }
+
+        after_one
+            .trim_start_matches(char::is_whitespace)
+            .chars()
+            .next()
+            .is_some_and(|next| {
+                next.is_ascii_alphabetic()
+                    || next.is_ascii_digit()
+                    || matches!(next, '_' | '"' | '\'')
+            })
     }
 
     fn lex_punct(&mut self) -> Option<(usize, Tok, usize)> {
@@ -1642,6 +1672,13 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                 )));
             };
             let body_end = self.pos + rel_end;
+            if body_end == body_start {
+                self.pos = body_end + 1;
+                return Some(Err(LexError::new(
+                    "Empty backtick attribute word",
+                    SourceSpan::new(delimiter_start, self.pos),
+                )));
+            }
             let s = self.input[body_start..body_end].to_string();
             self.pos = body_end + 1;
             self.push_lexeme(

@@ -42,8 +42,8 @@ use transaction::{write_manifest, write_manifest_batch_with_installer};
 use transaction::{write_manifest_batch, write_manifest_with_post_install_validator};
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
-const MANIFEST_SCHEMA_VERSION: u32 = 2;
-const RENDERER_REVISION: &str = "xtask-upstream-svg-v2";
+const MANIFEST_SCHEMA_VERSION: u32 = 3;
+const RENDERER_REVISION: &str = "xtask-upstream-svg-v3";
 #[derive(Debug)]
 struct CompleteCorpus {
     fixtures: BTreeMap<String, PathBuf>,

@@ -1,7 +1,7 @@
 //! Operation-owned render services and deterministic policy.
 
 use crate::math::MathRenderer;
-use crate::resources::RenderResourceLimits;
+use crate::resources::RenderResourcePolicy;
 use crate::svg::IconRegistry;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
@@ -1286,7 +1286,7 @@ pub struct RenderEnvironment {
     clock: Arc<dyn RenderClock>,
     local_time_source: RenderLocalTimeSource,
     randomness: RenderRandomnessPolicy,
-    resource_limits: RenderResourceLimits,
+    resource_policy: RenderResourcePolicy,
 }
 
 #[derive(Debug, Clone)]
@@ -1305,7 +1305,7 @@ impl fmt::Debug for RenderEnvironment {
             .field("has_icon_registry", &self.icon_registry.is_some())
             .field("local_time_source", &self.local_time_source)
             .field("randomness", &self.randomness)
-            .field("resource_limits", &self.resource_limits)
+            .field("resource_policy", &self.resource_policy)
             .finish_non_exhaustive()
     }
 }
@@ -1319,7 +1319,7 @@ impl RenderEnvironment {
             clock: Arc::new(FixedRenderClock::new(RenderTimeSnapshot::unix_epoch_utc())),
             local_time_source: RenderLocalTimeSource::ClockFixedOffset,
             randomness: RenderRandomnessPolicy::parity(),
-            resource_limits: RenderResourceLimits::interactive(),
+            resource_policy: RenderResourcePolicy::interactive(),
         }
     }
 
@@ -1333,7 +1333,7 @@ impl RenderEnvironment {
             clock: Arc::new(SystemRenderClock),
             local_time_source: RenderLocalTimeSource::AmbientSystem,
             randomness: RenderRandomnessPolicy::ambient(Arc::new(SystemRenderSeedSource)),
-            resource_limits: RenderResourceLimits::interactive(),
+            resource_policy: RenderResourcePolicy::interactive(),
         }
     }
 
@@ -1409,8 +1409,8 @@ impl RenderEnvironment {
         self
     }
 
-    pub const fn with_resource_limits(mut self, limits: RenderResourceLimits) -> Self {
-        self.resource_limits = limits;
+    pub const fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
+        self.resource_policy = policy;
         self
     }
 
@@ -1432,7 +1432,7 @@ impl RenderEnvironment {
             local_time_zone,
             local_time_policy,
             seed: self.randomness.resolve(),
-            resource_limits: self.resource_limits,
+            resource_policy: self.resource_policy,
         })
     }
 }
@@ -1479,7 +1479,7 @@ pub struct RenderSession {
     local_time_zone: LocalTimeZone,
     local_time_policy: RenderLocalTimePolicy,
     seed: ResolvedRenderSeed,
-    resource_limits: RenderResourceLimits,
+    resource_policy: RenderResourcePolicy,
 }
 
 impl RenderSession {
@@ -1515,8 +1515,8 @@ impl RenderSession {
         self.seed
     }
 
-    pub const fn resource_limits(&self) -> RenderResourceLimits {
-        self.resource_limits
+    pub const fn resource_policy(&self) -> RenderResourcePolicy {
+        self.resource_policy
     }
 
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
@@ -1536,6 +1536,7 @@ impl RenderSession {
             local_time_policy: self.local_time_policy,
             local_time_zone: self.local_time_zone.provenance().clone(),
             seed: self.seed,
+            resource_policy: self.resource_policy,
         }
     }
 }
@@ -1549,6 +1550,7 @@ pub struct RenderSessionReport {
     local_time_policy: RenderLocalTimePolicy,
     local_time_zone: LocalTimeZoneProvenance,
     seed: ResolvedRenderSeed,
+    resource_policy: RenderResourcePolicy,
 }
 
 impl RenderSessionReport {
@@ -1574,6 +1576,10 @@ impl RenderSessionReport {
 
     pub const fn seed(&self) -> ResolvedRenderSeed {
         self.seed
+    }
+
+    pub const fn resource_policy(&self) -> RenderResourcePolicy {
+        self.resource_policy
     }
 }
 
@@ -2480,7 +2486,7 @@ mod tests {
     fn session_freezes_clock_and_ambient_seed_once_and_exposes_narrow_services() {
         let clock_calls = Arc::new(AtomicUsize::new(0));
         let seed_calls = Arc::new(AtomicUsize::new(0));
-        let limits = RenderResourceLimits::trusted_native();
+        let limits = RenderResourcePolicy::trusted_native();
         let environment = RenderEnvironment::parity()
             .with_clock(Arc::new(CountingClock {
                 calls: Arc::clone(&clock_calls),
@@ -2493,14 +2499,14 @@ mod tests {
             )))
             .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
             .with_icon_registry(Arc::new(IconRegistry::new()))
-            .with_resource_limits(limits);
+            .with_resource_policy(limits);
 
         let session = environment.begin_session().expect("begin render session");
         assert_eq!(session.time().unix_ms(), 0);
         assert_eq!(session.time().local_offset_minutes(), 8 * 60);
         assert_eq!(session.seed().seed(), NonZeroU64::new(77).unwrap());
         assert_eq!(session.seed().origin(), RenderSeedOrigin::Ambient);
-        assert_eq!(session.resource_limits(), limits);
+        assert_eq!(session.resource_policy(), limits);
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
 

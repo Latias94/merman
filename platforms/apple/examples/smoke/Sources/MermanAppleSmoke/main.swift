@@ -137,6 +137,17 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("host theme presets smoke failed")
         }
 
+        let runtimeContract = try engine.runtimeContract()
+        guard runtimeContract.schemaVersion == 1,
+              runtimeContract.abiVersion == MermanEngine.abiVersion,
+              runtimeContract.packageVersion == engine.packageVersion,
+              runtimeContract.optionsSchemaVersion == 1,
+              runtimeContract.features.render,
+              runtimeContract.resources?.generalBindingDefaultProfile == "interactive"
+        else {
+            throw SmokeError.failed("runtime contract smoke failed")
+        }
+
         print("merman Apple Swift smoke passed (\(engine.packageVersion))")
     }
 }

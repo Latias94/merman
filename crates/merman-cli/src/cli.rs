@@ -1,4 +1,7 @@
-use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{
+    Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint,
+    builder::{PossibleValue, PossibleValuesParser, TypedValueParser},
+};
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 
 #[derive(Debug, Parser)]
@@ -330,10 +333,14 @@ pub(crate) struct RenderCliArgs {
     pub(crate) hand_drawn_seed: Option<u64>,
 
     /// Render resource profile for source, layout model, and SVG output budgets.
+    ///
+    /// The CLI defaults to trusted-native for mmdc-compatible local workloads. Use interactive for
+    /// cooperative local editing and constrained for untrusted, public, or multi-tenant input.
+    /// The unbounded profile only removes policy budgets; hard SVG backend capabilities still apply.
     #[arg(
         long = "resource-profile",
-        value_enum,
-        default_value_t = ResourceProfile::TrustedNative,
+        value_parser = resource_profile_value_parser(),
+        default_value_t = merman::render::CLI_DEFAULT_RESOURCE_PROFILE,
         help_heading = "Merman renderer controls"
     )]
     pub(crate) resource_profile: ResourceProfile,
@@ -348,7 +355,7 @@ impl Default for RenderCliArgs {
             container_height: None,
             svg_id: None,
             hand_drawn_seed: None,
-            resource_profile: ResourceProfile::TrustedNative,
+            resource_profile: merman::render::CLI_DEFAULT_RESOURCE_PROFILE,
         }
     }
 }
@@ -829,24 +836,17 @@ pub(crate) enum SvgPipelineKind {
     ResvgSafe,
 }
 
-#[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub(crate) enum ResourceProfile {
-    Interactive,
-    TypstPackage,
-    #[default]
-    TrustedNative,
-    UnboundedForTrustedInput,
-}
+pub(crate) type ResourceProfile = merman::render::RenderResourceProfile;
 
-impl From<ResourceProfile> for merman::render::RenderResourceProfile {
-    fn from(value: ResourceProfile) -> Self {
-        match value {
-            ResourceProfile::Interactive => Self::Interactive,
-            ResourceProfile::TypstPackage => Self::TypstPackage,
-            ResourceProfile::TrustedNative => Self::TrustedNative,
-            ResourceProfile::UnboundedForTrustedInput => Self::UnboundedForTrustedInput,
-        }
-    }
+fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProfile> {
+    PossibleValuesParser::new(
+        merman::render::resource_profile_descriptors()
+            .iter()
+            .map(|descriptor| PossibleValue::new(descriptor.id).help(descriptor.purpose)),
+    )
+    .map(|id| {
+        ResourceProfile::from_id(&id).expect("possible values come from the resource descriptor")
+    })
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]

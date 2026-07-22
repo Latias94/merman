@@ -19,6 +19,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_height: f64,
+    pub(super) label_box_width: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
@@ -83,10 +84,16 @@ pub(super) fn write_block_frame(
     );
 }
 
-pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f64, label: &str) {
+pub(super) fn write_block_label_box(
+    out: &mut String,
+    frame_x1: f64,
+    frame_y1: f64,
+    label_box_width: f64,
+    label: &str,
+) {
     let x1 = frame_x1;
     let y1 = frame_y1;
-    let x2 = x1 + 50.0;
+    let x2 = x1 + label_box_width;
     let y2 = y1 + 13.0;
     let y3 = y1 + 20.0;
     let x3 = x2 - 8.4;
@@ -100,7 +107,7 @@ pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f
         x3 = fmt(x3),
         y3 = fmt(y3)
     );
-    let label_cx = (x1 + 25.0).round();
+    let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = y1 + 13.0;
     let _ = write!(
         out,
@@ -151,8 +158,8 @@ pub(super) fn render_simple_sequence_block(
 
     write_control_structure_group_open(out, control_id);
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
-    write_block_label_box(out, frame_x1, frame_y1, block_label);
-    let label_box_right = frame_x1 + 50.0;
+    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, block_label);
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
     let text_y = frame_y1 + 18.0;
     let label = display_block_label(raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
@@ -226,10 +233,10 @@ pub(super) fn render_sectioned_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, block_label);
+    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, block_label);
 
     // section labels
-    let label_box_right = frame_x1 + 50.0;
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
@@ -355,10 +362,10 @@ pub(super) fn render_critical_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, "critical");
+    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, "critical");
 
     // section labels
-    let label_box_right = frame_x1 + 50.0;
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {

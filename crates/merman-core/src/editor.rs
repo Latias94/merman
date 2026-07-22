@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
+pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
 use crate::{
     error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan},
     family::DiagramFamilyId,
@@ -329,6 +330,23 @@ impl SourceSpan {
     }
 }
 
+/// Coordinate space used by spans in parser-produced editor facts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorSpanCoordinateSpace {
+    /// Spans are byte offsets in the original source supplied by the caller.
+    #[default]
+    OriginalSource,
+    /// Spans are byte offsets in the parser input after preprocessing.
+    ParserInput,
+}
+
+impl EditorSpanCoordinateSpace {
+    pub fn is_original_source(self) -> bool {
+        matches!(self, Self::OriginalSource)
+    }
+}
+
 /// Protocol-independent symbol classification for editor-facing consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorSemanticKind {
@@ -358,21 +376,65 @@ pub enum EditorSemanticRole {
     Payload,
 }
 
-/// Grammar-owned validation policy for renaming an entity occurrence.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EditorRenamePolicy {
-    /// The symbol is not an addressable rename target.
-    None,
-    /// Mermaid's common identifier form: Unicode alphanumeric characters, `_`, or `-`.
+impl EditorRenamePolicy {
+    pub fn is_renameable(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    pub fn accepts(self, candidate: &str) -> bool {
+        match self {
+            Self::None => false,
+            Self::Identifier => {
+                !candidate.is_empty()
+                    && candidate
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
+            }
+            Self::QualifiedIdentifier => {
+                !candidate.is_empty() && candidate.split('.').all(is_ascii_identifier)
+            }
+            Self::EventModelingId => is_ascii_identifier(candidate),
+            Self::EventModelingFrameId => {
+                (1..=3).contains(&candidate.len())
+                    && candidate.bytes().all(|byte| byte.is_ascii_digit())
+            }
+            Self::FlowchartNodeId => crate::diagrams::flowchart::is_valid_editor_node_id(candidate),
+            Self::GitGraphReference => {
+                crate::diagrams::git_graph::is_valid_editor_reference(candidate)
+            }
+            Self::ArchitectureIdentifier => {
+                crate::diagrams::architecture::is_valid_editor_identifier(candidate)
+            }
+            Self::RailroadIrRule => {
+                crate::diagrams::railroad::is_valid_editor_ir_rule_identifier(candidate)
+            }
+            Self::RailroadEbnfRule => {
+                crate::diagrams::railroad::is_valid_editor_ebnf_rule_identifier(candidate)
+            }
+            Self::RailroadPegRule => {
+                crate::diagrams::railroad::is_valid_editor_peg_rule_identifier(candidate)
+            }
+            Self::RailroadAbnfRule => {
+                crate::diagrams::railroad::is_valid_editor_abnf_rule_identifier(candidate)
+            }
+        }
+    }
+}
+
+fn is_ascii_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
+/// Family syntax that may use bounded line-prefix completion inference.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EditorCompletionDialect {
     #[default]
-    Identifier,
-    /// Dot-separated ASCII identifiers.
-    QualifiedIdentifier,
-    /// Event Modeling `EM_ID`: an ASCII identifier beginning with a letter or `_`.
-    EventModelingId,
-    /// Event Modeling frame id: one to three ASCII digits.
-    EventModelingFrameId,
+    None,
+    Flowchart,
 }
 
 impl EditorSemanticRole {
@@ -391,6 +453,7 @@ impl EditorSemanticRole {
 
 /// A parser-produced symbol occurrence.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct EditorSemanticSymbol {
     pub name: String,
     pub detail: Option<String>,
@@ -549,8 +612,11 @@ pub enum EditorSemanticCompleteness {
 
 /// Parser-produced facts used by lint, completion, and LSP without exposing a public AST.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
+    pub span_coordinate_space: EditorSpanCoordinateSpace,
+    pub completion_dialect: EditorCompletionDialect,
     pub symbols: Vec<EditorSemanticSymbol>,
     lexemes: Vec<EditorLexeme>,
     lexeme_failure: Option<EditorLexemeFailure>,
@@ -658,6 +724,11 @@ impl EditorSemanticFacts {
             });
         }
         Ok(())
+    }
+
+    pub fn with_completion_dialect(mut self, completion_dialect: EditorCompletionDialect) -> Self {
+        self.completion_dialect = completion_dialect;
+        self
     }
 
     pub fn mark_recovered(&mut self) {
@@ -912,10 +983,65 @@ fn humanize_token_name(token: &str) -> String {
 mod tests {
     use super::{
         EditorLexeme, EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind,
-        EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorSemanticFacts,
-        lalrpop_parse_diagnostic,
+        EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorRenamePolicy,
+        EditorSemanticFacts, lalrpop_parse_diagnostic,
     };
     use crate::ParseDiagnosticSpanKind;
+
+    #[test]
+    fn rename_policies_follow_family_identifier_grammars() {
+        assert!(EditorRenamePolicy::FlowchartNodeId.accepts("foo.bar"));
+        assert!(EditorRenamePolicy::FlowchartNodeId.accepts("foo-bar"));
+        assert!(!EditorRenamePolicy::FlowchartNodeId.accepts("foo--bar"));
+        assert!(!EditorRenamePolicy::FlowchartNodeId.accepts("foo.->bar"));
+        assert!(!EditorRenamePolicy::FlowchartNodeId.accepts("end.foo"));
+        assert!(!EditorRenamePolicy::FlowchartNodeId.accepts("graph.foo"));
+        assert!(!EditorRenamePolicy::FlowchartNodeId.accepts("subgraph.foo"));
+
+        assert!(EditorRenamePolicy::GitGraphReference.accepts("release/v1.2"));
+        assert!(EditorRenamePolicy::GitGraphReference.accepts("release-"));
+        assert!(EditorRenamePolicy::GitGraphReference.accepts("_private"));
+        assert!(!EditorRenamePolicy::GitGraphReference.accepts("release/"));
+        assert!(!EditorRenamePolicy::GitGraphReference.accepts("release branch"));
+
+        assert!(EditorRenamePolicy::ArchitectureIdentifier.accepts("rowspan"));
+        assert!(EditorRenamePolicy::ArchitectureIdentifier.accepts("service-2"));
+        assert!(!EditorRenamePolicy::ArchitectureIdentifier.accepts("service-"));
+        assert!(!EditorRenamePolicy::ArchitectureIdentifier.accepts("align"));
+
+        assert!(EditorRenamePolicy::RailroadIrRule.accepts("rule_name"));
+        assert!(!EditorRenamePolicy::RailroadIrRule.accepts("1rule"));
+        assert!(!EditorRenamePolicy::RailroadIrRule.accepts("terminal"));
+        assert!(EditorRenamePolicy::RailroadEbnfRule.accepts("terminal"));
+        assert!(EditorRenamePolicy::RailroadPegRule.accepts("terminal"));
+        assert!(EditorRenamePolicy::RailroadAbnfRule.accepts("rule-name"));
+        assert!(!EditorRenamePolicy::RailroadAbnfRule.accepts("rule_name"));
+    }
+
+    #[test]
+    fn generated_rename_policy_ids_match_serde_exactly() {
+        assert_eq!(
+            EditorRenamePolicy::ALL.map(EditorRenamePolicy::as_str),
+            EditorRenamePolicy::IDS
+        );
+        assert_eq!(
+            EditorRenamePolicy::default(),
+            EditorRenamePolicy::Identifier
+        );
+
+        for (policy, id) in EditorRenamePolicy::ALL
+            .into_iter()
+            .zip(EditorRenamePolicy::IDS)
+        {
+            assert_eq!(serde_json::to_string(&policy).unwrap(), format!("\"{id}\""));
+            assert_eq!(
+                serde_json::from_str::<EditorRenamePolicy>(&format!("\"{id}\""))
+                    .expect("generated rename policy id must deserialize"),
+                policy
+            );
+        }
+        assert!(serde_json::from_str::<EditorRenamePolicy>("\"unknown\"").is_err());
+    }
 
     #[test]
     fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {

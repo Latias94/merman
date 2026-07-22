@@ -1,7 +1,7 @@
 use merman::ParseOptions;
 use merman::render::{
     HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderExecutionPath,
-    RenderResourceLimits, RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync,
+    RenderResourcePolicy, RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync,
     prepare_semantic_sync, render_svg_sync,
 };
 
@@ -88,10 +88,11 @@ A --> B
         .with_environment(RenderEnvironment::parity())
         .with_strict_parsing()
         .with_layout_options(LayoutOptions::headless_svg_defaults())
-        .with_resource_limits(RenderResourceLimits {
-            max_flowchart_nodes: Some(0),
-            ..RenderResourceLimits::unbounded_for_trusted_input()
-        });
+        .with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(merman::render::ResourceLimitId::MaxFlowchartNodes, 1)
+                .unwrap(),
+        );
     let semantic = renderer
         .prepare_semantic_sync(source)
         .unwrap()

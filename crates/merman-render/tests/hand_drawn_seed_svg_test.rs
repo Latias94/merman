@@ -336,6 +336,33 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
 }
 
 #[test]
+fn flowchart_svg_normalizes_signed_and_fractional_seeds_like_roughjs() {
+    let source_for_seed = |seed: Value| {
+        source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": seed
+            }),
+            "flowchart TD\n  A[Start]\n",
+        )
+    };
+
+    let negative = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(-1)));
+    let uint32_equivalent = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(u32::MAX)),
+    );
+    assert_eq!(negative, uint32_equivalent);
+
+    let fractional = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(1.75)),
+    );
+    let truncated = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(1)));
+    assert_eq!(fractional, truncated);
+}
+
+#[test]
 fn flowchart_svg_hand_drawn_seed_controls_edge_and_cluster_rough_paths() {
     let source_for_seed = |seed| {
         source_with_init(

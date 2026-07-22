@@ -420,21 +420,8 @@ fn xml_text_is_plain_ascii(text: &str) -> bool {
     })
 }
 
-fn is_xml_10_char(ch: char) -> bool {
-    // XML 1.0 excludes C0 controls except tab, LF, and CR.
-    matches!(
-        ch,
-        '\u{9}'
-            | '\u{A}'
-            | '\u{D}'
-            | '\u{20}'..='\u{D7FF}'
-            | '\u{E000}'..='\u{FFFD}'
-            | '\u{10000}'..='\u{10FFFF}'
-    )
-}
-
 fn xml_text_replacement(ch: char) -> Option<&'static str> {
-    if !is_xml_10_char(ch) {
+    if !crate::xml::is_xml_1_0_char(ch) {
         return Some("");
     }
     match ch {
@@ -447,7 +434,7 @@ fn xml_text_replacement(ch: char) -> Option<&'static str> {
 }
 
 fn xml_attr_replacement(ch: char) -> Option<&'static str> {
-    if !is_xml_10_char(ch) {
+    if !crate::xml::is_xml_1_0_char(ch) {
         return Some("");
     }
     match ch {

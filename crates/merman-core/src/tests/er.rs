@@ -505,6 +505,40 @@ fn parse_diagram_er_relationship_word_aliases_match_upstream_spec_minimally() {
 }
 
 #[test]
+fn parse_diagram_er_keeps_multi_digit_entity_after_numeric_cardinality() {
+    let engine = Engine::new();
+    let text = "erDiagram\na many to 1 12: label\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert!(res.model["entities"].get("a").is_some());
+    assert!(res.model["entities"].get("12").is_some());
+    assert_eq!(res.model["relationships"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        res.model["relationships"][0]["relSpec"]["cardA"],
+        json!("ONLY_ONE")
+    );
+    assert_eq!(
+        res.model["relationships"][0]["relSpec"]["cardB"],
+        json!("ZERO_OR_MORE")
+    );
+}
+
+#[test]
+fn parse_diagram_er_rejects_empty_backtick_attribute_words() {
+    let engine = Engine::new();
+
+    for attribute in ["`` name", "string ``"] {
+        let text = format!("erDiagram\nBOOK {{\n  {attribute}\n}}\n");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::strict())).is_err(),
+            "empty backtick attribute word unexpectedly parsed: {attribute}"
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_er_rejects_invalid_relationship_syntax() {
     let engine = Engine::new();
     assert!(

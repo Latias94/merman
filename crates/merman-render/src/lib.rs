@@ -59,6 +59,7 @@ pub mod treemap;
 mod trig_tables;
 pub mod venn;
 pub mod wardley;
+mod xml;
 pub mod xychart;
 pub mod zenuml;
 
@@ -69,8 +70,12 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
-    ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
-    ResourceLimitExceeded, ResourceLimitPhase, ZenumlComplexity,
+    CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
+    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RESOURCE_CONTRACT_SCHEMA_VERSION,
+    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, ResourceProfileValues, ZenumlComplexity,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -161,12 +166,12 @@ impl<'a> LayoutExecution<'a> {
         self.session.math_renderer()
     }
 
-    pub(crate) const fn resource_limits(&self) -> RenderResourceLimits {
-        self.session.resource_limits()
+    pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
+        self.session.resource_policy()
     }
 
     #[cfg(feature = "cytoscape-layout")]
-    pub(crate) const fn ambient_seed(&self) -> u64 {
+    pub(crate) const fn operation_seed(&self) -> u64 {
         self.session.seed().seed().get()
     }
 }
@@ -193,7 +198,7 @@ pub(crate) fn layout_class_typed_by_engine(
         return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
     }
 
-    options.resource_limits().check_class_complexity(model)?;
+    options.resource_policy().check_class_complexity(model)?;
     class::layout_class_diagram_typed_with_config(model, effective_config, options.text_measurer())
 }
 
@@ -204,7 +209,7 @@ fn layout_class_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    options.resource_limits().check_class_complexity(model)?;
+    options.resource_policy().check_class_complexity(model)?;
     class::layout_class_diagram_elk_typed_with_config(
         model,
         effective_config,
@@ -400,10 +405,11 @@ A-->B
             .unwrap();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(RenderResourceLimits {
-                max_flowchart_nodes: Some(1),
-                ..RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxFlowchartNodes, 1)
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
 
@@ -468,10 +474,11 @@ Animal <|-- Duck
             .unwrap();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(RenderResourceLimits {
-                max_class_nodes: Some(1),
-                ..RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxClassNodes, 1)
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
 
@@ -499,10 +506,11 @@ Animal <|-- Duck
             .unwrap();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(RenderResourceLimits {
-                max_flowchart_edges: Some(2),
-                ..RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxFlowchartEdges, 2)
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
 
@@ -530,10 +538,11 @@ Animal <|-- Duck
             .unwrap();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::parity()
-            .with_resource_limits(RenderResourceLimits {
-                max_class_edges: Some(1),
-                ..RenderResourceLimits::unbounded_for_trusted_input()
-            })
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxClassEdges, 1)
+                    .unwrap(),
+            )
             .begin_session()
             .unwrap();
 

@@ -6,7 +6,7 @@ FLUTTER_ROOT="$REPO_ROOT/platforms/flutter"
 OUT_DIR="$REPO_ROOT/target/flutter-ios-xcframework"
 FRAMEWORK_NAME="MermanFFI"
 FRAMEWORK_OUT="$FLUTTER_ROOT/ios/$FRAMEWORK_NAME.xcframework"
-INCLUDE_HEADER="$REPO_ROOT/crates/merman-ffi/include/merman.h"
+FFI_INCLUDE_DIR="$REPO_ROOT/crates/merman-ffi/include"
 AUTO_INSTALL_RUST_TARGETS="${MERMAN_AUTO_INSTALL_RUST_TARGETS:-auto}"
 
 require_tool() {
@@ -61,10 +61,21 @@ build_cdylib() {
     cargo build --release -p merman-ffi --target "$target" --manifest-path "$REPO_ROOT/Cargo.toml"
 }
 
+verify_public_headers() {
+    local headers_dir="$1"
+    local public_header
+    for public_header in "$FFI_INCLUDE_DIR"/*.h; do
+        test -f "$headers_dir/$(basename "$public_header")"
+    done
+    printf '#include "merman.h"\n' | xcrun clang -fsyntax-only -x c -I "$headers_dir" -
+}
+
 write_framework_metadata() {
     local framework_dir="$1"
     mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
-    cp "$INCLUDE_HEADER" "$framework_dir/Headers/merman.h"
+    cp "$FFI_INCLUDE_DIR"/*.h "$framework_dir/Headers/"
+
+    verify_public_headers "$framework_dir/Headers"
 
     cat > "$framework_dir/Modules/module.modulemap" <<'EOF'
 framework module MermanFFI {
@@ -145,5 +156,9 @@ xcodebuild -create-xcframework \
     -framework "$OUT_DIR/ios-arm64/$FRAMEWORK_NAME.framework" \
     -framework "$OUT_DIR/ios-simulator/$FRAMEWORK_NAME.framework" \
     -output "$FRAMEWORK_OUT"
+
+for HEADERS_DIR in "$FRAMEWORK_OUT"/*/"$FRAMEWORK_NAME.framework"/Headers; do
+    verify_public_headers "$HEADERS_DIR"
+done
 
 echo "==> Wrote $FRAMEWORK_OUT"

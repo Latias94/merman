@@ -19,7 +19,8 @@ build = "build.rs"
 # `host` keeps ambient host capabilities on by default.
 # Disable defaults for pure-WASM/Typst profiles.
 default = ["full", "host"]
-full = ["full-config", "full-sanitization"]
+full = ["full-registry", "full-config", "full-sanitization"]
+full-registry = []
 full-config = ["dep:granit-parser", "dep:json5"]
 full-sanitization = ["dep:lol_html", "dep:url"]
 host = ["host-clock", "host-random", "host-timing"]

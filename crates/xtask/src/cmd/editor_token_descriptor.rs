@@ -91,6 +91,10 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
         "tools/vscode-extension/src/generated/token-descriptor.ts",
         ArtifactKind::VscodeTypeScript,
     ),
+    (
+        "crates/merman-core/src/generated/editor_rename_policy.rs",
+        ArtifactKind::CoreRenamePolicyRust,
+    ),
 ];
 
 #[derive(Debug, Deserialize)]
@@ -170,10 +174,22 @@ struct TokenEquivalenceArtifact {
 #[serde(deny_unknown_fields)]
 struct TokenDescriptor {
     schema_version: u32,
+    rename_policies: Vec<RenamePolicy>,
     token_kinds: Vec<TokenKind>,
     modifiers: Vec<TokenModifier>,
     packed: PackedDescriptor,
     overlay_precedence: Vec<OverlayPrecedence>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RenamePolicy {
+    id: String,
+    rust_variant: String,
+    code: u32,
+    description: String,
+    #[serde(rename = "default")]
+    is_default: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -234,6 +250,7 @@ enum ArtifactKind {
     Rust,
     TypeScript,
     VscodeTypeScript,
+    CoreRenamePolicyRust,
 }
 
 impl ArtifactKind {
@@ -242,6 +259,7 @@ impl ArtifactKind {
             Self::Rust => render_rust(descriptor),
             Self::TypeScript => render_typescript(descriptor),
             Self::VscodeTypeScript => render_vscode_typescript(descriptor),
+            Self::CoreRenamePolicyRust => render_core_rename_policy_rust(descriptor),
         }
     }
 }
@@ -275,6 +293,9 @@ fn validate_descriptor(descriptor: &TokenDescriptor) -> Result<(), XtaskError> {
     if descriptor.token_kinds.is_empty() {
         return Err(descriptor_error("at least one token kind is required"));
     }
+    if descriptor.rename_policies.is_empty() {
+        return Err(descriptor_error("at least one rename policy is required"));
+    }
     if descriptor.modifiers.is_empty() {
         return Err(descriptor_error("at least one token modifier is required"));
     }
@@ -298,6 +319,11 @@ fn validate_descriptor(descriptor: &TokenDescriptor) -> Result<(), XtaskError> {
         validate_rust_variant(&kind.rust_variant, "token-kind")?;
         validate_lsp_name(&kind.lsp_name, "token-kind")?;
     }
+    for policy in &descriptor.rename_policies {
+        validate_identifier(&policy.id, "rename-policy")?;
+        validate_rust_variant(&policy.rust_variant, "rename-policy")?;
+        validate_single_line_description(&policy.description, &policy.id, "rename policy")?;
+    }
     for modifier in &descriptor.modifiers {
         validate_identifier(&modifier.id, "modifier")?;
         validate_rust_variant(&modifier.rust_variant, "modifier")?;
@@ -308,6 +334,20 @@ fn validate_descriptor(descriptor: &TokenDescriptor) -> Result<(), XtaskError> {
         validate_rust_variant(&overlay.rust_variant, "overlay")?;
     }
 
+    validate_unique(
+        descriptor
+            .rename_policies
+            .iter()
+            .map(|policy| policy.id.as_str()),
+        "rename-policy id",
+    )?;
+    validate_unique(
+        descriptor
+            .rename_policies
+            .iter()
+            .map(|policy| policy.rust_variant.as_str()),
+        "rename-policy Rust variant",
+    )?;
     validate_unique(
         descriptor.token_kinds.iter().map(|kind| kind.id.as_str()),
         "token-kind id",
@@ -370,6 +410,11 @@ fn validate_descriptor(descriptor: &TokenDescriptor) -> Result<(), XtaskError> {
         descriptor.overlay_precedence.len(),
     )?;
     validate_contiguous_codes(
+        descriptor.rename_policies.iter().map(|policy| policy.code),
+        descriptor.rename_policies.len(),
+        "rename-policy",
+    )?;
+    validate_contiguous_codes(
         descriptor.token_kinds.iter().map(|kind| kind.code),
         descriptor.token_kinds.len(),
         "token-kind",
@@ -379,6 +424,17 @@ fn validate_descriptor(descriptor: &TokenDescriptor) -> Result<(), XtaskError> {
         descriptor.modifiers.len(),
         "modifier",
     )?;
+
+    let defaults = descriptor
+        .rename_policies
+        .iter()
+        .filter(|policy| policy.is_default)
+        .count();
+    if defaults != 1 {
+        return Err(descriptor_error(format!(
+            "rename policies require exactly one default; found {defaults}"
+        )));
+    }
 
     if descriptor.packed.encoding != SUPPORTED_PACKED_ENCODING
         || descriptor.packed.word_width_bits != SUPPORTED_PACKED_WORD_WIDTH_BITS
@@ -531,12 +587,20 @@ fn validate_vscode_contributions(descriptor: &TokenDescriptor) -> Result<(), Xta
 }
 
 fn validate_vscode_description(value: &str, token_name: &str) -> Result<(), XtaskError> {
+    validate_single_line_description(value, token_name, "VS Code contribution")
+}
+
+fn validate_single_line_description(
+    value: &str,
+    name: &str,
+    context: &str,
+) -> Result<(), XtaskError> {
     if value.is_empty()
         || value.trim() != value
         || value.bytes().any(|byte| matches!(byte, b'\r' | b'\n'))
     {
         return Err(descriptor_error(format!(
-            "VS Code contribution `{token_name}` requires a non-empty single-line description without surrounding whitespace"
+            "{context} `{name}` requires a non-empty single-line description without surrounding whitespace"
         )));
     }
     Ok(())
@@ -616,6 +680,12 @@ fn sorted_token_kinds(descriptor: &TokenDescriptor) -> Vec<&TokenKind> {
     values
 }
 
+fn sorted_rename_policies(descriptor: &TokenDescriptor) -> Vec<&RenamePolicy> {
+    let mut values = descriptor.rename_policies.iter().collect::<Vec<_>>();
+    values.sort_by_key(|policy| policy.code);
+    values
+}
+
 fn sorted_modifiers(descriptor: &TokenDescriptor) -> Vec<&TokenModifier> {
     let mut values = descriptor.modifiers.iter().collect::<Vec<_>>();
     values.sort_by_key(|modifier| modifier.code);
@@ -630,6 +700,7 @@ fn sorted_overlays(descriptor: &TokenDescriptor) -> Vec<&OverlayPrecedence> {
 
 fn normalized_protocol_descriptor(descriptor: &TokenDescriptor) -> TokenDescriptor {
     let mut normalized = descriptor.clone();
+    normalized.rename_policies.sort_by_key(|policy| policy.code);
     normalized.token_kinds.sort_by_key(|kind| kind.code);
     normalized.modifiers.sort_by_key(|modifier| modifier.code);
     normalized
@@ -792,6 +863,67 @@ fn render_rust(descriptor: &TokenDescriptor) -> Result<String, XtaskError> {
     Ok(output)
 }
 
+fn render_core_rename_policy_rust(descriptor: &TokenDescriptor) -> Result<String, XtaskError> {
+    let policies = sorted_rename_policies(descriptor);
+    let mut output = generated_preamble("//");
+
+    output.push_str("/// Grammar-owned validation policy for renaming an entity occurrence.\n");
+    output.push_str("#[derive(\n");
+    for derive in [
+        "Debug",
+        "Clone",
+        "Copy",
+        "Default",
+        "PartialEq",
+        "Eq",
+        "PartialOrd",
+        "Ord",
+        "Hash",
+        "serde::Serialize",
+        "serde::Deserialize",
+    ] {
+        writeln!(output, "    {derive},").unwrap();
+    }
+    output.push_str(")]\n");
+    output.push_str("pub enum EditorRenamePolicy {\n");
+    for policy in &policies {
+        writeln!(output, "    /// {}", policy.description).unwrap();
+        if policy.is_default {
+            output.push_str("    #[default]\n");
+        }
+        writeln!(output, "    #[serde(rename = {:?})]", policy.id).unwrap();
+        writeln!(output, "    {},", policy.rust_variant).unwrap();
+    }
+    output.push_str("}\n\nimpl EditorRenamePolicy {\n");
+    writeln!(output, "    pub const ALL: [Self; {}] = [", policies.len()).unwrap();
+    for policy in &policies {
+        writeln!(output, "        Self::{},", policy.rust_variant).unwrap();
+    }
+    output.push_str("    ];\n\n");
+    writeln!(
+        output,
+        "    pub const IDS: [&'static str; {}] = [",
+        policies.len()
+    )
+    .unwrap();
+    for policy in &policies {
+        writeln!(output, "        {:?},", policy.id).unwrap();
+    }
+    output.push_str(
+        "    ];\n\n    pub const fn as_str(self) -> &'static str {\n        match self {\n",
+    );
+    for policy in &policies {
+        writeln!(
+            output,
+            "            Self::{} => {:?},",
+            policy.rust_variant, policy.id
+        )
+        .unwrap();
+    }
+    output.push_str("        }\n    }\n}\n");
+    Ok(output)
+}
+
 fn render_typescript(descriptor: &TokenDescriptor) -> Result<String, XtaskError> {
     let kinds = sorted_token_kinds(descriptor);
     let modifiers = sorted_modifiers(descriptor);
@@ -824,6 +956,14 @@ fn render_typescript(descriptor: &TokenDescriptor) -> Result<String, XtaskError>
     )
     .unwrap();
 
+    output.push_str("export const EDITOR_RENAME_POLICIES = [\n");
+    for policy in sorted_rename_policies(descriptor) {
+        writeln!(output, "  {:?},", policy.id).unwrap();
+    }
+    output.push_str(
+        "] as const;\n\nexport type EditorRenamePolicy =\n  (typeof EDITOR_RENAME_POLICIES)[number];\n\n",
+    );
+
     output.push_str("export const SEMANTIC_TOKEN_TYPE_LSP_NAMES = [\n");
     for kind in &kinds {
         writeln!(output, "  {:?},", kind.lsp_name).unwrap();
@@ -841,6 +981,7 @@ fn render_typescript(descriptor: &TokenDescriptor) -> Result<String, XtaskError>
         descriptor.schema_version
     )
     .unwrap();
+    output.push_str("  renamePolicies: EDITOR_RENAME_POLICIES,\n");
     output.push_str("  tokenTypes: [\n");
     for kind in &kinds {
         writeln!(
@@ -1410,7 +1551,7 @@ mod tests {
         );
         assert_eq!(
             descriptor_digest(&descriptor).unwrap(),
-            "sha256:f57cf49d66fc2cade424dde25fdad7ca593dc3234ab2140bca9d9151bdddecb1"
+            merman_editor_core::SEMANTIC_TOKEN_DESCRIPTOR_DIGEST
         );
     }
 
@@ -1418,6 +1559,7 @@ mod tests {
     fn digest_is_independent_of_json_array_order() {
         let descriptor = committed_descriptor();
         let mut reordered = descriptor.clone();
+        reordered.rename_policies.reverse();
         reordered.token_kinds.reverse();
         reordered.modifiers.reverse();
         reordered.overlay_precedence.reverse();
@@ -1457,6 +1599,22 @@ mod tests {
 
     #[test]
     fn validator_rejects_duplicate_gapped_and_invalid_contracts() {
+        let mut duplicate_policy = committed_descriptor();
+        duplicate_policy.rename_policies[1].id = duplicate_policy.rename_policies[0].id.clone();
+        assert!(validate_descriptor(&duplicate_policy).is_err());
+
+        let mut gapped_policy = committed_descriptor();
+        gapped_policy.rename_policies.last_mut().unwrap().code += 1;
+        assert!(validate_descriptor(&gapped_policy).is_err());
+
+        let mut multiple_defaults = committed_descriptor();
+        multiple_defaults.rename_policies[0].is_default = true;
+        assert!(validate_descriptor(&multiple_defaults).is_err());
+
+        let mut invalid_policy_description = committed_descriptor();
+        invalid_policy_description.rename_policies[0].description = "invalid\nvalue".to_string();
+        assert!(validate_descriptor(&invalid_policy_description).is_err());
+
         let mut duplicate = committed_descriptor();
         duplicate.token_kinds[1].lsp_name = duplicate.token_kinds[0].lsp_name.clone();
         assert!(validate_descriptor(&duplicate).is_err());
@@ -1609,6 +1767,7 @@ mod tests {
         let rust = render_rust(&descriptor).unwrap();
         let typescript = render_typescript(&descriptor).unwrap();
         let vscode_typescript = render_vscode_typescript(&descriptor).unwrap();
+        let core_rust = render_core_rename_policy_rust(&descriptor).unwrap();
         let digest = descriptor_digest(&descriptor).unwrap();
         for projection in [&rust, &typescript, &vscode_typescript] {
             assert!(projection.contains(&digest));
@@ -1619,6 +1778,15 @@ mod tests {
             for modifier in sorted_modifiers(&descriptor) {
                 assert!(projection.contains(&modifier.lsp_name));
             }
+        }
+        for projection in [&typescript, &vscode_typescript] {
+            for policy in sorted_rename_policies(&descriptor) {
+                assert!(projection.contains(&policy.id));
+            }
+        }
+        for policy in sorted_rename_policies(&descriptor) {
+            assert!(core_rust.contains(&policy.id));
+            assert!(core_rust.contains(&policy.rust_variant));
         }
     }
 

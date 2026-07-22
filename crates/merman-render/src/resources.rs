@@ -24,130 +24,546 @@ const BOUNDED_RESVG_TREE_DEPTH: usize = if MAX_RESVG_TREE_DEPTH < 128 {
     128
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RenderResourceProfile {
-    Interactive,
-    TypstPackage,
-    TrustedNative,
-    UnboundedForTrustedInput,
+pub const RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResourceLimitPhase {
+    Source,
+    LayoutModel,
+    SvgOutput,
+    SvgPostprocess,
+}
+
+impl ResourceLimitPhase {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::LayoutModel => "layout_model",
+            Self::SvgOutput => "svg_output",
+            Self::SvgPostprocess => "svg_postprocess",
+        }
+    }
+}
+
+impl std::fmt::Display for ResourceLimitPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RenderResourceLimits {
-    pub max_source_bytes: Option<usize>,
-    pub max_svg_bytes: Option<usize>,
-    pub max_svg_elements: Option<usize>,
-    pub max_svg_tree_depth: usize,
-    pub max_flowchart_nodes: Option<usize>,
-    pub max_flowchart_edges: Option<usize>,
-    pub max_flowchart_subgraphs: Option<usize>,
-    pub max_class_nodes: Option<usize>,
-    pub max_class_edges: Option<usize>,
-    pub max_class_namespaces: Option<usize>,
-    pub max_zenuml_participants: Option<usize>,
-    pub max_zenuml_statements: Option<usize>,
-    pub max_zenuml_fragments: Option<usize>,
-    pub max_label_bytes: Option<usize>,
+pub struct ResourceLimitDescriptor {
+    pub id: ResourceLimitId,
+    pub stable_id: &'static str,
+    pub phase: ResourceLimitPhase,
+    pub description: &'static str,
+    pub overridable: bool,
+    pub hard_cap: bool,
 }
 
-impl Default for RenderResourceLimits {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderResourceProfileDescriptor {
+    pub profile: RenderResourceProfile,
+    pub id: &'static str,
+    pub purpose: &'static str,
+    pub trust_assumption: &'static str,
+    pub recommended_binding_default: bool,
+    pub limits: ResourceProfileValues,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResourceProfileValues {
+    values: [Option<usize>; RESOURCE_LIMIT_COUNT],
+}
+
+impl ResourceProfileValues {
+    pub const fn value(self, id: ResourceLimitId) -> Option<usize> {
+        self.values[id.index()]
+    }
+
+    pub const fn values(self) -> [Option<usize>; RESOURCE_LIMIT_COUNT] {
+        self.values
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResourceLimitOverrideError {
+    #[error("resource limit id `{0}` is not part of resource contract schema 1")]
+    UnknownLimit(String),
+    #[error("resource limit `{0}` is a hard implementation capability and cannot be overridden")]
+    HardCap(&'static str),
+    #[error("resource limit `{0}` must be a positive integer")]
+    NonPositive(&'static str),
+}
+
+macro_rules! define_resource_contract {
+    (
+        profiles {
+            $(
+                $profile:ident => {
+                    id: $profile_id:literal,
+                    purpose: $purpose:literal,
+                    trust_assumption: $trust_assumption:literal,
+                    recommended_binding_default: $recommended_binding_default:expr,
+                }
+            ),+ $(,)?
+        }
+        limits {
+            $(
+                $limit:ident => {
+                    id: $limit_id:literal,
+                    phase: $phase:ident,
+                    description: $description:literal,
+                    overridable: $overridable:expr,
+                    hard_cap: $hard_cap:expr,
+                    budgets: [$($budget:expr),+ $(,)?],
+                }
+            ),+ $(,)?
+        }
+    ) => {
+        pub const RESOURCE_PROFILE_COUNT: usize = [$(stringify!($profile)),+].len();
+        pub const RESOURCE_LIMIT_COUNT: usize = [$(stringify!($limit)),+].len();
+
+        #[repr(usize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum RenderResourceProfile {
+            $($profile),+
+        }
+
+        impl RenderResourceProfile {
+            pub const ALL: [Self; RESOURCE_PROFILE_COUNT] = [$(Self::$profile),+];
+        }
+
+        #[repr(usize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum ResourceLimitId {
+            $($limit),+
+        }
+
+        impl ResourceLimitId {
+            pub const ALL: [Self; RESOURCE_LIMIT_COUNT] = [$(Self::$limit),+];
+
+            pub const fn index(self) -> usize {
+                self as usize
+            }
+        }
+
+        const PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT]; RESOURCE_LIMIT_COUNT] = [
+            $([$($budget),+]),+
+        ];
+
+        const fn profile_values(profile: RenderResourceProfile) -> ResourceProfileValues {
+            let mut values = [None; RESOURCE_LIMIT_COUNT];
+            let profile_index = profile as usize;
+            let mut index = 0;
+            while index < RESOURCE_LIMIT_COUNT {
+                values[index] = PROFILE_VALUES[index][profile_index];
+                index += 1;
+            }
+            ResourceProfileValues { values }
+        }
+
+        pub static RESOURCE_PROFILE_DESCRIPTORS:
+            [RenderResourceProfileDescriptor; RESOURCE_PROFILE_COUNT] = [
+                $(RenderResourceProfileDescriptor {
+                    profile: RenderResourceProfile::$profile,
+                    id: $profile_id,
+                    purpose: $purpose,
+                    trust_assumption: $trust_assumption,
+                    recommended_binding_default: $recommended_binding_default,
+                    limits: profile_values(RenderResourceProfile::$profile),
+                }),+
+            ];
+
+        pub static RESOURCE_LIMIT_DESCRIPTORS:
+            [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
+                $(ResourceLimitDescriptor {
+                    id: ResourceLimitId::$limit,
+                    stable_id: $limit_id,
+                    phase: ResourceLimitPhase::$phase,
+                    description: $description,
+                    overridable: $overridable,
+                    hard_cap: $hard_cap,
+                }),+
+            ];
+    };
+}
+
+// This is the authority for resource-limit identity, documentation, phase ownership, and profile
+// budgets. The budget order is Interactive, Constrained, TrustedNative, then
+// UnboundedForTrustedInput. Platform projections are generated from these descriptors.
+define_resource_contract! {
+    profiles {
+        Interactive => {
+            id: "interactive",
+            purpose: "General interactive applications and public binding surfaces",
+            trust_assumption: "Cooperative user-authored input; not a hostile or multi-tenant isolation boundary",
+            recommended_binding_default: true,
+        },
+        Constrained => {
+            id: "constrained",
+            purpose: "Constrained rendering for untrusted or publicly submitted documents",
+            trust_assumption: "The host must provide timeout, memory, concurrency, and preemption controls",
+            recommended_binding_default: false,
+        },
+        TrustedNative => {
+            id: "trusted-native",
+            purpose: "Local CLI and controlled native batch rendering",
+            trust_assumption: "Input is trusted and the native host controls the workload",
+            recommended_binding_default: false,
+        },
+        UnboundedForTrustedInput => {
+            id: "unbounded-for-trusted-input",
+            purpose: "Explicitly disable policy budgets while retaining hard backend capabilities",
+            trust_assumption: "Input is fully trusted and the host provides outer isolation",
+            recommended_binding_default: false,
+        },
+    }
+    limits {
+        MaxSourceBytes => {
+            id: "max_source_bytes",
+            phase: Source,
+            description: "Maximum UTF-8 Mermaid source bytes",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
+        },
+        MaxSvgBytes => {
+            id: "max_svg_bytes",
+            phase: SvgOutput,
+            description: "Maximum serialized SVG bytes",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
+        },
+        MaxSvgElements => {
+            id: "max_svg_elements",
+            phase: SvgPostprocess,
+            description: "Maximum SVG element count",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(250_000), Some(125_000), Some(1_000_000), None],
+        },
+        MaxSvgTreeDepth => {
+            id: "max_svg_tree_depth",
+            phase: SvgPostprocess,
+            description: "Maximum tree depth supported by recursive SVG backends",
+            overridable: false,
+            hard_cap: true,
+            budgets: [
+                Some(BOUNDED_RESVG_TREE_DEPTH),
+                Some(BOUNDED_RESVG_TREE_DEPTH),
+                Some(MAX_RESVG_TREE_DEPTH),
+                Some(MAX_RESVG_TREE_DEPTH),
+            ],
+        },
+        MaxFlowchartNodes => {
+            id: "max_flowchart_nodes",
+            phase: LayoutModel,
+            description: "Maximum Flowchart nodes including subgraphs",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(8_000), Some(4_000), Some(50_000), None],
+        },
+        MaxFlowchartEdges => {
+            id: "max_flowchart_edges",
+            phase: LayoutModel,
+            description: "Maximum Flowchart edges",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(16_000), Some(8_000), Some(100_000), None],
+        },
+        MaxFlowchartSubgraphs => {
+            id: "max_flowchart_subgraphs",
+            phase: LayoutModel,
+            description: "Maximum Flowchart subgraphs",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(2_000), Some(1_000), Some(10_000), None],
+        },
+        MaxClassNodes => {
+            id: "max_class_nodes",
+            phase: LayoutModel,
+            description: "Maximum Class diagram nodes",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(8_000), Some(4_000), Some(50_000), None],
+        },
+        MaxClassEdges => {
+            id: "max_class_edges",
+            phase: LayoutModel,
+            description: "Maximum Class diagram edges",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(16_000), Some(8_000), Some(100_000), None],
+        },
+        MaxClassNamespaces => {
+            id: "max_class_namespaces",
+            phase: LayoutModel,
+            description: "Maximum Class diagram namespaces",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(2_000), Some(1_000), Some(10_000), None],
+        },
+        MaxZenumlParticipants => {
+            id: "max_zenuml_participants",
+            phase: LayoutModel,
+            description: "Maximum ZenUML participants",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(8_000), Some(4_000), Some(50_000), None],
+        },
+        MaxZenumlStatements => {
+            id: "max_zenuml_statements",
+            phase: LayoutModel,
+            description: "Maximum ZenUML statements",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(16_000), Some(8_000), Some(100_000), None],
+        },
+        MaxZenumlFragments => {
+            id: "max_zenuml_fragments",
+            phase: LayoutModel,
+            description: "Maximum ZenUML fragments and groups",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(2_000), Some(1_000), Some(10_000), None],
+        },
+        MaxVennAreas => {
+            id: "max_venn_areas",
+            phase: LayoutModel,
+            description: "Maximum Venn source and synthesized layout areas",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(8_000), Some(4_000), Some(50_000), None],
+        },
+        MaxSwimlaneLineHopSegmentPairs => {
+            id: "max_swimlane_line_hop_segment_pairs",
+            phase: SvgOutput,
+            description: "Maximum broad-phase segment pairs inspected for Swimlane line hops",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(250_000), Some(125_000), Some(1_000_000), None],
+        },
+        MaxLabelBytes => {
+            id: "max_label_bytes",
+            phase: LayoutModel,
+            description: "Maximum aggregate model label bytes",
+            overridable: true,
+            hard_cap: false,
+            budgets: [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
+        },
+    }
+}
+
+pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
+    RenderResourceProfile::Interactive;
+pub const CLI_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
+    RenderResourceProfile::TrustedNative;
+
+impl RenderResourceProfile {
+    pub const fn descriptor(self) -> &'static RenderResourceProfileDescriptor {
+        &RESOURCE_PROFILE_DESCRIPTORS[self as usize]
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.descriptor().id
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        RESOURCE_PROFILE_DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.id == id)
+            .map(|descriptor| descriptor.profile)
+    }
+}
+
+impl std::fmt::Display for RenderResourceProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.id())
+    }
+}
+
+impl std::str::FromStr for RenderResourceProfile {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::from_id(value).ok_or_else(|| {
+            let supported = RESOURCE_PROFILE_DESCRIPTORS
+                .iter()
+                .map(|descriptor| descriptor.id)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("unsupported resource profile `{value}`; expected one of: {supported}")
+        })
+    }
+}
+
+impl ResourceLimitId {
+    pub fn from_stable_id(id: &str) -> Option<Self> {
+        RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.stable_id == id)
+            .map(|descriptor| descriptor.id)
+    }
+
+    pub const fn descriptor(self) -> &'static ResourceLimitDescriptor {
+        &RESOURCE_LIMIT_DESCRIPTORS[self.index()]
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        self.descriptor().stable_id
+    }
+}
+
+pub const fn resource_profile_descriptors() -> &'static [RenderResourceProfileDescriptor] {
+    &RESOURCE_PROFILE_DESCRIPTORS
+}
+
+pub const fn resource_limit_descriptors() -> &'static [ResourceLimitDescriptor] {
+    &RESOURCE_LIMIT_DESCRIPTORS
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderResourcePolicy {
+    profile: RenderResourceProfile,
+    base_values: [Option<usize>; RESOURCE_LIMIT_COUNT],
+    effective_values: [Option<usize>; RESOURCE_LIMIT_COUNT],
+    explicit_overrides: [Option<usize>; RESOURCE_LIMIT_COUNT],
+}
+
+impl Default for RenderResourcePolicy {
     fn default() -> Self {
         Self::interactive()
     }
 }
 
-impl RenderResourceLimits {
-    pub const fn interactive() -> Self {
-        Self {
-            max_source_bytes: Some(2 * MIB),
-            max_svg_bytes: Some(24 * MIB),
-            max_svg_elements: Some(250_000),
-            max_svg_tree_depth: BOUNDED_RESVG_TREE_DEPTH,
-            max_flowchart_nodes: Some(8_000),
-            max_flowchart_edges: Some(16_000),
-            max_flowchart_subgraphs: Some(2_000),
-            max_class_nodes: Some(8_000),
-            max_class_edges: Some(16_000),
-            max_class_namespaces: Some(2_000),
-            max_zenuml_participants: Some(8_000),
-            max_zenuml_statements: Some(16_000),
-            max_zenuml_fragments: Some(2_000),
-            max_label_bytes: Some(2 * MIB),
-        }
+impl RenderResourcePolicy {
+    pub const fn profile(self) -> RenderResourceProfile {
+        self.profile
     }
 
-    pub const fn typst_package() -> Self {
-        Self {
-            max_source_bytes: Some(MIB),
-            max_svg_bytes: Some(12 * MIB),
-            max_svg_elements: Some(125_000),
-            max_svg_tree_depth: BOUNDED_RESVG_TREE_DEPTH,
-            max_flowchart_nodes: Some(4_000),
-            max_flowchart_edges: Some(8_000),
-            max_flowchart_subgraphs: Some(1_000),
-            max_class_nodes: Some(4_000),
-            max_class_edges: Some(8_000),
-            max_class_namespaces: Some(1_000),
-            max_zenuml_participants: Some(4_000),
-            max_zenuml_statements: Some(8_000),
-            max_zenuml_fragments: Some(1_000),
-            max_label_bytes: Some(MIB),
-        }
+    pub const fn interactive() -> Self {
+        Self::for_profile(RenderResourceProfile::Interactive)
+    }
+
+    pub const fn constrained() -> Self {
+        Self::for_profile(RenderResourceProfile::Constrained)
     }
 
     pub const fn trusted_native() -> Self {
-        Self {
-            max_source_bytes: Some(16 * MIB),
-            max_svg_bytes: Some(128 * MIB),
-            max_svg_elements: Some(1_000_000),
-            max_svg_tree_depth: MAX_RESVG_TREE_DEPTH,
-            max_flowchart_nodes: Some(50_000),
-            max_flowchart_edges: Some(100_000),
-            max_flowchart_subgraphs: Some(10_000),
-            max_class_nodes: Some(50_000),
-            max_class_edges: Some(100_000),
-            max_class_namespaces: Some(10_000),
-            max_zenuml_participants: Some(50_000),
-            max_zenuml_statements: Some(100_000),
-            max_zenuml_fragments: Some(10_000),
-            max_label_bytes: Some(16 * MIB),
-        }
+        Self::for_profile(RenderResourceProfile::TrustedNative)
     }
 
     pub const fn unbounded_for_trusted_input() -> Self {
-        Self {
-            max_source_bytes: None,
-            max_svg_bytes: None,
-            max_svg_elements: None,
-            max_svg_tree_depth: MAX_RESVG_TREE_DEPTH,
-            max_flowchart_nodes: None,
-            max_flowchart_edges: None,
-            max_flowchart_subgraphs: None,
-            max_class_nodes: None,
-            max_class_edges: None,
-            max_class_namespaces: None,
-            max_zenuml_participants: None,
-            max_zenuml_statements: None,
-            max_zenuml_fragments: None,
-            max_label_bytes: None,
-        }
+        Self::for_profile(RenderResourceProfile::UnboundedForTrustedInput)
     }
 
     pub const fn for_profile(profile: RenderResourceProfile) -> Self {
-        match profile {
-            RenderResourceProfile::Interactive => Self::interactive(),
-            RenderResourceProfile::TypstPackage => Self::typst_package(),
-            RenderResourceProfile::TrustedNative => Self::trusted_native(),
-            RenderResourceProfile::UnboundedForTrustedInput => Self::unbounded_for_trusted_input(),
+        let base_values = profile.descriptor().limits.values();
+        Self {
+            profile,
+            base_values,
+            effective_values: base_values,
+            explicit_overrides: [None; RESOURCE_LIMIT_COUNT],
         }
     }
 
+    pub const fn value(self, id: ResourceLimitId) -> Option<usize> {
+        self.effective_values[id.index()]
+    }
+
+    pub const fn base_value(self, id: ResourceLimitId) -> Option<usize> {
+        self.base_values[id.index()]
+    }
+
+    pub const fn explicit_override(self, id: ResourceLimitId) -> Option<usize> {
+        self.explicit_overrides[id.index()]
+    }
+
+    pub fn explicit_overrides(&self) -> impl Iterator<Item = (ResourceLimitId, usize)> + '_ {
+        ResourceLimitId::ALL
+            .into_iter()
+            .filter_map(|id| self.explicit_override(id).map(|value| (id, value)))
+    }
+
+    pub fn apply_override(
+        &mut self,
+        stable_id: &str,
+        value: usize,
+    ) -> Result<(), ResourceLimitOverrideError> {
+        let id = ResourceLimitId::from_stable_id(stable_id)
+            .ok_or_else(|| ResourceLimitOverrideError::UnknownLimit(stable_id.to_string()))?;
+        self.apply_limit(id, value)
+    }
+
+    pub fn apply_limit(
+        &mut self,
+        id: ResourceLimitId,
+        value: usize,
+    ) -> Result<(), ResourceLimitOverrideError> {
+        let descriptor = id.descriptor();
+        if descriptor.hard_cap || !descriptor.overridable {
+            return Err(ResourceLimitOverrideError::HardCap(descriptor.stable_id));
+        }
+        if value == 0 {
+            return Err(ResourceLimitOverrideError::NonPositive(
+                descriptor.stable_id,
+            ));
+        }
+        self.effective_values[id.index()] = Some(value);
+        self.explicit_overrides[id.index()] = Some(value);
+        Ok(())
+    }
+
+    pub fn with_override(
+        mut self,
+        stable_id: &str,
+        value: usize,
+    ) -> Result<Self, ResourceLimitOverrideError> {
+        self.apply_override(stable_id, value)?;
+        Ok(self)
+    }
+
+    pub fn with_limit(
+        mut self,
+        id: ResourceLimitId,
+        value: usize,
+    ) -> Result<Self, ResourceLimitOverrideError> {
+        self.apply_limit(id, value)?;
+        Ok(self)
+    }
+
+    fn check_limit(
+        &self,
+        phase: ResourceLimitPhase,
+        id: ResourceLimitId,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let Some(max) = self.value(id) else {
+            return Ok(());
+        };
+        if actual <= max {
+            return Ok(());
+        }
+        Err(ResourceLimitExceeded {
+            phase,
+            limit: id.as_str(),
+            actual,
+            max,
+            profile: self.profile,
+            explicit_overrides: self
+                .explicit_overrides()
+                .map(|(id, value)| ResourceLimitOverride { id, value })
+                .collect(),
+        })
+    }
+
     pub fn check_source_bytes(&self, source: &str) -> Result<(), ResourceLimitExceeded> {
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::Source,
-            "max_source_bytes",
+            ResourceLimitId::MaxSourceBytes,
             source.len(),
-            self.max_source_bytes,
         )
     }
 
@@ -156,7 +572,7 @@ impl RenderResourceLimits {
         svg: &str,
         phase: ResourceLimitPhase,
     ) -> Result<(), ResourceLimitExceeded> {
-        check_limit(phase, "max_svg_bytes", svg.len(), self.max_svg_bytes)
+        self.check_limit(phase, ResourceLimitId::MaxSvgBytes, svg.len())
     }
 
     pub fn check_svg_structure(
@@ -164,17 +580,15 @@ impl RenderResourceLimits {
         elements: usize,
         tree_depth: usize,
     ) -> Result<(), ResourceLimitExceeded> {
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::SvgPostprocess,
-            "max_svg_elements",
+            ResourceLimitId::MaxSvgElements,
             elements,
-            self.max_svg_elements,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::SvgPostprocess,
-            "max_svg_tree_depth",
+            ResourceLimitId::MaxSvgTreeDepth,
             tree_depth,
-            Some(self.max_svg_tree_depth.min(MAX_RESVG_TREE_DEPTH)),
         )
     }
 
@@ -183,29 +597,25 @@ impl RenderResourceLimits {
         model: &FlowchartModel,
     ) -> Result<FlowchartComplexity, ResourceLimitExceeded> {
         let complexity = FlowchartComplexity::from_model(model);
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_flowchart_nodes",
+            ResourceLimitId::MaxFlowchartNodes,
             complexity.nodes,
-            self.max_flowchart_nodes,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_flowchart_edges",
+            ResourceLimitId::MaxFlowchartEdges,
             complexity.edges,
-            self.max_flowchart_edges,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_flowchart_subgraphs",
+            ResourceLimitId::MaxFlowchartSubgraphs,
             complexity.subgraphs,
-            self.max_flowchart_subgraphs,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_label_bytes",
+            ResourceLimitId::MaxLabelBytes,
             complexity.label_bytes,
-            self.max_label_bytes,
         )?;
         Ok(complexity)
     }
@@ -215,29 +625,25 @@ impl RenderResourceLimits {
         model: &ClassDiagram,
     ) -> Result<ClassComplexity, ResourceLimitExceeded> {
         let complexity = ClassComplexity::from_model(model);
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_class_nodes",
+            ResourceLimitId::MaxClassNodes,
             complexity.nodes,
-            self.max_class_nodes,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_class_edges",
+            ResourceLimitId::MaxClassEdges,
             complexity.edges,
-            self.max_class_edges,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_class_namespaces",
+            ResourceLimitId::MaxClassNamespaces,
             complexity.namespaces,
-            self.max_class_namespaces,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_label_bytes",
+            ResourceLimitId::MaxLabelBytes,
             complexity.label_bytes,
-            self.max_label_bytes,
         )?;
         Ok(complexity)
     }
@@ -247,31 +653,46 @@ impl RenderResourceLimits {
         model: &ZenumlDiagramRenderModel,
     ) -> Result<ZenumlComplexity, ResourceLimitExceeded> {
         let complexity = ZenumlComplexity::from_model(model);
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_zenuml_participants",
+            ResourceLimitId::MaxZenumlParticipants,
             complexity.participants,
-            self.max_zenuml_participants,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_zenuml_statements",
+            ResourceLimitId::MaxZenumlStatements,
             complexity.statements,
-            self.max_zenuml_statements,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_zenuml_fragments",
+            ResourceLimitId::MaxZenumlFragments,
             complexity.fragments,
-            self.max_zenuml_fragments,
         )?;
-        check_limit(
+        self.check_limit(
             ResourceLimitPhase::LayoutModel,
-            "max_label_bytes",
+            ResourceLimitId::MaxLabelBytes,
             complexity.label_bytes,
-            self.max_label_bytes,
         )?;
         Ok(complexity)
+    }
+
+    pub fn check_venn_areas(&self, areas: usize) -> Result<(), ResourceLimitExceeded> {
+        self.check_limit(
+            ResourceLimitPhase::LayoutModel,
+            ResourceLimitId::MaxVennAreas,
+            areas,
+        )
+    }
+
+    pub fn check_swimlane_line_hop_segment_pairs(
+        &self,
+        segment_pairs: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_limit(
+            ResourceLimitPhase::SvgOutput,
+            ResourceLimitId::MaxSwimlaneLineHopSegmentPairs,
+            segment_pairs,
+        )
     }
 }
 
@@ -577,31 +998,6 @@ impl ClassComplexity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResourceLimitPhase {
-    Source,
-    LayoutModel,
-    SvgOutput,
-    SvgPostprocess,
-}
-
-impl ResourceLimitPhase {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Source => "source",
-            Self::LayoutModel => "layout_model",
-            Self::SvgOutput => "svg_output",
-            Self::SvgPostprocess => "svg_postprocess",
-        }
-    }
-}
-
-impl std::fmt::Display for ResourceLimitPhase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
 pub struct ResourceLimitExceeded {
@@ -609,30 +1005,18 @@ pub struct ResourceLimitExceeded {
     pub limit: &'static str,
     pub actual: usize,
     pub max: usize,
+    pub profile: RenderResourceProfile,
+    pub explicit_overrides: Vec<ResourceLimitOverride>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResourceLimitOverride {
+    pub id: ResourceLimitId,
+    pub value: usize,
 }
 
 fn optional_str_len(value: Option<&str>) -> usize {
     value.map(str::len).unwrap_or(0)
-}
-
-fn check_limit(
-    phase: ResourceLimitPhase,
-    limit: &'static str,
-    actual: usize,
-    max: Option<usize>,
-) -> Result<(), ResourceLimitExceeded> {
-    let Some(max) = max else {
-        return Ok(());
-    };
-    if actual <= max {
-        return Ok(());
-    }
-    Err(ResourceLimitExceeded {
-        phase,
-        limit,
-        actual,
-        max,
-    })
 }
 
 #[cfg(test)]
@@ -640,25 +1024,117 @@ mod tests {
     use super::*;
     use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use std::collections::HashSet;
 
     struct ZenumlLimitCase {
         name: &'static str,
-        configure: fn(&mut RenderResourceLimits),
+        id: ResourceLimitId,
+        value: usize,
+    }
+
+    #[test]
+    fn resource_contract_is_complete_unique_and_drives_every_profile() {
+        assert_eq!(RESOURCE_CONTRACT_SCHEMA_VERSION, 1);
+        assert_eq!(
+            RESOURCE_PROFILE_DESCRIPTORS.len(),
+            RenderResourceProfile::ALL.len()
+        );
+        assert_eq!(RESOURCE_LIMIT_DESCRIPTORS.len(), 16);
+
+        let profile_ids = RESOURCE_PROFILE_DESCRIPTORS
+            .iter()
+            .map(|descriptor| descriptor.id)
+            .collect::<HashSet<_>>();
+        assert_eq!(profile_ids.len(), RESOURCE_PROFILE_DESCRIPTORS.len());
+        assert_eq!(
+            RESOURCE_PROFILE_DESCRIPTORS
+                .iter()
+                .filter(|descriptor| descriptor.recommended_binding_default)
+                .map(|descriptor| descriptor.profile)
+                .collect::<Vec<_>>(),
+            vec![GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE]
+        );
+        for profile in RenderResourceProfile::ALL {
+            let descriptor = profile.descriptor();
+            assert_eq!(RenderResourceProfile::from_id(descriptor.id), Some(profile));
+            for limit in RESOURCE_LIMIT_DESCRIPTORS {
+                assert_eq!(
+                    RenderResourcePolicy::for_profile(profile).value(limit.id),
+                    descriptor.limits.value(limit.id)
+                );
+                if limit.hard_cap {
+                    assert!(!limit.overridable);
+                    assert!(descriptor.limits.value(limit.id).is_some());
+                }
+            }
+        }
+
+        let limit_ids = RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .map(|descriptor| descriptor.stable_id)
+            .collect::<HashSet<_>>();
+        assert_eq!(limit_ids.len(), RESOURCE_LIMIT_DESCRIPTORS.len());
+        for descriptor in RESOURCE_LIMIT_DESCRIPTORS {
+            assert_eq!(
+                ResourceLimitId::from_stable_id(descriptor.stable_id),
+                Some(descriptor.id)
+            );
+            assert_eq!(descriptor.id.descriptor(), &descriptor);
+        }
+    }
+
+    #[test]
+    fn resource_overrides_fail_closed_for_unknown_ids_and_hard_caps() {
+        let mut limits = RenderResourcePolicy::interactive();
+        assert!(matches!(
+            limits.apply_override("future_limit", 1),
+            Err(ResourceLimitOverrideError::UnknownLimit(_))
+        ));
+        assert_eq!(
+            limits.apply_override("max_svg_tree_depth", 1),
+            Err(ResourceLimitOverrideError::HardCap("max_svg_tree_depth"))
+        );
+        assert_eq!(
+            limits.apply_override("max_svg_elements", 0),
+            Err(ResourceLimitOverrideError::NonPositive("max_svg_elements"))
+        );
+        limits.apply_override("max_svg_elements", 7).unwrap();
+        assert_eq!(limits.value(ResourceLimitId::MaxSvgElements), Some(7));
     }
 
     #[test]
     fn source_limit_reports_structured_error() {
-        let err = RenderResourceLimits {
-            max_source_bytes: Some(4),
-            ..RenderResourceLimits::unbounded_for_trusted_input()
-        }
-        .check_source_bytes("12345")
-        .unwrap_err();
+        let err = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSourceBytes, 4)
+            .unwrap()
+            .check_source_bytes("12345")
+            .unwrap_err();
 
         assert_eq!(err.phase, ResourceLimitPhase::Source);
         assert_eq!(err.limit, "max_source_bytes");
         assert_eq!(err.actual, 5);
         assert_eq!(err.max, 4);
+    }
+
+    #[test]
+    fn derived_layout_work_limits_report_the_owned_phase_and_metric() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxVennAreas, 2)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 3)
+            .unwrap();
+
+        let venn = limits.check_venn_areas(3).unwrap_err();
+        assert_eq!(venn.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(venn.limit, "max_venn_areas");
+        assert_eq!(venn.actual, 3);
+        assert_eq!(venn.max, 2);
+
+        let line_hops = limits.check_swimlane_line_hop_segment_pairs(4).unwrap_err();
+        assert_eq!(line_hops.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(line_hops.limit, "max_swimlane_line_hop_segment_pairs");
+        assert_eq!(line_hops.actual, 4);
+        assert_eq!(line_hops.max, 3);
     }
 
     #[test]
@@ -688,7 +1164,7 @@ mod tests {
     fn zenuml_structural_limits_are_owned_and_independent() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "zenuml\nA.call() {\n  if(ok) {\n    B.work()\n  }\n}\n",
+                "zenuml\nA.call() {\n  if(ok) {\n    if(inner) {\n      B.work()\n    }\n  }\n}\n",
                 ParseOptions::strict(),
             )
             .unwrap()
@@ -700,20 +1176,24 @@ mod tests {
         let cases = [
             ZenumlLimitCase {
                 name: "max_zenuml_participants",
-                configure: |limits| limits.max_zenuml_participants = Some(1),
+                id: ResourceLimitId::MaxZenumlParticipants,
+                value: 1,
             },
             ZenumlLimitCase {
                 name: "max_zenuml_statements",
-                configure: |limits| limits.max_zenuml_statements = Some(1),
+                id: ResourceLimitId::MaxZenumlStatements,
+                value: 1,
             },
             ZenumlLimitCase {
                 name: "max_zenuml_fragments",
-                configure: |limits| limits.max_zenuml_fragments = Some(0),
+                id: ResourceLimitId::MaxZenumlFragments,
+                value: 1,
             },
         ];
         for case in cases {
-            let mut limits = RenderResourceLimits::unbounded_for_trusted_input();
-            (case.configure)(&mut limits);
+            let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(case.id, case.value)
+                .unwrap();
             let error = limits.check_zenuml_complexity(model).unwrap_err();
             assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
             assert_eq!(error.limit, case.name);

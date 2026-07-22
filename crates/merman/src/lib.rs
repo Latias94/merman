@@ -104,7 +104,7 @@
 //! still apply before an SVG is returned.
 //!
 //! PNG and JPG are pixel outputs. Their `RasterOptions` plan the final pixmap before allocation,
-//! with default 8192-by-8192 side limits and an 8192-squared pixel limit. Use
+//! with default 4096-by-4096 side limits and a 4096-squared pixel limit. Use
 //! `RasterOptions::with_fit_to` for a preview-sized target and `RasterOptions::with_scale` for
 //! device-pixel ratio. Embedded raster images are checked from their headers before decoding as
 //! well.

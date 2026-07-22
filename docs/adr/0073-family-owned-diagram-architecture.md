@@ -102,10 +102,12 @@ whole-document degraded coordinate mode. Precise edits still require `source_map
 The serialized diagnostics payload and richer facts payload are independent contracts with separate
 version constants. The diagnostics-only `AnalysisPayload` remains version `1`. The parser-only
 `AnalysisFactsPayload` is the sole version `1` facts contract: it has no `text_scan` provenance,
-uses `unavailable` for absent body facts, and requires the family-owned `rename_policy` on semantic
-items. The TextScan-capable alpha shape from `0.8.0-alpha.3` is removed rather than retained as a
-compatibility path. Consumers of that alpha shape must update to the current schema even though its
-numeric discriminator was also `1`.
+uses `unavailable` for absent body facts, and current writers emit the family-owned
+`rename_policy` on every semantic item. Readers map an omitted additive policy in an older v1 item
+to the fail-closed `none` policy. This narrow field default is not a compatibility path for the
+TextScan-capable alpha shape from `0.8.0-alpha.3`; its decoder, executor, and dual projection are
+removed. Consumers of that alpha shape must update even though its numeric discriminator was also
+`1`.
 
 This payload version is unrelated to LSP document revision numbers, Mermaid ids such as
 `flowchart-v2` or `stateDiagram-v2`, and native binding ABI versions.
@@ -205,8 +207,9 @@ substrings are not durable architecture guards.
 - Adding a family or alias requires one catalog declaration, family-owned semantic projections,
   a typed render adapter when renderable, parser-backed editor facts when admitted, and parity
   evidence through the canonical operation.
-- Consumers of the superseded alpha facts shape must migrate directly to the current facts v1
-  contract; no deprecated alias, legacy executor, or dual decoding path is kept.
+- Consumers of the superseded TextScan facts shape must migrate directly to the current facts v1
+  contract; the fail-closed default for an omitted additive `rename_policy` does not restore a
+  deprecated alias, TextScan executor, or dual projection path.
 
 ## Rejected Alternatives
 

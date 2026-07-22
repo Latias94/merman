@@ -124,9 +124,9 @@ owns VS Code Problems:
 ```
 
 The extension consumes semantic tokens directly from `merman-lsp`. After LSP initialization it
-checks the server's generated editor schema, descriptor digest, packed encoding, and complete legend
-before enabling language intelligence. A mismatched local or packaged server is stopped instead of
-letting VS Code interpret token indices with stale meanings.
+checks the server's generated editor schema, descriptor digest, packed encoding, and canonical
+negotiated legend projection before enabling language intelligence. A mismatched local or packaged
+server is stopped instead of letting VS Code interpret token indices with stale meanings.
 
 Custom token declarations, theme supertypes, Mermaid TextMate fallback scopes, and the Mermaid
 semantic-highlighting default in `package.json` are generated from
@@ -195,24 +195,28 @@ npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 
 `npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`,
 and the `--target` argument should match that platform key. Use this wrapper instead of invoking
-`vsce package` directly: `package.json` keeps the Marketplace-compatible manifest version such as
-`0.8.0`, while the wrapper reads the workspace release version and passes `--pre-release` when that
-release version is a SemVer prerelease such as `0.8.0-alpha.3`.
+`vsce package` directly. The unpublished extension owns an independent version track beginning at
+`0.1.0`; the workspace version identifies the bundled `merman-lsp` and `merman-cli` binaries for
+provenance and does not determine the VSIX version.
 The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently
 depend on a Rust workspace.
 
 The GitHub Actions workflow `.github/workflows/vscode-extension.yml` runs the same package smoke on
-Linux, macOS, and Windows and uploads platform-specific VSIX artifacts named from the detected Node
-runtime platform, such as:
+Linux, macOS, and Windows. Each artifact contains one platform-specific VSIX file, such as:
 
 - `merman-vscode-linux-x64.vsix`
 - `merman-vscode-darwin-arm64.vsix`
 - `merman-vscode-darwin-x64.vsix`
 - `merman-vscode-win32-x64.vsix`
 
+The GitHub artifact envelope is named
+`merman-vscode-<extension-version>-runtime-<runtime-version>-<runtime-channel>-<source-sha>-<target>`.
+This keeps the independently versioned extension, its bundled Merman runtime, and the exact source
+revision observable without rewriting the VSIX manifest.
+
 Before publishing a VSIX to the Marketplace, verify that `package.json` has the intended
 `publisher`, stable manifest `version`, `preview` status, repository links, and changelog entry,
-then run `npm run verify:vsix -- --vsix <file> --platform <target> --target <target>`. The verifier
-checks the VSIX package manifest version and the pre-release marker against the workspace release
-version. The extension is packaged with runtime binaries for the platform that built it, so publish
-or distribute the matching artifact for the target host.
+then run `npm run verify:vsix -- --vsix <file> --platform <target> --target <target>`. Keep the
+changelog under `Unreleased` until the first `0.1.0` publication is intentionally prepared. The
+extension is packaged with runtime binaries for the platform that built it, so publish or
+distribute the matching artifact for the target host.

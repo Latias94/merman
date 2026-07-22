@@ -69,6 +69,7 @@ Use `merman_engine_new` when several calls share one options document. Concurren
 - Diagnostics and parser-facts payload schemas: `1`. These schema numbers are independent of the native ABI. The current facts v1 contract is parser-only; the removed alpha TextScan shape is not accepted.
 - Text measurement: ABI 2 defines 19 exact operations (`0..18`) and four tagged result kinds. A handled callback must return the result kind required by `request.operation`; do not infer a shape from zero-valued fields.
 - Diagram discovery: query `merman_diagram_family_capabilities_json()` instead of hard-coding parser, editor, layout, or render availability.
+- Runtime discovery: query `merman_runtime_contract_json()` for schema `1` ABI/package/options/payload versions, compiled features, registry facts, and the descriptor-driven resource catalog. Render-disabled artifacts report `resources: null`.
 
 This prerelease replaced the earlier ABI 2 text-measurement records without changing the numeric ABI. Rebuild the native library and host bindings together; old headers will fail the struct-size contract.
 

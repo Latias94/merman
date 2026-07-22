@@ -27,6 +27,26 @@ OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS = {
     "package.json",
 }
 NON_SURFACE_PACKAGE_MANIFESTS = REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS | OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS
+PACKAGE_INVENTORY_IGNORED_DIRECTORY_NAMES = {
+    ".build",
+    ".git",
+    ".github",
+    ".gradle",
+    ".pytest_cache",
+    ".runtime",
+    ".vscode-test",
+    "__pycache__",
+    "coverage",
+    "dist",
+    "node_modules",
+    "playwright-report",
+    "repo-ref",
+    "target",
+    "test-results",
+}
+PACKAGE_INVENTORY_IGNORED_RELATIVE_DIRECTORIES = {
+    "platforms/web/pkg",
+}
 REQUIRED_SURFACE_DOCS = [
     "docs/release/PACKAGE_SURFACES.md",
     "docs/release/RELEASING.md",
@@ -36,6 +56,7 @@ REQUIRED_SURFACE_DOCS = [
 ]
 GENERATED_SURFACES_BEGIN = "<!-- BEGIN GENERATED RELEASE SURFACES -->"
 GENERATED_SURFACES_END = "<!-- END GENERATED RELEASE SURFACES -->"
+GENERATED_RELEASE_DOCS = {"docs/release/PACKAGE_SURFACES.md"}
 WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION = 1
 WEB_SURFACE_DESCRIPTOR_PATH = "platforms/web/web-surface-descriptor.json"
 WEB_CAPABILITY_NAMES = {
@@ -73,6 +94,13 @@ WEB_RUNTIME_CAPABILITIES = {
     "full": {"analysis", "ascii", "core_full", "core_host", "editor_language", "elk_layout", "render"},
 }
 OPERATIONAL_CHANNEL_STATES = {"published", "artifact-only"}
+PROTECTED_PUBLICATION_KINDS = {
+    "crates.io",
+    "github-release-assets",
+    "npm",
+    "pypi",
+    "pub.dev",
+}
 
 
 class CheckFailure(Exception):
@@ -240,12 +268,12 @@ def check_workflow_operations(root: Path, contract: dict[str, Any]) -> None:
             check_workflow_operation_authority(
                 documents[workflow],
                 job,
-                channel["kind"],
+                channel,
                 workflow,
                 owner,
             )
             if channel["kind"] == "github-actions-artifact":
-                check_actions_artifact_contract(job, channel, workflow, owner)
+                check_actions_artifact_contract(job, surface, channel, workflow, owner)
 
 
 def load_workflow_contract_module() -> Any:
@@ -305,10 +333,21 @@ def condition_is_always_false(value: Any) -> bool:
 def check_workflow_operation_authority(
     document: dict[str, Any],
     job: dict[str, Any],
-    kind: str,
+    channel: dict[str, Any],
     workflow: str,
     owner: str,
 ) -> None:
+    kind = channel["kind"]
+    if kind in PROTECTED_PUBLICATION_KINDS:
+        expected_environment = channel.get("environment")
+        if not isinstance(expected_environment, str) or not expected_environment:
+            fail(workflow, f"{owner}: {kind} operation must declare a protected GitHub Environment")
+        if workflow_job_environment(job) != expected_environment:
+            fail(
+                workflow,
+                f"{owner}: {kind} operation requires GitHub Environment {expected_environment!r}",
+            )
+
     required_permission = {
         "github-release-assets": ("contents", "write"),
         "npm": ("id-token", "write"),
@@ -338,18 +377,37 @@ def check_workflow_operation_authority(
         "GH_REPO": {"${{ github.repository }}"},
         "GH_TOKEN": {"${{ github.token }}", "${{ secrets.GITHUB_TOKEN }}"},
     }
-    for step in active_operation_steps(job, kind):
+    operation_steps = active_operation_steps(job, kind)
+    for step in operation_steps:
         step_env = step.get("env") if isinstance(step.get("env"), dict) else {}
         visible_env = {**job_env, **step_env}
-        if all(
-            isinstance(visible_env.get(key), str)
-            and visible_env[key].strip()
-            and visible_env[key] in trusted_values[key]
-            for key in required_env
-        ):
-            return
-    missing = ", ".join(sorted(required_env))
-    fail(workflow, f"{owner}: {kind} operation requires credential environment keys {missing}")
+        missing = [
+            key
+            for key in sorted(required_env)
+            if not (
+                isinstance(visible_env.get(key), str)
+                and visible_env[key].strip()
+                and visible_env[key] in trusted_values[key]
+            )
+        ]
+        if missing:
+            fail(
+                workflow,
+                f"{owner}: {kind} operation step requires credential environment keys "
+                + ", ".join(missing)
+                + " with trusted values",
+            )
+
+
+def workflow_job_environment(job: dict[str, Any]) -> str | None:
+    environment = job.get("environment")
+    if isinstance(environment, str):
+        return environment
+    if isinstance(environment, dict):
+        name = environment.get("name")
+        if isinstance(name, str):
+            return name
+    return None
 
 
 def active_operation_steps(job: dict[str, Any], kind: str) -> list[dict[str, Any]]:
@@ -383,6 +441,7 @@ def active_operation_steps(job: dict[str, Any], kind: str) -> list[dict[str, Any
 
 def check_actions_artifact_contract(
     job: dict[str, Any],
+    surface: dict[str, Any],
     channel: dict[str, Any],
     workflow: str,
     owner: str,
@@ -400,7 +459,20 @@ def check_actions_artifact_contract(
         fail(workflow, f"{owner}: artifact upload must declare a name")
 
     template = normalize_actions_artifact_name(artifact_name)
-    for placeholder in ["{version}", "{channel}", "{source_sha}", "{target}"]:
+    required_placeholders = ["{version}", "{channel}", "{source_sha}", "{target}"]
+    manifest_version_packages = [
+        package
+        for package in surface.get("packages", [])
+        if package.get("version_source", "target") == "manifest"
+    ]
+    if manifest_version_packages:
+        if len(manifest_version_packages) != 1:
+            fail(workflow, f"{owner}: artifact package_version source must be unambiguous")
+        required_placeholders.append("{package_version}")
+    elif "{package_version}" in template:
+        fail(workflow, f"{owner}: package_version requires a manifest-version package")
+
+    for placeholder in required_placeholders:
         if template.count(placeholder) != 1:
             fail(
                 workflow,
@@ -443,12 +515,17 @@ def check_actions_artifact_contract(
 
 def normalize_actions_artifact_name(name: str) -> str:
     normalized = re.sub(
-        r"\$\{\{\s*steps\.[A-Za-z0-9_-]+\.outputs\.(?:release_)?version\s*\}\}",
-        "{version}",
+        r"\$\{\{\s*steps\.[A-Za-z0-9_-]+\.outputs\.(?:extension|package)_version\s*\}\}",
+        "{package_version}",
         name,
     )
     normalized = re.sub(
-        r"\$\{\{\s*steps\.[A-Za-z0-9_-]+\.outputs\.(?:release_)?channel\s*\}\}",
+        r"\$\{\{\s*steps\.[A-Za-z0-9_-]+\.outputs\.(?:(?:release|runtime)_)?version\s*\}\}",
+        "{version}",
+        normalized,
+    )
+    normalized = re.sub(
+        r"\$\{\{\s*steps\.[A-Za-z0-9_-]+\.outputs\.(?:(?:release|runtime)_)?channel\s*\}\}",
         "{channel}",
         normalized,
     )
@@ -560,31 +637,129 @@ def dist_archive_extension(target: str) -> str:
 
 
 def shell_run_invokes(run: str, expected: tuple[str, ...]) -> bool:
-    for line in executable_shell_lines(run):
-        if not line or line.startswith("#"):
-            continue
-        try:
-            tokens = shlex.split(line, comments=True, posix=True)
-        except ValueError:
-            continue
-        index = 0
-        while index < len(tokens) and tokens[index] in {"{", "!", "if", "then", "elif", "do", "command", "exec"}:
-            index += 1
-        while index < len(tokens) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
-            index += 1
-        if index < len(tokens) and tokens[index] == "env":
-            index += 1
-            while index < len(tokens):
-                token = tokens[index]
-                if token in {"-u", "--unset"} and index + 1 < len(tokens):
-                    index += 2
-                elif token.startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
-                    index += 1
-                else:
-                    break
-        if tuple(tokens[index : index + len(expected)]) == expected:
-            return True
+    functions, top_level_lines = shell_function_bodies(executable_shell_lines(run))
+    pending_line_groups = [top_level_lines]
+    visited_functions: set[str] = set()
+
+    while pending_line_groups:
+        for line in pending_line_groups.pop():
+            tokens = shell_command_tokens(line)
+            if tuple(tokens[: len(expected)]) == expected:
+                return True
+            if tokens and tokens[0] in functions and tokens[0] not in visited_functions:
+                visited_functions.add(tokens[0])
+                pending_line_groups.append(functions[tokens[0]])
     return False
+
+
+SHELL_FUNCTION_DECLARATION = re.compile(
+    r"^(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\s*\))?\s*\{\s*$"
+)
+
+
+def shell_function_bodies(lines: list[str]) -> tuple[dict[str, list[str]], list[str]]:
+    functions: dict[str, list[str]] = {}
+    return functions, shell_scope_lines(lines, functions)
+
+
+def shell_scope_lines(lines: list[str], functions: dict[str, list[str]]) -> list[str]:
+    scope: list[str] = []
+    index = 0
+    control_depth = 0
+
+    while index < len(lines):
+        line = lines[index]
+        control_depth = max(0, control_depth - shell_control_blocks_closed(line))
+        match = SHELL_FUNCTION_DECLARATION.fullmatch(line)
+        if match is None:
+            if control_depth == 0 and shell_line_terminates_scope(line):
+                break
+            scope.append(line)
+            control_depth += shell_control_blocks_opened(line)
+            index += 1
+            continue
+
+        name = match.group(1)
+        body, next_index = shell_function_body(lines, index + 1)
+        if body is None:
+            # A malformed function cannot prove that it invokes a release operation.
+            break
+        functions[name] = shell_scope_lines(body, functions)
+        index = next_index
+
+    return scope
+
+
+def shell_control_blocks_opened(line: str) -> int:
+    if re.match(r"^(?:if|for|select|until|while)\b", line):
+        return 0 if re.search(r"(?:^|;)\s*(?:fi|done)\s*;?\s*$", line) else 1
+    if re.match(r"^case\b", line):
+        return 0 if re.search(r"(?:^|;)\s*esac\s*;?\s*$", line) else 1
+    if line == "(":
+        return 1
+    return 0
+
+
+def shell_control_blocks_closed(line: str) -> int:
+    return int(bool(re.match(r"^(?:fi|done|esac)\b", line) or line == ")"))
+
+
+def shell_line_terminates_scope(line: str) -> bool:
+    tokens = shell_command_tokens(line)
+    return bool(tokens and tokens[0] in {"exit", "return"})
+
+
+def shell_function_body(lines: list[str], start: int) -> tuple[list[str] | None, int]:
+    depth = 1
+    body: list[str] = []
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if line == "}":
+            depth -= 1
+            if depth == 0:
+                return body, index + 1
+            body.append(line)
+        else:
+            if line == "{" or SHELL_FUNCTION_DECLARATION.fullmatch(line):
+                depth += 1
+            body.append(line)
+        index += 1
+    return None, index
+
+
+def shell_command_tokens(line: str) -> list[str]:
+    if not line or line.startswith("#"):
+        return []
+    try:
+        tokens = shlex.split(line, comments=True, posix=True)
+    except ValueError:
+        return []
+    index = 0
+    while index < len(tokens) and tokens[index] in {
+        "{",
+        "!",
+        "if",
+        "then",
+        "elif",
+        "do",
+        "command",
+        "exec",
+    }:
+        index += 1
+    while index < len(tokens) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
+        index += 1
+    if index < len(tokens) and tokens[index] == "env":
+        index += 1
+        while index < len(tokens):
+            token = tokens[index]
+            if token in {"-u", "--unset"} and index + 1 < len(tokens):
+                index += 2
+            elif token.startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+                index += 1
+            else:
+                break
+    return tokens[index:]
 
 
 def executable_shell_lines(run: str) -> list[str]:
@@ -693,27 +868,40 @@ def iter_package_jsons(root: Path) -> list[Path]:
     if git_manifests is not None:
         return git_manifests
 
-    ignored_dirs = {
-        ".git",
-        ".github",
-        ".gradle",
-        ".pytest_cache",
-        ".vscode-test",
-        "coverage",
-        "dist",
-        "node_modules",
-        "repo-ref",
-        "target",
-    }
     manifests: list[Path] = []
-    for current, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if name not in ignored_dirs]
+    for current, dirs, files in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        dirs[:] = sorted(
+            name
+            for name in dirs
+            if name not in PACKAGE_INVENTORY_IGNORED_DIRECTORY_NAMES
+            and normalize_rel((current_path / name).relative_to(root))
+            not in PACKAGE_INVENTORY_IGNORED_RELATIVE_DIRECTORIES
+        )
         if "package.json" in files:
-            manifests.append(Path(current) / "package.json")
-    return manifests
+            manifests.append(current_path / "package.json")
+    return sorted(manifests)
 
 
 def git_visible_package_jsons(root: Path) -> list[Path] | None:
+    """Return tracked and non-ignored untracked manifests for a Git repository."""
+    try:
+        top_level = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if top_level.returncode != 0:
+        return None
+    try:
+        if Path(top_level.stdout.strip()).resolve(strict=True) != root.resolve(strict=True):
+            return None
+    except OSError:
+        return None
+
     try:
         result = subprocess.run(
             [
@@ -724,20 +912,26 @@ def git_visible_package_jsons(root: Path) -> list[Path] | None:
                 "--cached",
                 "--others",
                 "--exclude-standard",
+                "-z",
                 "--",
-                "*package.json",
+                "package.json",
+                "**/package.json",
             ],
-            check=True,
+            check=False,
             capture_output=True,
-            text=True,
         )
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return [
-        root / line
-        for line in result.stdout.splitlines()
-        if line == "package.json" or line.endswith("/package.json")
-    ]
+    except OSError as error:
+        raise CheckFailure(f"git package manifest inventory failed: {error}") from error
+    if result.returncode != 0:
+        diagnostic = os.fsdecode(result.stderr).strip() or "git ls-files failed"
+        raise CheckFailure(f"git package manifest inventory failed: {diagnostic}")
+
+    manifests = {
+        root / os.fsdecode(raw_path)
+        for raw_path in result.stdout.split(b"\0")
+        if raw_path and Path(os.fsdecode(raw_path)).name == "package.json"
+    }
+    return sorted(path for path in manifests if path.is_file())
 
 
 def check_publishable_crate_inventory(root: Path, contract: dict[str, Any]) -> None:
@@ -998,8 +1192,7 @@ def check_release_docs(root: Path, contract: dict[str, Any]) -> None:
     for surface in contract["surfaces"]:
         if not surface["public"]:
             continue
-        if surface["entry_point"] not in package_surfaces + readme:
-            fail("docs/release/PACKAGE_SURFACES.md", f"missing entry point {surface['entry_point']}")
+        check_public_surface_entry_point_docs(root, surface)
 
     descriptor = load_web_surface_descriptor(root, contract["feature_contract"])
     documented_features = cargo_features(root, "crates/merman-wasm/Cargo.toml") - {"default"}
@@ -1014,6 +1207,16 @@ def check_release_docs(root: Path, contract: dict[str, Any]) -> None:
     ]:
         if command not in releasing + package_surfaces:
             fail("docs/release/RELEASING.md", f"missing release helper command {command}")
+
+
+def check_public_surface_entry_point_docs(root: Path, surface: dict[str, Any]) -> None:
+    owner = f"docs/release/SURFACES.json:{surface['id']}"
+    docs = [doc for doc in surface["docs"] if doc not in GENERATED_RELEASE_DOCS]
+    if not docs:
+        fail(owner, "public surface must declare at least one non-generated documentation file")
+    entry_point = surface["entry_point"]
+    if not any(entry_point in read_text(root, doc) for doc in docs):
+        fail(owner, f"entry point {entry_point!r} is absent from declared non-generated docs")
 
 
 def render_public_surface_table(contract: dict[str, Any]) -> str:
@@ -1106,39 +1309,137 @@ def check_blocked_channel_metadata(contract: dict[str, Any]) -> None:
 
 
 def check_ci_wiring(root: Path) -> None:
-    ci = read_text(root, ".github/workflows/ci.yml")
-    for token in [
+    workflow_contract = load_workflow_contract_module()
+    workflow_path = ".github/workflows/ci.yml"
+    try:
+        document = workflow_contract.load_workflow_contract(require_file(root, workflow_path))
+    except (OSError, workflow_contract.WorkflowContractError) as error:
+        fail(workflow_path, f"invalid CI workflow contract: {error}")
+
+    active_steps = [
+        step
+        for job in document["jobs"].values()
+        if not condition_is_always_false(job.get("if"))
+        for step in job.get("steps", [])
+        if not condition_is_always_false(step.get("if"))
+        and isinstance(step.get("run"), str)
+    ]
+    verifier = ("python3", "scripts/verify-release-surfaces.py")
+    if not any(shell_run_invokes(step["run"], verifier) for step in active_steps):
+        fail(workflow_path, f"CI does not execute {' '.join(verifier)}")
+    for test_script in [
         "scripts/test_release_status.py",
         "scripts/test_verify_release_surfaces.py",
-        "scripts/verify-release-surfaces.py",
     ]:
-        if token not in ci:
-            fail(".github/workflows/ci.yml", f"CI does not run {token}")
+        if not any(
+            shell_run_invokes_python_unittest(step["run"], test_script)
+            for step in active_steps
+        ):
+            fail(workflow_path, f"CI does not execute unittest module {test_script}")
+
+
+def shell_run_invokes_python_unittest(run: str, test_script: str) -> bool:
+    logical_run = run.replace("\\\n", " ")
+    for line in executable_shell_lines(logical_run):
+        tokens = shell_command_tokens(line)
+        if tokens[:3] == ["python3", "-m", "unittest"] and test_script in tokens[3:]:
+            return True
+    return False
 
 
 def package_manifest_name(root: Path, kind: str, manifest: str) -> str:
     if kind in {"npm", "vscode"}:
-        return read_json(root, manifest)["name"]
+        return require_manifest_string(read_json(root, manifest), manifest, "name")
     if kind == "crate":
-        data = read_toml(root, manifest)
-        return data["package"]["name"]
+        return require_manifest_string(read_toml(root, manifest), manifest, "package", "name")
     if kind == "python":
-        data = read_toml(root, manifest)
-        return data["project"]["name"]
+        return require_manifest_string(read_toml(root, manifest), manifest, "project", "name")
     if kind == "flutter":
         return require_regex(manifest, read_text(root, manifest), r"^name:\s*([^\s#]+)")
     if kind == "typst":
-        data = read_toml(root, manifest)
-        return data["package"]["name"]
+        return require_manifest_string(read_toml(root, manifest), manifest, "package", "name")
     if kind == "android":
-        text = read_text(root, manifest)
-        group = require_regex(manifest, text, r"\bgroup\s*=\s*\"([^\"]+)\"")
-        artifact = require_regex(manifest, text, r"\bartifactId\s*=\s*\"([^\"]+)\"")
+        text = strip_c_style_comments(read_text(root, manifest))
+        group = require_regex(manifest, text, r"^\s*group\s*=\s*\"([^\"]+)\"")
+        artifact = require_regex(manifest, text, r"^\s*artifactId\s*=\s*\"([^\"]+)\"")
         return f"{group}:{artifact}"
     if kind == "swiftpm":
-        text = read_text(root, manifest)
-        return require_regex(manifest, text, r"name:\s*\"([^\"]+)\"")
+        text = strip_c_style_comments(read_text(root, manifest))
+        return require_regex(
+            manifest,
+            text,
+            r"\blet\s+package\s*=\s*Package\s*\(\s*name\s*:\s*\"([^\"]+)\"",
+        )
     raise CheckFailure(f"unsupported package kind {kind!r} in {manifest}")
+
+
+def require_manifest_string(data: Any, manifest: str, *keys: str) -> str:
+    current = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            fail(manifest, f"missing manifest field {'.'.join(keys)}")
+        current = current[key]
+    if not isinstance(current, str) or not current:
+        fail(manifest, f"manifest field {'.'.join(keys)} must be a non-empty string")
+    return current
+
+
+def strip_c_style_comments(text: str) -> str:
+    result: list[str] = []
+    index = 0
+    quote: str | None = None
+    block_depth = 0
+    line_comment = False
+    while index < len(text):
+        char = text[index]
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if line_comment:
+            if char == "\n":
+                line_comment = False
+                result.append(char)
+            else:
+                result.append(" ")
+            index += 1
+            continue
+        if block_depth:
+            if char == "/" and following == "*":
+                block_depth += 1
+                result.extend((" ", " "))
+                index += 2
+            elif char == "*" and following == "/":
+                block_depth -= 1
+                result.extend((" ", " "))
+                index += 2
+            else:
+                result.append("\n" if char == "\n" else " ")
+                index += 1
+            continue
+        if quote is not None:
+            result.append(char)
+            if char == "\\" and following:
+                result.append(following)
+                index += 2
+            else:
+                if char == quote:
+                    quote = None
+                index += 1
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            result.append(char)
+            index += 1
+        elif char == "/" and following == "/":
+            line_comment = True
+            result.extend((" ", " "))
+            index += 2
+        elif char == "/" and following == "*":
+            block_depth = 1
+            result.extend((" ", " "))
+            index += 2
+        else:
+            result.append(char)
+            index += 1
+    return "".join(result)
 
 
 def cargo_features(root: Path, manifest: str) -> set[str]:

@@ -1,7 +1,10 @@
 #![cfg(feature = "render")]
 
 use merman::ParseOptions;
-use merman::render::{LayoutOptions, RenderFamilyKind, SvgRenderOptions, prepare_render_sync};
+use merman::render::{
+    HeadlessRenderer, LayoutOptions, RenderFamilyKind, RenderResourcePolicy, SvgRenderOptions,
+    prepare_render_sync,
+};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -34,6 +37,28 @@ fn try_render_swimlane(source: &str, diagram_id: &str) -> Result<String, String>
 
 fn render_swimlane(source: &str, diagram_id: &str) -> String {
     try_render_swimlane(source, diagram_id).expect("swimlane SVG")
+}
+
+#[test]
+fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
+    let renderer = HeadlessRenderer::new().with_resource_policy(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                merman::render::ResourceLimitId::MaxSwimlaneLineHopSegmentPairs,
+                1,
+            )
+            .unwrap(),
+    );
+
+    let error = renderer
+        .render_svg_sync(DOCS_BASIC)
+        .expect_err("the second overlapping cross-edge segment pair must exceed the budget");
+    assert!(
+        error
+            .to_string()
+            .contains("max_swimlane_line_hop_segment_pairs"),
+        "{error}"
+    );
 }
 
 fn rendered_edges(svg: &str) -> BTreeMap<String, RenderedEdge> {

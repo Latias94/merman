@@ -1,9 +1,9 @@
 {
   "generated_by": "cargo run -p xtask -- gen-editor-token-descriptor",
   "source_manifest": "playground/examples/manifest.json",
-  "evidence_digest": "sha256:cb10b04f1f30b2ba995b277fd4872a4e1b8bd79d422a63d3d7b507d42847fa5f",
+  "evidence_digest": "sha256:9188a78e2770f19545d441ece50c8234a62628d3b6f1e1480371bb880902aef3",
   "schema_version": 1,
-  "descriptor_digest": "sha256:f57cf49d66fc2cade424dde25fdad7ca593dc3234ab2140bca9d9151bdddecb1",
+  "descriptor_digest": "sha256:f72e872bc49ba658c0c3cd249995c8817bd76fb1e5f7ee56d9e024b733f14399",
   "packed_encoding": "lsp_relative_utf16",
   "words_per_token": 5,
   "family_cases": [

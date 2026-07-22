@@ -22,6 +22,7 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
             model,
             parsed.metadata().title.as_deref(),
             parsed.metadata().effective_config.as_value(),
+            session.resource_policy(),
         )
         .expect("layout ok")
     };

@@ -9,10 +9,12 @@ fn generated_descriptor_exposes_the_stable_schema_one_contract() {
     let descriptor = semantic_token_descriptor();
 
     assert_eq!(descriptor.schema_version, 1);
-    assert_eq!(
-        descriptor.digest,
-        "sha256:f57cf49d66fc2cade424dde25fdad7ca593dc3234ab2140bca9d9151bdddecb1"
-    );
+    let digest = descriptor
+        .digest
+        .strip_prefix("sha256:")
+        .expect("descriptor digest must use SHA-256 provenance");
+    assert_eq!(digest.len(), 64);
+    assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
     assert_eq!(descriptor.digest, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
     assert_eq!(descriptor.token_kinds.len(), 22);
     assert_eq!(descriptor.modifiers.len(), 9);

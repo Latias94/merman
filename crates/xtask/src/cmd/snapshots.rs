@@ -529,6 +529,7 @@ enum GeneratedArtifactCheck {
     DompurifyDefaults,
     EditorTokenDescriptor,
     PlaygroundExampleCatalog,
+    ResourceContract,
     ThemeSnapshot,
     TextMeasurementAbi,
     WebDiagramCatalog,
@@ -550,12 +551,13 @@ fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::ThemeSnapshot]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 7] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 8] {
     [
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
         GeneratedArtifactCheck::EditorTokenDescriptor,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
+        GeneratedArtifactCheck::ResourceContract,
         GeneratedArtifactCheck::ThemeSnapshot,
         GeneratedArtifactCheck::TextMeasurementAbi,
         GeneratedArtifactCheck::WebDiagramCatalog,
@@ -569,6 +571,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
             GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
+            GeneratedArtifactCheck::ResourceContract => "resource contract",
             GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
             GeneratedArtifactCheck::TextMeasurementAbi => "text-measurement ABI",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
@@ -627,6 +630,7 @@ fn verify_generated_artifact_check(
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
+        GeneratedArtifactCheck::ResourceContract => super::verify_resource_contract_artifacts(),
         GeneratedArtifactCheck::ThemeSnapshot => verify_theme_snapshot_artifact(tmp_dir),
         GeneratedArtifactCheck::TextMeasurementAbi => {
             super::verify_text_measurement_abi_artifacts()
@@ -970,6 +974,7 @@ mod tests {
                 GeneratedArtifactCheck::DompurifyDefaults,
                 GeneratedArtifactCheck::EditorTokenDescriptor,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
+                GeneratedArtifactCheck::ResourceContract,
                 GeneratedArtifactCheck::ThemeSnapshot,
                 GeneratedArtifactCheck::TextMeasurementAbi,
                 GeneratedArtifactCheck::WebDiagramCatalog,
@@ -990,6 +995,10 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
             "Playground example catalog"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::ResourceContract.label(),
+            "resource contract"
         );
         assert_eq!(
             verify_theme_snapshot_checks(),

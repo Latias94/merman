@@ -136,6 +136,12 @@ class TypeScriptContract {
     return literals;
   }
 
+  exportedTypeIsStringLiteralUnion(file, exportName) {
+    const type = this.#declaredExportType(file, exportName);
+    const members = type.isUnion() ? type.types : [type];
+    return members.length > 0 && members.every((member) => member.isStringLiteral());
+  }
+
   exportedFunctionReturnPropertyNames(file, exportName) {
     const symbol = this.#resolvedExport(file, exportName);
     const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];

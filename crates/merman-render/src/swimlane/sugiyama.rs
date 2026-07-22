@@ -1,8 +1,9 @@
 use super::config::SwimlaneConfig;
+use super::mermaid_identifier_locale_cmp;
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::model::SwimlaneDirection;
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 struct CycleResult {
@@ -77,7 +78,10 @@ fn weighted_lane_edges(layout: &WorkingLayout) -> Vec<WeightedLaneEdge> {
             weight,
         })
         .collect();
-    output.sort_by(|a, b| a.left.cmp(&b.left).then_with(|| a.right.cmp(&b.right)));
+    output.sort_by(|a, b| {
+        mermaid_identifier_locale_cmp(&a.left, &b.left)
+            .then_with(|| mermaid_identifier_locale_cmp(&a.right, &b.right))
+    });
     output
 }
 
@@ -229,7 +233,8 @@ fn remove_cycles(layout: &WorkingLayout) -> CycleResult {
         indices.sort_by(|left, right| {
             let a = &edges[*left];
             let b = &edges[*right];
-            a.to.cmp(&b.to).then_with(|| a.id.cmp(&b.id))
+            mermaid_identifier_locale_cmp(&a.to, &b.to)
+                .then_with(|| mermaid_identifier_locale_cmp(&a.id, &b.id))
         });
     }
 
@@ -257,7 +262,7 @@ fn remove_cycles(layout: &WorkingLayout) -> CycleResult {
     }
 
     let mut node_ids: Vec<&str> = layout.nodes.keys().map(String::as_str).collect();
-    node_ids.sort_unstable();
+    node_ids.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
     let mut colors = HashMap::new();
     let mut reversed_indices = HashSet::new();
     for id in node_ids {
@@ -298,9 +303,29 @@ fn successor_map(
             .push(edge.to.clone());
     }
     for values in successors.values_mut() {
-        values.sort();
+        values.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
     }
     successors
+}
+
+/// JavaScript's relational string operators compare UTF-16 code units, rather
+/// than Unicode scalar values. Mermaid's single-node Kahn queue insertion uses
+/// that operator after the initial `localeCompare` sort, so keep this boundary
+/// explicit instead of relying on Rust's `str::cmp`.
+fn javascript_utf16_cmp(left: &str, right: &str) -> Ordering {
+    let mut left_units = left.encode_utf16();
+    let mut right_units = right.encode_utf16();
+    loop {
+        match (left_units.next(), right_units.next()) {
+            (Some(left), Some(right)) => match left.cmp(&right) {
+                Ordering::Equal => continue,
+                ordering => return ordering,
+            },
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (None, None) => return Ordering::Equal,
+        }
+    }
 }
 
 fn indegrees(
@@ -317,37 +342,48 @@ fn indegrees(
 fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool) -> Vec<String> {
     let mut indegree = indegrees(layout.nodes.keys().cloned(), edges);
     let successors = successor_map(layout.nodes.keys().cloned(), edges);
-    let mut frontier: BTreeSet<String> = indegree
+    let mut frontier: Vec<String> = indegree
         .iter()
         .filter(|(_, degree)| **degree == 0)
         .map(|(id, _)| id.clone())
         .collect();
+    frontier.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
     let mut output = Vec::with_capacity(layout.nodes.len());
 
     while !frontier.is_empty() {
         let current_generation: Vec<String> = if by_generation {
-            frontier.iter().cloned().collect()
+            std::mem::take(&mut frontier)
         } else {
-            frontier.iter().next().cloned().into_iter().collect()
+            vec![frontier.remove(0)]
         };
         for id in &current_generation {
-            frontier.remove(id);
             output.push(id.clone());
         }
-        let mut next = BTreeSet::new();
+        let mut next = Vec::new();
         for id in current_generation {
             for successor in successors.get(&id).into_iter().flatten() {
                 let degree = indegree.entry(successor.clone()).or_default();
                 *degree = degree.saturating_sub(1);
                 if *degree == 0 {
-                    next.insert(successor.clone());
+                    if by_generation {
+                        next.push(successor.clone());
+                    } else {
+                        // This intentionally mirrors `queue[i] < v` in
+                        // Mermaid's topo helper, which is a UTF-16 relational
+                        // comparison rather than another localeCompare call.
+                        let insertion = frontier
+                            .iter()
+                            .position(|candidate| {
+                                !javascript_utf16_cmp(candidate, successor).is_lt()
+                            })
+                            .unwrap_or(frontier.len());
+                        frontier.insert(insertion, successor.clone());
+                    }
                 }
-            }
-            if !by_generation {
-                frontier.append(&mut next);
             }
         }
         if by_generation {
+            next.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
             frontier = next;
         }
     }
@@ -356,7 +392,7 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
         output
     } else {
         let mut fallback: Vec<String> = layout.nodes.keys().cloned().collect();
-        fallback.sort();
+        fallback.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
         fallback
     }
 }
@@ -618,7 +654,7 @@ fn optimize_ranks_by_crossings(
                 .copied()
                 .unwrap_or(0)
                 .cmp(&rank_of.get(left).copied().unwrap_or(0))
-                .then_with(|| left.cmp(right))
+                .then_with(|| mermaid_identifier_locale_cmp(left, right))
         });
         for id in nodes {
             let current = rank_of.get(&id).copied().unwrap_or(0);
@@ -654,9 +690,9 @@ fn make_proper_layering(
 ) -> (Layering, Vec<ProperEdge>) {
     let mut sorted = edges.to_vec();
     sorted.sort_by(|a, b| {
-        a.id.cmp(&b.id)
-            .then_with(|| a.from.cmp(&b.from))
-            .then_with(|| a.to.cmp(&b.to))
+        mermaid_identifier_locale_cmp(&a.id, &b.id)
+            .then_with(|| mermaid_identifier_locale_cmp(&a.from, &b.from))
+            .then_with(|| mermaid_identifier_locale_cmp(&a.to, &b.to))
     });
     let mut proper_edges = Vec::new();
     let mut dummy_sequence = 0;
@@ -835,7 +871,7 @@ fn reorder_layer(
                         .get(a.as_str())
                         .cmp(&current_index.get(b.as_str()))
                 })
-                .then_with(|| a.cmp(b))
+                .then_with(|| mermaid_identifier_locale_cmp(a, b))
         });
     };
 
@@ -870,7 +906,13 @@ fn reorder_layer(
         }
     }
     let mut remaining: Vec<Vec<String>> = by_lane.into_values().collect();
-    remaining.sort_by(|a, b| a.first().cmp(&b.first()));
+    remaining.sort_by(|a, b| {
+        a.first()
+            .zip(b.first())
+            .map_or(Ordering::Equal, |(left, right)| {
+                mermaid_identifier_locale_cmp(left, right)
+            })
+    });
     for mut bucket in remaining {
         sort_bucket(&mut bucket);
         output.extend(bucket);

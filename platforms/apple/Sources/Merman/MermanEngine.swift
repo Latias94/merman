@@ -130,12 +130,115 @@ private struct MermanLintRuleCatalogResponse: Decodable {
     let rules: [MermanLintRuleCatalogEntry]
 }
 
+public struct MermanRuntimeContract: Decodable {
+    public let schemaVersion: UInt32
+    public let abiVersion: UInt32
+    public let packageVersion: String
+    public let optionsSchemaVersion: UInt32
+    public let payloadSchemas: [String: UInt32]
+    public let features: MermanRuntimeFeatures
+    public let registry: MermanRuntimeRegistry
+    public let resources: MermanRuntimeResources?
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case abiVersion = "abi_version"
+        case packageVersion = "package_version"
+        case optionsSchemaVersion = "options_schema_version"
+        case payloadSchemas = "payload_schemas"
+        case features
+        case registry
+        case resources
+    }
+}
+
+public struct MermanRuntimeFeatures: Decodable {
+    public let render: Bool
+    public let analysis: Bool
+    public let ascii: Bool
+    public let coreFull: Bool
+    public let coreHost: Bool
+    public let elkLayout: Bool
+    public let ratexMath: Bool
+    public let editorLanguage: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case render
+        case analysis
+        case ascii
+        case coreFull = "core_full"
+        case coreHost = "core_host"
+        case elkLayout = "elk_layout"
+        case ratexMath = "ratex_math"
+        case editorLanguage = "editor_language"
+    }
+}
+
+public struct MermanRuntimeRegistry: Decodable {
+    public let profile: String
+    public let diagramFamilyCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case profile
+        case diagramFamilyCount = "diagram_family_count"
+    }
+}
+
+public struct MermanRuntimeResources: Decodable {
+    public let schemaVersion: UInt32
+    public let generalBindingDefaultProfile: String
+    public let cliDefaultProfile: String
+    public let limits: [MermanRuntimeResourceLimit]
+    public let profiles: [MermanRuntimeResourceProfile]
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case generalBindingDefaultProfile = "general_binding_default_profile"
+        case cliDefaultProfile = "cli_default_profile"
+        case limits
+        case profiles
+    }
+}
+
+public struct MermanRuntimeResourceLimit: Decodable {
+    public let id: String
+    public let phase: String
+    public let description: String
+    public let overridable: Bool
+    public let hardCap: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case phase
+        case description
+        case overridable
+        case hardCap = "hard_cap"
+    }
+}
+
+public struct MermanRuntimeResourceProfile: Decodable {
+    public let id: String
+    public let purpose: String
+    public let trustAssumption: String
+    public let recommendedBindingDefault: Bool
+    public let limits: [String: Int?]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case purpose
+        case trustAssumption = "trust_assumption"
+        case recommendedBindingDefault = "recommended_binding_default"
+        case limits
+    }
+}
+
 public final class MermanEngine {
     public static let abiVersion = mermanGeneratedAbiVersion
     private static let okCode: Int32 = 0
 
     public let packageVersion: String
     private var supportedDiagramsCache: [String]?
+    private var runtimeContractCache: MermanRuntimeContract?
     private var asciiCapabilitiesCache: [MermanAsciiCapability]?
     private var diagramFamilyCapabilitiesCache: [MermanDiagramFamilyCapability]?
     private var lintRuleCatalogCache: [MermanLintRuleCatalogEntry]?
@@ -209,6 +312,16 @@ public final class MermanEngine {
         let values = try metadata(merman_supported_diagrams_json)
         supportedDiagramsCache = values
         return values
+    }
+
+    public func runtimeContract() throws -> MermanRuntimeContract {
+        if let runtimeContractCache {
+            return runtimeContractCache
+        }
+        let text = try decode(merman_runtime_contract_json())
+        let value = try decodeJson(MermanRuntimeContract.self, from: Data(text.utf8))
+        runtimeContractCache = value
+        return value
     }
 
     public func asciiCapabilities() throws -> [MermanAsciiCapability] {

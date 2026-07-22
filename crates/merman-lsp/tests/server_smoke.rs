@@ -6,11 +6,12 @@ mod prelude {
     pub use tower::{Service, ServiceExt};
     pub use tower_lsp::jsonrpc::{ErrorCode, Request};
     pub use tower_lsp::lsp_types::{
-        CodeActionContext, CodeActionKind, CodeActionParams, DiagnosticServerCapabilities,
-        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChanges,
-        DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-        DocumentSymbolParams, GotoDefinitionParams, HoverContents, HoverParams, InitializeParams,
+        CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+        DiagnosticServerCapabilities, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+        DocumentDiagnosticReportResult, DocumentSymbolParams, FoldingRange, FoldingRangeKind,
+        FoldingRangeParams, GotoDefinitionParams, HoverContents, HoverParams, InitializeParams,
         LogMessageParams, NumberOrString, Position, PrepareRenameResponse,
         PublishDiagnosticsParams, Range, ReferenceContext, ReferenceParams, RenameParams,
         SelectionRange, SelectionRangeParams, SemanticTokensDeltaParams,
@@ -27,6 +28,9 @@ mod capabilities;
 #[path = "server_smoke/completion.rs"]
 mod completion;
 
+#[path = "server_smoke/code_actions.rs"]
+mod code_actions;
+
 #[path = "server_smoke/configuration.rs"]
 mod configuration;
 
@@ -35,6 +39,9 @@ mod diagnostics;
 
 #[path = "server_smoke/semantic_tokens.rs"]
 mod semantic_tokens;
+
+#[path = "server_smoke/refresh.rs"]
+mod refresh;
 
 #[path = "server_smoke/structure_navigation.rs"]
 mod structure_navigation;

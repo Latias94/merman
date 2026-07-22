@@ -57,7 +57,8 @@ function dependencies(
     initialize: async () => undefined,
     isInitialized: () => false,
     isRetryableInitializationError: (error) =>
-      error instanceof WebAssembly.CompileError,
+      error instanceof WebAssembly.CompileError ||
+      error instanceof WebAssembly.LinkError,
     loadModule: async () => ({ module: true }),
     ...overrides,
   };
@@ -136,6 +137,30 @@ test("retries a compile failure with one reload response", async () => {
         initializeCalls += 1;
         if (initializeCalls === 1) {
           throw new WebAssembly.CompileError("bad cached bytes");
+        }
+      },
+    }),
+  );
+
+  await runtime.ensureReady();
+  assert.deepEqual(fetchModes, ["default", "reload"]);
+  assert.equal(initializeCalls, 2);
+  assert.equal(runtime.store.getState().status, "ready");
+});
+
+test("retries a LinkError with one reload response", async () => {
+  const fetchModes: MermanRequestCache[] = [];
+  let initializeCalls = 0;
+  const runtime = createMermanRuntime(
+    dependencies({
+      fetchWasm: async ({ cache }) => {
+        fetchModes.push(cache);
+        return readyResponse();
+      },
+      initialize: async () => {
+        initializeCalls += 1;
+        if (initializeCalls === 1) {
+          throw new WebAssembly.LinkError("stale import table");
         }
       },
     }),

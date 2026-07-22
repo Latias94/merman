@@ -350,30 +350,40 @@ pub(super) fn prepare(
         .map(|node| node.id.clone())
         .collect();
     if !loose_ids.is_empty() {
-        nodes.insert(
-            DEFAULT_LANE_ID.to_string(),
-            WorkingNode {
-                id: DEFAULT_LANE_ID.to_string(),
-                label: String::new(),
-                label_type: "text".to_string(),
-                shape: "swimlane".to_string(),
-                kind: WorkingNodeKind::Group,
-                parent_id: None,
-                top_lane_id: None,
-                requested_dir: Some(direction.as_str().to_string()),
-                padding: DEFAULT_LANE_PADDING,
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-                label_width: 0.0,
-                label_height: 0.0,
-                layer: 0,
-                order: 0,
-                content_top: None,
-                title_rect: None,
-            },
-        );
+        if let Some(default_lane) = nodes.get_mut(DEFAULT_LANE_ID) {
+            // Mermaid reuses an explicit group with the reserved id. Preserve
+            // its title, classes, styles, and measured geometry; only apply
+            // the swimlane shape/direction required by the layout adapter.
+            if default_lane.is_group() {
+                default_lane.shape = "swimlane".to_string();
+                default_lane.requested_dir = Some(direction.as_str().to_string());
+            }
+        } else {
+            nodes.insert(
+                DEFAULT_LANE_ID.to_string(),
+                WorkingNode {
+                    id: DEFAULT_LANE_ID.to_string(),
+                    label: String::new(),
+                    label_type: "text".to_string(),
+                    shape: "swimlane".to_string(),
+                    kind: WorkingNodeKind::Group,
+                    parent_id: None,
+                    top_lane_id: None,
+                    requested_dir: Some(direction.as_str().to_string()),
+                    padding: DEFAULT_LANE_PADDING,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                    label_width: 0.0,
+                    label_height: 0.0,
+                    layer: 0,
+                    order: 0,
+                    content_top: None,
+                    title_rect: None,
+                },
+            );
+        }
         for id in loose_ids {
             if let Some(node) = nodes.get_mut(&id) {
                 node.parent_id = Some(DEFAULT_LANE_ID.to_string());

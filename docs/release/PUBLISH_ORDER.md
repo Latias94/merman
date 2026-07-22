@@ -1,22 +1,27 @@
 # Publish Order
 
-Status: draft for next workspace release.
-Last updated: 2026-07-09
+Status: maintained workspace publish order.
+Last updated: 2026-07-21
 
 ## Version Decision
 
-Next release target: `0.8.0-alpha.3`.
+Published workspace prerelease baseline: `0.8.0-alpha.3`.
+
+The next workspace release version has not been selected. Release operators must provide an
+explicit candidate rather than treating the versions in a development checkout as a release
+decision.
 
 Rationale:
 
 - crates.io versions are immutable and `0.8.0-alpha.1` has already started the 0.8 release line.
 - The workspace has added 0.8-line Typst/package-size feature work and Mermaid parity fixes that
   should be tested behind a prerelease before the next stable cut.
-- The platform packages should stay aligned with the workspace release so downstream editor, web,
-  FFI, and documentation integrations test one coherent version graph.
+- Workspace-coupled platform packages should stay aligned so downstream Web, FFI, and documentation
+  integrations test one coherent version graph. The unpublished VS Code extension follows its own
+  `0.1.x` version track and records the bundled workspace runtime separately.
 
-Manifests are aligned to `0.8.0-alpha.3` for this release. Python package metadata uses the PEP 440
-spelling `0.8.0a3`.
+Workspace-coupled manifests remain aligned to the published `0.8.0-alpha.3` baseline. Python package
+metadata uses the PEP 440 spelling `0.8.0a3`.
 
 ## Publish Order
 
@@ -101,9 +106,11 @@ cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package
 --list` only as a file-list check. It does not replace publish dry-run verification.
 
-## Current Package Matrix
+## Pre-Alpha.3 Package Evidence Snapshot
 
-As of 2026-07-03:
+The table below is historical pre-publication evidence captured on 2026-07-03. Use
+`scripts/release-status.py` for current registry state; do not infer current availability from this
+snapshot.
 
 | Crate | Gate | Current result |
 | --- | --- | --- |

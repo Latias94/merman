@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-16
+Last updated: 2026-07-21
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -79,12 +79,16 @@ unsupported enum values, or non-finite numeric values return binding errors inst
   },
   "resources": {
     "profile": "interactive",
-    "max_source_bytes": 2097152,
-    "max_svg_bytes": 25165824,
-    "max_flowchart_nodes": 8000,
-    "max_flowchart_edges": 16000,
-    "max_flowchart_subgraphs": 2000,
-    "max_label_bytes": 2097152
+    "limits": {
+      "max_source_bytes": 2097152,
+      "max_svg_bytes": 25165824,
+      "max_flowchart_nodes": 8000,
+      "max_flowchart_edges": 16000,
+      "max_flowchart_subgraphs": 2000,
+      "max_venn_areas": 8000,
+      "max_swimlane_line_hop_segment_pairs": 250000,
+      "max_label_bytes": 2097152
+    }
   },
   "lint": {
     "profile": "recommended",
@@ -119,7 +123,7 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | ignored | Reserved for future options-schema versioning. |
+| `version` | integer | `1` | Options-schema version. Omit it for schema 1 compatibility; any supplied value other than `1` is rejected at the version boundary. |
 | `fixed_today` | string | system local date | Fixed local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. |
 | `fixed_local_offset_minutes` | integer | system local timezone | Fixed local timezone offset in minutes for deterministic local-time parsing and rendering. |
 | `host_theme` | object | none | Opt-in host/editor theme profile compiled into Mermaid config and SVG output settings. |
@@ -351,24 +355,96 @@ and host-owned output postprocessing belong under `svg.*`. Unknown `environment`
 
 ## Resource Options
 
-`resources` controls render-wide deterministic budgets. These limits are separate from raster
-pixel/PDF limits; disabling raster limits does not disable source, layout, label, or SVG limits.
+`resources` controls render-wide deterministic budgets. These limits are separate from Cargo
+features and from raster/PDF/image budgets. Cargo features decide which capabilities are compiled;
+the resource profile bounds work inside an available semantic/SVG capability. PNG/JPG pixmap,
+vector-PDF filter, embedded-image, and aggregate encoding budgets remain independent.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `resources.profile` | string | `interactive` | `interactive`, `typst-package`, `trusted-native`, or `unbounded-for-trusted-input`. |
-| `resources.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
-| `resources.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
-| `resources.max_flowchart_nodes` | positive integer | profile value | Flowchart nodes plus subgraph layout nodes. |
-| `resources.max_flowchart_edges` | positive integer | profile value | Flowchart edge cardinality. |
-| `resources.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
-| `resources.max_label_bytes` | positive integer | profile value | Aggregate Flowchart ids, labels, subgraph titles, and tooltips. |
+| `resources.profile` | string | `interactive` | `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`. |
+| `resources.limits.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
+| `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
+| `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
+| `resources.limits.max_flowchart_nodes` | positive integer | profile value | Flowchart nodes plus subgraph layout nodes. |
+| `resources.limits.max_flowchart_edges` | positive integer | profile value | Flowchart edge cardinality. |
+| `resources.limits.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
+| `resources.limits.max_class_nodes` | positive integer | profile value | Class diagram node cardinality. |
+| `resources.limits.max_class_edges` | positive integer | profile value | Class diagram edge cardinality. |
+| `resources.limits.max_class_namespaces` | positive integer | profile value | Class diagram namespace cardinality. |
+| `resources.limits.max_zenuml_participants` | positive integer | profile value | ZenUML participant cardinality. |
+| `resources.limits.max_zenuml_statements` | positive integer | profile value | ZenUML statement cardinality. |
+| `resources.limits.max_zenuml_fragments` | positive integer | profile value | ZenUML fragment and group cardinality. |
+| `resources.limits.max_venn_areas` | positive integer | profile value | Venn source areas plus pairwise areas synthesized by the layout engine. |
+| `resources.limits.max_swimlane_line_hop_segment_pairs` | positive integer | profile value | Broad-phase segment pairs inspected while finding Swimlane line hops. |
+| `resources.limits.max_label_bytes` | positive integer | profile value | Aggregate model label bytes. |
 
-`interactive` is the default for binding surfaces. `typst-package` is tighter and is enforced by
+`interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
 the Typst plugin for every call; caller-provided `resources` values are replaced at that transport
 boundary. `trusted-native` is intended for CLI or
 controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
 not a browser or server default.
+
+The profile is a resource-policy choice, not a promise of isolation. `interactive` assumes a
+cooperative author and is suitable for an editor or local preview; it does not stop a hostile or
+multi-tenant caller from consuming CPU after admission. A public service should select
+`constrained` and additionally enforce a wall-clock timeout, memory limit, concurrency quota, and
+preemption or process isolation at the host boundary. `trusted-native` is for a controlled CLI or
+batch job. `unbounded-for-trusted-input` must only be used inside an outer trusted sandbox.
+
+### Profile Decision Table
+
+| Workload | Profile | Required host controls | Output guidance |
+| --- | --- | --- | --- |
+| Browser editor/Playground preview | `interactive` | Abort stale requests; cap concurrent renders | `parity` SVG for browser display |
+| Public upload or multi-tenant API | `constrained` | Timeout, memory, concurrency, and preemption/isolation | `resvg-safe` before raster/PDF conversion |
+| Local `merman-cli` export | `trusted-native` | Process-level cancellation for batch automation | Choose `parity` or `resvg-safe` per consumer |
+| Typst package transport | `constrained` | Typst host remains responsible for process limits | Package-owned SVG contract |
+| Large, fully trusted offline export | `unbounded-for-trusted-input` | Outer process/container isolation and explicit output quotas | Caller owns final output limits |
+
+These defaults are engineering admission baselines, not latency or memory SLOs. Hosts should
+measure their own diagrams and set explicit overrides only after observing peak memory and timeout
+behavior. A profile override cannot raise `max_svg_tree_depth`, which is a hard backend capability.
+
+### Calibration Evidence
+
+Resource-policy changes require a reproducible stress run and a record of the observed boundary:
+
+```sh
+cargo bench -p merman --bench flowchart_stress
+cargo bench -p merman --bench mindmap_layout_stress
+cargo nextest run -p merman-render -p merman-bindings-core
+```
+
+For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
+peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.
+Do not infer a safe limit from a single warm render: compare cold parse, layout, SVG postprocess, and
+failure paths separately. The benchmark methodology documents the phase boundaries and evidence
+format used by the Playground and comparison tools.
+
+Limit ids are closed under resource-contract schema `1`: an unknown id, zero value, removed flat
+field, or attempt to override the non-tunable `max_svg_tree_depth` backend capability is rejected.
+The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
+exact value or `null` for every profile. This avoids copying profile values into host libraries.
+
+## Runtime Contract Discovery
+
+Query the loaded artifact rather than inferring capabilities or resource values from a package
+name. Runtime-contract schema `1` includes native ABI, package version, options schema, payload
+schemas, compiled features, registry profile and family count, plus the resource descriptor when
+rendering is compiled. Analysis-only artifacts return `resources: null`.
+
+| Surface | API |
+| --- | --- |
+| C | `merman_runtime_contract_json()` |
+| Android/Kotlin | `MermanEngine.runtimeContractJson()` |
+| Apple/Swift | `MermanEngine.runtimeContract()` |
+| Flutter/Dart | `MermanEngine.runtimeContract()` |
+| UniFFI/Python | `MermanEngine.runtime_contract_json()` |
+| Web/TypeScript | `runtimeContract()` |
+
+The runtime-contract schema is independent of native ABI `2` and payload schema numbers. Reject a
+contract schema newer than the host understands before interpreting its nested fields.
 
 ## SVG Options
 
@@ -502,8 +578,10 @@ Strict resource profile override:
 ```json
 {
   "resources": {
-    "profile": "typst-package",
-    "max_flowchart_nodes": 500
+    "profile": "constrained",
+    "limits": {
+      "max_flowchart_nodes": 500
+    }
   }
 }
 ```
@@ -530,6 +608,17 @@ Platform wrappers surface those errors through their native exception type:
 
 ## Typed Wrapper Follow-On
 
-The stable low-level contract should remain JSON so the C ABI does not grow for every option. Higher
-level platform packages can add typed option builders later, then serialize to this JSON shape
-internally.
+The stable low-level contract remains JSON so the C ABI does not grow for every option. Generated
+typed builders now sit above that contract and are produced from the Rust resource descriptor:
+
+| Platform | Generated API |
+| --- | --- |
+| C | `MermanResourceProfile`, `MermanResourceLimitId`, `MermanResourceLimitOverride` and `merman_resource_options_json()` |
+| Android/Kotlin | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
+| Apple/Swift | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
+| Flutter/Dart | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
+| Python/UniFFI | `ResourceOptionsBuilder` / `ResourceOptions` |
+| Web/TypeScript | closed `ResourceProfile`/`ResourceLimitId` unions and `resourceOptions()`; use `rawResourceOptionsJson()` only for an explicitly external contract |
+
+Builders validate profile and overridable limit ids before serialization. They do not duplicate the
+budget table; hosts should query the runtime contract when presenting values or settings UI.

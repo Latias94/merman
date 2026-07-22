@@ -178,28 +178,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         out
     }
 
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
-            _ => None,
-        }
-    }
-
     if install && !with_baselines {
         return Err(XtaskError::SnapshotUpdateFailed(
             "`--install` only applies when `--with-baselines` is set".to_string(),
@@ -368,7 +346,8 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     continue;
                 }
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 skipped.push(format!(
                     "skip (unsupported detected type '{detected}'): {}",
                     ts_path.display()

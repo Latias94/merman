@@ -1,3 +1,48 @@
+//! Public typed headless-render boundaries.
+//!
+//! The render facade keeps semantic data, layout, SVG output, and operation evidence in one
+//! consuming pipeline. A fresh session report is not proof that a completed SVG operation ran,
+//! and callers cannot construct a completed report themselves:
+//!
+//! ```compile_fail
+//! use merman::render::{RenderEnvironment, RenderOperationReport};
+//!
+//! fn retain_completed(_: &RenderOperationReport) {}
+//! let session = RenderEnvironment::parity().begin_session().unwrap();
+//! retain_completed(session.report());
+//! ```
+//!
+//! The completion fields are private even though the report itself is observable:
+//!
+//! ```compile_fail
+//! use merman::render::{RenderEnvironment, RenderExecutionPath, RenderOperationReport};
+//!
+//! let session = RenderEnvironment::parity().begin_session().unwrap();
+//! let _forged = RenderOperationReport {
+//!     execution_path: RenderExecutionPath::HeadlessOperationTyped,
+//!     session: session.report(),
+//! };
+//! ```
+//!
+//! Prepared semantic/layout artifacts are linear: rendering consumes the artifact, so a caller
+//! cannot accidentally render the same parse/layout pair twice:
+//!
+//! ```compile_fail
+//! use merman::render::{LayoutOptions, SvgRenderOptions, prepare_render_sync};
+//! use merman::{Engine, ParseOptions};
+//!
+//! let prepared = prepare_render_sync(
+//!     &Engine::new(),
+//!     "info",
+//!     ParseOptions::strict(),
+//!     &LayoutOptions::headless_svg_defaults(),
+//! )?.unwrap();
+//! let options = SvgRenderOptions::default();
+//! let _first = prepared.render_svg(&options);
+//! let _second = prepared.render_svg(&options);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 #[cfg(feature = "core-host")]
 pub use merman_render::environment::SystemRenderClock;
 pub use merman_render::environment::{
@@ -16,8 +61,12 @@ pub use merman_render::family::RenderFamilyKind;
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::resources::{
-    ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
-    ResourceLimitExceeded, ResourceLimitPhase,
+    CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
+    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RESOURCE_CONTRACT_SCHEMA_VERSION,
+    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, ResourceProfileValues,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CompiledHostTheme, CssOverridePolicy, CssOverridePostprocessor,
@@ -90,58 +139,7 @@ fn engine_with_session_time(
 /// - replaces unsupported characters with `-`
 /// - ensures the id starts with an ASCII letter by prefixing `m-` when needed
 pub fn sanitize_svg_id(raw: &str) -> String {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return "m-untitled".to_string();
-    }
-
-    let mut iter = raw.chars();
-    let Some(first_raw) = iter.next() else {
-        return "m-untitled".to_string();
-    };
-
-    fn sanitize_char(ch: char) -> char {
-        let ok = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == ':' || ch == '.';
-        if ok { ch } else { '-' }
-    }
-
-    let first = sanitize_char(first_raw);
-    let mut out = String::with_capacity(raw.len() + 2);
-    let mut prev_dash = false;
-
-    if !first.is_ascii_alphabetic() {
-        out.push('m');
-        if first != '-' {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-
-    let push_sanitized = |ch: char, out: &mut String, prev_dash: &mut bool| {
-        if ch == '-' {
-            if *prev_dash {
-                return;
-            }
-            *prev_dash = true;
-        } else {
-            *prev_dash = false;
-        }
-        out.push(ch);
-    };
-
-    push_sanitized(first, &mut out, &mut prev_dash);
-    for ch in iter {
-        push_sanitized(sanitize_char(ch), &mut out, &mut prev_dash);
-    }
-
-    while out.ends_with('-') {
-        out.pop();
-    }
-
-    if out.is_empty() || out == "m" {
-        return "m-untitled".to_string();
-    }
-    out
+    merman_render::svg::sanitize_svg_id(raw)
 }
 
 #[cfg(test)]
@@ -658,10 +656,11 @@ mod svg_pipeline_tests {
 
     #[test]
     fn render_svg_rejects_source_over_resource_limit_before_parse() {
-        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
-            max_source_bytes: Some(4),
-            ..RenderResourceLimits::unbounded_for_trusted_input()
-        });
+        let renderer = HeadlessRenderer::new().with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSourceBytes, 4)
+                .unwrap(),
+        );
 
         let err = renderer
             .render_svg_sync("flowchart TD\nA --> B")
@@ -676,10 +675,11 @@ mod svg_pipeline_tests {
 
     #[test]
     fn parse_only_entry_points_use_the_environment_source_limit() {
-        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
-            max_source_bytes: Some(4),
-            ..RenderResourceLimits::unbounded_for_trusted_input()
-        });
+        let renderer = HeadlessRenderer::new().with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSourceBytes, 4)
+                .unwrap(),
+        );
         let source = "flowchart TD\nA --> B";
 
         for err in [
@@ -712,10 +712,11 @@ mod svg_pipeline_tests {
             }
         }
 
-        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
-            max_svg_bytes: Some(64 * 1024),
-            ..RenderResourceLimits::unbounded_for_trusted_input()
-        });
+        let renderer = HeadlessRenderer::new().with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, 64 * 1024)
+                .unwrap(),
+        );
         let pipeline = SvgPipeline::parity().with_postprocessor(AppendingPass);
 
         let err = renderer
@@ -1183,13 +1184,13 @@ impl HeadlessRenderer {
         self
     }
 
-    pub fn with_resource_limits(mut self, limits: RenderResourceLimits) -> Self {
-        self.environment = self.environment.with_resource_limits(limits);
+    pub fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
+        self.environment = self.environment.with_resource_policy(policy);
         self
     }
 
     pub fn with_resource_profile(self, profile: RenderResourceProfile) -> Self {
-        self.with_resource_limits(RenderResourceLimits::for_profile(profile))
+        self.with_resource_policy(RenderResourcePolicy::for_profile(profile))
     }
 
     pub fn with_svg_options(mut self, svg: SvgRenderOptions) -> Self {
@@ -1238,7 +1239,7 @@ impl HeadlessRenderer {
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
         let session = self.environment.begin_session()?;
         session
-            .resource_limits()
+            .resource_policy()
             .check_source_bytes(text)
             .map_err(operation::resource_limit_error)?;
         Ok(self
@@ -1249,7 +1250,7 @@ impl HeadlessRenderer {
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
         let session = self.environment.begin_session()?;
         session
-            .resource_limits()
+            .resource_policy()
             .check_source_bytes(text)
             .map_err(operation::resource_limit_error)?;
         Ok(self

@@ -386,8 +386,6 @@ pub struct VennAreaLayout {
     #[serde(default)]
     pub circles: Vec<VennCircleLayout>,
     pub path: String,
-    #[serde(rename = "distinctPath")]
-    pub distinct_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -870,7 +868,8 @@ pub struct TimelineLineLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineTaskLayout {
     pub node: TimelineNodeLayout,
-    pub connector: TimelineLineLayout,
+    #[serde(default)]
+    pub connectors: Vec<TimelineLineLayout>,
     pub events: Vec<TimelineNodeLayout>,
 }
 
@@ -882,6 +881,7 @@ pub struct TimelineSectionLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineDiagramLayout {
+    pub direction: merman_core::diagrams::timeline::TimelineDirection,
     pub bounds: Option<Bounds>,
     pub left_margin: f64,
     pub base_x: f64,
@@ -1342,7 +1342,7 @@ pub struct CynefinDiagramLayout {
     pub show_domain_descriptions: bool,
     pub boundary_amplitude: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<f64>,
     pub domain_layouts: Vec<CynefinDomainLayout>,
     pub items: Vec<CynefinItemLayout>,
     pub transitions: Vec<CynefinTransitionLayout>,

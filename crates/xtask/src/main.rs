@@ -94,6 +94,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-playground-example-catalog");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
+    println!("  verify-resource-contract");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -130,6 +131,7 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-theme-snapshot");
     println!("  gen-editor-token-descriptor");
     println!("  gen-text-measurement-abi");
+    println!("  gen-resource-contract");
     println!("  verify-text-measurement-abi");
     println!("  gen-playground-example-catalog");
     println!("  gen-mermaid-reference");
@@ -187,6 +189,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
         "gen-text-measurement-abi" => cmd::gen_text_measurement_abi(args.collect()),
+        "gen-resource-contract" => cmd::gen_resource_contract(args.collect()),
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
@@ -198,6 +201,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
         "verify-text-measurement-abi" => cmd::verify_text_measurement_abi(args.collect()),
+        "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),

@@ -116,7 +116,6 @@ export type CompareOperationStage =
   | "initialize"
   | "render"
   | "svg-budget"
-  | "svg-validation"
   | "presentation";
 
 export const COMPARE_OPERATION_STAGES: readonly CompareOperationStage[] = [
@@ -127,7 +126,6 @@ export const COMPARE_OPERATION_STAGES: readonly CompareOperationStage[] = [
   "initialize",
   "render",
   "svg-budget",
-  "svg-validation",
   "presentation",
 ];
 
@@ -156,6 +154,7 @@ export type CompareFailureStage =
   | "protocol"
   | "timeout"
   | "disposed"
+  | "svg-validation"
   | CompareOperationStage;
 
 export interface CompareRenderFailure extends RealmIdentity {
@@ -191,6 +190,16 @@ export class RealmProtocolError extends Error {
   }
 }
 
+export class RealmBudgetError extends RealmProtocolError {
+  readonly resource: string;
+
+  constructor(resource: string, message: string) {
+    super(message);
+    this.name = "RealmBudgetError";
+    this.resource = resource;
+  }
+}
+
 export class RealmTimeoutError extends RealmProtocolError {
   constructor(message: string) {
     super(message);
@@ -210,7 +219,10 @@ export function assertEncodedMessageBudget(value: unknown): void {
     throw new RealmProtocolError("Realm message is not JSON-encodable.");
   }
   if (exceedsUtf8Budget(encoded, REALM_BUDGETS.messageBytes)) {
-    throw new RealmProtocolError("Realm message exceeds the 25 MiB budget.");
+    throw new RealmBudgetError(
+      "message",
+      "Realm message exceeds the 25 MiB budget."
+    );
   }
 }
 
@@ -632,6 +644,24 @@ export function validateCompareRenderProgress(
   };
 }
 
+export function advanceCompareOperationStage(
+  currentStageIndex: number,
+  nextStage: CompareOperationStage
+): number {
+  const nextStageIndex = COMPARE_OPERATION_STAGES.indexOf(nextStage);
+  if (
+    !Number.isInteger(currentStageIndex) ||
+    currentStageIndex < -1 ||
+    currentStageIndex >= COMPARE_OPERATION_STAGES.length ||
+    nextStageIndex !== currentStageIndex + 1
+  ) {
+    throw new RealmProtocolError(
+      "Mermaid realm progress must advance exactly one stage."
+    );
+  }
+  return nextStageIndex;
+}
+
 export function assertRealmSourceBudget(source: string): void {
   assertTextBudget(source, REALM_BUDGETS.sourceBytes, "effective source");
 }
@@ -705,7 +735,10 @@ function assertRequestId(value: unknown, expected: string): void {
 
 function assertTextBudget(value: string, limit: number, label: string): void {
   if (exceedsUtf8Budget(value, limit)) {
-    throw new RealmProtocolError(`Realm ${label} exceeds its byte budget.`);
+    throw new RealmBudgetError(
+      label,
+      `Realm ${label} exceeds its byte budget.`
+    );
   }
 }
 

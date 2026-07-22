@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Long unbroken words (wrap / measure stress)",
     "accTitle": null,
     "accDescr": null,

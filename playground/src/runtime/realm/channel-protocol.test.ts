@@ -5,6 +5,7 @@ import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   RealmProtocolError,
+  advanceCompareOperationStage,
   assertEncodedMessageBudget,
   createOneTimeRealmInitGate,
   createRealmToken,
@@ -79,6 +80,33 @@ test("one-time handshake messages bind boot and port identities", () => {
     viewport: { width: 800, height: 600 },
   };
   assert.deepEqual(validateRealmReady(ready, IDENTITY), ready);
+});
+
+test("compare progress must visit every declared stage in order", () => {
+  let stageIndex = -1;
+  stageIndex = advanceCompareOperationStage(stageIndex, "fonts");
+  assert.equal(stageIndex, 0);
+  assert.throws(
+    () => advanceCompareOperationStage(stageIndex, "load"),
+    /advance exactly one stage/
+  );
+  assert.throws(
+    () => advanceCompareOperationStage(stageIndex, "fonts"),
+    /advance exactly one stage/
+  );
+
+  for (const stage of [
+    "adapter-import",
+    "load",
+    "register",
+    "initialize",
+    "render",
+    "svg-budget",
+    "presentation",
+  ] as const) {
+    stageIndex = advanceCompareOperationStage(stageIndex, stage);
+  }
+  assert.equal(stageIndex, 7);
 });
 
 test("handshake validation rejects foreign identity and schema drift", () => {

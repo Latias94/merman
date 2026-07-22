@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "projectionSchemaVersion": 1,
+  "schemaVersion": 3,
+  "projectionSchemaVersion": 3,
   "release": {
     "id": "mermaid",
     "role": "core",
@@ -41,6 +41,7 @@
     "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.2.0.tgz",
     "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@mermaid-js%2fparser@1.2.0",
     "publishGitHead": null,
+    "installedContentSha256": "a4fe4881a4713c581d9d9c20bab1fc72e573ca43b46c8abad26d834ed59400d2",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
       "reference": "mermaid@11.16.0",
@@ -53,6 +54,88 @@
       "editor",
       "lsp"
     ]
+  },
+  "sanitizer": {
+    "id": "dompurify",
+    "role": "sanitizer",
+    "package": "dompurify",
+    "version": "3.4.12",
+    "declaredRange": "3.4.12",
+    "latestStable": "3.4.12",
+    "integrity": "sha512-zQvGet8Z2sWbQhCmfFz/T5QWH2oBmjnqK3qvOjaqaNLrLEF912WamU+ohnTp0TCep/MFVHpdJuCZEdFOdTnEFg==",
+    "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.12.tgz",
+    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/dompurify@3.4.12",
+    "publishGitHead": "a9ca1e537422319a557a9a2aa61f003b23b4a197",
+    "installedContentSha256": "141a800f19cdcf04b976df234c1fdc5676aa2ba35dc3cf53f9eab89e7adb469b",
+    "source": {
+      "repository": "https://github.com/cure53/DOMPurify.git",
+      "reference": "3.4.12",
+      "commit": "a9ca1e537422319a557a9a2aa61f003b23b4a197",
+      "checkoutPath": "repo-ref/dompurify",
+      "packagePath": "."
+    },
+    "requiredSurfaces": [
+      "playground",
+      "reference-cli",
+      "rust-sanitizer"
+    ]
+  },
+  "builtinRegistry": {
+    "diagrams": {
+      "sourcePath": "packages/mermaid/src/diagram-api/diagram-orchestration.ts",
+      "sourceSha256": "fc8567cff9aaf78539c825601d143af844b417fb73013481a2bb58537b0a67d5",
+      "ids": [
+        "error",
+        "---",
+        "flowchart-elk",
+        "mindmap",
+        "architecture",
+        "c4",
+        "kanban",
+        "classDiagram",
+        "class",
+        "er",
+        "gantt",
+        "info",
+        "pie",
+        "requirement",
+        "sequence",
+        "swimlane",
+        "flowchart-v2",
+        "flowchart",
+        "timeline",
+        "gitGraph",
+        "stateDiagram",
+        "state",
+        "journey",
+        "quadrantChart",
+        "sankey",
+        "packet",
+        "xychart",
+        "block",
+        "eventmodeling",
+        "treeView",
+        "radar",
+        "ishikawa",
+        "treemap",
+        "railroad",
+        "railroadEbnf",
+        "railroadAbnf",
+        "railroadPeg",
+        "venn",
+        "wardley",
+        "cynefin"
+      ]
+    },
+    "layouts": {
+      "sourcePath": "packages/mermaid/src/rendering-util/render.ts",
+      "sourceSha256": "d99ee8b93f4c667d45ccdb694492f4f8e5f5fca3cf25503a67bf2e6b3aa5dc1f",
+      "ids": [
+        "dagre",
+        "swimlane",
+        "cose-bilkent"
+      ]
+    }
   },
   "externalDiagrams": [
     {
@@ -68,6 +151,7 @@
         "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-zenuml/-/mermaid-zenuml-0.2.3.tgz",
         "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@mermaid-js%2fmermaid-zenuml@0.2.3",
         "publishGitHead": null,
+        "installedContentSha256": "f636a054062e78b0039ff74ebc64990b8c401ada4988ba7c21ac53db7d6ef788",
         "runtimeRegistration": {
           "moduleId": "zenuml",
           "diagramAliases": [
@@ -138,6 +222,7 @@
           "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-3.50.1.tgz",
           "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@zenuml%2fcore@3.50.1",
           "publishGitHead": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+          "installedContentSha256": "9c44502ca5eb3e82ad11fcdbe9521dce43a5e2925dfb9b5838b05a5bdcd3c1e5",
           "publishProvenance": {
             "workflow": {
               "repository": "https://github.com/mermaid-js/zenuml-core",
@@ -203,6 +288,7 @@
       "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-elk/-/layout-elk-0.2.2.tgz",
       "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@mermaid-js%2flayout-elk@0.2.2",
       "publishGitHead": null,
+      "installedContentSha256": "ee2117a028c24b6bafdf5854457f0a1aae16c1eec85a98fdd66357c3f4fdb05d",
       "runtimeRegistration": {
         "moduleId": "elk",
         "diagramAliases": [],
@@ -241,6 +327,7 @@
       "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-tidy-tree/-/layout-tidy-tree-0.2.2.tgz",
       "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@mermaid-js%2flayout-tidy-tree@0.2.2",
       "publishGitHead": null,
+      "installedContentSha256": "6f4f0a36e2b7b5bbf0f889c9140d1eaa7c3a43ccf8b7d3b385bf0154608796c2",
       "runtimeRegistration": {
         "moduleId": "tidy-tree",
         "diagramAliases": [],
@@ -296,8 +383,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "c2bafdce0ea92dfb1be2f0c04af15ba631767e4f04eb66a482c83b79a713838b",
-    "packageLockSha256": "a31d2880cdc0e38a5158165f50da99ebca0dde8d177bcea5329d0e1c0d523f23",
+    "packageJsonSha256": "4966c730e449d114b8f8e37a22cb47fe0647920761eaecd6f18de8fa0756ed42",
+    "packageLockSha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "installPolicy": {
@@ -327,11 +414,13 @@
   },
   "featureDecision": {
     "addCargoFeature": false,
-    "reason": "All selected companions are browser/reference-tool packages; no Rust dependency or target surface changes.",
+    "reason": "DOMPurify is a source-aligned behavior dependency for the Rust sanitizer and a transitive browser/reference dependency; it adds no Cargo dependency or target feature.",
     "evidence": [
       "docs/release/PACKAGE_SURFACES.md",
       "docs/release/WASM_SIZE_BUDGETS.json",
       "cargo tree -e normal -p merman-core",
+      "crates/merman-core/src/generated/dompurify_defaults.rs",
+      "docs/adr/0024-dompurify-default-allowlists-and-generation.md",
       "npm package runtime chunk measurement in ZENUML_CORE_ADMISSION.json"
     ]
   },

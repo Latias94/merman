@@ -1,7 +1,7 @@
 # Releasing
 
-Status: draft release operator guide.
-Last updated: 2026-07-18
+Status: maintained release operator guide.
+Last updated: 2026-07-21
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -12,7 +12,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | Workflow | Publishes | Channel |
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
-| `release.yml` | `merman-cli` binary archives and installers | GitHub Release |
+| `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-crates.yml` | Rust workspace crates | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
@@ -97,18 +97,25 @@ credential-blocked or artifact-only channel is not confused with a missing publi
 
 ## Version Checklist
 
-Before tagging, verify these versions match the intended release:
+`Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. Project a
+new version transactionally, then verify every checked-in projection without supplying a second
+version value:
 
-- `Cargo.toml` `[workspace.package].version`
-- `platforms/flutter/pubspec.yaml` `version`
-- `platforms/web/package.json` `version`
-- `tools/vscode-extension/package.json` `version`; VS Marketplace requires stable SemVer in the
-  extension manifest, so use `0.8.0` for workspace release `0.8.0-alpha.3`. The VSIX package step
-  reads the workspace release version and adds the pre-release marker when needed.
-- `platforms/android/build.gradle.kts` `version`
-- `platforms/python/merman/pyproject.toml` `project.version`; pre-releases should use the PEP 440
-  spelling, for example `0.8.0a3` for workspace release `0.8.0-alpha.3`, while final releases use
-  the SemVer spelling, for example `0.7.0`
+```bash
+python3 scripts/release-version.py set --version <version>
+python3 scripts/release-version.py
+```
+
+The gate discovers workspace members and validates their inherited package versions, internal
+workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's
+local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests,
+CocoaPods metadata, and iOS framework bundle versions. `check --version <tag-or-version>` remains
+the CI entry point and also proves that the workflow input names the root authority.
+
+The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
+version tracks. They are intentionally excluded from workspace projection. Record the workspace
+runtime bundled in VSIX and Typst artifacts through provenance instead of rewriting those package
+versions.
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 
@@ -208,9 +215,10 @@ npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 npm run verify:vsix -- --vsix "merman-vscode-${target}.vsix" --platform "$target" --target "$target"
 ```
 
-Set `MERMAN_RELEASE_VERSION` when packaging a VSIX from a checkout whose workspace version does not
-match the intended release. The verifier checks the stable VS Code manifest version and the
-pre-release marker against that release version.
+The extension manifest is the authority for the VSIX version. The workspace version identifies the
+bundled `merman-lsp` and `merman-cli` runtime for provenance only; it must not rewrite or validate
+the extension's independent version. Keep the changelog under `Unreleased` until the first `0.1.0`
+Marketplace publication is intentionally prepared.
 
 Before changing browser WASM presets or Typst package artifacts, also run the surface-specific
 gates:
@@ -256,9 +264,10 @@ git push origin "v${VERSION}"
 ```
 
 Do not move or force-update release tags after publication. Release tags are the immutable source
-anchor for crates, CLI artifacts, and platform assets.
+anchor for crates, CLI/LSP artifacts, and platform assets.
 
-`release.yml` creates the primary GitHub Release and uploads CLI artifacts. Platform workflows
+`release.yml` creates the primary GitHub Release and uploads CLI and standalone LSP artifacts.
+Platform workflows
 upload additional assets to that existing release when it is present; otherwise they leave GitHub
 Actions artifacts for manual attachment.
 

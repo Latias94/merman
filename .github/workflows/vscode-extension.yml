@@ -200,33 +200,33 @@ jobs:
       - name: Derive VSIX release metadata
         id: vsix
         run: |
-          release_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          runtime_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          extension_version="$(node -p "require('./tools/vscode-extension/package.json').version")"
           source_sha="$(git rev-parse HEAD)"
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
-          manifest_version="${release_version%%-*}"
-          release_channel="stable"
-          if [[ "$release_version" == *-* ]]; then
-            release_channel="${release_version#*-}"
-            release_channel="${release_channel%%.*}"
+          runtime_channel="stable"
+          if [[ "$runtime_version" == *-* ]]; then
+            runtime_channel="${runtime_version#*-}"
+            runtime_channel="${runtime_channel%%.*}"
           fi
           {
-            echo "release_version=${release_version}"
-            echo "manifest_version=${manifest_version}"
-            echo "release_channel=${release_channel}"
+            echo "extension_version=${extension_version}"
+            echo "runtime_version=${runtime_version}"
+            echo "runtime_channel=${runtime_channel}"
             echo "source_sha=${source_sha}"
           } >> "$GITHUB_OUTPUT"
-          echo "VSIX release_version=${release_version} manifest_version=${manifest_version} channel=${release_channel} source_sha=${source_sha}"
+          echo "VSIX extension_version=${extension_version} runtime_version=${runtime_version} runtime_channel=${runtime_channel} source_sha=${source_sha}"
 
       - name: Package VSIX
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
 
       - name: Smoke packaged VSIX
@@ -242,6 +242,6 @@ jobs:
       - name: Upload VSIX
         uses: actions/upload-artifact@v6
         with:
-          name: merman-vscode-${{ steps.vsix.outputs.release_version }}-${{ steps.vsix.outputs.release_channel }}-${{ steps.vsix.outputs.source_sha }}-${{ matrix.target }}
+          name: merman-vscode-${{ steps.vsix.outputs.extension_version }}-runtime-${{ steps.vsix.outputs.runtime_version }}-${{ steps.vsix.outputs.runtime_channel }}-${{ steps.vsix.outputs.source_sha }}-${{ matrix.target }}
           path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
           if-no-files-found: error

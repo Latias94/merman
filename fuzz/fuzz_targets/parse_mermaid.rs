@@ -20,11 +20,13 @@ fuzz_target!(|data: &[u8]| {
 
         if let (Ok(Some(semantic)), Ok(Some(render_model))) = (&semantic, &render_model) {
             assert_eq!(
-                semantic.meta.diagram_type, render_model.meta.diagram_type,
+                semantic.meta.diagram_type,
+                render_model.metadata().diagram_type,
                 "semantic and render-model parsers selected different diagram types"
             );
             assert_eq!(
-                semantic.meta.title, render_model.meta.title,
+                semantic.meta.title,
+                render_model.metadata().title,
                 "semantic and render-model parsers retained different titles"
             );
         }

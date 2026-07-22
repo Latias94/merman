@@ -13,6 +13,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
+    pub(in crate::svg::parity::flowchart) resource_limits: crate::resources::RenderResourcePolicy,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,

@@ -54,6 +54,26 @@ On macOS, local `cargo-fuzz` installations may default to the wrong host target 
 installed under Rosetta. In that case, reinstall `cargo-fuzz` natively or add the explicit target
 triple for the local host. The CI authority is Linux x86_64 with ASan.
 
+## CI Campaigns
+
+Fuzz CI uses two complementary budgets:
+
+- Pull requests that affect Rust or fuzzing code, and pushes to `main`, run every target for 64
+  iterations. This is a bounded harness, seed, and regression gate; it is not intended to discover
+  deep new paths.
+- The weekly scheduled run gives every target a 15-minute discovery budget. A randomized campaign
+  must continue even when the repository has no new commits, so this run supplements rather than
+  replaces the commit-triggered gate.
+
+`workflow_dispatch` can select one target or the complete target set with `smoke`, `extended`, or
+`long` budgets. Pull-request jobs receive only read access to repository contents and do not consume
+release credentials, including for contributions from forks.
+
+Any target failure fails the workflow and uploads both the generated crash artifacts and the full
+libFuzzer log. The job summary distinguishes sanitizer findings from Rust or harness panics; a
+libFuzzer `deadly signal` caused by a Rust assertion must not be reported as an ASan memory-safety
+finding.
+
 ## Sanitizer Policy
 
 CI uses AddressSanitizer because it catches the most relevant native memory faults with reasonable

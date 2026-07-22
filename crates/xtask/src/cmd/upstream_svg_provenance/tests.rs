@@ -51,6 +51,7 @@ fn test_render_environment() -> UpstreamSvgRenderEnvironment {
             product: "Chrome".to_string(),
             version: "131.0.6778.204".to_string(),
             revision: "131.0.6778.204".to_string(),
+            locale: "en-US".to_string(),
             timezone: "UTC".to_string(),
         },
         puppeteer: UpstreamSvgPuppeteerEnvironment {
@@ -262,6 +263,11 @@ fn render_environment_equality_covers_every_recorded_field() {
         {
             let mut changed = environment.clone();
             changed.browser.revision.push_str("-changed");
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed.browser.locale = "fr-FR".to_string();
             changed
         },
         {
@@ -908,7 +914,7 @@ fn adopted_partial_preflight_requires_a_complete_generation() {
 }
 
 #[test]
-fn legacy_schema_cannot_be_rewritten_as_schema_v2() {
+fn legacy_schema_cannot_be_rewritten_as_the_current_schema() {
     let root = TestDir::new("legacy-schema-write");
     let mut manifest =
         UpstreamSvgManifest::empty(test_source(), UpstreamSvgAttestation::adopted_existing());

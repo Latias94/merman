@@ -9,13 +9,19 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Breaking changes
 
 - Replaced the prerelease ABI 2 text-measurement JNI records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`lineCount`; upgrade the Kotlin classes and `libmerman_ffi.so` together and update custom measurers for operations `0..18`.
+- Replaced the zero-filled `MermanTextMeasureResult` constructor with shape-specific `metrics`, `length`, `horizontalExtents`, and `wrappedWithRawWidth` factories; custom measurers must now provide every field required by the selected shape.
 - Replaced the TextScan-capable document-facts payload shipped in `0.8.0-alpha.3` with the sole parser-only facts schema 1 contract; remove `fact_source: "text_scan"` handling, accept explicit unavailable bodies, and consume parser-backed rename policies.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the alpha Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
+- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
+- Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
 - Expanded the ABI 2 diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
 
 ### Added
 
 - Added generated Kotlin text-measurement operation/result-kind constants.
+- Added the generated `MermanResourceOptionsBuilder` and ABI 2 resource-profile/runtime descriptor
+  so Android callers can select `interactive`, `constrained`, `trusted-native`, or
+  `unbounded-for-trusted-input` without duplicating limit tables.
 
 ### Changed
 
@@ -34,7 +40,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 - Updated package metadata for the merman workspace `0.8.0-alpha.3` release.
 
-## [0.8.0-alpha.2] - 2026-06-13
+## [0.8.0-alpha.2] - 2026-06-23
 
 ### Changed
 

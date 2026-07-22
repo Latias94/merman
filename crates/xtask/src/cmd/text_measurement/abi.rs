@@ -564,6 +564,21 @@ fn render_ffi_rust(descriptor: &AbiDescriptor) -> String {
         )
         .unwrap();
     }
+    writeln!(
+        output,
+        "\npub const MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS: [i32; {}] = [",
+        operations.len()
+    )
+    .unwrap();
+    for operation in &operations {
+        writeln!(
+            output,
+            "    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{},",
+            upper_snake(&result_kind(descriptor, &operation.result_kind).id)
+        )
+        .unwrap();
+    }
+    output.push_str("];\n");
     output
 }
 
@@ -1063,6 +1078,19 @@ mod tests {
                     );
                 }
             }
+        }
+
+        let ffi = ArtifactKind::FfiRust.render(&descriptor);
+        assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS"));
+        for operation in sorted_operations(&descriptor) {
+            let expected = format!(
+                "MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{}",
+                upper_snake(&result_kind(&descriptor, &operation.result_kind).id)
+            );
+            assert!(
+                ffi.contains(&expected),
+                "FFI projection omitted `{expected}`"
+            );
         }
     }
 

@@ -57,6 +57,11 @@ also has a non-optional resolved-tree depth capability (256 native levels, 64 We
 and native conversion uses a bounded worker stack; raw parity SVG remains available beyond that
 backend boundary.
 
+Bindings expose runtime-contract schema `1` so hosts can discover the loaded ABI/package/options
+versions, compiled features, registry facts, stable resource-limit ids, and exact profile values.
+General bindings default to `interactive`, the CLI to `trusted-native`, and Typst enforces
+`constrained`; Cargo features and raster/PDF/image allocation budgets remain separate concerns.
+
 ## Install
 
 The commands below target the latest published alpha. Source on this branch may describe
@@ -71,16 +76,16 @@ cargo install merman-cli --version 0.8.0-alpha.3
 cargo add merman@0.8.0-alpha.3 --features render
 
 # Browser / TypeScript
-npm install @mermanjs/web
+npm install @mermanjs/web@alpha
 
 # Python
 python -m pip install --pre merman
 
 # Flutter
-flutter pub add merman
+flutter pub add 'merman:0.8.0-alpha.3'
 ```
 
-The CLI is also available through Homebrew:
+The latest stable CLI, rather than the alpha shown above, is also available through Homebrew:
 
 ```sh
 brew install merman-cli
@@ -201,13 +206,19 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 | `analysis` | Diagnostics and lint metadata on transport crates |
 | `elk-layout` | Source-translated ELK layered layout |
 | `ratex-math` | Pure-Rust math layout and embedded KaTeX font assets |
-| `core-full` | Full config/frontmatter and sanitizer behavior |
+| `core-full` | Full registry, config/frontmatter, and sanitizer behavior |
+| `core-full-registry`, `core-full-config`, `core-full-sanitization` (language tooling) | Independently forwards only the named core concern through `merman-analysis`, `merman-editor-core`, and `merman-lsp` |
 | `core-host` | Host clock and randomness |
 
 Start from default features for normal native applications. Constrained WASM hosts should select a
 documented build profile instead of assembling an accidental feature combination. The Typst
-package enforces its fixed `typst-package` resource policy and does not accept trusted or
+package enforces the fixed `constrained` resource policy and does not accept trusted or
 unbounded profiles from document input.
+
+Language-tooling crates can forward the three `core-full-*` concerns independently. A
+`merman-lsp --no-default-features` build remains a protocol-neutral library; add `stdio` when
+that build must include the bundled stdio binary. See the [complete feature matrix](docs/FEATURES.md)
+for crate-specific defaults and forwarding edges.
 
 ## Compatibility And Limits
 

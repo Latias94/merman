@@ -197,12 +197,12 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 ### DOMPurify (`dompurify`)
 
-Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream dual-license file is preserved.
+Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.0`
+- Version: `3.4.12`
 - Source: <https://github.com/cure53/DOMPurify.git>
-- Source ref: `3.4.0`
-- Source commit: `5b16e0b892e82b1779d62b9928b43c4c4ff290b9`
+- Source ref: `3.4.12`
+- Source commit: `a9ca1e537422319a557a9a2aa61f003b23b4a197`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License expression: `(Apache-2.0 OR MPL-2.0)`
@@ -210,7 +210,7 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 - Artifact scopes: `cli-default`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `source-archive`, `typst-publish`, `web-full`
 - Local evidence: `crates/merman-core/src/generated/dompurify_defaults.rs`
 - Legal files:
-  - [`THIRD_PARTY_LICENSES/dompurify/LICENSE`](THIRD_PARTY_LICENSES/dompurify/LICENSE) (license, SHA-256 `1b02e03c3fb4f87d476c128f0eb9def1f5a1709d28b180465228bd41574623b7`)
+  - [`THIRD_PARTY_LICENSES/dompurify/LICENSE`](THIRD_PARTY_LICENSES/dompurify/LICENSE) (license, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)
 
 ### Eclipse Layout Kernel (`eclipse-elk`)
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "states": [
     "published",
     "artifact-only",
@@ -59,6 +59,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -87,6 +88,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -115,6 +117,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -150,6 +153,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -179,6 +183,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release.yml",
           "workflow_job": "host",
+          "environment": "github-release",
           "credential": "GITHUB_TOKEN",
           "asset_patterns": [
             { "glob": "merman-lsp-aarch64-apple-darwin.tar.xz", "min_matches": 1, "max_matches": 1 },
@@ -200,6 +205,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -228,6 +234,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -256,6 +263,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release.yml",
           "workflow_job": "host",
+          "environment": "github-release",
           "credential": "GITHUB_TOKEN",
           "asset_patterns": [
             { "glob": "merman-cli-aarch64-apple-darwin.tar.xz", "min_matches": 1, "max_matches": 1 },
@@ -280,6 +288,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -336,6 +345,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-web.yml",
           "workflow_job": "publish",
+          "environment": "npm",
           "credential": "npm Trusted Publishing",
           "dist_tags": {
             "stable": "latest",
@@ -351,6 +361,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -374,7 +385,7 @@
       "capabilities": ["vscode-extension", "preview", "diagnostics", "lsp", "export", "webview-safety"],
       "docs": ["README.md", "tools/vscode-extension/README.md"],
       "packages": [
-        { "kind": "vscode", "name": "merman-vscode", "manifest": "tools/vscode-extension/package.json" }
+        { "kind": "vscode", "name": "merman-vscode", "manifest": "tools/vscode-extension/package.json", "version_source": "manifest" }
       ],
       "channels": [
         {
@@ -386,10 +397,10 @@
           "workflow_job": "package",
           "credential": "GITHUB_TOKEN",
           "artifact_patterns": [
-            { "glob": "merman-vscode-{version}-{channel}-{source_sha}-linux-x64", "min_matches": 1, "max_matches": 1 },
-            { "glob": "merman-vscode-{version}-{channel}-{source_sha}-darwin-arm64", "min_matches": 1, "max_matches": 1 },
-            { "glob": "merman-vscode-{version}-{channel}-{source_sha}-darwin-x64", "min_matches": 1, "max_matches": 1 },
-            { "glob": "merman-vscode-{version}-{channel}-{source_sha}-win32-x64", "min_matches": 1, "max_matches": 1 }
+            { "glob": "merman-vscode-{package_version}-runtime-{version}-{channel}-{source_sha}-linux-x64", "min_matches": 1, "max_matches": 1 },
+            { "glob": "merman-vscode-{package_version}-runtime-{version}-{channel}-{source_sha}-darwin-arm64", "min_matches": 1, "max_matches": 1 },
+            { "glob": "merman-vscode-{package_version}-runtime-{version}-{channel}-{source_sha}-darwin-x64", "min_matches": 1, "max_matches": 1 },
+            { "glob": "merman-vscode-{package_version}-runtime-{version}-{channel}-{source_sha}-win32-x64", "min_matches": 1, "max_matches": 1 }
           ]
         },
         {
@@ -430,6 +441,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -459,6 +471,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-python.yml",
           "workflow_job": "publish",
+          "environment": "pypi",
           "credential": "PyPI Trusted Publishing"
         },
         {
@@ -468,6 +481,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-python.yml",
           "workflow_job": "github-release",
+          "environment": "github-release",
           "credential": "GITHUB_TOKEN",
           "asset_patterns": [
             { "glob": "merman-{python_version}-*.whl", "min_matches": 3, "max_matches": 3 }
@@ -480,6 +494,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
@@ -508,6 +523,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-flutter.yml",
           "workflow_job": "publish",
+          "environment": "pub.dev",
           "credential": "pub.dev Trusted Publishing"
         }
       ],
@@ -536,6 +552,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-android.yml",
           "workflow_job": "upload-release",
+          "environment": "github-release",
           "credential": "GITHUB_TOKEN",
           "asset_patterns": [
             { "glob": "merman-android-{tag}.aar", "min_matches": 1, "max_matches": 1 }
@@ -576,6 +593,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-apple.yml",
           "workflow_job": "upload-release",
+          "environment": "github-release",
           "credential": "GITHUB_TOKEN",
           "asset_patterns": [
             { "glob": "Merman.xcframework-{tag}.zip", "min_matches": 1, "max_matches": 1 },
@@ -642,6 +660,7 @@
           "release_kinds": ["stable", "prerelease"],
           "workflow": ".github/workflows/release-crates.yml",
           "workflow_job": "publish",
+          "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],

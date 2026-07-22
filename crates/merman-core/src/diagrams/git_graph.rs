@@ -8,12 +8,16 @@ use crate::diagrams::langium_common::{
 };
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
-    SourceSpan, family,
+    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorRenamePolicy,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+
+pub(crate) fn is_valid_editor_reference(candidate: &str) -> bool {
+    is_gitgraph_reference(candidate)
+}
 
 const COMMIT_TYPE_NORMAL: i64 = 0;
 const COMMIT_TYPE_REVERSE: i64 = 1;
@@ -871,7 +875,9 @@ fn is_gitgraph_reference(value: &str) -> bool {
 
     let bytes = value.as_bytes();
     bytes.first().is_some_and(|byte| is_word(*byte))
-        && bytes.last().is_some_and(|byte| is_word(*byte))
+        && bytes
+            .last()
+            .is_some_and(|byte| is_word(*byte) || *byte == b'-')
         && bytes
             .iter()
             .all(|byte| is_word(*byte) || matches!(*byte, b'-' | b'.' | b'/'))
@@ -1561,13 +1567,16 @@ fn push_gitgraph_entity_fact(
     if value.text.is_empty() {
         return;
     }
-    facts.push_symbol(EditorSemanticSymbol::new(
-        value.text,
-        Some(detail.to_string()),
-        kind,
-        value.span,
-        value.span,
-    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            value.text,
+            Some(detail.to_string()),
+            kind,
+            value.span,
+            value.span,
+        )
+        .with_rename_policy(EditorRenamePolicy::GitGraphReference),
+    );
 }
 
 fn push_gitgraph_payload_fact(
@@ -2474,6 +2483,17 @@ merge feature id:"M1"
         let model = parse("gitGraph:\ncommit\nbranch 1.0.1\n");
         assert_eq!(model["currentBranch"].as_str().unwrap(), "1.0.1");
         assert_eq!(model["branches"].as_array().unwrap().len(), 2);
+
+        let model = parse("gitGraph:\ncommit\nbranch release-\n");
+        assert_eq!(model["currentBranch"].as_str().unwrap(), "release-");
+
+        for invalid in ["release/", "release."] {
+            let error = parse_err(&format!("gitGraph:\ncommit\nbranch {invalid}\n"));
+            assert!(
+                error.contains("invalid gitGraph reference"),
+                "{invalid}: {error}"
+            );
+        }
     }
 
     #[test]

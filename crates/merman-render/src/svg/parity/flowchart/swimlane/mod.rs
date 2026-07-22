@@ -158,7 +158,8 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     edge_path_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
     render_edges: &[Cow<'_, crate::flowchart::FlowEdge>],
     effective_config: &merman_core::MermaidConfig,
-) {
+    resource_limits: crate::resources::RenderResourcePolicy,
+) -> Result<()> {
     use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
     let line_hops_value = effective_config
@@ -166,7 +167,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .get("swimlane")
         .and_then(|value| value.get("lineHops"));
     if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
-        return;
+        return Ok(());
     }
     let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
         LineHopStyle::Gap
@@ -214,7 +215,8 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             jump_radius: 6.0,
             jump_style,
         },
-    );
+        resource_limits,
+    )?;
 
     for path in paths {
         if !path.has_hops
@@ -233,6 +235,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         cache_entry.geom.path_length = svg_path_length_from_d(&cache_entry.geom.d);
         cache_entry.geom.line_hop_applied = true;
     }
+    Ok(())
 }
 
 pub(super) fn swimlane_css(
@@ -336,7 +339,9 @@ mod tests {
             &mut cache,
             &render_edges,
             &merman_core::MermaidConfig::default(),
-        );
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("apply line hops");
 
         let vertical = &cache["vertical"].geom;
         assert!(!vertical.line_hop_applied);
@@ -387,7 +392,13 @@ mod tests {
             "swimlane": { "lineHops": false }
         }));
 
-        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config);
+        apply_line_hops_to_edge_geometries(
+            &mut cache,
+            &render_edges,
+            &config,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("disabled line hops");
 
         assert_eq!(cache["horizontal"].geom.d, "M-10,0L10,0");
         assert!(!cache["horizontal"].geom.line_hop_applied);

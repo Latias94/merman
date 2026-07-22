@@ -39,8 +39,10 @@ feature, or release claim; changing any of those flags is a new admission workfl
 Move the source graph and all reference workspaces together. Before running the generator:
 
 1. Update `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json` with exact package versions, integrity,
-   tarball and attestation URLs, source tags, commits, runtime registration hashes, selected
-   companions, and the expected Playground/reference-CLI lock hashes.
+   tarball and attestation URLs, source tags, commits, the ordered built-in diagram/default-layout
+   registry inventory and source hashes, runtime registration hashes, selected companions, and the
+   expected Playground/reference-CLI lock hashes. Re-extract the inventory from the pinned Mermaid
+   checkout; do not infer it from Merman's local catalog or admission records.
 2. Update every selected source checkout and commit in `tools/upstreams/REPOS.lock.json`. A bundle
    source with a `checkoutPath` must have the same repository and commit in the lock; the lock must
    not retain the previous Mermaid tag as an active source.
@@ -49,7 +51,9 @@ Move the source graph and all reference workspaces together. Before running the 
    CLI's direct Mermaid, CLI, layout, external-diagram, and behavior-source versions must resolve to
    the selected graph rather than whatever an upstream range happens to install.
 4. Recompute the descriptor's workspace hashes from those reviewed manifests, locks, and reference
-   config. Do not copy old hashes forward.
+   config. Record `installedContentSha256` for every package that can participate in reference
+   execution: Mermaid, the parser, the sanitizer, the reference CLI, every external diagram and
+   layout module, and each selected behavior package. Do not copy old hashes forward.
 
 Then generate the owned projections:
 
@@ -75,7 +79,9 @@ Verify registry identity, archive integrity, publish provenance, and source comm
 or execution. Install package graphs with lifecycle scripts disabled. Any necessary lifecycle action
 requires source review and an explicit audited allowlist.
 
-After source checkouts and scriptless installs exist, verify the executable graph as well:
+After source checkouts and scriptless installs exist, verify the executable graph as well. This
+extracts the built-in diagram and default-layout registrations from the pinned Mermaid source and
+compares their order and IDs with the bundle:
 
 ```bash
 cargo run -p xtask -- verify-mermaid-reference --materialized
@@ -98,6 +104,13 @@ baselines may provenance be re-attested:
 cargo run -p xtask -- gen-mermaid-reference --refresh-provenance
 cargo run -p xtask -- verify-mermaid-reference --materialized
 ```
+
+The refresh command performs a fresh render of every primary family. Each family is protected by
+the canonical cross-process family lock and committed through the same-directory atomic SVG and
+manifest transaction. It cannot relabel an existing SVG corpus with newer source metadata. The
+generated attestation records Chromium's resolved locale and timezone in addition to its exact
+browser, runtime, operating-system, and font identities. A missing primary-family manifest or an
+unhashed materialized companion fails verification closed.
 
 If the release changes a companion selected through an override, the override and its lock entry are
 part of the behavior graph. Removing or changing the override without regenerating and materially

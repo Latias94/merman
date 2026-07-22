@@ -18,6 +18,16 @@ During `initialize`, the server advertises:
   "experimental": {
     "merman": {
       "schemaVersion": 1,
+      "diagramSupport": {
+        "profile": "full",
+        "families": [
+          {
+            "diagramType": "flowchart-v2",
+            "semanticParser": true,
+            "renderParser": true
+          }
+        ]
+      },
       "requests": {
         "ruleCatalog": "merman/ruleCatalog",
         "configSchema": "merman/configSchema"
@@ -28,6 +38,12 @@ During `initialize`, the server advertises:
 ```
 
 Clients should feature-detect these fields instead of hard-coding extension availability.
+
+`diagramSupport.profile` is `full` for the default registry and `tiny` for a no-default registry.
+Each `families` entry reports the canonical `diagramType` plus separate semantic-parser and
+render-parser availability. Clients should use this data to explain a slim server build instead of
+assuming every published Mermaid family is available. The family list describes compiled registry
+capabilities, not files currently open in the workspace.
 
 ## `merman/ruleCatalog`
 
@@ -170,7 +186,7 @@ Response. The JSON below is abbreviated; implementations return the complete
 ```
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
-`workspace/didChangeConfiguration`: `lint`, `resources.max_source_bytes`, `site_config`,
+`workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`, `site_config`,
 `fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
 `additionalProperties` so alpha clients are not broken by future options. Clients should use it for
 settings completion, settings validation hints, and profile/rule pickers, then use
@@ -180,8 +196,9 @@ settings completion, settings validation hints, and profile/rule pickers, then u
 
 - Diagnostics use standard `textDocument/publishDiagnostics`.
 - Rule ids appear on Merman diagnostics and code actions through the shared analysis payload.
-- Quickfixes use standard `textDocument/codeAction` and only exist when diagnostics carry explicit
-  `DiagnosticFix` metadata.
+- Quickfixes use standard `textDocument/codeAction` and only exist when the current server
+  analysis snapshot carries explicit `DiagnosticFix` metadata; diagnostic data contains identity
+  and version validation only.
 - Runtime lint configuration should flow through initialization options or
   `workspace/didChangeConfiguration`; the server then republishes diagnostics and refreshes semantic
   tokens when the client advertises refresh support.

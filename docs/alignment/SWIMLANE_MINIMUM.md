@@ -84,6 +84,37 @@ The local implementation therefore reuses Flowchart parsing but does not treat t
 as a cosmetic alias. Artifact selection follows the effective layout, and the dedicated layout
 pipeline owns lane geometry and routing before the shared Flowchart SVG emitter renders it.
 
+## Identifier Collation
+
+Mermaid's Swimlane ordering passes use `String.prototype.localeCompare(id, undefined)`
+with the browser's default `en-US` locale. The Rust implementation uses ICU4X's baked
+`en-US` collator so ordering is independent of the host process locale. This is a semantic
+dependency of the layout backend, not an optional presentation feature.
+
+The expected Unicode ordering in the renderer regression test was generated with the pinned
+Puppeteer 23.11.1 headless Chromium 131 artifact:
+
+```sh
+node - <<'NODE'
+const puppeteer = require('./tools/mermaid-cli/node_modules/puppeteer');
+(async () => {
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: process.env.CHROME_BIN,
+    args: ['--no-sandbox'],
+  });
+  const page = await browser.newPage();
+  console.log(await page.evaluate(() => {
+    const ids = ['Z', 'z', 'ä', 'a', 'A', 'å', 'Å', 'é', 'e', 'E', 'ß', 'ss', '中', '阿', '😀', '🧪'];
+    return ids.sort((a, b) => a.localeCompare(b, 'en-US'));
+  }));
+  await browser.close();
+})();
+NODE
+```
+
+Set `CHROME_BIN` to the locked Chrome 131 executable used by the upstream SVG provenance run.
+
 ## Residual Boundary
 
 Browser font rasterization, `getBBox()` floats, and pixel snapshots remain bounded headless

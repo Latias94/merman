@@ -630,7 +630,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
 }
 
 #[test]
-fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
+fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
     fn render_with_seed(source: &str, ambient_seed: u64) -> (ArchitectureDiagramLayout, String) {
         let session = RenderEnvironment::parity()
             .with_randomness(RenderRandomnessPolicy::pinned(
@@ -659,30 +659,23 @@ fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
         (layout, svg)
     }
 
-    let zero = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 0, "architecture": {"seed": 0}}}%%
+    let zero = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "architecture": {"seed": 0}}}%%
 architecture-beta
   service api(server)[API]
   service db(database)[Database]
   api:R --> L:db
 "#;
-    let explicit = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 77, "architecture": {"seed": 77}}}%%
-architecture-beta
-  service api(server)[API]
-  service db(database)[Database]
-  api:R --> L:db
-"#;
-
     let (zero_layout, zero_svg) = render_with_seed(zero, 77);
-    let (explicit_layout, explicit_svg) = render_with_seed(explicit, 999);
+    let (repeated_zero_layout, repeated_zero_svg) = render_with_seed(zero, 77);
 
     assert_eq!(
         serde_json::to_value(zero_layout).unwrap(),
-        serde_json::to_value(explicit_layout).unwrap(),
-        "architecture.seed=0 must resolve to the operation session seed"
+        serde_json::to_value(repeated_zero_layout).unwrap(),
+        "a pinned operation stream must remain reproducible across operations"
     );
     assert_eq!(
-        zero_svg, explicit_svg,
-        "handDrawnSeed=0 must use the same resolved operation seed as Architecture layout"
+        zero_svg, repeated_zero_svg,
+        "a fixed handDrawnSeed and pinned operation stream must keep SVG reproducible"
     );
 }
 

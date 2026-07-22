@@ -236,6 +236,9 @@ pub(crate) fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> S
 pub(crate) fn escape_xml_attr(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),

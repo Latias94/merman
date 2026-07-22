@@ -43,7 +43,7 @@ fn block(depth: usize) -> String {
     lines.join("\n")
 }
 
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 fn mindmap(depth: usize) -> String {
     let mut lines = vec!["mindmap".to_string(), "root".to_string()];
     for i in 0..depth {
@@ -104,7 +104,7 @@ fn deeply_nested_block_parses_without_custom_depth_error() {
 }
 
 #[test]
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 fn deeply_nested_mindmap_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
     parse_ok(&mindmap(depth));

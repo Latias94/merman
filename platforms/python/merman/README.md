@@ -51,6 +51,26 @@ facts = reusable.analyze_document_facts_json(
 
 `options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants.
 
+Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
+
+```python
+from merman import ResourceOptionsBuilder, ResourceProfile
+
+resource_options = (
+    ResourceOptionsBuilder()
+    .profile(ResourceProfile.CONSTRAINED)
+    .build()
+    .to_options_json()
+)
+svg = engine.render_svg(source, resource_options)
+```
+
+Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative
+local editing. The native CLI's default is intentionally separate (`trusted-native`).
+
+Call `engine.runtime_contract_json()` to inspect the loaded resource catalog and exact profile
+values instead of duplicating limits in application code.
+
 Diagnostics and parser-facts payloads use schema `1`, independently of UniFFI ABI `2`. The current facts v1 contract is parser-only; consumers of the removed alpha TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
 
 ## Text Measurement

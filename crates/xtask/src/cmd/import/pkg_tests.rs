@@ -273,28 +273,6 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         }
     }
 
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
-            _ => None,
-        }
-    }
-
     fn collect_test_files_recursively(
         root: &Path,
         out: &mut Vec<PathBuf>,
@@ -813,7 +791,8 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 continue;
             };
             if !looks_like_mermaid_diagram(diagram_dir.as_str(), body.as_str()) {

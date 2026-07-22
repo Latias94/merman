@@ -48,7 +48,8 @@ export const mermanBrowserDependencies: MermanRuntimeDependencies = {
   },
   isInitialized: isMermanInitialized,
   isRetryableInitializationError: (error) =>
-    error instanceof WebAssembly.CompileError,
+    error instanceof WebAssembly.CompileError ||
+    error instanceof WebAssembly.LinkError,
   loadModule: async () =>
     (await import("@mermanjs/web/pkg/merman_wasm.js")) as MermanWasmModule,
 };

@@ -56,6 +56,8 @@ import type {
   HostTextMeasurer,
   MermanInitInput,
   MermanWasmModule,
+  RuntimeContract,
+  ResourceOptions,
   SvgBindingOptions,
   UnavailableDiagramDetectionFacts,
   ValidationResult,
@@ -87,6 +89,20 @@ export {
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";
 export { MERMAN_ABI_VERSION } from "./generated/text-measurement-abi.js";
+export {
+  RESOURCE_LIMIT_IDS,
+  RESOURCE_PROFILES,
+  rawResourceOptionsJson,
+  resourceOptions,
+  resourceOptionsJson,
+} from "./generated/resource-contract.js";
+export type {
+  RawResourceOptions,
+  ResourceLimitId,
+  ResourceLimitOverrides,
+  ResourceOptions,
+  ResourceProfile,
+} from "./generated/resource-contract.js";
 export {
   SEMANTIC_TOKEN_DESCRIPTOR,
   SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
@@ -126,7 +142,11 @@ async function doInit(
   const loader = typeof init === "function" ? init : init?.loader;
   const wasm = typeof init === "function" ? undefined : init?.wasm;
   const module = loader ? await loader() : await state.defaultLoader();
-  await module.default(wasm);
+  if (wasm === undefined) {
+    await module.default();
+  } else {
+    await module.default({ module_or_path: wasm });
+  }
   state.wasmModule = module;
   return module;
 }
@@ -503,6 +523,13 @@ function splitExplicitLines(text: string): string[] {
   return lines.length === 0 ? [""] : lines;
 }
 
+function splitTextToGraphemes(text: string): string[] {
+  if (typeof Intl.Segmenter === "function") {
+    return [...new Intl.Segmenter().segment(text)].map(({ segment }) => segment);
+  }
+  return Array.from(text);
+}
+
 function wrapSvgLine(
   probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest,
@@ -533,7 +560,7 @@ function wrapSvgLine(
     }
 
     let segment = "";
-    for (const character of Array.from(word)) {
+    for (const character of splitTextToGraphemes(word)) {
       const candidateSegment = `${segment}${character}`;
       if (segment && svgTextWidth(probes, request, candidateSegment) > maxWidth) {
         lines.push(segment);
@@ -1223,6 +1250,7 @@ function cloneSemanticTokenDescriptor(
 ): EditorSemanticTokenDescriptor {
   return {
     ...descriptor,
+    renamePolicies: [...descriptor.renamePolicies],
     tokenTypes: descriptor.tokenTypes.map((tokenType) => ({ ...tokenType })),
     modifiers: descriptor.modifiers.map((modifier) => ({ ...modifier })),
     packed: {
@@ -1248,6 +1276,12 @@ export function editorSemanticTokens(
 export function bindingCapabilities(): BindingCapabilities {
   const merman = getMerman();
   return normalizeBindingCapabilities(merman.bindingCapabilities());
+}
+
+export function runtimeContract(): RuntimeContract {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.runtimeContractCache ??= normalizeRuntimeContract(getMerman().runtimeContract());
+  return structuredCloneValue(state.runtimeContractCache);
 }
 
 export function selectedRegistryProfile(): RegistryProfile {
@@ -1356,6 +1390,13 @@ export function encodeOptions(
     return undefined;
   }
   return typeof options === "string" ? options : JSON.stringify(options);
+}
+
+export function withResourceOptions<T extends CommonBindingOptions>(
+  options: T,
+  resources: ResourceOptions,
+): T & { resources: ResourceOptions } {
+  return { ...options, resources };
 }
 
 function assertDiagramType(diagram: string): DiagramType {
@@ -1601,6 +1642,39 @@ function normalizeBindingCapabilities(capabilities: BindingCapabilities): Bindin
       Boolean(capabilities.render)
     ),
   };
+}
+
+function normalizeRuntimeContract(contract: RuntimeContract): RuntimeContract {
+  if (!contract || typeof contract !== "object" || contract.schema_version !== 1) {
+    throw new Error("Merman WASM returned an unsupported runtime contract schema.");
+  }
+  if (contract.options_schema_version !== 1) {
+    throw new Error("Merman WASM returned an unsupported options schema.");
+  }
+  if (contract.abi_version !== getMerman().abiVersion()) {
+    throw new Error("Merman WASM runtime contract ABI does not match the loaded module.");
+  }
+  return {
+    ...contract,
+    payload_schemas: { ...contract.payload_schemas },
+    features: normalizeBindingCapabilities(contract.features),
+    registry: { ...contract.registry },
+    resources:
+      contract.resources == null
+        ? null
+        : {
+            ...contract.resources,
+            limits: contract.resources.limits.map((limit) => ({ ...limit })),
+            profiles: contract.resources.profiles.map((profile) => ({
+              ...profile,
+              limits: { ...profile.limits },
+            })),
+          },
+  };
+}
+
+function structuredCloneValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function normalizeTextMeasurementCapabilities(

@@ -217,6 +217,7 @@ fn render_flowchart_svg_model(
         ty,
         measurer,
         config: effective_config,
+        resource_limits: options.resource_policy(),
         math_renderer: options.math_renderer(),
         icon_registry: options.icon_registry(),
         node_html_labels,
@@ -328,7 +329,7 @@ fn render_flowchart_svg_model(
             edge_path_cache: &mut edge_path_cache,
         },
         &effective_parent_for_id,
-    );
+    )?;
 
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_kind: if swimlane_layout.is_some() {

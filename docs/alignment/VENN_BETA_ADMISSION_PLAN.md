@@ -1,7 +1,7 @@
 # Venn Beta Admission Plan (Mermaid@11.16.0)
 
 Status: Admitted
-Last updated: 2026-07-17
+Last updated: 2026-07-22
 Pinned Mermaid commit: `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`
 
 This document records the source-backed plan and admission evidence for `venn-beta` in `merman`.
@@ -23,6 +23,10 @@ The parser and DB are small enough to port directly. The risky part is layout/re
 - Done: Venn renderer theme roles are projected through `PresentationTheme::venn()` for classic SVG output.
 - Done: `look: "handDrawn"` emits deterministic seeded `roughr` groups for circles and intersections, including hachure and cross-hatch fills.
 - Done: Mermaid Cypress cases 14, 15, and 18 have semantic/layout goldens and pinned 11.16 SVG baselines. Their exact fixture records are admitted as structure-only evidence because JavaScript RoughJS and Rust `roughr` do not produce path-identical coordinates.
+- Done: Mermaid Cypress cases 2, 8, 9, 13, 16, and 17 have semantic/layout goldens and pinned
+  11.16 SVG baselines. They close the classic-rendering gaps for three-set geometry, quoted set
+  identifiers, dark-theme roles, dense labels/text/styles, synthetic pairwise subsets, and partial
+  pairwise subsets.
 
 ## Source Evidence
 
@@ -124,6 +128,27 @@ The comparator maps requested strict/parity comparison to structure mode only fo
 family-and-stem records. It does not infer a weaker mode from `handDrawn` config or fixture naming.
 This proves renderer ownership and stable SVG structure without claiming path-level DOM parity:
 JavaScript RoughJS and Rust `roughr` retain observable path-coordinate differences.
+
+## Classic Fixture Coverage
+
+The active classic corpus is intentionally behavior-complete rather than a byte-for-byte copy of
+all 18 Cypress inputs. The syntax-doc fixtures already cover the simple two-set, title, labels,
+sizes, asymmetric sizes, text-node, area-style, and text-style cases. The six exact Cypress imports
+below cover the behavior that those fixtures did not exercise:
+
+| Cypress case | Fixture | Additional behavior |
+|---|---|---|
+| 2 | `upstream_cypress_venn_spec_2_should_render_a_three_set_venn_diagram_002` | Classic three-set layout with all pairwise and three-way intersections |
+| 8 | `upstream_cypress_venn_spec_8_should_render_a_venn_diagram_with_string_identifiers_008` | Quoted identifiers and quoted union references |
+| 9 | `upstream_cypress_venn_spec_9_should_render_with_dark_theme_009` | Dark-theme presentation roles on a three-set diagram |
+| 13 | `upstream_cypress_venn_spec_13_should_render_a_complex_venn_with_labels_text_nodes_and_style_013` | Three-set labels, 13 text nodes, and set styles in one layout |
+| 16 | `upstream_cypress_venn_spec_16_should_render_a_venn_diagram_with_a_3_set_union_without_expli_016` | Pairwise-subset synthesis for a lone three-way union |
+| 17 | `upstream_cypress_venn_spec_17_should_render_a_venn_diagram_with_partial_pairwise_subsets_017` | Completion of only the missing pairwise subset |
+
+Together with the three syntax-doc fixtures and three exact hand-drawn Cypress fixtures, this gives
+12 active Venn fixtures. Every active fixture has a semantic golden, layout golden, pinned upstream
+SVG, and family-local DOM comparison; omitted Cypress inputs add combinations of already-covered
+behavior rather than a new parser, layout, theme, or renderer contract.
 
 ## Admission Decision
 

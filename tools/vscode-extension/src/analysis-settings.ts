@@ -8,7 +8,9 @@ export interface AnalysisSettings {
   fixed_local_offset_minutes?: number;
   site_config?: Record<string, unknown>;
   resources?: {
-    max_source_bytes?: number;
+    limits?: {
+      max_source_bytes?: number;
+    };
   };
   lint?: {
     profile?: "core" | "recommended" | "strict";
@@ -49,7 +51,9 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     fixed_today: fixedToday,
     fixed_local_offset_minutes: fixedLocalOffsetMinutes,
     site_config: siteConfig,
-    resources: maxSourceBytes ? { max_source_bytes: maxSourceBytes } : undefined,
+    resources: maxSourceBytes
+      ? { limits: { max_source_bytes: maxSourceBytes } }
+      : undefined,
     lint:
       lintProfile || enableRules.length || disableRules.length || ruleSeverities.length
         ? compactObject({

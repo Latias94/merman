@@ -62,8 +62,8 @@ class ReleaseVersion:
             version += f"+{local}"
         return version
 
-    def to_vscode_manifest(self) -> str:
-        return self.base
+    def to_npm_dist_tag(self) -> str:
+        return self.prerelease_channel or "latest"
 
 
 def parse_release_version(value: str, *, allow_v_prefix: bool = True) -> ReleaseVersion:

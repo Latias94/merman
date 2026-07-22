@@ -86,6 +86,8 @@ mkdir -p "$INCLUDE_DIR"
 cp "$REPO_ROOT/crates/merman-ffi/include/merman.h" "$INCLUDE_DIR/merman.h"
 cp "$REPO_ROOT/crates/merman-ffi/include/merman_text_measurement_abi.h" \
     "$INCLUDE_DIR/merman_text_measurement_abi.h"
+cp "$REPO_ROOT/crates/merman-ffi/include/merman_resource_contract.h" \
+    "$INCLUDE_DIR/merman_resource_contract.h"
 
 XC_ARGS=()
 

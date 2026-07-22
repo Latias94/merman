@@ -1,19 +1,38 @@
-use crate::protocol::{WorkspaceEditEncoding, range_to_lsp};
+use crate::client_profile::ClientProtocolProfile;
+use crate::protocol::{DiagnosticIdentityData, WorkspaceEditEncoding, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_actions_from_fixes,
 };
-use serde::Deserialize;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
     TextEdit, Url, WorkspaceEdit,
 };
 
-pub fn code_actions_for_snapshot_with_encoding(
+/// Builds quick fixes from server-owned diagnostics paired with the checked snapshot.
+pub(crate) fn code_actions_for_snapshot_diagnostics_with_profile(
     snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
+    params: &CodeActionParams,
+    profile: &ClientProtocolProfile,
+) -> Option<CodeActionResponse> {
+    let projection = profile.code_actions.as_ref()?;
+    code_actions_for_snapshot_with_encoding_and_preferred_support(
+        snapshot,
+        diagnostics,
+        params,
+        profile.workspace_edit_encoding,
+        projection.is_preferred,
+    )
+}
+
+fn code_actions_for_snapshot_with_encoding_and_preferred_support(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
     params: &CodeActionParams,
     workspace_edit_encoding: WorkspaceEditEncoding,
+    is_preferred_support: bool,
 ) -> Option<CodeActionResponse> {
     if !allows_quickfix(&params.context) {
         return None;
@@ -26,7 +45,7 @@ pub fn code_actions_for_snapshot_with_encoding(
         .filter_map(|diagnostic| {
             Some((
                 diagnostic,
-                matching_snapshot_diagnostic(snapshot, diagnostic)?,
+                matching_snapshot_diagnostic(snapshot, diagnostics, diagnostic)?,
             ))
         })
         .flat_map(|(lsp_diagnostic, editor_diagnostic)| {
@@ -36,6 +55,7 @@ pub fn code_actions_for_snapshot_with_encoding(
                 &params.text_document.uri,
                 snapshot.version,
                 workspace_edit_encoding,
+                is_preferred_support,
             )
         })
         .collect::<Vec<_>>();
@@ -43,21 +63,37 @@ pub fn code_actions_for_snapshot_with_encoding(
     (!actions.is_empty()).then_some(actions)
 }
 
+#[cfg(test)]
+fn code_actions_for_snapshot_with_encoding(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
+    params: &CodeActionParams,
+    workspace_edit_encoding: WorkspaceEditEncoding,
+) -> Option<CodeActionResponse> {
+    code_actions_for_snapshot_with_encoding_and_preferred_support(
+        snapshot,
+        diagnostics,
+        params,
+        workspace_edit_encoding,
+        true,
+    )
+}
+
 fn matching_snapshot_diagnostic<'a>(
     snapshot: &'a DocumentSnapshot,
+    diagnostics: &'a [EditorDiagnostic],
     diagnostic: &Diagnostic,
 ) -> Option<&'a EditorDiagnostic> {
     if diagnostic.source.as_deref() != Some("merman") {
         return None;
     }
     let identity =
-        serde_json::from_value::<LspDiagnosticIdentityData>(diagnostic.data.as_ref()?.clone())
-            .ok()?;
+        serde_json::from_value::<DiagnosticIdentityData>(diagnostic.data.as_ref()?.clone()).ok()?;
     if identity.document_version != Some(snapshot.version) {
         return None;
     }
 
-    snapshot.diagnostics().iter().find(|candidate| {
+    diagnostics.iter().find(|candidate| {
         candidate.message == diagnostic.message
             && range_to_lsp(candidate.range) == diagnostic.range
             && matches!(
@@ -77,6 +113,7 @@ fn code_actions_for_editor_diagnostic(
     uri: &Url,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
+    is_preferred_support: bool,
 ) -> Vec<CodeActionOrCommand> {
     let Some(data) = editor_diagnostic.data.as_ref() else {
         return Vec::new();
@@ -96,7 +133,7 @@ fn code_actions_for_editor_diagnostic(
                 diagnostics: Some(vec![lsp_diagnostic.clone()]),
                 edit: Some(edit),
                 command: None,
-                is_preferred: action.is_preferred.then_some(true),
+                is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
                 disabled: None,
                 data: None,
             })
@@ -110,13 +147,6 @@ fn allows_quickfix(context: &CodeActionContext) -> bool {
         .only
         .as_ref()
         .is_none_or(|only| only.iter().any(|kind| kind == &CodeActionKind::QUICKFIX))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LspDiagnosticIdentityData {
-    id: String,
-    document_version: Option<i32>,
 }
 
 fn workspace_edit_for_edits(
@@ -169,7 +199,8 @@ mod tests {
     use crate::diagnostics::editor_diagnostics_to_versioned_diagnostics;
     use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
-    use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile};
+    use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer};
+    use merman_editor_core::{EditorDiagnostic, analysis_payload_to_diagnostics};
     use serde_json::json;
     use tower_lsp::lsp_types::{
         CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
@@ -180,10 +211,11 @@ mod tests {
 
     #[test]
     fn quickfixes_are_owned_by_the_current_snapshot() {
-        let (snapshot, params, uri) = snapshot_with_direction_fix();
+        let (snapshot, diagnostics, params, uri) = snapshot_with_direction_fix();
 
         let actions = code_actions_for_snapshot_with_encoding(
             &snapshot,
+            &diagnostics,
             &params,
             WorkspaceEditEncoding::DocumentChanges,
         )
@@ -201,7 +233,7 @@ mod tests {
 
     #[test]
     fn client_fix_payload_is_never_trusted() {
-        let (snapshot, mut params, _) = snapshot_with_direction_fix();
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
         params.context.diagnostics[0]
             .data
             .as_mut()
@@ -220,6 +252,7 @@ mod tests {
 
         let actions = code_actions_for_snapshot_with_encoding(
             &snapshot,
+            &diagnostics,
             &params,
             WorkspaceEditEncoding::DocumentChanges,
         )
@@ -231,7 +264,7 @@ mod tests {
 
     #[test]
     fn stale_or_non_quickfix_requests_are_rejected() {
-        let (snapshot, mut params, _) = snapshot_with_direction_fix();
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
         params.context.diagnostics[0]
             .data
             .as_mut()
@@ -241,17 +274,19 @@ mod tests {
         assert!(
             code_actions_for_snapshot_with_encoding(
                 &snapshot,
+                &diagnostics,
                 &params,
                 WorkspaceEditEncoding::DocumentChanges,
             )
             .is_none()
         );
 
-        let (_, mut params, _) = snapshot_with_direction_fix();
+        let (_, diagnostics, mut params, _) = snapshot_with_direction_fix();
         params.context.only = Some(vec![CodeActionKind::REFACTOR]);
         assert!(
             code_actions_for_snapshot_with_encoding(
                 &snapshot,
+                &diagnostics,
                 &params,
                 WorkspaceEditEncoding::DocumentChanges,
             )
@@ -261,9 +296,10 @@ mod tests {
 
     #[test]
     fn snapshot_actions_support_plain_workspace_changes() {
-        let (snapshot, params, uri) = snapshot_with_direction_fix();
+        let (snapshot, diagnostics, params, uri) = snapshot_with_direction_fix();
         let actions = code_actions_for_snapshot_with_encoding(
             &snapshot,
+            &diagnostics,
             &params,
             WorkspaceEditEncoding::Changes,
         )
@@ -280,33 +316,31 @@ mod tests {
 
     fn snapshot_with_direction_fix() -> (
         std::sync::Arc<crate::snapshot::DocumentSnapshot>,
+        Vec<EditorDiagnostic>,
         CodeActionParams,
         Url,
     ) {
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let mut store = DocumentStore::new();
-        store.apply_analyzer_options(AnalysisOptions::default().with_rule_config(
+        let options = AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-        ));
-        let snapshot = store.upsert(
-            uri.clone(),
-            DOCUMENT_VERSION,
-            "flowchart\nA-->B\n".to_string(),
         );
-        let diagnostic = editor_diagnostics_to_versioned_diagnostics(
-            snapshot.diagnostics(),
-            &uri,
-            DOCUMENT_VERSION,
-        )
-        .into_iter()
-        .find(|diagnostic| {
-            diagnostic.code.as_ref().is_some_and(|code| {
-                code == &tower_lsp::lsp_types::NumberOrString::String(
-                    "merman.authoring.flowchart.explicit_direction".to_string(),
-                )
-            })
-        })
-        .expect("flowchart direction diagnostic");
+        store.apply_analyzer_options(options.clone());
+        let source = "flowchart\nA-->B\n".to_string();
+        let snapshot = store.upsert(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let diagnostic =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .find(|diagnostic| {
+                    diagnostic.code.as_ref().is_some_and(|code| {
+                        code == &tower_lsp::lsp_types::NumberOrString::String(
+                            "merman.authoring.flowchart.explicit_direction".to_string(),
+                        )
+                    })
+                })
+                .expect("flowchart direction diagnostic");
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range::new(Position::new(0, 0), Position::new(0, 9)),
@@ -318,7 +352,7 @@ mod tests {
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
         };
-        (snapshot, params, uri)
+        (snapshot, diagnostics, params, uri)
     }
 
     fn only_code_action(actions: &[CodeActionOrCommand]) -> &CodeAction {

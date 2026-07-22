@@ -746,6 +746,16 @@ fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
     });
 }
 
+#[cfg(feature = "host-clock")]
+#[test]
+fn gantt_js_date_fallback_supports_upper_guardrail_in_system_timezone() {
+    let system = crate::time::LocalTimeZone::system();
+    crate::time::with_local_time_zone(&system, || {
+        let dt = parse_js_date_fallback("10000").unwrap();
+        assert_eq!(dt.year(), 10000);
+    });
+}
+
 #[test]
 fn gantt_js_date_fallback_parses_mdy_hm_strings_like_v8() {
     use chrono::{Datelike, Timelike};

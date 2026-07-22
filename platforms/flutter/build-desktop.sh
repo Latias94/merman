@@ -5,7 +5,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FLUTTER_ROOT="$REPO_ROOT/platforms/flutter"
 AUTO_INSTALL_RUST_TARGETS="${MERMAN_AUTO_INSTALL_RUST_TARGETS:-auto}"
 MACOS_XCFRAMEWORK_OUT="$FLUTTER_ROOT/macos/MermanFFI.xcframework"
-INCLUDE_HEADER="$REPO_ROOT/crates/merman-ffi/include/merman.h"
+FFI_INCLUDE_DIR="$REPO_ROOT/crates/merman-ffi/include"
 
 MODE="host"
 
@@ -70,6 +70,15 @@ host_arch() {
     esac
 }
 
+verify_public_headers() {
+    local headers_dir="$1"
+    local public_header
+    for public_header in "$FFI_INCLUDE_DIR"/*.h; do
+        test -f "$headers_dir/$(basename "$public_header")"
+    done
+    printf '#include "merman.h"\n' | xcrun clang -fsyntax-only -x c -I "$headers_dir" -
+}
+
 build_host() {
     local system
     local arch
@@ -108,10 +117,13 @@ write_macos_xcframework() {
     local headers_dir="$out_dir/Headers"
 
     require_tool xcodebuild
+    require_tool xcrun
 
     rm -rf "$out_dir" "$MACOS_XCFRAMEWORK_OUT"
     mkdir -p "$headers_dir"
-    cp "$INCLUDE_HEADER" "$headers_dir/merman.h"
+    cp "$FFI_INCLUDE_DIR"/*.h "$headers_dir/"
+
+    verify_public_headers "$headers_dir"
 
     xcodebuild -create-xcframework \
         -library "$dylib" \
@@ -119,6 +131,7 @@ write_macos_xcframework() {
         -output "$MACOS_XCFRAMEWORK_OUT"
 
     for HEADER_DIR in "$MACOS_XCFRAMEWORK_OUT"/*/Headers; do
+        verify_public_headers "$HEADER_DIR"
         cat > "$HEADER_DIR/module.modulemap" <<'EOF'
 module MermanFFI {
     header "merman.h"

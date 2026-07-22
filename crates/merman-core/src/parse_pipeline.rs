@@ -303,6 +303,7 @@ impl<'a> ParsePipeline<'a> {
     ) -> EditorSemanticFacts {
         let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts);
+        facts.span_coordinate_space = crate::EditorSpanCoordinateSpace::OriginalSource;
         let family = family::diagram_type_family_id(&meta.diagram_type)
             .expect("built-in combined semantic facts belong to a catalog family");
         facts.finalize_lexemes(family, source_map.source.global_lexemes());

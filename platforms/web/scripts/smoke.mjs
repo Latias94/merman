@@ -103,12 +103,9 @@ if (typeof import.meta.resolve === "function") {
 }
 
 const wasmBinary = await readFile(path.join(packageRoot, wasmBinaryRel));
-await exportedWasmModule.default({ module_or_path: wasmBinary });
-await api.initMerman({
-  wasm: {
-    module_or_path: wasmBinary,
-  },
-});
+await assertNoDeprecatedWasmBindgenInitWarning(() =>
+  api.initMerman({ wasm: wasmBinary })
+);
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
 const deterministicTime = {
@@ -355,7 +352,33 @@ if (surfaceContract.render) {
 }
 
 const capabilities = api.bindingCapabilities();
+const runtimeContract = api.runtimeContract();
 const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
+assert.equal(runtimeContract.schema_version, 1);
+assert.equal(runtimeContract.abi_version, api.abiVersion());
+assert.equal(runtimeContract.package_version, api.packageVersion());
+assert.equal(runtimeContract.options_schema_version, 1);
+assert.deepEqual(runtimeContract.features, capabilities);
+assert.equal(runtimeContract.registry.profile, api.selectedRegistryProfile());
+assert.equal(
+  runtimeContract.registry.diagram_family_count,
+  api.diagramFamilyCapabilities().length
+);
+if (surfaceContract.render) {
+  assert.equal(runtimeContract.resources.schema_version, 1);
+  assert.equal(
+    runtimeContract.resources.general_binding_default_profile,
+    "interactive"
+  );
+  assert.equal(runtimeContract.resources.cli_default_profile, "trusted-native");
+  assert.ok(
+    runtimeContract.resources.limits.some(
+      (limit) => limit.id === "max_svg_tree_depth" && limit.hard_cap
+    )
+  );
+} else {
+  assert.equal(runtimeContract.resources, null);
+}
 assert.equal(typeof capabilities.render, "boolean");
 assert.equal(typeof capabilities.analysis, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
@@ -1122,15 +1145,21 @@ function assertEditorLanguageSurface(enabled) {
   const descriptor = api.editorSemanticTokenDescriptor();
   const descriptorCopy = api.editorSemanticTokenDescriptor();
   assert.notEqual(descriptorCopy, descriptor);
+  assert.notEqual(descriptorCopy.renamePolicies, descriptor.renamePolicies);
   assert.notEqual(descriptorCopy.tokenTypes, descriptor.tokenTypes);
   assert.notEqual(descriptorCopy.modifiers, descriptor.modifiers);
   assert.notEqual(descriptorCopy.packed, descriptor.packed);
   assert.notEqual(descriptorCopy.packed.fieldOrder, descriptor.packed.fieldOrder);
   assert.notEqual(descriptorCopy.overlayPrecedence, descriptor.overlayPrecedence);
   descriptorCopy.tokenTypes[0].id = "mutated";
+  descriptorCopy.renamePolicies[0] = "mutated";
   descriptorCopy.packed.fieldOrder[0] = "mutated";
   const descriptorAfterMutation = api.editorSemanticTokenDescriptor();
   assert.equal(descriptorAfterMutation.tokenTypes[0].id, descriptor.tokenTypes[0].id);
+  assert.equal(
+    descriptorAfterMutation.renamePolicies[0],
+    descriptor.renamePolicies[0]
+  );
   assert.equal(
     descriptorAfterMutation.packed.fieldOrder[0],
     descriptor.packed.fieldOrder[0]
@@ -1243,26 +1272,45 @@ async function runSameProcessSurfaceSmoke() {
   const full = await import(toPackageSpecifier("./full"));
 
   await core.initMerman({
-    wasm: {
-      module_or_path: await readFile(
-        path.join(packageRoot, "pkg/core/merman_wasm_bg.wasm")
-      ),
-    },
+    wasm: await readFile(
+      path.join(packageRoot, "pkg/core/merman_wasm_bg.wasm")
+    ),
   });
   assert.equal(core.bindingCapabilities().render, false);
+  assert.equal(core.runtimeContract().resources, null);
   assert.equal(typeof core.renderSvg, "undefined");
 
   await full.initMerman({
-    wasm: {
-      module_or_path: await readFile(
-        path.join(packageRoot, "pkg/full/merman_wasm_bg.wasm")
-      ),
-    },
+    wasm: await readFile(
+      path.join(packageRoot, "pkg/full/merman_wasm_bg.wasm")
+    ),
   });
   assert.equal(full.bindingCapabilities().render, true);
+  assert.equal(
+    full.runtimeContract().resources.general_binding_default_profile,
+    "interactive"
+  );
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(core.bindingCapabilities().render, false);
   assert.equal(typeof core.renderSvg, "undefined");
+}
+
+async function assertNoDeprecatedWasmBindgenInitWarning(run) {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(" "));
+  try {
+    await run();
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepEqual(
+    warnings.filter((warning) =>
+      warning.includes("deprecated parameters for the initialization function")
+    ),
+    [],
+    "the public wrapper must own wasm-bindgen's object-shaped initialization contract"
+  );
 }
 
 async function runPureSubpathSmoke() {

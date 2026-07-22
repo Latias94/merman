@@ -47,8 +47,11 @@ pub use structure::{
 };
 pub use token_planner::{
     PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
+    plan_semantic_tokens_for_snapshot_range,
 };
+
 pub use types::{DocumentKind, DocumentUri, Position, Range};
 pub use workspace::{
-    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentWorkspace, EditorDiagramDetection,
+    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentAnalysisContext, DocumentWorkspace,
+    EditorDiagramDetection,
 };

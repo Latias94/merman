@@ -71,6 +71,10 @@ feature profile, manifest, or artifact differs. `npm run prepack` still expects 
 runs the wrapper/subpath contract check.
 
 Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
+Call `runtimeContract()` when you also need the loaded ABI/package/options schema, registry facts,
+or descriptor-driven resource profile values. Render-enabled artifacts include the complete
+resource catalog; analysis/editor/ascii-only artifacts return `resources: null`. Do not duplicate
+profile values in application code.
 Slim subpaths do not export wrappers for capabilities they intentionally omit. For example,
 `@mermanjs/web/core` has no `renderSvg()`, `renderAscii()`, or editor-language exports, and
 `@mermanjs/web/render` has no ASCII or editor-language exports.
@@ -126,6 +130,22 @@ const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
 
 The options object is serialized to the shared merman binding options JSON contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
+
+Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated helper:
+
+```ts
+import { initMerman, renderSvg, resourceOptions, withResourceOptions } from "@mermanjs/web";
+
+await initMerman();
+const options = withResourceOptions(
+  {},
+  resourceOptions("constrained", { max_source_bytes: 1_048_576 }),
+);
+const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", options);
+```
+
+Use `constrained` for untrusted, public, or multi-tenant input; `interactive` is for cooperative
+local editing. The native CLI's default is intentionally separate (`trusted-native`).
 
 Host/editor theme presets are separate from Mermaid's native `theme` names:
 
@@ -253,7 +273,9 @@ the host application's responsibility.
 The diagnostics and facts endpoints expose separate payload contracts. The diagnostics-only
 payload remains version 1. The current parser-only facts payload is also version 1: it uses explicit
 `fact_source: "unavailable"` provenance when body semantics are unavailable, and every
-`semantic_items[]` entry has a required `rename_policy` field.
+current `semantic_items[]` entry includes a `rename_policy` field. Readers must accept older v1
+entries that omit this additive field and treat them as `"none"` so stale metadata cannot enable
+rename operations.
 
 The TextScan-capable alpha shape shipped in `0.8.0-alpha.3` with the same numeric discriminator. The
 web package does not retain a legacy decoder or dual facts path; consumers must update their schema
@@ -279,7 +301,10 @@ await initMerman({
 });
 ```
 
-Concurrent calls share the same in-flight initialization promise.
+Pass the WASM source itself through `wasm` (a URL, `Response`, bytes, compiled
+`WebAssembly.Module`, or a promise of one). Do not wrap it in wasm-bindgen's internal
+`{ module_or_path }` object; `initMerman()` owns that generated glue contract. Concurrent calls
+share the same in-flight initialization promise.
 
 ## WASM loading best practices
 
@@ -394,7 +419,7 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
   `editorSemanticTokenDescriptor()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
-- `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
+- `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `runtimeContract()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 `@mermanjs/web/core` exports initialization, analysis/facts, validation, metadata, ABI/package

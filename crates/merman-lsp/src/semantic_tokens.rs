@@ -1,27 +1,32 @@
+use crate::client_profile::{ClientProtocolProfile, SemanticTokenProjection};
 use crate::snapshot::DocumentSnapshot;
+#[cfg(test)]
+use merman_editor_core::semantic_token_descriptor;
 use merman_editor_core::{
     PlannedToken, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
     SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
-    semantic_token_descriptor,
+    plan_semantic_tokens_for_snapshot_range,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use tower_lsp::lsp_types::{
-    Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
-    SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    Range, SemanticToken, SemanticTokens, SemanticTokensDelta, SemanticTokensEdit,
+    SemanticTokensFullDeltaResult, SemanticTokensOptions,
 };
+#[cfg(test)]
+use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
 
-pub fn semantic_tokens_options() -> SemanticTokensOptions {
-    SemanticTokensOptions {
-        work_done_progress_options: Default::default(),
-        legend: semantic_tokens_legend(),
-        range: Some(true),
-        full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
-    }
+pub(crate) fn semantic_tokens_options_with_profile(
+    profile: &ClientProtocolProfile,
+) -> Option<SemanticTokensOptions> {
+    profile
+        .semantic_tokens
+        .as_ref()
+        .map(SemanticTokenProjection::options)
 }
 
-pub fn semantic_tokens_legend() -> SemanticTokensLegend {
+#[cfg(test)]
+fn semantic_tokens_legend() -> SemanticTokensLegend {
     let descriptor = semantic_token_descriptor();
     SemanticTokensLegend {
         token_types: descriptor
@@ -37,7 +42,8 @@ pub fn semantic_tokens_legend() -> SemanticTokensLegend {
     }
 }
 
-pub fn semantic_tokens_for_snapshot(
+#[cfg(test)]
+fn semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokens, TokenPlanError> {
     let plan = token_plan(snapshot)?;
@@ -47,20 +53,48 @@ pub fn semantic_tokens_for_snapshot(
     })
 }
 
-pub fn semantic_tokens_for_snapshot_range(
+pub(crate) fn semantic_tokens_for_snapshot_with_profile(
+    snapshot: &DocumentSnapshot,
+    profile: &ClientProtocolProfile,
+) -> Result<Option<SemanticTokens>, TokenPlanError> {
+    let projection = profile.semantic_tokens.as_ref();
+    let Some(projection) = projection else {
+        return Ok(None);
+    };
+    let plan = token_plan(snapshot)?;
+    Ok(Some(SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens_with_projection(plan.tokens(), projection),
+    }))
+}
+
+#[cfg(test)]
+fn semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
 ) -> Result<SemanticTokens, TokenPlanError> {
-    let plan = token_plan(snapshot)?;
-    let data = encode_relative_tokens(
-        plan.tokens()
-            .iter()
-            .filter(|token| token_overlaps_range(token, &range)),
-    );
+    let plan = token_plan_range(snapshot, range)?;
+    let data = encode_relative_tokens(plan.tokens());
     Ok(SemanticTokens {
         result_id: None,
         data,
     })
+}
+
+pub(crate) fn semantic_tokens_for_snapshot_range_with_profile(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+    profile: &ClientProtocolProfile,
+) -> Result<Option<SemanticTokens>, TokenPlanError> {
+    let projection = profile.semantic_tokens.as_ref();
+    let Some(projection) = projection else {
+        return Ok(None);
+    };
+    let plan = token_plan_range(snapshot, range)?;
+    Ok(Some(SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens_with_projection(plan.tokens(), projection),
+    }))
 }
 
 pub fn semantic_tokens_delta_result(
@@ -103,34 +137,58 @@ fn token_plan(snapshot: &DocumentSnapshot) -> Result<SemanticTokenPlan, TokenPla
     plan_semantic_tokens_for_snapshot(snapshot.as_editor())
 }
 
-fn token_overlaps_range(token: &PlannedToken, range: &Range) -> bool {
-    if token.line < range.start.line || token.line > range.end.line {
-        return false;
-    }
-
-    let token_end = token.start + token.length;
-    if range.start.line == range.end.line {
-        return token.line == range.start.line
-            && token_end > range.start.character
-            && token.start < range.end.character;
-    }
-    if token.line == range.start.line {
-        return token_end > range.start.character;
-    }
-    if token.line == range.end.line {
-        return token.start < range.end.character;
-    }
-    true
+fn token_plan_range(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens_for_snapshot_range(
+        snapshot.as_editor(),
+        merman_editor_core::Range::new(
+            merman_editor_core::Position::new(
+                range.start.line as usize,
+                range.start.character as usize,
+            ),
+            merman_editor_core::Position::new(
+                range.end.line as usize,
+                range.end.character as usize,
+            ),
+        ),
+    )
 }
 
+#[cfg(test)]
 fn encode_relative_tokens<'a>(
     tokens: impl IntoIterator<Item = &'a PlannedToken>,
+) -> Vec<SemanticToken> {
+    encode_relative_tokens_with(tokens, |token| {
+        Some((token.kind.code(), token.modifier_bits))
+    })
+}
+
+fn encode_relative_tokens_with_projection<'a>(
+    tokens: impl IntoIterator<Item = &'a PlannedToken>,
+    projection: &SemanticTokenProjection,
+) -> Vec<SemanticToken> {
+    encode_relative_tokens_with(tokens, |token| {
+        projection.token_type(token.kind).map(|token_type| {
+            (
+                token_type,
+                projection.token_modifier_bitset(token.modifier_bits),
+            )
+        })
+    })
+}
+
+fn encode_relative_tokens_with<'a>(
+    tokens: impl IntoIterator<Item = &'a PlannedToken>,
+    project: impl Fn(&PlannedToken) -> Option<(u32, u32)>,
 ) -> Vec<SemanticToken> {
     let mut previous_line = 0u32;
     let mut previous_start = 0u32;
     tokens
         .into_iter()
-        .map(|token| {
+        .filter_map(|token| {
+            let (token_type, token_modifiers_bitset) = project(token)?;
             let delta_line = token.line - previous_line;
             let delta_start = if delta_line == 0 {
                 token.start - previous_start
@@ -139,13 +197,13 @@ fn encode_relative_tokens<'a>(
             };
             previous_line = token.line;
             previous_start = token.start;
-            SemanticToken {
+            Some(SemanticToken {
                 delta_line,
                 delta_start,
                 length: token.length,
-                token_type: token.kind.code(),
-                token_modifiers_bitset: token.modifier_bits,
-            }
+                token_type,
+                token_modifiers_bitset,
+            })
         })
         .collect()
 }
@@ -198,13 +256,18 @@ fn semantic_tokens_delta_edit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client_profile::ClientProtocolProfile;
     use crate::document_store::DocumentStore;
     use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
+    #[cfg(feature = "core-full")]
     use serde::Deserialize;
+    #[cfg(feature = "core-full")]
     use std::fs;
+    #[cfg(feature = "core-full")]
     use std::path::PathBuf;
     use tower_lsp::lsp_types::{Position, Url};
 
+    #[cfg(feature = "core-full")]
     #[derive(Debug, Deserialize)]
     struct TokenEquivalenceEvidence {
         descriptor_digest: String,
@@ -213,6 +276,7 @@ mod tests {
         recovery_cases: Vec<TokenEquivalenceCase>,
     }
 
+    #[cfg(feature = "core-full")]
     #[derive(Debug, Deserialize)]
     struct TokenEquivalenceCase {
         id: String,
@@ -297,6 +361,62 @@ mod tests {
     }
 
     #[test]
+    fn projection_filters_unsupported_tokens_before_reencoding_relative_positions() {
+        let capabilities: tower_lsp::lsp_types::ClientCapabilities =
+            serde_json::from_value(serde_json::json!({
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["string"],
+                        "tokenModifiers": ["mermanPayload"],
+                        "formats": ["relative"]
+                    }
+                }
+            }))
+            .unwrap();
+        let profile = ClientProtocolProfile::negotiate(&capabilities);
+        let projection = profile
+            .semantic_tokens
+            .as_ref()
+            .expect("string-only client should negotiate semantic tokens");
+        let planned = vec![
+            PlannedToken {
+                line: 0,
+                start: 0,
+                length: 4,
+                kind: PlannedTokenKind::Keyword,
+                modifier_bits: 0,
+            },
+            PlannedToken {
+                line: 2,
+                start: 5,
+                length: 7,
+                kind: PlannedTokenKind::String,
+                modifier_bits: PlannedTokenModifier::Payload.bit(),
+            },
+            PlannedToken {
+                line: 2,
+                start: 14,
+                length: 3,
+                kind: PlannedTokenKind::Identifier,
+                modifier_bits: PlannedTokenModifier::Entity.bit(),
+            },
+            PlannedToken {
+                line: 5,
+                start: 1,
+                length: 4,
+                kind: PlannedTokenKind::String,
+                modifier_bits: PlannedTokenModifier::Payload.bit(),
+            },
+        ];
+
+        assert_eq!(
+            encode_relative_tokens_with_projection(&planned, projection),
+            vec![semantic_token(2, 5, 7, 0, 1), semantic_token(3, 1, 4, 0, 1),]
+        );
+    }
+
+    #[test]
     fn unavailable_semantics_are_a_valid_empty_plan_not_a_planner_failure() {
         let mut store = DocumentStore::new();
         let uri = Url::parse("file:///tmp/unknown.mmd").unwrap();
@@ -306,6 +426,7 @@ mod tests {
         assert!(tokens.data.is_empty());
     }
 
+    #[cfg(feature = "core-full")]
     #[test]
     fn all_family_and_recovery_sequences_match_the_generated_cross_surface_evidence() {
         let evidence_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -381,6 +502,24 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "core-full"))]
+    #[test]
+    fn tiny_registry_keeps_full_only_families_out_of_semantic_tokens() {
+        assert!(!merman_core::supported_diagrams().contains(&"architecture"));
+
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///token-equivalence/tiny-architecture.mmd").unwrap();
+        let snapshot = store.upsert(uri, 1, "architecture-beta\n  service api\n".to_string());
+
+        assert!(snapshot.detection().is_none());
+        assert!(
+            semantic_tokens_for_snapshot(&snapshot)
+                .expect("unsupported tiny-profile source is a valid empty plan")
+                .data
+                .is_empty()
+        );
+    }
+
     #[test]
     fn range_filters_absolute_plan_then_reencodes_relative_tokens() {
         let mut store = DocumentStore::new();
@@ -408,7 +547,13 @@ mod tests {
         let expected = plan
             .tokens()
             .iter()
-            .filter(|token| token_overlaps_range(token, &range))
+            .filter(|token| {
+                let token_end = token.start + token.length;
+                token.line >= range.start.line
+                    && token.line <= range.end.line
+                    && (token.line != range.start.line || token_end > range.start.character)
+                    && (token.line != range.end.line || token.start < range.end.character)
+            })
             .map(|token| {
                 (
                     token.line,

@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Mixed indentation, comments, and continuation lines",
     "accTitle": null,
     "accDescr": null,

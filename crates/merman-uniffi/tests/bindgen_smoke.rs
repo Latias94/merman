@@ -144,6 +144,10 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose package_version"
     );
     assert!(
+        generated.contains("def runtime_contract_json"),
+        "generated binding should expose runtime_contract_json"
+    );
+    assert!(
         generated.contains("class MermanError"),
         "generated binding should expose structured MermanError"
     );

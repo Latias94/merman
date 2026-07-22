@@ -54,7 +54,7 @@ fn parse_indented_headers_across_common_diagrams() {
         assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
     }
 
-    #[cfg(feature = "full")]
+    #[cfg(feature = "full-registry")]
     for (text, expected_type) in [
         ("     mindmap\n       root\n", "mindmap"),
         (
@@ -509,7 +509,7 @@ graph TD;A-->B;
 }
 
 #[test]
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default =
@@ -809,7 +809,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
                 crate::config::drop_value_nonrecursive(model);
             }
 
-            #[cfg(feature = "full")]
+            #[cfg(feature = "full-registry")]
             {
                 let (label, diagram_type, source) = (
                     "architecture",
@@ -884,7 +884,7 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
                 crate::config::drop_value_nonrecursive(model);
             }
 
-            #[cfg(feature = "full")]
+            #[cfg(feature = "full-registry")]
             for (label, diagram_type, source) in [
                 ("mindmap", "mindmap", "mindmap\nroot\n child\n"),
                 ("mindmap-empty", "mindmap", "mindmap\n"),
@@ -1255,7 +1255,7 @@ fn render_semantic_model_supports_diagram_type_aliases() {
 }
 
 #[test]
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 fn render_parser_registry_drives_typed_alias_parse() {
     let engine = Engine::new();
     assert!(engine.render_diagram_registry().contains("flowchart-elk"));
@@ -3022,6 +3022,19 @@ service api(server)["API \"Gateway\""]
         parsed.model["services"][0]["title"],
         json!("API \"Gateway\"")
     );
+}
+
+#[test]
+#[cfg(feature = "full")]
+fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_strings_and_titles() {
+    for source in [
+        "architecture-beta\nservice api \"icon\\\ntext\"\n",
+        "architecture-beta\nservice api [\"title\\\ntext\"]\n",
+    ] {
+        Engine::new()
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("Langium \\. must not consume a physical newline");
+    }
 }
 
 #[test]

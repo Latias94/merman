@@ -1,10 +1,10 @@
 # Package Surfaces
 
-Status: draft release planning notes.
-Last updated: 2026-07-19
+Status: maintained release surface contract.
+Last updated: 2026-07-21
 
-This document records merman package surfaces, current readiness, and the CI gates that should
-protect them before any registry publication is enabled.
+This document records merman package surfaces, current readiness, and the CI gates that protect
+each publication or artifact build.
 
 ## Current Surfaces
 
@@ -35,19 +35,20 @@ Homebrew/core owns formula publication. Merman verifies the external stable form
 claiming to publish it from this repository. Registry-blocked and credential-blocked channels are
 not silently presented as available install paths.
 
-## First Release Set
+## Release Surface Set
 
-The first release set is:
+The repository-owned release surface set is:
 
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
-2. GitHub Release artifacts for `merman-cli`.
+2. GitHub Release artifacts for `merman-cli` and `merman-lsp`.
 3. GitHub Release XCFramework packaging for Apple.
 4. GitHub Release wheels and PyPI publishing for Python.
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.
 7. npm publishing for `@mermanjs/web` through `release-web.yml` after trusted publisher setup.
-8. Platform VSIX artifacts for VS Code through `vscode-extension.yml`; Marketplace publishing needs
-   an explicit release decision and credentials before it is enabled.
+8. Platform VSIX artifacts for the independently versioned VS Code extension through
+   `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
+   before it is enabled.
 
 ## Release Status States
 
@@ -209,7 +210,7 @@ Current release semantics are intentionally explicit:
   `render`, `analysis`, `core-full`, and `elk-layout`. The closed ABI 2 surface exports
   `abi_version`, `package_version`, `capabilities_json`, `render_svg_json`, and `analyze_json`.
   `--no-default-features` builds the internal protocol bridge only; it is not a public package
-  profile. The Typst plugin replaces caller-provided `resources` with the fixed `typst-package`
+  profile. The Typst plugin replaces caller-provided `resources` with the fixed `constrained`
   policy at every call, so document input cannot select a trusted or unbounded host profile.
 - Publishable Typst artifacts live under
   `target/typst-wasm-artifacts/<canonical-profile>/`. The profile directory contains only the
@@ -250,18 +251,19 @@ budget file is intentionally a regression guard with headroom, not a product tar
 browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes do
 not accidentally compare unlike surfaces.
 
-The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. Recent
-package artifacts measured during local release checks are:
+The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. The
+2026-07-22 measurements include the ICU4X collation data used to reproduce Mermaid's Swimlane
+`localeCompare` ordering rather than substituting Rust byte ordering:
 
 | Package artifact | Preset | Raw bytes | gzip bytes | brotli bytes | Budget source |
 | --- | --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 8,005,078 | 3,102,009 | 2,169,792 | `docs/release/WASM_SIZE_BUDGETS.json` |
-| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 2,154,903 | 807,038 | 611,055 | measured |
-| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 6,078,214 | 2,293,073 | 1,571,777 | measured |
-| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 5,840,419 | 2,190,623 | 1,512,306 | measured |
-| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,283,094 | 853,450 | 656,666 | measured |
-| `platforms/web/pkg/editor/merman_wasm_bg.wasm` | `browser-editor` | 2,927,915 | 1,187,134 | 903,197 | measured 2026-07-18 |
-| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 8,005,098 | 3,102,011 | 2,168,495 | measured |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 10,199,393 | 3,840,060 | 2,707,333 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 2,652,820 | 925,486 | 690,626 | measured |
+| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 8,000,016 | 2,930,737 | 2,063,928 | measured |
+| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 7,754,567 | 2,824,643 | 1,995,754 | measured |
+| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,775,409 | 970,159 | 735,690 | measured |
+| `platforms/web/pkg/editor/merman_wasm_bg.wasm` | `browser-editor` | 3,450,375 | 1,315,950 | 992,116 | measured |
+| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 10,199,393 | 3,840,060 | 2,707,333 | measured |
 
 For the current Typst publish artifact, also run:
 

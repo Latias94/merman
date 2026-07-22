@@ -1447,7 +1447,6 @@ fn parse_kanban_statement(
                 rest_start + value_start + trailing,
             ),
         };
-        lexemes.push(EditorLexemeKind::String, icon.span);
         let Some(close) = close else {
             return Err(Error::diagram_parse_insertion_point(
                 "kanban",
@@ -1460,13 +1459,6 @@ fn parse_kanban_statement(
             EditorLexemeKind::Delimiter,
             SourceSpan::new(close_start, close_start + 1),
         );
-        if icon.text.is_empty() {
-            return Err(Error::diagram_parse_insertion_point(
-                "kanban",
-                "expected icon name",
-                rest_start + value_start,
-            ));
-        }
         let after_close = &suffix[close + 1..];
         let visible_tail = strip_inline_comment(after_close);
         if !visible_tail.trim().is_empty() {
@@ -1481,8 +1473,12 @@ fn parse_kanban_statement(
                 span,
             ));
         }
-        db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
         facts.push_directive_prefix("icon");
+        if icon.text.is_empty() {
+            return Ok(());
+        }
+        lexemes.push(EditorLexemeKind::String, icon.span);
+        db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
         facts.push_symbol(EditorSemanticSymbol::payload(
             icon.text,
             Some("kanban icon".to_string()),
@@ -2223,6 +2219,27 @@ mod tests {
         assert_eq!(sections[0]["id"].as_str().unwrap(), "root");
         assert_eq!(sections[0]["label"].as_str().unwrap(), "The root");
         assert_eq!(sections[0]["icon"].as_str().unwrap(), "bomb");
+    }
+
+    #[test]
+    fn empty_icon_decoration_is_an_upstream_compatible_noop() {
+        let text = "kanban\n    root[The root]\n    ::icon()\n";
+        let model = parse(text);
+        let sections = sections(&model);
+        assert!(sections[0].get("icon").is_none());
+
+        let (_, facts) = crate::family::test_support::into_result(
+            parse_kanban_json_and_editor_facts(text, &meta()),
+        )
+        .unwrap();
+        assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));
+        assert!(facts.symbols.iter().all(|symbol| symbol.name != "icon"));
+        assert!(
+            facts
+                .lexemes()
+                .iter()
+                .all(|lexeme| lexeme.span().start < lexeme.span().end)
+        );
     }
 
     #[test]

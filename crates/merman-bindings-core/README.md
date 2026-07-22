@@ -52,9 +52,11 @@ assuming capabilities from a package name.
 The `analysis` capability bit is independent from `render` and `ascii`; slim artifacts can expose
 ASCII or render output without compiling diagnostics and lint catalog support.
 
-Diagnostics payloads and rich parser-only document facts are independent schema v1 contracts. The
-TextScan-capable alpha facts implementation is removed without a decoder or parallel binding path.
-Transport and platform ABI versions are independent from these JSON schema versions.
+Diagnostics payloads and rich parser-only document facts are independent schema v1 contracts.
+Current facts writers always emit `rename_policy`; readers map an omitted additive policy in an
+older v1 semantic item to the fail-closed `none` policy. This narrow field default does not revive
+the removed TextScan-capable alpha decoder, executor, or parallel binding path. Transport and
+platform ABI versions are independent from these JSON schema versions.
 
 With `render` enabled, this crate centralizes the host text-measurement result-shape contract. The
 current alpha transports expose 19 exact operations with contiguous codes `0..18`; operation 18 is

@@ -68,13 +68,15 @@ function insertDirectiveAfterFrontmatter(source: string, directive: string): str
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const firstLineEnd = source.search(/\r?\n/);
   const firstLine = firstLineEnd < 0 ? source : source.slice(0, firstLineEnd);
-  if (firstLine.trim() !== "---") {
+  const opening = frontmatterDelimiter(firstLine);
+  if (opening === null) {
     return `${directive}${newline}${source}`;
   }
   const lines = source.split(/\r?\n/);
 
   const frontmatterEnd = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === "---"
+    (line, index) =>
+      index > 0 && frontmatterDelimiter(line) === opening
   );
   if (frontmatterEnd > 0) {
     return [
@@ -85,6 +87,11 @@ function insertDirectiveAfterFrontmatter(source: string, directive: string): str
   }
 
   return `${directive}${newline}${source}`;
+}
+
+function frontmatterDelimiter(line: string): string | null {
+  const match = /^([ \t]*)---[ \t]*$/.exec(line);
+  return match?.[1] ?? null;
 }
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {

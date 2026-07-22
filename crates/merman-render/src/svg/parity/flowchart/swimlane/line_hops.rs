@@ -5,8 +5,11 @@
 //! directly once the caller has applied the source-backed curve eligibility rule.
 
 use crate::model::LayoutPoint;
+use crate::resources::RenderResourcePolicy;
+#[cfg(test)]
+use crate::resources::ResourceLimitId;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
 // Kept in sync with Mermaid's `generateRoundedPath` radius.
 pub(in crate::svg::parity::flowchart) const ROUNDED_CORNER_RADIUS: f64 = 5.0;
@@ -58,6 +61,53 @@ struct Segment<'a> {
     end: &'a LayoutPoint,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct IndexedSegment<'a> {
+    edge_index: usize,
+    segment_index: usize,
+    segment: Segment<'a>,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CandidatePair {
+    segment_a: usize,
+    segment_b: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SegmentExpiry {
+    max_x: f64,
+    segment_index: usize,
+}
+
+impl PartialEq for SegmentExpiry {
+    fn eq(&self, other: &Self) -> bool {
+        self.max_x.total_cmp(&other.max_x) == Ordering::Equal
+            && self.segment_index == other.segment_index
+    }
+}
+
+impl Eq for SegmentExpiry {}
+
+impl Ord for SegmentExpiry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .max_x
+            .total_cmp(&self.max_x)
+            .then_with(|| other.segment_index.cmp(&self.segment_index))
+    }
+}
+
+impl PartialOrd for SegmentExpiry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SegmentIntersection {
     point: LayoutPoint,
@@ -86,71 +136,153 @@ struct RoundedCorner {
 
 pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
-) -> Vec<LineHopCrossing<'a>> {
-    let mut crossings = Vec::new();
-
-    for (edge_a_index, edge_a) in edges.iter().enumerate() {
-        for edge_b in &edges[edge_a_index + 1..] {
-            for (segment_a_index, pair_a) in edge_a.points.windows(2).enumerate() {
-                let segment_a = Segment {
-                    start: &pair_a[0],
-                    end: &pair_a[1],
-                };
-                for (segment_b_index, pair_b) in edge_b.points.windows(2).enumerate() {
-                    let segment_b = Segment {
-                        start: &pair_b[0],
-                        end: &pair_b[1],
-                    };
-                    let Some(intersection) = segment_intersection(segment_a, segment_b) else {
-                        continue;
-                    };
-
-                    let a_is_horizontal = is_horizontally_dominant(segment_a);
-                    let b_is_horizontal = is_horizontally_dominant(segment_b);
-                    let jump_on_a = a_is_horizontal != b_is_horizontal && a_is_horizontal;
-
-                    if jump_on_a {
-                        crossings.push(LineHopCrossing {
-                            jump_edge_id: edge_a.id,
-                            other_edge_id: edge_b.id,
-                            segment_index: segment_a_index,
-                            t: intersection.t_a,
-                            point: intersection.point,
-                        });
-                    } else {
-                        crossings.push(LineHopCrossing {
-                            jump_edge_id: edge_b.id,
-                            other_edge_id: edge_a.id,
-                            segment_index: segment_b_index,
-                            t: intersection.t_b,
-                            point: intersection.point,
-                        });
-                    }
-                }
-            }
+    resource_limits: RenderResourcePolicy,
+) -> crate::Result<Vec<LineHopCrossing<'a>>> {
+    let mut segments = Vec::new();
+    for (edge_index, edge) in edges.iter().enumerate() {
+        for (segment_index, pair) in edge.points.windows(2).enumerate() {
+            let start = &pair[0];
+            let end = &pair[1];
+            segments.push(IndexedSegment {
+                edge_index,
+                segment_index,
+                segment: Segment { start, end },
+                min_x: start.x.min(end.x),
+                max_x: start.x.max(end.x),
+                min_y: start.y.min(end.y),
+                max_y: start.y.max(end.y),
+            });
         }
     }
 
-    crossings
+    let mut by_min_x = (0..segments.len()).collect::<Vec<_>>();
+    by_min_x.sort_by(|&left, &right| {
+        segments[left]
+            .min_x
+            .total_cmp(&segments[right].min_x)
+            .then_with(|| segments[left].edge_index.cmp(&segments[right].edge_index))
+            .then_with(|| {
+                segments[left]
+                    .segment_index
+                    .cmp(&segments[right].segment_index)
+            })
+    });
+
+    // The active set is partitioned by edge so segments never compare against the same edge.
+    // Expiration by max-x gives a source-preserving broad phase: excluded pairs cannot have a
+    // proper segment intersection, while surviving pairs still use Mermaid's exact predicate.
+    let mut active_by_edge: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); edges.len()];
+    let mut active_edges: BTreeSet<usize> = BTreeSet::new();
+    let mut expirations: BinaryHeap<SegmentExpiry> = BinaryHeap::new();
+    let mut candidate_pairs = Vec::new();
+    let mut inspected_pairs = 0usize;
+
+    for segment_index in by_min_x {
+        let current = segments[segment_index];
+        while expirations
+            .peek()
+            .is_some_and(|expiry| expiry.max_x <= current.min_x)
+        {
+            let expiry = expirations.pop().expect("peeked expiry must exist");
+            let expired_edge = segments[expiry.segment_index].edge_index;
+            active_by_edge[expired_edge].remove(&expiry.segment_index);
+            if active_by_edge[expired_edge].is_empty() {
+                active_edges.remove(&expired_edge);
+            }
+        }
+
+        for &other_edge_index in &active_edges {
+            if other_edge_index == current.edge_index {
+                continue;
+            }
+            for &other_segment_index in &active_by_edge[other_edge_index] {
+                inspected_pairs = inspected_pairs.saturating_add(1);
+                resource_limits.check_swimlane_line_hop_segment_pairs(inspected_pairs)?;
+
+                let other = segments[other_segment_index];
+                if other.max_y <= current.min_y || current.max_y <= other.min_y {
+                    continue;
+                }
+                let (segment_a, segment_b) = if other.edge_index < current.edge_index {
+                    (other_segment_index, segment_index)
+                } else {
+                    (segment_index, other_segment_index)
+                };
+                candidate_pairs.push(CandidatePair {
+                    segment_a,
+                    segment_b,
+                });
+            }
+        }
+
+        active_by_edge[current.edge_index].insert(segment_index);
+        active_edges.insert(current.edge_index);
+        expirations.push(SegmentExpiry {
+            max_x: current.max_x,
+            segment_index,
+        });
+    }
+
+    candidate_pairs.sort_by_key(|candidate| {
+        let a = segments[candidate.segment_a];
+        let b = segments[candidate.segment_b];
+        (a.edge_index, b.edge_index, a.segment_index, b.segment_index)
+    });
+
+    let mut crossings = Vec::new();
+    for candidate in candidate_pairs {
+        let segment_a = segments[candidate.segment_a];
+        let segment_b = segments[candidate.segment_b];
+        let Some(intersection) = segment_intersection(segment_a.segment, segment_b.segment) else {
+            continue;
+        };
+
+        let edge_a = edges[segment_a.edge_index];
+        let edge_b = edges[segment_b.edge_index];
+        let a_is_horizontal = is_horizontally_dominant(segment_a.segment);
+        let b_is_horizontal = is_horizontally_dominant(segment_b.segment);
+        let jump_on_a = a_is_horizontal != b_is_horizontal && a_is_horizontal;
+
+        if jump_on_a {
+            crossings.push(LineHopCrossing {
+                jump_edge_id: edge_a.id,
+                other_edge_id: edge_b.id,
+                segment_index: segment_a.segment_index,
+                t: intersection.t_a,
+                point: intersection.point,
+            });
+        } else {
+            crossings.push(LineHopCrossing {
+                jump_edge_id: edge_b.id,
+                other_edge_id: edge_a.id,
+                segment_index: segment_b.segment_index,
+                t: intersection.t_b,
+                point: intersection.point,
+            });
+        }
+    }
+
+    Ok(crossings)
 }
 
 pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
     edges: &[LineHopEdge<'a>],
     config: LineHopConfig,
-) -> Vec<LineHopPath<'a>> {
+    resource_limits: RenderResourcePolicy,
+) -> crate::Result<Vec<LineHopPath<'a>>> {
     if !config.enabled {
-        return edges
+        return Ok(edges
             .iter()
             .map(|edge| LineHopPath {
                 edge_id: edge.id,
                 path: plain_path(edge.points),
                 has_hops: false,
             })
-            .collect();
+            .collect());
     }
 
     let mut jumps_by_edge: HashMap<&'a str, Vec<LineHopCrossing<'a>>> = HashMap::new();
-    for crossing in find_edge_intersections(edges) {
+    for crossing in find_edge_intersections(edges, resource_limits)? {
         debug_assert_ne!(crossing.jump_edge_id, crossing.other_edge_id);
         jumps_by_edge
             .entry(crossing.jump_edge_id)
@@ -158,7 +290,7 @@ pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
             .push(crossing);
     }
 
-    edges
+    Ok(edges
         .iter()
         .map(|edge| {
             let Some(jumps) = jumps_by_edge.get(edge.id) else {
@@ -175,7 +307,7 @@ pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
                 has_hops,
             }
         })
-        .collect()
+        .collect())
 }
 
 pub(in crate::svg::parity::flowchart) fn curve_supports_line_hops(curve: Option<&str>) -> bool {
@@ -532,6 +664,79 @@ fn plain_path(points: &[LayoutPoint]) -> String {
 mod tests {
     use super::*;
 
+    fn find_edge_intersections<'a>(edges: &[LineHopEdge<'a>]) -> Vec<LineHopCrossing<'a>> {
+        super::find_edge_intersections(edges, RenderResourcePolicy::unbounded_for_trusted_input())
+            .expect("unbounded line-hop intersection scan")
+    }
+
+    fn process_edges_with_line_hops<'a>(
+        edges: &[LineHopEdge<'a>],
+        config: LineHopConfig,
+    ) -> Vec<LineHopPath<'a>> {
+        super::process_edges_with_line_hops(
+            edges,
+            config,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("unbounded line-hop processing")
+    }
+
+    fn brute_force_edge_intersections<'a>(edges: &[LineHopEdge<'a>]) -> Vec<LineHopCrossing<'a>> {
+        let mut crossings = Vec::new();
+        for (edge_a_index, edge_a) in edges.iter().enumerate() {
+            for edge_b in &edges[edge_a_index + 1..] {
+                for (segment_a_index, pair_a) in edge_a.points.windows(2).enumerate() {
+                    let segment_a = Segment {
+                        start: &pair_a[0],
+                        end: &pair_a[1],
+                    };
+                    for (segment_b_index, pair_b) in edge_b.points.windows(2).enumerate() {
+                        let segment_b = Segment {
+                            start: &pair_b[0],
+                            end: &pair_b[1],
+                        };
+                        let Some(intersection) = segment_intersection(segment_a, segment_b) else {
+                            continue;
+                        };
+                        let a_is_horizontal = is_horizontally_dominant(segment_a);
+                        let b_is_horizontal = is_horizontally_dominant(segment_b);
+                        let jump_on_a = a_is_horizontal != b_is_horizontal && a_is_horizontal;
+                        crossings.push(if jump_on_a {
+                            LineHopCrossing {
+                                jump_edge_id: edge_a.id,
+                                other_edge_id: edge_b.id,
+                                segment_index: segment_a_index,
+                                t: intersection.t_a,
+                                point: intersection.point,
+                            }
+                        } else {
+                            LineHopCrossing {
+                                jump_edge_id: edge_b.id,
+                                other_edge_id: edge_a.id,
+                                segment_index: segment_b_index,
+                                t: intersection.t_b,
+                                point: intersection.point,
+                            }
+                        });
+                    }
+                }
+            }
+        }
+        crossings
+    }
+
+    fn assert_crossings_equal(actual: &[LineHopCrossing<'_>], expected: &[LineHopCrossing<'_>]) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert_eq!(actual.jump_edge_id, expected.jump_edge_id);
+            assert_eq!(actual.other_edge_id, expected.other_edge_id);
+            assert_eq!(actual.segment_index, expected.segment_index);
+            assert_eq!(actual.t, expected.t);
+            assert_eq!(actual.point.x, expected.point.x);
+            assert_eq!(actual.point.y, expected.point.y);
+        }
+    }
+
     fn point(x: f64, y: f64) -> LayoutPoint {
         LayoutPoint { x, y }
     }
@@ -617,6 +822,91 @@ mod tests {
         assert!(
             find_edge_intersections(&[edge("a", &parallel_a), edge("b", &parallel_b),]).is_empty()
         );
+    }
+
+    #[test]
+    fn dense_segment_candidates_fail_at_the_explicit_work_boundary() {
+        let point_sets = (0..100)
+            .map(|index| vec![point(0.0, index as f64), point(10.0, 100.0 - index as f64)])
+            .collect::<Vec<_>>();
+        let ids = (0..point_sets.len())
+            .map(|index| format!("edge-{index}"))
+            .collect::<Vec<_>>();
+        let edges = ids
+            .iter()
+            .zip(&point_sets)
+            .map(|(id, points)| edge(id, points))
+            .collect::<Vec<_>>();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 32)
+            .unwrap();
+
+        let error = super::find_edge_intersections(&edges, limits).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected line-hop segment-pair resource limit");
+        };
+        assert_eq!(error.limit, "max_swimlane_line_hop_segment_pairs");
+        assert_eq!(error.actual, 33);
+        assert_eq!(error.max, 32);
+    }
+
+    #[test]
+    fn sweep_discards_spatially_separate_edges_without_consuming_pair_budget() {
+        let point_sets = (0..2_000)
+            .map(|index| {
+                let x = index as f64 * 2.0;
+                vec![point(x, 0.0), point(x + 1.0, 1.0)]
+            })
+            .collect::<Vec<_>>();
+        let ids = (0..point_sets.len())
+            .map(|index| format!("edge-{index}"))
+            .collect::<Vec<_>>();
+        let edges = ids
+            .iter()
+            .zip(&point_sets)
+            .map(|(id, points)| edge(id, points))
+            .collect::<Vec<_>>();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 1)
+            .unwrap();
+
+        let crossings = super::find_edge_intersections(&edges, limits)
+            .expect("disjoint x intervals require no segment-pair inspections");
+        assert!(crossings.is_empty());
+    }
+
+    #[test]
+    fn sweep_matches_the_pinned_mermaid_pairwise_predicate() {
+        let mut state = 0x4d59_5df4_d0f3_3173u64;
+        let mut next_coordinate = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % 101) as f64
+        };
+        let point_sets = (0..24)
+            .map(|_| {
+                (0..6)
+                    .map(|_| point(next_coordinate(), next_coordinate()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let ids = (0..point_sets.len())
+            .map(|index| format!("edge-{index}"))
+            .collect::<Vec<_>>();
+        let edges = ids
+            .iter()
+            .zip(&point_sets)
+            .map(|(id, points)| edge(id, points))
+            .collect::<Vec<_>>();
+
+        let expected = brute_force_edge_intersections(&edges);
+        let actual = super::find_edge_intersections(
+            &edges,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("unbounded sweep");
+        assert_crossings_equal(&actual, &expected);
     }
 
     #[test]

@@ -246,11 +246,20 @@ Use `MermanReusableEngine` with `MermanTextMeasurer`:
 ```kotlin
 val engine = MermanReusableEngine()
 engine.setTextMeasurer { request ->
-    // Measure with the same text stack used by your preview.
-    // Return null for unsupported requests.
-    null
+    when (request.operation) {
+        MermanTextMeasurementOperation.MEASURE ->
+            MermanTextMeasureResult.metrics(width = 42.0, height = 18.0, lineCount = 1)
+        else -> null
+    }
 }
 ```
+
+The four named factories require exactly the meaningful shape: `metrics(width, height, lineCount)`,
+`length(length)`, `horizontalExtents(left, right)`, and
+`wrappedWithRawWidth(width, height, lineCount, rawWidth)`. There is no zero-filled generic
+constructor. This makes an omitted required measurement a host compile error instead of a valid
+zero measurement. Each factory also rejects non-finite values, negative dimensions, and zero line
+counts before JNI is entered.
 
 Recommended Android implementation choices:
 
@@ -330,11 +339,22 @@ Use `MermanReusableEngine` with `setTextMeasurer`:
 ```dart
 final engine = Merman.open().reusableEngine();
 engine.setTextMeasurer((request) {
-  // Measure with the same surface that will display the SVG.
-  // Return null for unsupported requests.
+  if (request.operation == MermanTextMeasurementOperation.measure) {
+    return MermanTextMeasureResult.metrics(
+      width: 42,
+      height: 18,
+      lineCount: 1,
+    );
+  }
   return null;
 });
 ```
+
+The four named factories require exactly the meaningful shape: `metrics`, `length`,
+`horizontalExtents`, and `wrappedWithRawWidth`. There is no zero-filled generic constructor. This
+makes an omitted required measurement a host compile error instead of a valid zero measurement.
+Each factory also rejects non-finite values, negative dimensions, and zero line counts before the
+native callback is marked as handled.
 
 The current Dart wrapper uses `NativeCallable.isolateLocal`, so the native callback must be invoked
 on the same isolate thread that created it. That has practical consequences:

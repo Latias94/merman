@@ -38,6 +38,7 @@ enum {
 };
 
 #include "merman_text_measurement_abi.h"
+#include "merman_resource_contract.h"
 
 typedef struct MermanBuffer {
     uint8_t* data;
@@ -155,6 +156,19 @@ size_t merman_result_struct_size(void);
 size_t merman_engine_result_struct_size(void);
 size_t merman_host_text_measure_request_struct_size(void);
 size_t merman_host_text_measure_result_struct_size(void);
+size_t merman_resource_limit_override_struct_size(void);
+
+/*
+ * Build versioned options JSON from the typed resource descriptor projection.
+ *
+ * `overrides` may be NULL only when `overrides_len` is zero. The returned buffer follows the
+ * normal MermanResult ownership rules and must be released with merman_buffer_free.
+ */
+MermanResult merman_resource_options_json(
+    MermanResourceProfile profile,
+    const MermanResourceLimitOverride* overrides,
+    size_t overrides_len
+);
 
 /*
  * Create and free a reusable engine for repeated calls with the same options_json.
@@ -389,6 +403,8 @@ MermanResult merman_validate_json(
  * Success and error ownership rules are identical to merman_render_svg.
  */
 MermanResult merman_supported_diagrams_json(void);
+/* Versioned ABI/package/feature/registry/resource metadata. */
+MermanResult merman_runtime_contract_json(void);
 MermanResult merman_ascii_capabilities_json(void);
 /* Complete detector/parser/editor/header/config/render facts for each active diagram id. */
 MermanResult merman_diagram_family_capabilities_json(void);

@@ -14,9 +14,43 @@ keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
 [features]
-default = ["core-full", "core-host"]
-core-full = ["merman-analysis/core-full", "merman-core/full"]
-core-host = ["merman-analysis/core-host", "merman-core/host"]
+default = ["stdio", "core-full", "core-host"]
+stdio = ["dep:tower", "dep:tracing-subscriber"]
+core-full = [
+    "merman-analysis/core-full",
+    "merman-core/full",
+    "merman-editor-core/core-full",
+]
+core-full-registry = [
+    "merman-analysis/core-full-registry",
+    "merman-core/full-registry",
+    "merman-editor-core/core-full-registry",
+]
+core-full-config = [
+    "merman-analysis/core-full-config",
+    "merman-core/full-config",
+    "merman-editor-core/core-full-config",
+]
+core-full-sanitization = [
+    "merman-analysis/core-full-sanitization",
+    "merman-core/full-sanitization",
+    "merman-editor-core/core-full-sanitization",
+]
+core-host = [
+    "merman-analysis/core-host",
+    "merman-core/host",
+    "merman-editor-core/core-host",
+]
+
+[[bin]]
+name = "merman-lsp"
+path = "src/main.rs"
+required-features = ["stdio"]
+
+[[test]]
+name = "stdio_smoke"
+path = "tests/stdio_smoke.rs"
+required-features = ["stdio"]
 
 [dependencies]
 futures.workspace = true
@@ -27,13 +61,16 @@ url.workspace = true
 merman-analysis.workspace = true
 merman-core.workspace = true
 merman-editor-core.workspace = true
+ropey.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tower = { version = "0.4.13", optional = true }
 tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
+tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"], optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
 tempfile = "3.27.0"
+tokio = { workspace = true, features = ["test-util"] }
 tower = "0.4.13"

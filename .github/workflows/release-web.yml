@@ -34,6 +34,11 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
       - name: Validate release inputs
         id: release
         shell: bash
@@ -48,89 +53,26 @@ jobs:
             exit 1
           }
 
-          is_uint() {
-            local value="$1"
-            [[ -n "$value" ]] || return 1
-            [[ "$value" == "0" || "$value" != 0* ]] || return 1
-            case "$value" in
-              *[!0-9]*) return 1 ;;
-              *) return 0 ;;
-            esac
-          }
-
-          is_release_version() {
-            local version="$1"
-            local build_metadata=""
-            if [[ "$version" == *+* ]]; then
-              build_metadata="${version#*+}"
-              [[ -n "$build_metadata" ]] || return 1
-              [[ "$build_metadata" != *+* && "$build_metadata" != .* && "$build_metadata" != *. && "$build_metadata" != *..* ]] || return 1
-              [[ "$build_metadata" != *[!0-9A-Za-z.-]* ]] || return 1
-              version="${version%%+*}"
-            fi
-            local core="$version"
-            local prerelease=""
-            local has_prerelease=0
-            if [[ "$version" == *-* ]]; then
-              core="${version%%-*}"
-              prerelease="${version#*-}"
-              has_prerelease=1
-            fi
-
-            local major minor patch extra
-            IFS=. read -r major minor patch extra <<< "$core"
-            [[ -z "${extra:-}" ]] || return 1
-            is_uint "$major" && is_uint "$minor" && is_uint "$patch" || return 1
-
-            if [[ -z "$prerelease" ]]; then
-              [[ "$has_prerelease" -eq 0 ]] || return 1
-              return 0
-            fi
-
-            local channel number prerelease_extra
-            IFS=. read -r channel number prerelease_extra <<< "$prerelease"
-            [[ -z "${prerelease_extra:-}" ]] || return 1
-            case "$channel" in
-              alpha | beta | rc) ;;
-              *) return 1 ;;
-            esac
-            is_uint "$number"
-          }
-
-          is_release_tag() {
-            local tag="$1"
-            [[ "$tag" == v* ]] || return 1
-            is_release_version "${tag#v}"
-          }
-
-          is_release_tag_ref() {
-            local ref="$1"
-            [[ "$ref" == refs/tags/v* ]] || return 1
-            is_release_tag "${ref#refs/tags/}"
-          }
-
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
           SOURCE_REF="$DISPATCH_SOURCE_REF"
 
-          is_release_tag "$RELEASE_TAG" || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          if ! VERSION="$(python3 scripts/release-version.py canonical --version "$RELEASE_TAG")"; then
+            fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          fi
+          [[ "$RELEASE_TAG" == "v$VERSION" ]] || fail "release_tag must use the canonical v-prefixed release version."
+          if ! npm_dist_tag="$(python3 scripts/release-version.py npm-dist-tag --version "$RELEASE_TAG")"; then
+            fail "release_tag contains an unsupported SemVer version."
+          fi
+
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif is_release_tag "$SOURCE_REF" || is_release_tag_ref "$SOURCE_REF"; then
+          elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
-            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
-          fi
-
-          VERSION="${RELEASE_TAG#v}"
-          is_release_version "$VERSION" || fail "release_tag contains an unsupported SemVer version."
-          npm_dist_tag="latest"
-          if [[ "$VERSION" == *-* ]]; then
-            npm_dist_tag="${VERSION#*-}"
-            npm_dist_tag="${npm_dist_tag%%.*}"
+            fail "source_ref tag must match release_tag; source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           {
@@ -305,13 +247,18 @@ jobs:
           path: target/npm-package
 
       - name: Publish to npm
+        shell: bash
         env:
           NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
         run: |
           set -euo pipefail
-          package_file="$(find target/npm-package -maxdepth 1 -type f -name '*.tgz' -print -quit)"
-          test -n "$package_file"
-          npm publish "$package_file" --ignore-scripts --access public --tag "$NPM_DIST_TAG"
+          shopt -s nullglob
+          package_files=(target/npm-package/*.tgz)
+          if (( ${#package_files[@]} != 1 )); then
+            echo "::error::Expected exactly one packed npm tarball, found ${#package_files[@]}." >&2
+            exit 1
+          fi
+          npm publish "${package_files[0]}" --ignore-scripts --access public --tag "$NPM_DIST_TAG"
 
   skip_existing:
     needs:

@@ -1,6 +1,6 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, ResourceOptionsJson,
-    binding_local_time_policy, binding_site_config, css_declaration_value, finite_positive,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_local_time_policy,
+    binding_resource_policy, binding_site_config, css_declaration_value, finite_positive,
     internal_json_error, no_diagram_error, normalize_option,
 };
 use merman::render::{
@@ -87,9 +87,9 @@ fn build_renderer(
     options: &BindingOptions,
 ) -> Result<(HeadlessRenderer, merman::render::SvgOutputPolicy), BindingError> {
     let mut environment = apply_binding_time_policy(default_render_environment(), options)?;
-    if let Some(resources) = options.analysis.resources.as_ref() {
-        environment = environment.with_resource_limits(binding_resource_limits(resources)?);
-    }
+    environment = environment.with_resource_policy(binding_resource_policy(
+        options.analysis.resources.as_ref(),
+    )?);
     if let Some(environment_json) = options.environment.as_ref() {
         if let Some(kind) = environment_json.text_measurement.as_deref() {
             environment =
@@ -362,108 +362,6 @@ fn binding_host_theme(
     }
 
     Ok(profile.compile())
-}
-
-fn binding_resource_limits(
-    resources: &ResourceOptionsJson,
-) -> Result<merman::render::RenderResourceLimits, BindingError> {
-    let mut limits = match resources.profile.as_deref() {
-        None => merman::render::RenderResourceLimits::interactive(),
-        Some(profile) => match normalize_option(profile).as_str() {
-            "interactive" => merman::render::RenderResourceLimits::interactive(),
-            "typst-package" => merman::render::RenderResourceLimits::typst_package(),
-            "trusted-native" => merman::render::RenderResourceLimits::trusted_native(),
-            "unbounded-for-trusted-input" => {
-                merman::render::RenderResourceLimits::unbounded_for_trusted_input()
-            }
-            other => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported resources.profile: {other}"),
-                ));
-            }
-        },
-    };
-
-    apply_usize_override(
-        &mut limits.max_source_bytes,
-        resources.max_source_bytes,
-        "resources.max_source_bytes",
-    )?;
-    apply_usize_override(
-        &mut limits.max_svg_bytes,
-        resources.max_svg_bytes,
-        "resources.max_svg_bytes",
-    )?;
-    apply_usize_override(
-        &mut limits.max_flowchart_nodes,
-        resources.max_flowchart_nodes,
-        "resources.max_flowchart_nodes",
-    )?;
-    apply_usize_override(
-        &mut limits.max_flowchart_edges,
-        resources.max_flowchart_edges,
-        "resources.max_flowchart_edges",
-    )?;
-    apply_usize_override(
-        &mut limits.max_flowchart_subgraphs,
-        resources.max_flowchart_subgraphs,
-        "resources.max_flowchart_subgraphs",
-    )?;
-    apply_usize_override(
-        &mut limits.max_class_nodes,
-        resources.max_class_nodes,
-        "resources.max_class_nodes",
-    )?;
-    apply_usize_override(
-        &mut limits.max_class_edges,
-        resources.max_class_edges,
-        "resources.max_class_edges",
-    )?;
-    apply_usize_override(
-        &mut limits.max_class_namespaces,
-        resources.max_class_namespaces,
-        "resources.max_class_namespaces",
-    )?;
-    apply_usize_override(
-        &mut limits.max_zenuml_participants,
-        resources.max_zenuml_participants,
-        "resources.max_zenuml_participants",
-    )?;
-    apply_usize_override(
-        &mut limits.max_zenuml_statements,
-        resources.max_zenuml_statements,
-        "resources.max_zenuml_statements",
-    )?;
-    apply_usize_override(
-        &mut limits.max_zenuml_fragments,
-        resources.max_zenuml_fragments,
-        "resources.max_zenuml_fragments",
-    )?;
-    apply_usize_override(
-        &mut limits.max_label_bytes,
-        resources.max_label_bytes,
-        "resources.max_label_bytes",
-    )?;
-
-    Ok(limits)
-}
-
-fn apply_usize_override(
-    target: &mut Option<usize>,
-    value: Option<usize>,
-    name: &'static str,
-) -> Result<(), BindingError> {
-    if let Some(value) = value {
-        if value == 0 {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("{name} must be a positive integer"),
-            ));
-        }
-        *target = Some(value);
-    }
-    Ok(())
 }
 
 fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingError> {

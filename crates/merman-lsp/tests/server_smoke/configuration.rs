@@ -7,7 +7,11 @@ async fn lsp_service_smoke_applies_configuration_updates() {
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
-            "capabilities": {},
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            },
             "initializationOptions": {
                 "lint": {
                     "disable_rules": ["merman.git_graph.duplicate_commit_id"]
@@ -87,66 +91,6 @@ async fn lsp_service_smoke_applies_configuration_updates() {
         second_params.diagnostics[0].severity,
         Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
     );
-}
-#[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
-
-    let initialize = Request::build("initialize")
-        .params(serde_json::json!({
-            "capabilities": {
-                "workspace": {
-                    "semanticTokens": {
-                        "refreshSupport": true
-                    }
-                }
-            }
-        }))
-        .id(1)
-        .finish();
-    let init_response = service
-        .ready()
-        .await
-        .unwrap()
-        .call(initialize)
-        .await
-        .unwrap();
-    assert!(
-        init_response
-            .as_ref()
-            .is_some_and(|response| response.is_ok())
-    );
-
-    let change = Request::build("workspace/didChangeConfiguration")
-        .params(
-            serde_json::to_value(DidChangeConfigurationParams {
-                settings: serde_json::json!({
-                    "site_config": { "theme": "dark" }
-                }),
-            })
-            .unwrap(),
-        )
-        .finish();
-    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
-    let refresh = tokio::select! {
-        result = &mut change_fut => {
-            panic!("configuration change finished before refresh request: {result:?}");
-        }
-        message = socket.next() => {
-            message.expect("expected semantic tokens refresh request")
-        }
-    };
-    assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
-
-    socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
-            refresh.id().cloned().expect("refresh request id"),
-            serde_json::Value::Null,
-        ))
-        .await
-        .unwrap();
-
-    assert_eq!(change_fut.await.unwrap(), None);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -450,15 +394,20 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
             .unwrap(),
         )
         .finish();
-    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
-    let refresh = tokio::select! {
-        result = &mut change_fut => {
-            panic!("configuration change finished before refresh request: {result:?}");
-        }
-        message = socket.next() => {
-            message.expect("expected workspace diagnostic refresh request")
-        }
-    };
+    assert_eq!(
+        timeout(
+            Duration::from_secs(1),
+            service.ready().await.unwrap().call(change)
+        )
+        .await
+        .expect("configuration handler should not wait for refresh response")
+        .unwrap(),
+        None
+    );
+    let refresh = timeout(Duration::from_secs(1), socket.next())
+        .await
+        .expect("expected workspace diagnostic refresh request")
+        .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
     socket
@@ -468,8 +417,6 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
         ))
         .await
         .unwrap();
-
-    assert_eq!(change_fut.await.unwrap(), None);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -535,15 +482,20 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
             .unwrap(),
         )
         .finish();
-    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
-    let refresh = tokio::select! {
-        result = &mut change_fut => {
-            panic!("configuration change finished before refresh request: {result:?}");
-        }
-        message = socket.next() => {
-            message.expect("expected workspace diagnostic refresh request")
-        }
-    };
+    assert_eq!(
+        timeout(
+            Duration::from_secs(1),
+            service.ready().await.unwrap().call(change)
+        )
+        .await
+        .expect("configuration handler should not wait for refresh response")
+        .unwrap(),
+        None
+    );
+    let refresh = timeout(Duration::from_secs(1), socket.next())
+        .await
+        .expect("expected workspace diagnostic refresh request")
+        .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
     socket
@@ -553,8 +505,6 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
         ))
         .await
         .unwrap();
-
-    assert_eq!(change_fut.await.unwrap(), None);
     assert!(
         timeout(Duration::from_millis(50), socket.next())
             .await
@@ -607,7 +557,11 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() 
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
-            "capabilities": {},
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            },
             "initializationOptions": {
                 "lint": {
                     "rule_severities": [
@@ -676,7 +630,7 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
                     "disable_rules": ["merman.parse.no_diagram"]
                 },
                 "resources": {
-                    "max_source_bytes": 8
+                    "limits": { "max_source_bytes": 8 }
                 }
             }
         }))
@@ -793,7 +747,7 @@ async fn lsp_service_rejects_resource_rule_severity_on_initialize() {
                     ]
                 },
                 "resources": {
-                    "max_source_bytes": 8
+                    "limits": { "max_source_bytes": 8 }
                 }
             }
         }))
@@ -826,10 +780,14 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
-            "capabilities": {},
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            },
             "initializationOptions": {
                 "resources": {
-                    "max_source_bytes": 8
+                    "limits": { "max_source_bytes": 8 }
                 }
             }
         }))
@@ -888,7 +846,7 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
                         ]
                     },
                     "resources": {
-                        "max_source_bytes": 8
+                        "limits": { "max_source_bytes": 8 }
                     }
                 }),
             })
@@ -946,7 +904,13 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities":{}}))
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service

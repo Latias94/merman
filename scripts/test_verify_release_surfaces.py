@@ -89,6 +89,113 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
                 "merman",
             )
 
+    def test_package_manifest_name_reports_missing_fields_as_check_failures(self) -> None:
+        cases = [
+            ("npm", "package.json", "{}"),
+            ("vscode", "vscode.json", '{"version": "0.1.0"}'),
+            ("crate", "Cargo.toml", "[workspace]\n"),
+            ("python", "pyproject.toml", "[project]\nversion = \"1.0.0\"\n"),
+            ("typst", "typst.toml", "[package]\nversion = \"1.0.0\"\n"),
+            ("flutter", "pubspec.yaml", "version: 1.0.0\n"),
+            ("android", "build.gradle.kts", 'group = "io.merman"\n'),
+            ("swiftpm", "Package.swift", "let unrelated = 1\n"),
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for kind, manifest, contents in cases:
+                with self.subTest(kind=kind):
+                    write(root, manifest, contents)
+                    with self.assertRaises(verify_release_surfaces.CheckFailure):
+                        verify_release_surfaces.package_manifest_name(root, kind, manifest)
+
+    def test_android_and_swiftpm_manifest_names_ignore_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                "build.gradle.kts",
+                textwrap.dedent('''
+                // group = "comment.decoy"
+                /* artifactId = "comment-decoy" */
+                group = "io.merman"
+                publishing {
+                    artifactId = "merman-android"
+                    description = "literal // and /* text are not comments"
+                }
+                '''),
+            )
+            write(
+                root,
+                "Package.swift",
+                textwrap.dedent('''
+                // let package = Package(name: "LineCommentDecoy")
+                /* let package = Package(name: "BlockCommentDecoy") */
+                let package = Package(
+                    name: "Merman"
+                )
+                '''),
+            )
+
+            self.assertEqual(
+                verify_release_surfaces.package_manifest_name(
+                    root, "android", "build.gradle.kts"
+                ),
+                "io.merman:merman-android",
+            )
+            self.assertEqual(
+                verify_release_surfaces.package_manifest_name(root, "swiftpm", "Package.swift"),
+                "Merman",
+            )
+
+    def test_public_entry_point_requires_non_generated_documentation(self) -> None:
+        surface = {
+            "id": "example",
+            "entry_point": "example-package",
+            "docs": ["docs/release/PACKAGE_SURFACES.md", "docs/user-guide.md"],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "docs/release/PACKAGE_SURFACES.md", "example-package\n")
+            write(root, "docs/user-guide.md", "User guide without an install entry.\n")
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "absent from declared non-generated docs",
+            ):
+                verify_release_surfaces.check_public_surface_entry_point_docs(root, surface)
+
+            write(root, "docs/user-guide.md", "Install `example-package`.\n")
+            verify_release_surfaces.check_public_surface_entry_point_docs(root, surface)
+
+    def test_ci_wiring_requires_executable_verifier_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = """
+                name: ci
+                jobs:
+                  release-contract:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |
+                          python3 scripts/verify-release-surfaces.py
+                          python3 -m unittest \\
+                            scripts/test_release_status.py \\
+                            scripts/test_verify_release_surfaces.py
+            """
+            write(root, ".github/workflows/ci.yml", textwrap.dedent(workflow))
+            verify_release_surfaces.check_ci_wiring(root)
+
+            commented = workflow.replace(
+                "python3 scripts/verify-release-surfaces.py",
+                "# python3 scripts/verify-release-surfaces.py",
+            )
+            write(root, ".github/workflows/ci.yml", textwrap.dedent(commented))
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "does not execute python3 scripts/verify-release-surfaces.py",
+            ):
+                verify_release_surfaces.check_ci_wiring(root)
+
 
 class ReleaseSurfaceInventoryTests(unittest.TestCase):
     def test_package_inventory_skips_downloaded_vscode_test_runtime(self) -> None:
@@ -218,7 +325,82 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
 
             verify_release_surfaces.check_package_inventory(root, contract)
 
-    def test_package_inventory_requires_tracked_non_surface_package_jsons(self) -> None:
+    def test_package_inventory_ignores_git_ignored_generated_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            write(root, ".gitignore", "ignored/\n")
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            write(root, "ignored/package.json", json.dumps({"name": "generated-package"}))
+            subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "-q", "ignored/package.json"],
+                check=True,
+            )
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_rejects_nonignored_untracked_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            write(root, "untracked/package.json", json.dumps({"name": "undeclared-package"}))
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "untracked/package.json",
+            ):
+                verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_requires_allowlisted_non_surface_package_jsons(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
@@ -339,6 +521,7 @@ class WorkflowOperationContractTests(unittest.TestCase):
                 jobs:
                   publish:
                     runs-on: ubuntu-latest
+                    environment: npm
                     permissions:
                       id-token: write
                     steps:
@@ -364,12 +547,51 @@ class WorkflowOperationContractTests(unittest.TestCase):
             {"steps": [{"run": "if false; then\n  npm publish package.tgz\nfi"}]},
             {"steps": [{"run": "false && npm publish package.tgz"}]},
             {"steps": [{"run": "cat <<'EOF'\nnpm publish package.tgz\nEOF"}]},
+            {"steps": [{"run": "exit 0\nnpm publish package.tgz"}]},
+            {"steps": [{"run": "return 0\nnpm publish package.tgz"}]},
+            {"steps": [{"run": "publish_package() {\n  npm publish package.tgz\n}\necho no-op"}]},
+            {
+                "steps": [
+                    {
+                        "run": "publish_package() {\n  return 0\n  npm publish package.tgz\n}\npublish_package"
+                    }
+                ]
+            },
+            {
+                "steps": [
+                    {
+                        "run": "publish_package() {\n  {\n    :\n  }\n  npm publish package.tgz\n}\necho no-op"
+                    }
+                ]
+            },
         ]
         for job in cases:
             with self.subTest(job=job):
                 self.assertFalse(
                     verify_release_surfaces.workflow_job_performs_channel_operation(job, "npm")
                 )
+
+    def test_reachable_shell_function_can_prove_a_publish_operation(self) -> None:
+        job = {
+            "steps": [
+                {
+                    "run": "publish_package() {\n  npm publish package.tgz\n}\npublish_package"
+                }
+            ]
+        }
+
+        self.assertTrue(verify_release_surfaces.workflow_job_performs_channel_operation(job, "npm"))
+
+    def test_conditional_exit_does_not_hide_a_reachable_publish_operation(self) -> None:
+        job = {
+            "steps": [
+                {
+                    "run": "if [[ -z \"$PACKAGE\" ]]; then\n  exit 1\nfi\nnpm publish package.tgz"
+                }
+            ]
+        }
+
+        self.assertTrue(verify_release_surfaces.workflow_job_performs_channel_operation(job, "npm"))
 
     def test_publish_operations_require_effective_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -384,6 +606,7 @@ class WorkflowOperationContractTests(unittest.TestCase):
                 jobs:
                   publish:
                     runs-on: ubuntu-latest
+                    environment: npm
                     steps:
                       - name: Publish package
                         run: npm publish package.tgz --access public
@@ -409,6 +632,7 @@ class WorkflowOperationContractTests(unittest.TestCase):
                 jobs:
                   publish:
                     runs-on: ubuntu-latest
+                    environment: npm
                     permissions:
                     steps:
                       - run: npm publish package.tgz
@@ -433,6 +657,7 @@ class WorkflowOperationContractTests(unittest.TestCase):
                     jobs:
                       publish:
                         runs-on: ubuntu-latest
+                        environment: github-release
                         permissions:
                           contents: write
                         steps:
@@ -478,6 +703,32 @@ class WorkflowOperationContractTests(unittest.TestCase):
             ):
                 verify_release_surfaces.check_workflow_operations(root, contract)
 
+    def test_publish_job_must_bind_the_contract_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root,
+                ".github/workflows/release-web.yml",
+                textwrap.dedent("""
+                name: release
+                jobs:
+                  publish:
+                    runs-on: ubuntu-latest
+                    environment: staging
+                    permissions:
+                      id-token: write
+                    steps:
+                      - run: npm publish package.tgz
+                """),
+            )
+            contract = operational_workflow_contract("npm", ".github/workflows/release-web.yml")
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "requires GitHub Environment 'npm'",
+            ):
+                verify_release_surfaces.check_workflow_operations(root, contract)
+
     def test_action_channels_require_the_active_action_step(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -500,7 +751,7 @@ class WorkflowOperationContractTests(unittest.TestCase):
                       - name: Upload package
                         uses: actions/upload-artifact@v6
                         with:
-                          name: package-${{ steps.meta.outputs.release_version }}-${{ steps.meta.outputs.release_channel }}-${{ steps.meta.outputs.source_sha }}-${{ matrix.target }}
+                          name: package-${{ steps.meta.outputs.extension_version }}-runtime-${{ steps.meta.outputs.runtime_version }}-${{ steps.meta.outputs.runtime_channel }}-${{ steps.meta.outputs.source_sha }}-${{ matrix.target }}
                           path: package.vsix
                 """),
             )
@@ -508,14 +759,22 @@ class WorkflowOperationContractTests(unittest.TestCase):
                 "github-actions-artifact",
                 ".github/workflows/vscode-extension.yml",
             )
+            contract["surfaces"][0]["packages"] = [
+                {
+                    "kind": "vscode",
+                    "name": "merman-vscode",
+                    "manifest": "tools/vscode-extension/package.json",
+                    "version_source": "manifest",
+                }
+            ]
             contract["surfaces"][0]["channels"][0]["artifact_patterns"] = [
                 {
-                    "glob": "package-{version}-{channel}-{source_sha}-linux-x64",
+                    "glob": "package-{package_version}-runtime-{version}-{channel}-{source_sha}-linux-x64",
                     "min_matches": 1,
                     "max_matches": 1,
                 },
                 {
-                    "glob": "package-{version}-{channel}-{source_sha}-darwin-arm64",
+                    "glob": "package-{package_version}-runtime-{version}-{channel}-{source_sha}-darwin-arm64",
                     "min_matches": 1,
                     "max_matches": 1,
                 },
@@ -529,6 +788,41 @@ class WorkflowOperationContractTests(unittest.TestCase):
                 "artifact patterns and workflow matrix targets differ",
             ):
                 verify_release_surfaces.check_workflow_operations(root, contract)
+
+    def test_manifest_version_artifact_requires_package_version_output(self) -> None:
+        job = {
+            "matrix_include": [{"target": "linux-x64"}],
+            "steps": [
+                {
+                    "uses": "actions/upload-artifact@v6",
+                    "with": {
+                        "name": "package-${{ steps.meta.outputs.release_version }}-${{ steps.meta.outputs.release_channel }}-${{ steps.meta.outputs.source_sha }}-${{ matrix.target }}"
+                    },
+                }
+            ],
+        }
+        surface = {"packages": [{"version_source": "manifest"}]}
+        channel = {
+            "artifact_patterns": [
+                {
+                    "glob": "package-{version}-{channel}-{source_sha}-linux-x64",
+                    "min_matches": 1,
+                    "max_matches": 1,
+                }
+            ]
+        }
+
+        with self.assertRaisesRegex(
+            verify_release_surfaces.CheckFailure,
+            "must bind exactly one \\{package_version\\}",
+        ):
+            verify_release_surfaces.check_actions_artifact_contract(
+                job,
+                surface,
+                channel,
+                ".github/workflows/vscode-extension.yml",
+                "vscode/github-actions-vsix",
+            )
 
     def test_cargo_dist_assets_are_derived_from_packages_targets_and_installers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -678,6 +972,13 @@ def operational_workflow_contract(kind: str, workflow: str) -> dict:
                         "declared_state": "published",
                         "workflow": workflow,
                         "workflow_job": "publish",
+                        "environment": {
+                            "crates.io": "crates.io",
+                            "github-release-assets": "github-release",
+                            "npm": "npm",
+                            "pypi": "pypi",
+                            "pub.dev": "pub.dev",
+                        }.get(kind),
                     }
                 ],
             }

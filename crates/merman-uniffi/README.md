@@ -30,6 +30,10 @@ Most Python users should install [`merman` from PyPI](https://pypi.org/project/m
 Generated bindings provide `MermanEngine` for independent calls and `MermanReusableEngine` for calls that share options or a host text measurer. They expose SVG and terminal rendering, semantic and layout JSON, validation, diagram/document analysis, parser facts, themes, lint metadata, ASCII support grades, and diagram-family capability discovery.
 
 The package uses the same versioned options as the C ABI. Diagnostics and parser-facts payloads remain schema `1`, independently of UniFFI ABI `2`; the current facts v1 contract is parser-only and does not retain the removed TextScan alpha shape.
+Call `MermanEngine.runtime_contract_json()` to inspect runtime-contract schema `1`, including the
+loaded ABI/package/options versions, feature set, registry facts, and resource descriptor. This is
+the authoritative source for profile values; render-disabled generated artifacts report
+`resources: null`.
 
 ## Text Measurement Ownership
 

@@ -314,7 +314,21 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
     let mut saw_node = false;
 
     while offset < code.len() {
-        if !saw_node && let Some(parsed) = parse_langium_common(code, offset) {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if saw_node {
+                let span = parsed.fact.raw_span;
+                lexemes.extend(parsed.lexemes);
+                mark_tree_view_recovery(
+                    &mut editor_facts,
+                    &mut first_issue,
+                    TreeViewParseIssue::new(
+                        "tree view title and accessibility fields must precede every node",
+                        Some(span),
+                    ),
+                );
+                offset += parsed.consumed;
+                continue;
+            }
             let field = parsed.fact.field;
             let value = parsed.fact.value.clone();
             lexemes.extend(parsed.lexemes.clone());
@@ -885,19 +899,16 @@ fn parse_tree_view_annotations(
         if suffix[pos..].starts_with(":::") && is_annotation_token_boundary(suffix, pos) {
             lexemes.delimiter(SourceSpan::new(abs_base + pos, abs_base + pos + 3));
             let value_start = skip_ascii_whitespace(suffix, pos + 3);
-            let value_end =
-                find_next_tree_view_annotation_start(suffix, value_start).unwrap_or(suffix.len());
-            let (trimmed_start, trimmed_end) = trim_ascii_span(suffix, value_start, value_end);
-            if trimmed_start == trimmed_end {
+            let Some(value_end) = tree_view_class_name_end(suffix, value_start) else {
                 return Err(parse_error(meta, "expected tree node class after :::"));
-            }
+            };
             annotations.css_class = Some(TreeViewSpannedValue {
-                value: suffix[trimmed_start..trimmed_end].to_string(),
-                span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
+                value: suffix[value_start..value_end].to_string(),
+                span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             lexemes.identifier(SourceSpan::new(
-                abs_base + trimmed_start,
-                abs_base + trimmed_end,
+                abs_base + value_start,
+                abs_base + value_end,
             ));
             pos = value_end;
             continue;
@@ -917,19 +928,22 @@ fn parse_tree_view_annotations(
                 return Err(parse_error(meta, "unterminated tree node icon annotation"));
             };
             let value_end = value_start + close_rel;
-            let (trimmed_start, trimmed_end) = trim_ascii_span(suffix, value_start, value_end);
-            let value = if trimmed_start == trimmed_end {
+            let payload = &suffix[value_start..value_end];
+            if !is_tree_view_icon_name(payload) {
+                return Err(parse_error(meta, "invalid tree node icon annotation"));
+            }
+            let value = if payload.is_empty() {
                 "none".to_string()
             } else {
-                suffix[trimmed_start..trimmed_end].to_string()
+                payload.to_string()
             };
             annotations.icon = Some(TreeViewSpannedValue {
                 value,
-                span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
+                span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
             lexemes.literal(SourceSpan::new(
-                abs_base + trimmed_start,
-                abs_base + trimmed_end,
+                abs_base + value_start,
+                abs_base + value_end,
             ));
             lexemes.delimiter(SourceSpan::new(
                 abs_base + value_end,
@@ -1070,15 +1084,47 @@ fn is_tree_view_box_drawing_only(line: &str) -> bool {
 
 fn find_next_tree_view_annotation_start(s: &str, from: usize) -> Option<usize> {
     for (idx, _) in s.char_indices().filter(|(idx, _)| *idx >= from) {
-        if (s[idx..].starts_with(":::")
-            || s[idx..].starts_with("##")
-            || s[idx..].starts_with("icon("))
+        let valid_class = s[idx..].starts_with(":::")
+            && tree_view_class_name_end(s, skip_ascii_whitespace(s, idx + 3)).is_some();
+        if (valid_class || s[idx..].starts_with("##") || s[idx..].starts_with("icon("))
             && ((from == 0 && idx == 0) || is_annotation_token_boundary(s, idx))
         {
             return Some(idx);
         }
     }
     None
+}
+
+fn tree_view_class_name_end(s: &str, start: usize) -> Option<usize> {
+    let mut chars = s.get(start..)?.char_indices();
+    let (_, first) = chars.next()?;
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return None;
+    }
+    let mut end = start + first.len_utf8();
+    for (relative, ch) in chars {
+        if !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-' {
+            break;
+        }
+        end = start + relative + ch.len_utf8();
+    }
+    Some(end)
+}
+
+fn is_tree_view_icon_name(value: &str) -> bool {
+    fn is_component(value: &str, allow_empty: bool) -> bool {
+        (allow_empty || !value.is_empty())
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    }
+
+    match value.split_once(':') {
+        Some((pack, icon)) => {
+            !icon.contains(':') && is_component(pack, true) && is_component(icon, false)
+        }
+        None => is_component(value, true),
+    }
 }
 
 fn is_annotation_token_boundary(s: &str, idx: usize) -> bool {
@@ -1275,6 +1321,65 @@ file##notes
         assert!(nodes[1].get("cssClass").is_none());
         assert_eq!(nodes[2]["name"], json!("file##notes"));
         assert!(nodes[2].get("description").is_none());
+    }
+
+    #[test]
+    fn class_annotation_uses_the_upstream_langium_identifier_terminal() {
+        let semantic =
+            parse_tree_view("treeView-beta\nfile :::9bad\nvalid :::_ready-2\n", &meta()).unwrap();
+        let nodes = semantic["nodes"].as_array().expect("nodes array");
+
+        assert_eq!(nodes[1]["name"], json!("file :::9bad"));
+        assert!(nodes[1].get("cssClass").is_none());
+        assert_eq!(nodes[2]["name"], json!("valid"));
+        assert_eq!(nodes[2]["cssClass"], json!("_ready-2"));
+    }
+
+    #[test]
+    fn icon_annotation_uses_the_upstream_iconify_reference_terminal() {
+        for payload in ["foo bar", "foo:", "foo:bar:baz", "emoji:face🙂"] {
+            let input = format!("treeView-beta\nfile icon({payload})\n");
+            let error = parse_tree_view(&input, &meta()).expect_err("invalid icon must fail");
+            assert!(
+                error
+                    .to_string()
+                    .contains("invalid tree node icon annotation"),
+                "{payload}: {error}"
+            );
+        }
+
+        let semantic = parse_tree_view("treeView-beta\nfile icon(:valid-name)\n", &meta()).unwrap();
+        assert_eq!(semantic["nodes"][1]["icon"], json!(":valid-name"));
+    }
+
+    #[test]
+    fn common_metadata_after_a_node_is_rejected_and_not_reinterpreted_as_a_node() {
+        let source = "treeView-beta\nroot\ntitle Late\nafter\n";
+        let error = parse_tree_view(source, &meta()).expect_err("late title must fail");
+        assert!(
+            error.to_string().contains("must precede every node"),
+            "{error}"
+        );
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_tree_view_json_and_editor_facts,
+            source,
+            &meta(),
+        );
+        assert!(
+            facts
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.message.contains("must precede every node") })
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "title Late")
+        );
     }
 
     #[test]

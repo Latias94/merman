@@ -70,6 +70,19 @@ val factsJson = MermanEngine.analyzeDocumentFactsJson(
 ```
 
 Use `diagramFamilyCapabilitiesJson()` and `asciiCapabilitiesJson()` instead of hard-coding support for a build profile or output format.
+Use `runtimeContractJson()` for the loaded ABI/package/options versions, feature set, registry
+facts, and exact resource profile values. The returned JSON uses runtime-contract schema `1`.
+Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then pass the generated options JSON:
+
+```kotlin
+val resourceOptions = MermanResourceOptionsBuilder()
+    .profile(MermanResourceProfile.CONSTRAINED)
+    .build()
+val svg = MermanEngine.renderSvg(source, resourceOptions.toOptionsJson())
+```
+
+Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative
+local editing. The native CLI's default is intentionally separate (`trusted-native`).
 
 ## Reusable Engines And Text Measurement
 
@@ -85,7 +98,11 @@ MermanReusableEngine().use { engine ->
 
 Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Native Android previews can call `setTextMeasurer` when layout must match the final `TextPaint`/`StaticLayout` font stack; WebView previews should use synchronously cached DOM/canvas measurements.
 
-ABI 2 exposes 19 exact operations (`0..18`). A handled `MermanTextMeasureResult` must use the result kind required by the operation; return `null` when an operation cannot be answered immediately and faithfully. Invalid results and callback exceptions fall back for that operation.
+ABI 2 exposes 19 exact operations (`0..18`). Construct handled results with
+`MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or
+`.wrappedWithRawWidth`; each factory requires and validates the fields used by that result shape.
+Return `null` when an operation cannot be answered immediately and faithfully. Wrong-kind results
+and callback exceptions fall back for that operation.
 
 Reusable engine calls are serialized. Do not call the same engine from its measurement callback. Calling `close()` during a callback safely defers native release until the call returns. See the [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#android-jni) for operation shapes and lifecycle rules.
 

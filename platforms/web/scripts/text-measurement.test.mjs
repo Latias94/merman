@@ -269,6 +269,11 @@ test("browser text measurement session routes exact operations to their DOM prim
     assert.equal(svgWrapped.kind, "metrics");
     assert.ok(svgWrapped.line_count > 1);
 
+    const graphemeWrapped = measure(request("👨‍👩‍👧‍👦", 1, "wrapped", "svg-like"));
+    assert.equal(graphemeWrapped.kind, "metrics");
+    assert.equal(graphemeWrapped.line_count, 1);
+    assert.equal(wrappedProbe.children[0].textContent, "👨‍👩‍👧‍👦");
+
     const mermaidDimensions = measure({
       ...request("Body attached", null, "mermaid-calculate-text-dimensions", "svg-like"),
       font_family: "Configured Serif;",

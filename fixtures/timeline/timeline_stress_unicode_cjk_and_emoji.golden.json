@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Unicode / CJK / emoji",
     "accTitle": null,
     "accDescr": null,

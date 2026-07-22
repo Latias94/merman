@@ -157,14 +157,98 @@ test("opaque realm rejects timeout and pre-aborted handshakes", async () => {
   }
 });
 
+test("disposing a realm cancels a stalled viewport frame wait", async () => {
+  const harness = installBrowserHarness({ autoAnimationFrames: false });
+  try {
+    const channel = await createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: () => {},
+    });
+
+    const pending = assert.rejects(
+      channel.setViewport({ width: 640, height: 480 }),
+      /viewport host is unavailable/
+    );
+    await waitFor(() => harness.pendingAnimationFrames === 1);
+    channel.dispose();
+    await pending;
+    assert.equal(harness.cancelledAnimationFrames, 1);
+  } finally {
+    harness.restore();
+  }
+});
+
+test("hidden documents use a task boundary instead of waiting for animation frames", async () => {
+  const harness = installBrowserHarness({
+    autoAnimationFrames: false,
+    visibilityState: "hidden",
+  });
+  try {
+    const channel = await createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: () => {},
+    });
+
+    await channel.setViewport({ width: 640, height: 480 });
+    assert.equal(harness.pendingAnimationFrames, 0);
+    channel.dispose();
+  } finally {
+    harness.restore();
+  }
+});
+
+test("transport failures preserve structured errors without object coercion", async () => {
+  const harness = installBrowserHarness();
+  try {
+    const failure = Promise.withResolvers<Error>();
+    const channel = await createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: failure.resolve,
+    });
+
+    channel.poison({
+      message: "Structured transport failure.",
+      code: "REALM_TRANSPORT_ERROR",
+    });
+    const error = await failure.promise;
+    assert.equal(error.message, "Structured transport failure.");
+    assert.doesNotMatch(error.message, /\[object Object\]/);
+    assert.match(JSON.stringify(error), /REALM_TRANSPORT_ERROR/);
+  } finally {
+    harness.restore();
+  }
+});
+
 interface HarnessOptions {
+  readonly autoAnimationFrames?: boolean;
   readonly autoHandshake?: boolean;
   readonly includeForgedMessages?: boolean;
+  readonly visibilityState?: "hidden" | "visible" | "prerender";
 }
 
 function installBrowserHarness({
   autoHandshake = true,
+  autoAnimationFrames = true,
   includeForgedMessages = false,
+  visibilityState = "visible",
 }: HarnessOptions = {}) {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -178,6 +262,10 @@ function installBrowserHarness({
   const initMessages: unknown[] = [];
   const targetOrigins: string[] = [];
   const transfers: MessagePort[][] = [];
+  const documentListeners = new Map<string, Set<() => void>>();
+  const animationFrames = new Map<number, (time: number) => void>();
+  let nextAnimationFrameId = 0;
+  let cancelledAnimationFrames = 0;
   let realmPort: MessagePort | null = null;
   let boot: RealmBootIdentity | null = null;
 
@@ -244,13 +332,31 @@ function installBrowserHarness({
       assert.equal(name, "iframe");
       return frame;
     },
+    visibilityState,
+    addEventListener(type: string, listener: () => void) {
+      const listeners = documentListeners.get(type) ?? new Set<() => void>();
+      listeners.add(listener);
+      documentListeners.set(type, listeners);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      documentListeners.get(type)?.delete(listener);
+    },
   };
 
   defineGlobal("window", parentWindow);
   defineGlobal("document", document);
   defineGlobal("requestAnimationFrame", (callback: (time: number) => void) => {
-    callback(performance.now());
-    return 1;
+    const id = ++nextAnimationFrameId;
+    if (autoAnimationFrames) callback(performance.now());
+    else animationFrames.set(id, callback);
+    return id;
+  });
+  const previousCancelAnimationFrame = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "cancelAnimationFrame"
+  );
+  defineGlobal("cancelAnimationFrame", (id: number) => {
+    if (animationFrames.delete(id)) cancelledAnimationFrames += 1;
   });
 
   return {
@@ -259,6 +365,12 @@ function installBrowserHarness({
     initMessages,
     targetOrigins,
     transfers,
+    get cancelledAnimationFrames() {
+      return cancelledAnimationFrames;
+    },
+    get pendingAnimationFrames() {
+      return animationFrames.size;
+    },
     get boot() {
       return boot;
     },
@@ -267,6 +379,7 @@ function installBrowserHarness({
       restoreGlobal("window", previousWindow);
       restoreGlobal("document", previousDocument);
       restoreGlobal("requestAnimationFrame", previousAnimationFrame);
+      restoreGlobal("cancelAnimationFrame", previousCancelAnimationFrame);
     },
   };
 }
@@ -327,4 +440,12 @@ function defineGlobal(name: string, value: unknown) {
 function restoreGlobal(name: string, descriptor?: PropertyDescriptor) {
   if (descriptor) Object.defineProperty(globalThis, name, descriptor);
   else Reflect.deleteProperty(globalThis, name);
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for browser realm test condition.");
 }

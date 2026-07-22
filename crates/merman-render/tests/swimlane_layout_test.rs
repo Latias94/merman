@@ -175,6 +175,67 @@ A[Start] --> B[Finish]
 }
 
 #[test]
+fn explicit_default_lane_is_reused_without_losing_its_title() {
+    let layout = layout_swimlane(
+        r#"swimlane-beta TB
+subgraph __swimlane_default__[Named lane]
+  A[Inside]
+end
+B[Loose]
+"#,
+    );
+
+    assert_eq!(layout.lanes.len(), 1);
+    let lane = &layout.lanes[0];
+    assert_eq!(lane.id, "__swimlane_default__");
+    assert_eq!(lane.title, "Named lane");
+    for id in ["A", "B"] {
+        let node = node_by_id(&layout, id);
+        assert_eq!(node.parent_id.as_deref(), Some("__swimlane_default__"));
+        assert_eq!(node.top_lane_id.as_deref(), Some("__swimlane_default__"));
+        assert!(contains_node(lane, node));
+    }
+}
+
+#[test]
+fn edge_curves_preserve_explicit_default_and_config_values() {
+    let layout = layout_swimlane(
+        r#"swimlane-beta TB
+A e0@--> B
+B e1@--> C
+linkStyle default interpolate linear
+e1@{ curve: stepAfter }
+"#,
+    );
+    let curve = |id: &str| {
+        layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == id)
+            .unwrap_or_else(|| panic!("edge {id}"))
+            .curve
+            .as_str()
+    };
+    assert_eq!(curve("e0"), "linear");
+    assert_eq!(curve("e1"), "stepAfter");
+
+    let configured = layout_swimlane(
+        r#"---
+config:
+  flowchart:
+    curve: cardinal
+---
+swimlane-beta TB
+A --> B
+"#,
+    );
+    assert_eq!(configured.edges[0].curve, "cardinal");
+
+    let implicit = layout_swimlane("swimlane-beta TB\nA --> B\n");
+    assert_eq!(implicit.edges[0].curve, "rounded");
+}
+
+#[test]
 fn edge_labels_are_layout_waypoints_and_anchor_to_the_original_edge() {
     let layout = layout_swimlane(
         r#"flowchart TB

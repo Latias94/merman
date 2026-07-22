@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "ThemeVariables label cycle + section color wrap",
     "accTitle": null,
     "accDescr": null,

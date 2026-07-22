@@ -40,8 +40,11 @@ deterministic Rust implementation of the same effective layout behavior.
   - `manatee` consumes the graph and returns node positions (and any algorithm-provided routing hints).
 - Determinism and numeric policy:
   - Stable iteration order (explicit node/edge ordering by ID).
-  - No ambient randomness: all randomness must be explicit and seeded; default seed pinned to match
-    Mermaid CLI baselines.
+  - Randomness is owned by `RenderEnvironment` and captured once per operation. Architecture
+    `seed: 0` consumes that operation stream continuously across FCoSE reruns, matching Mermaid's
+    native-random opt-out without reading process-global randomness inside family code. A non-zero
+    Architecture seed restarts its configured stream for every upstream-equivalent layout run.
+    Parity environments pin the operation stream for reproducible baselines.
   - Prefer `f64` internally, but mirror JS `Number` corner cases where they impact observable output
     (e.g. comparisons near-equality, tie-breaking).
 - Testing policy:

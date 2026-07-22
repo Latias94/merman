@@ -89,9 +89,10 @@ versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version
 parser-only semantic contract produced after this migration:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
-- every semantic item includes a required `rename_policy`;
+- current writers include `rename_policy` on every semantic item, while readers map an omitted
+  additive policy in an older v1 item to the fail-closed `none` policy;
 - parser-backed, recovered, and source-mapped-span flags retain their explicit meanings; and
-- no legacy decoder, executor, deprecated alias, or dual projection path remains.
+- no TextScan-shape decoder, legacy executor, deprecated alias, or dual projection path remains.
 
 Merman `0.8.0-alpha.3` exposed a TextScan-capable alpha shape with the same numeric discriminator.
 This decision deliberately resets the contract before the first stable release: consumers of that
@@ -180,7 +181,9 @@ Rejected. It duplicates successful grammar behavior and splits the public meanin
 Rejected. The facts API is still explicitly alpha, and the chosen pre-stable reset leaves one clean
 v1 contract instead of carrying an obsolete schema generation into the stable version history.
 Strict schema validation rejects the removed TextScan shape and all wire version values other than
-`1`; consumers of the earlier alpha must update with the breaking package release.
+`1`. Within the current semantic-item shape, an omitted additive `rename_policy` is accepted only
+as the non-renameable `none` policy; consumers of the earlier TextScan alpha must still update with
+the breaking package release.
 
 ## Related Decisions
 

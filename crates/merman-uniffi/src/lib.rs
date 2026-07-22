@@ -54,6 +54,8 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for MermanError {
     }
 }
 
+include!("generated/resource_contract.rs");
+
 #[derive(Debug, Default, uniffi::Object)]
 pub struct MermanEngine;
 
@@ -446,6 +448,12 @@ impl MermanEngine {
 
     pub fn package_version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
+    }
+
+    pub fn runtime_contract_json(&self) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::runtime_contract_json(
+            MERMAN_UNIFFI_ABI_VERSION,
+        ))
     }
 
     pub fn render_svg(
@@ -1434,9 +1442,9 @@ mod tests {
         assert!(
             json["diagrams"][0]["syntax"]["semantic_items"]
                 .as_array()
-                .is_some_and(|items| items
-                    .iter()
-                    .any(|item| { item["name"] == "A" && item["rename_policy"] == "identifier" }))
+                .is_some_and(|items| items.iter().any(|item| {
+                    item["name"] == "A" && item["rename_policy"] == "flowchart_node_id"
+                }))
         );
 
         let unavailable: Value = serde_json::from_str(
@@ -1540,6 +1548,32 @@ mod tests {
                 .iter()
                 .all(|rule| rule.configurable && rule.category != "internal")
         );
+        let runtime_contract: serde_json::Value =
+            serde_json::from_str(&engine.runtime_contract_json().unwrap()).unwrap();
+        assert_eq!(runtime_contract["schema_version"], 1);
+        assert_eq!(runtime_contract["abi_version"], MERMAN_UNIFFI_ABI_VERSION);
+        assert_eq!(runtime_contract["options_schema_version"], 1);
+        assert_eq!(
+            runtime_contract["resources"]["general_binding_default_profile"],
+            "interactive"
+        );
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn typed_resource_options_builder_uses_the_shared_descriptor() {
+        let json = resource_options_json(
+            MermanResourceProfile::Constrained,
+            vec![MermanResourceLimitOverride {
+                id: MermanResourceLimitId::MaxSourceBytes,
+                value: 4096,
+            }],
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["resources"]["profile"], "constrained");
+        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
     }
 
     #[test]

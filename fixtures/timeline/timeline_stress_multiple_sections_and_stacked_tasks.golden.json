@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Multiple sections with stacked tasks",
     "accTitle": null,
     "accDescr": null,

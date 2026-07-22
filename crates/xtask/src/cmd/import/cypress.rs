@@ -2,28 +2,6 @@ use super::*;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-fn normalize_diagram_dir(detected: &str) -> Option<String> {
-    match detected {
-        "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-            Some("state".to_string())
-        }
-        "class" | "classDiagram" => Some("class".to_string()),
-        "gitGraph" => Some("gitgraph".to_string()),
-        "quadrantChart" => Some("quadrantchart".to_string()),
-        "er" => Some("er".to_string()),
-        "journey" => Some("journey".to_string()),
-        "xychart" => Some("xychart".to_string()),
-        "requirement" => Some("requirement".to_string()),
-        "architecture-beta" => Some("architecture".to_string()),
-        "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg" => Some(detected.to_string()),
-        "architecture" | "block" | "c4" | "cynefin" | "gantt" | "info" | "kanban" | "mindmap"
-        | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap"
-        | "treeView" | "ishikawa" | "eventmodeling" => Some(detected.to_string()),
-        _ => None,
-    }
-}
-
 fn push_utf8_source_char(bytes: &[u8], index: &mut usize, out: &mut String) -> Option<()> {
     let first = *bytes.get(*index)?;
     let width = match first {
@@ -2607,7 +2585,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     continue;
                 }
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 skipped.push(format!(
                     "skip (unsupported detected type '{detected}'): {}",
                     b.source_spec.display()
@@ -3603,9 +3582,10 @@ pub(crate) fn cypress_corpus_source_alignment_failures() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_first_template_literal_with_vars, normalize_diagram_dir, parse_js_quoted_string,
+        extract_first_template_literal_with_vars, parse_js_quoted_string,
         should_apply_cypress_options,
     };
+    use crate::cmd::import::normalize_imported_diagram_dir;
     use serde_json::json;
 
     #[test]
@@ -3633,21 +3613,21 @@ mod tests {
 
     #[test]
     fn cypress_cynefin_detector_id_maps_to_its_fixture_directory() {
-        assert_eq!(normalize_diagram_dir("cynefin").as_deref(), Some("cynefin"));
+        assert_eq!(normalize_imported_diagram_dir("cynefin"), Some("cynefin"));
     }
 
     #[test]
     fn cypress_railroad_detector_ids_map_to_their_fixture_directories() {
-        let actual =
-            ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"].map(normalize_diagram_dir);
+        let actual = ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"]
+            .map(normalize_imported_diagram_dir);
 
         assert_eq!(
             actual,
             [
-                Some("railroad".to_string()),
-                Some("railroadEbnf".to_string()),
-                Some("railroadAbnf".to_string()),
-                Some("railroadPeg".to_string()),
+                Some("railroad"),
+                Some("railroadEbnf"),
+                Some("railroadAbnf"),
+                Some("railroadPeg"),
             ]
         );
     }

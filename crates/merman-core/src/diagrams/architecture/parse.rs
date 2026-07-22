@@ -1,7 +1,8 @@
 use super::*;
+use crate::EditorRenamePolicy;
 use crate::diagrams::langium_common::{
     LangiumCommonFact, LangiumCommonField, LangiumCommonParse, LangiumLexemeTrace,
-    parse_langium_common, parse_langium_string,
+    is_ecmascript_line_terminator, parse_langium_common, parse_langium_string,
 };
 
 #[derive(Debug, Clone)]
@@ -527,6 +528,11 @@ impl<'a> ArchitectureStatementParser<'a> {
             let mut escaped = false;
             while let Some(ch) = self.peek_char() {
                 if escaped {
+                    if is_ecmascript_line_terminator(ch) {
+                        return Err(self.insertion_error(
+                            "escaped line terminator is not valid in an architecture title",
+                        ));
+                    }
                     escaped = false;
                     self.bump();
                     continue;
@@ -1085,6 +1091,10 @@ fn extend_quoted_statement<'a>(
         let offset = statement_start + relative;
         if let Some(active_quote) = quote {
             if escaped {
+                if is_ecmascript_line_terminator(ch) {
+                    lines.offset = line_ending_end(code, offset);
+                    return code[statement_start..offset].trim_end_matches([' ', '\t']);
+                }
                 escaped = false;
             } else if ch == '\\' {
                 escaped = true;
@@ -1125,7 +1135,7 @@ fn open_quote_at_end(input: &str) -> Option<char> {
             quote = Some(ch);
         }
     }
-    quote
+    quote.filter(|_| !escaped)
 }
 
 fn next_physical_line_offset(code: &str, offset: usize) -> usize {
@@ -1269,7 +1279,8 @@ impl ArchitectureTrace {
                         fact.kind,
                         fact.value.span,
                         fact.value.selection,
-                    ),
+                    )
+                    .with_rename_policy(EditorRenamePolicy::ArchitectureIdentifier),
                     ArchitectureTraceFactRole::Payload => EditorSemanticSymbol::payload(
                         fact.value.value.clone(),
                         Some(fact.detail.to_string()),

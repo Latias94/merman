@@ -167,7 +167,7 @@ where
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data, F>(
     request: FlowchartViewboxBoundsRequest<'_, '_, 'data, '_>,
     effective_parent_for_id: &F,
-) -> FlowchartViewboxBounds
+) -> Result<FlowchartViewboxBounds>
 where
     F: Fn(&str) -> Option<&'data str>,
 {
@@ -291,7 +291,8 @@ where
                 edge_path_cache,
                 render_edges,
                 ctx.config,
-            );
+                ctx.resource_limits,
+            )?;
 
             // Line hops are a render-time replacement of the original path. Rebuild edge bounds
             // from the same post-processed geometry that SVG emission consumes, while retaining
@@ -329,14 +330,14 @@ where
         bbox_max_y = bbox_max_y.max(baseline_y + descent);
     }
 
-    FlowchartViewboxBounds {
+    Ok(FlowchartViewboxBounds {
         diagram_title,
         title_anchor_x,
         bbox_min_x,
         bbox_min_y,
         bbox_max_x,
         bbox_max_y,
-    }
+    })
 }
 
 fn lca_for_ids<'a, F>(

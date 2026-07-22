@@ -70,6 +70,7 @@ pub(super) fn render_sequence_interaction_overlays(
         edges_by_id: ctx.edges_by_id,
         nodes_by_id: ctx.nodes_by_id,
         label_box_height: ctx.settings.label_box_height,
+        label_box_width: ctx.settings.label_box_width,
         box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,

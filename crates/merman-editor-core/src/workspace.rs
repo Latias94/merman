@@ -2,7 +2,9 @@ use crate::diagnostics::{EditorDiagnostic, analysis_payload_to_diagnostics};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result_shared,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, AnalyzedDiagram, Analyzer,
+    SourceDescriptor, SourceKind, analyze_document_result_shared,
+    analyze_document_result_shared_cancellable,
 };
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -22,25 +24,37 @@ pub struct EditorDiagramDetection {
     pub effective_layout_id: String,
 }
 
+#[derive(Debug)]
+pub struct DocumentWorkspace {
+    documents: HashMap<DocumentUri, DocumentSnapshot>,
+    analyzer: Analyzer,
+}
+
+/// One canonical analysis generation shared by diagnostics and editor projections.
 #[derive(Debug, Clone)]
-pub struct AnalyzedDocumentSnapshot {
-    document: DocumentSnapshot,
-    payload: merman_analysis::AnalysisPayload,
+pub struct DocumentAnalysisContext {
+    snapshot: DocumentSnapshot,
+    payload: AnalysisPayload,
     diagnostics: Arc<[EditorDiagnostic]>,
     detection: Option<EditorDiagramDetection>,
 }
 
-impl AnalyzedDocumentSnapshot {
+impl DocumentAnalysisContext {
+    pub fn snapshot(&self) -> &DocumentSnapshot {
+        &self.snapshot
+    }
+
+    /// Compatibility name for consumers that treat this as an analyzed snapshot.
     pub fn document(&self) -> &DocumentSnapshot {
-        &self.document
+        self.snapshot()
+    }
+
+    pub fn payload(&self) -> &AnalysisPayload {
+        &self.payload
     }
 
     pub fn diagnostics(&self) -> &[EditorDiagnostic] {
         &self.diagnostics
-    }
-
-    pub fn payload(&self) -> &merman_analysis::AnalysisPayload {
-        &self.payload
     }
 
     pub fn detection(&self) -> Option<&EditorDiagramDetection> {
@@ -48,23 +62,24 @@ impl AnalyzedDocumentSnapshot {
     }
 
     pub fn into_document(self) -> DocumentSnapshot {
-        self.document
+        self.snapshot
+    }
+
+    pub fn into_parts(self) -> (DocumentSnapshot, AnalysisPayload) {
+        (self.snapshot, self.payload)
     }
 }
 
-impl Deref for AnalyzedDocumentSnapshot {
+impl Deref for DocumentAnalysisContext {
     type Target = DocumentSnapshot;
 
     fn deref(&self) -> &Self::Target {
-        self.document()
+        self.snapshot()
     }
 }
 
-#[derive(Debug)]
-pub struct DocumentWorkspace {
-    documents: HashMap<DocumentUri, DocumentSnapshot>,
-    analyzer: Analyzer,
-}
+/// Backwards-compatible name for the canonical analysis context.
+pub type AnalyzedDocumentSnapshot = DocumentAnalysisContext;
 
 impl Default for DocumentWorkspace {
     fn default() -> Self {
@@ -129,8 +144,9 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
     ) -> DocumentSnapshot {
-        Self::build_analyzed_snapshot_with_shared_text(analyzer, uri, version, text, kind)
-            .into_document()
+        Self::build_analysis_context_with_shared_text(analyzer, uri, version, text, kind)
+            .into_parts()
+            .0
     }
 
     pub fn build_analyzed_snapshot_with_shared_text(
@@ -140,18 +156,62 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
     ) -> AnalyzedDocumentSnapshot {
+        Self::build_analysis_context_with_shared_text(analyzer, uri, version, text, kind)
+    }
+
+    pub fn build_analysis_context_with_shared_text(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+    ) -> DocumentAnalysisContext {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
         let analysis = analyze_document_result_shared(Arc::clone(&text), analyzer, source.clone());
+        Self::analysis_context(uri, version, text, kind, source, analysis)
+    }
+
+    pub fn build_analysis_context_with_shared_text_cancellable(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DocumentAnalysisContext, AnalysisCancelled> {
+        let uri = uri.into();
+        let source = source_descriptor_for_document(&uri, kind);
+        let analysis = analyze_document_result_shared_cancellable(
+            Arc::clone(&text),
+            analyzer,
+            source.clone(),
+            cancellation,
+        )?;
+        Ok(Self::analysis_context(
+            uri, version, text, kind, source, analysis,
+        ))
+    }
+
+    fn analysis_context(
+        uri: DocumentUri,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        source: SourceDescriptor,
+        analysis: merman_analysis::AnalysisResult,
+    ) -> DocumentAnalysisContext {
         let diagnostics = analysis_payload_to_diagnostics(analysis.payload()).into();
         let detection = detection_for_analysis(&analysis);
-        let (payload, source_map, diagrams) = analysis.into_parts();
-        let fences = diagrams
-            .into_iter()
+        let fences = analysis
+            .diagrams()
+            .iter()
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
-        AnalyzedDocumentSnapshot {
-            document: DocumentSnapshot {
+        let source_map = analysis.source_map().clone();
+        let payload = analysis.into_payload();
+        DocumentAnalysisContext {
+            snapshot: DocumentSnapshot {
                 uri,
                 version,
                 kind,
@@ -178,20 +238,20 @@ impl DocumentWorkspace {
         self.documents.values().cloned().collect()
     }
 
-    fn fence_snapshot(diagram: AnalyzedDiagram) -> FenceSnapshot {
+    fn fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
         FenceSnapshot {
-            source_id: diagram.source_id,
+            source_id: diagram.source_id.clone(),
             index: diagram.index,
-            source: diagram.source,
+            source: diagram.source.clone(),
             start: diagram.start,
             body_start: diagram.body_start,
             body_end: diagram.body_end,
             end: diagram.end,
-            text: diagram.text,
+            text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
-            fence_delimiter_spans: diagram.fence_delimiter_spans,
-            diagram_type: diagram.syntax.diagram_type,
-            text_index: diagram.syntax.text_index,
+            fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
+            diagram_type: diagram.syntax.diagram_type.clone(),
+            text_index: diagram.syntax.text_index.clone(),
         }
     }
 }

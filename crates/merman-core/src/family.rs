@@ -453,11 +453,11 @@ pub(crate) fn fast_detect_by_leading_keyword(
 }
 
 pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
-    #[cfg(feature = "full")]
+    #[cfg(feature = "full-registry")]
     {
         BaselineRegistryProfile::Full
     }
-    #[cfg(not(feature = "full"))]
+    #[cfg(not(feature = "full-registry"))]
     {
         BaselineRegistryProfile::Tiny
     }
@@ -1031,50 +1031,51 @@ const MINDMAP_HEADERS: &[HeaderDefinition] = &[header(10, "mindmap", "mindmap he
 const INFO_HEADERS: &[HeaderDefinition] = &[header(11, "info", "info header")];
 const JOURNEY_HEADERS: &[HeaderDefinition] = &[header(12, "journey", "journey header")];
 const TIMELINE_HEADERS: &[HeaderDefinition] = &[header(13, "timeline", "timeline header")];
-const PIE_HEADERS: &[HeaderDefinition] = &[header(14, "pie", "pie header")];
+const GIT_GRAPH_HEADERS: &[HeaderDefinition] = &[header(14, "gitGraph", "git graph header")];
+const PIE_HEADERS: &[HeaderDefinition] = &[header(15, "pie", "pie header")];
 const REQUIREMENT_HEADERS: &[HeaderDefinition] =
-    &[header(15, "requirementDiagram", "requirement header")];
-const SANKEY_HEADERS: &[HeaderDefinition] = &[header(16, "sankey", "sankey header")];
+    &[header(16, "requirementDiagram", "requirement header")];
+const SANKEY_HEADERS: &[HeaderDefinition] = &[header(17, "sankey", "sankey header")];
 const PACKET_HEADERS: &[HeaderDefinition] = &[
-    header(17, "packet", "packet header"),
-    header(18, "packet-beta", "packet beta header"),
+    header(18, "packet", "packet header"),
+    header(19, "packet-beta", "packet beta header"),
 ];
 const XYCHART_HEADERS: &[HeaderDefinition] = &[
-    header(19, "xychart", "xychart header"),
-    header(20, "xychart-beta", "xychart beta header"),
+    header(20, "xychart", "xychart header"),
+    header(21, "xychart-beta", "xychart beta header"),
 ];
-const TREE_VIEW_HEADERS: &[HeaderDefinition] = &[header(21, "treeView-beta", "tree view header")];
-const ISHIKAWA_HEADERS: &[HeaderDefinition] = &[header(22, "ishikawa-beta", "ishikawa header")];
+const TREE_VIEW_HEADERS: &[HeaderDefinition] = &[header(22, "treeView-beta", "tree view header")];
+const ISHIKAWA_HEADERS: &[HeaderDefinition] = &[header(23, "ishikawa-beta", "ishikawa header")];
 const EVENTMODELING_HEADERS: &[HeaderDefinition] =
-    &[header(23, "eventmodeling", "event modeling header")];
+    &[header(24, "eventmodeling", "event modeling header")];
 const QUADRANT_HEADERS: &[HeaderDefinition] =
-    &[header(24, "quadrantChart", "quadrant chart header")];
-const VENN_HEADERS: &[HeaderDefinition] = &[header(25, "venn-beta", "venn header")];
-const ZENUML_HEADERS: &[HeaderDefinition] = &[header(26, "zenuml", "zenuml header")];
+    &[header(25, "quadrantChart", "quadrant chart header")];
+const VENN_HEADERS: &[HeaderDefinition] = &[header(26, "venn-beta", "venn header")];
+const ZENUML_HEADERS: &[HeaderDefinition] = &[header(27, "zenuml", "zenuml header")];
 const C4_HEADERS: &[HeaderDefinition] = &[
-    header(27, "C4Context", "c4 context header"),
-    header(28, "C4Container", "c4 container header"),
-    header(29, "C4Component", "c4 component header"),
-    header(30, "C4Dynamic", "c4 dynamic header"),
-    header(31, "C4Deployment", "c4 deployment header"),
+    header(28, "C4Context", "c4 context header"),
+    header(29, "C4Container", "c4 container header"),
+    header(30, "C4Component", "c4 component header"),
+    header(31, "C4Dynamic", "c4 dynamic header"),
+    header(32, "C4Deployment", "c4 deployment header"),
 ];
-const KANBAN_HEADERS: &[HeaderDefinition] = &[header(32, "kanban", "kanban header")];
+const KANBAN_HEADERS: &[HeaderDefinition] = &[header(33, "kanban", "kanban header")];
 const ARCHITECTURE_HEADERS: &[HeaderDefinition] =
-    &[header(33, "architecture-beta", "architecture header")];
-const BLOCK_HEADERS: &[HeaderDefinition] = &[header(34, "block-beta", "block header")];
-const RADAR_HEADERS: &[HeaderDefinition] = &[header(35, "radar-beta", "radar header")];
-const TREEMAP_HEADERS: &[HeaderDefinition] = &[header(36, "treemap-beta", "treemap header")];
-const RAILROAD_HEADERS: &[HeaderDefinition] = &[header(37, "railroad-beta", "railroad header")];
+    &[header(34, "architecture-beta", "architecture header")];
+const BLOCK_HEADERS: &[HeaderDefinition] = &[header(35, "block-beta", "block header")];
+const RADAR_HEADERS: &[HeaderDefinition] = &[header(36, "radar-beta", "radar header")];
+const TREEMAP_HEADERS: &[HeaderDefinition] = &[header(37, "treemap-beta", "treemap header")];
+const RAILROAD_HEADERS: &[HeaderDefinition] = &[header(38, "railroad-beta", "railroad header")];
 const RAILROAD_EBNF_HEADERS: &[HeaderDefinition] =
-    &[header(38, "railroad-ebnf-beta", "railroad ebnf header")];
+    &[header(39, "railroad-ebnf-beta", "railroad ebnf header")];
 const RAILROAD_ABNF_HEADERS: &[HeaderDefinition] =
-    &[header(39, "railroad-abnf-beta", "railroad abnf header")];
+    &[header(40, "railroad-abnf-beta", "railroad abnf header")];
 const RAILROAD_PEG_HEADERS: &[HeaderDefinition] =
-    &[header(40, "railroad-peg-beta", "railroad peg header")];
-const WARDLEY_HEADERS: &[HeaderDefinition] = &[header(41, "wardley-beta", "wardley header")];
-const CYNEFIN_HEADERS: &[HeaderDefinition] = &[header(42, "cynefin-beta", "cynefin header")];
+    &[header(41, "railroad-peg-beta", "railroad peg header")];
+const WARDLEY_HEADERS: &[HeaderDefinition] = &[header(42, "wardley-beta", "wardley header")];
+const CYNEFIN_HEADERS: &[HeaderDefinition] = &[header(43, "cynefin-beta", "cynefin header")];
 const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
-    &[header(43, "flowchart-elk TD", "elk flowchart header")];
+    &[header(44, "flowchart-elk TD", "elk flowchart header")];
 
 const FAST_SEQUENCE: &[FastKeywordDefinition] = &[fast_keyword(0, "sequenceDiagram")];
 const FAST_MINDMAP: &[FastKeywordDefinition] = &[fast_keyword(1, "mindmap")];
@@ -1447,7 +1448,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
     metadata: Some(metadata("gitgraph", Some(9))),
-    headers: &[],
+    headers: GIT_GRAPH_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
     default_effect: DefaultEffect::None,

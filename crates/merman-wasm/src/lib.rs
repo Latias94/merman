@@ -187,6 +187,12 @@ pub fn binding_capabilities() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = runtimeContract)]
+pub fn runtime_contract() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::runtime_contract(WASM_ABI_VERSION))
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[wasm_bindgen(js_name = selectedRegistryProfile)]
 pub fn selected_registry_profile() -> String {
     merman_bindings_core::selected_registry_profile().to_string()
@@ -606,7 +612,7 @@ mod tests {
                 .iter()
                 .any(|item| {
                     item["name"] == "A"
-                        && item["rename_policy"] == "identifier"
+                        && item["rename_policy"] == "flowchart_node_id"
                         && item["span"]["document"].is_object()
                 })
         );
@@ -777,6 +783,24 @@ mod tests {
             capabilities.editor_language,
             cfg!(feature = "editor-language")
         );
+    }
+
+    #[test]
+    fn runtime_contract_uses_the_generated_wasm_abi_and_resource_catalog() {
+        let contract = merman_bindings_core::runtime_contract(WASM_ABI_VERSION);
+        assert_eq!(contract.schema_version, 1);
+        assert_eq!(contract.abi_version, WASM_ABI_VERSION);
+        assert_eq!(
+            contract.features,
+            merman_bindings_core::binding_capabilities()
+        );
+        if cfg!(feature = "render") {
+            let resources = contract.resources.expect("render resource catalog");
+            assert_eq!(resources.general_binding_default_profile, "interactive");
+            assert_eq!(resources.profiles.len(), 4);
+        } else {
+            assert!(contract.resources.is_none());
+        }
     }
 
     #[test]

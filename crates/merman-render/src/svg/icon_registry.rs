@@ -696,7 +696,7 @@ fn normalize_icon_key(raw: &str) -> String {
 }
 
 fn escape_xml_attr(value: &str) -> String {
-    value
+    crate::xml::strip_forbidden_xml_1_0_chars(value)
         .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('<', "&lt;")

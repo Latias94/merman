@@ -20,6 +20,7 @@ const analysisRuntimeExportNames = [
 
 const metadataRuntimeExportNames = [
   "bindingCapabilities",
+  "runtimeContract",
   "selectedRegistryProfile",
   "supportedDiagrams",
   "diagramFamilyCapabilities",

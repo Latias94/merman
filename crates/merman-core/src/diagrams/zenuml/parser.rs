@@ -2,9 +2,13 @@ use super::ast::*;
 use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
 use crate::{MAX_DIAGRAM_NESTING_DEPTH, SourceSpan};
+use std::cell::Cell;
+use std::collections::{HashSet, VecDeque};
 
 const MISSING_PARTICIPANT: &str = "Missing `Participant`";
 const MISSING_CONSTRUCTOR: &str = "Missing Constructor";
+const MAX_HEAD_PARTICIPANT_PREDICTION_STATES: usize =
+    MAX_DIAGRAM_NESTING_DEPTH * MAX_DIAGRAM_NESTING_DEPTH;
 
 pub(super) fn parse(source: &str, raw_tokens: &[Token]) -> ParsedSyntax {
     let tokens = lexer::parser_tokens(raw_tokens);
@@ -68,6 +72,7 @@ impl<'a> Parser<'a> {
         let mut head = Vec::new();
         let mut starter = None;
         let mut pending_comment = None;
+        let mut head_prediction = HeadParticipantPrediction::default();
 
         loop {
             let comment = self.take_current_comment();
@@ -81,7 +86,7 @@ impl<'a> Parser<'a> {
             }
             let participant = {
                 let grammar = Grammar::new(self.source, &self.tokens);
-                grammar.select_head_participant(self.cursor)
+                head_prediction.select(&grammar, self.cursor)
             };
             if let Some(participant) = participant {
                 head.push(HeadItemSyntax::Participant(Box::new(
@@ -1030,37 +1035,787 @@ struct ParExprMatch {
 struct Grammar<'a> {
     source: &'a str,
     tokens: &'a [Token],
+    expression_depth_exceeded: Cell<bool>,
+}
+
+enum GrammarValue {
+    Expression(Option<ExprMatch>),
+    Creation(Option<CreationBodyMatch>),
+    Func(Option<FuncMatch>),
+    Signature(Option<SignatureMatch>),
+    Invocation(Option<InvocationMatch>),
+    Parameter(Option<ParameterMatch>),
+}
+
+enum GrammarTask {
+    Expression {
+        start: usize,
+        min_bp: u8,
+        depth: usize,
+    },
+    ExpressionAfterPrefix {
+        min_bp: u8,
+        depth: usize,
+    },
+    ExpressionContinue {
+        left: ExprMatch,
+        min_bp: u8,
+        depth: usize,
+    },
+    ExpressionAfterRight {
+        left: ExprMatch,
+        min_bp: u8,
+        depth: usize,
+    },
+    Prefix {
+        start: usize,
+        depth: usize,
+    },
+    PrefixAfterUnary {
+        start: usize,
+    },
+    PrefixAfterAssignment {
+        start: usize,
+        depth: usize,
+    },
+    PrefixTryParenthesized {
+        start: usize,
+        depth: usize,
+    },
+    PrefixAfterParenthesized {
+        start: usize,
+        depth: usize,
+    },
+    PrefixTryCreation {
+        start: usize,
+        depth: usize,
+    },
+    PrefixAfterCreation {
+        start: usize,
+        depth: usize,
+    },
+    PrefixTryMessagePath {
+        start: usize,
+        depth: usize,
+    },
+    PrefixAfterMessagePath {
+        start: usize,
+        depth: usize,
+    },
+    PrefixTryFunc {
+        start: usize,
+        depth: usize,
+    },
+    PrefixAfterFunc {
+        start: usize,
+    },
+    Creation {
+        start: usize,
+        depth: usize,
+    },
+    CreationAfterInvocation {
+        start: usize,
+        assignment: Option<AssignmentMatch>,
+        constructor: Option<SpannedText>,
+        new_span: SourceSpan,
+        invocation_start: usize,
+    },
+    Func {
+        start: usize,
+        depth: usize,
+    },
+    FuncAfterFirst {
+        start: usize,
+        depth: usize,
+    },
+    FuncContinue {
+        start: usize,
+        depth: usize,
+        end: usize,
+        formatted: String,
+        first_invoked: bool,
+        first_emoji: bool,
+    },
+    FuncAfterNext {
+        start: usize,
+        depth: usize,
+        end: usize,
+        formatted: String,
+        first_invoked: bool,
+        first_emoji: bool,
+    },
+    Signature {
+        start: usize,
+        depth: usize,
+    },
+    SignatureAfterInvocation {
+        endpoint: EndpointMatch,
+        formatted: String,
+    },
+    Invocation {
+        start: usize,
+        depth: usize,
+    },
+    InvocationNextParameter {
+        start: usize,
+        depth: usize,
+        end: usize,
+        parameters: Vec<ParameterMatch>,
+    },
+    InvocationAfterParameter {
+        start: usize,
+        depth: usize,
+        parameter_start: usize,
+        parameters: Vec<ParameterMatch>,
+    },
+    Parameter {
+        start: usize,
+        depth: usize,
+    },
+    ParameterAfterNamedExpression {
+        start: usize,
+        assignment_end: usize,
+    },
+    ParameterAfterExpression {
+        start: usize,
+    },
+}
+
+fn take_expression(result: &mut Option<GrammarValue>) -> Option<ExprMatch> {
+    match result.take().expect("expression task result") {
+        GrammarValue::Expression(value) => value,
+        _ => unreachable!("expression continuation received a different grammar value"),
+    }
+}
+
+fn take_creation(result: &mut Option<GrammarValue>) -> Option<CreationBodyMatch> {
+    match result.take().expect("creation task result") {
+        GrammarValue::Creation(value) => value,
+        _ => unreachable!("creation continuation received a different grammar value"),
+    }
+}
+
+fn take_func(result: &mut Option<GrammarValue>) -> Option<FuncMatch> {
+    match result.take().expect("func task result") {
+        GrammarValue::Func(value) => value,
+        _ => unreachable!("func continuation received a different grammar value"),
+    }
+}
+
+fn take_signature(result: &mut Option<GrammarValue>) -> Option<SignatureMatch> {
+    match result.take().expect("signature task result") {
+        GrammarValue::Signature(value) => value,
+        _ => unreachable!("signature continuation received a different grammar value"),
+    }
+}
+
+fn take_invocation(result: &mut Option<GrammarValue>) -> Option<InvocationMatch> {
+    match result.take().expect("invocation task result") {
+        GrammarValue::Invocation(value) => value,
+        _ => unreachable!("invocation continuation received a different grammar value"),
+    }
+}
+
+fn take_parameter(result: &mut Option<GrammarValue>) -> Option<ParameterMatch> {
+    match result.take().expect("parameter task result") {
+        GrammarValue::Parameter(value) => value,
+        _ => unreachable!("parameter continuation received a different grammar value"),
+    }
 }
 
 impl<'a> Grammar<'a> {
     fn new(source: &'a str, tokens: &'a [Token]) -> Self {
-        Self { source, tokens }
+        Self {
+            source,
+            tokens,
+            expression_depth_exceeded: Cell::new(false),
+        }
     }
 
-    fn select_head_participant(&self, start: usize) -> Option<ParticipantMatch> {
-        self.participant_candidates(start)
-            .into_iter()
-            .find(|candidate| self.head_suffix_viable(candidate.end, 0))
+    #[cfg(test)]
+    fn expression_depth_exceeded(&self) -> bool {
+        self.expression_depth_exceeded.get()
     }
 
-    fn head_suffix_viable(&self, start: usize, depth: usize) -> bool {
-        if depth > self.tokens.len() || self.is_eof(start) {
-            return self.is_eof(start);
+    fn run_grammar_task(&self, initial: GrammarTask) -> GrammarValue {
+        let mut tasks = vec![initial];
+        let mut result = None;
+
+        while let Some(task) = tasks.pop() {
+            match task {
+                GrammarTask::Expression {
+                    start,
+                    min_bp,
+                    depth,
+                } => {
+                    if depth > MAX_DIAGRAM_NESTING_DEPTH {
+                        self.expression_depth_exceeded.set(true);
+                        result = Some(GrammarValue::Expression(None));
+                    } else {
+                        tasks.push(GrammarTask::ExpressionAfterPrefix { min_bp, depth });
+                        tasks.push(GrammarTask::Prefix { start, depth });
+                    }
+                }
+                GrammarTask::ExpressionAfterPrefix { min_bp, depth } => {
+                    if let Some(left) = take_expression(&mut result) {
+                        tasks.push(GrammarTask::ExpressionContinue {
+                            left,
+                            min_bp,
+                            depth,
+                        });
+                    } else {
+                        result = Some(GrammarValue::Expression(None));
+                    }
+                }
+                GrammarTask::ExpressionContinue {
+                    left,
+                    min_bp,
+                    depth,
+                } => {
+                    let Some((left_bp, right_bp)) = self.binary_binding_power(left.end) else {
+                        result = Some(GrammarValue::Expression(Some(left)));
+                        continue;
+                    };
+                    if left_bp < min_bp {
+                        result = Some(GrammarValue::Expression(Some(left)));
+                        continue;
+                    }
+                    let right_start = left.end + 1;
+                    tasks.push(GrammarTask::ExpressionAfterRight {
+                        left,
+                        min_bp,
+                        depth,
+                    });
+                    tasks.push(GrammarTask::Expression {
+                        start: right_start,
+                        min_bp: right_bp,
+                        depth: depth + 1,
+                    });
+                }
+                GrammarTask::ExpressionAfterRight {
+                    left,
+                    min_bp,
+                    depth,
+                } => {
+                    let Some(right) = take_expression(&mut result) else {
+                        result = Some(GrammarValue::Expression(
+                            (!self.expression_depth_exceeded.get()).then_some(left),
+                        ));
+                        continue;
+                    };
+                    let combined = ExprMatch {
+                        end: right.end,
+                        span: SourceSpan::new(left.span.start, right.span.end),
+                    };
+                    tasks.push(GrammarTask::ExpressionContinue {
+                        left: combined,
+                        min_bp,
+                        depth,
+                    });
+                }
+                GrammarTask::Prefix { start, depth } => {
+                    if matches!(self.kind(start), Some(TokenKind::Operator(value)) if value == "-" || value == "!")
+                    {
+                        tasks.push(GrammarTask::PrefixAfterUnary { start });
+                        tasks.push(GrammarTask::Expression {
+                            start: start + 1,
+                            min_bp: 13,
+                            depth: depth + 1,
+                        });
+                    } else if let Some(assignment) = self.assignment(start) {
+                        tasks.push(GrammarTask::PrefixAfterAssignment { start, depth });
+                        tasks.push(GrammarTask::Expression {
+                            start: assignment.end,
+                            min_bp: 0,
+                            depth: depth + 1,
+                        });
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryParenthesized { start, depth });
+                    }
+                }
+                GrammarTask::PrefixAfterUnary { start } => {
+                    result = Some(GrammarValue::Expression(take_expression(&mut result).map(
+                        |inner| ExprMatch {
+                            end: inner.end,
+                            span: self.span(start, inner.end),
+                        },
+                    )));
+                }
+                GrammarTask::PrefixAfterAssignment { start, depth } => {
+                    if let Some(expr) = take_expression(&mut result) {
+                        result = Some(GrammarValue::Expression(Some(ExprMatch {
+                            end: expr.end,
+                            span: self.span(start, expr.end),
+                        })));
+                    } else if self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Expression(None));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryParenthesized { start, depth });
+                    }
+                }
+                GrammarTask::PrefixTryParenthesized { start, depth } => {
+                    if matches!(self.kind(start), Some(TokenKind::OpenParen)) {
+                        tasks.push(GrammarTask::PrefixAfterParenthesized { start, depth });
+                        tasks.push(GrammarTask::Expression {
+                            start: start + 1,
+                            min_bp: 0,
+                            depth: depth + 1,
+                        });
+                    } else if self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Expression(None));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryCreation { start, depth });
+                    }
+                }
+                GrammarTask::PrefixAfterParenthesized { start, depth } => {
+                    let expr = take_expression(&mut result);
+                    if let Some(expr) = expr
+                        && matches!(self.kind(expr.end), Some(TokenKind::CloseParen))
+                    {
+                        let end = expr.end + 1;
+                        result = Some(GrammarValue::Expression(Some(ExprMatch {
+                            end,
+                            span: self.span(start, end),
+                        })));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryCreation { start, depth });
+                    }
+                }
+                GrammarTask::PrefixTryCreation { start, depth } => {
+                    tasks.push(GrammarTask::PrefixAfterCreation { start, depth });
+                    tasks.push(GrammarTask::Creation { start, depth });
+                }
+                GrammarTask::PrefixAfterCreation { start, depth } => {
+                    if let Some(creation) = take_creation(&mut result) {
+                        result = Some(GrammarValue::Expression(Some(ExprMatch {
+                            end: creation.end,
+                            span: creation.span,
+                        })));
+                    } else if self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Expression(None));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryMessagePath { start, depth });
+                    }
+                }
+                GrammarTask::PrefixTryMessagePath { start, depth } => {
+                    if let Some(from_to) = self.message_path(start) {
+                        tasks.push(GrammarTask::PrefixAfterMessagePath { start, depth });
+                        tasks.push(GrammarTask::Func {
+                            start: from_to.end,
+                            depth,
+                        });
+                    } else if self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Expression(None));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryFunc { start, depth });
+                    }
+                }
+                GrammarTask::PrefixAfterMessagePath { start, depth } => {
+                    if let Some(func) = take_func(&mut result) {
+                        result = Some(GrammarValue::Expression(Some(ExprMatch {
+                            end: func.end,
+                            span: self.span(start, func.end),
+                        })));
+                    } else {
+                        tasks.push(GrammarTask::PrefixTryFunc { start, depth });
+                    }
+                }
+                GrammarTask::PrefixTryFunc { start, depth } => {
+                    tasks.push(GrammarTask::PrefixAfterFunc { start });
+                    tasks.push(GrammarTask::Func { start, depth });
+                }
+                GrammarTask::PrefixAfterFunc { start } => {
+                    let func = take_func(&mut result);
+                    match func {
+                        Some(func) if func.first_invoked || func.first_emoji => {
+                            result = Some(GrammarValue::Expression(Some(ExprMatch {
+                                end: func.end,
+                                span: func.span,
+                            })));
+                        }
+                        _ if self.expression_depth_exceeded.get() => {
+                            result = Some(GrammarValue::Expression(None));
+                        }
+                        _ if self.is_atom(start) => {
+                            result = Some(GrammarValue::Expression(Some(ExprMatch {
+                                end: start + 1,
+                                span: self.span(start, start + 1),
+                            })));
+                        }
+                        _ => result = Some(GrammarValue::Expression(None)),
+                    }
+                }
+                GrammarTask::Creation { start, depth } => {
+                    let assignment = self.assignment(start);
+                    let cursor = assignment
+                        .as_ref()
+                        .map_or(start, |assignment| assignment.end);
+                    if !matches!(self.kind(cursor), Some(TokenKind::Keyword(Keyword::New))) {
+                        result = Some(GrammarValue::Creation(None));
+                        continue;
+                    }
+                    let new_span = self.tokens[cursor].span;
+                    let mut invocation_start = cursor + 1;
+                    let constructor = self.name(invocation_start);
+                    if constructor.is_some() {
+                        invocation_start += 1;
+                    }
+                    if constructor.is_some()
+                        && matches!(self.kind(invocation_start), Some(TokenKind::OpenParen))
+                    {
+                        tasks.push(GrammarTask::CreationAfterInvocation {
+                            start,
+                            assignment,
+                            constructor,
+                            new_span,
+                            invocation_start,
+                        });
+                        tasks.push(GrammarTask::Invocation {
+                            start: invocation_start,
+                            depth,
+                        });
+                    } else {
+                        let span = self.span(start, invocation_start);
+                        result = Some(GrammarValue::Creation(Some(CreationBodyMatch {
+                            end: invocation_start,
+                            assignment: assignment.and_then(|assignment| assignment.assignee),
+                            constructor,
+                            parameters: None,
+                            new_span,
+                            span,
+                        })));
+                    }
+                }
+                GrammarTask::CreationAfterInvocation {
+                    start,
+                    assignment,
+                    constructor,
+                    new_span,
+                    invocation_start,
+                } => {
+                    let invocation = take_invocation(&mut result);
+                    if invocation.is_none() && self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Creation(None));
+                        continue;
+                    }
+                    let end = invocation
+                        .as_ref()
+                        .map_or(invocation_start, |invocation| invocation.end);
+                    let parameters = invocation.map(|invocation| {
+                        SpannedText::new(invocation.parameters, invocation.parameters_span)
+                    });
+                    let span = self.span(start, end);
+                    result = Some(GrammarValue::Creation(Some(CreationBodyMatch {
+                        end,
+                        assignment: assignment.and_then(|assignment| assignment.assignee),
+                        constructor,
+                        parameters,
+                        new_span,
+                        span,
+                    })));
+                }
+                GrammarTask::Func { start, depth } => {
+                    tasks.push(GrammarTask::FuncAfterFirst { start, depth });
+                    tasks.push(GrammarTask::Signature { start, depth });
+                }
+                GrammarTask::FuncAfterFirst { start, depth } => {
+                    let Some(first) = take_signature(&mut result) else {
+                        result = Some(GrammarValue::Func(None));
+                        continue;
+                    };
+                    let first_emoji = matches!(self.kind(start), Some(TokenKind::OpenBracket));
+                    tasks.push(GrammarTask::FuncContinue {
+                        start,
+                        depth,
+                        end: first.end,
+                        formatted: first.formatted,
+                        first_invoked: first.invoked,
+                        first_emoji,
+                    });
+                }
+                GrammarTask::FuncContinue {
+                    start,
+                    depth,
+                    end,
+                    formatted,
+                    first_invoked,
+                    first_emoji,
+                } => {
+                    if matches!(self.kind(end), Some(TokenKind::Dot)) {
+                        tasks.push(GrammarTask::FuncAfterNext {
+                            start,
+                            depth,
+                            end,
+                            formatted,
+                            first_invoked,
+                            first_emoji,
+                        });
+                        tasks.push(GrammarTask::Signature {
+                            start: end + 1,
+                            depth,
+                        });
+                    } else {
+                        let span = self.span(start, end);
+                        result = Some(GrammarValue::Func(Some(FuncMatch {
+                            end,
+                            formatted,
+                            span,
+                            first_invoked,
+                            first_emoji,
+                        })));
+                    }
+                }
+                GrammarTask::FuncAfterNext {
+                    start,
+                    depth,
+                    end,
+                    mut formatted,
+                    first_invoked,
+                    first_emoji,
+                } => {
+                    let Some(signature) = take_signature(&mut result) else {
+                        if self.expression_depth_exceeded.get() {
+                            result = Some(GrammarValue::Func(None));
+                        } else {
+                            let span = self.span(start, end);
+                            result = Some(GrammarValue::Func(Some(FuncMatch {
+                                end,
+                                formatted,
+                                span,
+                                first_invoked,
+                                first_emoji,
+                            })));
+                        }
+                        continue;
+                    };
+                    formatted.push('.');
+                    formatted.push_str(&signature.formatted);
+                    tasks.push(GrammarTask::FuncContinue {
+                        start,
+                        depth,
+                        end: signature.end,
+                        formatted,
+                        first_invoked,
+                        first_emoji,
+                    });
+                }
+                GrammarTask::Signature { start, depth } => {
+                    let Some(endpoint) = self.endpoint(start) else {
+                        result = Some(GrammarValue::Signature(None));
+                        continue;
+                    };
+                    let mut formatted = String::new();
+                    if let Some(emoji) = &endpoint.emoji {
+                        formatted.push('[');
+                        formatted.push_str(&emoji.value);
+                        formatted.push(']');
+                    }
+                    formatted.push_str(&endpoint.name.value);
+                    if matches!(self.kind(endpoint.end), Some(TokenKind::OpenParen)) {
+                        let invocation_start = endpoint.end;
+                        tasks.push(GrammarTask::SignatureAfterInvocation {
+                            endpoint,
+                            formatted,
+                        });
+                        tasks.push(GrammarTask::Invocation {
+                            start: invocation_start,
+                            depth,
+                        });
+                    } else {
+                        result = Some(GrammarValue::Signature(Some(SignatureMatch {
+                            end: endpoint.end,
+                            formatted,
+                            invoked: false,
+                        })));
+                    }
+                }
+                GrammarTask::SignatureAfterInvocation {
+                    endpoint,
+                    mut formatted,
+                } => {
+                    if let Some(invocation) = take_invocation(&mut result) {
+                        formatted.push_str(&invocation.formatted);
+                        result = Some(GrammarValue::Signature(Some(SignatureMatch {
+                            end: invocation.end,
+                            formatted,
+                            invoked: true,
+                        })));
+                    } else if self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Signature(None));
+                    } else {
+                        result = Some(GrammarValue::Signature(Some(SignatureMatch {
+                            end: endpoint.end,
+                            formatted,
+                            invoked: false,
+                        })));
+                    }
+                }
+                GrammarTask::Invocation { start, depth } => {
+                    if !matches!(self.kind(start), Some(TokenKind::OpenParen)) {
+                        result = Some(GrammarValue::Invocation(None));
+                        continue;
+                    }
+                    let end = start + 1;
+                    if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+                        result = Some(GrammarValue::Invocation(Some(self.finish_invocation(
+                            start,
+                            end + 1,
+                            Vec::new(),
+                        ))));
+                    } else {
+                        tasks.push(GrammarTask::InvocationNextParameter {
+                            start,
+                            depth,
+                            end,
+                            parameters: Vec::new(),
+                        });
+                    }
+                }
+                GrammarTask::InvocationNextParameter {
+                    start,
+                    depth,
+                    end,
+                    parameters,
+                } => {
+                    tasks.push(GrammarTask::InvocationAfterParameter {
+                        start,
+                        depth,
+                        parameter_start: end,
+                        parameters,
+                    });
+                    tasks.push(GrammarTask::Parameter { start: end, depth });
+                }
+                GrammarTask::InvocationAfterParameter {
+                    start,
+                    depth,
+                    parameter_start,
+                    mut parameters,
+                } => {
+                    let Some(parameter) = take_parameter(&mut result) else {
+                        result = Some(GrammarValue::Invocation(None));
+                        continue;
+                    };
+                    if parameter.end == parameter_start {
+                        result = Some(GrammarValue::Invocation(None));
+                        continue;
+                    }
+                    let mut end = parameter.end;
+                    parameters.push(parameter);
+                    if matches!(self.kind(end), Some(TokenKind::Comma)) {
+                        end += 1;
+                        if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+                            result = Some(GrammarValue::Invocation(Some(self.finish_invocation(
+                                start,
+                                end + 1,
+                                parameters,
+                            ))));
+                        } else {
+                            tasks.push(GrammarTask::InvocationNextParameter {
+                                start,
+                                depth,
+                                end,
+                                parameters,
+                            });
+                        }
+                    } else if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+                        result = Some(GrammarValue::Invocation(Some(self.finish_invocation(
+                            start,
+                            end + 1,
+                            parameters,
+                        ))));
+                    } else {
+                        result = Some(GrammarValue::Invocation(None));
+                    }
+                }
+                GrammarTask::Parameter { start, depth } => {
+                    if self.is_identifier_name(start)
+                        && matches!(self.kind(start + 1), Some(TokenKind::Assign))
+                    {
+                        let assignment_end = start + 2;
+                        tasks.push(GrammarTask::ParameterAfterNamedExpression {
+                            start,
+                            assignment_end,
+                        });
+                        tasks.push(GrammarTask::Expression {
+                            start: assignment_end,
+                            min_bp: 0,
+                            depth: depth + 1,
+                        });
+                    } else if self.name(start).is_some() && self.is_identifier_name(start + 1) {
+                        let end = start + 2;
+                        let formatted =
+                            format!("{} {}", self.token_text(start), self.token_text(start + 1));
+                        result = Some(GrammarValue::Parameter(Some(ParameterMatch {
+                            end,
+                            formatted,
+                        })));
+                    } else {
+                        tasks.push(GrammarTask::ParameterAfterExpression { start });
+                        tasks.push(GrammarTask::Expression {
+                            start,
+                            min_bp: 0,
+                            depth: depth + 1,
+                        });
+                    }
+                }
+                GrammarTask::ParameterAfterNamedExpression {
+                    start,
+                    assignment_end,
+                } => {
+                    let expression = take_expression(&mut result);
+                    if expression.is_none() && self.expression_depth_exceeded.get() {
+                        result = Some(GrammarValue::Parameter(None));
+                        continue;
+                    }
+                    let end = expression.map_or(assignment_end, |expression| expression.end);
+                    let formatted = self.compact(start, end);
+                    result = Some(GrammarValue::Parameter(Some(ParameterMatch {
+                        end,
+                        formatted,
+                    })));
+                }
+                GrammarTask::ParameterAfterExpression { start } => {
+                    result = Some(GrammarValue::Parameter(take_expression(&mut result).map(
+                        |expression| ParameterMatch {
+                            end: expression.end,
+                            formatted: self.compact(start, expression.end),
+                        },
+                    )));
+                }
+            }
         }
-        if matches!(self.kind(start), Some(TokenKind::StarterAnnotation)) {
-            return true;
+
+        result.expect("grammar task must produce a value")
+    }
+
+    fn finish_invocation(
+        &self,
+        start: usize,
+        end: usize,
+        parameters: Vec<ParameterMatch>,
+    ) -> InvocationMatch {
+        let parameters = parameters
+            .iter()
+            .map(|parameter| parameter.formatted.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        InvocationMatch {
+            end,
+            formatted: format!("({parameters})"),
+            parameters: parameters.clone(),
+            parameters_span: SourceSpan::new(
+                self.tokens[start].span.end,
+                self.tokens[end - 1].span.start,
+            ),
+            span: self.span(start, end),
         }
-        if matches!(self.kind(start), Some(TokenKind::Keyword(Keyword::Group))) {
-            return true;
-        }
-        if self.can_start_statement(start) {
-            return true;
-        }
-        self.participant_candidates(start)
-            .into_iter()
-            .any(|candidate| {
-                candidate.end > start && self.head_suffix_viable(candidate.end, depth + 1)
-            })
+    }
+
+    fn head_suffix_terminal(&self, start: usize) -> bool {
+        self.is_eof(start)
+            || matches!(self.kind(start), Some(TokenKind::StarterAnnotation))
+            || matches!(self.kind(start), Some(TokenKind::Keyword(Keyword::Group)))
+            || self.can_start_statement(start)
     }
 
     fn participant_candidates(&self, start: usize) -> Vec<ParticipantMatch> {
@@ -1313,36 +2068,10 @@ impl<'a> Grammar<'a> {
     }
 
     fn creation_body(&self, start: usize) -> Option<CreationBodyMatch> {
-        let assignment = self.assignment(start);
-        let cursor = assignment
-            .as_ref()
-            .map_or(start, |assignment| assignment.end);
-        if !matches!(self.kind(cursor), Some(TokenKind::Keyword(Keyword::New))) {
-            return None;
+        match self.run_grammar_task(GrammarTask::Creation { start, depth: 0 }) {
+            GrammarValue::Creation(value) => value,
+            _ => unreachable!("creation task returned a different grammar value"),
         }
-        let new_span = self.tokens[cursor].span;
-        let mut end = cursor + 1;
-        let constructor = self.name(end);
-        let mut parameters = None;
-        if constructor.is_some() {
-            end += 1;
-            if let Some(invocation) = self.invocation(end) {
-                parameters = Some(SpannedText::new(
-                    invocation.parameters.clone(),
-                    invocation.parameters_span,
-                ));
-                end = invocation.end;
-            }
-        }
-        let span = self.span(start, end);
-        Some(CreationBodyMatch {
-            end,
-            assignment: assignment.and_then(|assignment| assignment.assignee),
-            constructor,
-            parameters,
-            new_span,
-            span,
-        })
     }
 
     fn async_message(&self, start: usize) -> Option<AsyncMessageMatch> {
@@ -1504,131 +2233,21 @@ impl<'a> Grammar<'a> {
     }
 
     fn func(&self, start: usize) -> Option<FuncMatch> {
-        let first = self.signature(start)?;
-        let first_invoked = first.invoked;
-        let first_emoji = matches!(self.kind(start), Some(TokenKind::OpenBracket));
-        let mut end = first.end;
-        let mut formatted = first.formatted.clone();
-        while matches!(self.kind(end), Some(TokenKind::Dot)) {
-            let Some(signature) = self.signature(end + 1) else {
-                break;
-            };
-            formatted.push('.');
-            formatted.push_str(&signature.formatted);
-            end = signature.end;
+        match self.run_grammar_task(GrammarTask::Func { start, depth: 0 }) {
+            GrammarValue::Func(value) => value,
+            _ => unreachable!("func task returned a different grammar value"),
         }
-        let span = self.span(start, end);
-        Some(FuncMatch {
-            end,
-            formatted,
-            span,
-            first_invoked,
-            first_emoji,
-        })
     }
 
     fn bare_func(&self, start: usize) -> Option<FuncMatch> {
         self.func(start)
     }
 
-    fn signature(&self, start: usize) -> Option<SignatureMatch> {
-        let endpoint = self.endpoint(start)?;
-        let mut formatted = String::new();
-        if let Some(emoji) = &endpoint.emoji {
-            formatted.push('[');
-            formatted.push_str(&emoji.value);
-            formatted.push(']');
-        }
-        formatted.push_str(&endpoint.name.value);
-        let mut end = endpoint.end;
-        let invoked = if let Some(invocation) = self.invocation(end) {
-            formatted.push_str(&invocation.formatted);
-            end = invocation.end;
-            true
-        } else {
-            false
-        };
-        Some(SignatureMatch {
-            end,
-            formatted,
-            invoked,
-        })
-    }
-
     fn invocation(&self, start: usize) -> Option<InvocationMatch> {
-        if !matches!(self.kind(start), Some(TokenKind::OpenParen)) {
-            return None;
+        match self.run_grammar_task(GrammarTask::Invocation { start, depth: 0 }) {
+            GrammarValue::Invocation(value) => value,
+            _ => unreachable!("invocation task returned a different grammar value"),
         }
-        let mut end = start + 1;
-        let mut parameters = Vec::new();
-        if !matches!(self.kind(end), Some(TokenKind::CloseParen)) {
-            loop {
-                let parameter = self.parameter(end)?;
-                if parameter.end == end {
-                    return None;
-                }
-                end = parameter.end;
-                parameters.push(parameter);
-                if !matches!(self.kind(end), Some(TokenKind::Comma)) {
-                    break;
-                }
-                end += 1;
-                if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
-                    break;
-                }
-            }
-        }
-        if !matches!(self.kind(end), Some(TokenKind::CloseParen)) {
-            return None;
-        }
-        end += 1;
-        let formatted = format!(
-            "({})",
-            parameters
-                .iter()
-                .map(|parameter| parameter.formatted.as_str())
-                .collect::<Vec<_>>()
-                .join(",")
-        );
-        let parameters_formatted = parameters
-            .iter()
-            .map(|parameter| parameter.formatted.as_str())
-            .collect::<Vec<_>>()
-            .join(",");
-        Some(InvocationMatch {
-            end,
-            formatted,
-            parameters: parameters_formatted,
-            parameters_span: SourceSpan::new(
-                self.tokens[start].span.end,
-                self.tokens[end - 1].span.start,
-            ),
-            span: self.span(start, end),
-        })
-    }
-
-    fn parameter(&self, start: usize) -> Option<ParameterMatch> {
-        if self.is_identifier_name(start) && matches!(self.kind(start + 1), Some(TokenKind::Assign))
-        {
-            let mut end = start + 2;
-            if let Some(expr) = self.expression(end) {
-                end = expr.end;
-            }
-            let formatted = self.compact(start, end);
-            return Some(ParameterMatch { end, formatted });
-        }
-
-        if self.name(start).is_some() && self.is_identifier_name(start + 1) {
-            let end = start + 2;
-            let formatted = format!("{} {}", self.token_text(start), self.token_text(start + 1));
-            return Some(ParameterMatch { end, formatted });
-        }
-
-        let expr = self.expression(start)?;
-        Some(ParameterMatch {
-            end: expr.end,
-            formatted: self.compact(start, expr.end),
-        })
     }
 
     fn assignment(&self, start: usize) -> Option<AssignmentMatch> {
@@ -1673,91 +2292,14 @@ impl<'a> Grammar<'a> {
     }
 
     fn expression(&self, start: usize) -> Option<ExprMatch> {
-        self.expression_bp(start, 0)
-    }
-
-    fn expression_bp(&self, start: usize, min_bp: u8) -> Option<ExprMatch> {
-        let mut left = self.expression_prefix(start)?;
-        while let Some((left_bp, right_bp)) = self.binary_binding_power(left.end) {
-            if left_bp < min_bp {
-                break;
-            }
-            let Some(right) = self.expression_bp(left.end + 1, right_bp) else {
-                break;
-            };
-            let span = SourceSpan::new(left.span.start, right.span.end);
-            left = ExprMatch {
-                end: right.end,
-                span,
-            };
+        match self.run_grammar_task(GrammarTask::Expression {
+            start,
+            min_bp: 0,
+            depth: 1,
+        }) {
+            GrammarValue::Expression(value) => value,
+            _ => unreachable!("expression task returned a different grammar value"),
         }
-        Some(left)
-    }
-
-    fn expression_prefix(&self, start: usize) -> Option<ExprMatch> {
-        if matches!(self.kind(start), Some(TokenKind::Operator(value)) if value == "-" || value == "!")
-        {
-            let inner = self.expression_bp(start + 1, 13)?;
-            let span = self.span(start, inner.end);
-            return Some(ExprMatch {
-                end: inner.end,
-                span,
-            });
-        }
-
-        if let Some(assignment) = self.assignment(start)
-            && let Some(expr) = self.expression(assignment.end)
-        {
-            let span = self.span(start, expr.end);
-            return Some(ExprMatch {
-                end: expr.end,
-                span,
-            });
-        }
-
-        if matches!(self.kind(start), Some(TokenKind::OpenParen)) {
-            let expr = self.expression(start + 1)?;
-            if matches!(self.kind(expr.end), Some(TokenKind::CloseParen)) {
-                let end = expr.end + 1;
-                return Some(ExprMatch {
-                    end,
-                    span: self.span(start, end),
-                });
-            }
-        }
-
-        if let Some(creation) = self.creation_body(start) {
-            return Some(ExprMatch {
-                end: creation.end,
-                span: creation.span,
-            });
-        }
-
-        if let Some(from_to) = self.message_path(start)
-            && let Some(func) = self.func(from_to.end)
-        {
-            return Some(ExprMatch {
-                end: func.end,
-                span: self.span(start, func.end),
-            });
-        }
-
-        if let Some(func) = self.func(start)
-            && (func.first_invoked || func.first_emoji)
-        {
-            return Some(ExprMatch {
-                end: func.end,
-                span: func.span,
-            });
-        }
-
-        if self.is_atom(start) {
-            return Some(ExprMatch {
-                end: start + 1,
-                span: self.span(start, start + 1),
-            });
-        }
-        None
     }
 
     fn binary_binding_power(&self, index: usize) -> Option<(u8, u8)> {
@@ -1939,6 +2481,124 @@ impl<'a> Grammar<'a> {
     }
 }
 
+/// Caches one bounded proof path through the flat ZenUML declaration prefix.
+///
+/// Participant declarations are not nested syntax, but their optional decorators make their
+/// boundary ambiguous with the first statement. The old predictor recursed across every later
+/// declaration on each head-loop iteration. This keeps at most one parser-depth-sized path and
+/// extends it only after the parser has consumed that path. Dead `(token, depth)` states are
+/// memoized within a fixed parser-depth-squared budget. The parser consumes each fixed-size plan
+/// before extending it, so long flat declaration lists remain iterative and linear.
+#[derive(Default)]
+struct HeadParticipantPrediction {
+    planned: VecDeque<PlannedHeadParticipant>,
+}
+
+#[derive(Clone)]
+struct PlannedHeadParticipant {
+    start: usize,
+    candidate: ParticipantMatch,
+}
+
+impl HeadParticipantPrediction {
+    fn select(&mut self, grammar: &Grammar<'_>, start: usize) -> Option<ParticipantMatch> {
+        if self
+            .planned
+            .front()
+            .is_some_and(|planned| planned.start == start)
+        {
+            return self.planned.pop_front().map(|planned| planned.candidate);
+        }
+        self.planned.clear();
+        self.planned.extend(Self::plan(grammar, start));
+        self.planned.pop_front().map(|planned| planned.candidate)
+    }
+
+    fn plan(grammar: &Grammar<'_>, start: usize) -> Vec<PlannedHeadParticipant> {
+        let mut frames = Vec::with_capacity(MAX_DIAGRAM_NESTING_DEPTH + 1);
+        let mut exhausted = HashSet::new();
+        frames.push(HeadParticipantFrame::new(grammar, start));
+
+        'search: loop {
+            let depth = frames.len().saturating_sub(1);
+            // The first token can itself start a message, but head selection must first try its
+            // participant candidates. Every later frame is a suffix of an already-selected
+            // candidate and can use the normal statement boundary.
+            let terminal = depth > 0 && grammar.head_suffix_terminal(frames[depth].start);
+            if terminal || (depth == MAX_DIAGRAM_NESTING_DEPTH && frames[depth].has_continuation())
+            {
+                return frames
+                    .into_iter()
+                    .filter_map(|frame| {
+                        frame.chosen.map(|candidate| PlannedHeadParticipant {
+                            start: frame.start,
+                            candidate,
+                        })
+                    })
+                    .collect();
+            }
+
+            if depth < MAX_DIAGRAM_NESTING_DEPTH {
+                while let Some(candidate) = frames
+                    .last_mut()
+                    .and_then(HeadParticipantFrame::next_candidate)
+                {
+                    if exhausted.contains(&(candidate.end, depth + 1)) {
+                        continue;
+                    }
+                    frames[depth].chosen = Some(candidate.clone());
+                    frames.push(HeadParticipantFrame::new(grammar, candidate.end));
+                    continue 'search;
+                }
+            }
+
+            if let Some(frame) = frames.pop() {
+                if exhausted.len() == MAX_HEAD_PARTICIPANT_PREDICTION_STATES {
+                    return Vec::new();
+                }
+                exhausted.insert((frame.start, depth));
+            }
+            if frames.is_empty() {
+                return Vec::new();
+            }
+        }
+    }
+}
+
+struct HeadParticipantFrame {
+    start: usize,
+    candidates: Vec<ParticipantMatch>,
+    next_candidate: usize,
+    chosen: Option<ParticipantMatch>,
+}
+
+impl HeadParticipantFrame {
+    fn new(grammar: &Grammar<'_>, start: usize) -> Self {
+        Self {
+            start,
+            candidates: grammar.participant_candidates(start),
+            next_candidate: 0,
+            chosen: None,
+        }
+    }
+
+    fn next_candidate(&mut self) -> Option<ParticipantMatch> {
+        while let Some(candidate) = self.candidates.get(self.next_candidate).cloned() {
+            self.next_candidate += 1;
+            if candidate.end > self.start {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn has_continuation(&self) -> bool {
+        self.candidates
+            .iter()
+            .any(|candidate| candidate.end > self.start)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FromToMatch {
     end: usize,
@@ -1995,6 +2655,17 @@ mod tests {
             .collect()
     }
 
+    fn flat_head_participants(count: usize) -> String {
+        let mut source = String::from("zenuml\n");
+        for index in 0..count {
+            source.push_str("@Actor P");
+            source.push_str(&index.to_string());
+            source.push(' ');
+        }
+        source.push_str("@Starter(P0) P0.m()");
+        source
+    }
+
     #[test]
     fn parses_nested_official_grammar_without_line_translation() {
         let parsed = parse_source(
@@ -2024,6 +2695,90 @@ mod tests {
             assert_eq!(participants[0].name.value, "A");
             assert_eq!(parsed.document.statements.len(), 1);
         }
+    }
+
+    #[test]
+    fn head_prediction_limits_each_plan_and_streams_long_flat_declarations() {
+        for count in [
+            MAX_DIAGRAM_NESTING_DEPTH,
+            MAX_DIAGRAM_NESTING_DEPTH + 1,
+            MAX_DIAGRAM_NESTING_DEPTH * 2 + 1,
+        ] {
+            let source = flat_head_participants(count);
+            let raw_tokens = super::super::lexer::lex(&source);
+            let tokens = super::super::lexer::parser_tokens(&raw_tokens);
+            let grammar = Grammar::new(&source, &tokens);
+            let mut prediction = HeadParticipantPrediction::default();
+            let mut start = 1;
+
+            for index in 0..count {
+                let participant = prediction
+                    .select(&grammar, start)
+                    .expect("flat declaration must remain selectable");
+                let expected = format!("P{index}");
+                assert_eq!(
+                    participant.name.as_ref().map(|name| name.value.as_str()),
+                    Some(expected.as_str())
+                );
+                assert!(prediction.planned.len() < MAX_DIAGRAM_NESTING_DEPTH);
+                start = participant.end;
+            }
+
+            assert!(grammar.head_suffix_terminal(start));
+            assert!(prediction.select(&grammar, start).is_none());
+        }
+    }
+
+    #[test]
+    fn head_prediction_avoids_stack_growth_on_long_flat_declarations() {
+        let count = MAX_DIAGRAM_NESTING_DEPTH * 16;
+        let source = flat_head_participants(count);
+        let handle = std::thread::Builder::new()
+            .name("zenuml-head-prediction-small-stack".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                let parsed = parse_source(&source);
+                assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+                assert_eq!(head_participants(&parsed.document).len(), count);
+                assert!(parsed.document.starter.is_some());
+                assert_eq!(parsed.document.statements.len(), 1);
+            })
+            .expect("spawn small-stack ZenUML parser thread");
+        handle
+            .join()
+            .expect("long flat ZenUML declaration parse must not overflow the stack");
+    }
+
+    fn assert_expression_depth_is_bounded(source: String) {
+        let raw_tokens = super::super::lexer::lex(&source);
+        let tokens = super::super::lexer::parser_tokens(&raw_tokens);
+        let grammar = Grammar::new(&source, &tokens);
+        assert!(grammar.expression(0).is_none());
+        assert!(grammar.expression_depth_exceeded(), "{source}");
+    }
+
+    #[test]
+    fn expression_grammar_bounds_every_recursive_form() {
+        let excessive = MAX_DIAGRAM_NESTING_DEPTH + 1;
+        let cases = [
+            format!("{}x", "!".repeat(excessive)),
+            format!("{}x{}", "(".repeat(excessive), ")".repeat(excessive)),
+            format!("{}x", "value=".repeat(excessive)),
+            format!("{}x{}", "F(".repeat(excessive), ")".repeat(excessive)),
+        ];
+
+        let handle = std::thread::Builder::new()
+            .name("zenuml-expression-depth-small-stack".to_string())
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                for source in cases {
+                    assert_expression_depth_is_bounded(source);
+                }
+            })
+            .expect("spawn small-stack ZenUML expression parser thread");
+        handle
+            .join()
+            .expect("bounded ZenUML expressions must not overflow the stack");
     }
 
     #[test]

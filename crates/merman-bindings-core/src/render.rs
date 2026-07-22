@@ -832,7 +832,7 @@ Missing ref: id2,after missing,1d
     fn resource_limit_error_uses_dedicated_binding_status() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
         )
         .unwrap_err();
 
@@ -844,7 +844,7 @@ Missing ref: id2,after missing,1d
     fn parse_json_source_limit_uses_dedicated_binding_status() {
         let err = parse_json(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
         )
         .unwrap_err();
 
@@ -856,7 +856,7 @@ Missing ref: id2,after missing,1d
     fn resource_limit_error_accepts_analysis_wrapper_options() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "analysis": { "resources": { "max_source_bytes": 4 } } }"#,
+            br#"{ "analysis": { "resources": { "limits": { "max_source_bytes": 4 } } } }"#,
         )
         .unwrap_err();
 
@@ -877,12 +877,47 @@ Missing ref: id2,after missing,1d
 
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_svg_bytes": 0 } }"#,
+            br#"{ "resources": { "limits": { "max_svg_bytes": 0 } } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
+        assert!(err.message().contains("max_svg_bytes"), "{err:?}");
+
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "limits": { "max_swimlane_line_hop_segment_pairs": 0 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(
+            err.message()
+                .contains("max_swimlane_line_hop_segment_pairs"),
+            "{err:?}"
+        );
+
+        for (id, expected) in [
+            ("future_limit", "not part of resource contract"),
+            ("max_svg_tree_depth", "hard implementation capability"),
+        ] {
+            let options = format!(r#"{{ "resources": {{ "limits": {{ "{id}": 8 }} }} }}"#);
+            let err = render_svg(b"flowchart TD\nA[Hello]", options.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(expected), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn venn_private_pairwise_expansion_uses_the_binding_resource_budget() {
+        let err = render_svg(
+            b"venn-beta\nset A\nset B\nset C\nset D\n",
+            br#"{ "resources": { "limits": { "max_venn_areas": 6 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_venn_areas"), "{err:?}");
     }
 
     #[test]

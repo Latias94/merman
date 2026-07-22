@@ -1,5 +1,6 @@
 use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
+use crate::types::Range;
 use merman_analysis::{
     ByteSpan, EditorSymbolKind, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
     FenceSemanticRole, SourceMap,
@@ -128,11 +129,97 @@ impl std::error::Error for TokenPlanError {}
 pub fn plan_semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, None)
+}
+
+/// Plans only the token candidates that overlap `range`.
+///
+/// This is intentionally a planner operation rather than a post-processing filter: Markdown and
+/// MDX documents can contain many or very large Mermaid fences, and a range request must not
+/// allocate and sort candidates outside the requested lines.
+pub fn plan_semantic_tokens_for_snapshot_range(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, Some(range))
+}
+
+fn plan_semantic_tokens(
+    snapshot: &DocumentSnapshot,
+    range: Option<Range>,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    let requested = range.and_then(|range| RequestedTokenRange::new(&snapshot.source_map, range));
     let mut candidates = Vec::new();
     for fence in &snapshot.fences {
-        collect_fence_candidates(snapshot, fence, &mut candidates)?;
+        if range.is_some() && requested.is_none() {
+            break;
+        }
+        if let Some(requested) = requested
+            && !requested.overlaps(ByteSpan {
+                start: fence.start,
+                end: fence.end,
+            })
+        {
+            continue;
+        }
+        collect_fence_candidates(snapshot, fence, requested, &mut candidates)?;
     }
-    plan_candidates(&snapshot.source_map, candidates)
+    let mut plan = plan_candidates(&snapshot.source_map, candidates)?;
+    if let Some(range) = range {
+        plan.tokens
+            .retain(|token| token_overlaps_range(*token, range));
+        plan.packed = pack_tokens(&plan.tokens);
+    }
+    Ok(plan)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RequestedTokenRange {
+    byte_span: ByteSpan,
+}
+
+impl RequestedTokenRange {
+    fn new(source_map: &SourceMap, range: Range) -> Option<Self> {
+        if (range.start.line, range.start.character) >= (range.end.line, range.end.character) {
+            return None;
+        }
+        let line_count = source_map.line_starts().len();
+        if line_count == 0 || range.start.line >= line_count {
+            return None;
+        }
+        let end_line = range.end.line.min(line_count - 1);
+        let (start, _) = source_map.line_bounds(range.start.line)?;
+        let (_, end) = source_map.line_bounds(end_line)?;
+        Some(Self {
+            byte_span: ByteSpan { start, end },
+        })
+    }
+
+    const fn overlaps(self, span: ByteSpan) -> bool {
+        span.start < self.byte_span.end && span.end > self.byte_span.start
+    }
+}
+
+fn token_overlaps_range(token: PlannedToken, range: Range) -> bool {
+    let token_line = token.line as usize;
+    if token_line < range.start.line || token_line > range.end.line {
+        return false;
+    }
+
+    let token_start = token.start as usize;
+    let token_end = token_start + token.length as usize;
+    if range.start.line == range.end.line {
+        return token_line == range.start.line
+            && token_end > range.start.character
+            && token_start < range.end.character;
+    }
+    if token_line == range.start.line {
+        return token_end > range.start.character;
+    }
+    if token_line == range.end.line {
+        return token_start < range.end.character;
+    }
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,14 +248,34 @@ struct PlannedByteToken {
 fn collect_fence_candidates(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
+    requested: Option<RequestedTokenRange>,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
     reject_upstream_lexeme_failure(fence.index, fence.text_index.lexeme_failure())?;
 
-    validate_lexeme_order(fence)?;
+    let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index.lexemes() {
+        let span = absolute_fence_span(snapshot, fence, lexeme.span)?;
+        if requested.is_some_and(|requested| !requested.overlaps(span)) {
+            continue;
+        }
+        if let Some(previous) = previous_lexeme {
+            if (previous.start, previous.end) > (span.start, span.end) {
+                return Err(TokenPlanError::UnsortedLexemes {
+                    previous,
+                    current: span,
+                });
+            }
+            if previous.end > span.start {
+                return Err(TokenPlanError::OverlappingLexemes {
+                    left: previous,
+                    right: span,
+                });
+            }
+        }
+        previous_lexeme = Some(span);
         candidates.push(TokenCandidate {
-            span: absolute_fence_span(snapshot, fence, lexeme.span)?,
+            span,
             kind: planned_kind_for_lexeme(lexeme.kind),
             modifiers: lexeme
                 .modifiers
@@ -181,15 +288,19 @@ fn collect_fence_candidates(
     }
 
     for item in fence.text_index.semantic_items() {
+        let span = absolute_fence_span(snapshot, fence, item.selection)?;
+        if requested.is_some_and(|requested| !requested.overlaps(span)) {
+            continue;
+        }
         candidates.push(TokenCandidate {
-            span: absolute_fence_span(snapshot, fence, item.selection)?,
+            span,
             kind: planned_kind_for_symbol(item.kind),
             modifiers: vec![planned_modifier_for_role(item.role)],
             origin: token_overlay_for_role(item.role),
         });
     }
 
-    collect_fence_delimiters(snapshot, fence, candidates)
+    collect_fence_delimiters(snapshot, fence, requested, candidates)
 }
 
 fn reject_upstream_lexeme_failure(
@@ -203,28 +314,6 @@ fn reject_upstream_lexeme_failure(
         }),
         None => Ok(()),
     }
-}
-
-fn validate_lexeme_order(fence: &FenceSnapshot) -> Result<(), TokenPlanError> {
-    let mut previous: Option<ByteSpan> = None;
-    for lexeme in fence.text_index.lexemes() {
-        if let Some(previous_span) = previous {
-            if (previous_span.start, previous_span.end) > (lexeme.span.start, lexeme.span.end) {
-                return Err(TokenPlanError::UnsortedLexemes {
-                    previous: previous_span,
-                    current: lexeme.span,
-                });
-            }
-            if previous_span.end > lexeme.span.start {
-                return Err(TokenPlanError::OverlappingLexemes {
-                    left: previous_span,
-                    right: lexeme.span,
-                });
-            }
-        }
-        previous = Some(lexeme.span);
-    }
-    Ok(())
 }
 
 fn absolute_fence_span(
@@ -265,6 +354,7 @@ fn absolute_fence_span(
 fn collect_fence_delimiters(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
+    requested: Option<RequestedTokenRange>,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
     let (delimiter, spans) = match (fence.fence_delimiter, &fence.fence_delimiter_spans) {
@@ -289,12 +379,14 @@ fn collect_fence_delimiters(
         end: spans.opening.end,
     };
     validate_span(snapshot.text.as_ref(), opening)?;
-    candidates.push(TokenCandidate {
-        span: opening,
-        kind: PlannedTokenKind::Delimiter,
-        modifiers: Vec::new(),
-        origin: TokenOverlayKind::Lexeme,
-    });
+    if requested.is_none_or(|requested| requested.overlaps(opening)) {
+        candidates.push(TokenCandidate {
+            span: opening,
+            kind: PlannedTokenKind::Delimiter,
+            modifiers: Vec::new(),
+            origin: TokenOverlayKind::Lexeme,
+        });
+    }
 
     match &spans.closing {
         Some(closing)
@@ -310,12 +402,14 @@ fn collect_fence_delimiters(
                 end: closing.end,
             };
             validate_span(snapshot.text.as_ref(), closing)?;
-            candidates.push(TokenCandidate {
-                span: closing,
-                kind: PlannedTokenKind::Delimiter,
-                modifiers: Vec::new(),
-                origin: TokenOverlayKind::Lexeme,
-            });
+            if requested.is_none_or(|requested| requested.overlaps(closing)) {
+                candidates.push(TokenCandidate {
+                    span: closing,
+                    kind: PlannedTokenKind::Delimiter,
+                    modifiers: Vec::new(),
+                    origin: TokenOverlayKind::Lexeme,
+                });
+            }
         }
         None if fence.body_end == fence.end => {}
         _ => {

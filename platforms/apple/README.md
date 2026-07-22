@@ -67,6 +67,19 @@ let factsJson = try engine.analyzeDocumentFactsJsonRaw(
 ```
 
 Use `diagramFamilyCapabilities()` and `asciiCapabilities()` instead of hard-coding support for a build profile or output format.
+Use `runtimeContract()` for a typed runtime-contract schema `1` value containing the loaded
+ABI/package/options versions, feature set, registry facts, and exact resource profile values.
+Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
+
+```swift
+var resourceOptions = MermanResourceOptionsBuilder()
+resourceOptions.setProfile(.constrained)
+let optionsJSON = try resourceOptions.build().optionsJSON()
+let svg = try engine.renderSvg(source, optionsJson: optionsJSON)
+```
+
+Use `.constrained` for untrusted, public, or multi-tenant input; `.interactive` is for cooperative
+local editing. The native CLI's default is intentionally separate (`trusted-native`).
 
 ## Reusable Engines And Text Measurement
 

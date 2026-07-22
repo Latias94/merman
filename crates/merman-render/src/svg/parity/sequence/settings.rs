@@ -9,6 +9,7 @@ pub(super) struct SequenceRenderSettings {
     pub(super) box_text_margin: f64,
     pub(super) message_align: String,
     pub(super) label_box_height: f64,
+    pub(super) label_box_width: f64,
     pub(super) right_angles: bool,
     pub(super) wrap_padding: f64,
     pub(super) sequence_width: f64,
@@ -37,6 +38,9 @@ impl SequenceRenderSettings {
             .sequence_string("messageAlign")
             .unwrap_or_else(|| "center".to_string());
         let label_box_height = config.sequence_json_number_min("labelBoxHeight", 20.0, 0.0);
+        let label_box_width = config
+            .sequence_json_number_min("labelBoxWidth", 50.0, 0.0)
+            .max(50.0);
         let right_angles = config.sequence_bool("rightAngles", false);
         let wrap_padding = config.sequence_json_number_min("wrapPadding", 10.0, 0.0);
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
@@ -81,6 +85,7 @@ impl SequenceRenderSettings {
             box_text_margin,
             message_align,
             label_box_height,
+            label_box_width,
             right_angles,
             wrap_padding,
             sequence_width,

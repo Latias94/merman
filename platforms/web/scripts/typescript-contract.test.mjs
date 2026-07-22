@@ -15,6 +15,7 @@ test("reads the resolved TypeScript contract instead of matching source spelling
           render(source: string): string;
         }
         export type Operation = "measure" | "bbox-x";
+        export type OpenOperation = "measure" | string;
         export function wrapper(): void {}
 
         const unrelated = { draw: (_input: unknown) => "dead" };
@@ -39,6 +40,7 @@ test("reads the resolved TypeScript contract instead of matching source spelling
         "wrapper",
       ]);
       assert.deepEqual([...contract.exportedTypeNames(entry)].sort(), [
+        "OpenOperation",
         "Operation",
         "RuntimeModule",
       ]);
@@ -54,6 +56,8 @@ test("reads the resolved TypeScript contract instead of matching source spelling
         [...contract.exportedStringLiteralMembers(entry, "Operation")].sort(),
         ["bbox-x", "measure"],
       );
+      assert.equal(contract.exportedTypeIsStringLiteralUnion(entry, "Operation"), true);
+      assert.equal(contract.exportedTypeIsStringLiteralUnion(entry, "OpenOperation"), false);
       assert.deepEqual(
         [...contract.exportedFunctionReturnPropertyNames(entry, "bindRuntime")].sort(),
         ["nested", "render"],

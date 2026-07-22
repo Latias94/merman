@@ -478,6 +478,50 @@ note "This is a floating note" as N1"#,
 }
 
 #[test]
+fn parse_diagram_state_note_closes_only_on_a_dedicated_end_note_line() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+State1
+note right of State1
+  this sentence contains end note as part of the note text
+end note
+State1 --> State2"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.model["states"]["State1"]["note"]["text"],
+        json!("this sentence contains end note as part of the note text")
+    );
+    let relations = res.model["relations"].as_array().unwrap();
+    assert_eq!(relations.len(), 1);
+    assert_eq!(relations[0]["id1"], json!("State1"));
+    assert_eq!(relations[0]["id2"], json!("State2"));
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
+        .unwrap()
+        .expect("state editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let embedded_marker = text.find("end note as part").unwrap();
+    assert!(facts.lexemes().iter().any(|lexeme| {
+        let span = lexeme.span();
+        lexeme.kind() == EditorLexemeKind::String
+            && span.start <= embedded_marker
+            && span.end >= embedded_marker + "end note".len()
+    }));
+    let closing_marker = text.rfind("end note").unwrap();
+    assert!(facts.lexemes().iter().any(|lexeme| {
+        let span = lexeme.span();
+        lexeme.kind() == EditorLexemeKind::Keyword
+            && span.start == closing_marker
+            && &text[span.start..span.end] == "end"
+    }));
+}
+
+#[test]
 fn parse_diagram_state_v2_getdata_edges_and_note_edges() {
     let engine = Engine::new();
 

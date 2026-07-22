@@ -105,51 +105,10 @@ pub enum FenceLexemeFailure {
     DuplicateModifiers { bits: u8 },
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FenceRenamePolicy {
-    None,
-    #[default]
-    Identifier,
-    QualifiedIdentifier,
-    EventModelingId,
-    EventModelingFrameId,
-}
-
-impl FenceRenamePolicy {
-    pub fn is_renameable(self) -> bool {
-        !matches!(self, Self::None)
-    }
-
-    pub fn accepts(self, value: &str) -> bool {
-        match self {
-            Self::None => false,
-            Self::Identifier => {
-                !value.is_empty()
-                    && value
-                        .chars()
-                        .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
-            }
-            Self::QualifiedIdentifier => {
-                !value.is_empty() && value.split('.').all(is_ascii_identifier)
-            }
-            Self::EventModelingId => is_ascii_identifier(value),
-            Self::EventModelingFrameId => {
-                (1..=3).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit())
-            }
-        }
-    }
-}
-
-fn is_ascii_identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
-        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
-}
+pub use merman_core::EditorRenamePolicy as FenceRenamePolicy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FenceSemanticItem {
     pub name: String,
     pub detail: Option<String>,
@@ -161,6 +120,34 @@ pub struct FenceSemanticItem {
 }
 
 impl FenceSemanticItem {
+    pub fn new(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSymbolKind,
+        role: FenceSemanticRole,
+        span: ByteSpan,
+        selection: ByteSpan,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            detail,
+            kind,
+            role,
+            rename_policy: if role == FenceSemanticRole::Entity {
+                FenceRenamePolicy::Identifier
+            } else {
+                FenceRenamePolicy::None
+            },
+            span,
+            selection,
+        }
+    }
+
+    pub fn with_rename_policy(mut self, rename_policy: FenceRenamePolicy) -> Self {
+        self.rename_policy = rename_policy;
+        self
+    }
+
     fn to_line_item(&self) -> FenceLineItem {
         FenceLineItem {
             name: self.name.clone(),
@@ -173,6 +160,7 @@ impl FenceSemanticItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FenceReferenceGroup {
     pub name: String,
     pub kind: EditorSymbolKind,
@@ -187,7 +175,10 @@ impl FenceReferenceGroup {
     }
 
     pub fn from_semantic_item(item: &FenceSemanticItem) -> Self {
-        Self::new(item.name.clone(), item.kind)
+        Self {
+            name: item.name.clone(),
+            kind: item.kind,
+        }
     }
 }
 
@@ -199,8 +190,12 @@ pub enum FenceTextIndexSource {
     Unavailable,
     /// Parser-backed facts from a complete family parse.
     ParserComplete,
+    /// Parser-backed complete facts whose spans remain in parser-input coordinates.
+    ParserCompleteDegradedSpans,
     /// Parser-backed facts from a recoverable partial parse.
     ParserRecovered,
+    /// Parser-backed recovered facts whose spans remain in parser-input coordinates.
+    ParserRecoveredDegradedSpans,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,7 +206,13 @@ pub struct ShapeObjectValuePrefix {
 
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
-        matches!(self, Self::ParserComplete | Self::ParserRecovered)
+        matches!(
+            self,
+            Self::ParserComplete
+                | Self::ParserCompleteDegradedSpans
+                | Self::ParserRecovered
+                | Self::ParserRecoveredDegradedSpans
+        )
     }
 
     pub fn is_unavailable(self) -> bool {
@@ -219,11 +220,14 @@ impl FenceTextIndexSource {
     }
 
     pub fn is_recovered(self) -> bool {
-        matches!(self, Self::ParserRecovered)
+        matches!(
+            self,
+            Self::ParserRecovered | Self::ParserRecoveredDegradedSpans
+        )
     }
 
     pub fn has_source_mapped_spans(self) -> bool {
-        self.is_parser_backed()
+        matches!(self, Self::ParserComplete | Self::ParserRecovered)
     }
 }
 
@@ -329,6 +333,7 @@ pub struct FenceTextIndex {
     lexemes: Vec<FenceLexeme>,
     lexeme_failure: Option<FenceLexemeFailure>,
     expected_syntax: Vec<FenceExpectedSyntax>,
+    completion_dialect: merman_core::EditorCompletionDialect,
     source: FenceTextIndexSource,
 }
 
@@ -473,15 +478,16 @@ impl FenceTextIndex {
                 completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
             }
 
-            if self.source.is_parser_backed() {
+            if self.source.is_parser_backed() && offer_directive_items(&prefix, directive_prefix) {
+                completion_kinds.push(FenceCursorCompletionKind::Directive);
+            }
+
+            if self.completion_dialect == merman_core::EditorCompletionDialect::Flowchart {
                 if offer_operator_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Operator);
                 }
                 if offer_direction_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Direction);
-                }
-                if offer_directive_items(&prefix, directive_prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Directive);
                 }
                 if offer_shape_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Shape);
