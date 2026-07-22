@@ -525,6 +525,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GeneratedArtifactCheck {
+    CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
     EditorTokenDescriptor,
@@ -551,8 +552,9 @@ fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::ThemeSnapshot]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 8] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 9] {
     [
+        GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
         GeneratedArtifactCheck::EditorTokenDescriptor,
@@ -567,6 +569,7 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 8] {
 impl GeneratedArtifactCheck {
     fn label(self) -> &'static str {
         match self {
+            GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
             GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
@@ -622,6 +625,7 @@ fn verify_generated_artifact_check(
     tmp_dir: &Path,
 ) -> Result<Option<String>, XtaskError> {
     match check {
+        GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
         GeneratedArtifactCheck::EditorTokenDescriptor => {
@@ -970,6 +974,7 @@ mod tests {
         assert_eq!(
             verify_generated_checks(),
             [
+                GeneratedArtifactCheck::CapabilitySurface,
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
                 GeneratedArtifactCheck::EditorTokenDescriptor,
@@ -979,6 +984,10 @@ mod tests {
                 GeneratedArtifactCheck::TextMeasurementAbi,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::CapabilitySurface.label(),
+            "capability surface"
         );
         assert_eq!(
             GeneratedArtifactCheck::DefaultConfig.label(),

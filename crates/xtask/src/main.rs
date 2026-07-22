@@ -40,6 +40,8 @@ enum XtaskError {
     ThemeSnapshotProjection(String),
     #[error("text-measurement ABI descriptor is invalid: {0}")]
     TextMeasurementAbi(String),
+    #[error("capability surface descriptor is invalid: {0}")]
+    CapabilitySurface(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
     MermaidReference(String),
     #[error("missing reference checkout: {0}")]
@@ -91,6 +93,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-dompurify-defaults");
     println!("  verify-theme-snapshot");
     println!("  verify-editor-token-descriptor");
+    println!("  verify-capability-surface");
     println!("  verify-playground-example-catalog");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
@@ -130,6 +133,7 @@ fn print_help(topic: Option<&str>) {
     println!("  measure-text");
     println!("  gen-theme-snapshot");
     println!("  gen-editor-token-descriptor");
+    println!("  gen-capability-surface");
     println!("  gen-text-measurement-abi");
     println!("  gen-resource-contract");
     println!("  verify-text-measurement-abi");
@@ -185,6 +189,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
         "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
         "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
+        "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
@@ -195,6 +200,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
         "verify-theme-snapshot" => cmd::verify_theme_snapshot(args.collect()),
         "verify-editor-token-descriptor" => cmd::verify_editor_token_descriptor(args.collect()),
+        "verify-capability-surface" => cmd::verify_capability_surface(args.collect()),
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
         }

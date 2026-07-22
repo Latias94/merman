@@ -1,8 +1,14 @@
 # ADR 0069: WASM Package Surface Semantics
 
-- Status: accepted
+- Status: accepted for transport separation; package and capability mapping superseded by ADR-0076
 - Date: 2026-06-10
-- Last amended: 2026-07-19
+- Last amended: 2026-07-22
+
+ADR-0076 now owns Web artifact presets, package mappings, Typst artifact mappings, and capability
+semantic IDs through `capabilities/feature-surface-v1.json`. The one-package/subpath and legacy
+profile ownership decisions below are historical. Browser wasm-bindgen and Typst
+wasm-minimal-protocol remain separate transports. The old Web and Typst descriptors stay live only
+as migration-ledger entries until U8 consumes the canonical projections and deletes them.
 
 ## Context
 

@@ -2,8 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-18
-- Amended: 2026-07-20 (disposable editor document session)
+- Amended: 2026-07-22 (package-surface projection delegated to ADR-0076)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `2`, editor/analysis/facts schema `1`
+
+The version fields above describe the live transitional runtime when this ADR was amended. ADR-0076
+plans independent facts schema `2` and native ABI `3` migrations in U2 and U6; those migrations do
+not alter this ADR's realm, lifecycle, cache, or benchmark ownership decisions.
 
 ## Context
 
@@ -155,10 +159,11 @@ headless and foreground browsers without letting the hidden benchmark UI affect 
 ### 6. Editor Intelligence Belongs To A Dedicated Worker
 
 The Playground loads local Monaco code and its editor worker; it does not use Monaco's default CDN
-loader. Merman language intelligence runs in a dedicated module Worker using the public
-`@mermanjs/web/editor` subpath and `browser-editor` WASM preset. The preset includes the full
-diagram catalog, analysis, and `merman-editor-core`, but excludes SVG rendering, ASCII, host
-capabilities, and ELK.
+loader. Merman language intelligence runs in a dedicated module Worker using the editor artifact
+selected by ADR-0076 (`@mermanjs/editor` and `preset-web-editor` after U8 migration). The current
+`@mermanjs/web/editor`/`browser-editor` pair remains transitional until that surface migration.
+The selected editor artifact includes invariant language semantics, analysis, and editor APIs but
+excludes SVG rendering, ASCII, layout, math, and system adapters.
 
 The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
 `didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,
@@ -185,18 +190,19 @@ those facts. Source-prefix and regular-expression classification are not fallbac
 
 ### 8. Public Package And Internal Runtime Boundaries
 
-`@mermanjs/web` remains an operation-oriented browser binding package. Its lifecycle functions
-initialize a realm-local wasm-bindgen module, and its editor-capable surfaces expose one narrow,
-explicitly disposable analyzed-document session. The Playground runtime store, Render Coordinator,
-iframe protocols, benchmark controller, and application retry policy remain product code above the
-package.
+ADR-0076 owns browser package names and their `preset-web-*` capability projections. U8 migrates
+the current subpath artifacts to those mappings; this ADR no longer owns a particular package
+layout or default preset.
 
-`@mermanjs/web/editor` is a public capability-specific subpath backed by `browser-editor`.
-`@mermanjs/web/full` remains the explicit full surface, and the default import remains
-`browser-full`. `createEditorSession()` is admitted because a versioned editor document has explicit
-ownership and otherwise rebuilds the same analyzed snapshot for every language query. A reusable
-render engine or general runtime factory remains deferred until benchmark evidence shows that its
-construction cost and consumer ownership justify a new stable API.
+Whichever mapped package the Playground loads remains an operation-oriented browser binding. Its
+lifecycle functions initialize a realm-local wasm-bindgen module, and its editor-capable surface
+exposes one narrow, explicitly disposable analyzed-document session. The Playground runtime store,
+Render Coordinator, iframe protocols, benchmark controller, and application retry policy remain
+product code above the package. `createEditorSession()` remains admitted because a versioned editor
+document has explicit ownership and otherwise rebuilds the same analyzed snapshot for every
+language query. A reusable render engine or general runtime factory remains deferred until
+benchmark evidence shows that its construction cost and consumer ownership justify a new stable
+API.
 
 ### 9. Deployment Cache Headers Remain A Hosting Concern
 

@@ -1,0 +1,620 @@
+{
+  "schema_version": 1,
+  "descriptor_id": "merman-feature-surface",
+  "targets": [
+    {
+      "id": "native",
+      "description": "Native Rust, CLI, and native binding artifacts."
+    },
+    {
+      "id": "web",
+      "description": "Browser wasm-bindgen artifacts."
+    },
+    {
+      "id": "typst",
+      "description": "Pure-WASM Typst plugin artifacts."
+    }
+  ],
+  "runtime_capabilities": [
+    {
+      "id": "browser-time",
+      "kind": "adapter",
+      "description": "Browser-provided date and time adapter.",
+      "targets": ["web"]
+    },
+    {
+      "id": "browser-random",
+      "kind": "adapter",
+      "description": "Browser-provided randomness adapter.",
+      "targets": ["web"]
+    },
+    {
+      "id": "browser-timing",
+      "kind": "adapter",
+      "description": "Browser monotonic timing adapter.",
+      "targets": ["web"]
+    },
+    {
+      "id": "typst-transport",
+      "kind": "transport",
+      "description": "Typst wasm-minimal-protocol transport.",
+      "targets": ["typst"]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "svg",
+      "kind": "output",
+      "description": "Render Mermaid input as SVG.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "SVG requests return a typed missing-capability error when SVG is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The public SVG render operation and image/svg+xml output.",
+        "material_closure": "SVG rendering, layout, text measurement, and sanitization dependencies.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U4 SVG API tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "analysis",
+      "kind": "api",
+      "description": "Expose diagnostics and semantic analysis APIs.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Analysis requests return a typed missing-capability error when analysis is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The diagnostics, facts, lint, and analysis API family.",
+        "material_closure": "Analysis rules and projection dependencies without render backends.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U2 analysis API tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "editor",
+      "kind": "api",
+      "description": "Expose parser-backed editor intelligence APIs.",
+      "targets": ["native", "web"],
+      "implications": ["analysis"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Editor requests return a typed missing-capability error when editor support is not compiled."
+      },
+      "admission": {
+        "observable_contract": "Completion, hover, navigation, rename, and semantic-token APIs.",
+        "material_closure": "Editor workspace and language-server support without render backends.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U2 editor API tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "ascii",
+      "kind": "output",
+      "description": "Render supported Mermaid semantics as terminal text.",
+      "targets": ["native", "web"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "ASCII requests return a typed missing-capability error when ASCII output is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The public ASCII render operation and text/plain output.",
+        "material_closure": "ASCII layout, routing, and terminal presentation dependencies.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U4 ASCII API tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "png",
+      "kind": "output",
+      "description": "Export rendered diagrams as PNG.",
+      "targets": ["native"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "PNG requests return a typed missing-capability error when PNG is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The public PNG export operation and image/png output.",
+        "material_closure": "Rasterization and PNG encoding dependencies without the PDF backend.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "Cargo.lock",
+          "gate": "U4 PNG API/closure tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "jpeg",
+      "kind": "output",
+      "description": "Export rendered diagrams as JPEG.",
+      "targets": ["native"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "JPEG requests return a typed missing-capability error when JPEG is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The public JPEG export operation and image/jpeg output.",
+        "material_closure": "Rasterization and JPEG encoding dependencies without the PDF backend.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "Cargo.lock",
+          "gate": "U4 JPEG API/closure tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "pdf",
+      "kind": "output",
+      "description": "Export rendered diagrams as PDF.",
+      "targets": ["native"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "PDF requests return a typed missing-capability error when PDF is not compiled."
+      },
+      "admission": {
+        "observable_contract": "The public PDF export operation and application/pdf output.",
+        "material_closure": "Vector PDF dependencies without PNG or JPEG encoders.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "Cargo.lock",
+          "gate": "U4 PDF API/closure tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "layout-cytoscape",
+      "kind": "engine",
+      "description": "Enable Mermaid Cytoscape-backed layout behavior.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "A request requiring Cytoscape layout returns a typed missing-capability error when the engine is absent."
+      },
+      "admission": {
+        "observable_contract": "The selectable Cytoscape layout engine used by admitted Mermaid families.",
+        "material_closure": "Cytoscape graph layout code and its artifact-size and security closure.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U4 layout parity tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "layout-elk",
+      "kind": "engine",
+      "description": "Enable Mermaid ELK-backed layout behavior.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "A request requiring ELK layout returns a typed missing-capability error when the engine is absent."
+      },
+      "admission": {
+        "observable_contract": "The selectable ELK layout engine used by admitted Mermaid families.",
+        "material_closure": "ELK implementation, EPL legal material, and artifact-size closure.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-license-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U4 ELK parity/legal tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "math",
+      "kind": "engine",
+      "description": "Render Mermaid math labels with the selected math engine.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Math-bearing render requests return a typed missing-capability error when math is absent."
+      },
+      "admission": {
+        "observable_contract": "Mermaid math-label parsing and rendering without exposing the implementation crate name.",
+        "material_closure": "Math parser, embedded font, license, and artifact-size closure.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "dependency-license-and-artifact-closure",
+          "source": "docs/release/WASM_SIZE_BUDGETS.json",
+          "gate": "U4 math API/parity tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "system-clock",
+      "kind": "adapter",
+      "description": "Compile the native system clock adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Native clock selection returns a typed missing-capability error when the adapter is absent."
+      },
+      "admission": {
+        "observable_contract": "The explicit native environment clock adapter.",
+        "material_closure": "Native wall-clock dependencies excluded from deterministic and pure-WASM products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "target-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U3 environment tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "system-timezone",
+      "kind": "adapter",
+      "description": "Compile the native system time-zone adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System time-zone selection returns a typed missing-capability error when the adapter is absent."
+      },
+      "admission": {
+        "observable_contract": "The explicit native environment time-zone rules adapter.",
+        "material_closure": "System time-zone data and dependencies excluded from deterministic and pure-WASM products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "target-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U3 time-zone tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "system-random",
+      "kind": "adapter",
+      "description": "Compile the native system randomness adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System randomness selection returns a typed missing-capability error when the adapter is absent."
+      },
+      "admission": {
+        "observable_contract": "The explicit native environment randomness adapter.",
+        "material_closure": "System randomness and generated-ID dependencies excluded from deterministic products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "target-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U3 deterministic-ID tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "system-timing",
+      "kind": "adapter",
+      "description": "Compile the native monotonic timing adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System timing selection returns a typed missing-capability error when the adapter is absent."
+      },
+      "admission": {
+        "observable_contract": "The explicit native environment timing adapter.",
+        "material_closure": "Monotonic timing dependencies excluded from deterministic and pure-WASM products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "target-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U3 timing tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "network-icons",
+      "kind": "tool",
+      "description": "Compile CLI network icon loading commands.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Network icon commands are absent from the compiled CLI when this leaf is disabled."
+      },
+      "admission": {
+        "observable_contract": "CLI commands that may fetch explicitly authorized remote icons.",
+        "material_closure": "Networking, TLS, and authorization dependencies excluded from offline CLI products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "command-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U5 CLI help/closure tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "parallel-markdown",
+      "kind": "tool",
+      "description": "Compile parallel CLI Markdown batch processing.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Parallel Markdown execution is absent from the compiled CLI when this leaf is disabled."
+      },
+      "admission": {
+        "observable_contract": "The CLI parallel Markdown batch execution path.",
+        "material_closure": "Parallel execution dependencies and thread resource closure.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "command-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U5 CLI batch/closure tests and U12 strict feature matrix"
+        }
+      }
+    },
+    {
+      "id": "shell-completions",
+      "kind": "tool",
+      "description": "Compile CLI shell completion generation.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Shell completion commands are absent from the compiled CLI when this leaf is disabled."
+      },
+      "admission": {
+        "observable_contract": "The CLI completion generation command and shell-specific output.",
+        "material_closure": "Shell completion generator dependencies excluded from lean CLI products.",
+        "evidence": {
+          "status": "migration-required",
+          "kind": "command-and-dependency-closure",
+          "source": "Cargo.lock",
+          "gate": "U5 CLI completion/closure tests and U12 strict feature matrix"
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "svg",
+      "capability": "svg",
+      "description": "Scalable Vector Graphics output.",
+      "media_type": "image/svg+xml",
+      "targets": ["native", "web", "typst"]
+    },
+    {
+      "id": "ascii",
+      "capability": "ascii",
+      "description": "Plain terminal text output.",
+      "media_type": "text/plain; charset=utf-8",
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "png",
+      "capability": "png",
+      "description": "Portable Network Graphics output.",
+      "media_type": "image/png",
+      "targets": ["native"]
+    },
+    {
+      "id": "jpeg",
+      "capability": "jpeg",
+      "description": "JPEG image output.",
+      "media_type": "image/jpeg",
+      "targets": ["native"]
+    },
+    {
+      "id": "pdf",
+      "capability": "pdf",
+      "description": "Portable Document Format output.",
+      "media_type": "application/pdf",
+      "targets": ["native"]
+    }
+  ],
+  "presets": [
+    {
+      "id": "preset-native-svg",
+      "description": "Default native Rust SVG workflow.",
+      "targets": ["native"],
+      "includes": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
+      "excludes": ["analysis", "editor", "ascii", "png", "jpeg", "pdf", "network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+    },
+    {
+      "id": "preset-static-svg",
+      "description": "Static-site SVG workflow with no system adapters.",
+      "targets": ["native"],
+      "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
+      "excludes": ["analysis", "editor", "ascii", "png", "jpeg", "pdf", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math"]
+    },
+    {
+      "id": "preset-editor",
+      "description": "Editor library and LSP library workflow.",
+      "targets": ["native"],
+      "includes": ["analysis", "editor"],
+      "excludes": ["svg", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["analysis", "editor"]
+    },
+    {
+      "id": "preset-ci-lint",
+      "description": "Lean CLI lint workflow.",
+      "targets": ["native"],
+      "includes": ["analysis"],
+      "excludes": ["svg", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["analysis"]
+    },
+    {
+      "id": "preset-native-sdk",
+      "description": "Native SDK and binding artifact workflow.",
+      "targets": ["native"],
+      "includes": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
+      "excludes": ["editor", "network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+    },
+    {
+      "id": "preset-mmdc",
+      "description": "Default complete CLI workflow.",
+      "targets": ["native"],
+      "includes": ["preset-native-sdk", "network-icons", "parallel-markdown", "shell-completions"],
+      "excludes": ["editor"],
+      "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"]
+    },
+    {
+      "id": "preset-all",
+      "description": "Exhaustive non-tool Rust build and test workflow.",
+      "targets": ["native"],
+      "includes": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
+      "excludes": ["network-icons", "parallel-markdown", "shell-completions"],
+      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+    },
+    {
+      "id": "preset-web-analysis",
+      "description": "Browser analysis artifact.",
+      "targets": ["web"],
+      "includes": ["analysis"],
+      "excludes": ["svg", "editor", "ascii", "layout-cytoscape", "layout-elk", "math"],
+      "expected_runtime_capabilities": ["analysis"]
+    },
+    {
+      "id": "preset-web-render",
+      "description": "Browser SVG render artifact.",
+      "targets": ["web"],
+      "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
+      "excludes": ["analysis", "editor", "ascii"],
+      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
+    },
+    {
+      "id": "preset-web-editor",
+      "description": "Browser editor intelligence artifact.",
+      "targets": ["web"],
+      "includes": ["analysis", "editor"],
+      "excludes": ["svg", "ascii", "layout-cytoscape", "layout-elk", "math"],
+      "expected_runtime_capabilities": ["analysis", "editor"]
+    },
+    {
+      "id": "preset-web-ascii",
+      "description": "Browser ASCII artifact.",
+      "targets": ["web"],
+      "includes": ["ascii"],
+      "excludes": ["svg", "analysis", "editor", "layout-cytoscape", "layout-elk", "math"],
+      "expected_runtime_capabilities": ["ascii"]
+    },
+    {
+      "id": "preset-web-full",
+      "description": "Fused browser artifact containing all retained Web workflows.",
+      "targets": ["web"],
+      "includes": ["preset-web-analysis", "preset-web-render", "preset-web-editor", "preset-web-ascii"],
+      "excludes": [],
+      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
+    }
+  ],
+  "surface_mappings": [
+    {
+      "id": "web-analysis",
+      "surface": "web",
+      "artifact": "@mermanjs/analysis",
+      "target": "web",
+      "preset": "preset-web-analysis"
+    },
+    {
+      "id": "web-render",
+      "surface": "web",
+      "artifact": "@mermanjs/render",
+      "target": "web",
+      "preset": "preset-web-render"
+    },
+    {
+      "id": "web-editor",
+      "surface": "web",
+      "artifact": "@mermanjs/editor",
+      "target": "web",
+      "preset": "preset-web-editor"
+    },
+    {
+      "id": "web-ascii",
+      "surface": "web",
+      "artifact": "@mermanjs/ascii",
+      "target": "web",
+      "preset": "preset-web-ascii"
+    },
+    {
+      "id": "web-full",
+      "surface": "web",
+      "artifact": "@mermanjs/web",
+      "target": "web",
+      "preset": "preset-web-full"
+    },
+    {
+      "id": "typst-bridge",
+      "surface": "typst",
+      "artifact": "bridge",
+      "target": "typst",
+      "capabilities": [],
+      "expected_runtime_capabilities": ["typst-transport"],
+      "transport_only": true
+    },
+    {
+      "id": "typst-svg",
+      "surface": "typst",
+      "artifact": "svg",
+      "target": "typst",
+      "capabilities": ["svg"],
+      "expected_runtime_capabilities": ["svg", "typst-transport"]
+    },
+    {
+      "id": "typst-publish",
+      "surface": "typst",
+      "artifact": "publish",
+      "target": "typst",
+      "capabilities": ["svg", "analysis", "layout-cytoscape", "layout-elk", "math"],
+      "expected_runtime_capabilities": ["svg", "analysis", "layout-cytoscape", "layout-elk", "math", "typst-transport"]
+    }
+  ],
+  "migration_ledger": [
+    {
+      "surface": "native-abi",
+      "migration_unit": "U6",
+      "legacy_catalogs": ["abi/merman-v2.json"],
+      "replacement": "ABI 3 references generated capability and output semantic IDs while retaining independent numeric wire discriminants."
+    },
+    {
+      "surface": "web-packages",
+      "migration_unit": "U8",
+      "legacy_catalogs": ["platforms/web/web-surface-descriptor.json"],
+      "replacement": "Web package assembly consumes the exact preset-web-* projections from this descriptor."
+    },
+    {
+      "surface": "typst-artifacts",
+      "migration_unit": "U8",
+      "legacy_catalogs": ["crates/merman-typst-plugin/wasm-profiles.json"],
+      "replacement": "Typst bridge, svg, and publish artifacts consume the Typst mappings from this descriptor."
+    }
+  ]
+}

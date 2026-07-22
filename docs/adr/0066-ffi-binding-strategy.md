@@ -1,7 +1,13 @@
 # ADR 0066: FFI Binding Strategy
 
-- Status: accepted
+- Status: accepted; capability and output identity amended by ADR-0076
 - Date: 2026-05-30
+
+ADR-0076 supersedes any implication that an FFI descriptor or binding-specific boolean catalog
+owns capability or output semantic IDs. The separate unsafe FFI crate, safe facade, ownership,
+panic-containment, and C-plus-UniFFI layering decisions remain accepted. The live ABI 2 descriptor
+remains explicitly recorded in the capability migration ledger until U6 replaces it; this
+amendment does not claim ABI 3 is implemented.
 
 ## Context
 
