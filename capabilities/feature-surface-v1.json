@@ -194,7 +194,7 @@
       "kind": "engine",
       "description": "Enable Mermaid Cytoscape-backed layout behavior.",
       "targets": ["native", "web", "typst"],
-      "implications": [],
+      "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
         "contract": "A request requiring Cytoscape layout returns a typed missing-capability error when the engine is absent."
@@ -215,7 +215,7 @@
       "kind": "engine",
       "description": "Enable Mermaid ELK-backed layout behavior.",
       "targets": ["native", "web", "typst"],
-      "implications": [],
+      "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
         "contract": "A request requiring ELK layout returns a typed missing-capability error when the engine is absent."
@@ -235,8 +235,8 @@
       "id": "math",
       "kind": "engine",
       "description": "Render Mermaid math labels with the selected math engine.",
-      "targets": ["native", "web", "typst"],
-      "implications": [],
+      "targets": ["native", "web"],
+      "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
         "contract": "Math-bearing render requests return a typed missing-capability error when math is absent."
@@ -439,11 +439,17 @@
   ],
   "presets": [
     {
+      "id": "preset-svg-basic",
+      "description": "SVG workflow without optional layout or math engines.",
+      "targets": ["native", "web", "typst"],
+      "includes": ["svg"],
+      "expected_runtime_capabilities": ["svg"]
+    },
+    {
       "id": "preset-native-svg",
       "description": "Default native Rust SVG workflow.",
       "targets": ["native"],
       "includes": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "excludes": ["analysis", "editor", "ascii", "png", "jpeg", "pdf", "network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
     },
     {
@@ -451,7 +457,6 @@
       "description": "Static-site SVG workflow with no system adapters.",
       "targets": ["native"],
       "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
-      "excludes": ["analysis", "editor", "ascii", "png", "jpeg", "pdf", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math"]
     },
     {
@@ -459,7 +464,6 @@
       "description": "Editor library and LSP library workflow.",
       "targets": ["native"],
       "includes": ["analysis", "editor"],
-      "excludes": ["svg", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["analysis", "editor"]
     },
     {
@@ -467,7 +471,6 @@
       "description": "Lean CLI lint workflow.",
       "targets": ["native"],
       "includes": ["analysis"],
-      "excludes": ["svg", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["analysis"]
     },
     {
@@ -475,7 +478,6 @@
       "description": "Native SDK and binding artifact workflow.",
       "targets": ["native"],
       "includes": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "excludes": ["editor", "network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
     },
     {
@@ -483,7 +485,6 @@
       "description": "Default complete CLI workflow.",
       "targets": ["native"],
       "includes": ["preset-native-sdk", "network-icons", "parallel-markdown", "shell-completions"],
-      "excludes": ["editor"],
       "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"]
     },
     {
@@ -491,7 +492,6 @@
       "description": "Exhaustive non-tool Rust build and test workflow.",
       "targets": ["native"],
       "includes": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "excludes": ["network-icons", "parallel-markdown", "shell-completions"],
       "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
     },
     {
@@ -499,7 +499,6 @@
       "description": "Browser analysis artifact.",
       "targets": ["web"],
       "includes": ["analysis"],
-      "excludes": ["svg", "editor", "ascii", "layout-cytoscape", "layout-elk", "math"],
       "expected_runtime_capabilities": ["analysis"]
     },
     {
@@ -507,7 +506,6 @@
       "description": "Browser SVG render artifact.",
       "targets": ["web"],
       "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
-      "excludes": ["analysis", "editor", "ascii"],
       "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
     },
     {
@@ -515,7 +513,6 @@
       "description": "Browser editor intelligence artifact.",
       "targets": ["web"],
       "includes": ["analysis", "editor"],
-      "excludes": ["svg", "ascii", "layout-cytoscape", "layout-elk", "math"],
       "expected_runtime_capabilities": ["analysis", "editor"]
     },
     {
@@ -523,7 +520,6 @@
       "description": "Browser ASCII artifact.",
       "targets": ["web"],
       "includes": ["ascii"],
-      "excludes": ["svg", "analysis", "editor", "layout-cytoscape", "layout-elk", "math"],
       "expected_runtime_capabilities": ["ascii"]
     },
     {
@@ -531,70 +527,7 @@
       "description": "Fused browser artifact containing all retained Web workflows.",
       "targets": ["web"],
       "includes": ["preset-web-analysis", "preset-web-render", "preset-web-editor", "preset-web-ascii"],
-      "excludes": [],
       "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "layout-cytoscape", "layout-elk", "math", "browser-time", "browser-random", "browser-timing"]
-    }
-  ],
-  "surface_mappings": [
-    {
-      "id": "web-analysis",
-      "surface": "web",
-      "artifact": "@mermanjs/analysis",
-      "target": "web",
-      "preset": "preset-web-analysis"
-    },
-    {
-      "id": "web-render",
-      "surface": "web",
-      "artifact": "@mermanjs/render",
-      "target": "web",
-      "preset": "preset-web-render"
-    },
-    {
-      "id": "web-editor",
-      "surface": "web",
-      "artifact": "@mermanjs/editor",
-      "target": "web",
-      "preset": "preset-web-editor"
-    },
-    {
-      "id": "web-ascii",
-      "surface": "web",
-      "artifact": "@mermanjs/ascii",
-      "target": "web",
-      "preset": "preset-web-ascii"
-    },
-    {
-      "id": "web-full",
-      "surface": "web",
-      "artifact": "@mermanjs/web",
-      "target": "web",
-      "preset": "preset-web-full"
-    },
-    {
-      "id": "typst-bridge",
-      "surface": "typst",
-      "artifact": "bridge",
-      "target": "typst",
-      "capabilities": [],
-      "expected_runtime_capabilities": ["typst-transport"],
-      "transport_only": true
-    },
-    {
-      "id": "typst-svg",
-      "surface": "typst",
-      "artifact": "svg",
-      "target": "typst",
-      "capabilities": ["svg"],
-      "expected_runtime_capabilities": ["svg", "typst-transport"]
-    },
-    {
-      "id": "typst-publish",
-      "surface": "typst",
-      "artifact": "publish",
-      "target": "typst",
-      "capabilities": ["svg", "analysis", "layout-cytoscape", "layout-elk", "math"],
-      "expected_runtime_capabilities": ["svg", "analysis", "layout-cytoscape", "layout-elk", "math", "typst-transport"]
     }
   ],
   "migration_ledger": [
@@ -608,13 +541,13 @@
       "surface": "web-packages",
       "migration_unit": "U8",
       "legacy_catalogs": ["platforms/web/web-surface-descriptor.json"],
-      "replacement": "Web package assembly consumes the exact preset-web-* projections from this descriptor."
+      "replacement": "Web package assembly consumes an exact artifact profile and browser transport contract that reference preset-web-* semantic bundles."
     },
     {
       "surface": "typst-artifacts",
       "migration_unit": "U8",
       "legacy_catalogs": ["crates/merman-typst-plugin/wasm-profiles.json"],
-      "replacement": "Typst bridge, svg, and publish artifacts consume the Typst mappings from this descriptor."
+      "replacement": "Typst bridge, svg, and publish artifacts consume exact artifact profiles linked to the Typst transport contract."
     }
   ]
 }

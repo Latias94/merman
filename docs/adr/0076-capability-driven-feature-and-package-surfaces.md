@@ -19,8 +19,11 @@ the same unit.
 
 `capabilities/feature-surface-v1.json` exclusively owns public capability IDs, output IDs,
 descriptions, target restrictions, implications, named presets, expected runtime capability sets,
-and Web/Typst surface mappings. Its schema version is independent from native ABI, diagnostics,
-facts, editor token, text-measurement, resource, Typst transport, and package versions.
+and their additive semantic closure. `capabilities/artifact-profiles-v1.json` owns exact Cargo build
+recipes and distributable composition. `capabilities/transport-contracts-v1.json` owns protocol
+boundaries by referencing, rather than copying, each independent wire authority. Their schema
+versions are independent from native ABI, diagnostics, facts, editor token, text-measurement,
+resource, Typst transport, and package versions.
 
 Cargo manifests remain hand-written declarations. Structured Cargo metadata and compiled runtime
 reports will be checked against the descriptor as their owning surfaces migrate; source substring
@@ -29,8 +32,9 @@ matching and generated Cargo manifests are not contracts.
 Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. The
 initial vocabulary includes SVG, analysis, editor, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layout,
 math, four native system adapters, and the three CLI tool leaves. Presets use the `preset-*`
-namespace. The exact native and `preset-web-*` closures, together with the Typst `bridge`, `svg`,
-and `publish` mappings, live only in the descriptor and its generated projections.
+namespace and are additive inclusion bundles only. They never assert that an omitted capability or
+dependency is absent. Exact native, Web, and Typst artifacts live in artifact profiles and select a
+transport contract independently.
 
 Runtime-only browser adapters and the Typst transport have semantic runtime IDs but are not Cargo
 public leaves. Runtime environment selection and resource profiles remain independent from the
@@ -47,7 +51,7 @@ A new public leaf is accepted only when all of these are present and validated:
 - a user-observable API, output, engine, adapter, or compiled tool surface;
 - typed absence or removal of that callable surface;
 - a material closure boundary;
-- at least one supported preset include and exclude;
+- at least one supported preset include and omission;
 - observed measured evidence with a reproducible gate.
 
 Negative profiles, one-feature-per-diagram designs, and incidental dependency names are invalid.
@@ -59,6 +63,12 @@ Named reusable layout engines are valid because users select their Mermaid behav
 U1 provides schema validation, deterministic generation, fixture validation, and an explicit
 ledger for the still-live native ABI, Web, and Typst catalogs. It does not verify current manifests
 against the target model.
+
+U13 removes build and package ownership from the semantic descriptor, establishes exact artifact
+profiles and transport contracts, and records current products as `migration-required` until a
+real build and runtime probe proves them. A package or release bundle may reference several
+component profiles, while every compiled component still has exactly one profile and one transport
+owner where a callable boundary exists.
 
 Each U2-U8 surface-local unit must wire in its generated projection and enable a structured gate
 that compares the descriptor with the actual compiled capability set, runtime report, or packaged
@@ -74,6 +84,9 @@ catalogs are gone.
 ## Consequences
 
 - Semantic IDs and presets have one reviewable source while Cargo files remain normal TOML.
+- Exact build absence is proved by observed artifact profiles, never inferred from a preset.
+- Bundles such as VSIX, wheels, AARs, and npm packages compose component profiles without inventing
+  a fake Cargo root or duplicate wire contract.
 - Generated Rust, TypeScript, C, and documentation projections are byte-stable and share one
   semantic digest.
 - Adding a feature requires API and measured closure evidence, not only an optional dependency.

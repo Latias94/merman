@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad085c5d16f1`
+Semantic digest: `sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e03998c9fa8`
 
 ## Public Leaves
 
@@ -12,9 +12,9 @@ Semantic digest: `sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad0
 | `ascii` | `Output` | `native`, `web` | none | Render supported Mermaid semantics as terminal text. |
 | `editor` | `Api` | `native`, `web` | `analysis` | Expose parser-backed editor intelligence APIs. |
 | `jpeg` | `Output` | `native` | `svg` | Export rendered diagrams as JPEG. |
-| `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | none | Enable Mermaid Cytoscape-backed layout behavior. |
-| `layout-elk` | `Engine` | `native`, `web`, `typst` | none | Enable Mermaid ELK-backed layout behavior. |
-| `math` | `Engine` | `native`, `web`, `typst` | none | Render Mermaid math labels with the selected math engine. |
+| `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
+| `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
+| `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
 | `network-icons` | `Tool` | `native` | none | Compile CLI network icon loading commands. |
 | `parallel-markdown` | `Tool` | `native` | none | Compile parallel CLI Markdown batch processing. |
 | `pdf` | `Output` | `native` | `svg` | Export rendered diagrams as PDF. |
@@ -36,35 +36,23 @@ Semantic digest: `sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad0
 | `png` | `png` | `image/png` | `native` |
 | `svg` | `svg` | `image/svg+xml` | `native`, `web`, `typst` |
 
-## Presets
+## Additive Presets
 
-| ID | Targets | Effective leaves | Explicit exclusions | Expected runtime report |
-| --- | --- | --- | --- | --- |
-| `preset-all` | `native` | `analysis`, `ascii`, `editor`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `network-icons`, `parallel-markdown`, `shell-completions` | `svg`, `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-ci-lint` | `native` | `analysis` | `svg`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` | `analysis` |
-| `preset-editor` | `native` | `analysis`, `editor` | `svg`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` | `analysis`, `editor` |
-| `preset-mmdc` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `pdf`, `png`, `shell-completions`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `editor` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` |
-| `preset-native-sdk` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `editor`, `network-icons`, `parallel-markdown`, `shell-completions` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-native-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `network-icons`, `parallel-markdown`, `shell-completions` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-static-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` | `svg`, `layout-cytoscape`, `layout-elk`, `math` |
-| `preset-web-analysis` | `web` | `analysis` | `svg`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math` | `analysis` |
-| `preset-web-ascii` | `web` | `ascii` | `svg`, `analysis`, `editor`, `layout-cytoscape`, `layout-elk`, `math` | `ascii` |
-| `preset-web-editor` | `web` | `analysis`, `editor` | `svg`, `ascii`, `layout-cytoscape`, `layout-elk`, `math` | `analysis`, `editor` |
-| `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | none | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
-| `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `analysis`, `editor`, `ascii` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
-
-## Surface Mappings
-
-| ID | Surface | Artifact | Selection |
+| ID | Targets | Effective leaves | Expected runtime report |
 | --- | --- | --- | --- |
-| `typst-bridge` | `typst` | `bridge` | `transport only` |
-| `typst-publish` | `typst` | `publish` | `svg, analysis, layout-cytoscape, layout-elk, math` |
-| `typst-svg` | `typst` | `svg` | `svg` |
-| `web-analysis` | `web` | `@mermanjs/analysis` | `preset-web-analysis` |
-| `web-ascii` | `web` | `@mermanjs/ascii` | `preset-web-ascii` |
-| `web-editor` | `web` | `@mermanjs/editor` | `preset-web-editor` |
-| `web-full` | `web` | `@mermanjs/web` | `preset-web-full` |
-| `web-render` | `web` | `@mermanjs/render` | `preset-web-render` |
+| `preset-all` | `native` | `analysis`, `ascii`, `editor`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
+| `preset-ci-lint` | `native` | `analysis` | `analysis` |
+| `preset-editor` | `native` | `analysis`, `editor` | `analysis`, `editor` |
+| `preset-mmdc` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `pdf`, `png`, `shell-completions`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` |
+| `preset-native-sdk` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
+| `preset-native-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
+| `preset-static-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` |
+| `preset-svg-basic` | `native`, `web`, `typst` | `svg` | `svg` |
+| `preset-web-analysis` | `web` | `analysis` | `analysis` |
+| `preset-web-ascii` | `web` | `ascii` | `ascii` |
+| `preset-web-editor` | `web` | `analysis`, `editor` | `analysis`, `editor` |
+| `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
+| `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `browser-time`, `browser-random`, `browser-timing` |
 
 ## Pending Migrations
 
@@ -73,5 +61,5 @@ These entries are explicit transitional debt, not evidence that current consumer
 | Surface | Unit | Legacy live catalogs | Replacement |
 | --- | --- | --- | --- |
 | `native-abi` | `U6` | `abi/merman-v2.json` | ABI 3 references generated capability and output semantic IDs while retaining independent numeric wire discriminants. |
-| `typst-artifacts` | `U8` | `crates/merman-typst-plugin/wasm-profiles.json` | Typst bridge, svg, and publish artifacts consume the Typst mappings from this descriptor. |
-| `web-packages` | `U8` | `platforms/web/web-surface-descriptor.json` | Web package assembly consumes the exact preset-web-* projections from this descriptor. |
+| `typst-artifacts` | `U8` | `crates/merman-typst-plugin/wasm-profiles.json` | Typst bridge, svg, and publish artifacts consume exact artifact profiles linked to the Typst transport contract. |
+| `web-packages` | `U8` | `platforms/web/web-surface-descriptor.json` | Web package assembly consumes an exact artifact profile and browser transport contract that reference preset-web-* semantic bundles. |

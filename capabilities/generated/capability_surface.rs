@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad085c5d16f1";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e03998c9fa8";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -53,22 +53,12 @@ pub const PRESET_IDS: &[&str] = &[
     "preset-native-sdk",
     "preset-native-svg",
     "preset-static-svg",
+    "preset-svg-basic",
     "preset-web-analysis",
     "preset-web-ascii",
     "preset-web-editor",
     "preset-web-full",
     "preset-web-render",
-];
-
-pub const SURFACE_MAPPING_IDS: &[&str] = &[
-    "typst-bridge",
-    "typst-publish",
-    "typst-svg",
-    "web-analysis",
-    "web-ascii",
-    "web-editor",
-    "web-full",
-    "web-render",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,21 +151,21 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "engine",
         description: "Enable Mermaid Cytoscape-backed layout behavior.",
         targets: &["native", "typst", "web"],
-        implications: &[],
+        implications: &["svg"],
     },
     CapabilityDescriptor {
         id: "layout-elk",
         kind: "engine",
         description: "Enable Mermaid ELK-backed layout behavior.",
         targets: &["native", "typst", "web"],
-        implications: &[],
+        implications: &["svg"],
     },
     CapabilityDescriptor {
         id: "math",
         kind: "engine",
         description: "Render Mermaid math labels with the selected math engine.",
-        targets: &["native", "typst", "web"],
-        implications: &[],
+        targets: &["native", "web"],
+        implications: &["svg"],
     },
     CapabilityDescriptor {
         id: "network-icons",
@@ -356,6 +346,13 @@ pub const CAPABILITY_PRESETS: &[CapabilityPresetDescriptor] = &[
         expected_runtime_capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
     },
     CapabilityPresetDescriptor {
+        id: "preset-svg-basic",
+        description: "SVG workflow without optional layout or math engines.",
+        targets: &["native", "typst", "web"],
+        capabilities: &["svg"],
+        expected_runtime_capabilities: &["svg"],
+    },
+    CapabilityPresetDescriptor {
         id: "preset-web-analysis",
         description: "Browser analysis artifact.",
         targets: &["web"],
@@ -389,100 +386,5 @@ pub const CAPABILITY_PRESETS: &[CapabilityPresetDescriptor] = &[
         targets: &["web"],
         capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
         expected_runtime_capabilities: &["browser-random", "browser-time", "browser-timing", "layout-cytoscape", "layout-elk", "math", "svg"],
-    },
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SurfaceMappingDescriptor {
-    pub id: &'static str,
-    pub surface: &'static str,
-    pub artifact: &'static str,
-    pub target: &'static str,
-    pub preset: Option<&'static str>,
-    pub capabilities: &'static [&'static str],
-    pub expected_runtime_capabilities: &'static [&'static str],
-    pub transport_only: bool,
-}
-
-pub const SURFACE_MAPPINGS: &[SurfaceMappingDescriptor] = &[
-    SurfaceMappingDescriptor {
-        id: "typst-bridge",
-        surface: "typst",
-        artifact: "bridge",
-        target: "typst",
-        preset: None,
-        capabilities: &[],
-        expected_runtime_capabilities: &["typst-transport"],
-        transport_only: true,
-    },
-    SurfaceMappingDescriptor {
-        id: "typst-publish",
-        surface: "typst",
-        artifact: "publish",
-        target: "typst",
-        preset: None,
-        capabilities: &["analysis", "layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["analysis", "layout-cytoscape", "layout-elk", "math", "svg", "typst-transport"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "typst-svg",
-        surface: "typst",
-        artifact: "svg",
-        target: "typst",
-        preset: None,
-        capabilities: &["svg"],
-        expected_runtime_capabilities: &["svg", "typst-transport"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "web-analysis",
-        surface: "web",
-        artifact: "@mermanjs/analysis",
-        target: "web",
-        preset: Some("preset-web-analysis"),
-        capabilities: &["analysis"],
-        expected_runtime_capabilities: &["analysis"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "web-ascii",
-        surface: "web",
-        artifact: "@mermanjs/ascii",
-        target: "web",
-        preset: Some("preset-web-ascii"),
-        capabilities: &["ascii"],
-        expected_runtime_capabilities: &["ascii"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "web-editor",
-        surface: "web",
-        artifact: "@mermanjs/editor",
-        target: "web",
-        preset: Some("preset-web-editor"),
-        capabilities: &["analysis", "editor"],
-        expected_runtime_capabilities: &["analysis", "editor"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "web-full",
-        surface: "web",
-        artifact: "@mermanjs/web",
-        target: "web",
-        preset: Some("preset-web-full"),
-        capabilities: &["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["analysis", "ascii", "browser-random", "browser-time", "browser-timing", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-        transport_only: false,
-    },
-    SurfaceMappingDescriptor {
-        id: "web-render",
-        surface: "web",
-        artifact: "@mermanjs/render",
-        target: "web",
-        preset: Some("preset-web-render"),
-        capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["browser-random", "browser-time", "browser-timing", "layout-cytoscape", "layout-elk", "math", "svg"],
-        transport_only: false,
     },
 ];

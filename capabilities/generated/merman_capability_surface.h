@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad085c5d16f1"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e03998c9fa8"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -49,6 +49,7 @@
 #define MERMAN_PRESET_NATIVE_SDK "preset-native-sdk"
 #define MERMAN_PRESET_NATIVE_SVG "preset-native-svg"
 #define MERMAN_PRESET_STATIC_SVG "preset-static-svg"
+#define MERMAN_PRESET_SVG_BASIC "preset-svg-basic"
 #define MERMAN_PRESET_WEB_ANALYSIS "preset-web-analysis"
 #define MERMAN_PRESET_WEB_ASCII "preset-web-ascii"
 #define MERMAN_PRESET_WEB_EDITOR "preset-web-editor"
@@ -151,16 +152,27 @@ static const char *const MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS[] = {
     "web",
 };
 
+static const char *const MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS[] = {
+    "svg",
+};
+
 static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS[] = {
     "native",
     "typst",
     "web",
 };
 
+static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS[] = {
+    "svg",
+};
+
 static const char *const MERMAN_CAPABILITY_MATH_TARGETS[] = {
     "native",
-    "typst",
     "web",
+};
+
+static const char *const MERMAN_CAPABILITY_MATH_IMPLICATIONS[] = {
+    "svg",
 };
 
 static const char *const MERMAN_CAPABILITY_NETWORK_ICONS_TARGETS[] = {
@@ -218,9 +230,9 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "ascii", "output", "Render supported Mermaid semantics as terminal text.", MERMAN_CAPABILITY_ASCII_TARGETS, 2, NULL, 0 },
     { "editor", "api", "Expose parser-backed editor intelligence APIs.", MERMAN_CAPABILITY_EDITOR_TARGETS, 2, MERMAN_CAPABILITY_EDITOR_IMPLICATIONS, 1 },
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, MERMAN_CAPABILITY_JPEG_IMPLICATIONS, 1 },
-    { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, NULL, 0 },
-    { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, NULL, 0 },
-    { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 3, NULL, 0 },
+    { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
+    { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
+    { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
     { "network-icons", "tool", "Compile CLI network icon loading commands.", MERMAN_CAPABILITY_NETWORK_ICONS_TARGETS, 1, NULL, 0 },
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, MERMAN_CAPABILITY_PDF_IMPLICATIONS, 1 },
@@ -452,6 +464,20 @@ static const char *const MERMAN_PRESET_STATIC_SVG_EXPECTED_RUNTIME_CAPABILITIES[
     "svg",
 };
 
+static const char *const MERMAN_PRESET_SVG_BASIC_TARGETS[] = {
+    "native",
+    "typst",
+    "web",
+};
+
+static const char *const MERMAN_PRESET_SVG_BASIC_CAPABILITIES[] = {
+    "svg",
+};
+
+static const char *const MERMAN_PRESET_SVG_BASIC_EXPECTED_RUNTIME_CAPABILITIES[] = {
+    "svg",
+};
+
 static const MermanCapabilityPresetDescriptor MERMAN_NATIVE_CAPABILITY_PRESETS[] = {
     { "preset-all", "Exhaustive non-tool Rust build and test workflow.", MERMAN_PRESET_ALL_TARGETS, 1, MERMAN_PRESET_ALL_CAPABILITIES, 14, MERMAN_PRESET_ALL_EXPECTED_RUNTIME_CAPABILITIES, 14 },
     { "preset-ci-lint", "Lean CLI lint workflow.", MERMAN_PRESET_CI_LINT_TARGETS, 1, MERMAN_PRESET_CI_LINT_CAPABILITIES, 1, MERMAN_PRESET_CI_LINT_EXPECTED_RUNTIME_CAPABILITIES, 1 },
@@ -460,7 +486,8 @@ static const MermanCapabilityPresetDescriptor MERMAN_NATIVE_CAPABILITY_PRESETS[]
     { "preset-native-sdk", "Native SDK and binding artifact workflow.", MERMAN_PRESET_NATIVE_SDK_TARGETS, 1, MERMAN_PRESET_NATIVE_SDK_CAPABILITIES, 13, MERMAN_PRESET_NATIVE_SDK_EXPECTED_RUNTIME_CAPABILITIES, 13 },
     { "preset-native-svg", "Default native Rust SVG workflow.", MERMAN_PRESET_NATIVE_SVG_TARGETS, 1, MERMAN_PRESET_NATIVE_SVG_CAPABILITIES, 8, MERMAN_PRESET_NATIVE_SVG_EXPECTED_RUNTIME_CAPABILITIES, 8 },
     { "preset-static-svg", "Static-site SVG workflow with no system adapters.", MERMAN_PRESET_STATIC_SVG_TARGETS, 1, MERMAN_PRESET_STATIC_SVG_CAPABILITIES, 4, MERMAN_PRESET_STATIC_SVG_EXPECTED_RUNTIME_CAPABILITIES, 4 },
+    { "preset-svg-basic", "SVG workflow without optional layout or math engines.", MERMAN_PRESET_SVG_BASIC_TARGETS, 3, MERMAN_PRESET_SVG_BASIC_CAPABILITIES, 1, MERMAN_PRESET_SVG_BASIC_EXPECTED_RUNTIME_CAPABILITIES, 1 },
 };
-#define MERMAN_NATIVE_CAPABILITY_PRESET_COUNT 7u
+#define MERMAN_NATIVE_CAPABILITY_PRESET_COUNT 8u
 
 #endif /* MERMAN_CAPABILITY_SURFACE_H */

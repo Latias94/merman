@@ -93,7 +93,7 @@ from the loaded binding instead of copying limits into a host application.
 - Do not create one Cargo feature per diagram family. Family grammar and semantic admission are one
   language contract; expensive optional engines are valid boundaries when users can choose them.
 - Keep features positive and composable. Do not introduce negative variants such as `no-elk`.
-- Add typed unsupported behavior, include/exclude coverage, and measured closure evidence before
-  exposing a new optional product.
+- Add typed unsupported behavior, additive preset coverage, an observed omission profile, and
+  measured closure evidence before exposing a new optional product.
 - Do not hide ambient host access behind parser or renderer names. Express it through the host
   capability features above.

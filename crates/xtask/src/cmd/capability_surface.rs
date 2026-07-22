@@ -63,7 +63,6 @@ struct CapabilitySurfaceDescriptor {
     capabilities: Vec<CapabilityDescriptor>,
     outputs: Vec<OutputDescriptor>,
     presets: Vec<PresetDescriptor>,
-    surface_mappings: Vec<SurfaceMapping>,
     migration_ledger: Vec<MigrationLedgerEntry>,
 }
 
@@ -182,25 +181,7 @@ struct PresetDescriptor {
     description: String,
     targets: Vec<String>,
     includes: Vec<String>,
-    excludes: Vec<String>,
     expected_runtime_capabilities: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct SurfaceMapping {
-    id: String,
-    surface: String,
-    artifact: String,
-    target: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    preset: Option<String>,
-    #[serde(default)]
-    capabilities: Vec<String>,
-    #[serde(default)]
-    expected_runtime_capabilities: Vec<String>,
-    #[serde(default)]
-    transport_only: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -549,7 +530,6 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         require_non_empty(&preset.description, &format!("{base}.description"))?;
         validate_targets(&preset.targets, &format!("{base}.targets"), &target_ids)?;
         validate_string_set(&preset.includes, &format!("{base}.includes"))?;
-        validate_string_set(&preset.excludes, &format!("{base}.excludes"))?;
         validate_string_set(
             &preset.expected_runtime_capabilities,
             &format!("{base}.expected_runtime_capabilities"),
@@ -558,13 +538,6 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
             if !capability_ids.contains(include) && !preset_ids.contains(include) {
                 return Err(format!(
                     "{base}.includes[{include_index}]: unknown capability or preset `{include}`"
-                ));
-            }
-        }
-        for (exclude_index, exclude) in preset.excludes.iter().enumerate() {
-            if !capability_ids.contains(exclude) {
-                return Err(format!(
-                    "{base}.excludes[{exclude_index}]: unknown capability `{exclude}`"
                 ));
             }
         }
@@ -594,28 +567,23 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
                     .get(preset.id.as_str())
                     .is_some_and(|set| set.contains(&capability.id))
         });
-        let excluded = descriptor.presets.iter().any(|preset| {
+        let omitted = descriptor.presets.iter().any(|preset| {
             preset
                 .targets
                 .iter()
                 .any(|target| capability.targets.contains(target))
-                && preset.excludes.contains(&capability.id)
+                && effective_presets
+                    .get(preset.id.as_str())
+                    .is_some_and(|set| !set.contains(&capability.id))
         });
-        if !included || !excluded {
+        if !included || !omitted {
             return Err(format!(
-                "capabilities[{capability_index}].admission: `{}` needs at least one applicable preset include and exclude",
+                "capabilities[{capability_index}].admission: `{}` needs at least one applicable preset include and omission",
                 capability.id
             ));
         }
     }
 
-    validate_surface_mappings(
-        descriptor,
-        &target_ids,
-        &capability_by_id,
-        &runtime_ids,
-        &preset_by_id,
-    )?;
     validate_migration_ledger(descriptor)?;
     Ok(())
 }
@@ -752,30 +720,6 @@ fn validate_preset_contract(
         }
     }
 
-    let eligible = descriptor
-        .capabilities
-        .iter()
-        .filter(|capability| {
-            preset
-                .targets
-                .iter()
-                .all(|target| capability.targets.contains(target))
-        })
-        .map(|capability| capability.id.clone())
-        .collect::<BTreeSet<_>>();
-    let expected_excludes = eligible
-        .difference(effective)
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let actual_excludes = preset.excludes.iter().cloned().collect::<BTreeSet<_>>();
-    if actual_excludes != expected_excludes {
-        return Err(format!(
-            "{base}.excludes: must exactly list applicable leaves outside the preset; expected [{}], found [{}]",
-            join_set(&expected_excludes),
-            join_set(&actual_excludes)
-        ));
-    }
-
     let mut runtime_public = BTreeSet::new();
     for (runtime_index, runtime_id) in preset.expected_runtime_capabilities.iter().enumerate() {
         if let Some(capability) = capability_by_id.get(runtime_id.as_str()) {
@@ -812,125 +756,6 @@ fn validate_preset_contract(
             join_set(effective),
             join_set(&runtime_public)
         ));
-    }
-    Ok(())
-}
-
-fn validate_surface_mappings(
-    descriptor: &CapabilitySurfaceDescriptor,
-    target_ids: &BTreeSet<String>,
-    capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-    runtime_ids: &BTreeSet<String>,
-    preset_by_id: &BTreeMap<&str, &PresetDescriptor>,
-) -> Result<(), String> {
-    validate_unique_ids(
-        descriptor
-            .surface_mappings
-            .iter()
-            .enumerate()
-            .map(|(index, mapping)| (index, mapping.id.as_str())),
-        "surface_mappings",
-    )?;
-    for (index, mapping) in descriptor.surface_mappings.iter().enumerate() {
-        let base = format!("surface_mappings[{index}]");
-        validate_kebab_id(&mapping.id, &format!("{base}.id"))?;
-        validate_kebab_id(&mapping.surface, &format!("{base}.surface"))?;
-        require_non_empty(&mapping.artifact, &format!("{base}.artifact"))?;
-        if !target_ids.contains(&mapping.target) {
-            return Err(format!(
-                "{base}.target: unknown target `{}`",
-                mapping.target
-            ));
-        }
-        if mapping.preset.is_some() && !mapping.capabilities.is_empty() {
-            return Err(format!(
-                "{base}: select either a preset or direct capabilities, not both"
-            ));
-        }
-        let effective = if let Some(preset_id) = &mapping.preset {
-            let Some(preset) = preset_by_id.get(preset_id.as_str()) else {
-                return Err(format!("{base}.preset: unknown preset `{preset_id}`"));
-            };
-            if !preset.targets.contains(&mapping.target) {
-                return Err(format!(
-                    "{base}.preset: `{preset_id}` is unavailable on target `{}`",
-                    mapping.target
-                ));
-            }
-            preset
-                .expected_runtime_capabilities
-                .iter()
-                .filter(|id| capability_by_id.contains_key(id.as_str()))
-                .cloned()
-                .collect::<BTreeSet<_>>()
-        } else {
-            let mut effective = BTreeSet::new();
-            for (capability_index, capability_id) in mapping.capabilities.iter().enumerate() {
-                let Some(capability) = capability_by_id.get(capability_id.as_str()) else {
-                    return Err(format!(
-                        "{base}.capabilities[{capability_index}]: unknown capability `{capability_id}`"
-                    ));
-                };
-                if !capability.targets.contains(&mapping.target) {
-                    return Err(format!(
-                        "{base}.capabilities[{capability_index}]: `{capability_id}` is unavailable on target `{}`",
-                        mapping.target
-                    ));
-                }
-                expand_capability(capability_id, capability_by_id, &mut effective);
-            }
-            effective
-        };
-        if mapping.transport_only && !effective.is_empty() {
-            return Err(format!(
-                "{base}.transport_only: transport-only mappings cannot expose public capabilities"
-            ));
-        }
-        if !mapping.transport_only && effective.is_empty() {
-            return Err(format!(
-                "{base}.capabilities: non-transport mapping must expose a public capability"
-            ));
-        }
-        if mapping.preset.is_none() {
-            let mut reported_public = BTreeSet::new();
-            for (runtime_index, id) in mapping.expected_runtime_capabilities.iter().enumerate() {
-                if let Some(capability) = capability_by_id.get(id.as_str()) {
-                    if !capability.targets.contains(&mapping.target) {
-                        return Err(format!(
-                            "{base}.expected_runtime_capabilities[{runtime_index}]: `{id}` is unavailable on target `{}`",
-                            mapping.target
-                        ));
-                    }
-                    reported_public.insert(id.clone());
-                } else if let Some(runtime) = descriptor
-                    .runtime_capabilities
-                    .iter()
-                    .find(|capability| capability.id == *id)
-                {
-                    if !runtime.targets.contains(&mapping.target) {
-                        return Err(format!(
-                            "{base}.expected_runtime_capabilities[{runtime_index}]: `{id}` is unavailable on target `{}`",
-                            mapping.target
-                        ));
-                    }
-                } else if !runtime_ids.contains(id) {
-                    return Err(format!(
-                        "{base}.expected_runtime_capabilities[{runtime_index}]: unknown runtime capability `{id}`"
-                    ));
-                }
-            }
-            if reported_public != effective {
-                return Err(format!(
-                    "{base}.expected_runtime_capabilities: public report must equal mapped capabilities; expected [{}], found [{}]",
-                    join_set(&effective),
-                    join_set(&reported_public)
-                ));
-            }
-        } else if !mapping.expected_runtime_capabilities.is_empty() {
-            return Err(format!(
-                "{base}.expected_runtime_capabilities: preset mappings inherit the preset report"
-            ));
-        }
     }
     Ok(())
 }
@@ -1114,9 +939,6 @@ fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
     canonical
         .presets
         .sort_by(|left, right| left.id.cmp(&right.id));
-    canonical
-        .surface_mappings
-        .sort_by(|left, right| left.id.cmp(&right.id));
     for capability in &mut canonical.capabilities {
         capability.targets.sort();
         capability.implications.sort();
@@ -1130,12 +952,7 @@ fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
     for preset in &mut canonical.presets {
         preset.targets.sort();
         preset.includes.sort();
-        preset.excludes.sort();
         preset.expected_runtime_capabilities.sort();
-    }
-    for mapping in &mut canonical.surface_mappings {
-        mapping.capabilities.sort();
-        mapping.expected_runtime_capabilities.sort();
     }
     let bytes = serde_json::to_vec(&canonical).map_err(|error| error.to_string())?;
     Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
@@ -1173,72 +990,10 @@ fn sorted_presets(descriptor: &CapabilitySurfaceDescriptor) -> Vec<&PresetDescri
     values
 }
 
-fn sorted_surface_mappings(descriptor: &CapabilitySurfaceDescriptor) -> Vec<&SurfaceMapping> {
-    let mut values = descriptor.surface_mappings.iter().collect::<Vec<_>>();
-    values.sort_by(|left, right| left.id.cmp(&right.id));
-    values
-}
-
 fn sorted_string_refs(values: &[String]) -> Vec<&str> {
     let mut values = values.iter().map(String::as_str).collect::<Vec<_>>();
     values.sort_unstable();
     values
-}
-
-struct ResolvedSurfaceMapping<'a> {
-    source: &'a SurfaceMapping,
-    capabilities: BTreeSet<String>,
-    expected_runtime_capabilities: BTreeSet<String>,
-}
-
-fn resolve_surface_mappings<'a>(
-    descriptor: &'a CapabilitySurfaceDescriptor,
-    capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-    preset_by_id: &BTreeMap<&str, &PresetDescriptor>,
-    effective_presets: &BTreeMap<String, BTreeSet<String>>,
-) -> Result<Vec<ResolvedSurfaceMapping<'a>>, String> {
-    sorted_surface_mappings(descriptor)
-        .into_iter()
-        .map(|mapping| {
-            let (capabilities, expected_runtime_capabilities) =
-                if let Some(preset_id) = mapping.preset.as_deref() {
-                    let preset = preset_by_id.get(preset_id).ok_or_else(|| {
-                        format!("surface_mappings[id={}].preset: unknown preset `{preset_id}`", mapping.id)
-                    })?;
-                    let capabilities = effective_presets.get(preset_id).cloned().ok_or_else(|| {
-                        format!("surface_mappings[id={}].preset: preset `{preset_id}` has no effective projection", mapping.id)
-                    })?;
-                    let expected = preset
-                        .expected_runtime_capabilities
-                        .iter()
-                        .cloned()
-                        .collect();
-                    (capabilities, expected)
-                } else {
-                    let mut capabilities = BTreeSet::new();
-                    for capability in &mapping.capabilities {
-                        if !capability_by_id.contains_key(capability.as_str()) {
-                            return Err(format!(
-                                "surface_mappings[id={}].capabilities: unknown capability `{capability}`",
-                                mapping.id
-                            ));
-                        }
-                        expand_capability(capability, capability_by_id, &mut capabilities);
-                    }
-                    let expected = mapping
-                        .expected_runtime_capabilities
-                        .iter()
-                        .cloned()
-                        .collect();
-                    (capabilities, expected)
-                };
-            Ok(ResolvedSurfaceMapping {
-                source: mapping,
-                capabilities,
-                expected_runtime_capabilities,
-            })
-        })
-        .collect()
 }
 
 fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
@@ -1254,8 +1009,6 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
         .map(|preset| (preset.id.as_str(), preset))
         .collect::<BTreeMap<_, _>>();
     let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
-    let mappings =
-        resolve_surface_mappings(descriptor, &capability_by_id, &preset_by_id, &effective)?;
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
     );
@@ -1290,10 +1043,6 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     out.push_str("];\n\npub const PRESET_IDS: &[&str] = &[\n");
     for preset in sorted_presets(descriptor) {
         writeln!(out, "    {:?},", preset.id).unwrap();
-    }
-    out.push_str("];\n\npub const SURFACE_MAPPING_IDS: &[&str] = &[\n");
-    for mapping in &mappings {
-        writeln!(out, "    {:?},", mapping.source.id).unwrap();
     }
     out.push_str("];\n\n");
 
@@ -1365,35 +1114,10 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct SurfaceMappingDescriptor {\n    pub id: &'static str,\n    pub surface: &'static str,\n    pub artifact: &'static str,\n    pub target: &'static str,\n    pub preset: Option<&'static str>,\n    pub capabilities: &'static [&'static str],\n    pub expected_runtime_capabilities: &'static [&'static str],\n    pub transport_only: bool,\n}\n\npub const SURFACE_MAPPINGS: &[SurfaceMappingDescriptor] = &[\n");
-    for mapping in mappings {
-        out.push_str("    SurfaceMappingDescriptor {\n");
-        writeln!(out, "        id: {:?},", mapping.source.id).unwrap();
-        writeln!(out, "        surface: {:?},", mapping.source.surface).unwrap();
-        writeln!(out, "        artifact: {:?},", mapping.source.artifact).unwrap();
-        writeln!(out, "        target: {:?},", mapping.source.target).unwrap();
-        match mapping.source.preset.as_deref() {
-            Some(preset) => writeln!(out, "        preset: Some({preset:?}),").unwrap(),
-            None => out.push_str("        preset: None,\n"),
-        }
-        out.push_str("        capabilities: &[");
-        write_quoted_list(&mut out, mapping.capabilities.iter().map(String::as_str));
-        out.push_str("],\n        expected_runtime_capabilities: &[");
-        write_quoted_list(
-            &mut out,
-            mapping
-                .expected_runtime_capabilities
-                .iter()
-                .map(String::as_str),
-        );
-        writeln!(
-            out,
-            "],\n        transport_only: {},\n    }},",
-            mapping.source.transport_only
-        )
-        .unwrap();
+    while out.ends_with('\n') {
+        out.pop();
     }
-    out.push_str("];\n");
+    out.push('\n');
     Ok(out)
 }
 
@@ -1420,8 +1144,6 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
         .map(|preset| (preset.id.as_str(), preset))
         .collect::<BTreeMap<_, _>>();
     let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
-    let mappings =
-        resolve_surface_mappings(descriptor, &capability_by_id, &preset_by_id, &effective)?;
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
     );
@@ -1515,29 +1237,6 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
                 .collect::<Vec<_>>()
         ),
     )?;
-    write_typescript_value(
-        &mut out,
-        "SURFACE_MAPPINGS",
-        serde_json::json!(
-            mappings
-                .iter()
-                .map(|mapping| serde_json::json!({
-                    "id": mapping.source.id,
-                    "surface": mapping.source.surface,
-                    "artifact": mapping.source.artifact,
-                    "target": mapping.source.target,
-                    "preset": mapping.source.preset.as_deref(),
-                    "capabilities": mapping.capabilities.iter().collect::<Vec<_>>(),
-                    "expected_runtime_capabilities": mapping
-                        .expected_runtime_capabilities
-                        .iter()
-                        .collect::<Vec<_>>(),
-                    "transport_only": mapping.source.transport_only,
-                }))
-                .collect::<Vec<_>>()
-        ),
-    )?;
-
     for (name, ids, type_name) in [
         (
             "TARGET_IDS",
@@ -1578,14 +1277,6 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
                 .map(|value| value.id.as_str())
                 .collect::<Vec<_>>(),
             "CapabilityPresetId",
-        ),
-        (
-            "SURFACE_MAPPING_IDS",
-            mappings
-                .iter()
-                .map(|value| value.source.id.as_str())
-                .collect::<Vec<_>>(),
-            "SurfaceMappingId",
         ),
     ] {
         write_typescript_value(&mut out, name, serde_json::json!(ids))?;
@@ -1910,39 +1601,20 @@ fn render_markdown(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         )
         .unwrap();
     }
-    out.push_str("\n## Presets\n\n| ID | Targets | Effective leaves | Explicit exclusions | Expected runtime report |\n| --- | --- | --- | --- | --- |\n");
+    out.push_str("\n## Additive Presets\n\n| ID | Targets | Effective leaves | Expected runtime report |\n| --- | --- | --- | --- |\n");
     for preset in sorted_presets(descriptor) {
         writeln!(
             out,
-            "| `{}` | {} | {} | {} | {} |",
+            "| `{}` | {} | {} | {} |",
             preset.id,
             code_list(preset.targets.iter().map(String::as_str)),
             code_list(effective[&preset.id].iter().map(String::as_str)),
-            code_list(preset.excludes.iter().map(String::as_str)),
             code_list(
                 preset
                     .expected_runtime_capabilities
                     .iter()
                     .map(String::as_str)
             )
-        )
-        .unwrap();
-    }
-    out.push_str("\n## Surface Mappings\n\n| ID | Surface | Artifact | Selection |\n| --- | --- | --- | --- |\n");
-    let mut mappings = descriptor.surface_mappings.iter().collect::<Vec<_>>();
-    mappings.sort_by(|left, right| left.id.cmp(&right.id));
-    for mapping in mappings {
-        let selection = mapping.preset.clone().unwrap_or_else(|| {
-            if mapping.transport_only {
-                "transport only".to_string()
-            } else {
-                mapping.capabilities.join(", ")
-            }
-        });
-        writeln!(
-            out,
-            "| `{}` | `{}` | `{}` | `{}` |",
-            mapping.id, mapping.surface, mapping.artifact, selection
         )
         .unwrap();
     }
@@ -2214,14 +1886,21 @@ mod tests {
             "implications",
             "OUTPUTS",
             "CAPABILITY_PRESETS",
-            "SURFACE_MAPPINGS",
-            "@mermanjs/analysis",
-            "typst-publish",
         ] {
             assert!(rust.contains(required), "Rust projection missed {required}");
             assert!(
                 typescript.contains(required),
                 "TypeScript projection missed {required}"
+            );
+        }
+        for forbidden in ["SURFACE_MAPPINGS", "@mermanjs/", "typst-publish"] {
+            assert!(
+                !rust.contains(forbidden),
+                "Rust projection retained non-semantic surface data: {forbidden}"
+            );
+            assert!(
+                !typescript.contains(forbidden),
+                "TypeScript projection retained non-semantic surface data: {forbidden}"
             );
         }
         for required in [
@@ -2245,7 +1924,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_presets_and_surface_mappings_match_ktd4() {
+    fn committed_additive_presets_and_implications_match_ktd4() {
         fn ids(values: &[&str]) -> BTreeSet<String> {
             values.iter().map(|value| (*value).to_string()).collect()
         }
@@ -2265,6 +1944,7 @@ mod tests {
             effective_preset_sets(&descriptor, &capability_by_id, &preset_by_id).unwrap();
 
         let expected = BTreeMap::from([
+            ("preset-svg-basic", ids(&["svg"])),
             (
                 "preset-native-svg",
                 ids(&[
@@ -2367,34 +2047,26 @@ mod tests {
         .collect::<BTreeMap<_, _>>();
         assert_eq!(effective, expected);
 
-        let mappings = descriptor
-            .surface_mappings
-            .iter()
-            .map(|mapping| (mapping.id.as_str(), mapping))
-            .collect::<BTreeMap<_, _>>();
-        assert_eq!(
-            mappings.keys().copied().collect::<BTreeSet<_>>(),
-            BTreeSet::from([
-                "typst-bridge",
-                "typst-publish",
-                "typst-svg",
-                "web-analysis",
-                "web-ascii",
-                "web-editor",
-                "web-full",
-                "web-render",
-            ])
-        );
-        for (id, artifact, preset) in [
-            ("web-analysis", "@mermanjs/analysis", "preset-web-analysis"),
-            ("web-render", "@mermanjs/render", "preset-web-render"),
-            ("web-editor", "@mermanjs/editor", "preset-web-editor"),
-            ("web-ascii", "@mermanjs/ascii", "preset-web-ascii"),
-            ("web-full", "@mermanjs/web", "preset-web-full"),
-        ] {
-            assert_eq!(mappings[id].artifact, artifact);
-            assert_eq!(mappings[id].preset.as_deref(), Some(preset));
+        for id in ["layout-cytoscape", "layout-elk", "math"] {
+            assert_eq!(
+                capability_by_id[id]
+                    .implications
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>(),
+                BTreeSet::from(["svg"]),
+                "{id} must imply svg"
+            );
         }
+        assert_eq!(
+            capability_by_id["math"]
+                .targets
+                .iter()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["native", "web"]),
+            "Typst math remains unadmitted until U11c"
+        );
         assert_eq!(
             preset_by_id["preset-web-render"]
                 .expected_runtime_capabilities
@@ -2409,44 +2081,6 @@ mod tests {
                 "browser-time",
                 "browser-random",
                 "browser-timing",
-            ])
-        );
-        assert!(mappings["typst-bridge"].transport_only);
-        assert!(mappings["typst-bridge"].capabilities.is_empty());
-        assert_eq!(
-            mappings["typst-bridge"].expected_runtime_capabilities,
-            ["typst-transport"]
-        );
-        assert_eq!(mappings["typst-svg"].capabilities, ["svg"]);
-        assert_eq!(
-            mappings["typst-svg"]
-                .expected_runtime_capabilities
-                .iter()
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            ids(&["svg", "typst-transport"])
-        );
-        assert_eq!(
-            mappings["typst-publish"]
-                .capabilities
-                .iter()
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            ids(&["svg", "analysis", "layout-cytoscape", "layout-elk", "math",])
-        );
-        assert_eq!(
-            mappings["typst-publish"]
-                .expected_runtime_capabilities
-                .iter()
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            ids(&[
-                "svg",
-                "analysis",
-                "layout-cytoscape",
-                "layout-elk",
-                "math",
-                "typst-transport",
             ])
         );
     }
@@ -2576,6 +2210,26 @@ mod tests {
         assert!(
             error.contains(&format!("presets[{index}].includes"))
                 && error.contains("unavailable on target `typst`"),
+            "unexpected diagnostic: {error}"
+        );
+    }
+
+    #[test]
+    fn fixture_rejects_nonsemantic_build_and_exclusion_fields() {
+        let mut with_excludes = committed_value();
+        let preset = preset_index(&with_excludes, "preset-svg-basic");
+        with_excludes["presets"][preset]["excludes"] = json!(["math"]);
+        let error = validate_fixture(with_excludes).unwrap_err();
+        assert!(
+            error.contains("unknown field `excludes`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut with_surface_mappings = committed_value();
+        with_surface_mappings["surface_mappings"] = json!([]);
+        let error = validate_fixture(with_surface_mappings).unwrap_err();
+        assert!(
+            error.contains("unknown field `surface_mappings`"),
             "unexpected diagnostic: {error}"
         );
     }

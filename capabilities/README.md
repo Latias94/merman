@@ -1,9 +1,10 @@
 # Capability Surface
 
 `feature-surface-v1.json` is the only authority for public capability IDs, output IDs,
-implications, presets, expected runtime reports, target restrictions, and Web/Typst surface
-mappings. Cargo manifests remain hand-written compilation declarations. They are not generated
-from this file.
+implications, additive presets, expected runtime reports, and target restrictions. Exact Cargo
+recipes and release artifacts belong to `artifact-profiles-v1.json`; protocol ownership belongs to
+`transport-contracts-v1.json`. Cargo manifests remain hand-written compilation declarations. They
+are not generated from any descriptor.
 
 The descriptor establishes the target architecture before every consumer has migrated. It does
 not claim that current Cargo manifests, runtime reports, native bindings, Web packages, or Typst
@@ -33,6 +34,17 @@ cargo run -p xtask -- verify-capability-surface --descriptor path/to/fixture.jso
 The semantic SHA-256 digest excludes the migration ledger. Clearing transitional debt therefore
 does not masquerade as a capability-catalog change.
 
+## Contract Boundaries
+
+A preset says only which capabilities are requested. Cargo features are additive, so a preset
+cannot prove that another feature or dependency is absent. Only an observed artifact profile with
+`default_features: false`, a structurally verified Cargo invocation, and measured closure evidence
+may make an exclusion claim.
+
+Package names, target triples, release surfaces, resource defaults, and wire versions deliberately
+do not live in this descriptor. Keeping those facts in their owning authorities prevents a package
+or transport migration from changing the semantic capability digest.
+
 ## Migration Ledger
 
 The descriptor's `migration_ledger` implements a three-stage transition:
@@ -57,7 +69,7 @@ engine, environment adapter, or compiled tool command. Its descriptor record mus
 - a typed missing-capability contract or an explicitly removed callable surface;
 - a material dependency, target, license, security, resource, build-time, or artifact-size
   boundary;
-- at least one applicable preset that includes it and one that explicitly excludes it;
+- at least one applicable preset that includes it and one that omits it;
 - measured evidence and the gate that reproduces that evidence.
 
 New leaves require `observed` evidence. The plan-mandated U1 leaves are temporarily marked

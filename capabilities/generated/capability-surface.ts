@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:25b41014ae0a5ce4657f7b0ccd373a7b4d3314a41a05a3783f97ad085c5d16f1" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02b5dc2a1ac69bf8e07cb3ffc8f665a3619713c07a69db00bbca2e03998c9fa8" as const;
 
 export const TARGETS = [
   {
@@ -108,7 +108,9 @@ export const CAPABILITIES = [
       "typst",
       "web"
     ],
-    "implications": []
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "layout-elk",
@@ -119,7 +121,9 @@ export const CAPABILITIES = [
       "typst",
       "web"
     ],
-    "implications": []
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "math",
@@ -127,10 +131,11 @@ export const CAPABILITIES = [
     "description": "Render Mermaid math labels with the selected math engine.",
     "targets": [
       "native",
-      "typst",
       "web"
     ],
-    "implications": []
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "network-icons",
@@ -476,6 +481,21 @@ export const CAPABILITY_PRESETS = [
     ]
   },
   {
+    "id": "preset-svg-basic",
+    "description": "SVG workflow without optional layout or math engines.",
+    "targets": [
+      "native",
+      "typst",
+      "web"
+    ],
+    "capabilities": [
+      "svg"
+    ],
+    "expected_runtime_capabilities": [
+      "svg"
+    ]
+  },
+  {
     "id": "preset-web-analysis",
     "description": "Browser analysis artifact.",
     "targets": [
@@ -568,155 +588,6 @@ export const CAPABILITY_PRESETS = [
   }
 ] as const;
 
-export const SURFACE_MAPPINGS = [
-  {
-    "id": "typst-bridge",
-    "surface": "typst",
-    "artifact": "bridge",
-    "target": "typst",
-    "preset": null,
-    "capabilities": [],
-    "expected_runtime_capabilities": [
-      "typst-transport"
-    ],
-    "transport_only": true
-  },
-  {
-    "id": "typst-publish",
-    "surface": "typst",
-    "artifact": "publish",
-    "target": "typst",
-    "preset": null,
-    "capabilities": [
-      "analysis",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg",
-      "typst-transport"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "typst-svg",
-    "surface": "typst",
-    "artifact": "svg",
-    "target": "typst",
-    "preset": null,
-    "capabilities": [
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "svg",
-      "typst-transport"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "web-analysis",
-    "surface": "web",
-    "artifact": "@mermanjs/analysis",
-    "target": "web",
-    "preset": "preset-web-analysis",
-    "capabilities": [
-      "analysis"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "web-ascii",
-    "surface": "web",
-    "artifact": "@mermanjs/ascii",
-    "target": "web",
-    "preset": "preset-web-ascii",
-    "capabilities": [
-      "ascii"
-    ],
-    "expected_runtime_capabilities": [
-      "ascii"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "web-editor",
-    "surface": "web",
-    "artifact": "@mermanjs/editor",
-    "target": "web",
-    "preset": "preset-web-editor",
-    "capabilities": [
-      "analysis",
-      "editor"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "editor"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "web-full",
-    "surface": "web",
-    "artifact": "@mermanjs/web",
-    "target": "web",
-    "preset": "preset-web-full",
-    "capabilities": [
-      "analysis",
-      "ascii",
-      "editor",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "ascii",
-      "browser-random",
-      "browser-time",
-      "browser-timing",
-      "editor",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "transport_only": false
-  },
-  {
-    "id": "web-render",
-    "surface": "web",
-    "artifact": "@mermanjs/render",
-    "target": "web",
-    "preset": "preset-web-render",
-    "capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "browser-random",
-      "browser-time",
-      "browser-timing",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "transport_only": false
-  }
-] as const;
-
 export const TARGET_IDS = [
   "native",
   "typst",
@@ -774,6 +645,7 @@ export const PRESET_IDS = [
   "preset-native-sdk",
   "preset-native-svg",
   "preset-static-svg",
+  "preset-svg-basic",
   "preset-web-analysis",
   "preset-web-ascii",
   "preset-web-editor",
@@ -782,16 +654,3 @@ export const PRESET_IDS = [
 ] as const;
 
 export type CapabilityPresetId = (typeof PRESET_IDS)[number];
-
-export const SURFACE_MAPPING_IDS = [
-  "typst-bridge",
-  "typst-publish",
-  "typst-svg",
-  "web-analysis",
-  "web-ascii",
-  "web-editor",
-  "web-full",
-  "web-render"
-] as const;
-
-export type SurfaceMappingId = (typeof SURFACE_MAPPING_IDS)[number];
