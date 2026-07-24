@@ -199,26 +199,26 @@ class RepositoryContractTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        descriptor = json.loads(
-            (REPOSITORY_ROOT / "platforms/web/web-surface-descriptor.json").read_text(
+        artifact_profiles = json.loads(
+            (REPOSITORY_ROOT / "capabilities/artifact-profiles-v1.json").read_text(
                 encoding="utf-8"
             )
         )
         scopes = {scope["id"]: scope for scope in contract["artifact_scopes"]}
-        presets = {preset["name"]: preset for preset in descriptor["presets"]}
+        profiles = {
+            profile["id"]: profile for profile in artifact_profiles["profiles"]
+        }
 
         def inherits(scope_id: str, expected_parent: str) -> bool:
             return expected_parent in scopes[scope_id]["extends"] or any(
                 inherits(parent, expected_parent) for parent in scopes[scope_id]["extends"]
             )
 
-        capabilities = presets["browser-full"]["capabilities"]
-        self.assertEqual(
-            inherits("web-full", "elk-render"), capabilities["elk_layout"]
-        )
-        self.assertEqual(
-            inherits("web-full", "ratex-render"), capabilities["ratex_math"]
-        )
+        capabilities = set(profiles["web-full"]["expected"]["capabilities"])
+        self.assertTrue(inherits("web-full", "elk-render"))
+        self.assertIn("layout-elk", capabilities)
+        self.assertNotIn("math", capabilities)
+        self.assertFalse(inherits("web-full", "ratex-render"))
 
 
 if __name__ == "__main__":

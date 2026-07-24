@@ -9,7 +9,7 @@ import { createAuthenticatedBrowserRealmChannel } from "./browser-realm-channel.
 
 const ENGINE_ARTIFACT = {
   schemaVersion: 1 as const,
-  id: "compare-mermaid" as const,
+  id: "mermaid" as const,
   bytes: 17,
   sha256: "a".repeat(64),
   resourceUrl: null,
@@ -118,7 +118,7 @@ test("opaque realm rejects timeout and pre-aborted handshakes", async () => {
     await assert.rejects(
       createAuthenticatedBrowserRealmChannel({
         kind: "benchmark",
-        engineArtifact: { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+        engineArtifact: ENGINE_ARTIFACT,
         createRealmDocument: timeoutHarness.createRealmDocument,
         initialViewport: { width: 800, height: 600 },
         signal: new AbortController().signal,
@@ -141,7 +141,7 @@ test("opaque realm rejects timeout and pre-aborted handshakes", async () => {
     await assert.rejects(
       createAuthenticatedBrowserRealmChannel({
         kind: "benchmark",
-        engineArtifact: { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+        engineArtifact: ENGINE_ARTIFACT,
         createRealmDocument: abortHarness.createRealmDocument,
         initialViewport: { width: 800, height: 600 },
         signal: controller.signal,

@@ -26,7 +26,7 @@ For libraries and applications, prefer an optional documentation feature:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.3", optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"], optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -61,7 +61,7 @@ If you are fine compiling the rustdoc integration in ordinary builds, use a norm
 
 ```toml
 [dependencies]
-merman-rustdoc = "=0.8.0-alpha.3"
+merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"] }
 ```
 
 This works for local `cargo doc` and docs.rs with the simple `cfg_attr(doc, ...)` examples below.

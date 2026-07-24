@@ -23,7 +23,9 @@ const ROOT_FILE_INPUTS = [
   "Cargo.toml",
   "rust-toolchain",
   "rust-toolchain.toml",
-  "abi/merman-v2.json",
+  "abi/text-measurement-v1.json",
+  "capabilities/artifact-profiles-v1.json",
+  "capabilities/feature-surface-v1.json",
   "platforms/web/scripts/build-wasm.mjs",
   "platforms/web/web-surface-descriptor.json",
 ];
@@ -33,7 +35,7 @@ const REQUIRED_ARTIFACT_FILES = Object.freeze([
   "merman_wasm.js",
   "merman_wasm_bg.wasm",
   "merman_wasm_bg.wasm.d.ts",
-  "merman_wasm_preset.json",
+  "merman_wasm_artifact_profile.json",
   "package.json",
 ]);
 export const WASM_ARTIFACT_FILE_NAMES = Object.freeze([
@@ -75,7 +77,6 @@ export function buildWasmInputManifest({
 }
 
 export function verifyWasmInputManifest({
-  allowedArtifactDirectories = [],
   manifest,
   metadata,
   outputRoot,
@@ -109,9 +110,7 @@ export function verifyWasmInputManifest({
   let currentArtifacts;
   try {
     currentInputs = collectWasmInputEntries({ metadata, repoRoot });
-    currentArtifacts = collectArtifactEntries(outputRoot, {
-      allowedSiblingDirectories: allowedArtifactDirectories,
-    });
+    currentArtifacts = collectArtifactEntries(outputRoot);
   } catch (error) {
     reasons.push(error instanceof Error ? error.message : String(error));
     return { ok: false, reasons };
@@ -210,10 +209,7 @@ export function collectWasmInputEntries({ metadata, repoRoot }) {
     .sort((left, right) => compareNames(left.path, right.path));
 }
 
-export function collectArtifactEntries(
-  outputRoot,
-  { allowedSiblingDirectories = [] } = {},
-) {
+export function collectArtifactEntries(outputRoot) {
   if (!existsSync(outputRoot)) {
     throw new Error(`WASM artifact directory is missing: ${outputRoot}`);
   }
@@ -223,7 +219,6 @@ export function collectArtifactEntries(
     }
   }
 
-  const allowedDirectories = new Set(allowedSiblingDirectories);
   const files = new Set();
   for (const entry of readdirSync(outputRoot, { withFileTypes: true })) {
     const absolute = path.join(outputRoot, entry.name);
@@ -235,8 +230,6 @@ export function collectArtifactEntries(
       files.add(absolute);
     } else if (entry.isDirectory() && entry.name === "snippets") {
       addTreeFiles(absolute, files);
-    } else if (entry.isDirectory() && allowedDirectories.has(entry.name)) {
-      continue;
     } else {
       throw new Error(`Unowned WASM artifact entry: ${entry.name}`);
     }
@@ -344,11 +337,10 @@ function normalizedBuildConfig(preset) {
     throw new Error("WASM preset descriptor is invalid.");
   }
   if (
-    !preset.capabilities ||
-    typeof preset.capabilities !== "object" ||
-    Array.isArray(preset.capabilities)
+    !Array.isArray(preset.runtime_capability_ids) ||
+    !preset.runtime_capability_ids.every((item) => typeof item === "string")
   ) {
-    throw new Error("WASM preset capabilities are invalid.");
+    throw new Error("WASM preset runtime capability IDs are invalid.");
   }
   if (typeof preset.default_features !== "boolean") {
     throw new Error("WASM preset default_features must be boolean.");
@@ -356,22 +348,12 @@ function normalizedBuildConfig(preset) {
   if (!Array.isArray(preset.features) || !preset.features.every((item) => typeof item === "string")) {
     throw new Error("WASM preset features must be strings.");
   }
-  const capabilities = Object.fromEntries(
-    Object.entries(preset.capabilities)
-      .sort(([left], [right]) => compareNames(left, right))
-      .map(([name, enabled]) => {
-        if (typeof enabled !== "boolean") {
-          throw new Error(`WASM preset capability is not boolean: ${name}`);
-        }
-        return [name, enabled];
-      }),
-  );
   return {
     name: preset.name,
     surface: preset.surface,
     default_features: preset.default_features,
     features: [...preset.features].sort(compareNames),
-    capabilities,
+    runtime_capability_ids: [...preset.runtime_capability_ids].sort(compareNames),
   };
 }
 

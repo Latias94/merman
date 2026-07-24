@@ -18,7 +18,7 @@ render path can avoid duplicate JSON transport.
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline pie_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline pie_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Parent JSON baseline:
@@ -26,7 +26,7 @@ Parent JSON baseline:
 ```text
 git worktree add -f E:\Rust\merman-pie-json-baseline d704a17d
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\bench-pie-json-target'
-cargo bench -p merman --features render --bench pipeline pie_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline pie_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 git worktree remove --force E:\Rust\merman-pie-json-baseline
 ```
 

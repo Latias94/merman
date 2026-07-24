@@ -212,7 +212,7 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
         zenumlFirstLoadParentPublication = cold.parentPublication !== undefined;
       }
       expect(await readEngineSentinel(frame)).toMatchObject({
-        id: "benchmark-mermaid",
+        id: "mermaid",
         version: "11.16.0",
       });
 

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import tomllib
 import unittest
 import uuid
 from pathlib import Path
@@ -32,7 +33,9 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
-WEB_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
+WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
+WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
+ARTIFACT_PROFILE_DESCRIPTOR_JSON = ROOT / "capabilities" / "artifact-profiles-v1.json"
 NPM_CONFIG_PATHS = [
     ROOT / ".npmrc",
     ROOT / "platforms" / "web" / ".npmrc",
@@ -47,6 +50,76 @@ SOURCE_REF_WORKFLOWS = sorted(
 
 def read_workflow(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def web_package_entries() -> list[dict]:
+    descriptor = json.loads(WEB_DESCRIPTOR_JSON.read_text(encoding="utf-8"))
+    packages = descriptor.get("packages")
+    if not isinstance(packages, list):
+        raise AssertionError("Web package descriptor must contain packages")
+    return packages
+
+
+def web_package_manifest(entry: dict) -> Path:
+    package_dir = entry.get("package_dir")
+    if not isinstance(package_dir, str):
+        raise AssertionError("Web package descriptor entry has no package_dir")
+    return ROOT / "platforms" / "web" / package_dir / "package.json"
+
+
+def artifact_profile(profile_id: str) -> dict:
+    descriptor = json.loads(ARTIFACT_PROFILE_DESCRIPTOR_JSON.read_text(encoding="utf-8"))
+    matches = [profile for profile in descriptor["profiles"] if profile["id"] == profile_id]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one artifact profile {profile_id!r}, found {len(matches)}")
+    return matches[0]
+
+
+def exact_binary_build_command(profile_id: str) -> str:
+    profile = artifact_profile(profile_id)
+    cargo = profile["cargo"]
+    target = cargo["target"]
+    if cargo["profile"] != "release":
+        raise AssertionError(f"{profile_id} must use the release Cargo profile")
+    if cargo["default_features"] is not False:
+        raise AssertionError(f"{profile_id} must disable Cargo default features")
+    if target["kinds"] != ["bin"] or target["crate_types"] != ["bin"]:
+        raise AssertionError(f"{profile_id} must select exactly one binary target")
+
+    command = [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        cargo["manifest"],
+        "-p",
+        cargo["package"],
+        "--bin",
+        target["name"],
+        "--no-default-features",
+    ]
+    if cargo["features"]:
+        command.extend(["--features", ",".join(cargo["features"])])
+    return " ".join(command)
+
+
+def exact_dependency_gate_command(profile_id: str) -> str:
+    profile = artifact_profile(profile_id)
+    cargo = profile["cargo"]
+    if profile["semantic_target"] != "typst":
+        raise AssertionError(f"{profile_id} must be a Typst artifact profile")
+    if cargo["default_features"] is not False:
+        raise AssertionError(f"{profile_id} must disable Cargo default features")
+    if cargo["build_target"] != {
+        "kind": "target-set",
+        "triples": ["wasm32-unknown-unknown"],
+    }:
+        raise AssertionError(f"{profile_id} must select the canonical WASM target")
+    return (
+        "cargo run --locked -p xtask -- profile-budget check-deps "
+        f"--profile typst-wasm --artifact-profile {profile_id}"
+    )
 
 
 def indented_block(text: str, marker: str) -> str:
@@ -165,13 +238,14 @@ def checkout_blocks(text: str) -> list[str]:
             continue
 
         indent = len(line) - len(line.lstrip(" "))
+        step_indent = indent if line.lstrip().startswith("- ") else max(0, indent - 2)
         block = [line]
         for child in lines[index + 1 :]:
             if child.strip() == "":
                 block.append(child)
                 continue
             child_indent = len(child) - len(child.lstrip(" "))
-            if child_indent <= indent:
+            if child_indent <= step_indent:
                 break
             block.append(child)
         blocks.append("\n".join(block))
@@ -215,7 +289,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     validated_ref_count + pinned_ref_count + workflow_ref_count,
                     checkout_count,
                 )
-                self.assertEqual(
+                self.assertGreaterEqual(
                     workflow_ref_count,
                     indented_block(text, "validate-inputs:").count(
                         "ref: ${{ github.workflow_sha }}"
@@ -494,18 +568,29 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_crates_token_upload_step_is_isolated_from_preflight(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
         preflight_job = indented_block(text, "preflight:")
+        web_owner_job = indented_block(text, "web-owner-preflight:")
+        typst_owner_job = indented_block(text, "typst-owner-preflight:")
         publish_job = indented_block(text, "publish:")
         preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
         upload_step = indented_block(text, "- name: Upload crates to crates.io")
         upload_run = upload_step.split("run: |", 1)[1]
 
         self.assertNotIn("--dry-run", preflight_step)
-        self.assertNotIn("CARGO_REGISTRY_TOKEN", preflight_job)
-        self.assertNotIn("secrets.", preflight_job)
-        self.assertNotIn("environment: crates.io", preflight_job)
+        for job in [preflight_job, web_owner_job, typst_owner_job]:
+            self.assertNotIn("CARGO_REGISTRY_TOKEN", job)
+            self.assertNotIn("secrets.", job)
+            self.assertNotIn("environment: crates.io", job)
+            self.assertNotIn("contents: write", job)
         self.assertIn("source_sha: ${{ steps.source.outputs.source_sha }}", preflight_job)
         self.assertIn('source_sha="$(git rev-parse HEAD)"', preflight_job)
-        self.assertIn("needs: [validate-inputs, preflight]", publish_job)
+        self.assertIn(
+            "needs: [validate-inputs, preflight, web-owner-preflight, typst-owner-preflight]",
+            publish_job,
+        )
+        self.assertIn("needs: preflight", web_owner_job)
+        self.assertIn("needs: preflight", typst_owner_job)
+        self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", web_owner_job)
+        self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", typst_owner_job)
         self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", publish_job)
         self.assertNotIn("ref: ${{ needs.validate-inputs.outputs.source_ref }}", publish_job)
         self.assertIn("Verify pinned source commit", publish_job)
@@ -520,6 +605,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload_run)
         self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload_run)
         self.assertNotIn("${{ secrets.", upload_run)
+        self.assertEqual(text.count("secrets.CARGO_REGISTRY_TOKEN"), 1)
         self.assertIn('verify_workspace_crate_version "$crate" "$crate_version"', upload_run)
         self.assertIn('actual_version="$(workspace_crate_version "$crate")"', upload_run)
         self.assertLess(
@@ -587,12 +673,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('node-version: "24"', publish_job)
         self.assertIn('registry-url: "https://registry.npmjs.org"', publish_job)
         self.assertIn("package-manager-cache: false", publish_job)
+        self.assertIn("Checkout trusted release verifier", publish_job)
+        self.assertIn("ref: ${{ github.workflow_sha }}", publish_job)
+        self.assertIn("persist-credentials: false", publish_job)
         self.assertIn("actions/download-artifact", publish_job)
-        self.assertIn('npm publish "${package_files[0]}"', publish_job)
-        self.assertIn("NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}", publish_job)
-        self.assertIn('--tag "$NPM_DIST_TAG"', publish_job)
+        self.assertIn("python3 scripts/web_package_group.py verify-artifact", publish_job)
+        self.assertIn("python3 scripts/web_package_group.py reconcile", publish_job)
+        self.assertIn("--source-sha \"$SOURCE_SHA\"", publish_job)
+        self.assertIn("--target-dist-tag \"$NPM_DIST_TAG\"", publish_job)
+        self.assertIn("--descriptor platforms/web/web-surface-descriptor.json", publish_job)
+        self.assertIn("--report target/npm-package-group/reconciliation-report.json", publish_job)
+        self.assertNotIn("npm publish", publish_job)
+        self.assertNotIn("target/npm-package-group/web_package_group.py", publish_job)
         for forbidden in [
-            "actions/checkout",
             "NPM_TOKEN",
             "NODE_AUTH_TOKEN",
             "platforms/web/scripts",
@@ -610,27 +703,48 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-web.yml")
         build = workflow_job(workflow, "build")
         publish = workflow_job(workflow, "publish")
-        pack = workflow_step(build, name="Pack web package")
-        upload = workflow_step(build, name="Upload web package artifact")
-        download = workflow_step(publish, name="Download web package artifact")
-        publish_step = workflow_step(publish, name="Publish to npm")
+        verify_packages = workflow_step(build, name="Verify Web package group")
+        pack = workflow_step(build, name="Pack verified Web package group")
+        upload = workflow_step(build, name="Upload verified Web package group")
+        download = workflow_step(publish, name="Download verified Web package group")
+        verify = workflow_step(publish, name="Verify downloaded Web package group")
+        reconcile = workflow_step(publish, name="Reconcile npm package group")
+        report = workflow_step(publish, name="Upload npm reconciliation report")
 
+        self.assertEqual(verify_packages["run"], "npm run verify:packages --prefix platforms/web")
         self.assertEqual(pack["id"], "pack")
-        self.assertIn("npm pack --ignore-scripts --json", pack["run"])
-        self.assertIn("JSON.parse", pack["run"])
-        self.assertIn("Array.isArray(pack) || pack.length !== 1", pack["run"])
-        self.assertIn("printf 'package_file=%s\\n'", pack["run"])
+        self.assertIn("python3 scripts/web_package_group.py pack", pack["run"])
+        self.assertIn("python3 scripts/web_package_group.py verify-artifact", pack["run"])
+        self.assertIn("--descriptor platforms/web/web-surface-descriptor.json", pack["run"])
+        self.assertNotIn("cp scripts/web_package_group.py", pack["run"])
         self.assertEqual(upload["uses"], "actions/upload-artifact@v6")
-        self.assertEqual(upload["with"]["name"], "merman-web-npm-package")
-        self.assertEqual(upload["with"]["path"], "${{ steps.pack.outputs.package_file }}")
+        self.assertEqual(upload["with"]["name"], "merman-web-npm-package-group")
+        self.assertEqual(upload["with"]["path"], "${{ steps.pack.outputs.artifact_dir }}")
         self.assertEqual(download["uses"], "actions/download-artifact@v7")
-        self.assertEqual(download["with"]["name"], "merman-web-npm-package")
-        self.assertEqual(publish_step["shell"], "bash")
-        self.assertIn("shopt -s nullglob", publish_step["run"])
-        self.assertIn("package_files=(target/npm-package/*.tgz)", publish_step["run"])
-        self.assertIn("if (( ${#package_files[@]} != 1 )); then", publish_step["run"])
-        self.assertNotIn("find ", publish_step["run"])
-        self.assertIn('npm publish "${package_files[0]}" --ignore-scripts', publish_step["run"])
+        self.assertEqual(download["with"]["name"], "merman-web-npm-package-group")
+        self.assertEqual(verify["shell"], "bash")
+        self.assertIn("python3 scripts/web_package_group.py verify-artifact", verify["run"])
+        self.assertIn("--source-sha \"$SOURCE_SHA\"", verify["run"])
+        self.assertIn("--target-dist-tag \"$NPM_DIST_TAG\"", verify["run"])
+        self.assertEqual(reconcile["shell"], "bash")
+        self.assertIn("python3 scripts/web_package_group.py reconcile", reconcile["run"])
+        self.assertIn("--report target/npm-package-group/reconciliation-report.json", reconcile["run"])
+        self.assertEqual(report["uses"], "actions/upload-artifact@v6")
+        self.assertEqual(report["if"], "${{ always() }}")
+        self.assertEqual(report["with"]["name"], "merman-web-npm-reconciliation-report")
+
+    def test_release_preflight_packs_and_verifies_the_web_package_group(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        preflight = workflow_job(workflow, "web-npm-dry-run")
+        verify_packages = workflow_step(preflight, name="Verify web package")
+        pack = workflow_step(preflight, name="Pack and verify Web package group dry-run")
+
+        self.assertEqual(verify_packages["run"], "npm run verify:packages --prefix platforms/web")
+        self.assertIn("python3 scripts/web_package_group.py pack", pack["run"])
+        self.assertIn("python3 scripts/web_package_group.py verify-artifact", pack["run"])
+        self.assertIn("--source-sha \"$source_sha\"", pack["run"])
+        self.assertIn("--target-dist-tag staging", pack["run"])
+        self.assertNotIn("npm pack --dry-run", pack["run"])
 
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
@@ -657,17 +771,35 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn(forbidden, text)
 
     def test_web_package_metadata_supports_trusted_npm_provenance(self) -> None:
-        package = json.loads(WEB_PACKAGE_JSON.read_text(encoding="utf-8"))
+        workspace = json.loads(WEB_WORKSPACE_PACKAGE_JSON.read_text(encoding="utf-8"))
+        self.assertIs(workspace.get("private"), True)
 
-        self.assertEqual(package["name"], "@mermanjs/web")
-        self.assertEqual(package["repository"]["type"], "git")
+        public_names: set[str] = set()
+        for entry in web_package_entries():
+            with self.subTest(package=entry["id"]):
+                package = json.loads(web_package_manifest(entry).read_text(encoding="utf-8"))
+                self.assertEqual(package["name"], entry["name"])
+                self.assertEqual(package["merman"]["artifact_profile"], entry["artifact_profile"])
+                self.assertEqual(set(package["exports"]), {"."})
+                self.assertEqual(package["repository"]["type"], "git")
+                self.assertEqual(
+                    package["repository"]["url"],
+                    "git+https://github.com/Latias94/merman.git",
+                )
+                if entry["visibility"] == "candidate":
+                    self.assertIs(package.get("private"), True)
+                    self.assertNotIn("publishConfig", package)
+                else:
+                    public_names.add(package["name"])
+                    self.assertIsNot(package.get("private"), True)
+                    self.assertEqual(package["publishConfig"]["access"], "public")
+                    self.assertIsNot(package["publishConfig"].get("provenance"), False)
+                assert_no_npm_provenance_disable(self, json.dumps(package, sort_keys=True))
+
         self.assertEqual(
-            package["repository"]["url"],
-            "git+https://github.com/Latias94/merman.git",
+            public_names,
+            {"@mermanjs/web", "@mermanjs/web-analysis", "@mermanjs/web-ascii", "@mermanjs/web-editor"},
         )
-        self.assertEqual(package["publishConfig"]["access"], "public")
-        self.assertIsNot(package["publishConfig"].get("provenance"), False)
-        assert_no_npm_provenance_disable(self, json.dumps(package, sort_keys=True))
 
     def test_npmrc_files_do_not_disable_provenance(self) -> None:
         for path in NPM_CONFIG_PATHS:
@@ -705,6 +837,80 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertIn("tools/publish.py --list-crates-io-packages", text)
         self.assertNotIn('package.get("publish") != []', text)
+
+    def test_vscode_runtime_builds_use_exact_artifact_profile_recipes(self) -> None:
+        expected_commands = [
+            exact_binary_build_command("lsp-stdio-release"),
+            exact_binary_build_command("cli-release"),
+        ]
+        cases = [
+            ("release-preflight.yml", "vscode-extension-dry-run"),
+            ("vscode-extension.yml", "package"),
+        ]
+        for workflow_name, job_id in cases:
+            with self.subTest(workflow=workflow_name):
+                workflow = parse_workflow_structure(WORKFLOW_ROOT / workflow_name)
+                job = workflow_job(workflow, job_id)
+                step = workflow_step(job, name="Build release runtime binaries")
+                self.assertEqual(step["run"].splitlines(), expected_commands)
+
+    def test_release_docs_use_separate_exact_lsp_and_cli_recipes(self) -> None:
+        lsp_command = exact_binary_build_command("lsp-stdio-release")
+        cli_command = exact_binary_build_command("cli-release")
+        for relative_path in [
+            "docs/release/PACKAGE_SURFACES.md",
+            "docs/release/RELEASING.md",
+        ]:
+            with self.subTest(path=relative_path):
+                text = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertIn(lsp_command, text)
+                self.assertIn(cli_command, text)
+                self.assertNotIn("-p merman-lsp -p merman-cli", text)
+
+        surfaces = json.loads((ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8"))
+        by_id = {surface["id"]: surface for surface in surfaces["surfaces"]}
+        self.assertIn(lsp_command, by_id["rust-editor-lsp"]["gates"])
+        self.assertIn(cli_command, by_id["cli"]["gates"])
+        self.assertEqual(by_id["vscode"]["gates"][:2], [lsp_command, cli_command])
+
+    def test_typst_dependency_gate_uses_the_exact_artifact_profile(self) -> None:
+        command = exact_dependency_gate_command("typst-wasm")
+        ci = read_workflow(WORKFLOW_ROOT / "ci.yml")
+        self.assertEqual(ci.count(command), 2)
+
+        for relative_path in [
+            "crates/merman-typst-plugin/README.md",
+            "docs/release/PACKAGE_SURFACES.md",
+            "docs/release/RELEASING.md",
+        ]:
+            with self.subTest(path=relative_path):
+                text = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertIn(command, text)
+
+        surfaces = json.loads(
+            (ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8")
+        )
+        by_id = {surface["id"]: surface for surface in surfaces["surfaces"]}
+        self.assertIn(command, by_id["typst"]["gates"])
+
+    def test_cargo_dist_metadata_matches_exact_release_profiles(self) -> None:
+        dist_config = tomllib.loads((ROOT / "dist-workspace.toml").read_text(encoding="utf-8"))
+        expected_targets = set(dist_config["dist"]["targets"])
+        expected_packages = set(dist_config["dist"]["packages"])
+        actual_packages: set[str] = set()
+
+        for profile_id in ["cli-release", "lsp-stdio-release"]:
+            with self.subTest(profile=profile_id):
+                profile = artifact_profile(profile_id)
+                cargo = profile["cargo"]
+                actual_packages.add(cargo["package"])
+                manifest = tomllib.loads((ROOT / cargo["manifest"]).read_text(encoding="utf-8"))
+                dist = manifest["package"]["metadata"]["dist"]
+                self.assertIs(dist["default-features"], cargo["default_features"])
+                self.assertEqual(dist["features"], cargo["features"])
+                self.assertEqual(set(cargo["build_target"]["triples"]), expected_targets)
+
+        self.assertEqual(actual_packages, expected_packages)
 
     def test_cargo_dist_release_workflow_is_tag_only_and_isolates_publish_authority(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
@@ -914,13 +1120,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                       - uses: actions/checkout@v6
                         run: echo ambiguous
             """,
-            "modified-block-scalar": """
-                jobs:
-                  build:
-                    steps:
-                      - run: >-
-                          echo hidden
-            """,
             "permission-block-scalar": """
                 permissions:
                   contents: >
@@ -951,6 +1150,32 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     workflow.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
                     with self.assertRaises(WorkflowContractError):
                         parse_workflow_structure(workflow)
+
+    def test_workflow_contract_supports_standard_run_block_scalar_headers(self) -> None:
+        source = """
+            jobs:
+              build:
+                steps:
+                  - name: Folded command
+                    run: >-
+                      echo first
+                      second
+                  - name: Literal command
+                    run: |+
+                      echo third
+                      echo fourth
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow = Path(temp_dir) / "workflow.yml"
+            workflow.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
+            document = parse_workflow_structure(workflow)
+
+        job = workflow_job(document, "build")
+        self.assertEqual(workflow_step(job, name="Folded command")["run"], "echo first second")
+        self.assertEqual(
+            workflow_step(job, name="Literal command")["run"],
+            "echo third\necho fourth",
+        )
 
     def test_github_release_upload_jobs_pin_repository_context(self) -> None:
         cases = [

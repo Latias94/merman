@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { SUPPORTED_THEMES } from "@mermanjs/web/catalog";
+import { SUPPORTED_THEMES } from "@mermanjs/web";
 import {
   buildMermaidConfig,
   sourceWithConfig,

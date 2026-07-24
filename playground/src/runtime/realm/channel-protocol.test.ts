@@ -7,6 +7,7 @@ import {
   RealmProtocolError,
   advanceCompareOperationStage,
   assertEncodedMessageBudget,
+  assertRealmInitBudget,
   createOneTimeRealmInitGate,
   createRealmToken,
   utf8ByteLength,
@@ -26,7 +27,7 @@ const IDENTITY = {
 };
 const ENGINE_ARTIFACT = {
   schemaVersion: 1 as const,
-  id: "compare-mermaid" as const,
+  id: "mermaid" as const,
   bytes: 17,
   sha256: "a".repeat(64),
   resourceUrl: null,
@@ -140,7 +141,7 @@ test("engine artifact validation binds identity, bytes, and resource authority",
     ENGINE_ARTIFACT
   );
   for (const invalid of [
-    { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+    { ...ENGINE_ARTIFACT, id: "benchmark-merman" },
     { ...ENGINE_ARTIFACT, bytes: ENGINE_ARTIFACT.bytes + 1 },
     { ...ENGINE_ARTIFACT, source: `${ENGINE_ARTIFACT.source}x` },
     { ...ENGINE_ARTIFACT, sha256: "A".repeat(64) },
@@ -260,6 +261,22 @@ test("protocol budgets reject one byte beyond each public limit", () => {
   assert.throws(
     () => assertEncodedMessageBudget("m".repeat(REALM_BUDGETS.messageBytes + 1)),
     RealmProtocolError
+  );
+});
+
+test("realm initialization reserves a separate verified-engine budget", () => {
+  const generatedEngine = "e".repeat(REALM_BUDGETS.messageBytes + 1);
+  assert.throws(
+    () => assertEncodedMessageBudget(generatedEngine),
+    RealmProtocolError
+  );
+  assert.doesNotThrow(() => assertRealmInitBudget(generatedEngine));
+  assert.throws(
+    () => assertRealmInitBudget("e".repeat(REALM_BUDGETS.realmInitBytes + 1)),
+    (error: unknown) =>
+      error instanceof RealmProtocolError &&
+      "resource" in error &&
+      error.resource === "engineArtifact"
   );
 });
 

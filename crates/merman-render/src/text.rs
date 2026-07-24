@@ -21,7 +21,6 @@ pub(crate) use font_metrics::{
     SvgVerticalSizeProfile,
 };
 pub(crate) use font_metrics_data::decode_font_metrics_tables;
-#[cfg(feature = "font-metrics-generation")]
 #[doc(hidden)]
 pub use font_metrics_data::{
     FontMetricsCodecError, FontMetricsTableData, FontMetricsVariantData, SvgVerticalDomShapeData,

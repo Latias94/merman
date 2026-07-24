@@ -12,6 +12,25 @@ use crate::{
 use serde_json::{Map, Value, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
+pub const DEFAULT_PACKET_BITS_PER_ROW: i64 = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("packet.bitsPerRow must be an integer greater than or equal to 1; received {value}")]
+pub struct PacketBitsPerRowError {
+    pub value: i64,
+}
+
+/// Validates the shared Packet row-width configuration before either semantic construction or
+/// layout consumes it. Mermaid's configuration schema declares a minimum of one.
+pub fn validate_packet_bits_per_row(
+    value: Option<i64>,
+) -> std::result::Result<i64, PacketBitsPerRowError> {
+    let value = value.unwrap_or(DEFAULT_PACKET_BITS_PER_ROW);
+    if value < 1 {
+        return Err(PacketBitsPerRowError { value });
+    }
+    Ok(value)
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PacketDiagramRenderModel {
@@ -219,21 +238,26 @@ fn construct_packet_semantic_source(
         });
     }
 
-    let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
-    let packet = match populate_packet(blocks, bits_per_row) {
-        Ok(packet) => packet,
-        Err(error) => {
-            editor_facts = ensure_editor_recovery_from_error(
-                editor_facts,
-                &error,
-                editor_recovery_fallback_span(code),
-            );
-            if first_error.is_none() {
-                first_error = Some(error);
+    let packet =
+        match validate_packet_bits_per_row(config_i64(&meta.effective_config, "packet.bitsPerRow"))
+            .map_err(|error| {
+                Error::diagram_parse_fallback(meta.diagram_type.clone(), error.to_string())
+            })
+            .and_then(|bits_per_row| populate_packet(blocks, bits_per_row))
+        {
+            Ok(packet) => packet,
+            Err(error) => {
+                editor_facts = ensure_editor_recovery_from_error(
+                    editor_facts,
+                    &error,
+                    editor_recovery_fallback_span(code),
+                );
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+                Vec::new()
             }
-            Vec::new()
-        }
-    };
+        };
     let common = LangiumCommonDbFields::from_facts(&common);
     lexemes.attach(code, &mut editor_facts);
 
@@ -284,7 +308,7 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
     let mut packet: Vec<PacketWord> = Vec::new();
     let mut last_bit: i64 = -1;
     let mut word: PacketWord = Vec::new();
-    let mut row: i64 = 1;
+    let mut row: i128 = 1;
 
     for mut block in blocks {
         if let (Some(start), Some(end)) = (block.start, block.end)
@@ -297,14 +321,21 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
             ));
         }
 
-        let start = block.start.unwrap_or(last_bit + 1);
+        let expected_start = last_bit.checked_add(1).ok_or_else(|| {
+            Error::diagram_parse_exact(
+                "packet".to_string(),
+                "Packet bit range exceeds the supported integer range.".to_string(),
+                block.numeric_span,
+            )
+        })?;
+        let start = block.start.unwrap_or(expected_start);
         let end_for_msg = block.end.unwrap_or(start);
-        if start != last_bit + 1 {
+        if start != expected_start {
             return Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!(
                     "Packet block {start} - {end_for_msg} is not contiguous. It should start from {}.",
-                    last_bit + 1
+                    expected_start
                 ),
                 block.numeric_span,
             ));
@@ -318,8 +349,37 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
             ));
         }
 
-        let end = block.end.unwrap_or(start + block.bits.unwrap_or(1) - 1);
-        let bits = block.bits.unwrap_or(end - start + 1);
+        let end = match block.end {
+            Some(end) => end,
+            None => {
+                let bits = block.bits.unwrap_or(1);
+                start
+                    .checked_add(bits.checked_sub(1).ok_or_else(|| {
+                        Error::diagram_parse_exact(
+                            "packet".to_string(),
+                            "Packet block width must be positive.".to_string(),
+                            block.numeric_span,
+                        )
+                    })?)
+                    .ok_or_else(|| {
+                        Error::diagram_parse_exact(
+                            "packet".to_string(),
+                            "Packet bit range exceeds the supported integer range.".to_string(),
+                            block.numeric_span,
+                        )
+                    })?
+            }
+        };
+        let bits = end
+            .checked_sub(start)
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| {
+                Error::diagram_parse_exact(
+                    "packet".to_string(),
+                    "Packet bit range arithmetic overflowed.".to_string(),
+                    block.numeric_span,
+                )
+            })?;
         last_bit = end;
 
         let mut cur = PacketRenderBlock {
@@ -329,15 +389,35 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
             label: std::mem::take(&mut block.label),
         };
 
-        while word.len() <= (bits_per_row + 1) as usize && packet.len() < MAX_PACKET_SIZE {
+        loop {
             let (fitting, next) = get_next_fitting_block(cur, row, bits_per_row)?;
-            let reached_row_end = fitting.end + 1 == row * bits_per_row;
+            let row_boundary = row.checked_mul(i128::from(bits_per_row)).ok_or_else(|| {
+                Error::diagram_parse_exact(
+                    "packet".to_string(),
+                    "Packet row arithmetic exceeds the supported integer range.".to_string(),
+                    block.numeric_span,
+                )
+            })?;
+            let reached_row_end = i128::from(fitting.end) + 1 == row_boundary;
             word.push(fitting);
             if reached_row_end {
                 if !word.is_empty() {
+                    if packet.len() >= MAX_PACKET_SIZE {
+                        return Err(Error::diagram_parse_exact(
+                            "packet".to_string(),
+                            format!("Packet exceeds the {MAX_PACKET_SIZE}-row safety limit."),
+                            block.numeric_span,
+                        ));
+                    }
                     packet.push(std::mem::take(&mut word));
                 }
-                row += 1;
+                row = row.checked_add(1).ok_or_else(|| {
+                    Error::diagram_parse_exact(
+                        "packet".to_string(),
+                        "Packet row arithmetic exceeds the supported integer range.".to_string(),
+                        block.numeric_span,
+                    )
+                })?;
             }
             let Some(next) = next else {
                 break;
@@ -355,7 +435,7 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
 
 fn get_next_fitting_block(
     block: PacketRenderBlock,
-    row: i64,
+    row: i128,
     bits_per_row: i64,
 ) -> Result<(PacketRenderBlock, Option<PacketRenderBlock>)> {
     if block.start > block.end {
@@ -368,24 +448,59 @@ fn get_next_fitting_block(
         ));
     }
 
-    if block.end < row * bits_per_row {
+    let row_start = row.checked_mul(i128::from(bits_per_row)).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row arithmetic exceeds the supported integer range.".to_string(),
+        )
+    })?;
+
+    if i128::from(block.end) < row_start {
         return Ok((block, None));
     }
 
-    let row_end = row * bits_per_row - 1;
-    let row_start = row * bits_per_row;
+    let row_end = row_start.checked_sub(1).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row arithmetic underflowed.".to_string(),
+        )
+    })?;
+    let row_end = i64::try_from(row_end).map_err(|_| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row boundary exceeds the supported integer range.".to_string(),
+        )
+    })?;
+    let row_start = i64::try_from(row_start).map_err(|_| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row boundary exceeds the supported integer range.".to_string(),
+        )
+    })?;
+    let first_bits = row_end.checked_sub(block.start).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet block width arithmetic overflowed.".to_string(),
+        )
+    })?;
+    let second_bits = block.end.checked_sub(row_start).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet block width arithmetic overflowed.".to_string(),
+        )
+    })?;
     Ok((
         PacketRenderBlock {
             start: block.start,
             end: row_end,
             label: block.label.clone(),
-            bits: row_end - block.start,
+            bits: first_bits,
         },
         Some(PacketRenderBlock {
             start: row_start,
             end: block.end,
             label: block.label,
-            bits: block.end - row_start,
+            bits: second_bits,
         }),
     ))
 }
@@ -598,7 +713,9 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
         cur = cur.as_object()?.get(segment)?;
     }
     match cur {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|v| v as i64)),
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok())),
         _ => None,
     }
 }
@@ -691,6 +808,36 @@ mod tests {
     fn packet_header_is_accepted() {
         let model = parse("packet");
         assert_eq!(model["packet"], json!([]));
+    }
+
+    #[test]
+    fn packet_rejects_a_nonpositive_bits_per_row_before_expanding_rows() {
+        let error = parse_err(
+            r#"---
+config:
+  packet:
+    bitsPerRow: 0
+---
+packet
+0-7: "byte"
+"#,
+        );
+
+        assert_eq!(
+            error,
+            "packet.bitsPerRow must be an integer greater than or equal to 1; received 0"
+        );
+    }
+
+    #[test]
+    fn packet_rejects_extreme_ranges_without_integer_overflow() {
+        let error = parse_err(
+            r#"packet
+0-9223372036854775807: "too wide"
+"#,
+        );
+
+        assert_eq!(error, "Packet bit range arithmetic overflowed.");
     }
 
     #[test]

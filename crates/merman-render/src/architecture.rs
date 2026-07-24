@@ -1164,7 +1164,7 @@ fn project_architecture_fcose_result(
     ArchitectureFcoseResultProjection { compound_bounds }
 }
 
-pub fn layout_architecture_diagram_typed(
+pub(crate) fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,

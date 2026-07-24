@@ -1,200 +1,46 @@
 {
   "schema_version": 1,
-  "default_preset": "browser-full",
-  "presets": [
+  "default_package": "full",
+  "packages": [
     {
-      "name": "browser-bridge",
-      "surface": "browser",
-      "default_features": false,
-      "features": [],
-      "capabilities": {
-        "render": false,
-        "analysis": false,
-        "ascii": false,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": false
-      }
+      "id": "full",
+      "name": "@mermanjs/web",
+      "package_dir": "packages/full",
+      "artifact_profile": "web-full",
+      "runtime_profile": "full",
+      "visibility": "public"
     },
     {
-      "name": "browser-core",
-      "surface": "browser",
-      "default_features": false,
-      "features": ["analysis"],
-      "capabilities": {
-        "render": false,
-        "analysis": true,
-        "ascii": false,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": false
-      }
+      "id": "analysis",
+      "name": "@mermanjs/web-analysis",
+      "package_dir": "packages/analysis",
+      "artifact_profile": "web-analysis",
+      "runtime_profile": "analysis",
+      "visibility": "public"
     },
     {
-      "name": "browser-render",
-      "surface": "browser",
-      "default_features": false,
-      "features": ["render", "analysis"],
-      "capabilities": {
-        "render": true,
-        "analysis": true,
-        "ascii": false,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": false
-      }
+      "id": "render",
+      "name": "@mermanjs/web-render",
+      "package_dir": "packages/render",
+      "artifact_profile": "web-render",
+      "runtime_profile": "render",
+      "visibility": "candidate"
     },
     {
-      "name": "browser-render-only",
-      "surface": "browser",
-      "default_features": false,
-      "features": ["render"],
-      "capabilities": {
-        "render": true,
-        "analysis": false,
-        "ascii": false,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": false
-      }
+      "id": "editor",
+      "name": "@mermanjs/web-editor",
+      "package_dir": "packages/editor",
+      "artifact_profile": "web-editor",
+      "runtime_profile": "editor",
+      "visibility": "public"
     },
     {
-      "name": "browser-ascii",
-      "surface": "browser",
-      "default_features": false,
-      "features": ["ascii"],
-      "capabilities": {
-        "render": false,
-        "analysis": false,
-        "ascii": true,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": false
-      }
-    },
-    {
-      "name": "browser-editor",
-      "surface": "browser",
-      "default_features": false,
-      "features": ["editor-language"],
-      "capabilities": {
-        "render": false,
-        "analysis": true,
-        "ascii": false,
-        "cytoscape_layout": false,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": true
-      }
-    },
-    {
-      "name": "browser-full",
-      "surface": "browser",
-      "default_features": false,
-      "features": [
-        "analysis",
-        "ascii",
-        "layout-cytoscape",
-        "editor-language",
-        "layout-elk",
-        "render"
-      ],
-      "capabilities": {
-        "render": true,
-        "analysis": true,
-        "ascii": true,
-        "cytoscape_layout": true,
-        "elk_layout": true,
-        "ratex_math": false,
-        "editor_language": true
-      }
-    },
-    {
-      "name": "browser-full-no-elk",
-      "surface": "browser",
-      "default_features": false,
-      "features": [
-        "analysis",
-        "ascii",
-        "layout-cytoscape",
-        "editor-language",
-        "render"
-      ],
-      "capabilities": {
-        "render": true,
-        "analysis": true,
-        "ascii": true,
-        "cytoscape_layout": true,
-        "elk_layout": false,
-        "ratex_math": false,
-        "editor_language": true
-      }
-    },
-    {
-      "name": "browser-math",
-      "surface": "browser",
-      "default_features": false,
-      "features": [
-        "analysis",
-        "ascii",
-        "layout-cytoscape",
-        "editor-language",
-        "layout-elk",
-        "math",
-        "render"
-      ],
-      "capabilities": {
-        "render": true,
-        "analysis": true,
-        "ascii": true,
-        "cytoscape_layout": true,
-        "elk_layout": true,
-        "ratex_math": true,
-        "editor_language": true
-      }
-    }
-  ],
-  "public_surfaces": [
-    {
-      "entry": "core",
-      "preset": "browser-core",
-      "pkg_dir_rel": "pkg/core",
-      "runtime_profile": "core"
-    },
-    {
-      "entry": "render",
-      "preset": "browser-render",
-      "pkg_dir_rel": "pkg/render",
-      "runtime_profile": "render"
-    },
-    {
-      "entry": "render-only",
-      "preset": "browser-render-only",
-      "pkg_dir_rel": "pkg/render-only",
-      "runtime_profile": "render-only"
-    },
-    {
-      "entry": "ascii",
-      "preset": "browser-ascii",
-      "pkg_dir_rel": "pkg/ascii",
-      "runtime_profile": "ascii"
-    },
-    {
-      "entry": "editor",
-      "preset": "browser-editor",
-      "pkg_dir_rel": "pkg/editor",
-      "runtime_profile": "editor"
-    },
-    {
-      "entry": "full",
-      "preset": "browser-full",
-      "pkg_dir_rel": "pkg/full",
-      "runtime_profile": "full"
+      "id": "ascii",
+      "name": "@mermanjs/web-ascii",
+      "package_dir": "packages/ascii",
+      "artifact_profile": "web-ascii",
+      "runtime_profile": "ascii",
+      "visibility": "public"
     }
   ]
 }

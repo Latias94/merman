@@ -27,17 +27,24 @@ for current Mermaid parity.
 
 ## Generate Locally
 
+`scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
+builds the release cdylib with the complete direct feature list, then enables `bindgen-smoke` in
+the separate generator process that consumes that production library.
+
 ```bash
-cargo build -p merman-uniffi --features bindgen-smoke
-cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- \
+cargo build -p merman-uniffi --release --no-default-features \
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo run -p merman-uniffi --no-default-features \
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_python_package -- \
+  --cdylib target/release/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
-cargo build -p merman-uniffi --features bindgen-smoke
-cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- --package-dir platforms/python/merman
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_python_package -- --cdylib target/release/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
 ## API
@@ -48,10 +55,21 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-merman.require_abi_version(engine.abi_version())
+merman.require_text_measurement_protocol_version(
+    merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
+)
 print(engine.package_version())
+assert engine.binding_api_version() == 3
+catalog = merman.get_runtime_catalog(engine)
+capabilities = catalog["capabilities"]
+assert catalog["schema_version"] == 1
+assert catalog["transport_api_version"] == engine.binding_api_version()
+assert "svg" in capabilities["capability_ids"]
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+png = engine.render_png("flowchart TD\nA[Hello] --> B[World]", None)
+jpeg = engine.render_jpeg("flowchart TD\nA[Hello] --> B[World]", None)
+pdf = engine.render_pdf("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = engine.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
@@ -80,24 +98,39 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
         return None
 
 reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
-svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+svg_with_host_metrics = reusable.render_svg(
+    "flowchart TD\nA[Hello] --> B[World]",
+    None,
+)
 
 reusable = engine.reusable_engine(None)
 reusable_document_json = reusable.analyze_document_json(
     "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    None,
     "file:///tmp/example.md",
 )
 reusable.set_text_measurer(PreviewMeasurer())
-svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+svg_with_host_metrics = reusable.render_svg(
+    "flowchart TD\nA[Hello] --> B[World]",
+    None,
+)
 reusable.clear_text_measurer()
 ```
 
-Errors are exposed through the generated `MermanError` type. The underlying status code, status
-name, and message still come from `merman-bindings-core`.
+Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
+underlying status code/name, `MermanErrorKind`, optional `capability_id`, and message from
+`merman-bindings-core`. `UNKNOWN_OPERATION` has no capability ID; `MISSING_CAPABILITY` preserves the
+exact descriptor ID. Consumers should not parse the message to distinguish them.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `MermanEngine.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, or LSP rule configuration.
+
+The direct UniFFI binding API is `3`, independently versioned from the native C ABI and the
+text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
+flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
+adapter/capability relations before returning it. Do not infer availability from Cargo feature
+names or copy an ID table into Python; inspect the loaded catalog instead.
 
 ## Text Measurement
 
@@ -116,7 +149,7 @@ results, and callback exceptions use the operation's vendored fallback for that 
 failing the reusable render/layout call. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
-ABI 2 exposes 19 text-measurement operations with contiguous codes 0 through 18.
+Text-measurement protocol 1 exposes 19 operations with contiguous codes 0 through 18.
 `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` returns the signed `length` for Architecture's
 `createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
 `CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; the two operations are not
@@ -124,16 +157,21 @@ interchangeable and both may return a finite negative value. `RAW_B_BOX_HEIGHT` 
 non-negative height from a direct raw SVG `<text>.getBBox()` probe.
 
 The generated callback method is `measure(self, request)`, not `measure_text`. One-shot engine
-methods receive `options_json` explicitly (`engine.render_svg(source, options_json)`), while a
-reusable engine receives it at construction and renders with `reusable.render_svg(source)`. Do not
-estimate width from character count in production; return `None` when the host cannot reproduce the
-requested operation with the display surface's real font API.
+methods receive `options_json` explicitly (`engine.render_svg(source, options_json)`). Generic
+operations put the same value in `MermanOperationRequest.options_json` and call
+`engine.execute(request)`. A reusable engine accepts baseline options at construction and
+request-local overrides on each operation, such as `reusable.render_svg(source, options_json)`;
+those overrides are deeply merged without changing the baseline or its runtime policy. Do not
+estimate width from character count in production; return `None` when the host cannot reproduce
+the requested operation with the display surface's real font API.
 
 ## Verification
 
 ```bash
-cargo check -p merman-uniffi --features bindgen-smoke --examples
-cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
+cargo check -p merman-uniffi --no-default-features \
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --examples
+cargo nextest run -p merman-uniffi --no-default-features \
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --test bindgen_smoke
 ```
 
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
@@ -148,9 +186,12 @@ against that fresh package. The executable example calls `MermanEngine.render_sv
 `MermanEngine.reusable_engine_with_text_measurer`,
 `MermanReusableEngine.analyze_document_json`,
 `MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
-`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`, `MermanEngine.package_version`,
-and checks `MermanError.Binding` fields for invalid options JSON. The generated-package smoke also
-asserts ABI 2, all 19 operation variants, a distinct signed
+`MermanReusableEngine.clear_text_measurer`, `MermanEngine.binding_api_version`,
+`MermanEngine.runtime_catalog_json`, and `MermanEngine.package_version`, and checks
+`MermanError.Binding` fields for invalid options JSON.
+The generated-package smoke also asserts direct UniFFI binding API 3, flat runtime catalog schema 1,
+local runtime ID relations, SVG/PNG/JPEG/PDF output signatures, all 19 operation
+variants, a distinct signed
 `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` callback result, and the `RAW_B_BOX_HEIGHT` variant.
 
 ## Build A Local Wheel
@@ -162,8 +203,8 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The script builds `merman-uniffi`, stages generated UniFFI Python files into
 `platforms/python/merman`, builds a platform wheel under `target/python-wheels`, then
 optionally installs it into a temporary venv and exercises SVG, ASCII, parse, layout, validation,
-and metadata calls. The build script fails if setuptools emits a universal `py3-none-any` wheel,
-because the package carries a native library.
+metadata, PNG, JPEG, and PDF calls. The build script fails if setuptools emits a universal
+`py3-none-any` wheel, because the package carries a native library.
 
 ## Release
 

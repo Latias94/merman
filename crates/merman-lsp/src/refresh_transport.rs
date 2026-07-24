@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use tokio::sync::oneshot;
-use tower_lsp::jsonrpc::{Error, Id, Request, Response, Result as JsonRpcResult};
-use tower_lsp::{ClientSocket, ExitedError, Loopback};
+use tower_lsp_server::jsonrpc::{Error, Id, Request, Response, Result as JsonRpcResult};
+use tower_lsp_server::{ClientSocket, ExitedError, Loopback};
 
 const REFRESH_REQUEST_CHANNEL_CAPACITY: usize = 4;
 const REFRESH_REQUEST_ID_PREFIX: &str = "merman-refresh-";

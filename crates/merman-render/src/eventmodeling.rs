@@ -32,7 +32,7 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-pub fn layout_eventmodeling_diagram_typed(
+pub(crate) fn layout_eventmodeling_diagram_typed(
     model: &EventModelingDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,

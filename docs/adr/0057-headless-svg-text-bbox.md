@@ -66,8 +66,9 @@ when every canonical fact is bit-identical. Otherwise the shape has an independe
 `mermaid-calculate-text-dimensions` profile remains operation-owned and reads its body-attached
 single-tspan facts rather than borrowing the direct-text profile.
 
-`MRMFNT05` is an internal generated-data schema, not a public binding ABI. The public alpha ABI
-remains version 2.
+`MRMFNT05` is an internal generated-data schema, not a public binding ABI. Native ABI versioning is
+owned separately by `abi/merman-v3.json`; changing this generated-data format does not change the
+native ABI.
 
 ### Baseline-bearing DOM probes remain distinct
 

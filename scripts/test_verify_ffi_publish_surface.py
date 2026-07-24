@@ -28,11 +28,11 @@ class Measurer(merman.MermanTextMeasurer):
 engine = merman.MermanEngine()
 svg = engine.render_svg("flowchart TD\\nA --> B", None)
 reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
-svg = reusable.render_svg("flowchart TD\\nA --> B")
+svg = reusable.render_svg("flowchart TD\\nA --> B", None)
 reusable.set_text_measurer(Measurer())
 reusable.clear_text_measurer()
 plain = engine.reusable_engine(None)
-plain.render_svg("flowchart TD\\nA --> B")
+plain.render_svg("flowchart TD\\nA --> B", None)
 """
 
         return verify_ffi.validate_python_uniffi_usage(
@@ -69,18 +69,18 @@ engine.render_svg("flowchart TD\\nA --> B")
                 source, "example.py", allowed_calls=allowed_calls
             )
 
-    def test_rejects_options_json_on_reusable_render(self) -> None:
+    def test_rejects_missing_reusable_request_options_json(self) -> None:
         source = """
 import merman
 engine = merman.MermanEngine()
 reusable = engine.reusable_engine(None)
-reusable.render_svg("flowchart TD\\nA --> B", None)
+reusable.render_svg("flowchart TD\\nA --> B")
 """
 
         allowed_calls = self.valid_contract()
         with self.assertRaisesRegex(
             verify_ffi.CheckFailure,
-            r"MermanReusableEngine\.render_svg expects 1 argument\(s\)",
+            r"MermanReusableEngine\.render_svg expects 2 argument\(s\)",
         ):
             verify_ffi.validate_python_uniffi_usage(
                 source, "example.py", allowed_calls=allowed_calls

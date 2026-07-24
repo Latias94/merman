@@ -9,18 +9,18 @@ const playgroundRoot = path.resolve(
   ".."
 );
 const outputRoot = path.join(playgroundRoot, ".runtime");
+const publicEngineRoot = path.join(playgroundRoot, "public", "opaque-realm");
 
 const bootstraps = [
-  ["opaque-compare-bootstrap", "compare", "compare-mermaid-engine"],
+  ["opaque-compare-bootstrap", "compare", "mermaid-engine"],
   [
     "opaque-benchmark-mermaid-bootstrap",
     "benchmark",
-    "benchmark-mermaid-engine",
+    "mermaid-engine",
   ],
 ];
 const engines = [
-  ["compare-mermaid-engine", "compare-mermaid"],
-  ["benchmark-mermaid-engine", "benchmark-mermaid"],
+  ["mermaid-engine", "mermaid"],
   ["benchmark-merman-engine", "benchmark-merman"],
 ];
 const expectedOutputs = new Set(
@@ -67,6 +67,20 @@ for (const [file, id] of engines) {
   assert.match(source, /__mermanEngineArtifact/);
   assert.doesNotMatch(source, /^\s*import\s/m);
   assert.doesNotMatch(source, /\bimport\s*\(/);
+}
+
+const expectedPublicEngines = engines.map(([file]) => `${file}.js`).sort();
+assert.deepEqual(
+  (await readdir(publicEngineRoot)).sort(),
+  expectedPublicEngines
+);
+for (const [file] of engines) {
+  const { source } = await readArtifact(file);
+  assert.equal(
+    await readFile(path.join(publicEngineRoot, `${file}.js`), "utf8"),
+    source,
+    `${file} public asset drifted from the verified engine source`
+  );
 }
 
 async function readArtifact(file) {

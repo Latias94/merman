@@ -4,10 +4,10 @@ use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_actions_from_fixes,
 };
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
-    TextEdit, Url, WorkspaceEdit,
+    TextEdit, Uri, WorkspaceEdit,
 };
 
 /// Builds quick fixes from server-owned diagnostics paired with the checked snapshot.
@@ -98,7 +98,7 @@ fn matching_snapshot_diagnostic<'a>(
             && range_to_lsp(candidate.range) == diagnostic.range
             && matches!(
                 diagnostic.code.as_ref(),
-                Some(tower_lsp::lsp_types::NumberOrString::String(code)) if code == &candidate.code
+                Some(tower_lsp_server::ls_types::NumberOrString::String(code)) if code == &candidate.code
             )
             && candidate
                 .data
@@ -110,7 +110,7 @@ fn matching_snapshot_diagnostic<'a>(
 fn code_actions_for_editor_diagnostic(
     editor_diagnostic: &EditorDiagnostic,
     lsp_diagnostic: &Diagnostic,
-    uri: &Url,
+    uri: &Uri,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
     is_preferred_support: bool,
@@ -127,7 +127,7 @@ fn code_actions_for_editor_diagnostic(
                 current_document_version,
                 workspace_edit_encoding,
             )?;
-            Some(tower_lsp::lsp_types::CodeAction {
+            Some(tower_lsp_server::ls_types::CodeAction {
                 title: action.title,
                 kind: Some(CodeActionKind::QUICKFIX),
                 diagnostics: Some(vec![lsp_diagnostic.clone()]),
@@ -138,7 +138,7 @@ fn code_actions_for_editor_diagnostic(
                 data: None,
             })
         })
-        .map(tower_lsp::lsp_types::CodeActionOrCommand::CodeAction)
+        .map(tower_lsp_server::ls_types::CodeActionOrCommand::CodeAction)
         .collect()
 }
 
@@ -151,14 +151,14 @@ fn allows_quickfix(context: &CodeActionContext) -> bool {
 
 fn workspace_edit_for_edits(
     planned_edits: &[EditorCodeActionEdit],
-    uri: &Url,
+    uri: &Uri,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
     let text_edits = planned_edits
         .iter()
         .map(|edit| {
-            let range = tower_lsp::lsp_types::Range::new(
+            let range = tower_lsp_server::ls_types::Range::new(
                 editor_position_to_lsp(edit.range.start),
                 editor_position_to_lsp(edit.range.end),
             );
@@ -189,8 +189,8 @@ fn workspace_edit_for_edits(
     }
 }
 
-fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Position {
-    tower_lsp::lsp_types::Position::new(position.line as u32, position.character as u32)
+fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp_server::ls_types::Position {
+    tower_lsp_server::ls_types::Position::new(position.line as u32, position.character as u32)
 }
 
 #[cfg(test)]
@@ -202,9 +202,10 @@ mod tests {
     use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer};
     use merman_editor_core::{EditorDiagnostic, analysis_payload_to_diagnostics};
     use serde_json::json;
-    use tower_lsp::lsp_types::{
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{
         CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-        DocumentChanges, OneOf, Position, Range, TextDocumentIdentifier, TextEdit, Url,
+        DocumentChanges, OneOf, Position, Range, TextDocumentIdentifier, TextEdit, Uri,
     };
 
     const DOCUMENT_VERSION: i32 = 7;
@@ -318,9 +319,9 @@ mod tests {
         std::sync::Arc<crate::snapshot::DocumentSnapshot>,
         Vec<EditorDiagnostic>,
         CodeActionParams,
-        Url,
+        Uri,
     ) {
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let mut store = DocumentStore::new();
         let options = AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
@@ -335,7 +336,7 @@ mod tests {
                 .into_iter()
                 .find(|diagnostic| {
                     diagnostic.code.as_ref().is_some_and(|code| {
-                        code == &tower_lsp::lsp_types::NumberOrString::String(
+                        code == &tower_lsp_server::ls_types::NumberOrString::String(
                             "merman.authoring.flowchart.explicit_direction".to_string(),
                         )
                     })
@@ -363,7 +364,7 @@ mod tests {
         action
     }
 
-    fn versioned_edits(action: &CodeAction, uri: &Url) -> Vec<TextEdit> {
+    fn versioned_edits(action: &CodeAction, uri: &Uri) -> Vec<TextEdit> {
         let Some(DocumentChanges::Edits(document_edits)) =
             action.edit.as_ref().unwrap().document_changes.as_ref()
         else {

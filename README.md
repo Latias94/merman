@@ -13,11 +13,6 @@ Merman is an independent, parity-focused Rust implementation of
 without launching a browser or JavaScript runtime. The current compatibility target is
 `mermaid@11.16.0`.
 
-> Merman is alpha software. Rust APIs and prerelease wire contracts can change before 1.0. The
-> native ABI identifier remains `2`; diagnostics schema remains `1` and parser-facts schema is
-> `2`, but those numeric
-> identifiers do not imply stable compatibility across alpha releases.
-
 [Open the Playground](https://frankorz.com/merman/) |
 [Coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md) |
 [Changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md) |
@@ -58,15 +53,16 @@ also has a non-optional resolved-tree depth capability (256 native levels, 64 We
 and native conversion uses a bounded worker stack; raw parity SVG remains available beyond that
 backend boundary.
 
-Bindings expose runtime-contract schema `3` so hosts can discover the loaded ABI/package/options
-versions, compiled features, registry facts, stable resource-limit ids, and exact profile values.
-General bindings default to `interactive`, the CLI to `trusted-native`, and Typst enforces
-`constrained`; Cargo features and raster/PDF/image allocation budgets remain separate concerns.
+Bindings expose runtime-contract schema `1` and a descriptor-derived capability vocabulary so hosts
+can discover the loaded transport/package/options versions, compiled capability/output IDs and
+their implications, registry facts, stable resource-limit IDs, and exact profile values. General
+bindings default to `interactive`, the CLI to `trusted-native`, and Typst enforces `constrained`;
+Cargo features and raster/PDF/image allocation budgets remain separate concerns.
 
 ## Install
 
-The commands below target the latest published alpha. Source on this branch may describe
-`Unreleased` behavior in the
+The commands below use the currently published `0.8.0-alpha.3` artifacts. Source on this branch may
+describe `Unreleased` behavior in the
 [changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
 
 ```sh
@@ -74,7 +70,7 @@ The commands below target the latest published alpha. Source on this branch may 
 cargo install merman-cli --version 0.8.0-alpha.3
 
 # Rust library
-cargo add merman@0.8.0-alpha.3 --features render
+cargo add merman@0.8.0-alpha.3 --features svg
 
 # Browser / TypeScript
 npm install @mermanjs/web@alpha
@@ -86,7 +82,7 @@ python -m pip install --pre merman
 flutter pub add 'merman:0.8.0-alpha.3'
 ```
 
-The latest stable CLI, rather than the alpha shown above, is also available through Homebrew:
+Homebrew also provides the latest non-prerelease CLI:
 
 ```sh
 brew install merman-cli
@@ -97,7 +93,7 @@ MSRV is Rust `1.95`.
 ## Rust Quickstart
 
 ```rust
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = HeadlessRenderer::new().with_diagram_id("readme-example");
@@ -147,12 +143,12 @@ merman-cli lint README.md
 | Analysis without SVG rendering | [`merman-analysis`](https://crates.io/crates/merman-analysis) | Published |
 | Language Server Protocol | [`merman-lsp`](https://crates.io/crates/merman-lsp) | Published server |
 | VS Code integration | [VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) | Repository preview; VSIX artifacts built by CI |
-| C or C++ | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Versioned prerelease ABI 2 |
-| Python | [`merman` on PyPI](https://pypi.org/project/merman/) | Published alpha |
-| Flutter and Dart | [`merman` on pub.dev](https://pub.dev/packages/merman) | Published alpha |
+| C or C++ | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Versioned C ABI 3 for the 0.8 package line |
+| Python | [`merman` on PyPI](https://pypi.org/project/merman/) | Published |
+| Flutter and Dart | [`merman` on pub.dev](https://pub.dev/packages/merman) | Published |
 | Android and Kotlin | [Android package](https://github.com/Latias94/merman/tree/main/platforms/android#readme) | GitHub release artifact; not Maven Central |
 | Apple and Swift | [Apple package](https://github.com/Latias94/merman/tree/main/platforms/apple#readme) | Repository package plus XCFramework release artifact |
-| Typst | [Typst package](https://github.com/Latias94/merman/tree/main/packages/typst/merman#readme) | Experimental package and WASM transport |
+| Typst | [Typst package](https://github.com/Latias94/merman/tree/main/packages/typst/merman#readme) | Manual registry package and WASM transport |
 | Rust API documentation | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Published |
 
 The [release surface contract](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md)
@@ -175,10 +171,11 @@ installed from this repository or from CI-generated VSIX artifacts.
 
 ## Native ABI And Text Measurement
 
-The C, Android JNI, Apple Swift, Flutter/Dart, UniFFI, and browser WASM transports use prerelease
-ABI `2`. Hosts must load headers or generated bindings from the same release as the native
-library. The current text-measurement contract contains 19 exact operations (`0..18`) with
-operation-specific result kinds.
+C/C++, Android JNI, and Flutter/Dart use the native C ABI `3`; Apple Swift and Python use the
+direct UniFFI binding API `3`; browser WebAssembly has its own transport API. A host must pair its
+headers or generated bindings with the native library from the same release. The current
+text-measurement contract contains 19 exact operations (`0..18`) with operation-specific result
+kinds.
 
 Merman's default measurer is deterministic and suitable for servers, CLIs, CI, and documentation
 builds. A GUI or WebView that needs geometry matching its own fonts should install the host
@@ -201,10 +198,13 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 
 | Feature | Adds |
 | --- | --- |
-| `render` | Typed layout and SVG |
+| `svg` | Typed layout and SVG |
 | `ascii` | ASCII and Unicode output |
-| `raster` | PNG/JPG raster images and vector PDF export |
+| `png` | PNG byte output |
+| `jpeg` | JPEG byte output |
+| `pdf` | Vector PDF byte output |
 | `analysis` | Diagnostics and lint metadata on transport crates |
+| `layout-cytoscape` | Architecture and non-`tidy-tree` Mindmap layout |
 | `layout-elk` | Source-translated ELK layered layout |
 | `math` | Pure-Rust math layout and embedded KaTeX font assets |
 | `system-clock` | Capture wall-clock values into an operation policy |
@@ -212,10 +212,14 @@ and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/
 | `system-random` | Seed an operation from the operating system |
 | `system-timing` | Enable explicitly requested operation timing diagnostics |
 
-Start from default features for normal native applications. Constrained WASM hosts should select a
-documented build profile instead of assembling an accidental feature combination. The Typst
-package enforces the fixed `constrained` resource policy and does not accept trusted or
-unbounded profiles from document input.
+The ergonomic `merman` facade defaults to `complete-svg`: SVG plus the native layouts and math
+needed for normal headless rendering, without compiling ambient system adapters. For a deliberately
+smaller source build, disable defaults and select a direct capability set explicitly. Cargo features
+are additive, so absence claims must be made with an exact artifact profile using
+`default-features = false`, not by adding another alias. Constrained WASM hosts should select a
+documented build profile instead of assembling an accidental feature combination. The Typst package
+enforces the fixed `constrained` resource policy and does not accept trusted or unbounded profiles
+from document input.
 
 System adapters are independent of Mermaid language support and do not authorize ambient reads
 during parsing or rendering. A native caller captures them once into an operation policy; a
@@ -270,6 +274,9 @@ The strict gate expects the pinned Mermaid reference bundle described in
 [`tools/upstreams/README.md`](https://github.com/Latias94/merman/blob/main/tools/upstreams/README.md).
 It verifies generated contracts, all-family SVG structure/parity/root evidence, package surfaces,
 browser tests, and release legal materials.
+
+Maintainers changing a checked-in grammar should follow the
+[parser generation guide](https://github.com/Latias94/merman/blob/main/docs/development/PARSER_GENERATION.md).
 
 ## Documentation
 

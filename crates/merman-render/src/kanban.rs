@@ -1,7 +1,9 @@
 use crate::Result;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
+use crate::resources::{ModelComplexity, RenderResourcePolicy};
 use crate::text::{TextMeasurer, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use std::collections::HashMap;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
@@ -13,11 +15,44 @@ mod config;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 
-pub fn layout_kanban_diagram_typed(
+fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
+    let sections = model.nodes.iter().filter(|node| node.is_group).count();
+    let items = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .count();
+    model
+        .nodes
+        .len()
+        .saturating_mul(2)
+        .saturating_add(sections.saturating_mul(2))
+        .saturating_add(items.saturating_mul(3))
+}
+
+#[cfg(test)]
+pub(crate) fn layout_kanban_diagram_typed(
     model: &KanbanDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
+    layout_kanban_diagram_typed_with_resource_policy(
+        model,
+        effective_config,
+        measurer,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+/// Lays out a Kanban model under the resource policy owned by the render operation.
+pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
+    model: &KanbanDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+    resource_limits: RenderResourcePolicy,
+) -> Result<KanbanDiagramLayout> {
+    resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
+    resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
     let cfg = KanbanConfigView::new(effective_config).layout_settings();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;
@@ -36,6 +71,12 @@ pub fn layout_kanban_diagram_typed(
     let mut items: Vec<KanbanItemLayout> = Vec::new();
 
     let section_nodes: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|n| n.is_group).collect();
+    let mut items_by_section: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
+    for node in &model.nodes {
+        if let Some(parent_id) = node.parent_id.as_deref() {
+            items_by_section.entry(parent_id).or_default().push(node);
+        }
+    }
     for (i, section) in section_nodes.iter().enumerate() {
         let index = (i + 1) as i64;
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
@@ -70,13 +111,11 @@ pub fn layout_kanban_diagram_typed(
         let top = section_rect_y + max_label_height;
         let mut y = top;
 
-        let section_items: Vec<&KanbanRenderNode> = model
-            .nodes
-            .iter()
-            .filter(|n| n.parent_id.as_deref() == Some(section.id.as_str()))
-            .collect();
-
-        for item in section_items {
+        for &item in items_by_section
+            .get(section.id.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
             let width = (section_width - 1.5 * padding).max(1.0);
             let inner_max_w = (width - padding).max(0.0);
 

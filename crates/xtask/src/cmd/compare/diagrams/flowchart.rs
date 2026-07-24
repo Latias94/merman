@@ -234,9 +234,9 @@ fn run_flowchart_compare(
     let flowchart_math_renderer = toolchain_read_guard.node_katex_math_renderer();
     let text_measurement = match text_measurer.as_str() {
         "vendored" | "vendored-font" | "vendored-font-metrics" => {
-            merman::render::TextMeasurementPolicy::parity()
+            merman::svg::TextMeasurementPolicy::parity()
         }
-        "deterministic" => merman::render::TextMeasurementPolicy::deterministic(),
+        "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
         other => {
             return Err(CompareRunFailure::without_evidence(
                 XtaskError::SvgCompareFailed(format!(
@@ -245,7 +245,7 @@ fn run_flowchart_compare(
             ));
         }
     };
-    let mut environment = merman::render::RenderEnvironment::deterministic()
+    let mut environment = merman::svg::RenderEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement);
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
@@ -324,7 +324,7 @@ fn run_flowchart_compare(
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };
-            let renderer = merman::render::HeadlessRenderer::new()
+            let renderer = merman::svg::HeadlessRenderer::new()
                 .with_engine(fixture_engine)
                 .with_parse_options(fact.parse_policy.options())
                 .with_layout_options(layout_opts.clone())
@@ -372,7 +372,7 @@ fn run_flowchart_compare(
                 }
             };
 
-            if prepared.family_kind() != merman::render::RenderFamilyKind::Flowchart {
+            if prepared.family_kind() != merman::svg::RenderFamilyKind::Flowchart {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),

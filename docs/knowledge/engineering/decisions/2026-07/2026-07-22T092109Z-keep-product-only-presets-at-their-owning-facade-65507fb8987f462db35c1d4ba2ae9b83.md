@@ -1,7 +1,7 @@
 ---
 type: "Decision"
-title: "Keep product-only presets at their owning facade"
-description: "CLI-only capabilities must not become phantom features on the Rust facade; every public feature must expose a callable owner API."
+title: "Retire the global Cargo preset lattice"
+description: "Use direct capability leaves in owner-specific artifact recipes; keep only the result-named complete-svg aggregate on the Rust facade."
 timestamp: 2026-07-22T09:21:09Z
 record_id: "65507fb8987f462db35c1d4ba2ae9b83"
 producer_id: "codex-root"
@@ -13,37 +13,46 @@ git_commit: "4e2a2d6c6"
 
 # Decision
 
-Keep each public preset on the narrowest facade that owns every capability it enables.
-`preset-mmdc`, `network-icons`, `parallel-markdown`, and `shell-completions` belong to
-`merman-cli`; they must not be forwarded through `merman`. A public `analysis` or `editor` leaf on
-`merman` is valid only when the facade exposes the corresponding callable API or re-export. Runtime
-capability reports come from one backend-owned compiled `CapabilitySet`, not per-binding `cfg`
-tables.
+Retire the repository-wide `preset-*` Cargo feature lattice. Public Cargo features are direct,
+positive capability leaves such as `svg`, `analysis`, `layout-elk`, `math`, `png`, and
+`system-timezone`. The `merman` facade keeps one ergonomic result-named aggregate,
+`complete-svg`, which expands to SVG, both supported layout engines, and math. It is a compile
+convenience only; it does not select runtime policy or promise that another feature is absent.
+
+CLI, Web, Typst, FFI, UniFFI, Node, and platform packages select their direct leaf sets in
+owner-specific artifact profiles. Their product names and artifact profiles are not Cargo feature
+names and must not be forwarded through unrelated crates. Runtime capability reports come from one
+backend-owned compiled catalog, not per-binding `cfg` tables.
 
 # Context
 
-The current `merman-cli --no-default-features` closure still includes rendering, analysis,
-Reqwest/TLS, Rayon, shell-completion generation, raster/PDF backends, Jiff, and UUID. The active
-plan's broad wording could be read as requiring every native preset on the Rust facade. That would
-turn CLI-only tools into phantom features and preserve the same misleading closure under new names.
+Cargo feature unification is additive. A global table of product, transport, runtime, and release
+presets cannot express exclusions and makes a feature list look like an exact artifact recipe when
+it is not. It also encourages phantom features that compile dependencies without a callable owner
+API. Exact absence claims belong to `default-features = false` artifact profiles and their
+executable closure probes.
 
 # Alternatives
 
-- Put every globally named preset on every facade. Rejected because Cargo features would compile
-  dependencies without a callable owner API.
-- Keep only low-level leaves and remove presets. Rejected because users need ergonomic product
-  recipes, while artifact profiles still require exact, non-default build closures.
+- Keep product presets on each owning facade. Rejected: it still creates a second public vocabulary
+  and keeps profile/runtime concerns in additive Cargo flags.
+- Keep a global `preset-*` table for every workflow. Rejected: it creates a combinatorial lattice and
+  cannot guarantee exclusion or transport correctness.
+- Expose only leaves with no aggregate. Rejected for the Rust facade: `complete-svg` is a stable,
+  result-named convenience that covers the ordinary SVG use case without pretending to be a
+  product or release profile.
 
 # Consequences
 
-- `merman` owns reusable Rust API presets such as basic/native/static SVG, editor, lint library,
-  native SDK, and all-library capabilities.
-- `merman-cli` owns `preset-ci-lint` and `preset-mmdc`, with source modules, commands, help, and
-  dependencies gated together.
-- Other manifests expose only presets meaningful to their artifact; they do not mirror the global
-  descriptor mechanically.
-- Artifact-profile verification proves the Cargo recipe. Focused facade and runtime tests prove the
-  callable surface and reported capabilities.
+- `merman-cli` owns its command and export leaves directly; its default and lint recipes are
+  declared by the CLI artifact profiles.
+- Artifact profiles prove exact package, target, default-feature policy, leaf set, runtime IDs,
+  outputs, dependency closure, and size evidence.
+- A new aggregate is accepted only when its name describes a stable result and repeated user
+  composition; `static`, `native-sdk`, `editor`, `web`, `all`, and negative `no-*` variants remain
+  profile or package concepts rather than Cargo features.
+- The old product-only-preset proposal is retained by this file's history, but this decision is
+  the current successor for the capability-driven refactor.
 
 # Citations
 

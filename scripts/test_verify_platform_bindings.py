@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib.util
 import hashlib
 import io
 import json
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -22,8 +24,10 @@ SPEC.loader.exec_module(verify_platform_bindings)
 
 EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
+    "io/merman/MermanErrorKind.class",
     "io/merman/MermanReusableEngine.class",
     "io/merman/MermanException.class",
+    "io/merman/MermanResourceOptions.class",
     "io/merman/MermanTextMeasureRequest.class",
     "io/merman/MermanTextMeasureResult.class",
     "io/merman/MermanTextMeasurementOperation.class",
@@ -34,6 +38,82 @@ EXPECTED_ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_ffi.so",
     "jni/x86_64/libmerman_ffi.so",
 ]
+ANDROID_CONSUMER_RULES = (
+    MODULE_PATH.parents[1] / "platforms" / "android" / "consumer-rules.pro"
+)
+
+
+class NativeSdkRecipeTests(unittest.TestCase):
+    def test_dart_ffi_smoke_consumes_the_exact_c_abi_recipe(self) -> None:
+        recipe = verify_platform_bindings.C_ABI_NATIVE_RECIPE
+        with mock.patch.object(verify_platform_bindings, "run") as run:
+            verify_platform_bindings.run_dart_ffi_native_smoke(
+                "dart",
+                host_system="Linux",
+            )
+
+        build = run.call_args_list[0]
+        self.assertEqual(
+            build.args[0][:4],
+            ["cargo", "build", "--profile", "native-sdk"],
+        )
+        self.assertIn("--locked", build.args[0])
+        self.assertEqual(
+            build.args[0][build.args[0].index("--features") + 1],
+            recipe.feature_argument,
+        )
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            [
+                "dart",
+                "run",
+                "example/smoke.dart",
+                str(
+                    MODULE_PATH.parents[1]
+                    / "target"
+                    / "native-sdk"
+                    / "libmerman_ffi.so"
+                ),
+            ],
+        )
+
+    def test_native_library_path_is_derived_from_recipe_identity(self) -> None:
+        recipe = replace(
+            verify_platform_bindings.C_ABI_NATIVE_RECIPE,
+            target_name="custom-ffi",
+            cargo_profile="custom-profile",
+        )
+        with mock.patch.object(
+            verify_platform_bindings,
+            "validate_c_abi_native_recipe",
+        ):
+            self.assertEqual(
+                verify_platform_bindings.host_dynamic_library(
+                    recipe,
+                    host_system="Darwin",
+                ),
+                MODULE_PATH.parents[1]
+                / "target"
+                / "custom-profile"
+                / "libcustom_ffi.dylib",
+            )
+
+    def test_dart_ffi_smoke_rejects_recipe_profile_drift_before_building(self) -> None:
+        recipe = replace(
+            verify_platform_bindings.C_ABI_NATIVE_RECIPE,
+            cargo_profile="release",
+        )
+        with (
+            mock.patch.object(verify_platform_bindings, "run") as run,
+            self.assertRaisesRegex(RuntimeError, "c-abi-native"),
+        ):
+            verify_platform_bindings.run_dart_ffi_native_smoke(
+                "dart",
+                recipe,
+                host_system="Linux",
+            )
+
+        run.assert_not_called()
 
 
 class AndroidAarVerificationTests(unittest.TestCase):
@@ -163,6 +243,51 @@ class AndroidAarVerificationTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "jni/x86_64/libmerman_ffi.so"):
                 verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+
+class AndroidConsumerRulesTests(unittest.TestCase):
+    def test_jni_host_text_measurement_reflection_members_are_kept(self) -> None:
+        rules = ANDROID_CONSUMER_RULES.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "-keep,allowoptimization interface io.merman.MermanTextMeasurer {",
+            rules,
+        )
+        self.assertIn(
+            "io.merman.MermanTextMeasureResult measure(io.merman.MermanTextMeasureRequest);",
+            rules,
+        )
+        self.assertIn(
+            "-keepclassmembers,allowoptimization class * implements io.merman.MermanTextMeasurer {",
+            rules,
+        )
+        self.assertIn(
+            "-keep,allowoptimization class io.merman.MermanTextMeasureRequest {",
+            rules,
+        )
+        self.assertIn(
+            "<init>(java.lang.String,java.lang.String,double,java.lang.String,java.lang.String,java.lang.Double,double,double,double,int,int,int,int,int);",
+            rules,
+        )
+        self.assertIn(
+            "-keep,allowoptimization class io.merman.MermanTextMeasureResult {",
+            rules,
+        )
+
+        expected_fields = {
+            "resultKind": "int",
+            "width": "double",
+            "height": "double",
+            "length": "double",
+            "lineCount": "long",
+            "bboxLeft": "double",
+            "bboxRight": "double",
+            "rawWidth": "double",
+            "hasRawWidth": "boolean",
+        }
+        for field, field_type in expected_fields.items():
+            with self.subTest(field=field):
+                self.assertIn(f"    {field_type} {field};", rules)
 
 
 class AndroidMavenPublicationTests(unittest.TestCase):

@@ -2719,7 +2719,7 @@ fn render_family_fixture_svg(
         .map_err(|err| format!("parse failed for {}: {err}", mmd_path.display()))?
         .ok_or_else(|| format!("no diagram detected in {}", mmd_path.display()))?;
 
-    let session = merman::render::RenderEnvironment::deterministic()
+    let session = merman::svg::RenderEnvironment::deterministic()
         .begin_session()
         .map_err(|err| format!("render session failed: {err}"))?;
     let artifact =

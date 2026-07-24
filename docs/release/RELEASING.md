@@ -1,11 +1,17 @@
 # Releasing
 
 Status: maintained release operator guide.
-Last updated: 2026-07-21
+Last updated: 2026-07-23
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
 push a `v*` tag whose version matches every package manifest that will publish in that release.
+
+Release classification follows SemVer syntax, not the major version number. Versions without a
+prerelease suffix, including `0.7.0` and `0.8.0`, are regular releases. Only versions with a
+prerelease component such as `0.8.0-alpha.4`, `0.8.0-beta.1`, or `0.8.0-rc.1` use a prerelease
+channel. Do not describe the project or a `0.x` release as alpha solely because its major version
+is zero.
 
 ## Release Workflows
 
@@ -18,7 +24,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
-| `release-web.yml` | `@mermanjs/web` TypeScript/WASM package | npm |
+| `release-web.yml` | admitted `@mermanjs/web` browser package group | npm |
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
@@ -39,7 +45,7 @@ become visible in crates.io.
 | crates.io | `CARGO_REGISTRY_TOKEN` repository secret |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
-| npm | Trusted Publishing / OIDC configured for `@mermanjs/web`, this repository, `release-web.yml`, and the `npm` environment after the package exists |
+| npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` package, this repository, `release-web.yml`, and the `npm` environment |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 | VS Code Marketplace | Not configured. Marketplace publishing would need `VSCE_PAT`, an explicit publish job, and VSIX provenance verification before enabling. |
 
@@ -58,16 +64,17 @@ The PyPI project `merman` exists. Keep PyPI Trusted Publishing configured for ow
 repository `merman`, workflow `release-python.yml`, and environment `pypi`. A PyPI Pending
 Publisher is only needed before the first trusted publish of a new project name.
 
-The npm package `@mermanjs/web` exists. Configure npm Trusted Publishing for workflow file
-`release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes automatically include
-npm provenance; the workflow does not need `--provenance`. A manual first publish is only needed if
-the package name changes and the new npm package does not exist yet.
+The public browser packages are `@mermanjs/web`, `@mermanjs/web-analysis`,
+`@mermanjs/web-editor`, and `@mermanjs/web-ascii`. Configure npm Trusted Publishing for each
+admitted package with workflow file `release-web.yml` and GitHub environment `npm`. Trusted
+publishes automatically include npm provenance; the workflow does not need `--provenance`.
 
-The npm publish job is intentionally small: it runs on GitHub-hosted Ubuntu with Node 24, enters the
-`npm` environment, requests `id-token: write`, downloads the package artifact, and runs plain
-`npm publish` with the validated dist-tag. Do not add `NPM_TOKEN`, `NODE_AUTH_TOKEN`,
-`--provenance`, `provenance=false`, `NPM_CONFIG_PROVENANCE=false`, checkout, build, or test steps to
-that job. npm Trusted Publishing supplies the OIDC identity and provenance for public packages.
+The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
+the `npm` environment, requests `id-token: write`, checks out only `github.workflow_sha` without
+credentials, downloads the verified package-group data artifact, verifies its hashes against the
+trusted descriptor, then reconciles the group. It must not checkout the dispatch `source_ref`,
+build, test, or execute a script contained in the downloaded artifact. Do not add `NPM_TOKEN`,
+`NODE_AUTH_TOKEN`, `--provenance`, `provenance=false`, or `NPM_CONFIG_PROVENANCE=false`.
 
 The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release
 assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a
@@ -137,7 +144,7 @@ For local spot checks, run the normal Rust and platform gates:
 
 ```bash
 cargo nextest run --cargo-quiet
-cargo build --release --locked -p merman-cli
+cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 python3 -m py_compile \
   scripts/release-status.py \
   scripts/verify-release-surfaces.py \
@@ -179,33 +186,32 @@ cd platforms/web
 npm ci
 npm run build
 npm run smoke
-npm run prepack
-npm pack --dry-run
+npm run verify:packages
+artifact_dir="$(mktemp -d)"
+python3 ../../scripts/web_package_group.py pack \
+  --root ../.. \
+  --descriptor web-surface-descriptor.json \
+  --artifact-dir "$artifact_dir" \
+  --version "<version>" \
+  --source-sha "$(git -C ../.. rev-parse HEAD)" \
+  --target-dist-tag alpha
+python3 ../../scripts/web_package_group.py verify-artifact \
+  --manifest "$artifact_dir/web-package-group.json" \
+  --artifact-dir "$artifact_dir" \
+  --descriptor web-surface-descriptor.json
+rm -rf "$artifact_dir"
 ```
 
-Normal web releases should use `release-web.yml` instead of local `npm publish` once npm Trusted
-Publishing is configured for `@mermanjs/web`. If npm Trusted Publishing is unavailable and a
-maintainer must publish locally, derive the same dist-tag as the workflow and pass it explicitly:
-
-```bash
-RELEASE_TAG="v<version>"
-VERSION="${RELEASE_TAG#v}"
-case "$VERSION" in
-  *-alpha.*) NPM_DIST_TAG="alpha" ;;
-  *-beta.*) NPM_DIST_TAG="beta" ;;
-  *-rc.*) NPM_DIST_TAG="rc" ;;
-  *-*) echo "unsupported prerelease tag: $RELEASE_TAG" >&2; exit 1 ;;
-  *) NPM_DIST_TAG="latest" ;;
-esac
-npm publish --access public --tag "$NPM_DIST_TAG"
-```
-
-Prerelease packages must never be published with a bare `npm publish`.
+Normal Web releases must use `release-web.yml`. It stages every missing exact package version,
+checks every tarball integrity, and only then moves the requested `alpha`, `beta`, `rc`, or `latest`
+tag as a recoverable group operation. Do not publish a member manually: a bare `npm publish` can
+leave the package group on divergent versions or tags.
 
 For local VS Code VSIX validation:
 
 ```bash
-cargo build --release --locked -p merman-lsp -p merman-cli
+cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
+cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 cd tools/vscode-extension
 npm ci
 npm test
@@ -220,37 +226,42 @@ bundled `merman-lsp` and `merman-cli` runtime for provenance only; it must not r
 the extension's independent version. Keep the changelog under `Unreleased` until the first `0.1.0`
 Marketplace publication is intentionally prepared.
 
-Before changing browser WASM presets or Typst package artifacts, also run the surface-specific
+Before changing Web or Typst artifact profiles, also run the surface-specific
 gates:
 
 ```bash
-cargo run -p xtask -- wasm-size-matrix --surface browser
-cargo run -p xtask -- wasm-size-matrix --surface typst
-cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run --locked -p xtask -- verify-typst-profile-constants
+cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish
-cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
-cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
-The web package build uses `wasm-pack --profile wasm-size`, so CI and local release machines need
-`wasm-pack` 0.15.0 or newer. `npm run prepack --prefix platforms/web` also checks the generated
-default `browser-full` wasm against `docs/release/WASM_SIZE_BUDGETS.json`.
-
-`@mermanjs/web` publishes the `browser-full` artifact under the default import path and exposes
-public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`,
-`@mermanjs/web/render-only`, `@mermanjs/web/ascii`, `@mermanjs/web/editor`, and
-`@mermanjs/web/full`. Release preflight must build/check the editor subpath's matching TypeScript,
-wasm-bindgen, WASM, preset manifest, ABI 2, editor schema 1, complete 35-family language catalog, and
-`browser-editor` size budget; it is not valid to publish only the wrapper declaration.
+The Web package build uses `wasm-pack --profile wasm-size`, so CI and local release machines need
+`wasm-pack` 0.15.0 or newer. `npm run verify:packages --prefix platforms/web` validates each descriptor
+package as an independently installable artifact. Release preflight must build/check each admitted
+package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
+editor schema,
+and complete 35-family language catalog; it is not valid to publish only a wrapper declaration.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
-browser/wasm-bindgen artifacts. Its default and publish profile is public alias `publish`, canonical
-profile `typst-full-elk`, with exactly `render`, `analysis`, and `layout-elk`. Release
-validation requires ABI 2, the closed export surface including `analyze_json`, and the profile-owned
-artifact at `target/typst-wasm-artifacts/typst-full-elk/`. That directory contains the stripped
-WASM and `manifest.json`; `--skip-wasm-build` is allowed only because it validates the manifest's
-profile, inputs, tools, versions, flags, and artifact digest before package reuse. Do not package
-the private raw Cargo output under `target/wasm-build/`. The final package must also contain
+browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
+profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which pins
+`default-features = false`, the `svg`, `analysis`,
+`layout-cytoscape`, and `layout-elk` features, the `wasm-size` Cargo profile, and the
+`wasm32-unknown-unknown` target. Feature bundles are additive closure descriptions, not alternate
+release artifacts. The exact dependency gate admits `json5`, `lol_html`, and `url` as measured
+pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
+They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
+randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
+plugin ABI 2, independently from native ABI 3,
+the closed export surface including
+`analyze_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
+stripped WASM and provenance manifest; `--skip-wasm-build` is allowed only because it validates the manifest's
+exact artifact profile, package feature bundle, default-feature policy, inputs, tools, versions,
+flags, and artifact digest before package
+reuse. Do not package the private raw Cargo output under `target/wasm-build/`. The final package must also contain
 `merman_package.manifest.json`; it binds the verified artifact to the frozen wrapper/license source
 snapshot, and the packaging transaction must fail before replacing the prior version if live source
 or any staged byte changes.

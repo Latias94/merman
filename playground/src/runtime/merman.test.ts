@@ -216,7 +216,7 @@ test("preserves structured binding failure details", async () => {
     dependencies({
       loadModule: async () => {
         throw {
-          version: 2,
+          version: 1,
           ok: false,
           code: 9,
           code_name: "MERMAN_INTERNAL_ERROR",

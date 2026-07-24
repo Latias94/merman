@@ -40,6 +40,12 @@ if (missing.length > 0) {
   for (const filePath of missing) {
     console.error(`- ${filePath}`);
   }
-  console.error("Build them first, for example: cargo build --release -p merman-lsp -p merman-cli");
+  console.error("Build them first with the separate exact artifact recipes:");
+  console.error(
+    "- cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio",
+  );
+  console.error(
+    "- cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
+  );
   process.exit(1);
 }

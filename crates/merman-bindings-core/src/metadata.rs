@@ -1,12 +1,27 @@
-use crate::common::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError,
-    internal_json_error,
-};
+use crate::common::{BindingError, internal_json_error};
+use crate::operation::compiled_operation_kind_ids;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub const RUNTIME_CONTRACT_SCHEMA_VERSION: u32 = 4;
+#[allow(dead_code)]
+mod capability_descriptor {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../capabilities/generated/capability_surface.rs"
+    ));
+}
+
+/// First public schema for the artifact-owned runtime catalog.
+pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
+pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
+pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
+
+#[cfg(feature = "svg")]
+const TEXT_MEASUREMENT_PROVIDER_IDS: &[&str] = &[
+    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    TEXT_MEASUREMENT_PROVIDER_VENDORED,
+];
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -14,43 +29,386 @@ static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static RUNTIME_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
 static LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
 static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct BindingCapabilities {
-    pub render: bool,
-    pub analysis: bool,
-    pub ascii: bool,
-    pub system_adapter_ids: &'static [&'static str],
-    pub cytoscape_layout: bool,
-    pub elk_layout: bool,
-    pub ratex_math: bool,
-    pub editor_language: bool,
-    pub text_measurement: TextMeasurementCapabilities,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct TextMeasurementCapabilities {
-    pub vendored: bool,
-    pub deterministic: bool,
-    pub host_callback: bool,
-    pub font_assets: bool,
-}
-
+/// The text-measurement routes exposed by one artifact.
+///
+/// The protocol version belongs to the independently versioned text-measurement contract. Provider
+/// IDs describe actual installation routes, not Cargo features: `vendored` is the built-in
+/// renderer measurer and `host-callback` means this transport accepts a host callback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RuntimeContract {
+pub struct TextMeasurementCapabilities {
+    pub protocol_version: u32,
+    pub provider_ids: Vec<&'static str>,
+}
+
+impl TextMeasurementCapabilities {
+    #[cfg(feature = "svg")]
+    pub fn new(provider_ids: Vec<&'static str>) -> Result<Self, BindingError> {
+        validate_sorted_unique(
+            "text measurement provider IDs",
+            &provider_ids,
+            TEXT_MEASUREMENT_PROVIDER_IDS,
+        )?;
+        if !provider_ids.contains(&TEXT_MEASUREMENT_PROVIDER_VENDORED) {
+            return Err(invalid_capability_surface(
+                "text measurement support must include the built-in `vendored` provider",
+            ));
+        }
+        Ok(Self {
+            protocol_version: merman::svg::TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids,
+        })
+    }
+}
+
+/// Exact public capability selection owned by one compiled artifact.
+///
+/// This is deliberately a closed, validated vocabulary rather than a collection of transport
+/// booleans. Artifact owners construct it from their callable endpoints and must not project or
+/// mutate another artifact's report after the fact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactCapabilitySurface {
+    capability_ids: Vec<&'static str>,
+    output_ids: Vec<&'static str>,
+    operation_ids: Vec<&'static str>,
+    system_adapter_ids: Vec<&'static str>,
+    text_measurement: Option<TextMeasurementCapabilities>,
+}
+
+/// Selects which compiled text-measurement providers an artifact exposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextMeasurementProviderProjection {
+    /// Keep every provider exposed by the compiled shared binding facade.
+    PreserveCompiled,
+    /// Expose only the built-in vendored provider.
+    VendoredOnly,
+}
+
+impl ArtifactCapabilitySurface {
+    pub fn new(
+        capability_ids: Vec<&'static str>,
+        output_ids: Vec<&'static str>,
+        system_adapter_ids: Vec<&'static str>,
+        text_measurement: Option<TextMeasurementCapabilities>,
+    ) -> Result<Self, BindingError> {
+        let operation_ids = binding_operation_ids_for_capabilities(&capability_ids);
+        Self::new_with_operation_ids(
+            capability_ids,
+            output_ids,
+            operation_ids,
+            system_adapter_ids,
+            text_measurement,
+        )
+    }
+
+    /// Constructs an artifact-owned surface with its exact callable operation set.
+    ///
+    /// [`Self::new`] derives the full operation set implied by the selected capabilities. Use
+    /// this constructor when a transport intentionally exposes a smaller endpoint set.
+    pub fn new_with_operation_ids(
+        capability_ids: Vec<&'static str>,
+        output_ids: Vec<&'static str>,
+        operation_ids: Vec<&'static str>,
+        system_adapter_ids: Vec<&'static str>,
+        text_measurement: Option<TextMeasurementCapabilities>,
+    ) -> Result<Self, BindingError> {
+        validate_sorted_unique(
+            "runtime capability IDs",
+            &capability_ids,
+            capability_descriptor::CAPABILITY_IDS,
+        )?;
+        validate_sorted_unique(
+            "public output IDs",
+            &output_ids,
+            capability_descriptor::OUTPUT_IDS,
+        )?;
+        validate_sorted_unique(
+            "public binding operation IDs",
+            &operation_ids,
+            capability_descriptor::BINDING_OPERATION_IDS,
+        )?;
+        validate_sorted_unique(
+            "system adapter IDs",
+            &system_adapter_ids,
+            capability_descriptor::CAPABILITY_IDS,
+        )?;
+
+        for capability_id in &capability_ids {
+            let capability = capability_descriptor::CAPABILITIES
+                .iter()
+                .find(|capability| capability.id == *capability_id)
+                .expect("validated capability ID must have a descriptor");
+            for implication in capability.implications {
+                if !capability_ids.contains(implication) {
+                    return Err(invalid_capability_surface(format!(
+                        "capability `{capability_id}` requires `{implication}`"
+                    )));
+                }
+            }
+        }
+
+        for output_id in &output_ids {
+            let output = capability_descriptor::OUTPUTS
+                .iter()
+                .find(|output| output.id == *output_id)
+                .expect("validated output ID must have a descriptor");
+            if !capability_ids.contains(&output.capability) {
+                return Err(invalid_capability_surface(format!(
+                    "public output `{output_id}` requires capability `{}`",
+                    output.capability
+                )));
+            }
+            if !operation_ids.contains(output_id) {
+                return Err(invalid_capability_surface(format!(
+                    "public output `{output_id}` must also be a public binding operation"
+                )));
+            }
+        }
+
+        for operation_id in &operation_ids {
+            let operation = capability_descriptor::BINDING_OPERATIONS
+                .iter()
+                .find(|operation| operation.id == *operation_id)
+                .expect("validated binding operation ID must have a descriptor");
+            if let Some(capability_id) = operation.capability_id
+                && !capability_ids.contains(&capability_id)
+            {
+                return Err(invalid_capability_surface(format!(
+                    "public binding operation `{operation_id}` requires capability `{capability_id}`"
+                )));
+            }
+        }
+
+        for adapter_id in &system_adapter_ids {
+            let capability = capability_descriptor::CAPABILITIES
+                .iter()
+                .find(|capability| capability.id == *adapter_id)
+                .expect("validated system adapter ID must have a descriptor");
+            if capability.kind != "adapter" {
+                return Err(invalid_capability_surface(format!(
+                    "system adapter ID `{adapter_id}` is not an adapter capability"
+                )));
+            }
+            if !capability_ids.contains(adapter_id) {
+                return Err(invalid_capability_surface(format!(
+                    "system adapter ID `{adapter_id}` is not present in runtime capabilities"
+                )));
+            }
+        }
+
+        let svg_available = capability_ids.contains(&"svg");
+        if svg_available != text_measurement.is_some() {
+            return Err(invalid_capability_surface(
+                "text-measurement support must be present exactly when the SVG capability is public",
+            ));
+        }
+
+        Ok(Self {
+            capability_ids,
+            output_ids,
+            operation_ids,
+            system_adapter_ids,
+            text_measurement,
+        })
+    }
+
+    #[must_use]
+    pub fn runtime_capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities {
+            capability_ids: self.capability_ids.clone(),
+            output_ids: self.output_ids.clone(),
+            operation_ids: self.operation_ids.clone(),
+            system_adapter_ids: self.system_adapter_ids.clone(),
+            text_measurement: self.text_measurement.clone(),
+        }
+    }
+
+    /// Projects this compiled surface onto one capability-descriptor target.
+    ///
+    /// This is the only valid way for a target-specific artifact to drop capabilities solely
+    /// because the descriptor excludes that target. Additional endpoint differences must be
+    /// expressed by constructing a separate checked surface rather than mutating a report.
+    pub fn project_to_descriptor_target(
+        &self,
+        target_id: &str,
+        text_measurement_projection: TextMeasurementProviderProjection,
+    ) -> Result<Self, BindingError> {
+        if !capability_descriptor::TARGET_IDS.contains(&target_id) {
+            return Err(invalid_capability_surface(format!(
+                "unknown capability-descriptor target `{target_id}`"
+            )));
+        }
+
+        let capability_ids: Vec<_> = self
+            .capability_ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                capability_descriptor::CAPABILITIES
+                    .iter()
+                    .find(|capability| capability.id == *id)
+                    .is_some_and(|capability| capability.targets.contains(&target_id))
+            })
+            .collect();
+        let output_ids: Vec<_> = self
+            .output_ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                capability_descriptor::OUTPUTS
+                    .iter()
+                    .find(|output| output.id == *id)
+                    .is_some_and(|output| output.targets.contains(&target_id))
+            })
+            .collect();
+        let operation_ids: Vec<_> = self
+            .operation_ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                capability_descriptor::BINDING_OPERATIONS
+                    .iter()
+                    .find(|operation| operation.id == *id)
+                    .is_some_and(|operation| operation.targets.contains(&target_id))
+            })
+            .collect();
+        let system_adapter_ids: Vec<_> = self
+            .system_adapter_ids
+            .iter()
+            .copied()
+            .filter(|id| capability_ids.contains(id))
+            .collect();
+
+        #[cfg(feature = "svg")]
+        let text_measurement = if capability_ids.contains(&"svg") {
+            match text_measurement_projection {
+                TextMeasurementProviderProjection::PreserveCompiled => {
+                    self.text_measurement.clone()
+                }
+                TextMeasurementProviderProjection::VendoredOnly => {
+                    Some(TextMeasurementCapabilities::new(vec![
+                        TEXT_MEASUREMENT_PROVIDER_VENDORED,
+                    ])?)
+                }
+            }
+        } else {
+            None
+        };
+        #[cfg(not(feature = "svg"))]
+        let text_measurement = {
+            let _ = text_measurement_projection;
+            None
+        };
+
+        Self::new_with_operation_ids(
+            capability_ids,
+            output_ids,
+            operation_ids,
+            system_adapter_ids,
+            text_measurement,
+        )
+    }
+}
+
+/// Stable runtime capability report shared by every transport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeCapabilities {
+    pub capability_ids: Vec<&'static str>,
+    pub output_ids: Vec<&'static str>,
+    /// Complete callable operation IDs, including invariant semantic operations.
+    pub operation_ids: Vec<&'static str>,
+    pub system_adapter_ids: Vec<&'static str>,
+    pub text_measurement: Option<TextMeasurementCapabilities>,
+}
+
+impl RuntimeCapabilities {
+    #[must_use]
+    pub fn has_capability(&self, id: &str) -> bool {
+        self.capability_ids.binary_search(&id).is_ok()
+    }
+
+    #[must_use]
+    pub fn has_output(&self, id: &str) -> bool {
+        self.output_ids.binary_search(&id).is_ok()
+    }
+
+    #[must_use]
+    pub fn has_operation(&self, id: &str) -> bool {
+        self.operation_ids.binary_search(&id).is_ok()
+    }
+}
+
+fn binding_operation_ids_for_capabilities(capability_ids: &[&'static str]) -> Vec<&'static str> {
+    let mut operation_ids = capability_descriptor::BINDING_OPERATIONS
+        .iter()
+        .filter(|operation| match operation.capability_id {
+            Some(capability_id) => capability_ids.contains(&capability_id),
+            None => true,
+        })
+        .map(|operation| operation.id)
+        .collect::<Vec<_>>();
+    operation_ids.sort_unstable();
+    operation_ids
+}
+
+fn invalid_capability_surface(message: impl Into<String>) -> BindingError {
+    BindingError::new(
+        crate::BindingStatus::InvalidArgument,
+        format!("invalid runtime capability surface: {}", message.into()),
+    )
+}
+
+fn validate_sorted_unique(
+    label: &str,
+    values: &[&'static str],
+    vocabulary: &[&str],
+) -> Result<(), BindingError> {
+    let mut previous = None;
+    for value in values {
+        if !vocabulary.contains(value) {
+            return Err(invalid_capability_surface(format!(
+                "{label} contains unknown ID `{value}`"
+            )));
+        }
+        if let Some(previous) = previous
+            && previous >= *value
+        {
+            let reason = if previous == *value {
+                "duplicate"
+            } else {
+                "not sorted"
+            };
+            return Err(invalid_capability_surface(format!(
+                "{label} must be sorted and unique; `{value}` is {reason}"
+            )));
+        }
+        previous = Some(*value);
+    }
+    Ok(())
+}
+
+/// Current capabilities and policies exposed by one concrete transport artifact.
+///
+/// This catalog intentionally excludes the global capability vocabulary and independently
+/// versioned options or result payloads. Consumers validate this artifact-owned fact set by shape,
+/// ordering, and local relations, and must tolerate newly added stable IDs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeCatalog {
     pub schema_version: u32,
-    pub abi_version: u32,
+    /// Version of the transport that produced this catalog.
+    ///
+    /// This is deliberately not the native C ABI version. Each transport owns its own wire/API
+    /// boundary and supplies its own version when constructing a catalog.
+    pub transport_api_version: u32,
     pub package_version: &'static str,
-    pub options_schema_version: u32,
-    pub payload_schemas: BTreeMap<&'static str, u32>,
-    pub features: BindingCapabilities,
+    pub capabilities: RuntimeCapabilities,
     pub registry: RuntimeRegistryContract,
-    pub resources: Option<RuntimeResourceContract>,
+    pub resources: RuntimeResourceContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -119,79 +477,125 @@ pub struct RuleCatalogEntry {
     pub fixable: bool,
 }
 
-pub const fn binding_capabilities() -> BindingCapabilities {
-    BindingCapabilities {
-        render: cfg!(feature = "render"),
-        analysis: cfg!(feature = "analysis"),
-        ascii: cfg!(feature = "ascii"),
-        system_adapter_ids: merman::runtime::compiled_system_adapter_ids(),
-        cytoscape_layout: compiled_layout_cytoscape_available(),
-        elk_layout: compiled_layout_elk_available(),
-        ratex_math: cfg!(feature = "math"),
-        editor_language: cfg!(feature = "editor-language"),
-        text_measurement: TextMeasurementCapabilities {
-            vendored: cfg!(feature = "render"),
-            deterministic: cfg!(feature = "render"),
-            host_callback: cfg!(feature = "render"),
-            font_assets: false,
-        },
+/// Reports the exact capability surface compiled into the shared binding facade.
+///
+/// Transport crates must construct their own [`ArtifactCapabilitySurface`] when they intentionally
+/// expose a strict subset of this facade. They must never mutate this report post hoc.
+pub fn compiled_runtime_capability_surface() -> ArtifactCapabilitySurface {
+    let mut capability_ids = Vec::new();
+    let mut system_adapter_ids = merman::runtime::compiled_system_adapter_ids().to_vec();
+
+    #[cfg(feature = "svg")]
+    {
+        capability_ids.push("svg");
+        if compiled_layout_cytoscape_available() {
+            capability_ids.push("layout-cytoscape");
+        }
+        if compiled_layout_elk_available() {
+            capability_ids.push("layout-elk");
+        }
     }
-}
-
-#[cfg(feature = "render")]
-const fn compiled_layout_cytoscape_available() -> bool {
-    merman::render::layout_cytoscape_available()
-}
-
-#[cfg(not(feature = "render"))]
-const fn compiled_layout_cytoscape_available() -> bool {
-    false
-}
-
-#[cfg(feature = "render")]
-const fn compiled_layout_elk_available() -> bool {
-    merman::render::layout_elk_available()
-}
-
-#[cfg(not(feature = "render"))]
-const fn compiled_layout_elk_available() -> bool {
-    false
-}
-
-pub fn runtime_contract(abi_version: u32) -> RuntimeContract {
-    let payload_schemas = BTreeMap::from([("binding_result", BINDING_RESULT_PAYLOAD_VERSION)]);
     #[cfg(feature = "analysis")]
-    let payload_schemas = {
-        let mut payload_schemas = payload_schemas;
-        payload_schemas.insert("analysis", merman_analysis::ANALYSIS_PAYLOAD_VERSION);
-        payload_schemas.insert(
-            "analysis_facts",
-            merman_analysis::ANALYSIS_FACTS_PAYLOAD_VERSION,
-        );
-        payload_schemas
-    };
+    capability_ids.push("analysis");
+    #[cfg(feature = "ascii")]
+    capability_ids.push("ascii");
+    #[cfg(feature = "png")]
+    capability_ids.push("png");
+    #[cfg(feature = "jpeg")]
+    capability_ids.push("jpeg");
+    #[cfg(feature = "pdf")]
+    capability_ids.push("pdf");
+    #[cfg(feature = "math")]
+    capability_ids.push("math");
+    capability_ids.extend(system_adapter_ids.iter().copied());
+    capability_ids.sort_unstable();
+    system_adapter_ids.sort_unstable();
 
-    RuntimeContract {
-        schema_version: RUNTIME_CONTRACT_SCHEMA_VERSION,
-        abi_version,
+    let mut operation_ids = compiled_operation_kind_ids();
+    operation_ids.sort_unstable();
+
+    let mut output_ids = operation_ids
+        .iter()
+        .copied()
+        .filter(|id| capability_descriptor::OUTPUT_IDS.contains(id))
+        .collect::<Vec<_>>();
+    output_ids.sort_unstable();
+
+    #[cfg(feature = "svg")]
+    let text_measurement = Some(
+        TextMeasurementCapabilities::new(vec![
+            TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+            TEXT_MEASUREMENT_PROVIDER_VENDORED,
+        ])
+        .expect("the built-in binding surface has a valid text-measurement contract"),
+    );
+    #[cfg(not(feature = "svg"))]
+    let text_measurement = None;
+
+    ArtifactCapabilitySurface::new_with_operation_ids(
+        capability_ids,
+        output_ids,
+        operation_ids,
+        system_adapter_ids,
+        text_measurement,
+    )
+    .expect("the compiled binding surface uses descriptor-owned capability IDs")
+}
+
+#[must_use]
+pub fn compiled_runtime_capabilities() -> RuntimeCapabilities {
+    compiled_runtime_capability_surface().runtime_capabilities()
+}
+
+#[cfg(feature = "svg")]
+const fn compiled_layout_cytoscape_available() -> bool {
+    merman::svg::layout_cytoscape_available()
+}
+
+#[cfg(feature = "svg")]
+const fn compiled_layout_elk_available() -> bool {
+    merman::svg::layout_elk_available()
+}
+
+#[must_use]
+pub fn runtime_catalog(transport_api_version: u32) -> RuntimeCatalog {
+    runtime_catalog_for(transport_api_version, compiled_runtime_capability_surface())
+}
+
+#[must_use]
+pub fn runtime_catalog_for(
+    transport_api_version: u32,
+    capability_surface: ArtifactCapabilitySurface,
+) -> RuntimeCatalog {
+    let capabilities = capability_surface.runtime_capabilities();
+    RuntimeCatalog {
+        schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
+        transport_api_version,
         package_version: env!("CARGO_PKG_VERSION"),
-        options_schema_version: BINDING_OPTIONS_SCHEMA_VERSION,
-        payload_schemas,
-        features: binding_capabilities(),
         registry: RuntimeRegistryContract {
             diagram_family_count: diagram_family_capabilities().len(),
         },
-        resources: runtime_resource_contract(),
+        resources: runtime_resource_contract_for(&capabilities),
+        capabilities,
     }
 }
 
-pub fn runtime_contract_json(abi_version: u32) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(&runtime_contract(abi_version)).map_err(internal_json_error)
+pub fn runtime_catalog_json(transport_api_version: u32) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&runtime_catalog(transport_api_version)).map_err(internal_json_error)
 }
 
-#[cfg(feature = "render")]
-fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
-    let limits = merman::render::resource_limit_descriptors()
+fn runtime_resource_contract_for(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
+    #[cfg(feature = "svg")]
+    if capabilities.has_capability("svg") {
+        return svg_runtime_resource_contract();
+    }
+
+    input_runtime_resource_contract(capabilities)
+}
+
+#[cfg(feature = "svg")]
+fn svg_runtime_resource_contract() -> RuntimeResourceContract {
+    let limits = merman::svg::resource_limit_descriptors()
         .iter()
         .map(|descriptor| RuntimeResourceLimit {
             id: descriptor.stable_id,
@@ -201,37 +605,37 @@ fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
             hard_cap: descriptor.hard_cap,
         })
         .collect();
-    let profiles = merman::render::resource_profile_descriptors()
+    let profiles = merman::svg::resource_profile_descriptors()
         .iter()
         .map(|descriptor| {
-            let policy = merman::render::RenderResourcePolicy::for_profile(descriptor.profile);
+            let policy = merman::svg::RenderResourcePolicy::for_profile(descriptor.profile);
             RuntimeResourceProfile {
                 id: descriptor.id,
                 purpose: descriptor.purpose,
                 trust_assumption: descriptor.trust_assumption,
                 recommended_binding_default: descriptor.recommended_binding_default,
-                limits: merman::render::resource_limit_descriptors()
+                limits: merman::svg::resource_limit_descriptors()
                     .iter()
                     .map(|limit| (limit.stable_id, policy.value(limit.id)))
                     .collect(),
             }
         })
         .collect();
-    Some(RuntimeResourceContract {
-        schema_version: merman::render::RESOURCE_CONTRACT_SCHEMA_VERSION,
-        general_binding_default_profile: merman::render::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE
-            .id(),
-        cli_default_profile: merman::render::CLI_DEFAULT_RESOURCE_PROFILE.id(),
+    RuntimeResourceContract {
+        schema_version: merman::svg::RESOURCE_CONTRACT_SCHEMA_VERSION,
+        general_binding_default_profile: merman::svg::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
+        cli_default_profile: merman::svg::CLI_DEFAULT_RESOURCE_PROFILE.id(),
         limits,
         profiles,
-    })
+    }
 }
 
-#[cfg(all(not(feature = "render"), any(feature = "analysis", feature = "ascii")))]
-fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
+fn input_runtime_resource_contract(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
     let limits = merman::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
         .iter()
-        .filter(|descriptor| crate::common::input_resource_limit_available_for_build(descriptor.id))
+        .filter(|descriptor| {
+            input_resource_limit_available_for_capabilities(capabilities, descriptor.id)
+        })
         .map(|descriptor| RuntimeResourceLimit {
             id: descriptor.stable_id,
             phase: descriptor.phase.as_str(),
@@ -251,45 +655,59 @@ fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
                 recommended_binding_default: descriptor.recommended_binding_default,
                 limits: merman::resources::InputResourceLimitId::ALL
                     .into_iter()
-                    .filter(|limit| crate::common::input_resource_limit_available_for_build(*limit))
+                    .filter(|limit| {
+                        input_resource_limit_available_for_capabilities(capabilities, *limit)
+                    })
                     .map(|limit| (limit.as_str(), policy.value(limit)))
                     .collect(),
             }
         })
         .collect();
-    Some(RuntimeResourceContract {
+    RuntimeResourceContract {
         schema_version: merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION,
         general_binding_default_profile:
             merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
         cli_default_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
         limits,
         profiles,
-    })
+    }
 }
 
-#[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
-const fn runtime_resource_contract() -> Option<RuntimeResourceContract> {
-    None
+fn input_resource_limit_available_for_capabilities(
+    capabilities: &RuntimeCapabilities,
+    id: merman::resources::InputResourceLimitId,
+) -> bool {
+    if capabilities.has_capability("svg") {
+        return true;
+    }
+    match id {
+        merman::resources::InputResourceLimitId::MaxSourceBytes => true,
+        merman::resources::InputResourceLimitId::MaxModelItems
+        | merman::resources::InputResourceLimitId::MaxModelTextBytes
+        | merman::resources::InputResourceLimitId::MaxModelNestingDepth => {
+            capabilities.has_capability("ascii")
+        }
+    }
 }
 
 pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
     merman::diagram_family_capabilities().to_vec()
 }
 
-pub fn binding_capabilities_json() -> Result<Vec<u8>, BindingError> {
-    if let Some(bytes) = BINDING_CAPABILITIES_JSON.get() {
+pub fn runtime_capabilities_json() -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = RUNTIME_CAPABILITIES_JSON.get() {
         return Ok(bytes.clone());
     }
 
-    let bytes = binding_capabilities_json_for(binding_capabilities())?;
-    let _ = BINDING_CAPABILITIES_JSON.set(bytes.clone());
+    let bytes = runtime_capabilities_json_for(&compiled_runtime_capabilities())?;
+    let _ = RUNTIME_CAPABILITIES_JSON.set(bytes.clone());
     Ok(bytes)
 }
 
-pub fn binding_capabilities_json_for(
-    capabilities: BindingCapabilities,
+pub fn runtime_capabilities_json_for(
+    capabilities: &RuntimeCapabilities,
 ) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(&capabilities).map_err(internal_json_error)
+    serde_json::to_vec(capabilities).map_err(internal_json_error)
 }
 
 pub fn supported_themes() -> &'static [&'static str] {
@@ -297,11 +715,11 @@ pub fn supported_themes() -> &'static [&'static str] {
 }
 
 pub fn supported_host_theme_presets() -> &'static [&'static str] {
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     {
         merman::supported_host_theme_presets()
     }
-    #[cfg(not(feature = "render"))]
+    #[cfg(not(feature = "svg"))]
     {
         &[]
     }
@@ -519,121 +937,182 @@ mod tests {
     }
 
     #[test]
-    fn binding_capabilities_follow_feature_flags() {
-        let capabilities = binding_capabilities();
+    fn runtime_capabilities_follow_callable_feature_surface() {
+        let capabilities = compiled_runtime_capabilities();
 
-        assert_eq!(capabilities.render, cfg!(feature = "render"));
-        assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
-        assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
+        assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
         assert_eq!(
-            capabilities.system_adapter_ids,
-            merman::runtime::compiled_system_adapter_ids()
+            capabilities.has_capability("analysis"),
+            cfg!(feature = "analysis")
         );
         assert_eq!(
-            capabilities.cytoscape_layout,
+            capabilities.has_capability("ascii"),
+            cfg!(feature = "ascii")
+        );
+        let mut expected_system_adapter_ids =
+            merman::runtime::compiled_system_adapter_ids().to_vec();
+        expected_system_adapter_ids.sort_unstable();
+        assert_eq!(capabilities.system_adapter_ids, expected_system_adapter_ids);
+        assert_eq!(
+            capabilities.has_capability("layout-cytoscape"),
             cfg!(feature = "layout-cytoscape")
         );
-        assert_eq!(capabilities.elk_layout, cfg!(feature = "layout-elk"));
-        assert_eq!(capabilities.ratex_math, cfg!(feature = "math"));
         assert_eq!(
-            capabilities.editor_language,
-            cfg!(feature = "editor-language")
+            capabilities.has_capability("layout-elk"),
+            cfg!(feature = "layout-elk")
+        );
+        assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
+        assert!(!capabilities.has_capability("editor"));
+        assert_eq!(capabilities.has_output("svg"), cfg!(feature = "svg"));
+        assert_eq!(capabilities.has_output("png"), cfg!(feature = "png"));
+        assert_eq!(capabilities.has_output("jpeg"), cfg!(feature = "jpeg"));
+        assert_eq!(capabilities.has_output("pdf"), cfg!(feature = "pdf"));
+        assert_eq!(capabilities.has_output("ascii"), cfg!(feature = "ascii"));
+        assert!(capabilities.has_operation("semantic-json"));
+        assert_eq!(
+            capabilities.has_operation("layout-json"),
+            cfg!(feature = "svg")
         );
         assert_eq!(
-            capabilities.text_measurement.vendored,
-            cfg!(feature = "render")
+            capabilities.has_operation("validation-json"),
+            cfg!(feature = "analysis")
         );
         assert_eq!(
-            capabilities.text_measurement.deterministic,
-            cfg!(feature = "render")
+            capabilities.has_operation("document-analysis-json"),
+            cfg!(feature = "analysis")
         );
-        assert_eq!(
-            capabilities.text_measurement.host_callback,
-            cfg!(feature = "render")
-        );
-        assert!(!capabilities.text_measurement.font_assets);
+        let mut compiled_operation_ids = compiled_operation_kind_ids();
+        compiled_operation_ids.sort_unstable();
+        assert_eq!(capabilities.operation_ids, compiled_operation_ids);
+        assert!(!capabilities.has_capability("semantic"));
+
+        #[cfg(feature = "svg")]
+        {
+            let text_measurement = capabilities
+                .text_measurement
+                .expect("SVG artifacts have text measurement support");
+            assert_eq!(
+                text_measurement.protocol_version,
+                merman::svg::TEXT_MEASUREMENT_PROTOCOL_VERSION
+            );
+            assert_eq!(
+                text_measurement.provider_ids,
+                [
+                    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+                    TEXT_MEASUREMENT_PROVIDER_VENDORED,
+                ]
+            );
+        }
+        #[cfg(not(feature = "svg"))]
+        assert!(capabilities.text_measurement.is_none());
     }
 
     #[test]
-    fn binding_capabilities_json_reports_text_measurement_boundary() {
+    fn runtime_capabilities_json_reports_stable_id_sets() {
         let capabilities: Value =
-            serde_json::from_slice(&binding_capabilities_json().unwrap()).unwrap();
+            serde_json::from_slice(&runtime_capabilities_json().unwrap()).unwrap();
 
-        assert!(capabilities.get("core_host").is_none());
+        assert!(capabilities.get("render").is_none());
+        assert!(capabilities.get("ratex_math").is_none());
+        assert!(capabilities["capability_ids"].is_array());
+        assert!(capabilities["output_ids"].is_array());
+        assert!(capabilities["operation_ids"].is_array());
         assert!(capabilities["system_adapter_ids"].is_array());
-        assert_eq!(capabilities["render"], cfg!(feature = "render"));
-        assert_eq!(capabilities["analysis"], cfg!(feature = "analysis"));
         assert_eq!(
-            capabilities["cytoscape_layout"],
-            cfg!(feature = "layout-cytoscape")
+            capabilities,
+            serde_json::to_value(compiled_runtime_capabilities()).unwrap()
         );
-        assert_eq!(
-            capabilities["text_measurement"]["vendored"],
-            cfg!(feature = "render")
-        );
-        assert_eq!(
-            capabilities["text_measurement"]["deterministic"],
-            cfg!(feature = "render")
-        );
-        assert_eq!(
-            capabilities["editor_language"],
-            cfg!(feature = "editor-language")
-        );
-        assert_eq!(
-            capabilities["text_measurement"]["host_callback"],
-            cfg!(feature = "render")
-        );
-        assert_eq!(capabilities["text_measurement"]["font_assets"], false);
     }
 
     #[test]
-    fn runtime_contract_is_versioned_and_projects_the_resource_descriptor() {
-        let contract = runtime_contract(2);
-        assert_eq!(contract.schema_version, RUNTIME_CONTRACT_SCHEMA_VERSION);
-        assert_eq!(contract.abi_version, 2);
-        assert_eq!(contract.package_version, env!("CARGO_PKG_VERSION"));
+    fn capability_surface_rejects_unknown_duplicate_and_incoherent_ids() {
+        let unknown =
+            ArtifactCapabilitySurface::new(vec!["not-a-capability"], vec![], vec![], None)
+                .expect_err("unknown capability must fail closed");
+        assert_eq!(unknown.status(), BindingStatus::InvalidArgument);
+
+        let duplicate =
+            ArtifactCapabilitySurface::new(vec!["analysis", "analysis"], vec![], vec![], None)
+                .expect_err("duplicate capability must fail closed");
+        assert_eq!(duplicate.status(), BindingStatus::InvalidArgument);
+
+        let output_without_capability =
+            ArtifactCapabilitySurface::new(vec![], vec!["svg"], vec![], None)
+                .expect_err("output without capability must fail closed");
         assert_eq!(
-            contract.options_schema_version,
-            BINDING_OPTIONS_SCHEMA_VERSION
+            output_without_capability.status(),
+            BindingStatus::InvalidArgument
         );
-        assert_eq!(contract.features, binding_capabilities());
+
+        let engine_without_svg =
+            ArtifactCapabilitySurface::new(vec!["layout-elk"], vec![], vec![], None)
+                .expect_err("engine implication without SVG must fail closed");
+        assert_eq!(engine_without_svg.status(), BindingStatus::InvalidArgument);
+
+        let non_adapter =
+            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec!["analysis"], None)
+                .expect_err("non-adapter system ID must fail closed");
+        assert_eq!(non_adapter.status(), BindingStatus::InvalidArgument);
+
+        let duplicate_operation = ArtifactCapabilitySurface::new_with_operation_ids(
+            vec![],
+            vec![],
+            vec!["semantic-json", "semantic-json"],
+            vec![],
+            None,
+        )
+        .expect_err("duplicate operation must fail closed");
+        assert_eq!(duplicate_operation.status(), BindingStatus::InvalidArgument);
+
+        let operation_without_capability = ArtifactCapabilitySurface::new_with_operation_ids(
+            vec![],
+            vec![],
+            vec!["validation-json"],
+            vec![],
+            None,
+        )
+        .expect_err("capability-gated operation must fail closed");
         assert_eq!(
-            contract.registry.diagram_family_count,
+            operation_without_capability.status(),
+            BindingStatus::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn runtime_catalog_is_versioned_and_projects_the_resource_descriptor() {
+        let catalog = runtime_catalog(2);
+        assert_eq!(catalog.schema_version, RUNTIME_CATALOG_SCHEMA_VERSION);
+        assert_eq!(catalog.transport_api_version, 2);
+        assert_eq!(catalog.package_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(catalog.capabilities, compiled_runtime_capabilities());
+        assert_eq!(
+            catalog.registry.diagram_family_count,
             diagram_family_capabilities().len()
         );
 
-        #[cfg(feature = "render")]
+        #[cfg(feature = "svg")]
         {
-            let resources = contract.resources.expect("render resource catalog");
+            let resources = &catalog.resources;
             assert_eq!(
                 resources.schema_version,
-                merman::render::RESOURCE_CONTRACT_SCHEMA_VERSION
+                merman::svg::RESOURCE_CONTRACT_SCHEMA_VERSION
             );
             assert_eq!(resources.profiles.len(), 4);
-            assert_eq!(resources.limits.len(), 16);
+            assert_eq!(resources.limits.len(), 7);
             assert_eq!(resources.general_binding_default_profile, "interactive");
             assert_eq!(resources.cli_default_profile, "trusted-native");
-            let tree_depth = resources
-                .limits
-                .iter()
-                .find(|limit| limit.id == "max_svg_tree_depth")
-                .expect("tree-depth capability");
-            assert!(tree_depth.hard_cap);
-            assert!(!tree_depth.overridable);
+            assert!(resources.limits.iter().all(|limit| !limit.hard_cap));
             let interactive = resources
                 .profiles
                 .iter()
                 .find(|profile| profile.id == "interactive")
                 .expect("interactive profile");
-            assert_eq!(interactive.limits["max_venn_areas"], Some(8_000));
-            assert_eq!(
-                interactive.limits["max_swimlane_line_hop_segment_pairs"],
-                Some(250_000)
-            );
+            assert_eq!(interactive.limits["max_model_items"], Some(32_000));
+            assert_eq!(interactive.limits["max_layout_work_units"], Some(250_000));
         }
-        #[cfg(all(not(feature = "render"), feature = "analysis", not(feature = "ascii")))]
+        #[cfg(all(not(feature = "svg"), not(feature = "ascii")))]
         {
-            let resources = contract.resources.expect("input resource catalog");
+            let resources = &catalog.resources;
             assert_eq!(
                 resources.schema_version,
                 merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION
@@ -650,9 +1129,9 @@ mod tests {
             assert_eq!(resources.general_binding_default_profile, "interactive");
             assert_eq!(resources.cli_default_profile, "trusted-native");
         }
-        #[cfg(all(not(feature = "render"), feature = "ascii"))]
+        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
         {
-            let resources = contract.resources.expect("ASCII resource catalog");
+            let resources = &catalog.resources;
             let ids = resources
                 .limits
                 .iter()
@@ -662,17 +1141,11 @@ mod tests {
                 ids,
                 std::collections::BTreeSet::from([
                     "max_source_bytes",
-                    "max_flowchart_nodes",
-                    "max_flowchart_edges",
-                    "max_flowchart_subgraphs",
-                    "max_class_nodes",
-                    "max_class_edges",
-                    "max_class_namespaces",
-                    "max_label_bytes",
+                    "max_model_items",
+                    "max_model_text_bytes",
+                    "max_model_nesting_depth",
                 ])
             );
-            assert!(!ids.contains("max_zenuml_participants"));
-            assert!(!ids.contains("max_venn_areas"));
             assert_eq!(resources.general_binding_default_profile, "interactive");
             assert_eq!(resources.cli_default_profile, "trusted-native");
             assert!(resources.limits.iter().all(|limit| !limit.hard_cap));
@@ -683,12 +1156,76 @@ mod tests {
                     .all(|limit| limit.phase == "source" || limit.phase == "layout_model")
             );
         }
-        #[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
-        assert!(contract.resources.is_none());
+        let json: Value = serde_json::from_slice(&runtime_catalog_json(2).unwrap()).unwrap();
+        assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);
+        assert_eq!(json["transport_api_version"], 2);
+        assert!(json.get("abi_version").is_none());
+        assert!(json.get("features").is_none());
+        assert!(json.get("runtime_contract").is_none());
+        assert!(json.get("capability_vocabulary").is_none());
+        assert!(json.get("options_schema_version").is_none());
+        assert!(json.get("payload_schemas").is_none());
+        assert_eq!(
+            json["capabilities"],
+            serde_json::to_value(&catalog.capabilities).unwrap()
+        );
+        assert_eq!(json, serde_json::to_value(catalog).unwrap());
+    }
 
-        let json: Value = serde_json::from_slice(&runtime_contract_json(2).unwrap()).unwrap();
-        assert_eq!(json["schema_version"], RUNTIME_CONTRACT_SCHEMA_VERSION);
-        assert_eq!(json["abi_version"], 2);
+    #[test]
+    fn binding_operation_vocabulary_matches_the_abi_owned_operation_metadata() {
+        let mut abi_operation_ids = crate::BindingOperationKind::all()
+            .map(|operation| operation.operation_id())
+            .collect::<Vec<_>>();
+        abi_operation_ids.sort_unstable();
+        assert_eq!(
+            capability_descriptor::BINDING_OPERATION_IDS,
+            abi_operation_ids.as_slice()
+        );
+
+        for descriptor in capability_descriptor::BINDING_OPERATIONS {
+            let operation = crate::BindingOperationKind::from_id(descriptor.id)
+                .expect("descriptor operation must be present in the ABI projection");
+            assert_eq!(operation.required_capability_id(), descriptor.capability_id);
+            assert_eq!(operation.media_type(), descriptor.media_type);
+            assert_eq!(operation.requires_uri(), descriptor.requires_uri);
+        }
+
+        let semantic = capability_descriptor::BINDING_OPERATIONS
+            .iter()
+            .find(|operation| operation.id == "semantic-json")
+            .expect("semantic operation must remain discoverable");
+        assert_eq!(semantic.capability_id, None);
+        assert!(
+            capability_descriptor::BINDING_OPERATIONS
+                .iter()
+                .any(|operation| operation.id == "validation-json")
+        );
+        assert!(
+            capability_descriptor::BINDING_OPERATIONS
+                .iter()
+                .any(|operation| operation.id == "document-analysis-json")
+        );
+    }
+
+    #[cfg(all(feature = "svg", feature = "analysis"))]
+    #[test]
+    fn transport_owned_projection_hides_feature_unified_svg_resources() {
+        let surface = ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
+            .expect("analysis-only artifact surface");
+        let capabilities = surface.runtime_capabilities();
+        let catalog = runtime_catalog_for(2, surface);
+
+        assert_eq!(catalog.capabilities, capabilities);
+        let resources = catalog.resources;
+        assert_eq!(resources.limits.len(), 1);
+        assert_eq!(resources.limits[0].id, "max_source_bytes");
+        assert!(
+            resources
+                .profiles
+                .iter()
+                .all(|profile| profile.limits.len() == 1)
+        );
     }
 
     #[test]
@@ -769,7 +1306,7 @@ mod tests {
 
     #[test]
     fn supported_host_theme_presets_exposes_render_theme_surface() {
-        if cfg!(feature = "render") {
+        if cfg!(feature = "svg") {
             assert_eq!(
                 supported_host_theme_presets(),
                 &[
@@ -924,7 +1461,7 @@ mod tests {
                 .contains(&Value::String("default".to_string()))
         );
         assert!(host_presets.is_array());
-        if cfg!(feature = "render") {
+        if cfg!(feature = "svg") {
             assert!(
                 host_presets
                     .as_array()
@@ -973,11 +1510,11 @@ mod tests {
         } else {
             assert_eq!(
                 lint_rule_catalog_json().unwrap_err().status(),
-                BindingStatus::UnsupportedFormat
+                BindingStatus::UnsupportedOperation
             );
             assert_eq!(
                 configurable_lint_rule_catalog_json().unwrap_err().status(),
-                BindingStatus::UnsupportedFormat
+                BindingStatus::UnsupportedOperation
             );
         }
     }

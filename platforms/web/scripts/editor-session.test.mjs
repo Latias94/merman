@@ -4,6 +4,9 @@ import test from "node:test";
 import * as webApi from "../dist/index.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
+if (typeof globalThis.window === "undefined") globalThis.window = {};
+if (typeof globalThis.document === "undefined") globalThis.document = {};
+
 const nativeSessions = [];
 let descriptorCalls = 0;
 
@@ -87,7 +90,9 @@ class FakeNativeEditorSession {
 await webApi.initMerman({
   loader: async () => ({
     default: async () => {},
-    bindingCapabilities: editorCapabilities,
+    packageVersion: () => "0.8.0-alpha.4",
+    transportApiVersion: () => 3,
+    runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
     editorSemanticTokenDescriptor() {
       descriptorCalls += 1;
@@ -194,27 +199,20 @@ test("browser editor session owns one native analyzed document", () => {
 
 function editorCapabilities() {
   return {
-    render: false,
-    analysis: true,
-    ascii: false,
+    capability_ids: ["analysis", "editor"],
+    output_ids: [],
+    operation_ids: ["analysis-json", "semantic-json"],
     system_adapter_ids: [],
-    cytoscape_layout: false,
-    elk_layout: false,
-    ratex_math: false,
-    editor_language: true,
-    text_measurement: {
-      vendored: false,
-      deterministic: false,
-      host_callback: false,
-      font_assets: false,
-    },
+    text_measurement: null,
   };
 }
 
 function surfaceModule(recordDescriptorCall) {
   return {
     default: async () => {},
-    bindingCapabilities: editorCapabilities,
+    packageVersion: () => "0.8.0-alpha.4",
+    transportApiVersion: () => 3,
+    runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
     editorSemanticTokenDescriptor() {
       recordDescriptorCall();
@@ -222,6 +220,197 @@ function surfaceModule(recordDescriptorCall) {
     },
   };
 }
+
+function runtimeCatalogFixture({ capabilities = editorCapabilities() } = {}) {
+  return {
+    schema_version: 1,
+    transport_api_version: 3,
+    package_version: "0.8.0-alpha.4",
+    capabilities,
+    registry: { diagram_family_count: 0 },
+    resources: {
+      schema_version: 1,
+      general_binding_default_profile: "interactive",
+      cli_default_profile: "trusted-native",
+      limits: [],
+      profiles: [],
+    },
+  };
+}
+
+test("runtime catalog rejects malformed shapes and invalid local relations", async () => {
+  const cases = [
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        delete catalog.resources;
+        return catalog;
+      },
+      /runtime catalog has an unsupported shape/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["editor", "analysis"],
+            output_ids: [],
+            operation_ids: ["analysis-json", "semantic-json"],
+            system_adapter_ids: [],
+            text_measurement: null,
+          },
+        }),
+      /runtime capability IDs must be sorted and unique/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["analysis", "editor"],
+            output_ids: [],
+            operation_ids: ["analysis-json", "analysis-json"],
+            system_adapter_ids: [],
+            text_measurement: null,
+          },
+        }),
+      /runtime binding operation IDs must be sorted and unique/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["analysis", "editor"],
+            output_ids: ["svg"],
+            operation_ids: ["analysis-json", "semantic-json"],
+            system_adapter_ids: [],
+            text_measurement: null,
+          },
+        }),
+      /runtime output svg is absent from runtime binding operation IDs/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["analysis", "editor"],
+            output_ids: [],
+            operation_ids: ["analysis-json", "semantic-json"],
+            system_adapter_ids: ["system-clock"],
+            text_measurement: null,
+          },
+        }),
+      /system adapter system-clock is absent from runtime capability IDs/,
+    ],
+  ];
+
+  for (const [catalog, expected] of cases) {
+    const runtime = bindSurfaceRuntime(async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: catalog,
+    }));
+    await runtime.initMerman();
+    assert.throws(() => runtime.runtimeCatalog(), expected);
+  }
+});
+
+test("runtime catalog accepts unknown future IDs", async () => {
+  const runtime = bindSurfaceRuntime(async () => ({
+    default: async () => {},
+    packageVersion: () => "0.8.0-alpha.4",
+    transportApiVersion: () => 3,
+    runtimeCatalog: () => runtimeCatalogFixture({
+      capabilities: {
+        capability_ids: ["analysis", "editor", "future-capability"],
+        output_ids: ["future-output"],
+        operation_ids: [
+          "analysis-json",
+          "future-operation",
+          "future-output",
+          "semantic-json",
+        ],
+        system_adapter_ids: [],
+        text_measurement: null,
+      },
+    }),
+  }));
+  await runtime.initMerman();
+
+  assert.equal(runtime.runtimeCatalog().capabilities.capability_ids.at(-1), "future-capability");
+});
+
+test("runtime catalog preserves wasm-bindgen optional and map projections", async () => {
+  const catalog = runtimeCatalogFixture({
+    capabilities: {
+      capability_ids: ["analysis"],
+      output_ids: [],
+      operation_ids: ["analysis-json", "semantic-json"],
+      system_adapter_ids: [],
+      text_measurement: undefined,
+    },
+  });
+  catalog.resources.profiles = [
+    {
+      id: "interactive",
+      purpose: "test",
+      trust_assumption: "test",
+      recommended_binding_default: true,
+      limits: new Map([
+        ["max_source_bytes", 1024],
+        ["max_svg_bytes", undefined],
+      ]),
+    },
+  ];
+  const runtime = bindSurfaceRuntime(async () => ({
+    default: async () => {},
+    packageVersion: () => "0.8.0-alpha.4",
+    transportApiVersion: () => 3,
+    runtimeCatalog: () => catalog,
+  }));
+  await runtime.initMerman();
+
+  const normalized = runtime.runtimeCatalog();
+  assert.equal(normalized.capabilities.text_measurement, null);
+  assert.deepEqual(normalized.resources.profiles[0].limits, {
+    max_source_bytes: 1024,
+    max_svg_bytes: null,
+  });
+});
+
+test("resource options preserve analysis wrapper placement", () => {
+  const resources = { profile: "constrained" };
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      { analysis: { site_config: { theme: "dark" } } },
+      resources,
+    ),
+    {
+      analysis: {
+        site_config: { theme: "dark" },
+        resources,
+      },
+    },
+  );
+  assert.deepEqual(
+    webApi.withResourceOptions({ parse: { suppress_errors: true } }, resources),
+    {
+      parse: { suppress_errors: true },
+      resources,
+    },
+  );
+});
+
+test("Web transport API version rejects invalid module reports", async () => {
+  const runtime = bindSurfaceRuntime(async () => ({
+    default: async () => {},
+    transportApiVersion: () => 0,
+  }));
+  await runtime.initMerman();
+  assert.throws(
+    () => runtime.transportApiVersion(),
+    /invalid Web transport API version/
+  );
+});
 
 function runtimeDescriptor(descriptor) {
   return {

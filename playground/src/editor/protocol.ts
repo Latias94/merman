@@ -11,11 +11,8 @@ import type {
   EditorSemanticTokenLegend,
   EditorWorkspaceEdit,
 } from "@mermanjs/web";
-import { MERMAN_ABI_VERSION } from "@mermanjs/web/editor";
 
-export { MERMAN_ABI_VERSION };
-
-export const EDITOR_WORKER_PROTOCOL = 2 as const;
+export const EDITOR_WORKER_PROTOCOL = 3 as const;
 export const EDITOR_SCHEMA_VERSION = 1 as const;
 
 export type EditorWorkerErrorCode =
@@ -117,7 +114,7 @@ interface EditorWorkerResponseBase {
 export type EditorWorkerResponse =
   | (EditorWorkerResponseBase & {
       readonly type: "ready";
-      readonly nativeAbi: typeof MERMAN_ABI_VERSION;
+      readonly transportApiVersion: number;
       readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
       readonly legendDigest: string;
       readonly legend: EditorSemanticTokenLegend;

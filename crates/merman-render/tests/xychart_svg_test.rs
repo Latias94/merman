@@ -1,13 +1,12 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::xychart::layout_xychart_diagram_typed;
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -16,17 +15,10 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::XyChart(model) = parsed.model() else {
-        panic!("expected XYChart render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_xychart_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("layout ok")
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize XYChart layout");
+    serde_json::from_value(projection["layout"]["XyChartDiagram"].clone())
+        .expect("XYChart layout projection")
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {
@@ -186,6 +178,27 @@ xychart horizontal
         label.contains(r##"fill="#008855""##),
         "expected configured data label color: {label}"
     );
+}
+
+#[test]
+fn xychart_huge_finite_bar_dimensions_do_not_spin_the_data_label_renderer() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+config:
+  xyChart:
+    height: "1e308"
+    showDataLabel: true
+---
+xychart horizontal
+  x-axis [A]
+  y-axis 0 --> 100
+  bar [73]
+"#,
+    );
+
+    let label = text_tag_by_text(&svg, "73");
+    assert!(!label.contains("font-size=\"NaNpx\""), "label: {label}");
+    assert!(!label.contains("Infinity"), "label: {label}");
 }
 
 #[test]

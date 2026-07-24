@@ -12,22 +12,21 @@
 [merman](https://crates.io/crates/merman). It consumes typed `merman-core` family semantics and
 produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
-Mermaid-compatible language configuration and sanitizer behavior are always available. The default
-build enables `layout-cytoscape`, the shared Architecture FCoSE and Mindmap COSE-Bilkent
-implementation backed by `manatee`. When that backend is enabled, Architecture and non-`tidy-tree`
-Mindmap diagrams use those source-backed layouts. Builds without it report those families as
-unsupported while retaining their parsing and semantic capabilities. Disable default features for
-Typst and other size-sensitive pure-wasm consumers, then enable `layout-cytoscape` when those
-diagram families need rendering. Enable the `host` feature when you want host clock access,
-host-seeded timing, and host randomness for diagnostic or browser-oriented builds.
+Mermaid-compatible language configuration and sanitizer behavior are always available. This crate
+has empty defaults. `layout-cytoscape` opts into the shared Architecture FCoSE and Mindmap
+COSE-Bilkent implementation backed by `manatee`. When that backend is enabled, Architecture and
+non-`tidy-tree` Mindmap diagrams use those source-backed layouts. Builds without it report those
+families as unavailable for rendering while retaining their parsing and semantic capabilities. Add
+the individual `system-clock`, `system-timezone`, `system-random`, or `system-timing` adapter only
+when the embedding product needs it.
 
 ELK integration is kept behind the explicit `layout-elk` feature in this low-level crate and in
-the public `merman` facade. A plain `render` build does not pull it in; callers that need ELK must
+the public `merman` facade. A facade `svg` build does not pull it in; callers that need ELK must
 enable `layout-elk` explicitly. When enabled, Flowchart ELK, Class, and ER layout use the sole
 source-backed Rust implementation of Mermaid's ELK adapter and Eclipse ELK layered pipeline; no
 compatibility backend or runtime selector is retained.
 
-Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use
+Most applications should start with the `merman` crate and `merman::svg::HeadlessRenderer`. Use
 `merman-render` directly when you need lower-level control over layout, text measurement, SVG
 options, or SVG postprocessing.
 
@@ -128,7 +127,7 @@ See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](https://github.com/Latias94/merman
 
 ## Relationship To merman
 
-`merman` re-exports the common render APIs behind its `render` feature and adds
+`merman` re-exports the common render APIs behind its `svg` feature and adds
 `HeadlessRenderer`, consuming `prepare_render_sync` stages, SVG id sanitization helpers, and
 optional raster helpers. Direct `merman-render` users call `family::prepare` and retain its
 `RenderSession`; the old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG

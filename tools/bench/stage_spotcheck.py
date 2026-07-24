@@ -261,7 +261,7 @@ def main(argv: list[str]) -> int:
                     measurement=args.measurement,
                     exact=merman_exact,
                     package="merman",
-                    features="render",
+                    features="svg",
                     bench="pipeline",
                     locked=repo_locked,
                     toolchain=None,

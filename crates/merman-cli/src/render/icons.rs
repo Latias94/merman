@@ -1,5 +1,5 @@
 use crate::error::CliError;
-use merman::render::IconRegistry;
+use merman::svg::IconRegistry;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;

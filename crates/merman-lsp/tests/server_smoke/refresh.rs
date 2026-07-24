@@ -64,7 +64,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
     assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
 
     socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
         ))
@@ -160,7 +160,7 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
     );
 
     socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             first.id().cloned().expect("first refresh request id"),
             serde_json::Value::Null,
         ))
@@ -172,7 +172,7 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
         .expect("refresh channel closed");
     assert_eq!(follow_up.method(), "workspace/semanticTokens/refresh");
     socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             follow_up
                 .id()
                 .cloned()
@@ -206,7 +206,7 @@ async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
                     }
                 },
                 "workspace": {
-                    "diagnostic": {
+                    "diagnostics": {
                         "refreshSupport": true
                     },
                     "semanticTokens": {
@@ -263,7 +263,7 @@ async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
 
     for refresh in refreshes {
         socket
-            .send(tower_lsp::jsonrpc::Response::from_ok(
+            .send(tower_lsp_server::jsonrpc::Response::from_ok(
                 refresh.id().cloned().expect("refresh request id"),
                 serde_json::Value::Null,
             ))

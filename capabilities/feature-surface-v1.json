@@ -15,14 +15,6 @@
       "description": "Pure-WASM Typst plugin artifacts."
     }
   ],
-  "runtime_capabilities": [
-    {
-      "id": "typst-transport",
-      "kind": "transport",
-      "description": "Typst wasm-minimal-protocol transport.",
-      "targets": ["typst"]
-    }
-  ],
   "capabilities": [
     {
       "id": "svg",
@@ -249,97 +241,102 @@
       "targets": ["native"]
     }
   ],
-  "presets": [
+  "binding_operations": [
     {
-      "id": "preset-svg-basic",
-      "description": "SVG workflow without optional layout or math engines.",
-      "targets": ["native", "web", "typst"],
-      "includes": ["svg"],
-      "expected_runtime_capabilities": ["svg"]
+      "id": "svg",
+      "capability": "svg",
+      "description": "Render Mermaid input as SVG.",
+      "media_type": "image/svg+xml",
+      "requires_uri": false,
+      "targets": ["native", "web", "typst"]
     },
     {
-      "id": "preset-native-svg",
-      "description": "Default native Rust SVG workflow.",
-      "targets": ["native"],
-      "includes": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+      "id": "png",
+      "capability": "png",
+      "description": "Render Mermaid input as PNG.",
+      "media_type": "image/png",
+      "requires_uri": false,
+      "targets": ["native"]
     },
     {
-      "id": "preset-static-svg",
-      "description": "Static-site SVG workflow with no system adapters.",
-      "targets": ["native"],
-      "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
-      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math"]
+      "id": "jpeg",
+      "capability": "jpeg",
+      "description": "Render Mermaid input as JPEG.",
+      "media_type": "image/jpeg",
+      "requires_uri": false,
+      "targets": ["native"]
     },
     {
-      "id": "preset-editor",
-      "description": "Editor library and LSP library workflow.",
-      "targets": ["native"],
-      "includes": ["analysis", "editor"],
-      "expected_runtime_capabilities": ["analysis", "editor"]
+      "id": "pdf",
+      "capability": "pdf",
+      "description": "Render Mermaid input as PDF.",
+      "media_type": "application/pdf",
+      "requires_uri": false,
+      "targets": ["native"]
     },
     {
-      "id": "preset-ci-lint",
-      "description": "Lean CLI lint workflow.",
-      "targets": ["native"],
-      "includes": ["analysis"],
-      "expected_runtime_capabilities": ["analysis"]
+      "id": "ascii",
+      "capability": "ascii",
+      "description": "Render Mermaid input as terminal text.",
+      "media_type": "text/plain; charset=utf-8",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-native-sdk",
-      "description": "Native SDK and binding artifact workflow.",
-      "targets": ["native"],
-      "includes": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+      "id": "semantic-json",
+      "capability": null,
+      "description": "Parse Mermaid input into canonical semantic JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-mmdc",
-      "description": "Default complete CLI workflow.",
-      "targets": ["native"],
-      "includes": ["preset-native-sdk", "network-icons", "parallel-markdown", "shell-completions"],
-      "expected_runtime_capabilities": ["svg", "analysis", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing", "network-icons", "parallel-markdown", "shell-completions"]
+      "id": "layout-json",
+      "capability": "svg",
+      "description": "Render Mermaid input into layout model JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-all",
-      "description": "Exhaustive non-tool Rust build and test workflow.",
-      "targets": ["native"],
-      "includes": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"],
-      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random", "system-timing"]
+      "id": "analysis-json",
+      "capability": "analysis",
+      "description": "Analyze Mermaid input and return diagnostics JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web", "typst"]
     },
     {
-      "id": "preset-web-analysis",
-      "description": "Browser analysis artifact.",
-      "targets": ["web"],
-      "includes": ["analysis"],
-      "expected_runtime_capabilities": ["analysis"]
+      "id": "analysis-facts-json",
+      "capability": "analysis",
+      "description": "Analyze Mermaid input and return semantic facts JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-web-render",
-      "description": "Browser SVG render artifact.",
-      "targets": ["web"],
-      "includes": ["svg", "layout-cytoscape", "layout-elk", "math"],
-      "expected_runtime_capabilities": ["svg", "layout-cytoscape", "layout-elk", "math"]
+      "id": "validation-json",
+      "capability": "analysis",
+      "description": "Validate Mermaid input and return validation JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-web-editor",
-      "description": "Browser editor intelligence artifact.",
-      "targets": ["web"],
-      "includes": ["analysis", "editor"],
-      "expected_runtime_capabilities": ["analysis", "editor"]
+      "id": "document-analysis-json",
+      "capability": "analysis",
+      "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+      "media_type": "application/json",
+      "requires_uri": true,
+      "targets": ["native", "web"]
     },
     {
-      "id": "preset-web-ascii",
-      "description": "Browser ASCII artifact.",
-      "targets": ["web"],
-      "includes": ["ascii"],
-      "expected_runtime_capabilities": ["ascii"]
-    },
-    {
-      "id": "preset-web-full",
-      "description": "Fused browser artifact containing all retained Web workflows.",
-      "targets": ["web"],
-      "includes": ["preset-web-analysis", "preset-web-render", "preset-web-editor", "preset-web-ascii"],
-      "expected_runtime_capabilities": ["svg", "analysis", "editor", "ascii", "layout-cytoscape", "layout-elk", "math"]
+      "id": "document-analysis-facts-json",
+      "capability": "analysis",
+      "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+      "media_type": "application/json",
+      "requires_uri": true,
+      "targets": ["native", "web"]
     }
   ]
 }

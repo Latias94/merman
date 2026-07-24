@@ -5,7 +5,7 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "4966c730e449d114b8f8e37a22cb47fe0647920761eaecd6f18de8fa0756ed42",
+    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
     "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
@@ -74,7 +74,7 @@
     },
     "stress_state_batch5_concurrency_four_regions_long_titles_061": {
       "input_sha256": "402ee0d572cbee499db71d30c03761abc7f9516fcb2c6a6b2494e9ddfb2d59aa",
-      "svg_sha256": "e1579cee0e5b412358d09311cc54dd7a787b0ea5669d5176df0ca12210b05e49",
+      "svg_sha256": "74bd9660db495faa3ae02d4bd5e2b6a3e5653bab580933a8d50b1a5a02eefa0d",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_batch5_deep_nesting_multiple_exits_068": {
@@ -149,12 +149,12 @@
     },
     "stress_state_comments_and_weird_spacing_018": {
       "input_sha256": "b4a217698bab2386ec1028bef33745979b49cb2202f528978b32a22576760ce9",
-      "svg_sha256": "d9f475706f9671fe63e3c00f5d06707206e4c39c075e39121698cb6baf3f9937",
+      "svg_sha256": "a9a72b013434c7df98ea66cea7dfdc836bc33194b5bc413a0e8cfb874c63be86",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_comments_inline_composite_concurrency_043": {
       "input_sha256": "2ca5bfa326cf6778148a6e5ea18e539a0adee0e7fd230e3b43eedaaf6e7a3217",
-      "svg_sha256": "ad4fb001c8c96547d8b8788987e0f61fdcd2e5a072b039368931e6a7d9800f34",
+      "svg_sha256": "91690f8369610bb880e5142966c01fda8969e47d980b7b356997046a061165cd",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_composite_self_links_022": {
@@ -169,12 +169,12 @@
     },
     "stress_state_concurrency_three_regions_029": {
       "input_sha256": "2a9638693fc7b4c23c8f57f0ce2b95b2812b625a03358714f9ad4d0af517756d",
-      "svg_sha256": "047697233595430ce7807ebaf233629f06b8614fd3e4236ae69500a0a00c77de",
+      "svg_sha256": "6b5515ee3c280f8c5770d0e5de8cd512b6dd0041e00d93c45d026dd8af1f805b",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_concurrency_with_external_edges_051": {
       "input_sha256": "4c8e435e6b962c4e2cef93562b28f22fcded2f11ab67bcf55cfdd9ea09a52635",
-      "svg_sha256": "ec203dd6c4b1146212611b8fe67aba494464f5c9c2ab3ae3e36bfa94ae35bab6",
+      "svg_sha256": "95f1882b198984e588eca2de8217acc3b6b261e3a3fe5670a362fc232d3bd0b3",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_cross_composite_transitions_007": {
@@ -304,7 +304,7 @@
     },
     "stress_state_nested_composite_concurrency_001": {
       "input_sha256": "c1cce900de81950a5ae2843134c921109beeb64ffe8d8263fa4a938f482b4fa6",
-      "svg_sha256": "15e4111a7b31bd7ae94f253d33e41082538de261f22109c3bc60b6a81f85eba1",
+      "svg_sha256": "b30dbd3ea83e09819260a9578b7da5d4782a9a829df2b4354d95b98591edf6f9",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_nested_composite_cross_edges_and_notes_050": {
@@ -384,7 +384,7 @@
     },
     "stress_state_three_way_concurrency_013": {
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "svg_sha256": "29d17cc0b39127f14cfe8a26cbd1398b2c66535db5de84a2505fc27b762b667f",
+      "svg_sha256": "e541ffd06566e545b80928095f7868125ff7bfa7de79f42bc898780d530cd19f",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_unicode_and_rtl_036": {
@@ -504,7 +504,7 @@
     },
     "upstream_cypress_statediagram_spec_should_render_concurrency_states_019": {
       "input_sha256": "9f89077abf2d4b9012fc7ea76028ca784b69b9d13d232a5f3bdd234f4a13c547",
-      "svg_sha256": "0bbf5a8f3686688e771e22f25324af39bf55d020a565cdf8359b733be73d3906",
+      "svg_sha256": "d95d35f0a7ebbf2ee3ac1667d596a97a4ee7254849089bd9546d30fec36d7fd5",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_spec_should_render_forks_and_joins_018": {
@@ -544,7 +544,7 @@
     },
     "upstream_cypress_statediagram_v2_spec_should_align_dividers_correctly_038": {
       "input_sha256": "07104c59b3c32936b852bb03c99ead90a7afe33931536d92ab4809e08971f04f",
-      "svg_sha256": "691854579d9efad85789282e6e4f578e9cfcba09760fa20dc8096a3b2508a0ec",
+      "svg_sha256": "c3d6c25e48ca89c1ddf0fced04af54ff610715a7256abaca31d747f8c4b0f880",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_v2_spec_should_allow_styles_to_take_effect_in_subgraphs_036": {
@@ -689,7 +689,7 @@
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_concurrency_states_020": {
       "input_sha256": "0f823c07d492e2e9246b228c40aaa636e2883da17270f7a258de1823193db7e9",
-      "svg_sha256": "87013ef6b26e649162104d7f3d983c8c865f857daf0db8866abda83fa87b0af2",
+      "svg_sha256": "c91c0e96812fbff2dc77b42ffdac3b89b32d377822c9b5ac3b79a23a7e30f19b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_forks_and_joins_019": {
@@ -779,7 +779,7 @@
     },
     "upstream_docs_statediagram_concurrency_030": {
       "input_sha256": "17d68bbfe39896a12f203e29a754680b1a71aab56d3644f705e46edffee2fdbb",
-      "svg_sha256": "b529be24d23b3d86a5c3b85092d1f2c11e5668ef6ef9fa76aeb02310e0ac3e78",
+      "svg_sha256": "b4210428580878bc13eb795330386f451389c60395db3880ab5d4ab7071123a0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_statediagram_forks_026": {
@@ -1069,12 +1069,12 @@
     },
     "upstream_pkgtests_statediagram_spec_022": {
       "input_sha256": "ec222ca4739d2ecd7e6db0fcda2c6231b2f0865507d124df3ef85f677daae601",
-      "svg_sha256": "e874767222da3fd1fda429f6df0da0b1e58d87cdae0ec67ba452fe535744cb30",
+      "svg_sha256": "80483ee02951714acbf951cca03dc31474ef503263c6ba3a1fbd7ef5a9054e28",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_spec_023": {
       "input_sha256": "e95f0da71e585eea7b36dd21497e267b917002c47017b49bbc263b71c4da2c21",
-      "svg_sha256": "5dd797c5182a2c4ccf88a69fa838cdcca19a7e24f378e801fb30d437c3fa7b89",
+      "svg_sha256": "870a2172ace8e288d872b7826d2c90734856b8c3cd884dd49364200a6480a2a0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_spec_025": {
@@ -1204,12 +1204,12 @@
     },
     "upstream_pkgtests_statediagram_v2_spec_022": {
       "input_sha256": "123c2ba2cac6a749e14b023acc2bd8fab2a051f8c84922734076eebe4e5b09e6",
-      "svg_sha256": "1f0c0a553e99336350cb9b082ae17d80a70c477ae3e33e11a8df8a976df4e4a0",
+      "svg_sha256": "bc9d251edeade9e389692303d3009c93b76a459325f57341ad8dddf2fb7e33e3",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_v2_spec_023": {
       "input_sha256": "a4b17bc451d573dbad7c7636388ce555071565ce71158831623dbd844d70c468",
-      "svg_sha256": "5e6a432618a452f38ec66192550d0f7bdcd539921fa342c7582630121a9aedd2",
+      "svg_sha256": "fe9828e0cf48848fadc9a20aba78b8df0c8d8cb348c87aa771b12cba951f964f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_v2_spec_025": {
@@ -1274,12 +1274,12 @@
     },
     "upstream_stateDiagram_concurrent_state_minimal_spec": {
       "input_sha256": "4feab66e91540a6eb9060a9168f475afda0b48967c39945ab4f6129e17a8bab4",
-      "svg_sha256": "6b4c605e5015bb1f431ab57ddc6a263c718d594e4daade7e79475626b3464b4a",
+      "svg_sha256": "27e56e66e7e954147d65d14894f14a69179096ff40a09f6042a24b34d7520bd7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_concurrent_state_spec": {
       "input_sha256": "e51115f5c87d6fb6ca7defd7656b62e6057a5bb8418b01c6987121c505487e14",
-      "svg_sha256": "975aa029140b84fc3875fdcb7255dcc7df5ac28495a5f46cab250668fd2fbbfd",
+      "svg_sha256": "be35a25eecc91e77bdeed865a401081d012af39410265aa1114827fdb6797512",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_direction_default_spec": {
@@ -1414,7 +1414,7 @@
     },
     "upstream_stateDiagram_v2_concurrent_state_spec": {
       "input_sha256": "ae25c53cc9432b727aaf5730153a8b3d9545da9c235127fd00d9021ca1cdc269",
-      "svg_sha256": "3128bdb96fc28078f8cb324a87395b7c038cbc3a33df2e5c24abdf6e9a0ff777",
+      "svg_sha256": "dcb1c5ddaef0bf644abea1f1aead9aa2b87b12ef7fc14be40ae795739462de1e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_v2_floating_notes_spec": {

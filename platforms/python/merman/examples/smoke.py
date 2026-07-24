@@ -149,34 +149,108 @@ def assert_text_measurement_contract() -> None:
 def main() -> None:
     assert_text_measurement_contract()
 
-    engine = merman.MermanEngine()
-    merman.require_abi_version(engine.abi_version())
+    merman.require_text_measurement_protocol_version(
+        merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
+    )
     try:
-        merman.require_abi_version(merman.ABI_VERSION + 1)
-    except merman.AbiVersionMismatch as error:
+        merman.require_text_measurement_protocol_version(
+            merman.TEXT_MEASUREMENT_PROTOCOL_VERSION + 1
+        )
+    except merman.TextMeasurementProtocolVersionMismatch as error:
         if (
-            error.expected != merman.ABI_VERSION
-            or error.actual != merman.ABI_VERSION + 1
+            error.expected != merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
+            or error.actual != merman.TEXT_MEASUREMENT_PROTOCOL_VERSION + 1
         ):
             raise
     else:
-        raise RuntimeError("expected mismatched ABI to be rejected")
+        raise RuntimeError("expected mismatched text-measurement protocol to be rejected")
+
+    engine = merman.MermanEngine()
     if not engine.package_version():
         raise RuntimeError("empty package version")
-    runtime_contract = merman.get_runtime_contract(engine)
-    runtime_features = runtime_contract.get("features")
+    if engine.binding_api_version() != 3:
+        raise RuntimeError("unexpected UniFFI binding API version")
+    runtime_catalog = merman.get_runtime_catalog(engine)
+    runtime_capabilities = runtime_catalog.get("capabilities")
     if (
-        runtime_contract.get("schema_version") != 4
-        or not isinstance(runtime_features, dict)
-        or "system_adapter_ids" not in runtime_features
+        runtime_catalog.get("schema_version") != 1
+        or not isinstance(runtime_capabilities, dict)
+        or "system_adapter_ids" not in runtime_capabilities
+        or "operation_ids" not in runtime_capabilities
+        or not set(runtime_capabilities.get("output_ids", [])).issubset(
+            runtime_capabilities.get("operation_ids", [])
+        )
     ):
-        raise RuntimeError("runtime contract schema smoke failed")
+        raise RuntimeError("runtime catalog schema smoke failed")
 
     source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 
-    svg = engine.render_svg(source, None)
+    resource_options = (
+        merman.ResourceOptionsBuilder()
+        .profile(merman.ResourceProfile.CONSTRAINED)
+        .limit(merman.ResourceLimitId.MAX_SOURCE_BYTES, 4096)
+        .build()
+        .to_options_json()
+    )
+    if json.loads(resource_options) != {
+        "resources": {
+            "limits": {"max_source_bytes": 4096},
+            "profile": "constrained",
+        },
+        "version": 1,
+    }:
+        raise RuntimeError("resource options export smoke failed")
+
+    svg = engine.render_svg(source, resource_options)
     if "<svg" not in svg or "Hello" not in svg or "World" not in svg:
         raise RuntimeError("SVG smoke failed")
+
+    generic_options = json.loads(resource_options)
+    generic_options["runtime_policy"] = "native"
+    generic_semantic = engine.execute(
+        merman.MermanOperationRequest(
+            operation_id="semantic-json",
+            source=source,
+            uri=None,
+            options_json=json.dumps(generic_options),
+        )
+    )
+    if (
+        generic_semantic.operation_id != "semantic-json"
+        or generic_semantic.media_type != "application/json"
+        or b"flowchart-v2" not in generic_semantic.data
+        or json.loads(generic_semantic.metadata_json).get("runtime_policy")
+        != "native"
+    ):
+        raise RuntimeError("generic operation smoke failed")
+
+    try:
+        engine.execute(
+            merman.MermanOperationRequest(
+                operation_id="not-an-operation",
+                source=source,
+                uri=None,
+                options_json=resource_options,
+            )
+        )
+    except merman.MermanError.Binding as error:
+        if (
+            error.kind != merman.MermanErrorKind.UNKNOWN_OPERATION
+            or error.capability_id is not None
+        ):
+            raise
+    else:
+        raise RuntimeError("unknown operation did not preserve its typed binding error")
+
+    png = engine.render_png(source, None)
+    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError("PNG smoke failed")
+    jpeg = engine.render_jpeg(source, None)
+    if not jpeg.startswith(b"\xff\xd8\xff"):
+        raise RuntimeError("JPEG smoke failed")
+    pdf = engine.render_pdf(source, None)
+    if not pdf.startswith(b"%PDF-"):
+        raise RuntimeError("PDF smoke failed")
 
     ascii_text = engine.render_ascii(source, None)
     if "Hello" not in ascii_text or "World" not in ascii_text:
@@ -208,7 +282,7 @@ def main() -> None:
         )
     )
     if (
-        document_facts_json["version"] != 2
+        document_facts_json["version"] != 1
         or document_facts_json["source"]["kind"] != "markdown"
         or document_facts_json["diagrams"][0]["source_id"] != "mermaid-fence-1"
     ):
@@ -310,7 +384,7 @@ def main() -> None:
 
     measurer = Measurer()
     reusable = engine.reusable_engine_with_text_measurer(None, measurer)
-    if "Hello" not in reusable.render_svg(source):
+    if "Hello" not in reusable.render_svg(source, None):
         raise RuntimeError("reusable engine smoke failed")
     if measurer.calls == 0:
         raise RuntimeError("text measurer callback smoke failed")
@@ -322,28 +396,69 @@ def main() -> None:
         raise RuntimeError(f"expected concrete measurement operations, got {operation_names}")
 
     setter_measurer = Measurer()
-    reusable = engine.reusable_engine(None)
+    reusable = engine.reusable_engine(
+        '{"svg":{"diagram_id":"python-baseline","pipeline":"readable"}}'
+    )
+    reusable_result = reusable.execute(
+        merman.MermanOperationRequest(
+            operation_id="svg",
+            source=source,
+            uri=None,
+            options_json='{"svg":{"diagram_id":"python-request"}}',
+        )
+    )
+    reusable_svg = reusable_result.data.decode()
+    if (
+        'id="python-request"' not in reusable_svg
+        or "data-merman-foreignobject" not in reusable_svg
+    ):
+        raise RuntimeError("reusable request options did not merge over the engine baseline")
+    baseline_svg = reusable.render_svg(source, None)
+    if 'id="python-baseline"' not in baseline_svg:
+        raise RuntimeError("reusable request options mutated the engine baseline")
+    try:
+        reusable.execute(
+            merman.MermanOperationRequest(
+                operation_id="semantic-json",
+                source=source,
+                uri=None,
+                options_json='{"runtime_policy":"native"}',
+            )
+        )
+    except merman.MermanError.Binding as error:
+        if (
+            error.code_name != "MERMAN_OPTIONS_JSON_ERROR"
+            or "cannot set runtime_policy" not in error.message
+        ):
+            raise
+    else:
+        raise RuntimeError("reusable request changed the constructor-owned runtime policy")
+
     reusable_document_json = json.loads(
-        reusable.analyze_document_json(document_source, "file:///tmp/example.md")
+        reusable.analyze_document_json(document_source, None, "file:///tmp/example.md")
     )
     if reusable_document_json["source"]["kind"] != "markdown":
         raise RuntimeError("reusable document analysis smoke failed")
     reusable_document_facts_json = json.loads(
-        reusable.analyze_document_facts_json(document_source, "file:///tmp/example.md")
+        reusable.analyze_document_facts_json(
+            document_source,
+            None,
+            "file:///tmp/example.md",
+        )
     )
     if (
-        reusable_document_facts_json["version"] != 2
+        reusable_document_facts_json["version"] != 1
         or reusable_document_facts_json["source"]["kind"] != "markdown"
     ):
         raise RuntimeError("reusable document facts smoke failed")
     reusable.set_text_measurer(setter_measurer)
-    if "Hello" not in reusable.render_svg(source):
+    if "Hello" not in reusable.render_svg(source, None):
         raise RuntimeError("set text measurer smoke failed")
     calls_after_set = setter_measurer.calls
     if calls_after_set == 0:
         raise RuntimeError("set text measurer callback smoke failed")
     reusable.clear_text_measurer()
-    if "Hello" not in reusable.render_svg(source):
+    if "Hello" not in reusable.render_svg(source, None):
         raise RuntimeError("clear text measurer smoke failed")
     if setter_measurer.calls != calls_after_set:
         raise RuntimeError("clear text measurer did not reset callback")
@@ -353,10 +468,10 @@ def main() -> None:
             raise RuntimeError("host measurer failed")
 
     failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
-    if "Hello" not in failing.render_svg(source):
+    if "Hello" not in failing.render_svg(source, None):
         raise RuntimeError("failing text measurer did not use vendored fallback")
     failing.set_text_measurer(Measurer())
-    if "Hello" not in failing.render_svg(source):
+    if "Hello" not in failing.render_svg(source, None):
         raise RuntimeError("text measurer recovery smoke failed")
 
     try:

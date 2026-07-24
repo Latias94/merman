@@ -16,9 +16,6 @@ struct WardleyTheme {
     component_label_color: String,
     link_stroke: String,
     evolution_stroke: String,
-    annotation_stroke: String,
-    annotation_text_color: String,
-    annotation_fill: String,
 }
 
 impl WardleyTheme {
@@ -47,13 +44,6 @@ impl WardleyTheme {
             ),
             link_stroke: nested("linkStroke", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
-            annotation_stroke: nested("annotationStroke", "#000"),
-            annotation_text_color: nested_or_root(
-                "annotationTextColor",
-                "primaryTextColor",
-                "#222",
-            ),
-            annotation_fill: nested_or_root("annotationFill", "background", "#fff"),
         }
     }
 }
@@ -543,19 +533,18 @@ fn write_annotations_box(
     if let Some(rect) = annotations_box.rect {
         let _ = write!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="white" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
             fmt(rect.x),
             fmt(rect.y),
             fmt(rect.width),
             fmt(rect.height),
-            escape_attr_display(&theme.annotation_fill),
-            escape_attr_display(&theme.annotation_stroke),
+            escape_attr_display(&theme.axis_color),
             fmt(rect.corner_radius),
             fmt(rect.corner_radius)
         );
     }
     for line in &annotations_box.lines {
-        write_text(out, line, None, &theme.annotation_text_color, false);
+        write_text(out, line, None, &theme.axis_text_color, false);
     }
     out.push_str("</g>");
 }
@@ -571,7 +560,7 @@ fn write_annotations(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wa
                 out,
                 *segment,
                 Some("wardley-annotation-line"),
-                &theme.annotation_stroke,
+                &theme.axis_color,
                 Some(1.5),
                 Some("4 4"),
             );
@@ -585,11 +574,11 @@ fn write_annotations(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wa
                     center: point.center,
                     radius: point.radius,
                 },
-                &theme.annotation_fill,
-                &theme.annotation_stroke,
+                "white",
+                &theme.axis_color,
                 1.5,
             );
-            write_text(out, &point.label, None, &theme.annotation_text_color, true);
+            write_text(out, &point.label, None, &theme.axis_text_color, true);
             out.push_str("</g>");
         }
     }

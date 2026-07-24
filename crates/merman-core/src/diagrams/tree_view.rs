@@ -1325,19 +1325,48 @@ file##notes
 
     #[test]
     fn class_annotation_uses_the_upstream_langium_identifier_terminal() {
-        let semantic =
-            parse_tree_view("treeView-beta\nfile :::9bad\nvalid :::_ready-2\n", &meta()).unwrap();
-        let nodes = semantic["nodes"].as_array().expect("nodes array");
+        for class_name in ["a", "_", "Z9_-", "_ready-2"] {
+            let input = format!("treeView-beta\nfile ::: {class_name}\n");
+            let semantic = parse_tree_view(&input, &meta()).expect("valid class must parse");
+            assert_eq!(semantic["nodes"][1]["name"], json!("file"));
+            assert_eq!(semantic["nodes"][1]["cssClass"], json!(class_name));
+        }
 
-        assert_eq!(nodes[1]["name"], json!("file :::9bad"));
-        assert!(nodes[1].get("cssClass").is_none());
-        assert_eq!(nodes[2]["name"], json!("valid"));
-        assert_eq!(nodes[2]["cssClass"], json!("_ready-2"));
+        for rejected_class in ["9bad", "-bad", "éclair"] {
+            let input = format!("treeView-beta\nfile :::{rejected_class}\n");
+            let semantic = parse_tree_view(&input, &meta())
+                .expect("an invalid class marker remains part of the bare name upstream");
+            assert_eq!(
+                semantic["nodes"][1]["name"],
+                json!(format!("file :::{rejected_class}"))
+            );
+            assert!(semantic["nodes"][1].get("cssClass").is_none());
+        }
     }
 
     #[test]
     fn icon_annotation_uses_the_upstream_iconify_reference_terminal() {
-        for payload in ["foo bar", "foo:", "foo:bar:baz", "emoji:face🙂"] {
+        for (payload, expected) in [
+            ("", "none"),
+            ("foo", "foo"),
+            ("-", "-"),
+            (":valid-name", ":valid-name"),
+            ("pack:icon", "pack:icon"),
+            ("_-:9-a", "_-:9-a"),
+        ] {
+            let input = format!("treeView-beta\nfile icon({payload})\n");
+            let semantic = parse_tree_view(&input, &meta()).expect("valid icon must parse");
+            assert_eq!(semantic["nodes"][1]["icon"], json!(expected));
+        }
+
+        for payload in [
+            "foo bar",
+            "foo:",
+            "foo:bar:baz",
+            "foo::bar",
+            "foo/bar",
+            "emoji:face🙂",
+        ] {
             let input = format!("treeView-beta\nfile icon({payload})\n");
             let error = parse_tree_view(&input, &meta()).expect_err("invalid icon must fail");
             assert!(
@@ -1347,39 +1376,46 @@ file##notes
                 "{payload}: {error}"
             );
         }
-
-        let semantic = parse_tree_view("treeView-beta\nfile icon(:valid-name)\n", &meta()).unwrap();
-        assert_eq!(semantic["nodes"][1]["icon"], json!(":valid-name"));
     }
 
     #[test]
     fn common_metadata_after_a_node_is_rejected_and_not_reinterpreted_as_a_node() {
-        let source = "treeView-beta\nroot\ntitle Late\nafter\n";
-        let error = parse_tree_view(source, &meta()).expect_err("late title must fail");
-        assert!(
-            error.to_string().contains("must precede every node"),
-            "{error}"
-        );
+        for late_metadata in [
+            "title Late\n",
+            "accTitle: Late\n",
+            "accDescr: Late\n",
+            "accDescr {\nLate\n}\n",
+        ] {
+            let source = format!("treeView-beta\nroot\n{late_metadata}after\n");
+            let error =
+                parse_tree_view(&source, &meta()).expect_err("late common metadata must fail");
+            assert!(
+                error.to_string().contains("must precede every node"),
+                "{late_metadata:?}: {error}"
+            );
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_tree_view_json_and_editor_facts,
-            source,
-            &meta(),
-        );
-        assert!(
-            facts
-                .diagnostics
-                .iter()
-                .any(|diagnostic| { diagnostic.message.contains("must precede every node") })
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
-        assert!(
-            !facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "title Late")
-        );
+            let facts = crate::family::test_support::editor_facts(
+                parse_tree_view_json_and_editor_facts,
+                &source,
+                &meta(),
+            );
+            assert!(
+                facts
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains("must precede every node")),
+                "{late_metadata:?}: {:?}",
+                facts.diagnostics
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+            assert!(
+                !facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name.contains("Late"))
+            );
+        }
     }
 
     #[test]

@@ -13,9 +13,23 @@ readme = "README.md"
 keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
+[package.metadata.dist]
+default-features = false
+features = ["stdio"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
 default = []
-stdio = ["dep:tower", "dep:tracing-subscriber"]
+stdio = [
+    "dep:tower",
+    "dep:tracing-subscriber",
+    "tokio/io-std",
+    "tokio/io-util",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+]
 system-clock = [
     "merman-analysis/system-clock",
     "merman-core/system-clock",
@@ -48,24 +62,19 @@ path = "tests/stdio_smoke.rs"
 required-features = ["stdio"]
 
 [dependencies]
-futures.workspace = true
-lsp-types.workspace = true
-tower-lsp.workspace = true
-tokio.workspace = true
-url.workspace = true
+futures = { workspace = true, features = ["std"] }
+tower-lsp-server.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 merman-analysis.workspace = true
 merman-core.workspace = true
 merman-editor-core.workspace = true
 ropey.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-tower = { version = "0.4.13", optional = true }
+tower = { version = "0.5.2", default-features = false, optional = true }
 tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"], optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
-assert_cmd = "2.2.2"
-tempfile = "3.27.0"
-tokio = { workspace = true, features = ["test-util"] }
-tower = "0.4.13"
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
+tower = { version = "0.5.2", default-features = false, features = ["util"] }

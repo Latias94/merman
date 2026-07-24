@@ -4,12 +4,77 @@ use crate::algo::FcoseOptions;
 use crate::error::{Error, Result};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
-use nalgebra as na;
 use rustc_hash::FxHashMap;
 
 mod spectral;
 
 const GEOMETRY_EPSILON: f64 = 1e-9;
+
+// FCoSE only needs these two-dimensional operations. Keep their scalar evaluation order explicit:
+// the covariance and transform checkpoints are sensitive to floating-point accumulation drift.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Vec2 {
+    x: f64,
+    y: f64,
+}
+
+impl Vec2 {
+    const fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+
+    fn accumulate(&mut self, other: Self) {
+        self.x += other.x;
+        self.y += other.y;
+    }
+
+    fn scale_in_place(&mut self, scale: f64) {
+        self.x *= scale;
+        self.y *= scale;
+    }
+
+    fn difference(self, other: Self) -> Self {
+        Self::new(self.x - other.x, self.y - other.y)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Mat2 {
+    m00: f64,
+    m01: f64,
+    m10: f64,
+    m11: f64,
+}
+
+impl Mat2 {
+    const fn new(m00: f64, m01: f64, m10: f64, m11: f64) -> Self {
+        Self { m00, m01, m10, m11 }
+    }
+
+    fn add_outer_product(&mut self, left: Vec2, right: Vec2) {
+        self.m00 += left.x * right.x;
+        self.m01 += left.x * right.y;
+        self.m10 += left.y * right.x;
+        self.m11 += left.y * right.y;
+    }
+
+    const fn transpose(self) -> Self {
+        Self::new(self.m00, self.m10, self.m01, self.m11)
+    }
+
+    fn transform(self, vector: Vec2) -> Vec2 {
+        // The replaced fixed-size GEMV path initialized from column zero, then evaluated each
+        // later column term before the accumulated value. Preserve that operand order for parity.
+        Vec2::new(
+            self.m01 * vector.y + self.m00 * vector.x,
+            self.m11 * vector.y + self.m10 * vector.x,
+        )
+    }
+
+    fn is_finite(self) -> bool {
+        self.m00.is_finite() && self.m01.is_finite() && self.m10.is_finite() && self.m11.is_finite()
+    }
+}
 
 // Mermaid 11.16 does not override these Cytoscape 3.33.3 default stylesheet values. Cytoscape's
 // `boundingBoxImpl(...)` starts edge body bounds at half the styled width and parent body bounds at
@@ -2764,8 +2829,7 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
         if let Some(t) = procrustes_transform_for_alignments(&x, &y, c) {
             let tt = t.transpose();
             for i in 0..x.len() {
-                let v = na::Vector2::new(x[i], y[i]);
-                let r = tt * v;
+                let r = tt.transform(Vec2::new(x[i], y[i]));
                 x[i] = r.x;
                 y[i] = r.y;
             }
@@ -3010,36 +3074,31 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
     let pos_h = find_appropriate_positions(&nodes_sorted, &in_comp, &dag_h, Axis::Horizontal, x, y);
     let pos_v = find_appropriate_positions(&nodes_sorted, &in_comp, &dag_v, Axis::Vertical, x, y);
 
-    let mut source: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
-    let mut target: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
+    let mut source: Vec<Vec2> = Vec::with_capacity(largest.len());
+    let mut target: Vec<Vec2> = Vec::with_capacity(largest.len());
     for &idx in largest {
         if idx >= n_total {
             continue;
         }
-        source.push(na::Vector2::new(x[idx], y[idx]));
+        source.push(Vec2::new(x[idx], y[idx]));
         let tx = pos_h.get(idx).copied().unwrap_or(x[idx]);
         let ty = pos_v.get(idx).copied().unwrap_or(y[idx]);
-        target.push(na::Vector2::new(tx, ty));
+        target.push(Vec2::new(tx, ty));
     }
 
     if let Some(t) = procrustes_transform_from_pairs(&source, &target) {
         let tt = t.transpose();
         for i in 0..x.len().min(y.len()) {
-            let v = na::Vector2::new(x[i], y[i]);
-            let r = tt * v;
+            let r = tt.transform(Vec2::new(x[i], y[i]));
             x[i] = r.x;
             y[i] = r.y;
         }
     }
 }
 
-fn procrustes_transform_for_alignments(
-    x: &[f64],
-    y: &[f64],
-    c: &Constraints,
-) -> Option<na::Matrix2<f64>> {
-    let mut source: Vec<na::Vector2<f64>> = Vec::new();
-    let mut target: Vec<na::Vector2<f64>> = Vec::new();
+fn procrustes_transform_for_alignments(x: &[f64], y: &[f64], c: &Constraints) -> Option<Mat2> {
+    let mut source: Vec<Vec2> = Vec::new();
+    let mut target: Vec<Vec2> = Vec::new();
 
     for group in &c.align_vertical {
         if group.is_empty() {
@@ -3051,8 +3110,8 @@ fn procrustes_transform_for_alignments(
         }
         let x_pos = sum_x / (group.len() as f64);
         for &idx in group {
-            source.push(na::Vector2::new(x[idx], y[idx]));
-            target.push(na::Vector2::new(x_pos, y[idx]));
+            source.push(Vec2::new(x[idx], y[idx]));
+            target.push(Vec2::new(x_pos, y[idx]));
         }
     }
 
@@ -3066,8 +3125,8 @@ fn procrustes_transform_for_alignments(
         }
         let y_pos = sum_y / (group.len() as f64);
         for &idx in group {
-            source.push(na::Vector2::new(x[idx], y[idx]));
-            target.push(na::Vector2::new(x[idx], y_pos));
+            source.push(Vec2::new(x[idx], y[idx]));
+            target.push(Vec2::new(x[idx], y_pos));
         }
     }
 
@@ -3078,10 +3137,7 @@ fn procrustes_transform_for_alignments(
     procrustes_transform_from_pairs(&source, &target)
 }
 
-fn procrustes_transform_from_pairs(
-    source: &[na::Vector2<f64>],
-    target: &[na::Vector2<f64>],
-) -> Option<na::Matrix2<f64>> {
+fn procrustes_transform_from_pairs(source: &[Vec2], target: &[Vec2]) -> Option<Mat2> {
     if source.len() <= 1 || target.len() != source.len() {
         return None;
     }
@@ -3091,29 +3147,25 @@ fn procrustes_transform_from_pairs(
         .zip(target.iter())
         .all(|(s, t)| s.x.to_bits() == t.x.to_bits() && s.y.to_bits() == t.y.to_bits());
 
-    let mut mean_s = na::Vector2::new(0.0, 0.0);
-    let mut mean_t = na::Vector2::new(0.0, 0.0);
+    let mut mean_s = Vec2::default();
+    let mut mean_t = Vec2::default();
     for (s, t) in source.iter().zip(target.iter()) {
-        mean_s += s;
-        mean_t += t;
+        mean_s.accumulate(*s);
+        mean_t.accumulate(*t);
     }
     let inv_n = 1.0 / (source.len() as f64);
-    mean_s *= inv_n;
-    mean_t *= inv_n;
+    mean_s.scale_in_place(inv_n);
+    mean_t.scale_in_place(inv_n);
 
     // `ConstraintHandler` forms `tempMatrix = A'B` where A is target, B is source (mean-centered).
-    let mut m = na::Matrix2::zeros();
+    let mut m = Mat2::default();
     for (s, t) in source.iter().zip(target.iter()) {
-        let sc = s - mean_s;
-        let tc = t - mean_t;
-        m += tc * sc.transpose();
+        let sc = s.difference(mean_s);
+        let tc = t.difference(mean_t);
+        m.add_outer_product(tc, sc);
     }
 
-    if !(m[(0, 0)].is_finite()
-        && m[(0, 1)].is_finite()
-        && m[(1, 0)].is_finite()
-        && m[(1, 1)].is_finite())
-    {
+    if !m.is_finite() {
         return None;
     }
 
@@ -3125,7 +3177,7 @@ fn procrustes_transform_from_pairs(
     //
     // Use the same JamaJS-derived SVD port we already depend on for spectral layout, to avoid
     // subtle numeric drift that can break parity on symmetric constraint sets.
-    let m_in = vec![vec![m[(0, 0)], m[(0, 1)]], vec![m[(1, 0)], m[(1, 1)]]];
+    let m_in = vec![vec![m.m00, m.m01], vec![m.m10, m.m11]];
     let svd = spectral::svd_jama(&m_in)?;
     if svd.u.len() < 2 || svd.v.len() < 2 {
         return None;
@@ -3139,8 +3191,8 @@ fn procrustes_transform_from_pairs(
     let t10 = v[1][0] * u[0][0] + v[1][1] * u[0][1];
     let t11 = v[1][0] * u[1][0] + v[1][1] * u[1][1];
 
-    let trace = m[(0, 0)] + m[(1, 1)];
-    let cross = m[(0, 1)] + m[(1, 0)];
+    let trace = m.m00 + m.m11;
+    let cross = m.m01 + m.m10;
     if source_equals_target
         && source.len() == 6
         && (t00 - 1.0).abs() <= f64::EPSILON
@@ -3151,17 +3203,17 @@ fn procrustes_transform_from_pairs(
         && trace > 0.0
         && cross > 0.0
         && cross > trace * 0.5
-        && m[(0, 0)] > m[(1, 1)]
+        && m.m00 > m.m11
     {
         // Upstream JamaJS keeps an observable half-machine-epsilon tail for the already-satisfied
         // L-shaped Architecture alignment that drives `group_port_edges_017`. Applying that tail
         // broadly creates new root lattice drift, so this stays limited to the measured degenerate
         // covariance shape instead of changing the shared SVD routine.
         let skew = f64::EPSILON / 2.0;
-        return Some(na::Matrix2::new(1.0, skew, -skew, 1.0));
+        return Some(Mat2::new(1.0, skew, -skew, 1.0));
     }
 
-    Some(na::Matrix2::new(t00, t01, t10, t11))
+    Some(Mat2::new(t00, t01, t10, t11))
 }
 
 fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
@@ -4013,13 +4065,12 @@ mod tests {
         BoundsExtras, Constraints, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource,
         IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions,
         IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, RelConstraint,
-        RepulsionGrid, SimGraph, SimNode, XorShift64Star, apply_reflection_for_relative_placement,
-        layout, layout_indexed, new_fcose_random, procrustes_transform_for_alignments,
-        reset_fcose_random_for_run,
+        RepulsionGrid, SimGraph, SimNode, Vec2, XorShift64Star,
+        apply_reflection_for_relative_placement, layout, layout_indexed, new_fcose_random,
+        procrustes_transform_for_alignments, reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
     use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
-    use nalgebra as na;
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
@@ -4061,6 +4112,18 @@ mod tests {
             dx,
             dy
         );
+    }
+
+    #[test]
+    fn local_matrix_math_preserves_procrustes_orientation() {
+        let mut covariance = super::Mat2::default();
+        covariance.add_outer_product(Vec2::new(2.0, 3.0), Vec2::new(5.0, 7.0));
+        assert_eq!(covariance, super::Mat2::new(10.0, 14.0, 15.0, 21.0));
+
+        let transformed = super::Mat2::new(1.0, 2.0, 3.0, 4.0)
+            .transpose()
+            .transform(Vec2::new(5.0, 7.0));
+        assert_eq!(transformed, Vec2::new(26.0, 38.0));
     }
 
     #[test]
@@ -4663,12 +4726,12 @@ mod tests {
         let t = super::procrustes_transform_for_alignments(&x, &y, &constraints)
             .expect("alignment Procrustes transform");
         assert_eq!(
-            t[(0, 1)].to_bits(),
+            t.m01.to_bits(),
             (f64::EPSILON / 2.0).to_bits(),
             "expected positive JS-compatible Procrustes skew, got {t:?}"
         );
         assert_eq!(
-            t[(1, 0)].to_bits(),
+            t.m10.to_bits(),
             (-(f64::EPSILON / 2.0)).to_bits(),
             "expected negative JS-compatible Procrustes skew, got {t:?}"
         );
@@ -4814,8 +4877,7 @@ mod tests {
         let t = procrustes_transform_for_alignments(&x, &y, &c).expect("transform");
         let tt = t.transpose();
         for i in 0..x.len() {
-            let v = na::Vector2::new(x[i], y[i]);
-            let r = tt * v;
+            let r = tt.transform(Vec2::new(x[i], y[i]));
             x[i] = r.x;
             y[i] = r.y;
         }

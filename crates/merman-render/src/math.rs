@@ -1,11 +1,10 @@
 //! Optional math rendering hooks.
 //!
 //! Upstream Mermaid renders `$$...$$` fragments via KaTeX and measures the resulting HTML in a
-//! browser DOM. merman is headless and pure-Rust by default, so math rendering is modeled as an
-//! optional, pluggable backend.
-//!
-//! The default implementation is a no-op. For parity work, a Node.js-backed KaTeX renderer is
-//! provided, and the `math` feature enables a pure-Rust RaTeX renderer for supported labels.
+//! browser DOM. Merman models math rendering as an operation-scoped backend. An operation without
+//! one rejects typed diagrams that contain delimited math instead of emitting the source as plain
+//! text. The `math` feature installs the pure-Rust RaTeX backend by default; hosts may still supply
+//! another implementation explicitly.
 
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
@@ -71,7 +70,7 @@ pub trait MathRenderer: std::fmt::Debug {
     }
 }
 
-/// Default math renderer: does nothing.
+/// Explicit no-op math renderer for hosts that want a backend which declines every label.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopMathRenderer;
 
@@ -120,6 +119,12 @@ pub(crate) fn parse_delimited_math_line(text: &str) -> Option<DelimitedMathLine<
         fragments,
         trailing_text: &text[search_from..],
     })
+}
+
+pub(crate) fn contains_delimited_math(text: &str) -> bool {
+    crate::text::split_html_br_lines(text)
+        .into_iter()
+        .any(|line| parse_delimited_math_line(line).is_some())
 }
 
 /// Pure-Rust math renderer backed by RaTeX.
@@ -701,6 +706,14 @@ impl MathRenderer for NodeKatexMathRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delimited_math_detection_requires_a_complete_pair_on_one_label_line() {
+        assert!(contains_delimited_math("value: $$x^2$$"));
+        assert!(contains_delimited_math("plain<br>value: $$x^2$$"));
+        assert!(!contains_delimited_math("literal $$"));
+        assert!(!contains_delimited_math("literal $$<br>literal $$"));
+    }
 
     #[cfg(feature = "math")]
     #[test]

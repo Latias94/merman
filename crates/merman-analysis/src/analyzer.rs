@@ -55,6 +55,16 @@ impl AnalysisOptions {
         self
     }
 
+    pub fn try_with_fixed_today_at_local_midnight(
+        mut self,
+        today: chrono::NaiveDate,
+    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+        self.runtime_policy = self
+            .runtime_policy
+            .try_with_fixed_today_at_local_midnight(today)?;
+        Ok(self)
+    }
+
     pub fn try_with_fixed_local_offset_minutes(
         mut self,
         offset_minutes: i32,

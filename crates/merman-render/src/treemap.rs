@@ -368,7 +368,7 @@ fn position_node(
     squarify(nodes, idx, x0, y0, x1, y1);
 }
 
-pub fn layout_treemap_diagram_typed(
+pub(crate) fn layout_treemap_diagram_typed(
     model: &TreemapDiagramRenderModel,
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,

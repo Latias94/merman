@@ -1,6 +1,5 @@
 import type {
   AsciiCapability,
-  BindingCapabilities,
   BindingStatusCodeName,
   DiagramFamilyCapability,
   DiagramType,
@@ -10,6 +9,7 @@ import type {
   LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
+  RuntimeCapabilities,
 } from "./public-catalog.js";
 import type { HostTextMeasurementOperation } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
@@ -35,17 +35,21 @@ export interface RenderEnvironmentOptions {
   math_renderer?: "none" | "ratex";
 }
 
-export interface RuntimeContract {
+/**
+ * Current capabilities and policies exposed by the loaded browser artifact.
+ *
+ * Stable ID arrays are sorted and unique. Consumers must tolerate IDs introduced by newer
+ * artifacts and should make decisions only from the relations present in this catalog.
+ */
+export interface RuntimeCatalog {
   schema_version: number;
-  abi_version: number;
+  transport_api_version: number;
   package_version: string;
-  options_schema_version: number;
-  payload_schemas: Record<string, number>;
-  features: BindingCapabilities;
+  capabilities: RuntimeCapabilities;
   registry: {
     diagram_family_count: number;
   };
-  resources: RuntimeResourceContract | null;
+  resources: RuntimeResourceContract;
 }
 
 export interface RuntimeResourceContract {
@@ -541,7 +545,7 @@ export interface AnalysisDiagramFacts {
 }
 
 export interface AnalysisFactsResult extends AnalysisPayloadFields {
-  version: 2;
+  version: 1;
   diagrams: AnalysisDiagramFacts[];
 }
 
@@ -834,7 +838,7 @@ interface WasmBindgenInitEnvelope {
 export interface MermanWasmModule {
   default: (input?: WasmBindgenInitEnvelope) => Promise<unknown>;
   EditorSession?: WasmEditorSessionConstructor;
-  abiVersion: () => number;
+  transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
   renderSvgWithTextMeasurer?: (
@@ -942,8 +946,7 @@ export interface MermanWasmModule {
   ) => Uint32Array;
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
-  bindingCapabilities: () => BindingCapabilities;
-  runtimeContract: () => RuntimeContract;
+  runtimeCatalog: () => RuntimeCatalog;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

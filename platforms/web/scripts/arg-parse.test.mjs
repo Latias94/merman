@@ -21,8 +21,8 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 
 describe("web script argument parsing", () => {
   it("parses split and equals values", () => {
-    assert.equal(parseArgValue(["--preset", "browser-core"], "--preset"), "browser-core");
-    assert.equal(parseArgValue(["--preset=browser-core"], "--preset"), "browser-core");
+    assert.equal(parseArgValue(["--package", "analysis"], "--package"), "analysis");
+    assert.equal(parseArgValue(["--package=analysis"], "--package"), "analysis");
     assert.equal(parseArgValue([], "--preset"), null);
   });
 
@@ -34,10 +34,10 @@ describe("web script argument parsing", () => {
 
   it("rejects unknown arguments", () => {
     assert.doesNotThrow(() =>
-      assertKnownArgs(["--preset", "browser-core"], { valueArgs: ["--preset"] }),
+      assertKnownArgs(["--package", "analysis"], { valueArgs: ["--package"] }),
     );
     assert.throws(
-      () => assertKnownArgs(["--preset", "browser-core", "--extra"], { valueArgs: ["--preset"] }),
+      () => assertKnownArgs(["--package", "analysis", "--extra"], { valueArgs: ["--package"] }),
       ArgParseError,
     );
   });

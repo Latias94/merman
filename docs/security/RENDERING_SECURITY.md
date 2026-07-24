@@ -23,7 +23,7 @@ For export and raster workflows, prefer the resvg-safe SVG pipeline or a raster 
 consumer is not a browser DOM:
 
 ```rust
-use merman::render::{ResvgCompatibleSvg, SvgPipeline};
+use merman::svg::{ResvgCompatibleSvg, SvgPipeline};
 ```
 
 The resvg-safe preset always runs after custom draft postprocessors. It tokenizes CSS, removes
@@ -84,6 +84,33 @@ intentionally uses an external link or image can therefore be rejected. Use this
 preview surfaces; for external-resource diagrams, either embed/rewrite the resources, keep the SVG
 as a download, or build a host-specific policy with an explicit URL allowlist, CSP, and isolation
 model. Do not silently weaken the shared helper and continue describing it as the same policy.
+
+Inline raster validation runs before `DOMParser`, `innerHTML`, or decoded-byte allocation. The shared
+policy applies these independent limits:
+
+| Resource | Per image | Aggregate SVG |
+| --- | ---: | ---: |
+| Base64 payload | 24 MiB | 44 MiB |
+| Decoded file bytes | 16 MiB | 32 MiB |
+| Intrinsic canvas pixels | 16,777,216 | 33,554,432 |
+
+The enclosing SVG is also limited to 64 MiB of UTF-8 and UTF-16 source representation, and one raw
+attribute value is limited to 25 Mi UTF-16 code units. Base64 is parsed canonically; MIME and file
+signatures must agree. PNG, GIF, JPEG, and WebP dimensions come from bounded container/header
+scans. The scanners accept only a static single-frame subset: all APNG control/frame chunks,
+multi-image or application-controlled GIFs, WebP animation flags/chunks, independently compressed
+PNG metadata, unknown PNG/WebP chunks, and inconsistent container dimensions fail closed. See the
+[PNG](https://www.w3.org/TR/png-3/),
+[GIF89a](https://www.w3.org/Graphics/GIF/spec-gif89a.txt), and
+[WebP container](https://developers.google.com/speed/webp/docs/riff_container) specifications for
+the structures used by these checks.
+
+This is deliberately not an image decoder. It does not decompress PNG image data, GIF LZW data,
+JPEG scans, or WebP bitstreams, and it does not infer frame counts from file names or browser timing.
+An accepted payload can still be rejected by the browser's decoder. The policy proves the encoded
+and decoded file-byte bounds, declared canvas bounds, and absence of recognized or unsupported
+animation/frame containers before the browser sees the SVG; it does not claim an exact browser heap
+allocation bound.
 
 If an application bypasses these wrappers and inserts `renderSvg()` output directly with
 `innerHTML`, the application owns that DOM trust decision.

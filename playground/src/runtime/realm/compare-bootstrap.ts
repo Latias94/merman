@@ -268,8 +268,10 @@ function validateCompareEngineModule(
   module: Record<string, unknown>
 ): CompareEngineModule {
   if (
-    Object.keys(module).length !== 1 ||
-    typeof module.renderWithMermaid !== "function"
+    Object.keys(module).length !== 2 ||
+    typeof module.renderWithMermaid !== "function" ||
+    typeof module.benchmarkEngineAdapter !== "object" ||
+    module.benchmarkEngineAdapter === null
   ) {
     throw new RealmProtocolError("Compare engine artifact exports are invalid.");
   }

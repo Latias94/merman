@@ -1,0 +1,68 @@
+[package]
+name = "merman-export"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Bounded PNG, JPEG, and PDF export for terminally validated Merman SVG."
+documentation = "https://docs.rs/merman-export"
+readme = "README.md"
+keywords = ["mermaid", "svg", "png", "jpeg", "pdf"]
+categories = ["encoding", "graphics"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
+[features]
+default = []
+png = [
+    "dep:cssparser",
+    "dep:data-url",
+    "dep:merman-render",
+    "dep:quick-xml",
+    "dep:resvg",
+    "dep:thiserror",
+    "dep:tiny-skia",
+    "dep:usvg",
+]
+jpeg = [
+    "dep:cssparser",
+    "dep:data-url",
+    "dep:image",
+    "dep:merman-render",
+    "dep:quick-xml",
+    "dep:resvg",
+    "dep:thiserror",
+    "dep:tiny-skia",
+    "dep:usvg",
+]
+pdf = [
+    "dep:data-url",
+    "dep:krilla",
+    "dep:krilla-svg",
+    "dep:merman-render",
+    "dep:quick-xml",
+    "dep:thiserror",
+    "dep:usvg",
+]
+
+[dependencies]
+cssparser = { workspace = true, optional = true }
+data-url = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+krilla = { workspace = true, optional = true }
+krilla-svg = { workspace = true, optional = true }
+merman-render = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
+resvg = { workspace = true, optional = true, features = ["raster-images", "system-fonts", "text"] }
+thiserror = { workspace = true, optional = true }
+tiny-skia = { workspace = true, optional = true }
+usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }
+
+[dev-dependencies]
+base64.workspace = true
+merman-core.workspace = true
+png.workspace = true

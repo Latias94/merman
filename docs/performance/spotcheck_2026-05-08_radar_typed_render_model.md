@@ -19,13 +19,13 @@ title/accessibility/legend labels.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline radar_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline radar_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline radar_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline radar_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 The typed worktree was run more than once while restoring the semantic JSON materializer to a

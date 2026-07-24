@@ -128,7 +128,7 @@ let options = AsciiRenderOptions::unicode()
 4. `AsciiColorRole` is non-exhaustive. Diagram families will need new roles over time.
 5. `AsciiColorTheme` should keep private fields and builder methods. Avoid another public struct
    whose future fields become breaking changes.
-6. ADR 0067 accepts one pre-1.0 `AsciiRenderOptions` migration: add `color_mode` and `color_theme`,
+6. ADR 0067 accepts one breaking `AsciiRenderOptions` migration: add `color_mode` and `color_theme`,
    keep the struct `Copy`, add builder methods, and mark the struct `#[non_exhaustive]` during the
    same change.
 

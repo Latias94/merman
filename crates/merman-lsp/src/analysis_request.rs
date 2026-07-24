@@ -7,7 +7,7 @@ use crate::sync::{lock_recovering_poison, recover_poison};
 use merman_analysis::{AnalysisCancellationToken, AnalysisCancelled, Analyzer};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::sync::Arc;
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct AnalysisGeneration(pub(crate) u64);
@@ -24,7 +24,7 @@ pub(crate) struct AnalysisBuildRequest {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub(crate) struct AnalysisBuildKey {
-    uri: Url,
+    uri: Uri,
     version: i32,
     analysis_generation: AnalysisGeneration,
     snapshot_generation: SnapshotGeneration,
@@ -34,7 +34,7 @@ pub(crate) struct AnalysisBuildKey {
 
 impl AnalysisBuildKey {
     pub(crate) fn new(
-        uri: Url,
+        uri: Uri,
         version: i32,
         analysis_generation: AnalysisGeneration,
         snapshot_generation: SnapshotGeneration,
@@ -51,7 +51,7 @@ impl AnalysisBuildKey {
         }
     }
 
-    pub(crate) fn uri(&self) -> &Url {
+    pub(crate) fn uri(&self) -> &Uri {
         &self.uri
     }
 }
@@ -73,7 +73,7 @@ impl AnalysisBuildRequest {
         }
     }
 
-    pub(crate) fn uri(&self) -> &Url {
+    pub(crate) fn uri(&self) -> &Uri {
         self.key.uri()
     }
 

@@ -150,9 +150,6 @@ jobs:
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
       - name: Inject Android libraries into Flutter package
@@ -165,9 +162,6 @@ jobs:
       - name: Build and inject iOS XCFramework
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: |
           bash platforms/flutter/build-ios.sh
           test -d platforms/flutter/ios/MermanFFI.xcframework
@@ -175,9 +169,6 @@ jobs:
       - name: Build desktop native libraries
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: bash platforms/flutter/build-desktop.sh --all
 
       - name: Verify Flutter native artifacts

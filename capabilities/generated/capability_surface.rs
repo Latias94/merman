@@ -2,16 +2,12 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
     "typst",
     "web",
-];
-
-pub const RUNTIME_CAPABILITY_IDS: &[&str] = &[
-    "typst-transport",
 ];
 
 pub const CAPABILITY_IDS: &[&str] = &[
@@ -42,20 +38,19 @@ pub const OUTPUT_IDS: &[&str] = &[
     "svg",
 ];
 
-pub const PRESET_IDS: &[&str] = &[
-    "preset-all",
-    "preset-ci-lint",
-    "preset-editor",
-    "preset-mmdc",
-    "preset-native-sdk",
-    "preset-native-svg",
-    "preset-static-svg",
-    "preset-svg-basic",
-    "preset-web-analysis",
-    "preset-web-ascii",
-    "preset-web-editor",
-    "preset-web-full",
-    "preset-web-render",
+pub const BINDING_OPERATION_IDS: &[&str] = &[
+    "analysis-facts-json",
+    "analysis-json",
+    "ascii",
+    "document-analysis-facts-json",
+    "document-analysis-json",
+    "jpeg",
+    "layout-json",
+    "pdf",
+    "png",
+    "semantic-json",
+    "svg",
+    "validation-json",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,23 +63,6 @@ pub const TARGETS: &[TargetDescriptor] = &[
     TargetDescriptor { id: "native", description: "Native Rust, CLI, and native binding artifacts." },
     TargetDescriptor { id: "typst", description: "Pure-WASM Typst plugin artifacts." },
     TargetDescriptor { id: "web", description: "Browser wasm-bindgen artifacts." },
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RuntimeCapabilityDescriptor {
-    pub id: &'static str,
-    pub kind: &'static str,
-    pub description: &'static str,
-    pub targets: &'static [&'static str],
-}
-
-pub const RUNTIME_CAPABILITIES: &[RuntimeCapabilityDescriptor] = &[
-    RuntimeCapabilityDescriptor {
-        id: "typst-transport",
-        kind: "transport",
-        description: "Typst wasm-minimal-protocol transport.",
-        targets: &["typst"],
-    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,104 +244,110 @@ pub const OUTPUTS: &[OutputDescriptor] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CapabilityPresetDescriptor {
+pub struct BindingOperationDescriptor {
     pub id: &'static str,
+    pub capability_id: Option<&'static str>,
     pub description: &'static str,
+    pub media_type: &'static str,
+    pub requires_uri: bool,
     pub targets: &'static [&'static str],
-    pub capabilities: &'static [&'static str],
-    pub expected_runtime_capabilities: &'static [&'static str],
 }
 
-pub const CAPABILITY_PRESETS: &[CapabilityPresetDescriptor] = &[
-    CapabilityPresetDescriptor {
-        id: "preset-all",
-        description: "Exhaustive non-tool Rust build and test workflow.",
-        targets: &["native"],
-        capabilities: &["analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        expected_runtime_capabilities: &["analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+pub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = &[
+    BindingOperationDescriptor {
+        id: "analysis-facts-json",
+        capability_id: Some("analysis"),
+        description: "Analyze Mermaid input and return semantic facts JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-ci-lint",
-        description: "Lean CLI lint workflow.",
-        targets: &["native"],
-        capabilities: &["analysis"],
-        expected_runtime_capabilities: &["analysis"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-editor",
-        description: "Editor library and LSP library workflow.",
-        targets: &["native"],
-        capabilities: &["analysis", "editor"],
-        expected_runtime_capabilities: &["analysis", "editor"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-mmdc",
-        description: "Default complete CLI workflow.",
-        targets: &["native"],
-        capabilities: &["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "network-icons", "parallel-markdown", "pdf", "png", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        expected_runtime_capabilities: &["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "network-icons", "parallel-markdown", "pdf", "png", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-native-sdk",
-        description: "Native SDK and binding artifact workflow.",
-        targets: &["native"],
-        capabilities: &["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        expected_runtime_capabilities: &["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-native-svg",
-        description: "Default native Rust SVG workflow.",
-        targets: &["native"],
-        capabilities: &["layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        expected_runtime_capabilities: &["layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-static-svg",
-        description: "Static-site SVG workflow with no system adapters.",
-        targets: &["native"],
-        capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
-    },
-    CapabilityPresetDescriptor {
-        id: "preset-svg-basic",
-        description: "SVG workflow without optional layout or math engines.",
+    BindingOperationDescriptor {
+        id: "analysis-json",
+        capability_id: Some("analysis"),
+        description: "Analyze Mermaid input and return diagnostics JSON.",
+        media_type: "application/json",
+        requires_uri: false,
         targets: &["native", "typst", "web"],
-        capabilities: &["svg"],
-        expected_runtime_capabilities: &["svg"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-web-analysis",
-        description: "Browser analysis artifact.",
-        targets: &["web"],
-        capabilities: &["analysis"],
-        expected_runtime_capabilities: &["analysis"],
+    BindingOperationDescriptor {
+        id: "ascii",
+        capability_id: Some("ascii"),
+        description: "Render Mermaid input as terminal text.",
+        media_type: "text/plain; charset=utf-8",
+        requires_uri: false,
+        targets: &["native", "web"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-web-ascii",
-        description: "Browser ASCII artifact.",
-        targets: &["web"],
-        capabilities: &["ascii"],
-        expected_runtime_capabilities: &["ascii"],
+    BindingOperationDescriptor {
+        id: "document-analysis-facts-json",
+        capability_id: Some("analysis"),
+        description: "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+        media_type: "application/json",
+        requires_uri: true,
+        targets: &["native", "web"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-web-editor",
-        description: "Browser editor intelligence artifact.",
-        targets: &["web"],
-        capabilities: &["analysis", "editor"],
-        expected_runtime_capabilities: &["analysis", "editor"],
+    BindingOperationDescriptor {
+        id: "document-analysis-json",
+        capability_id: Some("analysis"),
+        description: "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+        media_type: "application/json",
+        requires_uri: true,
+        targets: &["native", "web"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-web-full",
-        description: "Fused browser artifact containing all retained Web workflows.",
-        targets: &["web"],
-        capabilities: &["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    BindingOperationDescriptor {
+        id: "jpeg",
+        capability_id: Some("jpeg"),
+        description: "Render Mermaid input as JPEG.",
+        media_type: "image/jpeg",
+        requires_uri: false,
+        targets: &["native"],
     },
-    CapabilityPresetDescriptor {
-        id: "preset-web-render",
-        description: "Browser SVG render artifact.",
-        targets: &["web"],
-        capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
-        expected_runtime_capabilities: &["layout-cytoscape", "layout-elk", "math", "svg"],
+    BindingOperationDescriptor {
+        id: "layout-json",
+        capability_id: Some("svg"),
+        description: "Render Mermaid input into layout model JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    BindingOperationDescriptor {
+        id: "pdf",
+        capability_id: Some("pdf"),
+        description: "Render Mermaid input as PDF.",
+        media_type: "application/pdf",
+        requires_uri: false,
+        targets: &["native"],
+    },
+    BindingOperationDescriptor {
+        id: "png",
+        capability_id: Some("png"),
+        description: "Render Mermaid input as PNG.",
+        media_type: "image/png",
+        requires_uri: false,
+        targets: &["native"],
+    },
+    BindingOperationDescriptor {
+        id: "semantic-json",
+        capability_id: None,
+        description: "Parse Mermaid input into canonical semantic JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    BindingOperationDescriptor {
+        id: "svg",
+        capability_id: Some("svg"),
+        description: "Render Mermaid input as SVG.",
+        media_type: "image/svg+xml",
+        requires_uri: false,
+        targets: &["native", "typst", "web"],
+    },
+    BindingOperationDescriptor {
+        id: "validation-json",
+        capability_id: Some("analysis"),
+        description: "Validate Mermaid input and return validation JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
     },
 ];

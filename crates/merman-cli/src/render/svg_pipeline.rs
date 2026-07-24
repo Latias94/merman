@@ -1,5 +1,5 @@
 use crate::cli::SvgPipelineKind;
-use merman::render::{SvgOutputPolicy, SvgPipelinePreset};
+use merman::svg::{SvgOutputPolicy, SvgPipelinePreset};
 
 pub(super) fn svg_output_policy(
     kind: SvgPipelineKind,
@@ -18,6 +18,7 @@ pub(super) fn svg_output_policy(
     }
 }
 
+#[cfg(feature = "analysis")]
 pub(super) fn svg_metadata(svg: &str) -> (Option<String>, Option<String>) {
     (
         first_svg_element_text(svg, "title"),
@@ -25,6 +26,7 @@ pub(super) fn svg_metadata(svg: &str) -> (Option<String>, Option<String>) {
     )
 }
 
+#[cfg(feature = "analysis")]
 fn first_svg_element_text(svg: &str, tag: &str) -> Option<String> {
     let open = format!("<{tag}");
     let close = format!("</{tag}>");
@@ -35,6 +37,7 @@ fn first_svg_element_text(svg: &str, tag: &str) -> Option<String> {
     (!value.is_empty()).then(|| decode_basic_xml_entities(value))
 }
 
+#[cfg(feature = "analysis")]
 fn decode_basic_xml_entities(value: &str) -> String {
     value
         .replace("&quot;", "\"")

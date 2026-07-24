@@ -1,8 +1,8 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 #![recursion_limit = "256"]
 
 use merman::MermaidConfig;
-use merman::render::{
+use merman::svg::{
     CssOverridePolicy, CssOverridePostprocessor, HeadlessRenderer, ScopedCssPostprocessor,
     SvgPipeline,
 };

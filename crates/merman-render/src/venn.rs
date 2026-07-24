@@ -26,7 +26,7 @@ mod config;
 
 use config::VennConfigView;
 
-pub fn layout_venn_diagram_typed(
+pub(crate) fn layout_venn_diagram_typed(
     model: &VennDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
@@ -63,16 +63,14 @@ pub fn layout_venn_diagram_typed(
     let layout_areas = if areas.is_empty() {
         Vec::new()
     } else {
-        compute_venn_layout(
-            &areas,
-            &VennLayoutOptions {
-                width: cfg.width,
-                height: diagram_height,
-                padding: cfg.padding,
-                ..Default::default()
-            },
-        )
-        .map_err(|err| Error::InvalidModel {
+        let layout_options = VennLayoutOptions {
+            width: cfg.width,
+            height: diagram_height,
+            padding: cfg.padding,
+            ..Default::default()
+        };
+        resource_limits.check_layout_work_units(venn_layout_work_units(&areas, &layout_options))?;
+        compute_venn_layout(&areas, &layout_options).map_err(|err| Error::InvalidModel {
             message: err.to_string(),
         })?
     };
@@ -249,7 +247,7 @@ fn ensure_pairwise_subsets_for_layout(
     mut areas: Vec<VennArea>,
     resource_limits: RenderResourcePolicy,
 ) -> Result<Vec<VennArea>> {
-    resource_limits.check_venn_areas(areas.len())?;
+    resource_limits.check_layout_work_units(areas.len())?;
     let mut existing_pairs = areas
         .iter()
         .filter(|area| area.sets.len() == 2)
@@ -291,7 +289,7 @@ fn ensure_pairwise_subsets_for_layout(
                 if existing_pairs.contains(&pair) {
                     continue;
                 }
-                resource_limits.check_venn_areas(
+                resource_limits.check_layout_work_units(
                     areas
                         .len()
                         .saturating_add(synthetic.len())
@@ -332,11 +330,64 @@ fn ensure_pairwise_subsets_for_layout(
                 continue;
             }
             expanded_area_count = expanded_area_count.saturating_add(1);
-            resource_limits.check_venn_areas(expanded_area_count)?;
+            resource_limits.check_layout_work_units(expanded_area_count)?;
         }
     }
 
     Ok(areas)
+}
+
+/// Estimates the typed adapter's Venn optimizer and geometry work before entering the
+/// source-backed layout kernel.
+///
+/// `venn.js` runs constrained MDS for eight or more sets. Both its gradient and the final
+/// Nelder-Mead objective inspect every set pair/area repeatedly, so charging only the number of
+/// expanded areas allows a small model to consume an unbounded amount of CPU. The estimate is
+/// intentionally saturating and conservative; it does not change the public raw kernel, which
+/// remains available to trusted callers without a render policy.
+fn venn_layout_work_units(areas: &[VennArea], options: &VennLayoutOptions) -> usize {
+    let singleton_ids = areas
+        .iter()
+        .filter(|area| area.sets.len() == 1)
+        .map(|area| area.sets[0].as_str())
+        .collect::<HashSet<_>>();
+    let set_count = singleton_ids.len();
+    let pair_count = set_count.saturating_mul(set_count.saturating_sub(1)) / 2;
+
+    // `add_missing_areas` may append every missing singleton pair. This is an upper bound, but
+    // avoids allocating a second expanded vector solely for the preflight estimate.
+    let area_count = areas.len().saturating_add(pair_count);
+
+    // Constrained MDS evaluates every unordered set pair once per gradient iteration and restart.
+    let mds_work = pair_count
+        .saturating_mul(options.max_iterations)
+        .saturating_mul(options.restarts);
+
+    // Nelder-Mead evaluates the loss several times per iteration and once for the initial
+    // simplex. The factor four covers the reflected/expanded/contracted/reduced branches while
+    // the simplex term covers the 2N+1 initial points.
+    let simplex_evaluations = set_count.saturating_mul(2).saturating_add(1);
+    let objective_evaluations = options
+        .max_iterations
+        .saturating_mul(4)
+        .saturating_add(simplex_evaluations);
+    let optimizer_loss_work = area_count.saturating_mul(objective_evaluations);
+
+    // Geometry and intersection-area construction run once after optimization. A set area with
+    // many members can inspect all member pairs, so include the sum of squared area arities and
+    // the pairwise cluster pass.
+    let intersection_work = areas.iter().fold(0usize, |total, area| {
+        total.saturating_add(area.sets.len().saturating_mul(area.sets.len()))
+    });
+    let geometry_work = intersection_work
+        .saturating_add(pair_count.saturating_mul(4))
+        .saturating_add(set_count.saturating_mul(set_count));
+
+    area_count
+        .saturating_add(pair_count)
+        .saturating_add(mds_work)
+        .saturating_add(optimizer_loss_work)
+        .saturating_add(geometry_work)
 }
 
 fn canonical_pair(left: &str, right: &str) -> (String, String) {
@@ -2380,10 +2431,38 @@ mod tests {
     }
 
     #[test]
+    fn typed_layout_rejects_mds_optimizer_work_before_matrix_allocation() {
+        let model = VennDiagramRenderModel {
+            subsets: (0..700)
+                .map(|index| VennSubsetRenderModel {
+                    sets: vec![format!("S{index}")],
+                    size: 1.0,
+                    label: None,
+                })
+                .collect(),
+            ..Default::default()
+        };
+
+        let error = layout_venn_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            RenderResourcePolicy::interactive(),
+        )
+        .expect_err("large Venn optimizer must be rejected by layout work budget");
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn layout resource limit");
+        };
+
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert!(error.actual > error.max);
+    }
+
+    #[test]
     fn pairwise_expansion_is_rejected_before_it_can_exceed_the_area_budget() {
         let members = (0..1_000).map(|index| format!("S{index}")).collect();
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxVennAreas, 32)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
             .unwrap();
         let error = ensure_pairwise_subsets_for_layout(
             vec![VennArea {
@@ -2399,7 +2478,7 @@ mod tests {
             panic!("expected Venn area resource limit");
         };
 
-        assert_eq!(error.limit, "max_venn_areas");
+        assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, 33);
         assert_eq!(error.max, 32);
     }
@@ -2407,7 +2486,7 @@ mod tests {
     #[test]
     fn private_singleton_pair_expansion_is_included_in_the_area_budget() {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxVennAreas, 6)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
             .unwrap();
         let areas = ["A", "B", "C", "D"]
             .into_iter()
@@ -2418,9 +2497,24 @@ mod tests {
             panic!("expected Venn area resource limit");
         };
 
-        assert_eq!(error.limit, "max_venn_areas");
+        assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, 7);
         assert_eq!(error.max, 6);
+    }
+
+    #[test]
+    fn private_singleton_pair_expansion_accepts_the_exact_area_budget() {
+        let areas = ["A", "B", "C", "D"]
+            .into_iter()
+            .map(|set| VennArea::new([set], 10.0))
+            .collect::<Vec<_>>();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .unwrap();
+
+        let checked = ensure_pairwise_subsets_for_layout(areas.clone(), limits)
+            .expect("four source areas plus six private pairs fit exactly");
+        assert_eq!(checked, areas);
     }
 
     #[test]
@@ -2436,7 +2530,7 @@ mod tests {
         let expanded = ensure_pairwise_subsets_for_layout(
             vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxVennAreas, 6)
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
                 .unwrap(),
         )
         .expect("five upstream pair constraints plus the source area fit exactly");

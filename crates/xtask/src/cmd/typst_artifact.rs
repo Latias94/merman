@@ -1,8 +1,12 @@
 use crate::{
     XtaskError,
     cmd::{
-        MERMAID_SOURCE_COMMIT, paths,
-        typst_profiles::{TypstProfileCatalog, TypstWasmProfile},
+        MERMAID_SOURCE_COMMIT,
+        artifact_profiles::WasmArtifactProfile,
+        paths,
+        typst_profiles::{
+            TypstPackageProfile, TypstProfileCatalog, validate_typst_artifact_profiles,
+        },
     },
     util::sha256_hex,
 };
@@ -14,7 +18,7 @@ use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
 const ARTIFACT_ROOT_NAME: &str = "typst-wasm-artifacts";
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
@@ -24,7 +28,9 @@ const CARGO_PROFILE: &str = "wasm-size";
 pub(crate) struct TypstArtifactSpec {
     workspace_root: PathBuf,
     target_root: PathBuf,
+    artifact_profile: String,
     profile: String,
+    default_features: bool,
     features: Vec<String>,
     cargo_package: String,
     cargo_manifest_path: PathBuf,
@@ -72,7 +78,9 @@ struct TypstPackageTable {
 #[serde(deny_unknown_fields)]
 struct ArtifactManifest {
     schema_version: u32,
+    artifact_profile: String,
     profile: String,
+    default_features: bool,
     features: Vec<String>,
     target_triple: String,
     cargo_profile: String,
@@ -203,18 +211,16 @@ struct SystemArtifactRuntime;
 impl TypstArtifactSpec {
     pub(crate) fn for_repository_profile(
         catalog: &TypstProfileCatalog,
-        profile: &TypstWasmProfile,
+        profile: &TypstPackageProfile,
+        artifact_profile: &WasmArtifactProfile,
     ) -> Result<Self, XtaskError> {
-        if !catalog
-            .profiles()
-            .iter()
-            .any(|candidate| candidate == profile)
-        {
+        if catalog.package_profile() != profile {
             return Err(artifact_error(format!(
                 "profile `{}` is not the canonical descriptor entry",
                 profile.name()
             )));
         }
+        validate_typst_artifact_profiles(catalog, std::slice::from_ref(artifact_profile))?;
 
         let workspace_root = paths::workspace_root().canonicalize().map_err(|source| {
             artifact_io_error(
@@ -228,11 +234,13 @@ impl TypstArtifactSpec {
         Self {
             target_root: paths::target_root(),
             workspace_root,
+            artifact_profile: artifact_profile.id.clone(),
             profile: profile.name().to_string(),
-            features: profile.features().to_vec(),
-            cargo_package: catalog.package().to_string(),
-            cargo_manifest_path: catalog.manifest_path().to_path_buf(),
-            artifact_name: catalog.artifact_name().to_string(),
+            default_features: artifact_profile.default_features,
+            features: artifact_profile.features.clone(),
+            cargo_package: artifact_profile.package.clone(),
+            cargo_manifest_path: artifact_profile.manifest_path.clone(),
+            artifact_name: artifact_profile.artifact_name.clone(),
             cargo_package_version,
             typst_package_version,
             plugin_abi_version: catalog.plugin_abi_version(),
@@ -260,7 +268,8 @@ impl TypstArtifactSpec {
     }
 
     fn validate(&self) -> Result<(), XtaskError> {
-        validate_profile_name(&self.profile)?;
+        validate_kebab_name("artifact profile", &self.artifact_profile)?;
+        validate_kebab_name("canonical package profile", &self.profile)?;
         validate_artifact_name(&self.artifact_name)?;
         validate_cargo_manifest_path(&self.cargo_manifest_path)?;
         let crate_plugin_abi_version = merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION;
@@ -319,7 +328,9 @@ impl TypstArtifactSpec {
     ) -> ArtifactManifest {
         ArtifactManifest {
             schema_version: MANIFEST_SCHEMA_VERSION,
+            artifact_profile: self.artifact_profile.clone(),
             profile: self.profile.clone(),
+            default_features: self.default_features,
             features: self.features.clone(),
             target_triple: TARGET_TRIPLE.to_string(),
             cargo_profile: CARGO_PROFILE.to_string(),
@@ -372,17 +383,19 @@ impl ArtifactRuntime for SystemArtifactRuntime {
         spec: &TypstArtifactSpec,
     ) -> Result<CargoMetadataOutput, XtaskError> {
         let mut command = Command::new("cargo");
+        command.args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--locked",
+            "--filter-platform",
+            TARGET_TRIPLE,
+        ]);
+        if !spec.default_features {
+            command.arg("--no-default-features");
+        }
         command
-            .args([
-                "metadata",
-                "--format-version",
-                "1",
-                "--locked",
-                "--filter-platform",
-                TARGET_TRIPLE,
-                "--no-default-features",
-                "--manifest-path",
-            ])
+            .arg("--manifest-path")
             .arg(spec.workspace_root.join(&spec.cargo_manifest_path));
         if !spec.features.is_empty() {
             let features = spec.features.join(",");
@@ -574,12 +587,25 @@ fn verify_directory(
             manifest.schema_version,
         ));
     }
+    if manifest.artifact_profile != spec.artifact_profile {
+        return Err(manifest_mismatch(
+            "artifact_profile",
+            &spec.artifact_profile,
+            &manifest.artifact_profile,
+        ));
+    }
     if manifest.profile != spec.profile {
         return Err(manifest_mismatch(
             "profile",
             &spec.profile,
             &manifest.profile,
         ));
+    }
+    if manifest.default_features != spec.default_features {
+        return Err(artifact_error(format!(
+            "artifact manifest default_features is stale for profile `{}`",
+            spec.profile
+        )));
     }
     if manifest.features != spec.features {
         return Err(artifact_error(format!(
@@ -1044,7 +1070,7 @@ fn collect_package_inputs(
     }
     if is_root {
         let descriptor = package_root.join("wasm-profiles.json");
-        validate_regular_file(&descriptor, "Typst WASM profile descriptor")?;
+        validate_regular_file(&descriptor, "Typst package descriptor")?;
         output.push(descriptor);
     }
     for path in &output[first_new_path..] {
@@ -1336,14 +1362,14 @@ fn unicode_environment_variable(name: &str) -> Result<Option<String>, XtaskError
         .transpose()
 }
 
-fn validate_profile_name(profile: &str) -> Result<(), XtaskError> {
-    if profile.is_empty()
-        || !profile
+fn validate_kebab_name(kind: &str, value: &str) -> Result<(), XtaskError> {
+    if value.is_empty()
+        || !value
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
         return Err(artifact_error(format!(
-            "canonical profile `{profile}` must use lowercase ASCII letters, digits, and hyphens"
+            "{kind} `{value}` must use lowercase ASCII letters, digits, and hyphens"
         )));
     }
     Ok(())
@@ -1633,8 +1659,10 @@ mod tests {
             TypstArtifactSpec {
                 workspace_root: self.workspace.clone(),
                 target_root: self.target.clone(),
+                artifact_profile: "typst-wasm".to_string(),
                 profile: profile.to_string(),
-                features: vec!["render".to_string(), "analysis".to_string()],
+                default_features: false,
+                features: vec!["svg".to_string(), "analysis".to_string()],
                 cargo_package: "merman-typst-plugin".to_string(),
                 cargo_manifest_path: PathBuf::from("crates/plugin/Cargo.toml"),
                 artifact_name: "merman_typst_plugin.wasm".to_string(),
@@ -1749,7 +1777,7 @@ mod tests {
                                     }],
                                 },
                             ],
-                            features: vec!["analysis".to_string(), "render".to_string()],
+                            features: vec!["analysis".to_string(), "svg".to_string()],
                         },
                         MetadataNode {
                             id: reachable_id.to_string(),
@@ -1781,7 +1809,14 @@ mod tests {
     fn repository_spec_uses_the_canonical_workspace_identity() {
         let catalog = crate::cmd::typst_profiles::load_typst_profiles().unwrap();
         let profile = catalog.resolve_package(Some("publish")).unwrap();
-        let spec = TypstArtifactSpec::for_repository_profile(&catalog, profile).unwrap();
+        let artifact_profiles =
+            crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+        let artifact_profile = artifact_profiles
+            .iter()
+            .find(|artifact| artifact.semantic_target == "typst")
+            .unwrap();
+        let spec =
+            TypstArtifactSpec::for_repository_profile(&catalog, profile, artifact_profile).unwrap();
 
         assert_eq!(
             spec.workspace_root,
@@ -1798,7 +1833,7 @@ mod tests {
     #[test]
     fn installs_a_profile_owned_artifact_without_mutating_the_raw_wasm() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         let mut runtime = fixture.runtime();
 
@@ -1813,9 +1848,11 @@ mod tests {
             &fs::read(spec.output_directory().join(MANIFEST_FILE_NAME)).unwrap(),
         )
         .unwrap();
-        assert_eq!(manifest.schema_version, 1);
-        assert_eq!(manifest.profile, "typst-full-elk");
-        assert_eq!(manifest.features, ["analysis", "render"]);
+        assert_eq!(manifest.schema_version, 2);
+        assert_eq!(manifest.artifact_profile, "typst-wasm");
+        assert_eq!(manifest.profile, "publish");
+        assert!(!manifest.default_features);
+        assert_eq!(manifest.features, ["analysis", "svg"]);
         assert_eq!(manifest.plugin_abi_version, 2);
         assert_eq!(
             manifest
@@ -1859,7 +1896,7 @@ mod tests {
     #[test]
     fn skip_rejects_a_stale_local_input_tree() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         write(
@@ -1875,7 +1912,7 @@ mod tests {
     #[test]
     fn skip_rejects_a_change_in_a_reachable_production_dependency() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         write(
@@ -1891,7 +1928,7 @@ mod tests {
     #[test]
     fn skip_ignores_unreachable_dev_and_test_inputs() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         write(
@@ -1915,7 +1952,7 @@ mod tests {
     #[test]
     fn skip_rejects_a_changed_feature_set() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         let mut changed = spec.clone();
@@ -1927,9 +1964,37 @@ mod tests {
     }
 
     #[test]
+    fn skip_rejects_a_changed_exact_artifact_profile() {
+        let fixture = Fixture::new();
+        let spec = fixture.spec("publish");
+        let raw_wasm = fixture.raw_wasm();
+        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        let mut changed = spec.clone();
+        changed.artifact_profile = "typst-other".to_string();
+
+        let error = verify_with_runtime(&changed, &mut fixture.runtime()).unwrap_err();
+
+        assert!(error.to_string().contains("artifact_profile"));
+    }
+
+    #[test]
+    fn skip_rejects_a_changed_default_feature_policy() {
+        let fixture = Fixture::new();
+        let spec = fixture.spec("publish");
+        let raw_wasm = fixture.raw_wasm();
+        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        let mut changed = spec.clone();
+        changed.default_features = true;
+
+        let error = verify_with_runtime(&changed, &mut fixture.runtime()).unwrap_err();
+
+        assert!(error.to_string().contains("default_features is stale"));
+    }
+
+    #[test]
     fn cargo_metadata_failure_is_fail_closed() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         let mut runtime = fixture.runtime();
         runtime.metadata_error = Some("injected failure".to_string());
@@ -1943,7 +2008,7 @@ mod tests {
     #[test]
     fn cargo_metadata_rejects_unrequested_root_features() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let mut metadata = fixture.metadata();
         let root_id = metadata.resolve.as_ref().unwrap().root.clone().unwrap();
         metadata
@@ -1965,7 +2030,7 @@ mod tests {
     #[test]
     fn skip_rejects_a_stale_wasm_digest() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         let wasm = install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         let wasm_path = wasm.wasm_path().to_path_buf();
@@ -1980,8 +2045,8 @@ mod tests {
     #[test]
     fn skip_rejects_an_artifact_relocated_to_another_profile() {
         let fixture = Fixture::new();
-        let original = fixture.spec("typst-full-elk");
-        let other = fixture.spec("typst-bridge");
+        let original = fixture.spec("publish");
+        let other = fixture.spec("other-profile");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&original, &raw_wasm, &mut fixture.runtime()).unwrap();
         fs::rename(original.output_directory(), other.output_directory()).unwrap();
@@ -1994,7 +2059,7 @@ mod tests {
     #[test]
     fn installation_replaces_the_complete_profile_directory() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         write(&spec.output_directory().join("obsolete.txt"), "obsolete");
 
@@ -2007,7 +2072,7 @@ mod tests {
     #[test]
     fn failed_atomic_install_restores_the_previous_directory() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         write(&spec.output_directory().join("previous.txt"), "previous");
         let mut runtime = fixture.runtime();
@@ -2027,14 +2092,14 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             root_entries,
-            BTreeSet::from([".locks".to_string(), "typst-full-elk".to_string()])
+            BTreeSet::from([".locks".to_string(), "publish".to_string()])
         );
     }
 
     #[test]
     fn skip_rejects_stale_tool_versions_and_rustflags() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         let mut changed = fixture.runtime();
@@ -2052,7 +2117,7 @@ mod tests {
     #[test]
     fn manifest_parsing_fails_closed_on_unknown_fields() {
         let fixture = Fixture::new();
-        let spec = fixture.spec("typst-full-elk");
+        let spec = fixture.spec("publish");
         let raw_wasm = fixture.raw_wasm();
         install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
         let manifest_path = spec.output_directory().join(MANIFEST_FILE_NAME);

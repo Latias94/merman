@@ -8,19 +8,28 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Replaced the prerelease ABI 2 text-measurement JNI records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`lineCount`; upgrade the Kotlin classes and `libmerman_ffi.so` together and update custom measurers for operations `0..18`.
+- Replaced the C-ABI-forwarding JNI bridge with a direct `JNI_OnLoad` + `RegisterNatives`
+  transport over `merman-bindings-core`. Kotlin classes and `libmerman_ffi.so` from older prerelease
+  releases are incompatible and must be upgraded together.
+- Replaced per-output native methods with `executeBytes(operationId, source, optionsJson, uri)` and
+  reusable-engine `executeBytes(operationId, source, uri)`. SVG, ASCII, JSON, PNG, JPEG, and PDF
+  convenience methods delegate to the same operation path.
+- Replaced `runtimeContractJson()` with `runtimeCatalogJson()`. The new direct catalog is a flat
+  schema-1 document containing package identity, sorted capability/output/operation IDs, registry
+  facts, resource descriptors, and text-measurement providers; it validates Android transport API
+  version `1` and intentionally has no C ABI version field.
 - Replaced the zero-filled `MermanTextMeasureResult` constructor with shape-specific `metrics`, `length`, `horizontalExtents`, and `wrappedWithRawWidth` factories; custom measurers must now provide every field required by the selected shape.
-- Raised parser-backed document facts to schema 2. Facts v1 is rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
-- Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the alpha Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
+- Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
+- Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
 - Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
 - Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
-- Expanded the ABI 2 diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
+- Expanded the diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
 
 ### Added
 
 - Added generated Kotlin text-measurement operation/result-kind constants.
-- Added the generated `MermanResourceOptionsBuilder` and ABI 2 resource-profile/runtime descriptor
-  so Android callers can select `interactive`, `constrained`, `trusted-native`, or
+- Added the generated `MermanResourceOptionsBuilder` and runtime resource catalog so Android
+  callers can select `interactive`, `constrained`, `trusted-native`, or
   `unbounded-for-trusted-input` without duplicating limit tables.
 
 ### Changed

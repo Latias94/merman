@@ -2,57 +2,77 @@
 
 //! Safe shared facade used by external binding crates.
 //!
-//! This crate owns options parsing, renderer setup, result-code classification, and byte payload
-//! production. Unsafe transport concerns such as raw pointers and owned C buffers remain in
-//! `merman-ffi`.
+//! This crate owns transport-neutral options parsing, semantic operations, renderer setup,
+//! result-code classification, and byte payload production. Unsafe transport concerns such as raw
+//! pointers and owned C buffers remain in `merman-ffi`.
 
 mod common;
 mod engine;
 mod metadata;
-#[cfg(feature = "render")]
+mod operation;
+#[cfg(feature = "svg")]
 mod text_measurement;
 
 #[cfg(feature = "ascii")]
 mod ascii;
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 mod render;
 
 pub use common::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingStatus,
+    BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
+    BindingRuntimePolicy, BindingStatus, binding_error_payload_json_bytes,
     error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
     resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use metadata::{
-    BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingCapabilities,
-    BindingDiagramFamilyCapability, RUNTIME_CONTRACT_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeContract, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
-    RuntimeResourceProfile, TextMeasurementCapabilities, ascii_capabilities,
-    ascii_capabilities_json, ascii_supported_diagrams, ascii_supported_diagrams_json,
-    binding_capabilities, binding_capabilities_json, binding_capabilities_json_for,
-    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
-    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
-    lint_rule_catalog_json, runtime_contract, runtime_contract_json, supported_diagrams,
-    supported_diagrams_json, supported_host_theme_presets, supported_host_theme_presets_json,
-    supported_themes, supported_themes_json,
+    ArtifactCapabilitySurface, BindingAsciiCapability, BindingAsciiCapabilityEvidence,
+    BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeRegistryContract, RuntimeResourceContract,
+    RuntimeResourceLimit, RuntimeResourceProfile, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    TEXT_MEASUREMENT_PROVIDER_VENDORED, TextMeasurementCapabilities,
+    TextMeasurementProviderProjection, ascii_capabilities, ascii_capabilities_json,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, compiled_runtime_capabilities,
+    compiled_runtime_capability_surface, configurable_lint_rule_catalog,
+    configurable_lint_rule_catalog_json, diagram_family_capabilities,
+    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
+    runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
+    runtime_catalog_json, supported_diagrams, supported_diagrams_json,
+    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
+    supported_themes_json,
 };
+pub use operation::{
+    BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
+    BindingOperationResult, compiled_operation_kind_ids,
+};
+
+/// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
+pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    BindingEngine::from_options(options_json)?.parse_json(source)
+}
 
 #[cfg(feature = "analysis")]
 pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION};
 #[cfg(feature = "analysis")]
-use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
+use merman_analysis::{AnalysisFactsPayload, AnalysisOptions, AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
-#[cfg(feature = "render")]
-pub use merman::render::{
+#[cfg(feature = "svg")]
+pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation, TextMeasurementPhase,
     TextMetrics, TextStyle, WrapMode,
 };
-#[cfg(feature = "render")]
-pub use render::{layout_json, parse_json, render_svg};
-#[cfg(feature = "render")]
+#[cfg(feature = "jpeg")]
+pub use render::render_jpeg;
+#[cfg(feature = "pdf")]
+pub use render::render_pdf;
+#[cfg(feature = "png")]
+pub use render::render_png;
+#[cfg(feature = "svg")]
+pub use render::{layout_json, render_svg};
+#[cfg(feature = "svg")]
 pub use text_measurement::{
     HostTextMeasurementResultKind, HostTextMeasurementValues, host_text_measurement_from_values,
 };
@@ -144,29 +164,41 @@ pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bind
     Err(common::feature_required_error("validation", "analysis"))
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(feature = "svg"))]
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let _ = (source, options_json);
-    Err(common::feature_required_error("SVG rendering", "render"))
+    Err(common::feature_required_error("SVG rendering", "svg"))
 }
 
-#[cfg(not(feature = "render"))]
-pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("parse_json", "render"))
-}
-
-#[cfg(not(feature = "render"))]
+#[cfg(not(feature = "svg"))]
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let _ = (source, options_json);
-    Err(common::feature_required_error("layout_json", "render"))
+    Err(common::feature_required_error("layout_json", "svg"))
+}
+
+#[cfg(not(feature = "png"))]
+pub fn render_png(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("PNG rendering", "png"))
+}
+
+#[cfg(not(feature = "jpeg"))]
+pub fn render_jpeg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("JPEG rendering", "jpeg"))
+}
+
+#[cfg(not(feature = "pdf"))]
+pub fn render_pdf(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("PDF rendering", "pdf"))
 }
 
 #[cfg(feature = "analysis")]
 fn analysis_payload(source: &[u8], options_json: &[u8]) -> Result<AnalysisPayload, BindingError> {
     let source = common::source_text_utf8(source)?;
     let options = common::parse_options(options_json)?;
-    Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze(source))
+    Ok(Analyzer::with_options(selected_analysis_options(&options)?).analyze(source))
 }
 
 #[cfg(feature = "analysis")]
@@ -176,7 +208,7 @@ fn analysis_facts_payload(
 ) -> Result<AnalysisFactsPayload, BindingError> {
     let source = common::source_text_utf8(source)?;
     let options = common::parse_options(options_json)?;
-    Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze_facts(source))
+    Ok(Analyzer::with_options(selected_analysis_options(&options)?).analyze_facts(source))
 }
 
 #[cfg(feature = "analysis")]
@@ -189,8 +221,9 @@ fn document_analysis_payload(
     let uri = common::source_text_utf8(uri)?;
     let descriptor = common::source_descriptor_for_uri(uri);
     let options = common::parse_options(options_json)?;
-    let analyzer =
-        Analyzer::with_options(common::analysis_options(&options)?.with_source(descriptor.clone()));
+    let analyzer = Analyzer::with_options(
+        selected_analysis_options(&options)?.with_source(descriptor.clone()),
+    );
     Ok(merman_analysis::analyze_document(
         source, &analyzer, descriptor,
     ))
@@ -206,17 +239,30 @@ fn document_analysis_facts_payload(
     let uri = common::source_text_utf8(uri)?;
     let descriptor = common::source_descriptor_for_uri(uri);
     let options = common::parse_options(options_json)?;
-    let analyzer =
-        Analyzer::with_options(common::analysis_options(&options)?.with_source(descriptor.clone()));
+    let analyzer = Analyzer::with_options(
+        selected_analysis_options(&options)?.with_source(descriptor.clone()),
+    );
     Ok(merman_analysis::analyze_document_facts(
         source, &analyzer, descriptor,
     ))
 }
 
+#[cfg(feature = "analysis")]
+fn selected_analysis_options(
+    options: &common::BindingOptions,
+) -> Result<AnalysisOptions, BindingError> {
+    let (_, runtime_policy) = common::selected_runtime_policy(options)?;
+    Ok(
+        common::analysis_options(options)?.with_runtime_policy(
+            common::binding_runtime_policy_from(options, runtime_policy)?,
+        ),
+    )
+}
+
 #[cfg(all(
     test,
     any(
-        not(feature = "render"),
+        not(feature = "svg"),
         not(feature = "ascii"),
         not(feature = "analysis")
     )
@@ -226,25 +272,24 @@ mod tests {
     #[cfg(feature = "analysis")]
     use serde_json::Value;
 
-    #[cfg(not(feature = "render"))]
+    #[cfg(not(feature = "svg"))]
     #[test]
-    fn render_entry_points_report_missing_render_feature() {
+    fn render_and_layout_entry_points_report_missing_svg_capability() {
         let err = render_svg(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
-        assert!(err.message().contains("render feature"));
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(err.message(), "SVG rendering requires the svg feature");
 
-        let err = parse_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert!(!parse_json(b"flowchart TD\nA", b"").unwrap().is_empty());
 
         let err = layout_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
     }
 
     #[cfg(not(feature = "ascii"))]
     #[test]
     fn ascii_entry_point_reports_missing_ascii_feature() {
         let err = render_ascii(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
         assert!(err.message().contains("ascii feature"));
     }
 
@@ -252,22 +297,22 @@ mod tests {
     #[test]
     fn analysis_entry_points_report_missing_analysis_feature() {
         let err = analyze_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
         assert!(err.message().contains("analysis feature"));
 
         let err = analysis_facts_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
 
         let err =
             analyze_document_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
 
         let err = analyze_document_facts_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd")
             .unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
 
         let err = validate_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
     }
 
     #[cfg(feature = "analysis")]

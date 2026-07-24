@@ -159,9 +159,6 @@
 //! For more examples have a look at the
 //! [examples](https://github.com/orhanbalci/rough-rs/tree/main/rough_piet/examples) folder.
 
-#[macro_use]
-extern crate derive_builder;
-
 pub(crate) mod curve_points;
 mod svg_path;
 

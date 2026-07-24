@@ -15,15 +15,53 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from artifact_profile_recipe import (
+    CargoArtifactRecipe,
+    cargo_build_args as project_cargo_build_args,
+    load_artifact_profile,
+)
+
+
 ANDROID_ROOT = Path(__file__).resolve().parent
 JNI_LIBS = ANDROID_ROOT / "src" / "main" / "jniLibs"
 VERSION_CATALOG = ANDROID_ROOT / "gradle" / "libs.versions.toml"
-
+ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 TARGET_TO_ABI = {
     "aarch64-linux-android": "arm64-v8a",
     "x86_64-linux-android": "x86_64",
-    "armv7-linux-androideabi": "armeabi-v7a",
 }
+
+
+def validate_android_native_recipe(
+    recipe: CargoArtifactRecipe = ANDROID_NATIVE_RECIPE,
+) -> None:
+    if (
+        recipe.profile_id != "android-native"
+        or recipe.package != "merman-ffi"
+        or recipe.manifest != "crates/merman-ffi/Cargo.toml"
+        or recipe.cargo_profile != "native-sdk"
+        or recipe.default_features
+        or recipe.target_name != "merman_ffi"
+        or recipe.target_kinds != ("cdylib", "rlib", "staticlib")
+        or recipe.crate_types != ("cdylib", "rlib", "staticlib")
+        or recipe.build_target_kind != "target-set"
+    ):
+        raise RuntimeError(
+            "android-native must remain the exact native-sdk merman-ffi "
+            "complete native cdylib target-set recipe"
+        )
+    if set(recipe.build_targets) != set(TARGET_TO_ABI):
+        raise RuntimeError(
+            "android-native target set must exactly match the published Android ABI mapping"
+        )
+    manifest = REPO_ROOT / recipe.manifest
+    if not manifest.is_file():
+        raise RuntimeError(f"android-native manifest does not exist: {manifest}")
+
+
+validate_android_native_recipe()
 
 
 def android_toolchain_versions(catalog: Path = VERSION_CATALOG) -> dict[str, str]:
@@ -52,14 +90,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--targets",
         nargs="+",
-        default=["aarch64-linux-android", "x86_64-linux-android"],
-        help="Rust Android targets to build. Defaults to arm64 and x86_64.",
-    )
-    parser.add_argument(
-        "--profile",
-        default="release",
-        choices=["debug", "release"],
-        help="Cargo profile to build. Defaults to release.",
+        default=list(ANDROID_NATIVE_RECIPE.build_targets),
+        help="Rust Android targets to build. Defaults to the descriptor-owned target set.",
     )
     parser.add_argument(
         "--ndk-home",
@@ -114,8 +146,6 @@ def clang_name(target: str) -> str:
         base = f"aarch64-linux-android{api}-clang"
     elif target == "x86_64-linux-android":
         base = f"x86_64-linux-android{api}-clang"
-    elif target == "armv7-linux-androideabi":
-        base = f"armv7a-linux-androideabi{api}-clang"
     else:
         raise RuntimeError(f"unsupported Android Rust target: {target}")
     if platform.system() == "Windows":
@@ -318,7 +348,15 @@ def cargo_env_with_linker(target: str, clang: Path) -> dict[str, str]:
     return env
 
 
-def build_target(target: str, profile_name: str, ndk: Path) -> None:
+def cargo_build_args(target: str) -> list[str]:
+    return project_cargo_build_args(
+        ANDROID_NATIVE_RECIPE,
+        locked=True,
+        target=target,
+    )
+
+
+def build_target(target: str, ndk: Path) -> None:
     abi = TARGET_TO_ABI.get(target)
     if abi is None:
         raise RuntimeError(f"unsupported Android Rust target: {target}")
@@ -328,21 +366,9 @@ def build_target(target: str, profile_name: str, ndk: Path) -> None:
 
     print(f"==> Building merman-ffi for {target} ({abi})")
     run(["rustup", "target", "add", target])
-    cargo_args = [
-        "cargo",
-        "build",
-        "-p",
-        "merman-ffi",
-        "--target",
-        target,
-        "--manifest-path",
-        str(REPO_ROOT / "Cargo.toml"),
-    ]
-    if profile_name == "release":
-        cargo_args.insert(2, "--release")
-    run(cargo_args, env=env)
+    run(cargo_build_args(target), env=env)
 
-    profile_dir = "release" if profile_name == "release" else "debug"
+    profile_dir = ANDROID_NATIVE_RECIPE.cargo_profile
     artifact = REPO_ROOT / "target" / target / profile_dir / "libmerman_ffi.so"
     if not artifact.exists():
         raise RuntimeError(f"expected Android library not found: {artifact}")
@@ -369,7 +395,7 @@ def main() -> int:
         )
         print(f"Using Android NDK: {ndk}")
         for target in args.targets:
-            build_target(target, args.profile, ndk)
+            build_target(target, ndk)
         if args.assemble_aar:
             assert java_home is not None
             run(

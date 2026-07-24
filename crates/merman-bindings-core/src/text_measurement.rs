@@ -1,7 +1,7 @@
 use crate::{HostTextMeasurement, TextMetrics};
 
 /// Stable result-shape discriminator shared by all host text-measurement transports.
-pub use merman::render::TextMeasurementResultKind as HostTextMeasurementResultKind;
+pub use merman::svg::TextMeasurementResultKind as HostTextMeasurementResultKind;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HostTextMeasurementValues {

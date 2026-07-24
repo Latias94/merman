@@ -2,7 +2,7 @@ import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   RealmProtocolError,
-  assertEncodedMessageBudget,
+  assertRealmInitBudget,
   createRealmToken,
   isRealmMessageType,
   validateRealmHello,
@@ -212,7 +212,7 @@ export async function createAuthenticatedBrowserRealmChannel(
         realmToken: identity.realmToken,
         engineArtifact,
       };
-      assertEncodedMessageBudget(init);
+      assertRealmInitBudget(init);
       const peer = transferredPort;
       if (!peer) throw new RealmProtocolError(`${label} INIT was replayed.`);
       transferredPort = null;

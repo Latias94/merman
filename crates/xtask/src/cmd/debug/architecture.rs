@@ -3242,28 +3242,37 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             }
         };
         let group_parents = architecture_group_parent_map(model);
-        let layout = {
-            let measurer =
-                session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
-            merman_render::architecture::layout_architecture_diagram_typed(
-                model,
-                parsed.metadata().effective_config.as_value(),
-                &measurer,
-                session.render_seed().get(),
-            )
-            .map_err(|e| {
-                XtaskError::SvgCompareFailed(format!(
-                    "layout failed for {}: {e}",
-                    mmd_path.display()
-                ))
-            })?
-        };
         let artifact =
             merman_render::family::prepare(parsed, &layout_opts, session).map_err(|e| {
                 XtaskError::SvgCompareFailed(format!(
                     "layout failed for {}: {e}",
                     mmd_path.display()
                 ))
+            })?;
+        let layout_projection = artifact.layout_json().map_err(|error| {
+            XtaskError::SvgCompareFailed(format!(
+                "layout projection failed for {}: {error}",
+                mmd_path.display()
+            ))
+        })?;
+        let layout = layout_projection
+            .get("layout")
+            .and_then(|layout| layout.get("ArchitectureDiagram"))
+            .cloned()
+            .ok_or_else(|| {
+                XtaskError::SvgCompareFailed(format!(
+                    "prepared Architecture artifact did not expose its layout for {}",
+                    mmd_path.display()
+                ))
+            })
+            .and_then(|layout| {
+                serde_json::from_value::<merman_render::model::ArchitectureDiagramLayout>(layout)
+                    .map_err(|error| {
+                        XtaskError::SvgCompareFailed(format!(
+                            "failed to decode prepared Architecture layout for {}: {error}",
+                            mmd_path.display()
+                        ))
+                    })
             })?;
 
         let svg_opts = merman_render::svg::SvgRenderOptions {

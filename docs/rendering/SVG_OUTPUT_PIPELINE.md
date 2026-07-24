@@ -55,7 +55,7 @@ that invalid HSL and RGB are equivalent.
 ## Rendering With A Pipeline
 
 ```rust
-use merman::render::{HeadlessRenderer, SvgPipeline};
+use merman::svg::{HeadlessRenderer, SvgPipeline};
 
 let renderer = HeadlessRenderer::new();
 let svg = renderer
@@ -71,7 +71,7 @@ let svg = renderer
 Runnable example:
 
 ```bash
-cargo run -p merman --features render --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+cargo run -p merman --features svg --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
 merman-cli -i fixtures/flowchart/basic.mmd -o out.svg --svg-pipeline resvg-safe
 ```
 
@@ -93,7 +93,7 @@ Applications can append product-specific draft passes. The postprocess context i
 pass ordering, diagram type, diagram title, and root SVG id:
 
 ```rust
-use merman::render::{
+use merman::svg::{
     RenderResult, SvgPipeline, SvgPostprocessContext, SvgPostprocessor,
 };
 use std::borrow::Cow;
@@ -136,7 +136,7 @@ use the Web package's `SafeInlineSvg` validator and the surrounding CSP/sandbox 
 Host styling should use product-neutral postprocessors rather than modifying `resvg_safe` itself:
 
 ```rust
-use merman::render::{
+use merman::svg::{
     CssOverridePolicy, HeadlessRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor,
     SvgPipeline,
 };

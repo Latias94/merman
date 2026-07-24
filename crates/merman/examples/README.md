@@ -9,17 +9,17 @@ example. To render custom Mermaid, pipe source into the command or redirect a `.
 ## Built-In Input
 
 ```bash
-cargo run -p merman --features render --example example_01_svg_basic > out.svg
+cargo run -p merman --features svg --example example_01_svg_basic > out.svg
 cargo run -p merman --example example_02_semantic_json
-cargo run -p merman --features render --example example_03_layout_json
+cargo run -p merman --features svg --example example_03_layout_json
 cargo run -p merman --features ascii --example example_04_ascii_output
-cargo run -p merman --features raster --example example_05_raster_output -- target/example.png
-cargo run -p merman --features render --example example_06_svg_pipeline > pipeline.svg
-cargo run -p merman --features render --example example_07_theme_css > themed.svg
+cargo run -p merman --features png --example example_05_raster_output -- target/example.png
+cargo run -p merman --features svg --example example_06_svg_pipeline > pipeline.svg
+cargo run -p merman --features svg --example example_07_theme_css > themed.svg
 cargo run -p merman --example example_08_deterministic_gantt
-cargo run -p merman --features render --example example_09_multiple_diagrams
-cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg
-cargo run -p merman --features render --example profile_render -- --input crates/merman/benches/fixtures/architecture_medium.mmd --stage render --seconds 5
+cargo run -p merman --features svg --example example_09_multiple_diagrams
+cargo run -p merman --features svg --example example_11_custom_output_environment > host-preview.svg
+cargo run -p merman --features svg --example profile_render -- --input crates/merman/benches/fixtures/architecture_medium.mmd --stage render --seconds 5
 ```
 
 ## Custom Input
@@ -28,13 +28,13 @@ Pipe a Mermaid string:
 
 ```bash
 printf "flowchart LR\nA --> B\n" | \
-  cargo run -p merman --features render --example example_01_svg_basic > out.svg
+  cargo run -p merman --features svg --example example_01_svg_basic > out.svg
 ```
 
 Redirect a Mermaid file:
 
 ```bash
-cargo run -p merman --features render --example example_06_svg_pipeline \
+cargo run -p merman --features svg --example example_06_svg_pipeline \
   < fixtures/flowchart/basic.mmd > pipeline.svg
 ```
 
@@ -42,7 +42,7 @@ Render custom PNG output:
 
 ```bash
 printf "flowchart LR\nA --> B\n" | \
-  cargo run -p merman --features raster --example example_05_raster_output -- target/example.png
+  cargo run -p merman --features png --example example_05_raster_output -- target/example.png
 ```
 
 ## Output Paths
@@ -66,7 +66,7 @@ the CPU inside SVG rendering for the requested duration.
 CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
   --profile bench \
   -p merman \
-  --features render \
+  --features svg \
   --example profile_render \
   -o target/bench/flamegraphs/profile_render_architecture_medium.svg \
   -- \

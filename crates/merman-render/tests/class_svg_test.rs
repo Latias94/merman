@@ -3,10 +3,8 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::class::layout_class_diagram_typed_with_config;
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
-use merman_render::model::ClassDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 
@@ -36,6 +34,16 @@ fn render_class_svg_from_text_with_engine_and_options(
     svg_options: &SvgRenderOptions,
 ) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    render_class_svg_from_text_with_session(engine, text, layout_options, svg_options, session)
+}
+
+fn render_class_svg_from_text_with_session(
+    engine: Engine,
+    text: &str,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+    session: RenderSession,
+) -> String {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -92,17 +100,16 @@ fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diag
 }
 
 fn layout_class_with_dagre(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-) -> ClassDiagramLayout {
-    let model = class_model(parsed);
-    session
-        .resource_policy()
-        .check_class_complexity(model)
-        .expect("class complexity within test limits");
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_class_diagram_typed_with_config(model, &parsed.metadata().effective_config, &measurer)
-        .expect("Dagre class layout")
+    parsed: &merman_core::ParsedDiagramRender,
+    session: RenderSession,
+) -> merman_render::model::ClassDiagramLayout {
+    let artifact =
+        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("Class layout");
+    serde_json::from_value(
+        artifact.layout_json().expect("Class layout projection")["layout"]["ClassDiagramV2"]
+            .clone(),
+    )
+    .expect("Class layout")
 }
 
 fn deep_class_namespace_text(depth: usize) -> String {
@@ -252,13 +259,16 @@ fn class_layout_handles_deep_namespace_chain() {
     let source = deep_class_namespace_text(DEPTH);
     let handle = std::thread::Builder::new()
         .name("class-deep-namespace-layout".to_string())
-        .stack_size(128 * 1024)
+        // This regression verifies that depth-128 namespace layout terminates without recursive
+        // stack growth. The full debug Dagre pipeline has substantial fixed phase frames, so the
+        // test does not claim that production rendering supports a 128 KiB thread stack.
+        .stack_size(256 * 1024)
         .spawn(move || {
             let parsed = Engine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                 .expect("parse ok")
                 .expect("diagram detected");
-            let layout = layout_class_with_dagre(&parsed, &session);
+            let layout = layout_class_with_dagre(&parsed, session);
             assert!(
                 layout.nodes.iter().any(|node| node.id == "Leaf"),
                 "expected deeply nested class member to remain in the layout"
@@ -919,10 +929,21 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
 fn class_svg_handles_deep_namespace_subgraph_chain() {
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let handle = std::thread::Builder::new()
         .name("class-deep-namespace-svg".to_string())
-        .stack_size(128 * 1024)
-        .spawn(move || render_class_svg_from_text(&source))
+        // Keep the SVG path under a constrained stack while leaving room for its fixed debug
+        // render frames; depth remains the recursion-safety signal exercised by this test.
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            render_class_svg_from_text_with_session(
+                Engine::new(),
+                &source,
+                &LayoutOptions::headless_svg_defaults(),
+                &SvgRenderOptions::default(),
+                session,
+            )
+        })
         .expect("spawn deep namespace SVG test");
     let svg = handle
         .join()

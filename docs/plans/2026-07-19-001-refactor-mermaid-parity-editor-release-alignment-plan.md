@@ -11,11 +11,18 @@ execution: code
 
 # Mermaid Parity, Editor Language, and Release Alignment - Plan
 
+> Historical implementation plan. Its completed Mermaid/editor work remains useful evidence, but
+> its ABI and distribution constraints are superseded by
+> `2026-07-22-001-refactor-capability-driven-feature-and-distribution-architecture-plan.md`.
+> In particular, the current Typst contract has one `publish` package profile backed by the exact
+> `typst-wasm` artifact recipe. Retired bridge/SVG/minimal, `*-no-elk`, and profile-shaped artifact
+> directory names in earlier revisions are not active build or release interfaces.
+
 ## Goal Capsule
 
-- **Objective:** Make Mermaid compatibility one source-backed, repeatable capability across parser, semantic model, headless render, editor facts, LSP, Web, Playground, upstream evidence, and companion packages. Close the known Gantt, ZenUML, theme-color, Quadrant visibility, Block geometry, source-map, and semantic-token defects without preserving incorrect alpha-era architecture.
+- **Objective:** Make Mermaid compatibility one source-backed, repeatable capability across parser, semantic model, headless render, editor facts, LSP, Web, Playground, upstream evidence, and companion packages. Close the known Gantt, ZenUML, theme-color, Quadrant visibility, Block geometry, source-map, and semantic-token defects without preserving incorrect transitional architecture.
 - **Authority:** The pinned Mermaid source checkout and its exact companion dependency graph are authoritative for behavior. Merman family-owned semantic construction, operation-owned rendering, native ABI `2`, and analysis/facts/LSP schema number `1` remain architectural constraints. Browser-dependent residuals must be explicit artifact contracts, never comparator exceptions or source heuristics.
-- **Execution profile:** Fearless alpha refactor. Breaking internal Rust and TypeScript APIs, replacing the editor facts payload in-place under schema number `1`, changing the LSP semantic-token legend, deleting heuristic ZenUML parsing and sparse token projection, and removing stale Web runtime paths are allowed. Do not add v2 aliases, dual implementations, or compatibility shims for unpublished alpha surfaces.
+- **Execution profile:** Fearless coordinated breaking refactor. Breaking internal Rust and TypeScript APIs, replacing the editor facts payload in-place under schema number `1`, changing the LSP semantic-token legend, deleting heuristic ZenUML parsing and sparse token projection, and removing stale Web runtime paths are allowed. Do not add v2 aliases, dual implementations, or compatibility shims for unreleased surfaces.
 - **Stop conditions:** Do not loosen canonical SVG safety to admit non-SVG or unsafe output, tune chart colors or edge endpoints with fixture-specific constants, use regex/Monarch fallbacks as a second parser, accept semantic comparator whitelists, hand-edit generated provenance, or split a Cargo feature without measured dependency and artifact evidence.
 - **Tail ownership:** Implement and verify on the current feature branch using focused Conventional Commits. Do not push, open a PR, publish, or release unless separately requested.
 
@@ -94,7 +101,7 @@ The remaining defects reveal deeper missing contracts:
 - **R28.** Architecture regressions already fixed in HEAD remain gated: Flowchart complexity before all layout dispatch, full time-zone rules for target dates, range-owned root SVG finalization, checked boundary dates, closed family/report types, generated text-measurement ABI, no Quadrant comparator whitelist, and independent Wardley admission.
 - **R29.** Add `.agents/skills/align-mermaid-release` as a model-invoked repository skill. It must guide an agent through release discovery, exact source/companion pinning, generated reference updates, family/layout admission, parser/editor/LSP/render/Playground work, feature-split evidence, parity gates, documentation, and a no-publish handoff. It must call repository commands and reference a concise checklist instead of duplicating implementation logic.
 - **R30.** Documentation must update the Mermaid upgrade playbook, relevant ADRs, ZenUML/theme/editor alignment records, package surfaces, and Playground design. Generated status and provenance must remain readable and reproducible.
-- **R31.** The Typst 0.15 package must keep plugin ABI `2` while replacing wrapper heuristics with typed boundaries: absolute Typst lengths convert through SVG's 96-DPI CSS-pixel coordinate system; infinite `layout` widths are not serialized; legal font descriptors project to ordered family names; invalid `error-mode` values fail before rendering even for valid source; and package publication uses a provenance-bound, profile-owned WASM plus an immutable source snapshot whose complete staged shape and bytes are verified before atomic installation. Expected compile failures are first-class smoke fixtures rather than comments or data-dependent behavior.
+- **R31.** The Typst 0.15 package must keep plugin ABI `2` while replacing wrapper heuristics with typed boundaries: absolute Typst lengths convert through SVG's 96-DPI CSS-pixel coordinate system; infinite `layout` widths are not serialized; legal font descriptors project to ordered family names; invalid `error-mode` values fail before rendering even for valid source; and package publication uses the provenance-bound WASM from the exact `typst-wasm` artifact recipe plus an immutable source snapshot whose complete staged shape and bytes are verified before atomic installation. Expected compile failures are first-class smoke fixtures rather than comments or data-dependent behavior.
 
 ### Key Flows
 
@@ -131,7 +138,7 @@ The implementation must preserve these HEAD contracts while changing adjacent ar
 - Root SVG finalization replaces recorded attribute ranges and never scans for placeholder text.
 - CLI and bindings return typed invalid-argument errors for boundary-date overflow.
 - Family artifacts, rooted SVG, and completed render reports are closed types guarded by compile-fail and runtime evidence tests.
-- `abi/merman-v2.json` remains the single descriptor for the 19 text-measurement operations and platform projections.
+- `abi/text-measurement-v1.json` owns the 19 text-measurement operations and platform projections independently from native ABI layout.
 - Structure comparison contains no Quadrant NaN/RGB whitelist.
 - Wardley remains an admitted Mermaid 11.16 family with independent evidence, not an accidental architecture-migration exception.
 
@@ -169,9 +176,9 @@ The implementation must preserve these HEAD contracts while changing adjacent ar
 
 **Rejected:** Monaco Monarch fallback; LSP-specific token repair; all-or-nothing mapping; maintaining separate legends.
 
-#### KTD5. Replace schema-1 alpha shapes atomically
+#### KTD5. Replace superseded schema-1 shapes atomically
 
-**Decision:** Keep native ABI `2` and analysis/facts/LSP schema numbers at `1`, but replace unpublished alpha payload and legend shapes in one repository change. Regenerate every projection and delete old routes.
+**Decision:** Keep native ABI `2` and analysis/facts/LSP schema numbers at `1`, but replace unreleased payload and legend shapes in one repository change. Regenerate every projection and delete old routes.
 
 **Why:** Renumbering communicates a compatibility promise the project does not yet have. Dual shapes would create the very ambiguity this refactor removes.
 
@@ -650,9 +657,9 @@ make its release bundle a reproducible transaction rather than a live-source cop
    not carry the same codepoint-selection contract.
 3. Validate public image configuration before invoking the plugin. Extend package smoke with
    expected compile-failure fixtures whose required diagnostics are checked explicitly.
-4. Keep the callable Typst plugin ABI at `2` and analysis schema at `1`. Build the exact publish
-   profile to a profile-owned artifact with a closed import/export gate, behavior smoke, input
-   closure, content digest, and artifact manifest.
+4. Keep the callable Typst plugin ABI at `2` and analysis schema at `1`. Build the sole `publish`
+   package profile from the exact `typst-wasm` artifact recipe with a closed import/export gate,
+   behavior smoke, input closure, content digest, and artifact manifest.
 5. Capture the runtime wrapper tree as a sorted path/byte/digest snapshot, stage only frozen bytes,
    bind the wrapper/source/WASM/artifact identities in a schema-1 package manifest, reject any
    missing/extra/tampered file, recheck live-source identity immediately before installation, and
@@ -713,7 +720,7 @@ verification; size budget.
 | Playground | Exact 35-family example coverage plus evidence-backed variants, canonical viewport, structured errors, exact versions, external layouts, accessible/polished desktop/mobile flows |
 | Build freshness | Relevant-input digest, stale failure, deterministic rebuild, production chunk/CSP validation |
 | Existing invariants | Flowchart limits, DST, root ranges, date errors, closed types/reports, ABI descriptor, Wardley admission |
-| Typst | ABI 2 closed surface, 96-DPI context conversion, font descriptors, auto width, expected failures, profile-owned provenance, immutable package snapshot and rollback |
+| Typst | ABI 2 closed surface, 96-DPI context conversion, font descriptors, auto width, expected failures, canonical `typst-wasm` recipe provenance, immutable package snapshot and rollback |
 
 ### Commands
 
@@ -727,11 +734,11 @@ cargo test --workspace --doc
 cargo run -p xtask -- verify --strict
 cargo run -p xtask -- check-alignment
 cargo run -p xtask -- verify-mermaid-reference
-cargo run -p xtask -- verify-text-measurement-abi
+cargo run -p xtask -- verify-text-measurement-protocol
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- verify-playground-example-catalog
 cargo run --locked -p xtask -- build-typst-package --profile publish
-cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
+cargo run --locked -p xtask -- typst-plugin-smoke --profile publish
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst <typst-0.15-path>
 cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure
 cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity

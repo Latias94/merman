@@ -177,7 +177,7 @@ fn vendored_parity_profile() -> TextMeasurementProfile {
     .expect("static vendored profile version is valid");
     TextMeasurementProfile::new(
         identity,
-        Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        Arc::new(VendoredFontMetricsTextMeasurer::initialized()),
     )
 }
 
@@ -190,9 +190,10 @@ pub enum HostFallbackReason {
 }
 
 /// The exact [`TextMeasurer`] operation performed through a phase facade and its required host
-/// result shape. Both types are generated from the native ABI descriptor shared by every binding.
+/// result shape. Both types are generated from the independently versioned host
+/// text-measurement protocol shared by every binding.
 pub use crate::generated::text_measurement_abi::{
-    TEXT_MEASUREMENT_ABI_VERSION, TextMeasurementOperation, TextMeasurementResultKind,
+    TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation, TextMeasurementResultKind,
 };
 
 /// The concrete backend kind that produced one result.
@@ -1007,6 +1008,16 @@ fn valid_wrapped_with_raw_width(value: &(TextMetrics, Option<f64>)) -> bool {
     valid_metrics(&value.0) && value.1.as_ref().is_none_or(valid_length)
 }
 
+#[cfg(feature = "math")]
+fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
+    Some(Arc::new(crate::math::RatexMathRenderer))
+}
+
+#[cfg(not(feature = "math"))]
+fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
+    None
+}
+
 /// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
 pub struct RenderEnvironment {
@@ -1031,10 +1042,14 @@ impl fmt::Debug for RenderEnvironment {
 
 impl RenderEnvironment {
     /// Creates a target-independent environment with fixed time, UTC, and a fixed seed.
+    ///
+    /// When the `math` capability is compiled, the environment also installs its built-in math
+    /// renderer. Builds without that capability leave the service absent so family admission can
+    /// return a typed missing-capability error.
     pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::parity(),
-            math_renderer: None,
+            math_renderer: default_math_renderer(),
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
@@ -1055,6 +1070,11 @@ impl RenderEnvironment {
 
     pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         self.math_renderer = Some(renderer);
+        self
+    }
+
+    pub fn without_math_renderer(mut self) -> Self {
+        self.math_renderer = None;
         self
     }
 
@@ -2090,5 +2110,16 @@ mod tests {
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
         assert_eq!(session.report().operation_context().seed(), 0);
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn without_math_renderer_disables_the_compiled_default() {
+        let session = RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .expect("begin render session");
+
+        assert!(session.math_renderer().is_none());
     }
 }

@@ -5,7 +5,7 @@ use crate::svg::{
     ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::wardley::WardleyDiagramLayout;
-use crate::{Error, LayoutExecution, LayoutOptions, Result};
+use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
@@ -249,19 +249,60 @@ enum LayoutProjection<'a> {
     ErrorDiagram(&'a ErrorDiagramLayout),
 }
 
-#[derive(serde::Serialize)]
-struct LayoutArtifactProjection<'a> {
-    meta: LayoutMetadataProjection<'a>,
-    semantic: &'a serde_json::Value,
-    layout: LayoutProjection<'a>,
-}
+fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value {
+    let mut cloned = rustc_hash::FxHashMap::default();
+    let mut stack = vec![(value, false)];
 
-#[derive(serde::Serialize)]
-struct LayoutMetadataProjection<'a> {
-    diagram_type: &'a str,
-    title: Option<&'a str>,
-    config: &'a serde_json::Value,
-    effective_config: &'a serde_json::Value,
+    while let Some((current, visited)) = stack.pop() {
+        let current_ptr = std::ptr::from_ref(current);
+        if visited {
+            let value = match current {
+                serde_json::Value::Null => serde_json::Value::Null,
+                serde_json::Value::Bool(value) => serde_json::Value::Bool(*value),
+                serde_json::Value::Number(value) => serde_json::Value::Number(value.clone()),
+                serde_json::Value::String(value) => serde_json::Value::String(value.clone()),
+                serde_json::Value::Array(items) => serde_json::Value::Array(
+                    items
+                        .iter()
+                        .filter_map(|item| cloned.remove(&std::ptr::from_ref(item)))
+                        .collect(),
+                ),
+                serde_json::Value::Object(entries) => {
+                    let mut object = serde_json::Map::new();
+                    for (key, child) in entries {
+                        if let Some(value) = cloned.remove(&std::ptr::from_ref(child)) {
+                            object.insert(key.clone(), value);
+                        }
+                    }
+                    serde_json::Value::Object(object)
+                }
+            };
+            cloned.insert(current_ptr, value);
+            continue;
+        }
+
+        stack.push((current, true));
+        match current {
+            serde_json::Value::Array(items) => {
+                for item in items.iter().rev() {
+                    stack.push((item, false));
+                }
+            }
+            serde_json::Value::Object(entries) => {
+                for child in entries.values().rev() {
+                    stack.push((child, false));
+                }
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
+        }
+    }
+
+    cloned
+        .remove(&std::ptr::from_ref(value))
+        .unwrap_or(serde_json::Value::Null)
 }
 
 impl BuiltinFamilyArtifact {
@@ -632,18 +673,39 @@ impl FamilyRenderArtifact {
             .map_err(|message| Error::InvalidModel {
                 message: message.clone(),
             })?;
+        let layout = serde_json::to_value(self.family.layout_projection())?;
 
-        serde_json::to_value(LayoutArtifactProjection {
-            meta: LayoutMetadataProjection {
-                diagram_type: &self.metadata.diagram_type,
-                title: self.metadata.title.as_deref(),
-                config: self.metadata.config.as_value(),
-                effective_config: self.metadata.effective_config.as_value(),
-            },
-            semantic,
-            layout: self.family.layout_projection(),
-        })
-        .map_err(Error::from)
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "diagram_type".to_string(),
+            serde_json::Value::String(self.metadata.diagram_type.clone()),
+        );
+        metadata.insert(
+            "title".to_string(),
+            self.metadata
+                .title
+                .as_ref()
+                .map_or(serde_json::Value::Null, |title| {
+                    serde_json::Value::String(title.clone())
+                }),
+        );
+        metadata.insert(
+            "config".to_string(),
+            clone_json_value_nonrecursive(self.metadata.config.as_value()),
+        );
+        metadata.insert(
+            "effective_config".to_string(),
+            clone_json_value_nonrecursive(self.metadata.effective_config.as_value()),
+        );
+
+        let mut projection = serde_json::Map::new();
+        projection.insert("meta".to_string(), serde_json::Value::Object(metadata));
+        projection.insert(
+            "semantic".to_string(),
+            clone_json_value_nonrecursive(semantic),
+        );
+        projection.insert("layout".to_string(), layout);
+        Ok(serde_json::Value::Object(projection))
     }
 
     pub fn render_svg(
@@ -689,6 +751,115 @@ fn prepare_pair<S, L>(
     Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
+fn flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
+    model
+        .nodes
+        .iter()
+        .filter_map(|node| node.label.as_deref())
+        .chain(model.edges.iter().filter_map(|edge| edge.label.as_deref()))
+        .chain(
+            model
+                .subgraphs
+                .iter()
+                .map(|subgraph| subgraph.title.as_str()),
+        )
+        .any(crate::math::contains_delimited_math)
+}
+
+fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramRenderModel) -> bool {
+    model
+        .actors
+        .values()
+        .map(|actor| actor.description.as_str())
+        .chain(model.messages.iter().map(|message| message.message_text()))
+        .chain(model.notes.iter().map(|note| note.message.as_str()))
+        .any(crate::math::contains_delimited_math)
+}
+
+fn model_requires_math(model: &RenderSemanticModel) -> bool {
+    match model {
+        RenderSemanticModel::Flowchart(model) => flowchart_requires_math(model),
+        RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
+        _ => false,
+    }
+}
+
+#[inline(never)]
+fn prepare_class_family(
+    model: ClassDiagram,
+    meta: &ParseMetadata,
+    diagram_type: &str,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    Ok(BuiltinFamilyArtifact::Class(prepare_pair(
+        model,
+        |model| {
+            crate::layout_class_typed_by_engine(
+                diagram_type,
+                model,
+                &meta.effective_config,
+                execution,
+            )
+        },
+    )?))
+}
+
+fn validate_family_model(
+    meta: &ParseMetadata,
+    model: &RenderSemanticModel,
+    session: &RenderSession,
+) -> Result<()> {
+    let diagram_type = meta.diagram_type.as_str();
+    if let RenderSemanticModel::CustomJson(custom) = model {
+        return Err(Error::NonRenderableCustomModel {
+            diagram_type: meta.diagram_type.clone(),
+            model_name: custom.model_name().to_string(),
+            provenance: custom.provenance(),
+        });
+    }
+
+    if !model.supports_diagram_type(diagram_type) {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "unexpected render model variant {} for diagram type: {diagram_type}",
+                model.kind()
+            ),
+        });
+    }
+
+    session.resource_policy().check_render_model(model)?;
+    if model_requires_math(model) && session.math_renderer().is_none() {
+        return Err(Error::MissingCapability {
+            capability: RenderCapability::Math,
+            diagram_type: diagram_type.to_string(),
+        });
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn prepare_class_render(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+) -> Result<FamilyRenderArtifact> {
+    let (meta, model) = parsed.into_parts();
+    validate_family_model(&meta, &model, &session)?;
+    let RenderSemanticModel::Class(model) = model else {
+        unreachable!("Class render dispatch requires a Class semantic model")
+    };
+    let diagram_type = meta.diagram_type.as_str();
+    let execution = LayoutExecution::new(options, &session);
+    let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
+
+    Ok(FamilyRenderArtifact {
+        metadata: meta,
+        compatibility_projection: OnceLock::new(),
+        family,
+        session,
+    })
+}
+
 /// Prepares one family-owned typed semantic model for layout and SVG rendering.
 ///
 /// Compatibility JSON is deliberately not accepted by this interface:
@@ -711,34 +882,23 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
+    // The heterogeneous router has one generic layout call per family. Keep its debug-build
+    // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
+    if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
+        return prepare_class_render(parsed, options, session);
+    }
+    prepare_non_class_render(parsed, options, session)
+}
+
+#[inline(never)]
+fn prepare_non_class_render(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let diagram_type = meta.diagram_type.as_str();
-    if let RenderSemanticModel::CustomJson(custom) = &model {
-        return Err(Error::NonRenderableCustomModel {
-            diagram_type: meta.diagram_type.clone(),
-            model_name: custom.model_name().to_string(),
-            provenance: custom.provenance(),
-        });
-    }
-
-    if !model.supports_diagram_type(diagram_type) {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "unexpected render model variant {} for diagram type: {diagram_type}",
-                model.kind()
-            ),
-        });
-    }
-
-    if let RenderSemanticModel::Flowchart(model) = &model {
-        session
-            .resource_policy()
-            .check_flowchart_complexity(model)?;
-    }
-    if let RenderSemanticModel::Zenuml(model) = &model {
-        session.resource_policy().check_zenuml_complexity(model)?;
-    }
-
+    validate_family_model(&meta, &model, &session)?;
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
@@ -772,12 +932,13 @@ pub fn prepare(
         }
         RenderSemanticModel::Sequence(model) => {
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::layout_sequence_diagram_typed_with_title(
+                crate::sequence::layout_sequence_diagram_typed_with_title_and_resource_policy(
                     model,
                     title,
                     effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
+                    execution.resource_policy(),
                 )
             })?)
         }
@@ -822,19 +983,12 @@ pub fn prepare(
         #[cfg(not(feature = "layout-cytoscape"))]
         RenderSemanticModel::Architecture(_) => {
             return Err(Error::MissingCapability {
-                capability: "layout-cytoscape",
+                capability: RenderCapability::LayoutCytoscape,
                 diagram_type: diagram_type.to_string(),
             });
         }
-        RenderSemanticModel::Class(model) => {
-            BuiltinFamilyArtifact::Class(prepare_pair(model, |model| {
-                crate::layout_class_typed_by_engine(
-                    diagram_type,
-                    model,
-                    &meta.effective_config,
-                    &execution,
-                )
-            })?)
+        RenderSemanticModel::Class(_) => {
+            unreachable!("Class models use the stack-bounded family dispatch path")
         }
         RenderSemanticModel::C4(model) => {
             BuiltinFamilyArtifact::C4(prepare_pair(model, |model| {
@@ -878,10 +1032,11 @@ pub fn prepare(
         }
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::layout_kanban_diagram_typed(
+                crate::kanban::layout_kanban_diagram_typed_with_resource_policy(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.resource_policy(),
                 )
             })?)
         }
@@ -935,28 +1090,31 @@ pub fn prepare(
         }
         RenderSemanticModel::Requirement(model) => {
             BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
-                crate::requirement::layout_requirement_diagram_typed(
+                crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.resource_policy(),
                 )
             })?)
         }
         RenderSemanticModel::Sankey(model) => {
             BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
-                crate::sankey::layout_sankey_diagram_typed(
+                crate::sankey::layout_sankey_diagram_typed_with_resource_policy(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.resource_policy(),
                 )
             })?)
         }
         RenderSemanticModel::Radar(model) => {
             BuiltinFamilyArtifact::Radar(prepare_pair(model, |model| {
-                crate::radar::layout_radar_diagram_typed(
+                crate::radar::layout_radar_diagram_typed_with_resource_policy(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.resource_policy(),
                 )
             })?)
         }
@@ -991,11 +1149,11 @@ pub fn prepare(
             #[cfg(feature = "layout-elk")]
             {
                 BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
-                    crate::er::layout_er_diagram_typed_with_elk_random_policy(
+                    crate::er::layout_er_diagram_typed_with_elk_operation_seed(
                         model,
                         effective_config,
                         execution.text_measurer(),
-                        execution.elk_random_policy(),
+                        execution.elk_operation_seed(),
                     )
                 })?)
             }
@@ -1076,7 +1234,6 @@ pub fn prepare(
             unreachable!("custom JSON models return before built-in family dispatch")
         }
     };
-
     Ok(FamilyRenderArtifact {
         metadata: meta,
         compatibility_projection: OnceLock::new(),
@@ -1111,9 +1268,9 @@ mod tests {
             .unwrap()
     }
 
-    fn prepare_with_flowchart_node_limit(
+    fn prepare_with_model_item_limit(
         source: &str,
-        max_flowchart_nodes: usize,
+        max_model_items: usize,
     ) -> Result<FamilyRenderArtifact> {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -1123,8 +1280,8 @@ mod tests {
             .with_resource_policy(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(
-                        crate::resources::ResourceLimitId::MaxFlowchartNodes,
-                        max_flowchart_nodes,
+                        crate::resources::ResourceLimitId::MaxModelItems,
+                        max_model_items,
                     )
                     .unwrap(),
             )
@@ -1133,12 +1290,12 @@ mod tests {
         prepare(parsed, &LayoutOptions::default(), session)
     }
 
-    fn assert_flowchart_node_limit(error: Error, actual: usize, max: usize) {
+    fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
         let Error::ResourceLimitExceeded(limit) = error else {
-            panic!("expected max_flowchart_nodes resource limit error")
+            panic!("expected max_model_items resource limit error")
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(limit.limit, "max_flowchart_nodes");
+        assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, actual);
         assert_eq!(limit.max, max);
     }
@@ -1146,41 +1303,72 @@ mod tests {
     #[test]
     fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart TD\nA --> B";
-        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        let artifact = prepare_with_model_item_limit(source, 3).unwrap();
         assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
 
-        let error = match prepare_with_flowchart_node_limit(source, 1) {
+        let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
             Ok(_) => panic!("flowchart above the node limit unexpectedly rendered"),
         };
-        assert_flowchart_node_limit(error, 2, 1);
+        assert_model_item_limit(error, 3, 2);
     }
 
     #[test]
     fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "swimlane-beta LR\nA --> B";
-        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        let artifact = prepare_with_model_item_limit(source, 3).unwrap();
         assert_eq!(artifact.family_kind(), RenderFamilyKind::Swimlane);
 
-        let error = match prepare_with_flowchart_node_limit(source, 1) {
+        let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
             Ok(_) => panic!("swimlane above the node limit unexpectedly rendered"),
         };
-        assert_flowchart_node_limit(error, 2, 1);
+        assert_model_item_limit(error, 3, 2);
+    }
+
+    #[test]
+    fn mindmap_node_limit_is_checked_before_layout_allocation_or_backend_dispatch() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "mindmap\n  Root\n    First child\n    Second child\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("mindmap source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxModelItems, 4)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("mindmap above the node limit unexpectedly reached layout"),
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_model_items resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_model_items");
+        assert_eq!(limit.actual, 5);
+        assert_eq!(limit.max, 4);
     }
 
     #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart-elk TD\nA --> B";
-        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        let artifact = prepare_with_model_item_limit(source, 3).unwrap();
         assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
 
-        let error = match prepare_with_flowchart_node_limit(source, 1) {
+        let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
             Ok(_) => panic!("ELK flowchart above the node limit unexpectedly rendered"),
         };
-        assert_flowchart_node_limit(error, 2, 1);
+        assert_model_item_limit(error, 3, 2);
     }
 
     #[test]

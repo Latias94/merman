@@ -8,7 +8,7 @@ path remains stable; this check focuses on the public render API and its typed m
 - Date: 2026-05-08
 - Git state: working tree after the C4 typed-first migration
 - Fixture: inline C4 render regression input
-- Render path check: `MERMAN_PARSE_TIMING=1 cargo test -p merman --features render c4_render_svg_sync_uses_typed_render_path -- --nocapture`
+- Render path check: `MERMAN_PARSE_TIMING=1 cargo test -p merman --features svg c4_render_svg_sync_uses_typed_render_path -- --nocapture`
 - JSON parity compare: `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Observations

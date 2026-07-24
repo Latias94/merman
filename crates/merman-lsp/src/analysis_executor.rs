@@ -7,7 +7,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::ls_types::Uri;
 
 /// Maximum number of document analyses that may consume CPU concurrently.
 pub(crate) const LSP_ANALYSIS_CONCURRENCY: usize = 2;
@@ -41,11 +41,11 @@ struct AnalysisExecutorInner {
 struct AnalysisRegistry {
     jobs: HashMap<AnalysisBuildKey, Arc<AnalysisJob>>,
     next_generation: u64,
-    document_generations: HashMap<Url, AnalysisGeneration>,
+    document_generations: HashMap<Uri, AnalysisGeneration>,
 }
 
 impl AnalysisRegistry {
-    fn generation_for(&mut self, uri: &Url) -> AnalysisGeneration {
+    fn generation_for(&mut self, uri: &Uri) -> AnalysisGeneration {
         if let Some(generation) = self.document_generations.get(uri) {
             return *generation;
         }
@@ -56,7 +56,7 @@ impl AnalysisRegistry {
         generation
     }
 
-    fn current_generation_for(&self, uri: &Url) -> Option<AnalysisGeneration> {
+    fn current_generation_for(&self, uri: &Uri) -> Option<AnalysisGeneration> {
         self.document_generations.get(uri).copied()
     }
 }
@@ -237,7 +237,7 @@ impl AnalysisExecutor {
         }
     }
 
-    pub(crate) fn generation_for(&self, uri: &Url) -> AnalysisGeneration {
+    pub(crate) fn generation_for(&self, uri: &Uri) -> AnalysisGeneration {
         lock_recovering_poison(&self.inner.registry).generation_for(uri)
     }
 
@@ -340,7 +340,7 @@ impl AnalysisExecutor {
         });
     }
 
-    pub(crate) fn invalidate(&self, uri: &Url) {
+    pub(crate) fn invalidate(&self, uri: &Uri) {
         self.invalidate_uri(uri);
     }
 
@@ -352,11 +352,11 @@ impl AnalysisExecutor {
         }
     }
 
-    pub(crate) fn forget(&self, uri: &Url) {
+    pub(crate) fn forget(&self, uri: &Uri) {
         self.invalidate_uri(uri);
     }
 
-    fn invalidate_uri(&self, uri: &Url) {
+    fn invalidate_uri(&self, uri: &Uri) {
         let cancelled = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.remove(uri);
@@ -418,6 +418,7 @@ mod tests {
     use crate::analysis_request::{AnalysisBuildKey, TestAnalysisGate};
     use crate::document_store::DocumentStore;
     use merman_editor_core::DocumentKind;
+    use std::str::FromStr;
     use std::time::Duration;
 
     async fn wait_for_job_count(executor: &AnalysisExecutor, expected: usize) {
@@ -496,7 +497,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn overlapping_identical_analysis_requests_share_one_cpu_execution() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/single-flight.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/single-flight.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -536,7 +537,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancelling_one_shared_waiter_does_not_cancel_the_analysis() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/shared-waiter-cancellation.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/shared-waiter-cancellation.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -575,7 +576,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn completed_analysis_is_released_from_single_flight_registry() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/committed-single-flight.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/committed-single-flight.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -606,7 +607,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn document_epoch_change_invalidates_completed_single_flight_result() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/single-flight.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/single-flight.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -636,7 +637,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn document_update_invalidates_running_analysis_for_the_same_uri() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/running-generation.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/running-generation.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -682,7 +683,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn request_invalidated_before_registration_is_rejected() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/stale-before-register.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/stale-before-register.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -708,7 +709,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn closing_document_forgets_generation_without_reusing_it_on_reopen() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/reopened.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/reopened.mmd").unwrap();
         store.upsert_text(
             uri.clone(),
             1,
@@ -761,7 +762,7 @@ mod tests {
 
         let mut requests = (0..=LSP_ANALYSIS_IN_FLIGHT_LIMIT)
             .map(|index| {
-                let uri = Url::parse(&format!("file:///tmp/cancel-queued-{index}.mmd")).unwrap();
+                let uri = Uri::from_str(&format!("file:///tmp/cancel-queued-{index}.mmd")).unwrap();
                 store.upsert_text(
                     uri.clone(),
                     1,
@@ -833,7 +834,7 @@ mod tests {
 
         let stale = (0..LSP_ANALYSIS_CONCURRENCY)
             .map(|index| {
-                let uri = Url::parse(&format!("file:///tmp/stale-running-{index}.mmd")).unwrap();
+                let uri = Uri::from_str(&format!("file:///tmp/stale-running-{index}.mmd")).unwrap();
                 store.upsert_text(
                     uri.clone(),
                     1,
@@ -863,7 +864,7 @@ mod tests {
             executor.invalidate(uri);
         }
 
-        let latest_uri = Url::parse("file:///tmp/latest-running.mmd").unwrap();
+        let latest_uri = Uri::from_str("file:///tmp/latest-running.mmd").unwrap();
         store.upsert_text(
             latest_uri.clone(),
             1,

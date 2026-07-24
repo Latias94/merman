@@ -1,7 +1,7 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::ParseOptions;
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer, LayoutOptions, RenderFamilyKind, RenderResourcePolicy, SvgRenderOptions,
     prepare_render_sync,
 };
@@ -43,10 +43,7 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
 fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
     let renderer = HeadlessRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(
-                merman::render::ResourceLimitId::MaxSwimlaneLineHopSegmentPairs,
-                1,
-            )
+            .with_limit(merman::svg::ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap(),
     );
 
@@ -54,9 +51,7 @@ fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
         .render_svg_sync(DOCS_BASIC)
         .expect_err("the second overlapping cross-edge segment pair must exceed the budget");
     assert!(
-        error
-            .to_string()
-            .contains("max_swimlane_line_hop_segment_pairs"),
+        error.to_string().contains("max_layout_work_units"),
         "{error}"
     );
 }

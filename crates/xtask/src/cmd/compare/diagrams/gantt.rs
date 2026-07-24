@@ -44,7 +44,7 @@ impl GanttBaselineContainerProfile {
         )
     }
 
-    fn layout_options(self) -> merman::render::LayoutOptions {
+    fn layout_options(self) -> merman::svg::LayoutOptions {
         let mut options = crate::cmd::svg_compare_layout_opts();
         options.container_width = self.resolved_container_width().0;
         options
@@ -83,11 +83,11 @@ pub(super) fn compare_gantt_request(
     let engine = crate::cmd::svg_compare_engine().with_runtime_policy(runtime_policy.clone());
     let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
     let layout_opts = baseline_container.layout_options();
-    let environment = merman::render::RenderEnvironment::deterministic()
-        .with_runtime_policy(runtime_policy.clone());
+    let environment =
+        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
     let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let probe_renderer = merman::render::HeadlessRenderer::new()
+    let probe_renderer = merman::svg::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
         .with_layout_options(layout_opts.clone())
@@ -147,7 +147,7 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            if prepared.family_kind() != merman::render::RenderFamilyKind::Gantt {
+            if prepared.family_kind() != merman::svg::RenderFamilyKind::Gantt {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
@@ -161,12 +161,12 @@ pub(super) fn compare_gantt_request(
             )
             .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?
             {
-                let renderer = merman::render::HeadlessRenderer::new()
+                let renderer = merman::svg::HeadlessRenderer::new()
                     .with_engine(engine.clone())
                     .with_parse_options(fact.parse_policy.options())
                     .with_layout_options(layout_opts.clone())
                     .with_environment(
-                        merman::render::RenderEnvironment::deterministic()
+                        merman::svg::RenderEnvironment::deterministic()
                             .with_runtime_policy(runtime_policy),
                     );
                 let semantic = renderer
@@ -192,7 +192,7 @@ pub(super) fn compare_gantt_request(
             } else {
                 prepared
             };
-            let svg_options = merman::render::SvgRenderOptions {
+            let svg_options = merman::svg::SvgRenderOptions {
                 diagram_id: Some(sanitize_svg_id(input.stem)),
                 ..Default::default()
             };
@@ -228,9 +228,9 @@ pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
 
 pub(crate) fn gantt_compare_environment(
     baseline_local_offset_minutes: i32,
-) -> Result<merman::render::RenderEnvironment, merman::runtime::RuntimePolicyError> {
+) -> Result<merman::svg::RenderEnvironment, merman::runtime::RuntimePolicyError> {
     Ok(
-        merman::render::RenderEnvironment::deterministic().with_runtime_policy(
+        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(
             gantt_baseline_runtime_policy(baseline_local_offset_minutes)?,
         ),
     )
@@ -248,7 +248,7 @@ fn gantt_baseline_runtime_policy(
 }
 
 pub(crate) fn gantt_calibrated_runtime_policy(
-    prepared: &merman::render::PreparedRender,
+    prepared: &merman::svg::PreparedRender,
     upstream_svg: &str,
     baseline_local_offset_minutes: i32,
 ) -> Result<Option<merman::runtime::RuntimePolicy>, merman::runtime::RuntimePolicyError> {

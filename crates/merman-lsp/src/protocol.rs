@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
@@ -8,7 +10,7 @@ use merman_editor_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp_server::ls_types::{Location, Position, Range, Uri};
 
 pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
@@ -121,11 +123,11 @@ pub fn range_to_lsp(range: CoreRange) -> Range {
     )
 }
 
-pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
-    Url::parse(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
+pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Uri) -> Uri {
+    Uri::from_str(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
 }
 
-pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
+pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Uri) -> Location {
     let uri = document_uri_to_lsp(&location.uri, fallback_uri);
     Location::new(uri, range_to_lsp(location.range))
 }
@@ -306,6 +308,18 @@ fn analysis_options_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uri_projection_preserves_percent_encoding_and_non_file_schemes() {
+        let fallback = Uri::from_str("file:///tmp/fallback.mmd").unwrap();
+
+        for raw in ["file:///tmp/diagram%20draft.mmd", "untitled:notes%20draft"] {
+            let projected = document_uri_to_lsp(&DocumentUri::from(raw), &fallback);
+
+            assert_eq!(projected.as_str(), raw);
+            assert_eq!(serde_json::to_value(projected).unwrap(), json!(raw));
+        }
+    }
 
     #[test]
     fn rule_catalog_response_contains_governed_authoring_rule() {

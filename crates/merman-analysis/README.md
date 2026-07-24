@@ -37,20 +37,19 @@ Editor-facing ownership is layered:
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are separate serialized
 contracts with separate version constants. `AnalysisPayload` remains version 1. The parser-only
-`AnalysisFactsPayload` is the sole version 2 facts contract; readers reject facts v1 at the
-version boundary before attempting to decode its body.
+`AnalysisFactsPayload` is the sole version 1 facts contract; readers reject every other version at
+the boundary before attempting to decode its body.
 
-Facts v2 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
+Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
 not manufacture body semantic items. Current writers include `rename_policy` on every
 `semantic_items[]` entry so consumers can enforce the owning diagram family's identifier grammar.
-Readers accept older v1 entries that omit this additive field and conservatively decode them as
+Readers accept entries that omit this additive field and conservatively decode them as
 `"none"`; missing metadata must never enable a rename operation.
 
-Merman `0.8.0-alpha.3` exposed a superseded TextScan-capable alpha shape with the same numeric
-discriminator. That implementation is deleted: there is no legacy decoder, executor, deprecated
-alias, or dual projection path. Consumers of the alpha shape must update to the current v1 schema
-and cannot infer compatibility from the version number alone. This schema version is independent
-from LSP document revisions, Mermaid ids such as `flowchart-v2`, and native/WASM ABI versions.
+The superseded TextScan-capable shape is deleted: there is no legacy decoder, executor,
+deprecated alias, or dual projection path. Alpha consumers must regenerate against the current
+package. This schema version is independent from LSP document revisions, Mermaid ids such as
+`flowchart-v2`, and native/WASM ABI versions.
 
 `DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use
 `SharedTextSlice` instead of owned `String` buffers. The slice shares the immutable document text

@@ -1,6 +1,7 @@
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::class::layout_class_diagram_typed_with_config;
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
 use merman_render::model::ClassDiagramLayout;
 use std::path::PathBuf;
 
@@ -24,36 +25,30 @@ fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diag
     model
 }
 
-fn layout_class_with_dagre(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-) -> ClassDiagramLayout {
-    let model = class_model(parsed);
-    session
-        .resource_policy()
-        .check_class_complexity(model)
-        .expect("class complexity within test limits");
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_class_diagram_typed_with_config(model, &parsed.metadata().effective_config, &measurer)
-        .expect("Dagre class layout")
+fn layout_class_with_dagre(text: &str, environment: &RenderEnvironment) -> ClassDiagramLayout {
+    let parsed = parse_class(text);
+    let session = environment.begin_session().unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("Dagre class layout");
+    let projection = artifact.layout_json().expect("Class layout projection");
+    serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).expect("Class layout")
 }
 
 fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join(format!("{name}.mmd"));
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_class(&text);
-    layout_class_with_dagre(&parsed, &session)
+    layout_class_with_dagre(&text, &environment)
 }
 
 fn layout_class_text(text: &str) -> (ClassDiagramLayout, ParsedDiagramRender) {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let parsed = parse_class(text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(text, &environment);
     (layout, parsed)
 }
 
@@ -92,15 +87,14 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
 
 #[test]
 fn class_layout_produces_positions_and_routes() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_class(&text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(&text, &environment);
 
     assert!(layout.nodes.len() >= 2);
     assert!(!layout.edges.is_empty());
@@ -125,7 +119,7 @@ fn class_layout_produces_positions_and_routes() {
 
 #[test]
 fn class_namespaces_contain_member_classes() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -133,7 +127,7 @@ fn class_namespaces_contain_member_classes() {
     let text = std::fs::read_to_string(&path).expect("fixture");
 
     let parsed = parse_class(&text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(&text, &environment);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -461,15 +455,14 @@ namespace Company.Project.Module {
 
 #[test]
 fn class_terminal_labels_exist_for_cardinalities_fixture() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("upstream_relation_types_and_cardinalities_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_class(&text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(&text, &environment);
 
     let has_terminal = layout.edges.iter().any(|e| {
         e.start_label_left.is_some()
@@ -487,15 +480,14 @@ fn point_inside(rect: (f64, f64, f64, f64), x: f64, y: f64, eps: f64) -> bool {
 
 #[test]
 fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let environment = RenderEnvironment::deterministic();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("upstream_relation_types_and_cardinalities_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_class(&text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(&text, &environment);
 
     let mut node_rect_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -542,9 +534,7 @@ fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() 
 
 #[test]
 fn class_svg_title_widths_scale_with_measured_content() {
-    let session = merman_render::environment::RenderEnvironment::deterministic()
-        .begin_session()
-        .unwrap();
+    let environment = RenderEnvironment::deterministic();
     let text = r#"---
 config:
   htmlLabels: false
@@ -554,8 +544,7 @@ A <|-- B
 LongClassName <|-- B
 "#;
 
-    let parsed = parse_class(text);
-    let layout = layout_class_with_dagre(&parsed, &session);
+    let layout = layout_class_with_dagre(text, &environment);
 
     let node_a = layout
         .nodes

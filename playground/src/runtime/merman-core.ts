@@ -3,11 +3,11 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type {
   AsciiCapability,
   AsciiDiagramType,
-  BindingCapabilities,
   DiagramDetectionFacts,
   DiagramType,
   HostThemePresetName,
   ThemeName,
+  RuntimeCatalog,
   ValidationResult,
 } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
@@ -61,7 +61,7 @@ export type MermanAsciiResult =
 
 export interface MermanDomainFacade {
   readonly packageVersion: string;
-  bindingCapabilities(): BindingCapabilities;
+  runtimeCatalog(): RuntimeCatalog;
   detectDiagram(
     code: string,
     theme?: string,

@@ -1,6 +1,6 @@
-#![cfg(all(feature = "render", feature = "layout-elk"))]
+#![cfg(all(feature = "svg", feature = "layout-elk"))]
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 #[test]
 fn headless_renderer_renders_flowchart_elk_svg() {

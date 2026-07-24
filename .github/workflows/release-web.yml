@@ -1,10 +1,10 @@
-name: Release Web (npm)
+name: Release Web package group (npm)
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag/version to publish, for example v0.8.0-alpha.3"
+        description: "Release tag/version to publish, for example v0.8.0-alpha.4"
         required: true
         type: string
       source_ref:
@@ -13,7 +13,7 @@ on:
         default: "main"
         type: string
       publish_to_npm:
-        description: "Publish @mermanjs/web to npm after checks pass"
+        description: "Publish the admitted @mermanjs/web package group after checks pass"
         required: true
         default: true
         type: boolean
@@ -85,6 +85,8 @@ jobs:
   build:
     needs: validate-inputs
     runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
     permissions:
       contents: read
     steps:
@@ -93,37 +95,17 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
 
-      - name: Use validated release metadata
-        id: version
-        env:
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+      - name: Record checked-out release source
+        id: source
+        shell: bash
         run: |
           set -euo pipefail
-          {
-            printf 'tag=%s\n' "$RELEASE_TAG"
-            printf 'version=%s\n' "$VERSION"
-          } >> "$GITHUB_OUTPUT"
-          echo "Tag version: $VERSION"
-
-      - name: Verify web package version matches tag
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          node - <<'JS'
-          const fs = require("node:fs");
-          const version = process.env.VERSION;
-          const pkg = JSON.parse(fs.readFileSync("platforms/web/package.json", "utf8"));
-          if (pkg.name !== "@mermanjs/web") {
-            console.error(`::error::Unexpected npm package name ${pkg.name}`);
-            process.exit(1);
+          source_sha="$(git rev-parse HEAD)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::checkout did not resolve a full Git commit id" >&2
+            exit 1
           }
-          if (pkg.version !== version) {
-            console.error(`::error::Web package version '${pkg.version}' does not match tag ${version}`);
-            process.exit(1);
-          }
-          console.log(`@mermanjs/web ${pkg.version}`);
-          JS
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -150,89 +132,73 @@ jobs:
           python3 scripts/sync-release-legal-materials.py --check
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-editor-token-descriptor
-          cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-web-diagram-catalog
+          cargo run --locked -p xtask -- verify-artifact-profiles
+          cargo run --locked -p xtask -- verify-capability-surface
 
-      - name: Install web package dependencies
+      - name: Install Web workspace dependencies
         run: npm ci --prefix platforms/web
 
-      - name: Build web package
+      - name: Build Web package group
         run: npm run build --prefix platforms/web
 
-      - name: Verify web package
-        run: npm run prepack --prefix platforms/web
+      - name: Verify Web package group
+        run: npm run verify:packages --prefix platforms/web
 
-      - name: Smoke web package
+      - name: Smoke Web package group
         run: npm run smoke --prefix platforms/web
 
-      - name: Pack web package
+      - name: Pack verified Web package group
         id: pack
-        working-directory: platforms/web
-        run: |
-          set -euo pipefail
-          package_dir="$RUNNER_TEMP/npm-package"
-          mkdir -p "$package_dir"
-          npm pack --ignore-scripts --json --pack-destination "$package_dir" | tee "$RUNNER_TEMP/npm-pack.json"
-          package_file="$(node -e '
-          const fs = require("node:fs");
-          const path = require("node:path");
-          const pack = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-          if (!Array.isArray(pack) || pack.length !== 1) {
-            throw new Error("expected one packed npm tarball");
-          }
-          process.stdout.write(path.resolve(process.argv[2], pack[0].filename));
-          ' "$RUNNER_TEMP/npm-pack.json" "$package_dir")"
-          test -f "$package_file"
-          printf 'package_file=%s\n' "$package_file" >> "$GITHUB_OUTPUT"
-
-      - name: Upload web package artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: merman-web-npm-package
-          path: ${{ steps.pack.outputs.package_file }}
-
-  npm_version:
-    needs:
-      - validate-inputs
-      - build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    outputs:
-      exists: ${{ steps.npm.outputs.exists }}
-    steps:
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
-          package-manager-cache: false
-
-      - name: Check npm version
-        id: npm
+        shell: bash
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
         run: |
-          if npm view "@mermanjs/web@$VERSION" version >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "@mermanjs/web $VERSION is already published"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "@mermanjs/web $VERSION is not published yet"
-          fi
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/merman-web-package-group"
+          mkdir -p "$artifact_dir"
+          python3 scripts/web_package_group.py pack \
+            --root . \
+            --descriptor platforms/web/web-surface-descriptor.json \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --target-dist-tag "$NPM_DIST_TAG"
+          python3 scripts/web_package_group.py verify-artifact \
+            --manifest "$artifact_dir/web-package-group.json" \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --descriptor platforms/web/web-surface-descriptor.json
+          printf 'artifact_dir=%s\n' "$artifact_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified Web package group
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-web-npm-package-group
+          path: ${{ steps.pack.outputs.artifact_dir }}
+          if-no-files-found: error
 
   publish:
     needs:
       - validate-inputs
       - build
-      - npm_version
-    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists != 'true' }}
+    if: ${{ inputs.publish_to_npm }}
     runs-on: ubuntu-24.04
     environment: npm
     permissions:
       contents: read
       id-token: write
     steps:
+      # The artifact is data only. Run release logic from the trusted workflow revision.
+      - name: Checkout trusted release verifier
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -240,37 +206,42 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
-      - name: Download web package artifact
+      - name: Download verified Web package group
         uses: actions/download-artifact@v7
         with:
-          name: merman-web-npm-package
-          path: target/npm-package
+          name: merman-web-npm-package-group
+          path: target/npm-package-group
 
-      - name: Publish to npm
+      - name: Verify downloaded Web package group
         shell: bash
         env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
           NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          package_files=(target/npm-package/*.tgz)
-          if (( ${#package_files[@]} != 1 )); then
-            echo "::error::Expected exactly one packed npm tarball, found ${#package_files[@]}." >&2
-            exit 1
-          fi
-          npm publish "${package_files[0]}" --ignore-scripts --access public --tag "$NPM_DIST_TAG"
+          python3 scripts/web_package_group.py verify-artifact \
+            --manifest target/npm-package-group/web-package-group.json \
+            --artifact-dir target/npm-package-group \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --target-dist-tag "$NPM_DIST_TAG" \
+            --descriptor platforms/web/web-surface-descriptor.json
 
-  skip_existing:
-    needs:
-      - validate-inputs
-      - build
-      - npm_version
-    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists == 'true' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - name: Skip existing npm version
-        env:
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: echo "@mermanjs/web $VERSION is already published on npm; skipping."
+      - name: Reconcile npm package group
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/web_package_group.py reconcile \
+            --manifest target/npm-package-group/web-package-group.json \
+            --artifact-dir target/npm-package-group \
+            --registry https://registry.npmjs.org \
+            --report target/npm-package-group/reconciliation-report.json
+
+      - name: Upload npm reconciliation report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-web-npm-reconciliation-report
+          path: target/npm-package-group/reconciliation-report.json
+          if-no-files-found: warn

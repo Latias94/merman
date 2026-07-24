@@ -3,7 +3,7 @@
 
 pub const RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const RESOURCE_PROFILE_COUNT: usize = 4;
-pub const RESOURCE_LIMIT_COUNT: usize = 16;
+pub const RESOURCE_LIMIT_COUNT: usize = 7;
 
 pub const RESOURCE_PROFILE_IDS: [&str; RESOURCE_PROFILE_COUNT] = [
     "interactive",
@@ -14,21 +14,12 @@ pub const RESOURCE_PROFILE_IDS: [&str; RESOURCE_PROFILE_COUNT] = [
 
 pub const RESOURCE_LIMIT_IDS: [&str; RESOURCE_LIMIT_COUNT] = [
     "max_source_bytes",
+    "max_model_items",
+    "max_model_text_bytes",
+    "max_model_nesting_depth",
+    "max_layout_work_units",
     "max_svg_bytes",
     "max_svg_elements",
-    "max_svg_tree_depth",
-    "max_flowchart_nodes",
-    "max_flowchart_edges",
-    "max_flowchart_subgraphs",
-    "max_class_nodes",
-    "max_class_edges",
-    "max_class_namespaces",
-    "max_zenuml_participants",
-    "max_zenuml_statements",
-    "max_zenuml_fragments",
-    "max_venn_areas",
-    "max_swimlane_line_hop_segment_pairs",
-    "max_label_bytes",
 ];
 
 pub fn profile_id(code: i32) -> Option<&'static str> {

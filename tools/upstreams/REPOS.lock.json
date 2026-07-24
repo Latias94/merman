@@ -28,8 +28,8 @@
     "cytoscape": {
       "path": "repo-ref/cytoscape.js",
       "url": "https://github.com/cytoscape/cytoscape.js.git",
-      "ref": "v3.33.1",
-      "commit": "72af5edb6cd988851f42dc25f9e1092fd2d9e7cf"
+      "ref": "v3.34.0",
+      "commit": "22716bfb75834b56fa6679648b0abb06f4ae691c"
     },
     "cytoscape-cose-bilkent": {
       "path": "repo-ref/cytoscape-cose-bilkent",

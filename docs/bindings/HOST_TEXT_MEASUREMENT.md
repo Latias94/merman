@@ -106,17 +106,26 @@ The callback is a seam, not a promise that all output becomes browser-identical.
 the extent that the host measures with the same fonts, line wrapping, white-space behavior, and
 surface that will render the SVG.
 
-## C ABI Contract Summary
+## Text-Measurement Protocol Summary
 
-The operation-aware text-measurement request and tagged result described here use C ABI v2
-(`MERMAN_ABI_VERSION == 2`). Install a callback on a reusable engine:
+The operation-aware request and tagged result described here use text-measurement protocol v1
+(`MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION == 1`). The enclosing native ABI owns the callback
+entrypoint and its record layout; it is versioned independently from these operation codes. Install
+a callback when creating an ABI 3 engine:
 
 ```c
-MermanResult merman_engine_set_text_measure_callback(
-    MermanEngine* engine,
-    MermanHostTextMeasureCallback callback,
-    void* user_data
-);
+MermanNativeEngineConfig config = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig),
+    .options_json = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+    },
+    .text_measure = measure_text,
+    .text_measure_user_data = context,
+};
+MermanNativeEngineToken engine = 0;
+MermanNativeResult result = MERMAN_NATIVE_RESULT_INIT;
+MermanNativeStatus status = api.engine_new(&config, &engine, &result);
+api.result_free(&result);
 ```
 
 The request includes:
@@ -174,7 +183,8 @@ required fields, an invalid/non-finite value, or zero metric lines is recorded a
 callback exception/error is recorded as `Error`; an unsupported result is recorded as `Missing`.
 All three use the configured per-request fallback and do not abort the enclosing render. A raw C
 callback must catch any host-language exception before it crosses the C ABI boundary and normally
-return `handled=0` because the value-returning C callback cannot transport an exception.
+return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; returning `MERMAN_NATIVE_STATUS_OK` with `handled=0`
+asks Merman to use the source-backed fallback for that request.
 
 A browser adapter should use two isolated formatted-text probes, or explicitly clear inherited
 baseline and anchor state between requests. The ordinary probe has no inherited middle baseline;
@@ -193,13 +203,16 @@ host text API needs owned strings.
 
 ## Lifecycle And Threading Rules
 
-- Keep the callback and `user_data` alive until it is cleared or the engine is closed.
-- Clear the callback before destroying host-side measurement state.
-- Do not free a reusable engine while another thread is rendering with it.
+- The callback and `user_data` are fixed at engine creation; ABI 3 has no callback setter or clearer.
+- Keep the callback and `user_data` alive until the engine token is retired and every operation that
+  already acquired it has returned.
+- Outside a callback, `engine_free` rejects future calls immediately but does not wait for an
+  already-acquired operation. Coordinate those operations before destroying host-side state.
 - Treat callbacks as synchronous and latency-sensitive. They run during layout.
 - If the same reusable engine can render on multiple threads, the callback and all shared font
   caches must be thread-safe.
-- Do not call back into the same `MermanReusableEngine` from inside the measurer.
+- Do not execute on or retire the same engine from inside its callback. ABI 3 rejects same-thread
+  and cross-thread callback re-entry with `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
 - Return `handled=0` when a request cannot be measured faithfully. A bad "handled" value is worse
   than falling back.
 
@@ -220,7 +233,7 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
 
 engine = merman.MermanEngine()
 reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
-svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
 assert svg.startswith("<svg")
 ```
 
@@ -233,8 +246,9 @@ Use `diagram_family_capabilities()` to decide whether a diagram family can rende
 current Python binding before installing host-specific measurement logic.
 
 The one-shot engine accepts `options_json` on each operation, for example
-`engine.render_svg(source, options_json)`. A reusable engine receives `options_json` when it is
-created and therefore uses `reusable.render_svg(source)` without a second argument. The repository's
+`engine.render_svg(source, options_json)`. A reusable engine receives baseline `options_json` when
+it is created and request-local overrides through `reusable.render_svg(source, options_json)`. The
+repository's
 [`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py) is the
 canonical executable example; the UniFFI bindgen smoke generates a fresh Python binding and native
 library, then runs that file against the generated API.
@@ -293,16 +307,23 @@ Relevant platform references:
 
 ## Apple Swift
 
-The Swift wrapper currently exposes the raw C callback:
+The generated UniFFI binding exposes a typed callback protocol. Return `nil` when the host does
+not handle a requested operation; do not manufacture a zero-valued result.
 
 ```swift
-let callback: MermanTextMeasureCallback = { request, userData in
-    var result = MermanTextMeasureResult()
-    result.handled = 0
-    return result
+final class CoreTextMeasurer: MermanTextMeasurer, @unchecked Sendable {
+    func measure(request: MermanTextMeasureRequest) throws -> MermanTextMeasureResult? {
+        // Measure with the host's Core Text/AppKit/UIKit stack, or return nil.
+        nil
+    }
 }
 
-try reusable.setTextMeasureCallback(callback)
+let engine = MermanEngine()
+let measurer = CoreTextMeasurer()
+let reusable = try engine.reusableEngineWithTextMeasurer(
+    optionsJson: nil,
+    measurer: measurer
+)
 ```
 
 Recommended Apple implementation choices:
@@ -320,9 +341,11 @@ Recommended Apple implementation choices:
 - If the final surface is `WKWebView`, the closest measurement is DOM/canvas in that WebView after
   fonts have loaded. Keep the synchronous callback boundary in mind; prefer a prepared measurement
   service or cache over blocking arbitrary render threads on WebKit.
-- Use `userData` for host context. Retain that context for at least as long as the callback is
-  installed, and release it after clearing the callback or closing the engine.
-- Decode UTF-8 request fields inside the callback; do not store request pointers.
+- Keep the measurer alive for at least as long as the reusable engine. UniFFI owns the callback
+  handle while it is installed; Swift code does not pass raw context pointers or retain request
+  buffers.
+- Treat `MermanTextMeasureRequest` as a value. It contains decoded Swift strings and can be
+  inspected without pointer lifetime rules.
 - Use `autoreleasepool` around measurement code that creates Objective-C objects repeatedly.
 
 Relevant platform references:
@@ -334,20 +357,30 @@ Relevant platform references:
 
 ## Flutter / Dart FFI
 
-Use `MermanReusableEngine` with `setTextMeasurer`:
+Create `MermanReusableEngine` with its optional measurer. The callback is part
+of engine construction and cannot be installed or replaced after that point:
 
 ```dart
-final engine = Merman.open().reusableEngine();
-engine.setTextMeasurer((request) {
-  if (request.operation == MermanTextMeasurementOperation.measure) {
-    return MermanTextMeasureResult.metrics(
-      width: 42,
-      height: 18,
-      lineCount: 1,
-    );
-  }
-  return null;
-});
+final merman = Merman.open();
+final engine = merman.reusableEngine(
+  textMeasurer: (request) {
+    if (request.operation == MermanTextMeasurementOperation.measure) {
+      return MermanTextMeasureResult.metrics(
+        width: 42,
+        height: 18,
+        lineCount: 1,
+      );
+    }
+    return null;
+  },
+);
+
+try {
+  // Render with engine here.
+} finally {
+  engine.dispose();
+  merman.dispose();
+}
 ```
 
 The four named factories require exactly the meaningful shape: `metrics`, `length`,
@@ -359,7 +392,7 @@ native callback is marked as handled.
 The current Dart wrapper uses `NativeCallable.isolateLocal`, so the native callback must be invoked
 on the same isolate thread that created it. That has practical consequences:
 
-- Create the reusable engine, install the measurer, render, and close the engine on the same Dart
+- Create the reusable engine with the measurer, render, and close the engine on the same Dart
   isolate.
 - Do not pass a measured `MermanReusableEngine` to another isolate.
 - Always call `close()` when finished; closing releases the native engine and the Dart callback.

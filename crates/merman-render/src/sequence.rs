@@ -1,7 +1,7 @@
-use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, SequenceDiagramLayout};
 use crate::text::TextMeasurer;
+use crate::{RenderResourcePolicy, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use rustc_hash::FxHashMap;
@@ -32,11 +32,40 @@ pub(crate) use metrics::{
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
-use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
+use block_steps::{
+    BlockStepPlanContext, calculate_sequence_block_widths, is_block_end, is_block_section,
+    is_block_start,
+};
 use config::SequenceLayoutSettings;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
+
+fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> usize {
+    let mut control_depth = 0usize;
+    let mut rect_depth = 0usize;
+    let mut work = 0usize;
+    for message in &model.messages {
+        work = work.saturating_add(1);
+        if is_block_start(message.message_type) {
+            control_depth = control_depth.saturating_add(1);
+        } else if is_block_end(message.message_type) {
+            control_depth = control_depth.saturating_sub(1);
+        } else if message.message_type == 22 {
+            rect_depth = rect_depth.saturating_add(1);
+        } else if message.message_type == 23 {
+            rect_depth = rect_depth.saturating_sub(1);
+        } else if !is_block_section(message.message_type) {
+            // The layout and SVG paths both accumulate block bounds. Layout orchestration also
+            // updates open block/rect bottoms, while the final rect pass updates horizontal
+            // bounds. Account the full deterministic upper bound before any of those scans.
+            work = work
+                .saturating_add(control_depth.saturating_mul(4))
+                .saturating_add(rect_depth.saturating_mul(3));
+        }
+    }
+    work
+}
 
 pub(crate) fn bracketize_sequence_block_label(value: &str) -> String {
     let trimmed = value.trim();
@@ -105,22 +134,18 @@ pub(crate) fn sequence_block_widths_for_render(
     .collect()
 }
 
-pub fn layout_sequence_diagram_typed(
-    model: &SequenceDiagramRenderModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    layout_sequence_diagram_typed_with_title(model, None, effective_config, measurer, math_renderer)
-}
-
-pub fn layout_sequence_diagram_typed_with_title(
+/// Lays out a Sequence model under the resource policy owned by the render operation.
+pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<SequenceDiagramLayout> {
+    resource_limits.check_sequence_complexity(model)?;
+    resource_limits.check_layout_work_units(sequence_layout_work_units(model))?;
+
     let math_config = MermaidConfig::from_value(effective_config.clone());
     let settings = SequenceLayoutSettings::from_effective_config(effective_config);
 
@@ -257,4 +282,26 @@ pub(crate) fn sequence_render_title<'a>(
         return Some(title);
     }
     model_title
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use super::sequence_layout_work_units;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn nested_sequence_frames_are_charged_before_layout_scans_open_stacks() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nloop outer\nloop inner\nA->>B: hi\nend\nend\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("expected Sequence model");
+        };
+
+        assert_eq!(sequence_layout_work_units(model), 13);
+    }
 }

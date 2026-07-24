@@ -1,13 +1,15 @@
+use std::str::FromStr;
+
 use super::prelude::*;
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::semantic_token_descriptor;
 
 #[test]
-fn published_server_constructors_are_visible_with_legacy_signatures() {
-    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
+fn published_server_constructors_use_tower_lsp_server_types() {
+    let _: fn(tower_lsp_server::Client) -> MermanLanguageServer = MermanLanguageServer::new;
     let _: fn() -> (
-        tower_lsp::LspService<MermanLanguageServer>,
-        tower_lsp::ClientSocket,
+        tower_lsp_server::LspService<MermanLanguageServer>,
+        tower_lsp_server::ClientSocket,
     ) = MermanLanguageServer::service;
 }
 
@@ -15,7 +17,7 @@ fn published_server_constructors_are_visible_with_legacy_signatures() {
 async fn lsp_service_smoke_handles_initialize() {
     let (service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
+    let response = tower_lsp_server::LanguageServer::initialize(
         service.inner(),
         InitializeParams {
             initialization_options: Some(serde_json::json!({
@@ -84,8 +86,8 @@ async fn lsp_service_smoke_handles_initialize() {
     assert!(response.capabilities.diagnostic_provider.is_some());
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
-        Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Options(ref options))
-            if options.change == Some(tower_lsp::lsp_types::TextDocumentSyncKind::INCREMENTAL)
+        Some(tower_lsp_server::ls_types::TextDocumentSyncCapability::Options(ref options))
+            if options.change == Some(tower_lsp_server::ls_types::TextDocumentSyncKind::INCREMENTAL)
                 && options.open_close == Some(true)
                 && options.save.is_some()
     ));
@@ -95,7 +97,7 @@ async fn lsp_service_smoke_handles_initialize() {
 async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
     let (service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
+    let response = tower_lsp_server::LanguageServer::initialize(
         service.inner(),
         serde_json::from_value(serde_json::json!({
             "capabilities": {
@@ -149,7 +151,7 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
 async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format() {
     let (service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
+    let response = tower_lsp_server::LanguageServer::initialize(
         service.inner(),
         serde_json::from_value(serde_json::json!({
             "capabilities": {
@@ -176,7 +178,7 @@ async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_
     let (service, _socket) = MermanLanguageServer::service();
 
     let response =
-        tower_lsp::LanguageServer::initialize(service.inner(), InitializeParams::default())
+        tower_lsp_server::LanguageServer::initialize(service.inner(), InitializeParams::default())
             .await
             .unwrap();
 
@@ -194,7 +196,7 @@ async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -203,7 +205,7 @@ async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))
@@ -262,7 +264,7 @@ async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -271,7 +273,7 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))
@@ -318,7 +320,7 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagnostics() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -327,7 +329,7 @@ async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagn
                     "publishDiagnostics": { "versionSupport": true }
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))

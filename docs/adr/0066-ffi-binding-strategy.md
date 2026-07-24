@@ -5,9 +5,10 @@
 
 ADR-0076 supersedes any implication that an FFI descriptor or binding-specific boolean catalog
 owns capability or output semantic IDs. The separate unsafe FFI crate, safe facade, ownership,
-panic-containment, and C-plus-UniFFI layering decisions remain accepted. The live ABI 2 descriptor
-remains explicitly recorded in the capability migration ledger until U6 replaces it; this
-amendment does not claim ABI 3 is implemented.
+panic-containment, and C-plus-UniFFI layering decisions remain accepted. Native ABI 3 is now the
+implemented contract: it is generated from `abi/merman-v3.json`, discovered through one
+size-tagged API table, and routes every output through the shared binding operation model. ABI 2
+has been retired rather than retained as a compatibility layer.
 
 ## Context
 
@@ -39,73 +40,52 @@ binding facade, not as the canonical ABI contract for all hosts.
 
 Create FFI support as a separate boundary, not inside the existing safe crates.
 
-1. Add a future `merman-ffi` crate for the canonical stable C ABI.
+1. Keep the canonical stable C ABI in the separate `merman-ffi` crate.
    - Build as `cdylib` and `staticlib`.
    - Keep unsafe code local to this crate.
    - Wrap all exported functions in panic-safe result handling.
-   - Return owned byte buffers with explicit `merman_buffer_free`.
+   - Discover one size-tagged ABI 3 function table through `merman_get_native_api`.
+   - Return each operation through one address-owned `MermanNativeResult`, released through the
+     table's `result_free` function.
    - Expose errors through explicit result codes and retrievable error payloads.
    - Prefer UTF-8 bytes plus byte lengths over null-terminated strings for inputs.
 
-2. Add a safe binding facade before or inside the FFI crate.
-   - Convert request payloads into calls to `merman::render::HeadlessRenderer`.
+2. Route transports through the safe `merman-bindings-core` facade.
+   - Convert each generic operation request into the canonical parser, analysis, renderer, or
+     exporter operation.
    - Keep public wire payloads versioned and tolerant of unknown fields.
    - Use JSON for options because Mermaid config and render options evolve faster than C structs.
 
-3. Treat UniFFI as an optional high-level binding layer.
-   - A future `merman-uniffi` crate may expose `MermanEngine` and simple methods such as
-     `render_svg`, `parse_json`, and `layout_json`.
+3. Treat UniFFI as a high-level binding transport.
+   - `merman-uniffi` exposes `MermanEngine`, generic operation dispatch, and ergonomic convenience
+     methods such as `render_svg`, `parse_json`, and `layout_json`.
    - It should share the same safe facade as `merman-ffi`.
    - It should not replace the C ABI for hosts that need C, C++, Flutter/Dart FFI, JNA/JNI, or
      hand-controlled binary packaging.
 
-4. Start with SVG and JSON.
-   - First C ABI milestone: Mermaid source in, SVG/semantic JSON/layout JSON out.
-   - Raster outputs may follow behind a feature gate because they pull heavier dependencies.
-   - RaTeX math support should remain feature-gated.
+4. Keep callable output capabilities explicit.
+   - SVG, semantic/analysis/layout JSON, ASCII, PNG, JPEG, and PDF use the same generic operation
+     contract.
+   - Optional backends preserve the ABI shape and return a typed `missing-capability` error when
+     absent.
+   - RaTeX math support remains feature-gated.
 
-## Initial C ABI Shape
+## Implemented Native ABI 3
 
-The exact names can change during the `ffi-api` workstream, but the first pass should follow this
-shape:
+The current implementation keeps one exported discovery symbol, `merman_get_native_api`.
+The host proves the generated ABI version and descriptor digest, receives a function table, checks
+record layout through a surface-owned compile-run test, creates an opaque engine token, and uses
+one generic execution route for SVG, binary export, ASCII, and JSON outputs. Request options are
+deeply merged over the reusable engine baseline for one operation, while runtime-policy selection
+remains constructor-owned. Result buffers are released through the discovered `result_free` slot.
+The direct runtime catalog exposes both the compiled contract and the closed capability/output
+vocabulary.
 
-```c
-typedef struct {
-    uint8_t* data;
-    size_t len;
-} MermanBuffer;
-
-typedef struct {
-    int32_t code;
-    MermanBuffer data;
-} MermanResult;
-
-MermanResult merman_render_svg(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_json_len
-);
-
-MermanResult merman_parse_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_json_len
-);
-
-MermanResult merman_layout_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_json_len
-);
-
-void merman_buffer_free(MermanBuffer buffer);
-```
-
-`MermanResult.code == 0` means success. Non-zero codes return an error payload in `data`, encoded as
-UTF-8 JSON or UTF-8 text according to the workstream's final protocol decision.
+This design removes the old per-output exported function family, raw engine pointers, and duplicate
+ABI-specific capability catalog. It returns one owned output buffer instead of a post-hoc chunk
+sink, matching the current backends that already materialize complete outputs. It also lets
+generated C, Android, Flutter, and other transport bindings share output IDs without maintaining
+parallel operation enums.
 
 ## Alternatives
 

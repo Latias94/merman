@@ -4,7 +4,6 @@ use super::{
     FontMetricsTable, FontMetricsVariant, SvgVerticalDomShape, SvgVerticalProfileSet,
     SvgVerticalSizeProfile,
 };
-#[cfg(any(test, feature = "font-metrics-generation"))]
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
@@ -26,7 +25,6 @@ pub enum FontMetricsVariantData {
 }
 
 impl FontMetricsVariantData {
-    #[cfg(any(test, feature = "font-metrics-generation"))]
     fn to_byte(self) -> u8 {
         match self {
             Self::Regular => 0,
@@ -55,7 +53,6 @@ impl FontMetricsVariantData {
         }
     }
 
-    #[cfg(feature = "font-metrics-generation")]
     pub fn rust_name(self) -> &'static str {
         match self {
             Self::Regular => "Regular",
@@ -117,7 +114,6 @@ impl SvgVerticalDomShapeData {
         }
     }
 
-    #[cfg(any(test, feature = "font-metrics-generation"))]
     fn to_byte(self) -> u8 {
         self.index() as u8
     }
@@ -138,7 +134,6 @@ impl SvgVerticalDomShapeData {
         }
     }
 
-    #[cfg(feature = "font-metrics-generation")]
     pub fn audit_name(self) -> &'static str {
         match self {
             Self::RawText => "raw-text",
@@ -400,27 +395,22 @@ fn validate_table(table: &FontMetricsTableData) -> Result<(), FontMetricsCodecEr
     Ok(())
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn checked_u16(value: usize, message: &'static str) -> Result<u16, FontMetricsCodecError> {
     u16::try_from(value).map_err(|_| FontMetricsCodecError::new(0, message))
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn checked_u32(value: usize, message: &'static str) -> Result<u32, FontMetricsCodecError> {
     u32::try_from(value).map_err(|_| FontMetricsCodecError::new(0, message))
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_u16(output: &mut Vec<u8>, value: u16) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_u64(output: &mut Vec<u8>, value: u64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
@@ -444,7 +434,6 @@ fn packed_vertical_bucket_indices_len(
         .ok_or_else(|| FontMetricsCodecError::new(0, "vertical mapping bit length overflow"))
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn pack_vertical_bucket_indices(
     indices: &[u8],
     bucket_count: usize,
@@ -517,7 +506,6 @@ fn unpack_vertical_bucket_indices(
     Ok(indices)
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 pub fn encode_font_metrics_profile(
     tables: &[FontMetricsTableData],
 ) -> Result<Vec<u8>, FontMetricsCodecError> {
@@ -618,7 +606,6 @@ pub fn encode_font_metrics_profile(
     Ok(output)
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_svg_vertical_profile_set(
     output: &mut Vec<u8>,
     profile_set: &SvgVerticalProfileSetData,
@@ -687,7 +674,6 @@ fn write_svg_vertical_profile_set(
     Ok(())
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_char_metrics(
     output: &mut Vec<u8>,
     entries: &[(char, f64)],
@@ -702,7 +688,6 @@ fn write_char_metrics(
     Ok(())
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_pair_metrics(
     output: &mut Vec<u8>,
     entries: &[(u32, u32, f64)],
@@ -717,7 +702,6 @@ fn write_pair_metrics(
     Ok(())
 }
 
-#[cfg(any(test, feature = "font-metrics-generation"))]
 fn write_trigram_metrics(
     output: &mut Vec<u8>,
     entries: &[(u32, u32, u32, f64)],

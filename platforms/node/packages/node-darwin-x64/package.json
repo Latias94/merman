@@ -1,0 +1,11 @@
+{
+  "name": "@mermanjs/node-darwin-x64",
+  "version": "0.8.0-alpha.3",
+  "private": true,
+  "description": "Private Merman Node native candidate for macOS x64.",
+  "main": "./merman.node",
+  "files": ["merman.node", "LICENSE-APACHE", "LICENSE-MIT", "README.md", "THIRD_PARTY_LICENSES", "THIRD_PARTY_NOTICES.md"],
+  "license": "MIT OR Apache-2.0",
+  "os": ["darwin"],
+  "cpu": ["x64"]
+}

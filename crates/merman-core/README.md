@@ -10,7 +10,7 @@
 
 `merman-core` is the parser and semantic-model crate behind [merman](https://crates.io/crates/merman). Use it when you need Mermaid detection, metadata, compatibility semantic JSON, parser-backed editor facts, or typed render models without pulling in layout, SVG, or raster dependencies.
 
-Most application code that wants rendered output should use the `merman` crate with the `render` feature instead.
+Most application code that wants rendered output should use the `merman` crate with the `svg` feature instead.
 
 Pre-0.8 migration note: `Error::DiagramParse` carries
 `diagnostic: ParseDiagnostic` instead of a raw parse-message field. Call
@@ -87,7 +87,7 @@ Common internal ids include `flowchart-v2`, `sequence`, `classDiagram`, `stateDi
 If the next step is layout or SVG rendering, prefer `Engine::parse_diagram_for_render_model_sync`.
 It returns the typed render projection of the same family-owned semantics and avoids building a
 large compatibility JSON tree. Applications that want complete SVG or layout JSON should normally
-use `merman::render::HeadlessRenderer`, which carries this typed projection through the canonical
+use `merman::svg::HeadlessRenderer`, which carries this typed projection through the canonical
 render operation.
 
 ```rust
@@ -117,7 +117,7 @@ pinned Mermaid catalog is complete and independent of Cargo feature selection. C
 parser overlays remain explicit and do not inherit a built-in renderer or editor capability.
 
 The public Rust flowchart render type is `diagrams::flowchart::FlowchartModel`. The former
-`FlowchartV2Model` type name was removed during the alpha architecture reset without a deprecated
+`FlowchartV2Model` type name was removed during the architecture reset without a deprecated
 alias. This rename does not change Mermaid's `flowchart-v2` diagram id or the compatibility layout
 JSON `FlowchartV2` variant key.
 
@@ -137,3 +137,6 @@ cargo run -p xtask -- verify-lalrpop-parsers
 ```
 
 `verify-generated` includes the same byte-for-byte freshness check.
+
+See the [parser generation guide](../../docs/development/PARSER_GENERATION.md) for source ownership,
+transaction semantics, review expectations, and the parser/editor/LSP verification sequence.

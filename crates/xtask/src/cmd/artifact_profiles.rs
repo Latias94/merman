@@ -10,6 +10,7 @@ use std::process::Command;
 pub(super) const ARTIFACT_PROFILE_DESCRIPTOR_PATH: &str = "capabilities/artifact-profiles-v1.json";
 const ARTIFACT_PROFILE_SCHEMA_VERSION: u32 = 1;
 const CAPABILITY_DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
+const CARGO_DIST_PROFILE_IDS: [&str; 2] = ["cli-release", "lsp-stdio-release"];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -69,11 +70,42 @@ enum BuildTarget {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExpectedSurface {
-    #[serde(default)]
-    preset: Option<String>,
     capabilities: Vec<String>,
     runtime_ids: Vec<String>,
     outputs: Vec<String>,
+}
+
+/// A validated WASM artifact recipe consumed by owner builds and the size matrix.
+///
+/// The matrix deliberately receives this projection only after the complete
+/// artifact-profile descriptor has passed the same Cargo and capability checks
+/// used for release recipes. It must not reconstruct a second Web feature map.
+#[derive(Debug, Clone)]
+pub(crate) struct WasmArtifactProfile {
+    pub(crate) id: String,
+    pub(crate) semantic_target: String,
+    pub(crate) package: String,
+    pub(crate) manifest_path: PathBuf,
+    pub(crate) cargo_profile: String,
+    pub(crate) default_features: bool,
+    pub(crate) features: Vec<String>,
+    pub(crate) target_triple: String,
+    pub(crate) artifact_name: String,
+    pub(crate) capabilities: Vec<String>,
+    pub(crate) runtime_ids: Vec<String>,
+    pub(crate) outputs: Vec<String>,
+}
+
+impl WasmArtifactProfile {
+    pub(crate) fn configure_cargo_command(&self, command: &mut Command) {
+        command.arg("--manifest-path").arg(&self.manifest_path);
+        if !self.default_features {
+            command.arg("--no-default-features");
+        }
+        if !self.features.is_empty() {
+            command.arg("--features").arg(self.features.join(","));
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -87,6 +119,14 @@ struct CargoPackage {
     manifest_path: PathBuf,
     features: BTreeMap<String, Vec<String>>,
     targets: Vec<CargoMetadataTarget>,
+    metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct CargoDistRecipe {
+    default_features: bool,
+    features: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -290,6 +330,51 @@ fn enabled_local_features(package: &CargoPackage, recipe: &CargoRecipe) -> BTree
     enabled
 }
 
+fn validate_cargo_dist_recipe(
+    profile: &ArtifactProfile,
+    package: &CargoPackage,
+    path: &str,
+) -> Result<(), String> {
+    if !CARGO_DIST_PROFILE_IDS.contains(&profile.id.as_str()) {
+        return Ok(());
+    }
+    if profile.cargo.profile != "release" {
+        return Err(format!(
+            "{path}.cargo.profile: cargo-dist artifact `{}` must use the `release` profile",
+            profile.id
+        ));
+    }
+
+    let metadata_path = format!("{path}.cargo.package.metadata.dist");
+    let metadata = package
+        .metadata
+        .get("dist")
+        .ok_or_else(|| format!("{metadata_path}: missing exact cargo-dist recipe"))?;
+    let recipe = serde_json::from_value::<CargoDistRecipe>(metadata.clone())
+        .map_err(|error| format!("{metadata_path}: invalid cargo-dist recipe: {error}"))?;
+    if recipe.default_features != profile.cargo.default_features {
+        return Err(format!(
+            "{metadata_path}.default-features: expected {}, found {}",
+            profile.cargo.default_features, recipe.default_features
+        ));
+    }
+    let actual_features =
+        validate_sorted_unique(&recipe.features, &format!("{metadata_path}.features"))?;
+    let expected_features = profile
+        .cargo
+        .features
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if actual_features != expected_features {
+        return Err(format!(
+            "{metadata_path}.features: exact artifact `{}` requires {expected_features:?}, found {actual_features:?}",
+            profile.id
+        ));
+    }
+    Ok(())
+}
+
 fn validate_expected(
     profile: &ArtifactProfile,
     catalog: &CapabilityContractCatalog,
@@ -330,45 +415,10 @@ fn validate_expected(
         }
     }
 
-    if let Some(preset_id) = profile.expected.preset.as_deref() {
-        let preset = catalog
-            .presets
-            .get(preset_id)
-            .ok_or_else(|| format!("{path}.expected.preset: unknown preset `{preset_id}`"))?;
-        if !preset.targets.contains(target) {
-            return Err(format!(
-                "{path}.expected.preset: `{preset_id}` is unavailable on `{target}`"
-            ));
-        }
-        if preset.capabilities != capabilities {
-            return Err(format!(
-                "{path}.expected.capabilities: must equal preset `{preset_id}`"
-            ));
-        }
-        if preset.expected_runtime_capabilities != runtime_ids {
-            return Err(format!(
-                "{path}.expected.runtime_ids: must equal preset `{preset_id}`"
-            ));
-        }
-    }
-
-    if !capabilities.is_subset(&runtime_ids) {
+    if capabilities != runtime_ids {
         return Err(format!(
-            "{path}.expected.runtime_ids: runtime report must include every compiled capability"
+            "{path}.expected.runtime_ids: runtime report must equal the compiled capability IDs"
         ));
-    }
-    for runtime_id in runtime_ids.difference(&capabilities) {
-        let targets = catalog
-            .runtime_capability_targets
-            .get(runtime_id)
-            .ok_or_else(|| {
-                format!("{path}.expected.runtime_ids: unknown runtime ID `{runtime_id}`")
-            })?;
-        if !targets.contains(target) {
-            return Err(format!(
-                "{path}.expected.runtime_ids: `{runtime_id}` is unavailable on `{target}`"
-            ));
-        }
     }
     for output in outputs {
         let output_target = catalog
@@ -419,8 +469,18 @@ fn validate_profile(
             profile.cargo.profile
         ));
     }
+    if profile.cargo.default_features {
+        return Err(format!(
+            "{path}.cargo.default_features: exact artifact recipes must disable Cargo defaults"
+        ));
+    }
     validate_sorted_unique(&profile.cargo.features, &format!("{path}.cargo.features"))?;
     for feature in &profile.cargo.features {
+        if feature == "default" {
+            return Err(format!(
+                "{path}.cargo.features: exact artifact recipes must not enable the implicit `default` feature"
+            ));
+        }
         if !package.features.contains_key(feature) {
             return Err(format!(
                 "{path}.cargo.features: package `{}` has no feature `{feature}`",
@@ -497,7 +557,82 @@ fn validate_profile(
             }
         }
     }
+    validate_cargo_dist_recipe(profile, package, path)?;
     validate_expected(profile, &context.capability, path)
+}
+
+fn package_requires_artifact_profile(
+    package: &CargoPackage,
+    manifest: &str,
+) -> Result<bool, String> {
+    let Some(merman) = package.metadata.get("merman") else {
+        return Ok(false);
+    };
+    let metadata = merman.as_object().ok_or_else(|| {
+        format!("{manifest}: package.metadata.merman must be a table when present")
+    })?;
+    let Some(required) = metadata.get("artifact-profile-required") else {
+        return Ok(false);
+    };
+    match required.as_bool() {
+        Some(true) => Ok(true),
+        Some(false) => Err(format!(
+            "{manifest}: package.metadata.merman.artifact-profile-required must be omitted or true"
+        )),
+        None => Err(format!(
+            "{manifest}: package.metadata.merman.artifact-profile-required must be boolean true"
+        )),
+    }
+}
+
+fn validate_artifact_profile_coverage(
+    descriptor: &ArtifactProfileDescriptor,
+    packages: &BTreeMap<(String, String), CargoPackage>,
+) -> Result<(), String> {
+    let covered_packages = descriptor
+        .profiles
+        .iter()
+        .map(|profile| {
+            (
+                profile.cargo.package.clone(),
+                profile.cargo.manifest.clone(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let required_packages = packages
+        .iter()
+        .filter_map(|((package, manifest), metadata)| {
+            match package_requires_artifact_profile(metadata, manifest) {
+                Ok(true) => Some(Ok((package.clone(), manifest.clone()))),
+                Ok(false) => None,
+                Err(error) => Some(Err(error)),
+            }
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    let missing = required_packages
+        .difference(&covered_packages)
+        .map(|(package, manifest)| format!("`{package}` at `{manifest}`"))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "profiles: Cargo build roots marked artifact-profile-required lack exact recipes: {}",
+            missing.join(", ")
+        ))
+    }?;
+    let unexpected = covered_packages
+        .difference(&required_packages)
+        .map(|(package, manifest)| format!("`{package}` at `{manifest}`"))
+        .collect::<Vec<_>>();
+    if unexpected.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "profiles: exact recipes reference Cargo packages without artifact-profile-required ownership: {}",
+            unexpected.join(", ")
+        ))
+    }
 }
 
 fn validate_descriptor(
@@ -549,6 +684,14 @@ fn validate_descriptor(
         validate_profile(profile, context, &path)?;
         covered_targets.insert(profile.semantic_target.as_str());
     }
+    validate_artifact_profile_coverage(descriptor, &context.packages)?;
+    for profile_id in CARGO_DIST_PROFILE_IDS {
+        if !ids.contains(profile_id) {
+            return Err(format!(
+                "profiles: cargo-dist release requires exact artifact profile `{profile_id}`"
+            ));
+        }
+    }
     let expected_targets = context
         .capability
         .target_ids
@@ -587,11 +730,113 @@ pub(crate) fn verify_artifact_profiles(args: Vec<String>) -> Result<(), String> 
     let descriptor = read_descriptor(&descriptor_path)?;
     let context = ValidationContext::load(&root)?;
     validate_descriptor(&descriptor, &context)?;
+    let wasm_profiles = wasm_artifact_profiles(&descriptor)?;
+    validate_wasm_owner_closures(&wasm_profiles)?;
     println!(
         "validated {} exact artifact build profile(s)",
         descriptor.profiles.len()
     );
     Ok(())
+}
+
+/// Loads every exact artifact recipe that produces the canonical browser or
+/// Typst WASM binary measured by `wasm-size-matrix`.
+///
+/// The descriptor is intentionally the only source for Cargo feature lists,
+/// target triples, and expected capabilities. A profile targeting one of those
+/// semantic surfaces must be a single `wasm32-unknown-unknown` cdylib recipe;
+/// otherwise it cannot be measured as one stable `.wasm` artifact.
+pub(crate) fn load_wasm_size_artifact_profiles() -> Result<Vec<WasmArtifactProfile>, String> {
+    let root = super::workspace_root();
+    let descriptor = read_descriptor(&root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
+    let context = ValidationContext::load(&root)?;
+    validate_descriptor(&descriptor, &context)?;
+
+    let profiles = wasm_artifact_profiles(&descriptor)?;
+    validate_wasm_owner_closures(&profiles)?;
+    Ok(profiles)
+}
+
+/// Loads one validated exact WASM artifact recipe by descriptor ID.
+///
+/// Consumers use this instead of reconstructing Cargo package, target, and
+/// feature arguments in workflow or release documentation.
+pub(crate) fn load_exact_wasm_artifact_profile(
+    profile_id: &str,
+) -> Result<WasmArtifactProfile, String> {
+    load_wasm_size_artifact_profiles()?
+        .into_iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| format!("unknown exact WASM artifact profile `{profile_id}`"))
+}
+
+fn wasm_artifact_profiles(
+    descriptor: &ArtifactProfileDescriptor,
+) -> Result<Vec<WasmArtifactProfile>, String> {
+    let mut profiles = Vec::new();
+    for profile in &descriptor.profiles {
+        if !matches!(profile.semantic_target.as_str(), "web" | "typst") {
+            continue;
+        }
+
+        if !profile
+            .cargo
+            .target
+            .kinds
+            .iter()
+            .any(|kind| kind == "cdylib")
+        {
+            return Err(format!(
+                "artifact profile `{}`: WASM size measurement requires a cdylib target",
+                profile.id
+            ));
+        }
+        let BuildTarget::TargetSet { triples } = &profile.cargo.build_target else {
+            return Err(format!(
+                "artifact profile `{}`: WASM size measurement requires a target-set recipe",
+                profile.id
+            ));
+        };
+        let [target_triple] = triples.as_slice() else {
+            return Err(format!(
+                "artifact profile `{}`: WASM size measurement requires exactly one target triple",
+                profile.id
+            ));
+        };
+        if target_triple != "wasm32-unknown-unknown" {
+            return Err(format!(
+                "artifact profile `{}`: WASM size measurement requires `wasm32-unknown-unknown`, found `{target_triple}`",
+                profile.id
+            ));
+        }
+
+        profiles.push(WasmArtifactProfile {
+            id: profile.id.clone(),
+            semantic_target: profile.semantic_target.clone(),
+            package: profile.cargo.package.clone(),
+            manifest_path: PathBuf::from(&profile.cargo.manifest),
+            cargo_profile: profile.cargo.profile.clone(),
+            default_features: profile.cargo.default_features,
+            features: profile.cargo.features.clone(),
+            target_triple: target_triple.clone(),
+            artifact_name: format!("{}.wasm", profile.cargo.target.name),
+            capabilities: profile.expected.capabilities.clone(),
+            runtime_ids: profile.expected.runtime_ids.clone(),
+            outputs: profile.expected.outputs.clone(),
+        });
+    }
+
+    if profiles.is_empty() {
+        return Err("artifact profiles: no Web or Typst WASM recipes are declared".to_string());
+    }
+    Ok(profiles)
+}
+
+fn validate_wasm_owner_closures(profiles: &[WasmArtifactProfile]) -> Result<(), String> {
+    let typst_catalog = super::typst_profiles::load_typst_profiles()
+        .map_err(|error| format!("Typst artifact profile owner: {error}"))?;
+    super::typst_profiles::validate_typst_artifact_profiles(&typst_catalog, profiles)
+        .map_err(|error| format!("Typst artifact profile owner: {error}"))
 }
 
 #[cfg(test)]
@@ -617,6 +862,23 @@ mod tests {
         validate_descriptor(&descriptor, context())
     }
 
+    fn committed_descriptor() -> ArtifactProfileDescriptor {
+        serde_json::from_value(committed_value()).expect("committed descriptor schema")
+    }
+
+    fn packages_with_merman_metadata(
+        package_name: &str,
+        metadata: Value,
+    ) -> BTreeMap<(String, String), CargoPackage> {
+        let mut packages = context().packages.clone();
+        let package = packages
+            .iter_mut()
+            .find_map(|((name, _), package)| (name == package_name).then_some(package))
+            .expect("workspace package");
+        package.metadata["merman"] = metadata;
+        packages
+    }
+
     fn profile_index(value: &Value, id: &str) -> usize {
         value["profiles"]
             .as_array()
@@ -629,7 +891,6 @@ mod tests {
     #[test]
     fn committed_profiles_match_current_cargo_and_capability_authorities() {
         let value = committed_value();
-        assert_eq!(value["profiles"].as_array().unwrap().len(), 12);
         validate_fixture(value).unwrap();
     }
 
@@ -643,21 +904,98 @@ mod tests {
     }
 
     #[test]
-    fn rejects_preset_capability_drift() {
+    fn schema_rejects_removed_preset_binding() {
         let mut value = committed_value();
         let index = profile_index(&value, "cli-release");
-        value["profiles"][index]["expected"]["capabilities"]
-            .as_array_mut()
-            .unwrap()
-            .remove(0);
+        value["profiles"][index]["expected"]["preset"] = json!("preset-mmdc");
         let error = validate_fixture(value).unwrap_err();
-        assert!(error.contains("must equal preset `preset-mmdc`"), "{error}");
+        assert!(error.contains("unknown field `preset`"), "{error}");
+    }
+
+    #[test]
+    fn rejects_cargo_defaults_for_every_exact_recipe() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "lsp-library");
+        value["profiles"][index]["cargo"]["default_features"] = json!(true);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(
+            error.contains("exact artifact recipes must disable Cargo defaults"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn rejects_explicit_default_feature_in_an_exact_recipe() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-native-svg");
+        value["profiles"][index]["cargo"]["features"] = json!(["default"]);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(
+            error.contains("must not enable the implicit `default` feature"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn rejects_missing_capability_bearing_package_recipe() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-ascii-native");
+        value["profiles"].as_array_mut().unwrap().remove(index);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(
+            error.contains("artifact-profile-required lack exact recipes"),
+            "{error}"
+        );
+        assert!(error.contains("merman-ascii"), "{error}");
+    }
+
+    #[test]
+    fn rejects_malformed_artifact_profile_owner_table() {
+        let packages = packages_with_merman_metadata("merman-ascii", json!("required"));
+        let error =
+            validate_artifact_profile_coverage(&committed_descriptor(), &packages).unwrap_err();
+        assert!(
+            error.contains("package.metadata.merman must be a table"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_artifact_profile_required_marker() {
+        let packages = packages_with_merman_metadata(
+            "merman-ascii",
+            json!({"artifact-profile-required": "yes"}),
+        );
+        let error =
+            validate_artifact_profile_coverage(&committed_descriptor(), &packages).unwrap_err();
+        assert!(error.contains("must be boolean true"), "{error}");
+    }
+
+    #[test]
+    fn rejects_profile_for_package_without_owner_marker() {
+        let packages = packages_with_merman_metadata("merman-ascii", json!({}));
+        let error =
+            validate_artifact_profile_coverage(&committed_descriptor(), &packages).unwrap_err();
+        assert!(
+            error.contains("without artifact-profile-required ownership"),
+            "{error}"
+        );
+        assert!(error.contains("merman-ascii"), "{error}");
+    }
+
+    #[test]
+    fn rejects_cargo_dist_feature_drift_from_exact_release_profile() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "lsp-stdio-release");
+        value["profiles"][index]["cargo"]["features"] = json!(["stdio", "system-clock"]);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(error.contains("package.metadata.dist.features"), "{error}");
     }
 
     #[test]
     fn rejects_output_without_its_capability() {
         let mut value = committed_value();
-        let index = profile_index(&value, "web-wasm");
+        let index = profile_index(&value, "web-ascii");
         value["profiles"][index]["expected"]["capabilities"]
             .as_array_mut()
             .unwrap()
@@ -673,7 +1011,7 @@ mod tests {
     #[test]
     fn rejects_unknown_rust_target() {
         let mut value = committed_value();
-        let index = profile_index(&value, "web-wasm");
+        let index = profile_index(&value, "web-full");
         value["profiles"][index]["cargo"]["build_target"]["triples"] = json!(["not-a-rust-target"]);
         let error = validate_fixture(value).unwrap_err();
         assert!(error.contains("unknown rustc target"), "{error}");

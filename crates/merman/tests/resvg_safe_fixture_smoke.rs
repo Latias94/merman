@@ -1,10 +1,10 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -380,18 +380,15 @@ fn assert_expected_labels_and_colors(
     }
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
-    let session = merman::render::RenderEnvironment::deterministic()
+    let session = merman::svg::RenderEnvironment::deterministic()
         .begin_session()
         .expect("fixture render session");
-    let svg = merman::render::finalize_resvg_svg(svg, &session)
+    let svg = merman::svg::finalize_resvg_svg(svg, &session)
         .unwrap_or_else(|err| panic!("{name}: output should pass terminal validation: {err}"));
-    let png =
-        merman::render::raster::svg_to_png(&svg, &merman::render::raster::RasterOptions::default())
-            .unwrap_or_else(|err| {
-                panic!("{name}: resvg-safe output should rasterize to PNG: {err}")
-            });
+    let png = merman::svg::export::svg_to_png(&svg, &merman::svg::export::RasterOptions::default())
+        .unwrap_or_else(|err| panic!("{name}: resvg-safe output should rasterize to PNG: {err}"));
 
     assert!(
         png.starts_with(b"\x89PNG\r\n\x1a\n") && png.len() > 8,
@@ -402,7 +399,7 @@ fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
     }
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
@@ -444,7 +441,7 @@ fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
     );
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn rgba_pixel_visibly_differs_from_background(pixel: &[u8], background: &[u8]) -> bool {
     let channel_delta = |i: usize| pixel[i].abs_diff(background[i]) as u16;
     let alpha_delta = channel_delta(3);
@@ -452,9 +449,9 @@ fn rgba_pixel_visibly_differs_from_background(pixel: &[u8], background: &[u8]) -
     alpha_delta > 3 || (pixel[3] > 0 && rgb_delta > 8)
 }
 
-#[cfg(not(feature = "raster"))]
+#[cfg(not(feature = "png"))]
 fn assert_rasterizes_when_enabled(_name: &str, _source: &str, _svg: &str) {
-    // Raster validation runs when this test is executed with `--features raster`.
+    // PNG validation runs when this test is executed with `--features png`.
 }
 
 fn source_has_visible_diagram_content(source: &str) -> bool {

@@ -185,7 +185,8 @@ Preview and Export, and Development.
 Build release binaries, copy them into the extension runtime folder, and produce a local `.vsix`:
 
 ```bash
-cargo build --release -p merman-lsp -p merman-cli
+cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
+cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,svg,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,system-timing,network-icons,parallel-markdown,shell-completions
 cd tools/vscode-extension
 npm run build
 npm run prepare:binaries

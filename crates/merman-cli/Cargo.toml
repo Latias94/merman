@@ -14,21 +14,80 @@ keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
 exclude = ["tests/**"]
 
+[package.metadata.dist]
+default-features = false
+features = [
+    "analysis",
+    "ascii",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "network-icons",
+    "parallel-markdown",
+    "pdf",
+    "png",
+    "shell-completions",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+    "system-timing",
+]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
-default = ["math", "ascii", "layout-cytoscape", "layout-elk"]
+default = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "system-clock",
+    "system-timezone",
+    "system-random",
+    "system-timing",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+# Public leaves describe observable CLI capabilities. Keep them additive: exact
+# absence claims belong to a `default-features = false` artifact profile.
+analysis = ["dep:merman-analysis"]
+svg = ["merman/svg"]
 ascii = ["merman/ascii"]
-layout-cytoscape = ["merman/layout-cytoscape"]
-layout-elk = ["merman/layout-elk"]
-math = ["merman/math"]
+png = ["svg", "merman/png"]
+jpeg = ["svg", "merman/jpeg"]
+pdf = ["svg", "merman/pdf"]
+layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-elk = ["svg", "merman/layout-elk"]
+math = ["svg", "merman/math"]
+system-clock = ["merman/system-clock", "merman-analysis?/system-clock"]
+system-timezone = ["merman/system-timezone", "merman-analysis?/system-timezone"]
+system-random = ["merman/system-random", "merman-analysis?/system-random"]
+system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
+
+# Tool leaves own both their user-visible surface and their direct dependency.
+network-icons = ["svg", "dep:reqwest"]
+parallel-markdown = ["svg", "analysis", "dep:rayon"]
+shell-completions = ["dep:clap_complete"]
+
 
 [dependencies]
 clap.workspace = true
-clap_complete.workspace = true
+clap_complete = { workspace = true, optional = true }
 chrono.workspace = true
-merman = { workspace = true, features = ["system-clock", "system-timezone", "system-random", "system-timing", "raster"] }
-merman-analysis.workspace = true
-rayon.workspace = true
-reqwest.workspace = true
+merman = { workspace = true, default-features = false }
+merman-analysis = { workspace = true, optional = true, default-features = false }
+rayon = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -38,3 +97,40 @@ assert_cmd = "2.2.2"
 tempfile = "3.27.0"
 png.workspace = true
 roxmltree.workspace = true
+
+[[test]]
+name = "cli_compat"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+[[test]]
+name = "ascii_smoke"
+required-features = ["ascii"]
+
+[[test]]
+name = "jpeg_smoke"
+required-features = ["jpeg"]
+
+[[test]]
+name = "pdf_smoke"
+required-features = ["pdf"]
+
+[[test]]
+name = "png_smoke"
+required-features = ["png"]
+
+[[test]]
+name = "ratex_math"
+required-features = ["math"]

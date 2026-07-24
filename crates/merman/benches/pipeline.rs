@@ -1,5 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::render::{
+use merman::svg::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
 };
 use merman_core::{DetectorRegistry, Engine, ParseOptions};
@@ -375,7 +375,7 @@ fn bench_render(c: &mut Criterion) {
             }
         };
         let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::render::sanitize_svg_id(name)),
+            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
 
@@ -428,20 +428,19 @@ fn bench_end_to_end(c: &mut Criterion) {
     let mut group = c.benchmark_group("end_to_end");
     for (name, input) in fixtures() {
         let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::render::sanitize_svg_id(name)),
+            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
 
         // Pre-check end-to-end viability once to keep the bench stable.
-        if merman::render::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts).is_err()
-        {
+        if merman::svg::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts).is_err() {
             eprintln!("[bench][skip][end_to_end] {name}: svg render error");
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let svg = match merman::render::render_svg_sync(
+                let svg = match merman::svg::render_svg_sync(
                     &engine,
                     black_box(data),
                     parse_opts,

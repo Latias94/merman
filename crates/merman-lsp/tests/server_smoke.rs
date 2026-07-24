@@ -4,8 +4,8 @@ mod prelude {
     pub use serde_json::from_value;
     pub use tokio::time::{Duration, timeout};
     pub use tower::{Service, ServiceExt};
-    pub use tower_lsp::jsonrpc::{ErrorCode, Request};
-    pub use tower_lsp::lsp_types::{
+    pub use tower_lsp_server::jsonrpc::{ErrorCode, Request};
+    pub use tower_lsp_server::ls_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
         DiagnosticServerCapabilities, DidChangeConfigurationParams, DidChangeTextDocumentParams,
         DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,

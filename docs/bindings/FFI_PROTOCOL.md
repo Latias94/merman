@@ -1,748 +1,232 @@
-# Merman FFI Protocol
+# Merman Native ABI 3 Protocol
 
-Status: Draft
-Last updated: 2026-07-16
+Status: current contract
 
-This document defines the first C ABI protocol for `merman-ffi`.
+This document describes the current low-level C-compatible transport implemented by
+`merman-ffi`. The generated header
+[`crates/merman-ffi/include/merman.h`](../../crates/merman-ffi/include/merman.h) is the
+authoritative wire definition. ABI 2 is removed and is not accepted by ABI 3 discovery.
 
-Project repository: <https://github.com/Latias94/merman>
+## Build
 
-Authoritative code:
-
-- `crates/merman-ffi/include/merman.h`
-- `crates/merman-ffi/src/lib.rs`
-- `docs/adr/0066-ffi-binding-strategy.md`
-- `docs/adr/0070-diagnostics-first-analysis-contract.md`
-- `docs/workstreams/ffi-api/DESIGN.md`
-
-## Build And Link
-
-Build the C ABI artifacts from the workspace:
+The descriptor-owned `c-abi-native` profile is the exact recipe for the complete host C artifact
+used by release examples and Flutter packaging.
 
 ```sh
-cargo build -p merman-ffi --release
+# Full native SDK artifact.
+cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+
+# Smaller explicit artifacts.
+cargo build -p merman-ffi --release --no-default-features --features svg
+cargo build -p merman-ffi --release --no-default-features --features analysis
 ```
 
-`merman-ffi` is configured as `cdylib`, `staticlib`, and `rlib`. C and C-compatible hosts should
-include `crates/merman-ffi/include/merman.h` and link the platform-specific artifact from
-`target/release`.
+`merman-ffi` produces `cdylib`, `staticlib`, and `rlib`. C and C-compatible hosts must ship a
+header and native library from the same Merman release. Cargo features describe a build request;
+the loaded artifact's runtime catalog describes what is actually callable.
 
-Feature examples:
+## Discovery
 
-```sh
-cargo build -p merman-ffi --release --features math
-cargo build -p merman-ffi --release --features raster,math
-```
-
-The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON,
-diagnostics-first analysis JSON, binding metadata, and optional host text measurement for reusable
-engines. Raster byte outputs are not part of this protocol version even though the Rust crate has a
-reserved `raster` feature gate. All source-processing functions accept the shared `options_json`
-contract documented in `docs/bindings/OPTIONS_JSON.md`.
-
-That shared options contract now also carries a `lint` section for rule profiles, explicit
-enable/disable, and severity overrides. Hosts that consume analysis or validation diagnostics
-should treat those rule ids as the stable shared contract, not as transport-local behavior. Merman
-authoring rules are opt-in through the `recommended` profile or explicit rule enablement; they are
-not Mermaid-official standards.
-
-## Stability
-
-The protocol is pre-1.0. Hosts should still treat these rules as the compatibility baseline for the
-first FFI release candidate:
-
-- ignore unknown JSON fields
-- tolerate missing optional fields
-- do not assume JSON field ordering
-- release every non-empty result buffer exactly once
-- prefer the diagnostics-first analysis payload exposed by a given binding package
-
-## Types
-
-The current ABI protocol version is:
+`merman_get_native_api` is the sole C ABI entry symbol. It returns a size-tagged function table
+only after the host proves it understands the declared ABI version and descriptor digest.
 
 ```c
-#define MERMAN_ABI_VERSION 2
-```
-
-ABI 2 exposes 19 exact text-measurement operations with contiguous codes 0 through 18. The operation
-code determines the required tagged result kind.
-
-```c
-typedef struct MermanBuffer {
-    uint8_t* data;
-    size_t len;
-} MermanBuffer;
-
-typedef struct MermanResult {
-    int32_t code;
-    MermanBuffer data;
-} MermanResult;
-
-typedef struct MermanEngine MermanEngine;
-
-typedef struct MermanEngineResult {
-    int32_t code;
-    MermanEngine* engine;
-    MermanBuffer data;
-} MermanEngineResult;
-
-enum {
-    MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0,
-    MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1,
-    MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2,
-    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3
+MermanNativeSlice digest = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+    .data = (const uint8_t *)MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST,
+    .len = strlen(MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST),
+};
+MermanNativeApiRequest request = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest),
+    .expected_abi_version = MERMAN_NATIVE_ABI_VERSION,
+    .expected_layout_descriptor_digest = digest,
+};
+MermanNativeApi api = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi),
 };
 
-enum {
-    MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE = 0,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH = 1,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X = 2,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG = 3,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X = 4,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH = 5,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH = 6,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH = 7,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT = 8,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH = 9,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT = 10,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED = 11,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH = 12,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH = 13,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET = 14,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS = 15,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH = 16,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET = 17,
-    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT = 18
-};
-
-enum {
-    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS = 0,
-    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH = 1,
-    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS = 2,
-    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH = 3
-};
-
-enum {
-    MERMAN_WRAP_MODE_SVG_LIKE = 0,
-    MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN = 1,
-    MERMAN_WRAP_MODE_HTML_LIKE = 2
-};
-
-enum {
-    MERMAN_TEXT_DIRECTION_AUTO = 0,
-    MERMAN_TEXT_DIRECTION_LTR = 1,
-    MERMAN_TEXT_DIRECTION_RTL = 2
-};
-
-enum {
-    MERMAN_TEXT_WHITE_SPACE_NORMAL = 0,
-    MERMAN_TEXT_WHITE_SPACE_NOWRAP = 1,
-    MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES = 2,
-    MERMAN_TEXT_WHITE_SPACE_PRE_WRAP = 3
-};
-
-typedef struct MermanHostTextMeasureRequest {
-    const uint8_t* text;
-    size_t text_len;
-    const uint8_t* font_family;
-    size_t font_family_len;
-    double font_size;
-    const uint8_t* font_weight;
-    size_t font_weight_len;
-    const uint8_t* font_style;
-    size_t font_style_len;
-    double max_width;
-    double line_height;
-    double letter_spacing;
-    double word_spacing;
-    int32_t wrap_mode;
-    int32_t direction;
-    int32_t white_space;
-    uint8_t has_max_width;
-    int32_t phase;
-    int32_t operation;
-} MermanHostTextMeasureRequest;
-
-typedef struct MermanHostTextMeasureResult {
-    uint8_t handled;
-    uint8_t has_raw_width;
-    int32_t result_kind;
-    double width;
-    double height;
-    double length;
-    double bbox_left;
-    double bbox_right;
-    double raw_width;
-    size_t line_count;
-} MermanHostTextMeasureResult;
-
-typedef MermanHostTextMeasureResult (*MermanHostTextMeasureCallback)(
-    MermanHostTextMeasureRequest request,
-    void* user_data
-);
+if (merman_get_native_api(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
+    /* The header and library do not share ABI 3. */
+}
 ```
 
-`MermanBuffer.data == NULL` means there is no payload. `len == 0` means the payload is empty.
-`MermanEngine` is an opaque handle owned by Rust.
+The table supplies `runtime_catalog`, `engine_new`, `engine_free`, `execute_collect`, and
+`result_free`. A host must verify each function pointer it will call. Do not reconstruct function
+names or dynamically look up per-operation exports.
 
-## ABI Introspection
+All public records begin with `struct_size`. Initialize caller-owned input records with
+`MERMAN_NATIVE_STRUCT_SIZE(Type)`. `MermanNativeResult` is deliberately different: it is a
+write-only output record. Initialize only its `struct_size` before a call, preferably with
+`MERMAN_NATIVE_RESULT_INIT`; Merman never reads the remaining fields and writes the entire record.
+The generated header and release C smoke test carry a compile-run layout fingerprint. Application
+bindings should consume the generated declarations rather than implementing a second runtime
+offset probe.
 
-Platform wrappers should check ABI compatibility before making render calls:
+## Runtime Catalog
 
-```c
-uint32_t merman_abi_version(void);
-const char* merman_package_version(void);
-size_t merman_buffer_struct_size(void);
-size_t merman_result_struct_size(void);
-size_t merman_engine_result_struct_size(void);
-size_t merman_host_text_measure_request_struct_size(void);
-size_t merman_host_text_measure_result_struct_size(void);
-```
-
-- `merman_abi_version()` returns `MERMAN_ABI_VERSION`.
-- `merman_package_version()` returns a static null-terminated string owned by Rust. Do not free it.
-- The `*_struct_size()` functions return Rust-side struct sizes so hosts can catch packing or
-  header/library mismatches at startup.
-
-## Result Codes
-
-| Code | Name | Meaning |
-| ---: | --- | --- |
-| 0 | `MERMAN_OK` | Success. |
-| 1 | `MERMAN_INVALID_ARGUMENT` | Pointer/length combination or option value is invalid. |
-| 2 | `MERMAN_UTF8_ERROR` | Source or options bytes are not valid UTF-8. |
-| 3 | `MERMAN_OPTIONS_JSON_ERROR` | Options JSON could not be parsed. |
-| 4 | `MERMAN_NO_DIAGRAM` | No Mermaid diagram was detected. |
-| 5 | `MERMAN_PARSE_ERROR` | Mermaid parsing failed. |
-| 6 | `MERMAN_RENDER_ERROR` | Layout, SVG, or postprocessing failed. |
-| 7 | `MERMAN_UNSUPPORTED_FORMAT` | Requested output is not enabled or not implemented. |
-| 8 | `MERMAN_PANIC` | Rust panic was caught at the ABI boundary. |
-| 9 | `MERMAN_INTERNAL_ERROR` | Serialization, allocation, or other unexpected internal failure. |
-| 10 | `MERMAN_RESOURCE_LIMIT_EXCEEDED` | Source, layout-model, label, or SVG resource budget was exceeded. |
-
-## Memory Ownership
-
-Every non-empty `MermanResult.data` returned by Rust must be freed with:
-
-```c
-void merman_buffer_free(MermanBuffer buffer);
-```
-
-Passing `{ NULL, 0 }` is a no-op. Double-free is caller misuse.
-
-## Input Rules
-
-- `source == NULL && source_len == 0` is accepted as empty source.
-- `source == NULL && source_len > 0` returns `MERMAN_INVALID_ARGUMENT`.
-- `options_json == NULL && options_len == 0` means defaults.
-- `options_json == NULL && options_len > 0` returns `MERMAN_INVALID_ARGUMENT`.
-- Non-empty source/options buffers must be UTF-8.
-
-## Reusable Engine
-
-Hosts that render many diagrams with the same `options_json` can create a reusable engine:
-
-```c
-MermanEngineResult merman_engine_new(
-    const uint8_t* options_json,
-    size_t options_len
-);
-void merman_engine_free(MermanEngine* engine);
-```
-
-When `code == MERMAN_OK`, `engine` is non-null and `data` is empty. The caller must release the
-engine with `merman_engine_free`. When `code != MERMAN_OK`, `engine == NULL` and `data` contains the
-same JSON error payload used by `MermanResult`.
-
-The reusable-engine entry points capture the options at creation time:
-
-```c
-MermanResult merman_engine_render_svg(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-MermanResult merman_engine_render_ascii(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-MermanResult merman_engine_parse_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-MermanResult merman_engine_layout_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-MermanResult merman_engine_analyze_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-MermanResult merman_engine_analyze_document_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-MermanResult merman_engine_analyze_document_facts_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-MermanResult merman_engine_validate_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-```
-
-Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render,
-parse, layout, analysis, or validation calls when the host treats the handle as borrowed for the
-duration of each call. `merman_engine_free` consumes the handle immediately from the host's
-perspective; if release is requested while a call is active, merman defers the actual drop until
-active calls return, and the host must not use the pointer again. Mutating host text measurement
-with `merman_engine_set_text_measure_callback` while any call or callback is active returns
-`MERMAN_INVALID_ARGUMENT`.
-
-### Host Text Measurement
-
-Hosts that already own a font stack can install a text measurement callback on a reusable engine:
-
-```c
-MermanResult merman_engine_set_text_measure_callback(
-    MermanEngine* engine,
-    MermanHostTextMeasureCallback callback,
-    void* user_data
-);
-```
-
-The callback applies to future render/layout calls made through that engine. Passing
-`callback == NULL` resets the engine to the text measurer selected by `merman_engine_new`
-`options_json`.
-
-`MermanHostTextMeasureRequest` string pointers are UTF-8 byte slices valid only for the duration of
-the callback. The callback must not store them. `max_width` is meaningful only when
-`has_max_width != 0`; `wrap_mode`, `direction`, and `white_space` are the corresponding
-`MERMAN_*` constants. `phase` is one of the `MERMAN_TEXT_MEASUREMENT_PHASE_*` constants and tells
-the host which routing phase requested the measurement. `operation` is the exact DOM or platform
-primitive to perform. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
-
-Handled results are tagged by `result_kind`; fields outside that kind are ignored:
-
-| Result kind | Required fields |
-| --- | --- |
-| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS` | finite, non-negative `width` and `height`; `line_count > 0` |
-| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH` | finite `length`; non-negative except for the signed y-offsets returned by operations 14 and 17 |
-| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS` | finite, non-negative `bbox_left` and `bbox_right` |
-| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH` | metrics fields plus optional `raw_width` selected by `has_raw_width` |
-
-Each operation accepts exactly one result kind. `measure`, `wrapped`, and
-`mermaid-calculate-text-dimensions` accept metrics;
-`bbox-x`, `bbox-x-with-ascii-overhang`, and `title-bbox-x` accept horizontal extents;
-`wrapped-with-raw-width` accepts its matching combined kind; every other current operation,
-including `canvas-measure-text-width`, accepts length. Operation 14 transports ordinary
-`createFormattedText(...).getBBox().y`; operation 17 transports the Architecture variant measured
-under inherited `dominant-baseline="middle"`. They are distinct font-dependent DOM probes, and
-either y-offset may be negative. Operation 18 transports the non-negative height from a direct raw
-SVG `<text>.getBBox()` probe; it is distinct from operations that measure a `<tspan>` or a Mermaid
-text helper. A handled result with the wrong kind, a missing required field in a
-higher-level binding, or an invalid numeric value
-is rejected as `Invalid` and uses the operation's configured fallback. It is not coerced into
-another shape.
-
-Return `handled=0` for measurement requests the host does not support. `merman` then falls back
-to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently for
-render/layout calls, the callback and `user_data` must be thread-safe.
-
-The callback is synchronous and runs on the render/layout call path. Do not block it on UI-thread
-work, font loading, WebView JavaScript, platform channels, or another isolate. If the host cannot
-answer from already-loaded font state or a prepared cache, return `handled=0` for that request.
-
-For `MERMAN_WRAP_MODE_HTML_LIKE` requests with `has_max_width != 0`, hosts should measure the
-natural no-wrap width first and only apply `max_width` when that natural width is larger. Returning
-`max_width` for short labels can make diagrams wider than the browser or native preview surface
-would make them.
-
-This callback is the recommended accuracy path for native and embedded hosts. Headless rendering
-cannot know the exact browser or UI toolkit font fallback chain, glyph shaping, hinting, and
-subpixel rounding that will be used when the SVG is displayed. Hosts that need exact label layout
-should measure with the same browser canvas/DOM, WebView, or native text system used for display,
-then return those metrics through this callback. The C ABI only transports measurement requests and
-fallbacks; it does not embed a system font engine. Platform guidance and test recommendations live
-in [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md).
-
-## SVG Rendering
-
-```c
-MermanResult merman_render_svg(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-```
-
-On success, `data` contains UTF-8 SVG bytes. If the native library is built without the `render`
-feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
-
-Passing `NULL/0` options returns Mermaid-parity SVG. Hosts that need export-safe SVG without adding
-a raster byte ABI should pass:
+`api.runtime_catalog` writes a `MermanNativeResult` whose `metadata_or_error_json` contains the
+flat schema-1 JSON catalog:
 
 ```json
-{ "svg": { "pipeline": "resvg-safe" } }
+{
+  "schema_version": 1,
+  "transport_api_version": 3,
+  "package_version": "...",
+  "capabilities": {
+    "capability_ids": ["..."],
+    "operation_ids": ["..."],
+    "output_ids": ["..."],
+    "system_adapter_ids": ["..."],
+    "text_measurement": null
+  },
+  "registry": { "diagram_family_count": 35 },
+  "resources": { "schema_version": 1, "..." : "..." }
+}
 ```
 
-On error, `data` contains UTF-8 JSON:
+`capabilities` is the exact compiled subset. The catalog intentionally does not repeat the global
+descriptor vocabulary; hosts should validate shape, sorted/unique IDs, and local relations without
+maintaining a second hand-written capability table. The returned JSON is not wrapped in a
+native-only envelope.
+
+## Generic Operations
+
+Create an opaque engine token once for a chosen options document:
+
+```c
+MermanNativeEngineConfig config = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig),
+    .options_json = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+        .data = NULL,
+        .len = 0,
+    },
+    .text_measure = NULL,
+    .text_measure_user_data = NULL,
+};
+MermanNativeEngineToken engine = 0;
+MermanNativeResult result = MERMAN_NATIVE_RESULT_INIT;
+MermanNativeStatus status = api.engine_new(&config, &engine, &result);
+api.result_free(&result);
+```
+
+Then select an operation with `MermanNativeOperationRequest.operation` and execute the same route
+for every operation:
+
+```c
+static const uint8_t source[] = "flowchart TD\nA --> B";
+static const uint8_t options[] = "{\"svg\":{\"diagram_id\":\"request\"}}";
+MermanNativeOperationRequest request = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest),
+    .operation = MERMAN_NATIVE_OPERATION_SVG,
+    .source = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+        .data = source,
+        .len = sizeof(source) - 1,
+    },
+    .uri = { .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice) },
+    .options_json = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+        .data = options,
+        .len = sizeof(options) - 1,
+    },
+};
+result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
+status = api.execute_collect(engine, &request, &result);
+```
+
+Operation enums are generated from [`abi/merman-v3.json`](../../abi/merman-v3.json): SVG, PNG, JPEG,
+PDF, ASCII, semantic JSON, layout JSON, analysis JSON, analysis facts, validation JSON, and the two
+URI-requiring document analysis operations. `MERMAN_NATIVE_OPERATION_*_REQUIRES_URI_*` identifies
+the two document operations; pass an empty URI for all other operations. When a requested
+operation is not compiled, the result has `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`.
+
+`options_json` is a generic binding options document, not a format-specific envelope. Merman
+recursively merges it over the engine configuration for this operation: request values replace
+matching leaves, while omitted nested values remain inherited. The engine baseline is unchanged
+after the call. Runtime-policy selection is engine-owned; a request containing `runtime_policy`
+fails with `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR`.
+
+## Results, Errors, And Ownership
+
+The status return and `MermanNativeResult.status` agree. On success, `data` holds the requested
+bytes and `metadata_or_error_json` holds versioned operation metadata. On failure,
+`metadata_or_error_json` contains a structured UTF-8 error payload. `media_type` is a borrowed
+static slice valid until the library unloads.
+
+Failure payload schema `MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1` always carries `kind` and a
+nullable `capability_id`:
 
 ```json
 {
   "version": 1,
   "ok": false,
-  "code": 6,
-  "code_name": "MERMAN_RENDER_ERROR",
-  "message": "layout failed: ..."
+  "status": 7,
+  "status_name": "unsupported-operation",
+  "kind": "missing-capability",
+  "capability_id": "svg",
+  "message": "SVG rendering requires the svg feature"
 }
 ```
 
-## ASCII Rendering
+The closed kinds are `generic`, `unknown-operation`, `missing-capability`, and `reentrant-call`.
+Unknown operation IDs or numeric codes use `unknown-operation` with a null `capability_id`. A valid operation whose backend is
+absent uses `missing-capability` with the exact descriptor capability ID. Both cases retain status
+`MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`, so consumers must not infer the distinction from
+the numeric status or message text. `reentrant-call` is returned when a host callback re-enters or
+retires the same engine; it is a distinct invalid-argument status so a host can reject that call
+without confusing it with a missing renderer.
 
-```c
-MermanResult merman_render_ascii(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-```
+`data` and `metadata_or_error_json` are Merman-owned buffers only after Merman has written the
+result record. Their ownership is registered against that exact `MermanNativeResult` address.
+Call `api.result_free(&result)` after every operation that wrote a result, including errors and
+engine-creation responses, and before reusing that same record. Do not copy or move a live result
+and then free the copy: copying the fields does not transfer ownership, and only the original
+record address can release its allocation. `result_free` never trusts the nested buffer pointers;
+it reads only the size prefix, releases an allocation registered for the record address, and
+clears the complete record. Calling it repeatedly, or on a full-size output record with only
+`struct_size` initialized, is harmless. Never pass either buffer to a host allocator.
 
-On success, `data` contains UTF-8 terminal text. If the native library is built without the `ascii`
-feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
+Engine values are opaque nonzero `uint64_t` tokens, not pointers. `api.engine_free(engine)` retires
+the token; a subsequent call returns `MERMAN_NATIVE_STATUS_INVALID_ENGINE`. If a host retires an
+engine while an operation is already running, that operation keeps its internal state until it
+finishes, but the host must make no further calls using the token. `engine_free` is not a
+quiescence barrier: the host must keep the configured text-measurement callback and `user_data`
+valid until every operation started before retirement has returned.
 
-ASCII-specific behavior is configured through the shared `options_json.ascii` object. For example,
-Class/ER relation-summary fallback diagnostics are disabled by default, but hosts can opt in when
-they need support logs to explain why a dense relation graph used `relations:` output:
+## Host Text Measurement
 
-```json
-{
-  "ascii": {
-    "charset": "ascii",
-    "maxGridCells": 1,
-    "relationSummaryDiagnostics": true
-  }
-}
-```
+`MermanNativeEngineConfig.text_measure` is an optional synchronous callback. It receives borrowed
+`MermanNativeTextMeasureRequest` fields valid only during the callback and writes a size-tagged
+`MermanNativeTextMeasureResult`. The generated
+[`merman_text_measurement_abi.h`](../../crates/merman-ffi/include/merman_text_measurement_abi.h)
+defines the independent text-measurement protocol version, 19 operation codes, and required result
+kinds.
 
-When enabled, Class/ER summaries include a row such as
-`reason: grid_budget actual=12 limit=1` under `relations:`. See
-[`OPTIONS_JSON.md`](OPTIONS_JSON.md) for the full ASCII options shape.
+Use the same display font system that will render the final SVG. A host that cannot answer an
+operation accurately should initialize the result, set `handled = 0`, and return
+`MERMAN_NATIVE_STATUS_OK`; Merman falls back to its vendored measurer for that request. While a
+host callback is active, any thread that re-enters or retires that same engine receives
+`MERMAN_NATIVE_STATUS_REENTRANT_CALL`; calls using other engines remain independent. Callback
+panics, exceptions, malformed records, and wrong result kinds become typed callback failures or
+per-request fallback rather than crossing the native boundary.
 
-## Options JSON
+## Compatibility Rules
 
-Pass `NULL/0` for defaults. Non-empty options use the shared tolerant JSON object documented in
-`docs/bindings/OPTIONS_JSON.md`.
+- Native ABI 3 is the current contract; ship headers and libraries from the same package.
+- Treat ABI version, descriptor digest, record size, and the generated C-consumer layout fingerprint
+  as one compatibility check. The package's C smoke test compiles and runs this fingerprint; an
+  application does not need to duplicate a runtime offset probe.
+- Treat `MERMAN_NATIVE_RESULT_SCHEMA_VERSION`, error kind strings, and `capability_id` as one
+  machine-readable failure contract.
+- Treat diagnostics and analysis-facts payload schema versions as independent contracts.
+- Ignore unknown JSON fields where a payload schema permits it, but never invent unknown native
+  status codes, output IDs, capabilities, or record fields.
+- Select an artifact's direct leaf features deliberately (`svg`, `analysis`, `ascii`, `png`,
+  `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, and the relevant system adapters);
+  smaller artifacts must advertise and enforce their actual output subset. Cross-transport
+  preset names are not part of the native ABI contract.
 
-## Parse JSON
-
-```c
-MermanResult merman_parse_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-```
-
-On success, `data` contains UTF-8 semantic model JSON. The current payload mirrors
-`merman-cli parse` without `--meta`. If the native library is built without the `render` feature,
-this function returns `MERMAN_UNSUPPORTED_FORMAT`.
-
-## Layout JSON
-
-```c
-MermanResult merman_layout_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-```
-
-On success, `data` contains UTF-8 compatibility layout JSON projected from the canonical typed
-`FamilyRenderArtifact`, using the same payload as `merman-cli layout`. The semantic model and layout
-are constructed and paired by one family operation; the removed `LayoutedDiagram` API is not an
-alternate FFI path. If the native library is built without the `render` feature, this function
-returns `MERMAN_UNSUPPORTED_FORMAT`.
-
-## Diagnostics-First Analysis JSON
-
-ADR 0070 defines analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
-scanning, and LSP adapters. These symbols are part of the active ABI:
-
-```c
-MermanResult merman_analyze_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-
-MermanResult merman_engine_analyze_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len
-);
-
-MermanResult merman_analyze_document_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-
-MermanResult merman_analyze_document_facts_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-
-MermanResult merman_engine_analyze_document_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-
-MermanResult merman_engine_analyze_document_facts_json(
-    const MermanEngine* engine,
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* uri,
-    size_t uri_len
-);
-```
-
-These functions return `MERMAN_OK` when the analysis payload was produced. Diagram errors are
-represented inside `data` as diagnostics. Transport errors such as invalid pointers, invalid UTF-8,
-invalid options JSON, panics, and internal serialization failures remain non-zero
-`MermanResult.code` values.
-
-The diagnostics-only `*_analyze*_json` payload remains schema version 1. The richer
-`*_facts_json` payload is the parser-only facts version 2 contract. Facts v1 is rejected at the
-version boundary before its body is decoded. Current writers always emit the semantic-item
-`rename_policy`. The TextScan-capable alpha shape from `0.8.0-alpha.3` is not supported by the
-current library: native consumers must handle `fact_source: "unavailable"` and cannot rely on a
-legacy TextScan decoder or execution path. This facts schema version does not change the C ABI
-version, LSP document revisions, or Mermaid `*-v2` ids.
-
-The default analyzer is expected to be render-free. Optional layout or render checks may be added
-later behind feature/profile controls, but must use the same payload shape and report disabled
-checks as diagnostics or profile metadata rather than changing the top-level transport contract.
-
-Initial payload shape:
-
-```json
-{
-  "version": 1,
-  "valid": false,
-  "summary": {
-    "errors": 1,
-    "warnings": 0,
-    "infos": 0,
-    "hints": 0
-  },
-  "source": {
-    "kind": "diagram",
-    "path": null,
-    "diagram_index": null,
-    "language": "mermaid"
-  },
-  "diagnostics": [
-    {
-      "id": "merman.parse.no_diagram",
-      "severity": "error",
-      "category": "parse",
-      "message": "no Mermaid diagram detected",
-      "code": 4,
-      "code_name": "MERMAN_NO_DIAGRAM",
-      "diagram_type": null,
-      "span": {
-        "byte_start": 0,
-        "byte_end": 0,
-        "line": 1,
-        "column": 1,
-        "end_line": 1,
-        "end_column": 1,
-        "lsp_range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 0 }
-        }
-      },
-      "related": [],
-      "help": null
-    }
-  ]
-}
-```
-
-`span` is optional. When present, `byte_start` and `byte_end` are canonical UTF-8 byte offsets in
-the source slice passed to the analyzer. Line/column fields are 1-based for CLI output.
-`lsp_range` is 0-based and UTF-16-oriented for language-server adapters. Markdown and MDX scanning
-should map fence-local spans back to host-document ranges before returning diagnostics to callers
-that asked for document analysis.
-
-## Validation JSON
-
-```c
-MermanResult merman_validate_json(
-    const uint8_t* source,
-    size_t source_len,
-    const uint8_t* options_json,
-    size_t options_len
-);
-```
-
-Introduced in ABI v2, this function returns `MERMAN_OK` when the validation payload was produced.
-Invalid source is reported in `data`:
-
-```json
-{
-  "valid": false,
-  "error": "no Mermaid diagram detected",
-  "code": 4,
-  "code_name": "MERMAN_NO_DIAGRAM"
-}
-```
-
-Validation is a legacy compatibility projection over render-free diagnostics analysis. It does not
-require the native library to be built with the `render` feature. The payload shape is kept for older
-consumers: `valid` is derived from the diagnostics summary, and the top-level `error`, `message`,
-`code`, and `code_name` fields mirror the first error diagnostic when present.
-Bindings may add optional fields such as `version`, `summary`, or `diagnostics` while preserving the
-legacy top-level fields. New integrations should prefer analysis JSON after the active package
-exports it.
-
-## Metadata JSON
-
-```c
-MermanResult merman_supported_diagrams_json(void);
-MermanResult merman_ascii_capabilities_json(void);
-MermanResult merman_diagram_family_capabilities_json(void);
-MermanResult merman_lint_rule_catalog_json(void);
-MermanResult merman_supported_themes_json(void);
-MermanResult merman_supported_host_theme_presets_json(void);
-```
-
-`merman_supported_diagrams_json`, `merman_supported_themes_json`, and
-`merman_supported_host_theme_presets_json` return UTF-8 JSON string arrays. Theme metadata reports
-Mermaid core theme names and host/editor presets accepted by `options_json.host_theme.preset`. The
-same buffer ownership rules apply.
-
-`merman_ascii_capabilities_json` returns a UTF-8 JSON array of objects:
-
-```json
-[
-  {
-    "diagram_type": "gantt",
-    "display_name": "Gantt",
-    "support_level": "summary",
-    "summary_fallback": false,
-    "supported_semantics": ["titles", "sections", "tasks", "dates"],
-    "limits": ["no terminal timeline geometry", "output is a readable task summary"],
-    "evidence": [
-      {
-        "kind": "local_coverage",
-        "source": "crates/merman-ascii",
-        "note": "summary renderer is covered by ASCII tests"
-      }
-    ]
-  }
-]
-```
-
-Hosts should use `support_level` and `summary_fallback` to label ASCII rendering before invoking
-`merman_render_ascii`. The support levels are `full`, `partial`, `summary`, and `unsupported`.
-
-`merman_diagram_family_capabilities_json` returns a UTF-8 JSON array of objects:
-
-```json
-[
-  {
-    "diagram_type": "flowchart",
-    "logical_family_kind": "flowchart",
-    "metadata_id": "flowchart",
-    "render_model_kind": "flowchart",
-    "has_detector": true,
-    "has_semantic_parser": true,
-    "has_editor_parser": true,
-    "has_combined_parser": true,
-    "has_render_parser": true,
-    "has_header": false,
-    "config_namespace": "flowchart"
-  }
-]
-```
-
-Logical family identity is stable when multiple syntax ids or render-model reuse are involved.
-Nullable `metadata_id`, `render_model_kind`, and `config_namespace` fields distinguish absent
-capabilities from false parser/detector/header flags.
-
-`merman_lint_rule_catalog_json` returns a UTF-8 JSON response object from the shared
-`merman-analysis` rule catalog. The top-level `version` tracks the JSON response envelope; `rules`
-contains the catalog entries:
-
-```json
-{
-  "version": 1,
-  "rules": [
-    {
-      "id": "merman.authoring.flowchart.explicit_direction",
-      "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
-      "evidence": [
-        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
-        "docs/adr/0072-lint-rule-governance.md"
-      ],
-      "default_severity": "hint",
-      "category": "semantic",
-      "default_enabled": false,
-      "default_profile": "recommended",
-      "origin": "merman_authoring",
-      "configurable": true,
-      "fixable": true
-    }
-  ]
-}
-```
-
-Hosts should use this catalog for rule-selection UI, config completion, and documenting whether a
-rule is Mermaid-backed compatibility or a Merman authoring recommendation. `evidence` contains
-public Mermaid source links, public Mermaid fixture links, or repo ADR references that justify the
-rule classification. It does not expose local `repo-ref/` checkout paths.
-
-This is diagnostic metadata for profile-aware hosts. `diagram_type` is the Mermaid parser/detector
-id and may include aliases such as `flowchart-v2`; `metadata_id` is the public supported-diagram
-id when the family contributes one.
-
-## Threading
-
-One-shot ABI calls are stateless. They may be made concurrently as long as callers obey buffer
-ownership rules.
-
-Reusable-engine calls borrow the engine handle for the duration of each call. Hosts may issue
-concurrent read-style calls through the same handle only when any installed text-measure callback and
-its `user_data` are thread-safe. `merman_engine_free` consumes the handle and may defer the actual
-drop until active calls return. `merman_engine_set_text_measure_callback` is an exclusive mutation
-and returns `MERMAN_INVALID_ARGUMENT` while another call or host text-measure callback is active.
+See [`crates/merman-ffi/examples`](../../crates/merman-ffi/examples) for compilable C examples and
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for platform measurement
+guidance.

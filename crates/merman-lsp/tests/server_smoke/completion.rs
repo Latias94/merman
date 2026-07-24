@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
@@ -64,7 +66,7 @@ async fn lsp_service_smoke_resolves_completion_items() {
 #[tokio::test(flavor = "current_thread")]
 async fn completion_without_snippet_support_never_returns_snippet_placeholders() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({

@@ -1,4 +1,4 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use std::fs;
 use std::path::PathBuf;
@@ -42,7 +42,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
 
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::render::LayoutOptions::headless_svg_defaults();
+    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
 
     for path in fixtures {
         let name = path
@@ -71,12 +71,12 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             .unwrap_or_else(|err| panic!("{name}: render-model parse failed: {err}"))
             .unwrap_or_else(|| panic!("{name}: render-model parser returned no diagram"));
 
-        let svg_options = merman::render::SvgRenderOptions {
-            diagram_id: Some(merman::render::sanitize_svg_id(&name)),
+        let svg_options = merman::svg::SvgRenderOptions {
+            diagram_id: Some(merman::svg::sanitize_svg_id(&name)),
             ..Default::default()
         };
         let svg =
-            merman::render::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
+            merman::svg::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
                 .unwrap_or_else(|err| panic!("{name}: end-to-end SVG render failed: {err}"))
                 .unwrap_or_else(|| panic!("{name}: render returned no SVG"));
 

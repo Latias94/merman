@@ -11,29 +11,8 @@
   ],
   "release_kinds": ["stable", "prerelease"],
   "feature_contract": {
-    "docs": ["docs/FEATURES.md", "docs/release/PACKAGE_SURFACES.md", "platforms/web/README.md"],
-    "browser_presets": [
-      "browser-bridge",
-      "browser-core",
-      "browser-render",
-      "browser-render-only",
-      "browser-ascii",
-      "browser-editor",
-      "browser-full",
-      "browser-full-no-elk",
-      "browser-math"
-    ],
     "web_descriptor": "platforms/web/web-surface-descriptor.json",
-    "web_default_preset": "browser-full",
-    "web_auxiliary_exports": {
-      ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
-      "./catalog": { "import": "./dist/public-catalog.js", "types": "./dist/public-catalog.d.ts" },
-      "./svg-safety": { "import": "./dist/svg-safety.js", "types": "./dist/svg-safety.d.ts" },
-      "./text-measurement-abi": {
-        "import": "./dist/generated/text-measurement-abi.js",
-        "types": "./dist/generated/text-measurement-abi.d.ts"
-      }
-    }
+    "web_package_group_surface": "web-package-group"
   },
   "surfaces": [
     {
@@ -97,14 +76,14 @@
     {
       "id": "rust-render",
       "name": "Rust render facade",
-      "audience": "Rust applications that want the convenience facade for parsing, layout, SVG, ASCII, raster, and optional ELK.",
+      "audience": "Rust applications that want the convenience facade for parsing, layout, SVG, ASCII, independently selectable PNG/JPEG/PDF output, and optional layout engines.",
       "public": true,
       "public_channel": "crates.io",
       "entry_point": "merman",
       "install": "cargo add merman@{version}",
       "support_level": "published",
       "dependency_weight": "medium-to-high",
-      "capabilities": ["parse", "render-svg", "layout-json", "ascii", "raster", "optional-elk"],
+      "capabilities": ["parse", "render-svg", "layout-json", "ascii", "png", "jpeg", "pdf", "optional-layout-cytoscape", "optional-layout-elk", "optional-math"],
       "docs": ["README.md", "docs/FEATURES.md", "docs/rendering/SVG_OUTPUT_PIPELINE.md"],
       "packages": [
         { "kind": "crate", "name": "merman", "manifest": "crates/merman/Cargo.toml" }
@@ -143,7 +122,9 @@
         { "kind": "crate", "name": "merman-ascii", "manifest": "crates/merman-ascii/Cargo.toml" },
         { "kind": "crate", "name": "merman-layout-elk", "manifest": "crates/merman-layout-elk/Cargo.toml" },
         { "kind": "crate", "name": "merman-render", "manifest": "crates/merman-render/Cargo.toml" },
-        { "kind": "crate", "name": "merman-bindings-core", "manifest": "crates/merman-bindings-core/Cargo.toml" }
+        { "kind": "crate", "name": "merman-export", "manifest": "crates/merman-export/Cargo.toml" },
+        { "kind": "crate", "name": "merman-bindings-core", "manifest": "crates/merman-bindings-core/Cargo.toml" },
+        { "kind": "crate", "name": "merman-wasm", "manifest": "crates/merman-wasm/Cargo.toml" }
       ],
       "channels": [
         {
@@ -166,7 +147,7 @@
       "public": true,
       "public_channel": "crates.io",
       "entry_point": "merman-lsp",
-      "install": "cargo install merman-lsp --version {version}",
+      "install": "cargo install merman-lsp --version {version} --no-default-features --features stdio --bin merman-lsp",
       "support_level": "published",
       "dependency_weight": "medium",
       "capabilities": ["lsp", "diagnostics", "completion", "hover", "symbols", "references", "rename", "semantic-tokens"],
@@ -209,7 +190,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo build --release --locked -p merman-lsp"]
+      "gates": ["cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio"]
     },
     {
       "id": "rustdoc",
@@ -250,7 +231,7 @@
       "install": "Download from GitHub Release assets or install through cargo.",
       "support_level": "published",
       "dependency_weight": "binary",
-      "capabilities": ["cli", "render-svg", "render-raster", "lint", "validate", "ascii"],
+      "capabilities": ["cli", "render-svg", "render-png", "render-jpeg", "render-pdf", "lint", "validate", "ascii"],
       "docs": ["README.md", "docs/release/RELEASING.md"],
       "packages": [
         { "kind": "crate", "name": "merman-cli", "manifest": "crates/merman-cli/Cargo.toml" }
@@ -292,7 +273,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo build --release --locked -p merman-cli"]
+      "gates": ["cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing"]
     },
     {
       "id": "homebrew",
@@ -322,20 +303,22 @@
       "gates": ["gh workflow run homebrew.yml"]
     },
     {
-      "id": "web-wasm",
-      "name": "Browser WebAssembly package",
-      "audience": "Browser and TypeScript applications that need WASM-backed Mermaid parsing, analysis, rendering, ASCII, or editor language helpers.",
+      "id": "web-package-group",
+      "name": "Browser WebAssembly package group",
+      "audience": "Browser and TypeScript applications that need a profile-specific WASM package for complete rendering, analysis, ASCII output, or editor language helpers.",
       "public": true,
       "public_channel": "npm",
       "entry_point": "@mermanjs/web",
       "install": "npm install @mermanjs/web@{version}",
       "support_level": "published",
-      "dependency_weight": "preset-dependent",
-      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor-language", "editor-worker", "optional-ratex"],
+      "dependency_weight": "package-specific",
+      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor", "editor-worker"],
       "docs": ["README.md", "platforms/web/README.md", "docs/release/PACKAGE_SURFACES.md", "docs/adr/0069-wasm-package-surface-semantics.md", "docs/adr/0074-browser-runtime-and-benchmark-ownership.md"],
       "packages": [
-        { "kind": "npm", "name": "@mermanjs/web", "manifest": "platforms/web/package.json" },
-        { "kind": "crate", "name": "merman-wasm", "manifest": "crates/merman-wasm/Cargo.toml" }
+        { "kind": "npm", "name": "@mermanjs/web", "manifest": "platforms/web/packages/full/package.json" },
+        { "kind": "npm", "name": "@mermanjs/web-analysis", "manifest": "platforms/web/packages/analysis/package.json" },
+        { "kind": "npm", "name": "@mermanjs/web-ascii", "manifest": "platforms/web/packages/ascii/package.json" },
+        { "kind": "npm", "name": "@mermanjs/web-editor", "manifest": "platforms/web/packages/editor/package.json" }
       ],
       "channels": [
         {
@@ -353,23 +336,13 @@
             "beta": "beta",
             "rc": "rc"
           }
-        },
-        {
-          "id": "crates.io",
-          "kind": "crates.io",
-          "declared_state": "published",
-          "release_kinds": ["stable", "prerelease"],
-          "workflow": ".github/workflows/release-crates.yml",
-          "workflow_job": "publish",
-          "environment": "crates.io",
-          "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
       "gates": [
         "npm run check:contracts --prefix platforms/web",
         "npm run build --prefix platforms/web",
-        "npm run prepack --prefix platforms/web",
-        "cargo run -p xtask -- wasm-size-matrix --surface browser --preset browser-editor --budget-file docs/release/WASM_SIZE_BUDGETS.json"
+        "npm run verify:packages --prefix platforms/web",
+        "python3 scripts/web_package_group.py validate-descriptor --descriptor platforms/web/web-surface-descriptor.json"
       ]
     },
     {
@@ -414,6 +387,8 @@
         }
       ],
       "gates": [
+        "cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio",
+        "cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
         "npm run test --prefix tools/vscode-extension",
         "npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>"
       ]
@@ -627,6 +602,7 @@
         "wasm-minimal-protocol",
         "render-svg",
         "analysis",
+        "layout-cytoscape",
         "layout-elk",
         "abi-2",
         "analyze-json",
@@ -635,6 +611,7 @@
       ],
       "docs": [
         "README.md",
+        "capabilities/artifact-profiles-v1.json",
         "docs/release/PACKAGE_SURFACES.md",
         "crates/merman-typst-plugin/wasm-profiles.json",
         "packages/typst/merman/typst.toml"
@@ -665,9 +642,10 @@
         }
       ],
       "gates": [
+        "cargo run --locked -p xtask -- verify-typst-profile-constants",
+        "cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json",
+        "cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm",
         "cargo run --locked -p xtask -- build-typst-package --profile publish",
-        "cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm",
-        "cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm",
         "cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build"
       ]
     }

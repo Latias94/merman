@@ -1,12 +1,18 @@
 use crate::common::{
     BindingError, BindingStatus, InputResourceOperation, binding_input_resource_policy,
-    binding_runtime_policy_from, binding_site_config, no_diagram_error, parse_options, source_text,
+    binding_runtime_policy_from, binding_site_config, no_diagram_error, parse_options,
+    selected_runtime_policy, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
-    let renderer = build_ascii_renderer(&options, InputResourceOperation::Ascii)?;
+    let (_, runtime_policy) = selected_runtime_policy(&options)?;
+    let renderer = build_ascii_renderer_with_runtime_policy(
+        &options,
+        InputResourceOperation::Ascii,
+        runtime_policy,
+    )?;
     render_ascii_with_renderer(&renderer, source)
 }
 
@@ -33,17 +39,6 @@ impl CachedAsciiEngine {
         let source = source_text(source)?;
         render_ascii_with_renderer(&self.renderer, source)
     }
-}
-
-fn build_ascii_renderer(
-    options: &crate::common::BindingOptions,
-    resource_operation: InputResourceOperation,
-) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
-    build_ascii_renderer_with_runtime_policy(
-        options,
-        resource_operation,
-        merman::runtime::RuntimePolicy::deterministic(),
-    )
 }
 
 fn build_ascii_renderer_with_runtime_policy(
@@ -254,7 +249,7 @@ fn render_ascii_with_renderer(
 fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
     match err {
         merman::ascii::HeadlessAsciiError::RuntimePolicy(err) => {
-            BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+            crate::common::runtime_policy_error(err)
         }
         merman::ascii::HeadlessAsciiError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
@@ -268,7 +263,7 @@ fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError 
             }
             merman::ascii::AsciiError::UnsupportedDiagram { .. }
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
-                BindingError::new(BindingStatus::UnsupportedFormat, err.to_string())
+                BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
             }
             merman::ascii::AsciiError::RenderLimitExceeded { .. } => {
                 BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string())
@@ -467,19 +462,19 @@ mod tests {
     fn render_ascii_enforces_shared_model_cardinality_limit() {
         let error = render_ascii(
             b"flowchart TD\nA --> B",
-            br#"{ "resources": { "profile": "constrained", "limits": { "max_flowchart_nodes": 1 } } }"#,
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_model_items": 1 } } }"#,
         )
         .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(error.message().contains("max_flowchart_nodes"), "{error:?}");
+        assert!(error.message().contains("max_model_items"), "{error:?}");
     }
 
     #[test]
     fn ascii_only_resource_options_reject_limits_for_unsupported_models() {
         let error = render_ascii(
             b"flowchart TD\nA --> B",
-            br#"{ "resources": { "profile": "constrained", "limits": { "max_zenuml_participants": 1 } } }"#,
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_svg_bytes": 1 } } }"#,
         )
         .unwrap_err();
 

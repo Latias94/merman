@@ -5,9 +5,66 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$REPO_ROOT/target/apple-xcframework"
 INCLUDE_DIR="$OUT_DIR/include"
 XCFRAMEWORK_OUT="$REPO_ROOT/platforms/apple/Merman.xcframework"
+SWIFT_BINDINGS_DIR="$REPO_ROOT/platforms/apple/Sources/Merman/Generated"
+RECIPE_PROFILE="apple-uniffi-native"
 BUILD_IOS=true
 BUILD_MACOS=true
 AUTO_INSTALL_RUST_TARGETS="${MERMAN_AUTO_INSTALL_RUST_TARGETS:-auto}"
+METADATA_LIBRARY=""
+
+recipe_field() {
+    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" --field "$1"
+}
+
+NATIVE_SDK_PACKAGE="$(recipe_field package)"
+NATIVE_SDK_MANIFEST="$(recipe_field manifest)"
+NATIVE_SDK_PROFILE="$(recipe_field profile)"
+NATIVE_SDK_DEFAULT_FEATURES="$(recipe_field default-features)"
+NATIVE_SDK_BUILD_TARGET="$(recipe_field build-target)"
+NATIVE_SDK_TARGET="$(recipe_field target)"
+NATIVE_SDK_TARGET_KINDS="$(recipe_field target-kinds)"
+NATIVE_SDK_CRATE_TYPES="$(recipe_field crate-types)"
+NATIVE_SDK_TRIPLES="$(recipe_field triples)"
+NATIVE_SDK_LIBRARY_STEM="${NATIVE_SDK_TARGET//-/_}"
+
+csv_contains() {
+    [[ ",$1," == *",$2,"* ]]
+}
+
+validate_recipe() {
+    if [[ "$NATIVE_SDK_BUILD_TARGET" != "target-set" ]]; then
+        echo "$RECIPE_PROFILE must declare a target-set build target" >&2
+        exit 2
+    fi
+    if [[ "$NATIVE_SDK_PACKAGE" != "merman-uniffi" ]] ||
+        [[ "$NATIVE_SDK_MANIFEST" != "crates/merman-uniffi/Cargo.toml" ]] ||
+        [[ "$NATIVE_SDK_PROFILE" != "native-sdk" ]] ||
+        [[ "$NATIVE_SDK_TARGET" != "merman_uniffi" ]] ||
+        [[ "$NATIVE_SDK_TARGET_KINDS" != "cdylib,rlib,staticlib" ]] ||
+        [[ "$NATIVE_SDK_CRATE_TYPES" != "cdylib,rlib,staticlib" ]] ||
+        [[ "$NATIVE_SDK_TRIPLES" != "aarch64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-darwin,x86_64-apple-ios" ]]; then
+        echo "$RECIPE_PROFILE must select the exact complete merman_uniffi staticlib target set" >&2
+        exit 2
+    fi
+    if [[ "$NATIVE_SDK_DEFAULT_FEATURES" != "false" ]]; then
+        echo "$RECIPE_PROFILE must disable Cargo defaults" >&2
+        exit 2
+    fi
+    if [[ ! -f "$REPO_ROOT/$NATIVE_SDK_MANIFEST" ]]; then
+        echo "$RECIPE_PROFILE manifest does not exist: $NATIVE_SDK_MANIFEST" >&2
+        exit 2
+    fi
+}
+
+assert_target_in_recipe() {
+    local target="$1"
+    if ! csv_contains "$NATIVE_SDK_TRIPLES" "$target"; then
+        echo "$RECIPE_PROFILE does not declare Rust target: $target" >&2
+        exit 2
+    fi
+}
+
+validate_recipe
 
 for ARG in "$@"; do
     case "$ARG" in
@@ -16,6 +73,10 @@ for ARG in "$@"; do
         *) echo "unknown argument: $ARG" >&2; exit 2 ;;
     esac
 done
+
+if [[ "${MERMAN_CHECK_RECIPE_ONLY:-false}" == "true" ]]; then
+    exit 0
+fi
 
 require_tool() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -64,16 +125,45 @@ $target
 
 build_staticlib() {
     local target="$1"
-    echo "==> Building merman-ffi for $target"
+    assert_target_in_recipe "$target"
+    echo "==> Building $NATIVE_SDK_PACKAGE for $target"
     ensure_rust_target_installed "$target"
-    cargo build --release -p merman-ffi --target "$target" --manifest-path "$REPO_ROOT/Cargo.toml"
+    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
+        --build --locked --target-triple "$target"
+    if [[ -z "$METADATA_LIBRARY" ]]; then
+        METADATA_LIBRARY="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a"
+    fi
 }
 
 copy_staticlib() {
     local target="$1"
     local dest="$2"
     mkdir -p "$(dirname "$dest")"
-    cp "$REPO_ROOT/target/$target/release/libmerman_ffi.a" "$dest"
+    cp "$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" "$dest"
+}
+
+generate_swift_bindings() {
+    if [[ -z "$METADATA_LIBRARY" || ! -f "$METADATA_LIBRARY" ]]; then
+        echo "could not locate a built merman-uniffi static library for Swift binding generation" >&2
+        exit 1
+    fi
+
+    echo "==> Generating Swift UniFFI bindings"
+    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
+        --run-example generate_swift_bindings \
+        --locked \
+        --extra-feature bindgen-smoke \
+        --example-argument=--library \
+        --example-argument="$METADATA_LIBRARY" \
+        --example-argument=--output-dir \
+        --example-argument="$SWIFT_BINDINGS_DIR"
+
+    for artifact in Merman.swift MermanFFI.h MermanFFI.modulemap; do
+        if [[ ! -f "$SWIFT_BINDINGS_DIR/$artifact" ]]; then
+            echo "generated Swift binding artifact is missing: $SWIFT_BINDINGS_DIR/$artifact" >&2
+            exit 1
+        fi
+    done
 }
 
 require_tool rustup
@@ -83,29 +173,24 @@ require_tool lipo
 
 rm -rf "$OUT_DIR"
 mkdir -p "$INCLUDE_DIR"
-cp "$REPO_ROOT/crates/merman-ffi/include/merman.h" "$INCLUDE_DIR/merman.h"
-cp "$REPO_ROOT/crates/merman-ffi/include/merman_text_measurement_abi.h" \
-    "$INCLUDE_DIR/merman_text_measurement_abi.h"
-cp "$REPO_ROOT/crates/merman-ffi/include/merman_resource_contract.h" \
-    "$INCLUDE_DIR/merman_resource_contract.h"
 
 XC_ARGS=()
 
 if "$BUILD_IOS"; then
     build_staticlib aarch64-apple-ios
-    copy_staticlib aarch64-apple-ios "$OUT_DIR/ios-arm64/libmerman_ffi.a"
+    copy_staticlib aarch64-apple-ios "$OUT_DIR/ios-arm64/lib$NATIVE_SDK_LIBRARY_STEM.a"
 
     build_staticlib aarch64-apple-ios-sim
     build_staticlib x86_64-apple-ios
     mkdir -p "$OUT_DIR/ios-simulator"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-ios-sim/release/libmerman_ffi.a" \
-        "$REPO_ROOT/target/x86_64-apple-ios/release/libmerman_ffi.a" \
-        -output "$OUT_DIR/ios-simulator/libmerman_ffi.a"
+        "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
+        "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
+        -output "$OUT_DIR/ios-simulator/lib$NATIVE_SDK_LIBRARY_STEM.a"
 
     XC_ARGS+=(
-        -library "$OUT_DIR/ios-arm64/libmerman_ffi.a" -headers "$INCLUDE_DIR"
-        -library "$OUT_DIR/ios-simulator/libmerman_ffi.a" -headers "$INCLUDE_DIR"
+        -library "$OUT_DIR/ios-arm64/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
+        -library "$OUT_DIR/ios-simulator/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
     )
 fi
 
@@ -114,10 +199,10 @@ if "$BUILD_MACOS"; then
     build_staticlib x86_64-apple-darwin
     mkdir -p "$OUT_DIR/macos"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-darwin/release/libmerman_ffi.a" \
-        "$REPO_ROOT/target/x86_64-apple-darwin/release/libmerman_ffi.a" \
-        -output "$OUT_DIR/macos/libmerman_ffi.a"
-    XC_ARGS+=(-library "$OUT_DIR/macos/libmerman_ffi.a" -headers "$INCLUDE_DIR")
+        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
+        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
+        -output "$OUT_DIR/macos/lib$NATIVE_SDK_LIBRARY_STEM.a"
+    XC_ARGS+=(-library "$OUT_DIR/macos/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR")
 fi
 
 if [[ "${#XC_ARGS[@]}" -eq 0 ]]; then
@@ -125,16 +210,16 @@ if [[ "${#XC_ARGS[@]}" -eq 0 ]]; then
     exit 2
 fi
 
+generate_swift_bindings
+cp "$SWIFT_BINDINGS_DIR/MermanFFI.h" "$INCLUDE_DIR/MermanFFI.h"
+cp "$SWIFT_BINDINGS_DIR/MermanFFI.modulemap" "$INCLUDE_DIR/module.modulemap"
+
 rm -rf "$XCFRAMEWORK_OUT"
 xcodebuild -create-xcframework "${XC_ARGS[@]}" -output "$XCFRAMEWORK_OUT"
 
 for HEADER_DIR in "$XCFRAMEWORK_OUT"/*/Headers; do
-    cat > "$HEADER_DIR/module.modulemap" <<'EOF'
-module MermanFFI {
-    header "merman.h"
-    export *
-}
-EOF
+    cp "$SWIFT_BINDINGS_DIR/MermanFFI.h" "$HEADER_DIR/MermanFFI.h"
+    cp "$SWIFT_BINDINGS_DIR/MermanFFI.modulemap" "$HEADER_DIR/module.modulemap"
 done
 
 echo "==> Wrote $XCFRAMEWORK_OUT"

@@ -50,7 +50,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  cargo fmt --check");
         println!("  cargo nextest run --workspace");
         println!("  cargo test -p merman-render --doc");
-        println!("  cargo test -p merman --doc --features render");
+        println!("  cargo test -p merman --doc --features svg");
         println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
         println!("  compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3");
         println!();
@@ -59,7 +59,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
         println!("  --feature-matrix");
-        println!("                  check public no-default/render/raster feature combinations");
+        println!(
+            "                  validate public Cargo capability closures and build critical combinations"
+        );
         println!("  --root-parity   run full SVG root parity after normal DOM parity");
         println!("  --strict        run every optional gate plus materialized release, generated,");
         println!("                  Web, Playground browser, VS Code, and skill evidence");
@@ -135,7 +137,12 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     if options.feature_matrix {
         println!("\n== feature matrix ==");
-        run_feature_matrix(&workspace_root, &mut run_checked)?;
+        let args = options
+            .strict
+            .then(|| "--strict".to_string())
+            .into_iter()
+            .collect();
+        cmd::verify_feature_matrix(args)?;
     }
 
     if options.strict {
@@ -215,9 +222,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     for (what, package, features) in [
         ("cargo test -p merman-render --doc", "merman-render", None),
         (
-            "cargo test -p merman --doc --features render",
+            "cargo test -p merman --doc --features svg",
             "merman",
-            Some("render"),
+            Some("svg"),
         ),
     ] {
         let mut doctest_cmd = Command::new("cargo");
@@ -301,96 +308,4 @@ fn run_npm_script(
         .args(["run", script])
         .current_dir(workspace_root.join(package_dir));
     run_checked(&what, &mut command)
-}
-
-fn run_feature_matrix(
-    workspace_root: &std::path::Path,
-    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
-) -> Result<(), XtaskError> {
-    let checks: &[(&str, &[&str])] = &[
-        (
-            "cargo check -p merman --no-default-features",
-            &["check", "-p", "merman", "--no-default-features"],
-        ),
-        (
-            "cargo check -p merman --no-default-features --features render",
-            &[
-                "check",
-                "-p",
-                "merman",
-                "--no-default-features",
-                "--features",
-                "render",
-            ],
-        ),
-        (
-            "cargo check -p merman --no-default-features --features raster",
-            &[
-                "check",
-                "-p",
-                "merman",
-                "--no-default-features",
-                "--features",
-                "raster",
-            ],
-        ),
-        (
-            "cargo check -p merman-core --no-default-features",
-            &["check", "-p", "merman-core", "--no-default-features"],
-        ),
-        (
-            "cargo nextest run -p merman-core --no-default-features --lib",
-            &[
-                "nextest",
-                "run",
-                "-p",
-                "merman-core",
-                "--no-default-features",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo nextest run -p merman-lsp --no-default-features --lib",
-            &[
-                "nextest",
-                "run",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features stdio --bin merman-lsp",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "stdio",
-                "--bin",
-                "merman-lsp",
-            ],
-        ),
-    ];
-
-    for (what, args) in checks {
-        println!("{what}");
-        let mut cmd = Command::new("cargo");
-        cmd.args(*args).current_dir(workspace_root);
-        run_checked(what, &mut cmd)?;
-    }
-
-    Ok(())
 }

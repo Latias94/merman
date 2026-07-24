@@ -1,10 +1,13 @@
+use merman_core::RenderSemanticModel;
 use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 pub use merman_core::resources::{
-    ClassComplexity, FlowchartComplexity, RESOURCE_PROFILE_DESCRIPTORS,
-    ResourceProfile as RenderResourceProfile,
-    ResourceProfileDescriptor as RenderResourceProfileDescriptor, ZenumlComplexity,
+    ClassComplexity, FlowchartComplexity, MindmapComplexity, ModelComplexity,
+    RESOURCE_PROFILE_DESCRIPTORS, ResourceProfile as RenderResourceProfile,
+    ResourceProfileDescriptor as RenderResourceProfileDescriptor, SequenceComplexity,
+    ZenumlComplexity,
 };
 use merman_core::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
@@ -19,15 +22,17 @@ pub const MAX_RESVG_TREE_DEPTH: usize = 256;
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = 64;
 
-const BOUNDED_RESVG_TREE_DEPTH: usize = if MAX_RESVG_TREE_DEPTH < 128 {
-    MAX_RESVG_TREE_DEPTH
-} else {
-    128
-};
+// Backend capability for recursively owned typed/compatibility trees, not a Mermaid syntax limit.
+// It remains active when policy budgets are disabled because increasing it is not stack-safe.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = merman_core::MAX_DIAGRAM_NESTING_DEPTH;
+
+#[cfg(target_arch = "wasm32")]
+const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
 
 pub const RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
-const RENDER_RESOURCE_LIMIT_COUNT: usize = 5;
+const RENDER_RESOURCE_LIMIT_COUNT: usize = 3;
 pub const RESOURCE_LIMIT_COUNT: usize =
     merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
 
@@ -61,18 +66,14 @@ impl std::fmt::Display for ResourceLimitPhase {
 pub enum RenderResourceLimitId {
     MaxSvgBytes,
     MaxSvgElements,
-    MaxSvgTreeDepth,
-    MaxVennAreas,
-    MaxSwimlaneLineHopSegmentPairs,
+    MaxLayoutWorkUnits,
 }
 
 impl RenderResourceLimitId {
     pub const ALL: [Self; RENDER_RESOURCE_LIMIT_COUNT] = [
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
-        Self::MaxSvgTreeDepth,
-        Self::MaxVennAreas,
-        Self::MaxSwimlaneLineHopSegmentPairs,
+        Self::MaxLayoutWorkUnits,
     ];
 
     const fn index(self) -> usize {
@@ -89,42 +90,21 @@ pub enum ResourceLimitId {
 #[allow(non_upper_case_globals)]
 impl ResourceLimitId {
     pub const MaxSourceBytes: Self = Self::Input(InputResourceLimitId::MaxSourceBytes);
-    pub const MaxFlowchartNodes: Self = Self::Input(InputResourceLimitId::MaxFlowchartNodes);
-    pub const MaxFlowchartEdges: Self = Self::Input(InputResourceLimitId::MaxFlowchartEdges);
-    pub const MaxFlowchartSubgraphs: Self =
-        Self::Input(InputResourceLimitId::MaxFlowchartSubgraphs);
-    pub const MaxClassNodes: Self = Self::Input(InputResourceLimitId::MaxClassNodes);
-    pub const MaxClassEdges: Self = Self::Input(InputResourceLimitId::MaxClassEdges);
-    pub const MaxClassNamespaces: Self = Self::Input(InputResourceLimitId::MaxClassNamespaces);
-    pub const MaxZenumlParticipants: Self =
-        Self::Input(InputResourceLimitId::MaxZenumlParticipants);
-    pub const MaxZenumlStatements: Self = Self::Input(InputResourceLimitId::MaxZenumlStatements);
-    pub const MaxZenumlFragments: Self = Self::Input(InputResourceLimitId::MaxZenumlFragments);
-    pub const MaxLabelBytes: Self = Self::Input(InputResourceLimitId::MaxLabelBytes);
+    pub const MaxModelItems: Self = Self::Input(InputResourceLimitId::MaxModelItems);
+    pub const MaxModelTextBytes: Self = Self::Input(InputResourceLimitId::MaxModelTextBytes);
+    pub const MaxModelNestingDepth: Self = Self::Input(InputResourceLimitId::MaxModelNestingDepth);
     pub const MaxSvgBytes: Self = Self::Render(RenderResourceLimitId::MaxSvgBytes);
     pub const MaxSvgElements: Self = Self::Render(RenderResourceLimitId::MaxSvgElements);
-    pub const MaxSvgTreeDepth: Self = Self::Render(RenderResourceLimitId::MaxSvgTreeDepth);
-    pub const MaxVennAreas: Self = Self::Render(RenderResourceLimitId::MaxVennAreas);
-    pub const MaxSwimlaneLineHopSegmentPairs: Self =
-        Self::Render(RenderResourceLimitId::MaxSwimlaneLineHopSegmentPairs);
+    pub const MaxLayoutWorkUnits: Self = Self::Render(RenderResourceLimitId::MaxLayoutWorkUnits);
 
     pub const ALL: [Self; RESOURCE_LIMIT_COUNT] = [
         Self::MaxSourceBytes,
+        Self::MaxModelItems,
+        Self::MaxModelTextBytes,
+        Self::MaxModelNestingDepth,
+        Self::MaxLayoutWorkUnits,
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
-        Self::MaxSvgTreeDepth,
-        Self::MaxFlowchartNodes,
-        Self::MaxFlowchartEdges,
-        Self::MaxFlowchartSubgraphs,
-        Self::MaxClassNodes,
-        Self::MaxClassEdges,
-        Self::MaxClassNamespaces,
-        Self::MaxZenumlParticipants,
-        Self::MaxZenumlStatements,
-        Self::MaxZenumlFragments,
-        Self::MaxVennAreas,
-        Self::MaxSwimlaneLineHopSegmentPairs,
-        Self::MaxLabelBytes,
     ];
 
     pub fn from_stable_id(id: &str) -> Option<Self> {
@@ -193,26 +173,10 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         hard_cap: false,
     },
     ResourceLimitDescriptor {
-        id: ResourceLimitId::MaxSvgTreeDepth,
-        stable_id: "max_svg_tree_depth",
-        phase: ResourceLimitPhase::SvgPostprocess,
-        description: "Maximum tree depth supported by recursive SVG backends",
-        overridable: false,
-        hard_cap: true,
-    },
-    ResourceLimitDescriptor {
-        id: ResourceLimitId::MaxVennAreas,
-        stable_id: "max_venn_areas",
+        id: ResourceLimitId::MaxLayoutWorkUnits,
+        stable_id: "max_layout_work_units",
         phase: ResourceLimitPhase::LayoutModel,
-        description: "Maximum synthesized Venn layout areas",
-        overridable: true,
-        hard_cap: false,
-    },
-    ResourceLimitDescriptor {
-        id: ResourceLimitId::MaxSwimlaneLineHopSegmentPairs,
-        stable_id: "max_swimlane_line_hop_segment_pairs",
-        phase: ResourceLimitPhase::SvgOutput,
-        description: "Maximum broad-phase segment pairs inspected for Swimlane line hops",
+        description: "Maximum family-accounted layout work units before SVG generation",
         overridable: true,
         hard_cap: false,
     },
@@ -220,34 +184,20 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
 
 pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
     input_descriptor(InputResourceLimitId::MaxSourceBytes),
+    input_descriptor(InputResourceLimitId::MaxModelItems),
+    input_descriptor(InputResourceLimitId::MaxModelTextBytes),
+    input_descriptor(InputResourceLimitId::MaxModelNestingDepth),
+    RENDER_RESOURCE_LIMIT_DESCRIPTORS[2],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[0],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[1],
-    RENDER_RESOURCE_LIMIT_DESCRIPTORS[2],
-    input_descriptor(InputResourceLimitId::MaxFlowchartNodes),
-    input_descriptor(InputResourceLimitId::MaxFlowchartEdges),
-    input_descriptor(InputResourceLimitId::MaxFlowchartSubgraphs),
-    input_descriptor(InputResourceLimitId::MaxClassNodes),
-    input_descriptor(InputResourceLimitId::MaxClassEdges),
-    input_descriptor(InputResourceLimitId::MaxClassNamespaces),
-    input_descriptor(InputResourceLimitId::MaxZenumlParticipants),
-    input_descriptor(InputResourceLimitId::MaxZenumlStatements),
-    input_descriptor(InputResourceLimitId::MaxZenumlFragments),
-    RENDER_RESOURCE_LIMIT_DESCRIPTORS[3],
-    RENDER_RESOURCE_LIMIT_DESCRIPTORS[4],
-    input_descriptor(InputResourceLimitId::MaxLabelBytes),
 ];
 
 const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     RENDER_RESOURCE_LIMIT_COUNT] = [
     [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
     [Some(250_000), Some(125_000), Some(1_000_000), None],
-    [
-        Some(BOUNDED_RESVG_TREE_DEPTH),
-        Some(BOUNDED_RESVG_TREE_DEPTH),
-        Some(MAX_RESVG_TREE_DEPTH),
-        Some(MAX_RESVG_TREE_DEPTH),
-    ],
-    [Some(8_000), Some(4_000), Some(50_000), None],
+    // A policy budget, not a Mermaid limit. Families charge deterministic
+    // units for derived geometry and inspected layout candidates.
     [Some(250_000), Some(125_000), Some(1_000_000), None],
 ];
 
@@ -450,6 +400,43 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    pub fn check_render_model(
+        &self,
+        model: &RenderSemanticModel,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let complexity = ModelComplexity::from_render_model(model);
+        self.check_model_complexity(complexity)?;
+
+        if matches!(
+            model,
+            RenderSemanticModel::Treemap(_) | RenderSemanticModel::Ishikawa(_)
+        ) && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH
+        {
+            return Err(ResourceLimitExceeded {
+                phase: ResourceLimitPhase::LayoutModel,
+                limit: "typed_model_tree_depth",
+                actual: complexity.nesting_depth,
+                max: MAX_RECURSIVE_MODEL_TREE_DEPTH,
+                profile: self.profile(),
+                explicit_overrides: self
+                    .explicit_overrides()
+                    .map(|(id, value)| ResourceLimitOverride { id, value })
+                    .collect(),
+            });
+        }
+
+        Ok(())
+    }
+
+    pub fn check_model_complexity(
+        &self,
+        complexity: ModelComplexity,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.input
+            .check_model_complexity(complexity)
+            .map_err(|error| ResourceLimitExceeded::from_input(self, error))
+    }
+
     pub fn check_svg_bytes(
         &self,
         svg: &str,
@@ -468,11 +455,20 @@ impl RenderResourcePolicy {
             RenderResourceLimitId::MaxSvgElements,
             elements,
         )?;
-        self.check_render_limit(
-            ResourceLimitPhase::SvgPostprocess,
-            RenderResourceLimitId::MaxSvgTreeDepth,
-            tree_depth,
-        )
+        if tree_depth <= MAX_RESVG_TREE_DEPTH {
+            return Ok(());
+        }
+        Err(ResourceLimitExceeded {
+            phase: ResourceLimitPhase::SvgPostprocess,
+            limit: "svg_backend_tree_depth",
+            actual: tree_depth,
+            max: MAX_RESVG_TREE_DEPTH,
+            profile: self.profile(),
+            explicit_overrides: self
+                .explicit_overrides()
+                .map(|(id, value)| ResourceLimitOverride { id, value })
+                .collect(),
+        })
     }
 
     pub fn check_flowchart_complexity(
@@ -493,6 +489,15 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    pub fn check_mindmap_complexity(
+        &self,
+        model: &MindmapDiagramRenderModel,
+    ) -> Result<MindmapComplexity, ResourceLimitExceeded> {
+        self.input
+            .check_mindmap_complexity(model)
+            .map_err(|error| ResourceLimitExceeded::from_input(self, error))
+    }
+
     pub fn check_zenuml_complexity(
         &self,
         model: &ZenumlDiagramRenderModel,
@@ -502,22 +507,20 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
-    pub fn check_venn_areas(&self, areas: usize) -> Result<(), ResourceLimitExceeded> {
-        self.check_render_limit(
-            ResourceLimitPhase::LayoutModel,
-            RenderResourceLimitId::MaxVennAreas,
-            areas,
-        )
+    pub fn check_sequence_complexity(
+        &self,
+        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+    ) -> Result<SequenceComplexity, ResourceLimitExceeded> {
+        self.input
+            .check_sequence_complexity(model)
+            .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
-    pub fn check_swimlane_line_hop_segment_pairs(
-        &self,
-        segment_pairs: usize,
-    ) -> Result<(), ResourceLimitExceeded> {
+    pub fn check_layout_work_units(&self, work_units: usize) -> Result<(), ResourceLimitExceeded> {
         self.check_render_limit(
-            ResourceLimitPhase::SvgOutput,
-            RenderResourceLimitId::MaxSwimlaneLineHopSegmentPairs,
-            segment_pairs,
+            ResourceLimitPhase::LayoutModel,
+            RenderResourceLimitId::MaxLayoutWorkUnits,
+            work_units,
         )
     }
 }
@@ -565,12 +568,6 @@ mod tests {
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
 
-    struct ZenumlLimitCase {
-        name: &'static str,
-        id: ResourceLimitId,
-        value: usize,
-    }
-
     #[test]
     fn resource_contract_is_complete_unique_and_drives_every_profile() {
         assert_eq!(RESOURCE_CONTRACT_SCHEMA_VERSION, 1);
@@ -578,7 +575,7 @@ mod tests {
             RESOURCE_PROFILE_DESCRIPTORS.len(),
             RenderResourceProfile::ALL.len()
         );
-        assert_eq!(RESOURCE_LIMIT_DESCRIPTORS.len(), 16);
+        assert_eq!(RESOURCE_LIMIT_DESCRIPTORS.len(), RESOURCE_LIMIT_COUNT);
 
         let profile_ids = RESOURCE_PROFILE_DESCRIPTORS
             .iter()
@@ -621,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_overrides_fail_closed_for_unknown_ids_and_hard_caps() {
+    fn resource_overrides_fail_closed_for_unknown_and_internal_ids() {
         let mut limits = RenderResourcePolicy::interactive();
         assert!(matches!(
             limits.apply_override("future_limit", 1),
@@ -629,7 +626,9 @@ mod tests {
         ));
         assert_eq!(
             limits.apply_override("max_svg_tree_depth", 1),
-            Err(ResourceLimitOverrideError::HardCap("max_svg_tree_depth"))
+            Err(ResourceLimitOverrideError::UnknownLimit(
+                "max_svg_tree_depth".to_string()
+            ))
         );
         assert_eq!(
             limits.apply_override("max_svg_elements", 0),
@@ -671,22 +670,14 @@ mod tests {
     #[test]
     fn derived_layout_work_limits_report_the_owned_phase_and_metric() {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxVennAreas, 2)
-            .unwrap()
-            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 3)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 7)
             .unwrap();
 
-        let venn = limits.check_venn_areas(3).unwrap_err();
-        assert_eq!(venn.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(venn.limit, "max_venn_areas");
-        assert_eq!(venn.actual, 3);
-        assert_eq!(venn.max, 2);
-
-        let line_hops = limits.check_swimlane_line_hop_segment_pairs(4).unwrap_err();
-        assert_eq!(line_hops.phase, ResourceLimitPhase::SvgOutput);
-        assert_eq!(line_hops.limit, "max_swimlane_line_hop_segment_pairs");
-        assert_eq!(line_hops.actual, 4);
-        assert_eq!(line_hops.max, 3);
+        let error = limits.check_layout_work_units(8).unwrap_err();
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 8);
+        assert_eq!(error.max, 7);
     }
 
     #[test]
@@ -713,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn zenuml_structural_limits_are_owned_and_independent() {
+    fn zenuml_uses_the_shared_model_budget() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nA.call() {\n  if(ok) {\n    if(inner) {\n      B.work()\n    }\n  }\n}\n",
@@ -725,31 +716,12 @@ mod tests {
             panic!("expected ZenUML model");
         };
 
-        let cases = [
-            ZenumlLimitCase {
-                name: "max_zenuml_participants",
-                id: ResourceLimitId::MaxZenumlParticipants,
-                value: 1,
-            },
-            ZenumlLimitCase {
-                name: "max_zenuml_statements",
-                id: ResourceLimitId::MaxZenumlStatements,
-                value: 1,
-            },
-            ZenumlLimitCase {
-                name: "max_zenuml_fragments",
-                id: ResourceLimitId::MaxZenumlFragments,
-                value: 1,
-            },
-        ];
-        for case in cases {
-            let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(case.id, case.value)
-                .unwrap();
-            let error = limits.check_zenuml_complexity(model).unwrap_err();
-            assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
-            assert_eq!(error.limit, case.name);
-        }
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxModelItems, 1)
+            .unwrap();
+        let error = limits.check_zenuml_complexity(model).unwrap_err();
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.limit, "max_model_items");
     }
 
     #[test]

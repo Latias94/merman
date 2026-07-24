@@ -778,17 +778,39 @@ fn set_block_sizes(block: &mut SizedBlock, padding: f64) {
     }
 }
 
-fn calculate_block_position(columns: i64, position: i64) -> (i64, i64) {
-    if columns < 0 {
-        return (position, 0);
+fn invalid_block_columns_error() -> Error {
+    Error::InvalidModel {
+        // Match Mermaid's layout invariant while returning a typed render failure instead of
+        // letting a malformed semantic model reach integer division.
+        message: "Columns must be an integer !== 0.".to_string(),
     }
-    if columns == 1 {
-        return (0, position);
-    }
-    (position % columns, position / columns)
 }
 
-fn layout_blocks(block: &mut SizedBlock, padding: f64) {
+fn validate_block_columns(root: &BlockNode) -> Result<()> {
+    let mut stack = vec![root];
+    while let Some(block) = stack.pop() {
+        if block.columns == Some(0) {
+            return Err(invalid_block_columns_error());
+        }
+        stack.extend(block.children.iter());
+    }
+    Ok(())
+}
+
+fn calculate_block_position(columns: i64, position: i64) -> Result<(i64, i64)> {
+    if columns == 0 {
+        return Err(invalid_block_columns_error());
+    }
+    if columns < 0 {
+        return Ok((position, 0));
+    }
+    if columns == 1 {
+        return Ok((0, position));
+    }
+    Ok((position % columns, position / columns))
+}
+
+fn layout_blocks(block: &mut SizedBlock, padding: f64) -> Result<()> {
     let mut stack: Vec<Vec<usize>> = vec![Vec::new()];
     while let Some(path) = stack.pop() {
         let child_count = {
@@ -800,7 +822,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                 let mut row_heights = BTreeMap::<i64, f64>::new();
                 let mut height_column_pos = 0i64;
                 for child in &block.children {
-                    let (_, row) = calculate_block_position(columns, height_column_pos);
+                    let (_, row) = calculate_block_position(columns, height_column_pos)?;
                     row_heights
                         .entry(row)
                         .and_modify(|height| *height = height.max(child.height))
@@ -832,7 +854,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                 let mut row_pos = 0i64;
 
                 for child in &mut block.children {
-                    let (px, py) = calculate_block_position(columns, column_pos);
+                    let (px, py) = calculate_block_position(columns, column_pos)?;
 
                     if py != row_pos {
                         row_pos = py;
@@ -871,6 +893,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
             stack.push(child_path);
         }
     }
+    Ok(())
 }
 
 fn find_bounds(block: &SizedBlock, b: &mut Bounds) {
@@ -941,7 +964,7 @@ fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeS
     }
 }
 
-pub fn layout_block_diagram_typed(
+pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -959,9 +982,11 @@ pub fn layout_block_diagram_typed(
             message: "missing block root composite".to_string(),
         })?;
 
+    validate_block_columns(root)?;
+
     let mut root = to_sized_block(root, padding, measurer, &text_style);
     set_block_sizes(&mut root, padding);
-    layout_blocks(&mut root, padding);
+    layout_blocks(&mut root, padding)?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     collect_nodes(&root, &mut nodes);
@@ -1135,7 +1160,7 @@ mod tests {
             sized_block("group2", 223.0, 48.0, 3),
         ];
 
-        super::layout_blocks(&mut root, 8.0);
+        super::layout_blocks(&mut root, 8.0).expect("valid block layout");
 
         assert_eq!(root.children[0].y, -96.0);
         assert_eq!(root.children[1].y, 0.0);
@@ -1167,5 +1192,15 @@ mod tests {
 
         assert_eq!(width, 321.25);
         assert_eq!(height, 45.5);
+    }
+
+    #[test]
+    fn zero_columns_are_a_typed_layout_error_not_a_division_by_zero() {
+        let error = super::calculate_block_position(0, 0).expect_err("zero columns must fail");
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            error.to_string(),
+            "invalid semantic model: Columns must be an integer !== 0."
+        );
     }
 }

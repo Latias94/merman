@@ -18,13 +18,13 @@ use merman_editor_core::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tower_lsp::jsonrpc::{Error, Result};
-use tower_lsp::lsp_types::{DocumentChanges, OneOf};
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::{Error, Result};
+use tower_lsp_server::ls_types::{DocumentChanges, OneOf};
+use tower_lsp_server::ls_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
     Hover, HoverContents, Location, MarkedString, MarkupContent, MarkupKind,
     OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse, Range, RenameParams,
-    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Url, WorkspaceEdit,
+    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Uri, WorkspaceEdit,
 };
 
 #[allow(deprecated)]
@@ -268,7 +268,7 @@ fn document_symbol_to_lsp(symbol: EditorDocumentSymbol) -> DocumentSymbol {
 #[allow(deprecated)]
 fn flatten_document_symbols(
     symbols: Vec<EditorDocumentSymbol>,
-    uri: &Url,
+    uri: &Uri,
     container_name: Option<String>,
     out: &mut Vec<SymbolInformation>,
 ) {
@@ -289,7 +289,7 @@ fn flatten_document_symbols(
 #[allow(deprecated)]
 fn symbol_information_to_lsp(
     symbol: EditorSymbolInformation,
-    fallback_uri: Option<&Url>,
+    fallback_uri: Option<&Uri>,
 ) -> Option<SymbolInformation> {
     let location = location_to_lsp(symbol.location, fallback_uri?);
     Some(SymbolInformation {
@@ -311,7 +311,7 @@ fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
 
 fn workspace_edit_to_lsp(
     edit: EditorWorkspaceEdit,
-    fallback_uri: &Url,
+    fallback_uri: &Uri,
     version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
@@ -387,16 +387,17 @@ mod tests {
     };
     use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
-    use tower_lsp::lsp_types::{
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,
         HoverContents, Position, PrepareRenameResponse, RenameParams, TextDocumentIdentifier,
-        TextDocumentPositionParams, Url,
+        TextDocumentPositionParams, Uri,
     };
 
     #[test]
     fn document_symbols_include_root_and_child_items() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(
             uri,
             1,
@@ -424,7 +425,7 @@ mod tests {
     #[test]
     fn document_symbols_can_fall_back_to_flat_symbol_information() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(
             uri.clone(),
             1,
@@ -451,7 +452,7 @@ mod tests {
     #[test]
     fn hover_reports_the_active_outline_entry() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\n".to_string());
 
         let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
@@ -467,7 +468,7 @@ mod tests {
     #[test]
     fn selection_ranges_return_nested_parser_backed_ranges() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(
             uri,
             1,
@@ -485,7 +486,7 @@ mod tests {
     #[test]
     fn folding_ranges_return_lsp_regions() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.md").unwrap();
         let snapshot = store.upsert(
             uri,
             1,
@@ -504,7 +505,7 @@ mod tests {
     #[test]
     fn rename_and_references_track_simple_identifiers() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
 
         let position = Position::new(1, 0);
@@ -551,7 +552,7 @@ mod tests {
     #[test]
     fn rename_can_fall_back_to_workspace_edit_changes() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
 
         let edit = rename_with_workspace_edit_encoding(
@@ -577,7 +578,7 @@ mod tests {
     #[test]
     fn workspace_symbols_filter_and_include_outline_items() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(
             uri,
             1,

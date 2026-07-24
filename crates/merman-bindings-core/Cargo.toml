@@ -13,6 +13,9 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "bindings", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
 default = []
 system-clock = ["merman/system-clock", "merman-analysis?/system-clock"]
@@ -21,18 +24,18 @@ system-random = ["merman/system-random", "merman-analysis?/system-random"]
 system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
-render = ["merman/render"]
-editor-language = ["analysis"]
-layout-cytoscape = ["render", "merman/layout-cytoscape"]
-layout-elk = ["render", "merman/layout-elk"]
-math = ["render", "dep:merman-render", "merman-render/math"]
-raster = ["merman/raster"]
+svg = ["merman/svg"]
+png = ["svg", "merman/png"]
+jpeg = ["svg", "merman/jpeg"]
+pdf = ["svg", "merman/pdf"]
+layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-elk = ["svg", "merman/layout-elk"]
+math = ["svg", "merman/math"]
 
 [dependencies]
 chrono.workspace = true
 merman-analysis = { workspace = true, optional = true }
 merman.workspace = true
-merman-render = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 

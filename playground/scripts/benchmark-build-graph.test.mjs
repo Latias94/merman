@@ -24,14 +24,13 @@ test("the current benchmark source graph preserves the engine boundary", () => {
   assert.deepEqual(result.violations, []);
 });
 
-test("static graph allows svg-safety and ignores type-only root imports", () => {
+test("static graph allows the public Web package and ignores type-only imports", () => {
   withFixture((root) => {
     writeSource(
       root,
       BENCHMARK_SOURCES.bootstrap,
       [
-        'import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";',
-        'import { SUPPORTED_THEMES } from "@mermanjs/web/catalog";',
+        'import { assertSafeSvgForDom, SUPPORTED_THEMES } from "@mermanjs/web";',
         'import type { SvgBindingOptions } from "@mermanjs/web";',
         'import { type MermanWasmModule } from "@mermanjs/web";',
         "void assertSafeSvgForDom;",
@@ -44,10 +43,11 @@ test("static graph allows svg-safety and ignores type-only root imports", () => 
   });
 });
 
-test("static graph rejects the Web root facade and unapproved runtime subpaths", async (t) => {
+test("static graph rejects retired Web runtime subpaths", async (t) => {
   for (const specifier of [
-    "@mermanjs/web",
     "@mermanjs/web/pkg/merman_wasm.js",
+    "@mermanjs/web/catalog",
+    "@mermanjs/web/svg-safety",
   ]) {
     await t.test(specifier, () => {
       withFixture((root) => {
@@ -245,7 +245,7 @@ function withFixture(run) {
       root,
       BENCHMARK_SOURCES.bootstrap,
       [
-        'import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";',
+        'import { assertSafeSvgForDom } from "@mermanjs/web";',
         'import type { SvgBindingOptions } from "@mermanjs/web";',
         "void assertSafeSvgForDom;",
         "void 0 as unknown as SvgBindingOptions;",
@@ -255,11 +255,8 @@ function withFixture(run) {
       root,
       BENCHMARK_SOURCES.mermanAdapter,
       [
-        'import wasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";',
         'import type { MermanWasmModule } from "@mermanjs/web";',
         'export const loadWeb = () => import("@mermanjs/web");',
-        'export const loadShim = () => import("@mermanjs/web/pkg/merman_wasm.js");',
-        "void wasmUrl;",
         "void 0 as unknown as MermanWasmModule;",
       ].join("\n"),
     );

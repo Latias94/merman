@@ -6,21 +6,24 @@ pub(crate) enum CliError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Mermaid(#[from] merman::Error),
+    #[cfg(feature = "svg")]
     #[error("{0}")]
-    Headless(#[from] merman::render::HeadlessError),
+    Headless(#[from] merman::svg::HeadlessError),
     #[cfg(feature = "ascii")]
     #[error("{0}")]
     Ascii(#[from] merman::ascii::HeadlessAsciiError),
     #[error("stdout closed before output finished")]
     BrokenStdoutPipe,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[error("{0}")]
-    Raster(#[from] merman::render::raster::RasterError),
+    Export(#[from] merman::svg::export::ExportError),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("No Mermaid diagram detected")]
     NoDiagram,
     #[error("{0}")]
     InvalidInput(String),
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
 }
@@ -28,12 +31,16 @@ pub(crate) enum CliError {
 impl CliError {
     pub(crate) fn exit_code(&self) -> ExitCode {
         match self {
-            Self::InvalidInput(_) | Self::InvalidOutput(_) | Self::Json(_) => ExitCode::from(2),
+            Self::InvalidInput(_) | Self::Json(_) => ExitCode::from(2),
+            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            Self::InvalidOutput(_) => ExitCode::from(2),
             Self::Io(_) => ExitCode::from(3),
             Self::BrokenStdoutPipe => ExitCode::SUCCESS,
-            Self::Mermaid(_) | Self::Headless(_) | Self::Raster(_) | Self::NoDiagram => {
-                ExitCode::from(1)
-            }
+            Self::Mermaid(_) | Self::NoDiagram => ExitCode::from(1),
+            #[cfg(feature = "svg")]
+            Self::Headless(_) => ExitCode::from(1),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            Self::Export(_) => ExitCode::from(1),
             #[cfg(feature = "ascii")]
             Self::Ascii(_) => ExitCode::from(1),
         }

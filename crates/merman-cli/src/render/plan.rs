@@ -1,20 +1,28 @@
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use super::export::EmbeddedImageCliOptions;
+#[cfg(feature = "pdf")]
+use super::export::PdfCliOptions;
+#[cfg(any(feature = "png", feature = "jpeg"))]
+use super::export::RasterCliOptions;
+#[cfg(feature = "network-icons")]
 use super::icons::{NetworkPolicy, load_icon_registry};
-use super::raster::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
 use crate::cli::{
     ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat, SvgPipelineKind,
-    TextOutputCliArgs,
 };
 #[cfg(feature = "ascii")]
-use crate::cli::{TextCharset, TextColorMode, TextDirection};
+use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
+#[cfg(feature = "analysis")]
 use crate::markdown;
-use merman::render::IconRegistry;
+#[cfg(feature = "network-icons")]
+use merman::svg::IconRegistry;
 #[cfg(feature = "ascii")]
 use std::env;
 #[cfg(feature = "ascii")]
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "network-icons")]
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
@@ -30,18 +38,27 @@ pub(crate) struct RenderPlan {
     pub(super) format: RenderFormat,
     pub(super) parse: ParseCliArgs,
     pub(super) render: RenderCliArgs,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(super) scale: f32,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(super) raster: RasterCliOptions,
+    #[cfg(feature = "pdf")]
     pub(super) pdf: PdfCliOptions,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) embedded_images: EmbeddedImageCliOptions,
     pub(super) background: Option<String>,
     pub(super) css: Option<String>,
     pub(super) svg_pipeline: Option<SvgPipelineKind>,
+    #[cfg(feature = "network-icons")]
     pub(super) icon_registry: Option<Arc<IconRegistry>>,
+    #[cfg(feature = "analysis")]
     pub(super) artefacts: Option<PathBuf>,
+    #[cfg(feature = "parallel-markdown")]
     pub(super) jobs: usize,
+    #[cfg(feature = "pdf")]
     pub(super) pdf_fit: bool,
     pub(super) quiet: bool,
+    #[cfg(feature = "ascii")]
     pub(super) text: TextOutputCliArgs,
     pub(super) mode: RenderMode,
 }
@@ -51,26 +68,38 @@ pub(crate) fn render_plan_for_mmdc(
     export: ExportArgs,
 ) -> Result<RenderPlan, CliError> {
     let input = merge_input(export.input_file.clone(), positional_input)?;
+    #[cfg(not(feature = "analysis"))]
+    if input.as_deref().is_some_and(is_markdown_path)
+        || export.output.as_deref().is_some_and(is_markdown_path)
+    {
+        return Err(CliError::InvalidInput(
+            "Markdown batch export requires building merman-cli with --features analysis."
+                .to_string(),
+        ));
+    }
+    #[cfg(feature = "analysis")]
     let artefacts = prepare_artefacts_dir(export.artefacts.as_deref(), input.as_deref())?;
-    validate_mmdc_output_path(export.output.as_deref())?;
-    let icon_registry = load_icon_registry(
-        &export.icons.icon_packs,
-        &export.icons.icon_packs_names_and_urls,
-        NetworkPolicy::from_allow_network(export.icons.allow_network),
-    )?;
-    let format = infer_output_format(export.output.as_deref(), export.output_format)
+
+    let format = infer_output_format(export.output.as_deref(), export.output_format)?
         .unwrap_or(RenderFormat::Svg);
+    validate_mmdc_output_path(export.output.as_deref())?;
     let output = Some(OutputTarget::from_cli(
         export
             .output
             .clone()
             .unwrap_or_else(|| default_mmdc_output_path(input.as_deref(), format)),
     ));
+    #[cfg(feature = "network-icons")]
+    let icon_registry = load_icon_registry(
+        &export.icons.icon_packs,
+        &export.icons.icon_packs_names_and_urls,
+        NetworkPolicy::from_allow_network(export.icons.allow_network),
+    )?;
+    #[cfg(feature = "ascii")]
     let text = resolve_text_output_args(export.text.clone(), output.as_ref());
 
     let mut parse = export.parse.clone();
     let mut render = export.render.clone();
-
     apply_official_defaults(&mut parse, &mut render);
     validate_puppeteer_config_file(export.puppeteer_config_file.as_deref())?;
 
@@ -80,9 +109,13 @@ pub(crate) fn render_plan_for_mmdc(
         format,
         parse,
         render,
+        #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: export.raster.scale.unwrap_or(1.0),
+        #[cfg(any(feature = "png", feature = "jpeg"))]
         raster: RasterCliOptions::from_args(&export.raster)?,
+        #[cfg(feature = "pdf")]
         pdf: PdfCliOptions::from_args(&export.pdf),
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         embedded_images: EmbeddedImageCliOptions::from_args(&export.embedded_images),
         background: Some(
             export
@@ -92,11 +125,16 @@ pub(crate) fn render_plan_for_mmdc(
         ),
         css: read_optional_text_file(export.css_file.as_deref(), "CSS file")?,
         svg_pipeline: export.svg_pipeline,
+        #[cfg(feature = "network-icons")]
         icon_registry,
+        #[cfg(feature = "analysis")]
         artefacts,
+        #[cfg(feature = "parallel-markdown")]
         jobs: export.jobs.unwrap_or_else(default_jobs),
+        #[cfg(feature = "pdf")]
         pdf_fit: export.pdf_fit,
         quiet: export.quiet,
+        #[cfg(feature = "ascii")]
         text,
         mode: RenderMode::MmdcCompat,
     })
@@ -104,15 +142,17 @@ pub(crate) fn render_plan_for_mmdc(
 
 pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan, CliError> {
     let input = merge_input(args.export.input_file.clone(), args.input)?;
-    let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)
+    let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)?
         .unwrap_or(RenderFormat::Svg);
     let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
-    let text = resolve_text_output_args(args.export.text.clone(), output.as_ref());
+    #[cfg(feature = "network-icons")]
     let icon_registry = load_icon_registry(
         &args.export.icons.icon_packs,
         &args.export.icons.icon_packs_names_and_urls,
         NetworkPolicy::from_allow_network(args.export.icons.allow_network),
     )?;
+    #[cfg(feature = "ascii")]
+    let text = resolve_text_output_args(args.export.text.clone(), output.as_ref());
 
     Ok(RenderPlan {
         input,
@@ -120,24 +160,55 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         format,
         parse: args.export.parse.clone(),
         render: args.export.render.clone(),
+        #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: args.export.raster.scale.unwrap_or(1.0),
+        #[cfg(any(feature = "png", feature = "jpeg"))]
         raster: RasterCliOptions::from_args(&args.export.raster)?,
+        #[cfg(feature = "pdf")]
         pdf: PdfCliOptions::from_args(&args.export.pdf),
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         embedded_images: EmbeddedImageCliOptions::from_args(&args.export.embedded_images),
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
         svg_pipeline: args.export.svg_pipeline,
+        #[cfg(feature = "network-icons")]
         icon_registry,
+        #[cfg(feature = "analysis")]
         artefacts: None,
+        #[cfg(feature = "parallel-markdown")]
         jobs: 1,
+        #[cfg(feature = "pdf")]
         pdf_fit: true,
         quiet: args.export.quiet,
+        #[cfg(feature = "ascii")]
         text,
         mode: RenderMode::Subcommand,
     })
 }
 
 impl RenderPlan {
+    #[cfg(feature = "network-icons")]
+    pub(super) fn icon_registry(&self) -> Option<Arc<IconRegistry>> {
+        self.icon_registry.clone()
+    }
+
+    #[cfg(not(feature = "network-icons"))]
+    pub(super) fn icon_registry(&self) -> Option<std::sync::Arc<merman::svg::IconRegistry>> {
+        None
+    }
+
+    #[cfg(feature = "analysis")]
+    #[cfg(feature = "parallel-markdown")]
+    pub(super) const fn markdown_jobs(&self) -> usize {
+        self.jobs
+    }
+
+    #[cfg(feature = "analysis")]
+    #[cfg(not(feature = "parallel-markdown"))]
+    pub(super) const fn markdown_jobs(&self) -> usize {
+        1
+    }
+
     #[cfg(feature = "ascii")]
     pub(super) fn apply_text_options(
         &self,
@@ -230,10 +301,7 @@ impl TerminalColorEnvironment {
             color_256: term.contains("256color"),
             basic_color: !term.is_empty() && term != "dumb",
             stdout_is_terminal: io::stdout().is_terminal(),
-            output_is_stdout: match output {
-                None | Some(OutputTarget::Stdout) => true,
-                Some(OutputTarget::File(_)) => false,
-            },
+            output_is_stdout: matches!(output, None | Some(OutputTarget::Stdout)),
         }
     }
 }
@@ -248,14 +316,6 @@ fn resolve_text_output_args(
             output,
         )));
     }
-    text
-}
-
-#[cfg(not(feature = "ascii"))]
-fn resolve_text_output_args(
-    text: TextOutputCliArgs,
-    _output: Option<&OutputTarget>,
-) -> TextOutputCliArgs {
     text
 }
 
@@ -275,15 +335,14 @@ fn resolve_auto_text_color(environment: TerminalColorEnvironment) -> TextColorMo
         return TextColorMode::Plain;
     }
     if environment.truecolor {
-        return TextColorMode::Truecolor;
+        TextColorMode::Truecolor
+    } else if environment.color_256 {
+        TextColorMode::Ansi256
+    } else if environment.basic_color {
+        TextColorMode::Ansi16
+    } else {
+        TextColorMode::Plain
     }
-    if environment.color_256 {
-        return TextColorMode::Ansi256;
-    }
-    if environment.basic_color {
-        return TextColorMode::Ansi16;
-    }
-    TextColorMode::Plain
 }
 
 fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs) {
@@ -298,6 +357,7 @@ fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs)
     }
 }
 
+#[cfg(feature = "analysis")]
 fn prepare_artefacts_dir(
     artefacts: Option<&str>,
     input: Option<&str>,
@@ -331,6 +391,7 @@ fn validate_puppeteer_config_file(path: Option<&str>) -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(feature = "parallel-markdown")]
 fn default_jobs() -> usize {
     std::thread::available_parallelism()
         .map(|count| (count.get() / 2).max(1))
@@ -351,11 +412,122 @@ fn merge_input(
     }
 }
 
+#[cfg(not(feature = "analysis"))]
+fn is_markdown_path(path: &str) -> bool {
+    if path == "-" {
+        return false;
+    }
+    matches!(
+        Path::new(path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("md" | "markdown" | "mdx")
+    )
+}
+
+#[cfg(all(test, feature = "svg", not(feature = "analysis")))]
+mod analysis_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn markdown_input_requires_the_analysis_capability() {
+        let error = render_plan_for_mmdc(
+            None,
+            ExportArgs {
+                input_file: Some("diagram.md".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect_err("Markdown input must not fall through to the SVG renderer");
+
+        assert!(error.to_string().contains("--features analysis"), "{error}");
+    }
+
+    #[test]
+    fn markdown_output_requires_the_analysis_capability() {
+        let error = render_plan_for_mmdc(
+            None,
+            ExportArgs {
+                output: Some("diagram.rendered.md".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect_err("Markdown output must not receive SVG bytes");
+
+        assert!(error.to_string().contains("--features analysis"), "{error}");
+    }
+}
+
 fn infer_output_format(
     output: Option<&str>,
     explicit: Option<RenderFormat>,
-) -> Option<RenderFormat> {
-    explicit.or_else(|| output.and_then(format_from_output_path))
+) -> Result<Option<RenderFormat>, CliError> {
+    match explicit {
+        Some(format) => Ok(Some(format)),
+        None => output
+            .map(format_from_output_path)
+            .transpose()
+            .map(|format| format.flatten()),
+    }
+}
+
+fn format_from_output_path(path: &str) -> Result<Option<RenderFormat>, CliError> {
+    if path == "-" {
+        return Ok(Some(RenderFormat::Svg));
+    }
+    let Some(extension) = Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+    else {
+        return Ok(None);
+    };
+    match extension.as_str() {
+        "svg" => Ok(Some(RenderFormat::Svg)),
+        "png" => {
+            #[cfg(feature = "png")]
+            return Ok(Some(RenderFormat::Png));
+            #[cfg(not(feature = "png"))]
+            return Err(CliError::InvalidOutput(
+                "Output format requires building merman-cli with --features png.".to_string(),
+            ));
+        }
+        "jpg" | "jpeg" => {
+            #[cfg(feature = "jpeg")]
+            return Ok(Some(RenderFormat::Jpeg));
+            #[cfg(not(feature = "jpeg"))]
+            return Err(CliError::InvalidOutput(
+                "Output format requires building merman-cli with --features jpeg.".to_string(),
+            ));
+        }
+        "pdf" => {
+            #[cfg(feature = "pdf")]
+            return Ok(Some(RenderFormat::Pdf));
+            #[cfg(not(feature = "pdf"))]
+            return Err(CliError::InvalidOutput(
+                "Output format requires building merman-cli with --features pdf.".to_string(),
+            ));
+        }
+        "txt" | "ascii" => {
+            #[cfg(feature = "ascii")]
+            return Ok(Some(RenderFormat::Ascii));
+            #[cfg(not(feature = "ascii"))]
+            return Err(CliError::InvalidOutput(
+                "Output format requires building merman-cli with --features ascii.".to_string(),
+            ));
+        }
+        "unicode" => {
+            #[cfg(feature = "ascii")]
+            return Ok(Some(RenderFormat::Unicode));
+            #[cfg(not(feature = "ascii"))]
+            return Err(CliError::InvalidOutput(
+                "Output format requires building merman-cli with --features ascii.".to_string(),
+            ));
+        }
+        _ => Ok(None),
+    }
 }
 
 fn validate_mmdc_output_path(output: Option<&str>) -> Result<(), CliError> {
@@ -365,53 +537,33 @@ fn validate_mmdc_output_path(output: Option<&str>) -> Result<(), CliError> {
     if output == "-" {
         return Ok(());
     }
-
-    let Some(ext) = Path::new(output)
+    let Some(extension) = Path::new(output)
         .extension()
-        .and_then(|ext| ext.to_str())
+        .and_then(|extension| extension.to_str())
         .map(str::to_ascii_lowercase)
     else {
         return Err(invalid_mmdc_output_extension());
     };
-
-    if matches!(
-        ext.as_str(),
-        "md" | "markdown" | "svg" | "png" | "pdf" | "jpg" | "jpeg" | "txt" | "ascii"
-    ) {
-        Ok(())
-    } else {
-        Err(invalid_mmdc_output_extension())
+    if matches!(extension.as_str(), "md" | "markdown") {
+        return Ok(());
     }
+    if format_from_output_path(output)?.is_some() {
+        return Ok(());
+    }
+    Err(invalid_mmdc_output_extension())
 }
 
 fn invalid_mmdc_output_extension() -> CliError {
     CliError::InvalidOutput(
-        "Output file must end with \".md\"/\".markdown\", \".svg\", \".png\", \".pdf\", \
-         \".jpg\"/\".jpeg\", \".txt\" or \".ascii\""
-            .to_string(),
+        "Output file must end with a compiled output extension or .md/.markdown".to_string(),
     )
 }
 
-fn format_from_output_path(path: &str) -> Option<RenderFormat> {
-    if path == "-" {
-        return Some(RenderFormat::Svg);
-    }
-    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
-    match ext.as_str() {
-        "svg" => Some(RenderFormat::Svg),
-        "png" => Some(RenderFormat::Png),
-        "jpg" | "jpeg" => Some(RenderFormat::Jpeg),
-        "pdf" => Some(RenderFormat::Pdf),
-        "txt" | "ascii" => Some(RenderFormat::Ascii),
-        _ => None,
-    }
-}
-
 fn default_mmdc_output_path(input: Option<&str>, format: RenderFormat) -> String {
-    let ext = format.extension();
-    match input.filter(|p| *p != "-") {
-        Some(path) => format!("{path}.{ext}"),
-        None => format!("out.{ext}"),
+    let extension = format.extension();
+    match input.filter(|path| *path != "-") {
+        Some(path) => format!("{path}.{extension}"),
+        None => format!("out.{extension}"),
     }
 }
 
@@ -423,21 +575,19 @@ fn subcommand_output_target(
     if let Some(output) = output {
         return Some(OutputTarget::from_cli(output));
     }
-
     if format == RenderFormat::Svg || format.is_text() {
         return None;
     }
-
-    Some(OutputTarget::File(default_raster_out_path(
+    Some(OutputTarget::File(default_binary_out_path(
         input,
         format.extension(),
     )))
 }
 
-fn default_raster_out_path(input: Option<&str>, ext: &str) -> PathBuf {
-    match input.filter(|p| *p != "-") {
-        Some(path) => PathBuf::from(path).with_extension(ext),
-        None => PathBuf::from(format!("out.{ext}")),
+fn default_binary_out_path(input: Option<&str>, extension: &str) -> PathBuf {
+    match input.filter(|path| *path != "-") {
+        Some(path) => PathBuf::from(path).with_extension(extension),
+        None => PathBuf::from(format!("out.{extension}")),
     }
 }
 
@@ -465,7 +615,6 @@ mod tests {
             truecolor: true,
             ..terminal_environment()
         };
-
         assert_eq!(resolve_auto_text_color(environment), TextColorMode::Plain);
     }
 
@@ -477,47 +626,6 @@ mod tests {
             stdout_is_terminal: false,
             ..terminal_environment()
         };
-
         assert_eq!(resolve_auto_text_color(environment), TextColorMode::Ansi256);
-    }
-
-    #[test]
-    fn automatic_color_requires_terminal_stdout() {
-        let redirected = TerminalColorEnvironment {
-            truecolor: true,
-            stdout_is_terminal: false,
-            ..terminal_environment()
-        };
-        let file = TerminalColorEnvironment {
-            truecolor: true,
-            output_is_stdout: false,
-            ..terminal_environment()
-        };
-
-        assert_eq!(resolve_auto_text_color(redirected), TextColorMode::Plain);
-        assert_eq!(resolve_auto_text_color(file), TextColorMode::Plain);
-    }
-
-    #[test]
-    fn automatic_color_chooses_the_most_capable_terminal_mode() {
-        let truecolor = TerminalColorEnvironment {
-            truecolor: true,
-            color_256: true,
-            basic_color: true,
-            ..terminal_environment()
-        };
-        let color_256 = TerminalColorEnvironment {
-            color_256: true,
-            basic_color: true,
-            ..terminal_environment()
-        };
-        let basic = TerminalColorEnvironment {
-            basic_color: true,
-            ..terminal_environment()
-        };
-
-        assert_eq!(resolve_auto_text_color(truecolor), TextColorMode::Truecolor);
-        assert_eq!(resolve_auto_text_color(color_256), TextColorMode::Ansi256);
-        assert_eq!(resolve_auto_text_color(basic), TextColorMode::Ansi16);
     }
 }

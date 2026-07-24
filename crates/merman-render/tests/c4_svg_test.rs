@@ -1,11 +1,11 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::c4::layout_c4_diagram_typed;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfile, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
 };
 use merman_render::family;
+use merman_render::model::C4DiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use std::sync::Arc;
@@ -69,19 +69,12 @@ fn c4_public_layout_handles_deep_boundary_chain() {
         .expect("diagram detected");
     assert_eq!(parsed.metadata().diagram_type, "c4");
 
-    let RenderSemanticModel::C4(model) = parsed.model() else {
-        panic!("expected C4 render model");
-    };
     let options = LayoutOptions::default();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let c4 = layout_c4_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        options.container_width,
-        options.container_height,
-    )
-    .expect("layout should not depend on recursive boundary traversal");
+    let artifact = family::prepare(parsed, &options, session)
+        .expect("layout should not depend on recursive boundary traversal");
+    let projection = artifact.layout_json().expect("serialize C4 layout");
+    let c4: C4DiagramLayout = serde_json::from_value(projection["layout"]["C4Diagram"].clone())
+        .expect("C4 layout projection");
 
     assert_eq!(c4.boundaries.len(), DEPTH + 1);
     assert_eq!(c4.shapes.len(), 1);

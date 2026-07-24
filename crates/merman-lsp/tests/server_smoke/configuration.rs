@@ -1,9 +1,11 @@
+use std::str::FromStr;
+
 use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_configuration_updates() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -89,14 +91,14 @@ async fn lsp_service_smoke_applies_configuration_updates() {
     assert_eq!(second_params.diagnostics.len(), 1);
     assert_eq!(
         second_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::HINT)
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_unchanged_configuration_emits_no_refresh_or_diagnostics() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -105,7 +107,7 @@ async fn lsp_service_unchanged_configuration_emits_no_refresh_or_diagnostics() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {
+                    "diagnostics": {
                         "refreshSupport": true
                     },
                     "semanticTokens": {
@@ -223,7 +225,7 @@ async fn lsp_service_does_not_refresh_semantic_tokens_after_diagnostic_only_conf
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_noop_configuration_change_sends_no_push_or_semantic_refresh() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -307,7 +309,7 @@ async fn lsp_service_diagnostic_pull_without_refresh_support_finishes_configurat
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))
@@ -361,7 +363,7 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {
+                    "diagnostics": {
                         "refreshSupport": true
                     }
                 }
@@ -411,7 +413,7 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
     socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
         ))
@@ -422,7 +424,7 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -431,7 +433,7 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {
+                    "diagnostics": {
                         "refreshSupport": true
                     }
                 }
@@ -499,7 +501,7 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
     socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
         ))
@@ -553,7 +555,7 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -613,14 +615,14 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() 
     assert_eq!(params.diagnostics.len(), 1);
     assert_eq!(
         params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::HINT)
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_honors_core_rule_disablement() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -681,7 +683,8 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
         from_value(empty_publish.params().cloned().expect("publish params")).unwrap();
     assert!(empty_params.diagnostics.is_empty());
 
-    let resource_uri = tower_lsp::lsp_types::Url::parse("file:///tmp/limited.mmd").unwrap();
+    let resource_uri =
+        tower_lsp_server::ls_types::Uri::from_str("file:///tmp/limited.mmd").unwrap();
     let resource_open = Request::build("textDocument/didOpen")
         .params(
             serde_json::to_value(DidOpenTextDocumentParams {
@@ -726,7 +729,7 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
     );
     assert_eq!(
         resource_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::ERROR)
     );
 }
 
@@ -776,7 +779,7 @@ async fn lsp_service_rejects_resource_rule_severity_on_initialize() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -830,7 +833,7 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
     assert_eq!(first_params.diagnostics.len(), 1);
     assert_eq!(
         first_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::ERROR)
     );
 
     let change = Request::build("workspace/didChangeConfiguration")
@@ -894,14 +897,14 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
     assert_eq!(second_params.diagnostics.len(), 1);
     assert_eq!(
         second_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::ERROR)
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -950,7 +953,7 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration
     assert_eq!(first_params.diagnostics.len(), 1);
     assert_eq!(
         first_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::ERROR)
     );
 
     let change = Request::build("workspace/didChangeConfiguration")
@@ -985,6 +988,6 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration
     assert_eq!(second_params.diagnostics.len(), 1);
     assert_eq!(
         second_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::HINT)
     );
 }

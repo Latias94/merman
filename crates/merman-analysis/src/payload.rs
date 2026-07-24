@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
-// Diagnostics and facts are independent contracts. Facts v2 replaces the alpha v1 wire shape.
-pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 2;
+// Diagnostics and facts are independent contracts whose first public shapes both start at 1.
+pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
 
 fn deserialize_payload_version<'de, D>(
     deserializer: D,

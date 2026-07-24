@@ -1,13 +1,15 @@
+use std::str::FromStr;
+
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::document_store::DocumentStore;
-use tower_lsp::lsp_types::{
-    CompletionTextEdit, Documentation, InsertTextFormat, MarkupKind, Position, Url,
+use tower_lsp_server::ls_types::{
+    CompletionTextEdit, Documentation, InsertTextFormat, MarkupKind, Position, Uri,
 };
 
 #[test]
 fn completion_items_carry_resolve_data() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "flow".to_string());
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
@@ -25,7 +27,7 @@ fn completion_items_carry_resolve_data() {
 #[test]
 fn completion_resolve_adds_documentation_without_changing_insert_fields() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "flow".to_string());
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
@@ -54,7 +56,7 @@ fn completion_resolve_adds_documentation_without_changing_insert_fields() {
 #[test]
 fn completion_projects_header_edit_ranges() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "flow".to_string());
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
@@ -76,7 +78,7 @@ fn completion_projects_header_edit_ranges() {
 #[test]
 fn completion_projects_core_snippet_items_to_lsp_snippets() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "flow".to_string());
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
@@ -89,7 +91,7 @@ fn completion_projects_core_snippet_items_to_lsp_snippets() {
     assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
     assert_eq!(
         item.kind,
-        Some(tower_lsp::lsp_types::CompletionItemKind::SNIPPET)
+        Some(tower_lsp_server::ls_types::CompletionItemKind::SNIPPET)
     );
     match item.text_edit.as_ref().unwrap() {
         CompletionTextEdit::Edit(edit) => {
@@ -104,7 +106,7 @@ fn completion_projects_core_snippet_items_to_lsp_snippets() {
 #[test]
 fn completion_projects_class_name_items_to_lsp_classes() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -120,7 +122,7 @@ fn completion_projects_class_name_items_to_lsp_classes() {
 
     assert_eq!(
         item.kind,
-        Some(tower_lsp::lsp_types::CompletionItemKind::CLASS)
+        Some(tower_lsp_server::ls_types::CompletionItemKind::CLASS)
     );
     match item.text_edit.as_ref().unwrap() {
         CompletionTextEdit::Edit(edit) => {

@@ -19,8 +19,8 @@ generating Cargo manifests or centralizing every protocol and package concern in
 ## Decision
 
 `capabilities/feature-surface-v1.json` exclusively owns public capability IDs, output IDs,
-descriptions, target restrictions, implications, named presets, expected runtime capability sets,
-and their additive semantic closure.
+descriptions, target restrictions, operations, and implications. It is a semantic vocabulary, not
+a product-preset or release-profile catalog.
 
 `capabilities/artifact-profiles-v1.json` owns exact Cargo recipes for capability-bearing compiled
 artifacts. Each recipe identifies a real Cargo package and target, profile, `default-features`
@@ -32,17 +32,23 @@ descriptor and header own C layouts and symbols; UniFFI definitions own generate
 bindings; LSP owns its protocol surface; Web package exports own browser entry points; and the
 Typst descriptor owns its wasm-minimal-protocol boundary. Package manifests and release checks own
 distribution composition. No repository-wide transport catalog duplicates these authorities.
+Capability/API build roots set `package.metadata.merman.artifact-profile-required = true`; the
+artifact-profile verifier discovers that owner-local coverage requirement through Cargo metadata.
 
-Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. Presets
-use the `preset-*` namespace and are additive inclusion bundles only. They never assert that an
-omitted capability or dependency is absent. Runtime environment selection and resource profiles
-remain independent from the compiled capability set.
+Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. The
+repository deliberately has no global `preset-*` Cargo feature lattice: additive Cargo features
+cannot express exclusions, and a cross-product of product, transport, runtime, and release
+profiles would make the public API misleading. The `merman` facade keeps only the result-named
+`complete-svg` aggregate (`svg`, both layout engines, and `math`); all other products and artifact
+profiles select direct positive leaves owned by their package. `complete-svg` is a convenience
+compile aggregate, not an absence or runtime-policy contract. Runtime environment selection and
+resource profiles remain independent from the compiled capability set.
 
 ## Verification Boundary
 
 Machine checks cover facts that can be derived without reading prose:
 
-- descriptor schema, IDs, implication closure, preset closure, and target legality;
+- descriptor schema, IDs, implication closure, and target legality;
 - generated Rust, TypeScript, C, and Markdown projection freshness;
 - Cargo package, target, profile, feature, crate-type, and target-triple existence;
 - exact artifact-profile capability/output mappings;
@@ -62,7 +68,8 @@ A new public leaf is accepted only when all of these are present:
 - a user-observable API, output, engine, adapter, or compiled tool surface;
 - typed absence or removal of that callable surface;
 - a material closure boundary;
-- at least one supported preset inclusion and omission;
+- at least one supported leaf build or exact artifact profile that exercises the capability and one
+  valid build/profile that omits it;
 - an executable gate owned by the affected API, artifact, dependency, or target.
 
 Negative profiles, one-feature-per-diagram designs, and incidental dependency names are invalid.
@@ -71,7 +78,7 @@ Named reusable layout engines are valid because users select their Mermaid behav
 
 ## Consequences
 
-- Semantic IDs and presets have one reviewable source while Cargo files remain normal TOML.
+- Semantic IDs and implications have one reviewable source while Cargo files remain normal TOML.
 - Exact build absence is proved by an explicit `default-features = false` recipe plus a build or
   closure probe, never inferred from a preset or a status field.
 - Bundles such as VSIX, wheels, AARs, and npm packages compose compiled artifacts without inventing

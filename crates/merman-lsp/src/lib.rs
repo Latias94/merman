@@ -27,7 +27,9 @@ pub use protocol::{
 pub use refresh_transport::MermanClientSocket;
 pub use server::MermanLanguageServer;
 #[cfg(feature = "stdio")]
-pub use transport::{LSP_HANDLER_CONCURRENCY, StdioTermination, serve_stdio, stdio_server};
+pub use transport::{
+    LSP_HANDLER_CONCURRENCY, StdioServer, StdioTermination, serve_stdio, stdio_server,
+};
 
 #[cfg(test)]
 mod completion_tests;

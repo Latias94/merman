@@ -1,5 +1,5 @@
 #![cfg(all(
-    feature = "render",
+    feature = "svg",
     feature = "system-clock",
     feature = "system-timezone",
     feature = "system-random",
@@ -11,7 +11,7 @@ use std::process::Command;
 
 use merman::{
     Engine, ParseOptions, RenderSemanticModel,
-    render::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
+    svg::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
 };
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";

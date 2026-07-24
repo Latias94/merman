@@ -255,69 +255,212 @@ fn javascript_to_uint32(number: f64) -> u32 {
     }
 }
 
-#[derive(Clone, Builder)]
-#[builder(setter(strip_option))]
+#[derive(Clone)]
 pub struct Options {
-    #[builder(default = "Some(2.0)")]
     pub max_randomness_offset: Option<f32>,
-    #[builder(default = "Some(1.0)")]
     pub roughness: Option<f32>,
-    #[builder(default = "Some(2.0)")]
     pub bowing: Option<f32>,
-    #[builder(default = "Some(Srgba::new(0.0, 0.0, 0.0, 1.0))")]
     pub stroke: Option<Srgba>,
-    #[builder(default = "Some(1.0)")]
     pub stroke_width: Option<f32>,
-    #[builder(default = "Some(0.95)")]
     pub curve_fitting: Option<f32>,
-    #[builder(default = "Some(0.0)")]
     pub curve_tightness: Option<f32>,
-    #[builder(default = "Some(9.0)")]
     pub curve_step_count: Option<f32>,
-    #[builder(default = "None")]
     pub fill: Option<Srgba>,
-    #[builder(default = "None")]
     pub fill_style: Option<FillStyle>,
-    #[builder(default = "Some(-1.0)")]
     pub fill_weight: Option<f32>,
-    #[builder(default = "Some(-41.0)")]
     pub hachure_angle: Option<f32>,
-    #[builder(default = "Some(-1.0)")]
     pub hachure_gap: Option<f32>,
-    #[builder(default = "Some(1.0)")]
     pub simplification: Option<f32>,
-    #[builder(default = "Some(-1.0)")]
     pub dash_offset: Option<f32>,
-    #[builder(default = "Some(-1.0)")]
     pub dash_gap: Option<f32>,
-    #[builder(default = "Some(-1.0)")]
     pub zigzag_offset: Option<f32>,
     pub randomness: RoughRandomness,
-    #[builder(default = "None")]
     pub stroke_line_dash: Option<Vec<f64>>,
-    #[builder(default = "None")]
     pub stroke_line_dash_offset: Option<f64>,
-    #[builder(default = "None")]
     pub line_cap: Option<LineCap>,
-    #[builder(default = "None")]
     pub line_join: Option<LineJoin>,
-    #[builder(default = "None")]
     pub fill_line_dash: Option<Vec<f64>>,
-    #[builder(default = "None")]
     pub fill_line_dash_offset: Option<f64>,
-    #[builder(default = "Some(false)")]
     pub disable_multi_stroke: Option<bool>,
-    #[builder(default = "Some(false)")]
     pub disable_multi_stroke_fill: Option<bool>,
-    #[builder(default = "Some(false)")]
     pub preserve_vertices: Option<bool>,
-    #[builder(default = "None")]
     pub fixed_decimal_place_digits: Option<f32>,
     // Rough.js stores the evolving seeded PRNG state in `ops.randomizer`.
     // This is internal-only and must not be user-set.
-    #[builder(default = "None", setter(skip))]
     pub(crate) randomizer: Option<RoughRandomizer>,
 }
+
+/// Builder for [`Options`].
+///
+/// Randomness has no ambient fallback: callers must provide the operation-owned
+/// [`RoughRandomness`] contract before building.
+#[derive(Clone, Debug)]
+pub struct OptionsBuilder {
+    max_randomness_offset: Option<f32>,
+    roughness: Option<f32>,
+    bowing: Option<f32>,
+    stroke: Option<Srgba>,
+    stroke_width: Option<f32>,
+    curve_fitting: Option<f32>,
+    curve_tightness: Option<f32>,
+    curve_step_count: Option<f32>,
+    fill: Option<Srgba>,
+    fill_style: Option<FillStyle>,
+    fill_weight: Option<f32>,
+    hachure_angle: Option<f32>,
+    hachure_gap: Option<f32>,
+    simplification: Option<f32>,
+    dash_offset: Option<f32>,
+    dash_gap: Option<f32>,
+    zigzag_offset: Option<f32>,
+    randomness: Option<RoughRandomness>,
+    stroke_line_dash: Option<Vec<f64>>,
+    stroke_line_dash_offset: Option<f64>,
+    line_cap: Option<LineCap>,
+    line_join: Option<LineJoin>,
+    fill_line_dash: Option<Vec<f64>>,
+    fill_line_dash_offset: Option<f64>,
+    disable_multi_stroke: Option<bool>,
+    disable_multi_stroke_fill: Option<bool>,
+    preserve_vertices: Option<bool>,
+    fixed_decimal_place_digits: Option<f32>,
+}
+
+impl Default for OptionsBuilder {
+    fn default() -> Self {
+        Self {
+            max_randomness_offset: Some(2.0),
+            roughness: Some(1.0),
+            bowing: Some(2.0),
+            stroke: Some(Srgba::new(0.0, 0.0, 0.0, 1.0)),
+            stroke_width: Some(1.0),
+            curve_fitting: Some(0.95),
+            curve_tightness: Some(0.0),
+            curve_step_count: Some(9.0),
+            fill: None,
+            fill_style: None,
+            fill_weight: Some(-1.0),
+            hachure_angle: Some(-41.0),
+            hachure_gap: Some(-1.0),
+            simplification: Some(1.0),
+            dash_offset: Some(-1.0),
+            dash_gap: Some(-1.0),
+            zigzag_offset: Some(-1.0),
+            randomness: None,
+            stroke_line_dash: None,
+            stroke_line_dash_offset: None,
+            line_cap: None,
+            line_join: None,
+            fill_line_dash: None,
+            fill_line_dash_offset: None,
+            disable_multi_stroke: Some(false),
+            disable_multi_stroke_fill: Some(false),
+            preserve_vertices: Some(false),
+            fixed_decimal_place_digits: None,
+        }
+    }
+}
+
+macro_rules! options_builder_setters {
+    ($($field:ident: $value:ty),+ $(,)?) => {
+        impl OptionsBuilder {
+            $(
+                pub fn $field(&mut self, value: $value) -> &mut Self {
+                    self.$field = Some(value);
+                    self
+                }
+            )+
+        }
+    };
+}
+
+options_builder_setters! {
+    max_randomness_offset: f32,
+    roughness: f32,
+    bowing: f32,
+    stroke: Srgba,
+    stroke_width: f32,
+    curve_fitting: f32,
+    curve_tightness: f32,
+    curve_step_count: f32,
+    fill: Srgba,
+    fill_style: FillStyle,
+    fill_weight: f32,
+    hachure_angle: f32,
+    hachure_gap: f32,
+    simplification: f32,
+    dash_offset: f32,
+    dash_gap: f32,
+    zigzag_offset: f32,
+    randomness: RoughRandomness,
+    stroke_line_dash: Vec<f64>,
+    stroke_line_dash_offset: f64,
+    line_cap: LineCap,
+    line_join: LineJoin,
+    fill_line_dash: Vec<f64>,
+    fill_line_dash_offset: f64,
+    disable_multi_stroke: bool,
+    disable_multi_stroke_fill: bool,
+    preserve_vertices: bool,
+    fixed_decimal_place_digits: f32,
+}
+
+impl OptionsBuilder {
+    pub fn build(&self) -> Result<Options, OptionsBuilderError> {
+        let randomness = self
+            .randomness
+            .clone()
+            .ok_or(OptionsBuilderError::MissingRandomness)?;
+        Ok(Options {
+            max_randomness_offset: self.max_randomness_offset,
+            roughness: self.roughness,
+            bowing: self.bowing,
+            stroke: self.stroke,
+            stroke_width: self.stroke_width,
+            curve_fitting: self.curve_fitting,
+            curve_tightness: self.curve_tightness,
+            curve_step_count: self.curve_step_count,
+            fill: self.fill,
+            fill_style: self.fill_style,
+            fill_weight: self.fill_weight,
+            hachure_angle: self.hachure_angle,
+            hachure_gap: self.hachure_gap,
+            simplification: self.simplification,
+            dash_offset: self.dash_offset,
+            dash_gap: self.dash_gap,
+            zigzag_offset: self.zigzag_offset,
+            randomness,
+            stroke_line_dash: self.stroke_line_dash.clone(),
+            stroke_line_dash_offset: self.stroke_line_dash_offset,
+            line_cap: self.line_cap,
+            line_join: self.line_join,
+            fill_line_dash: self.fill_line_dash.clone(),
+            fill_line_dash_offset: self.fill_line_dash_offset,
+            disable_multi_stroke: self.disable_multi_stroke,
+            disable_multi_stroke_fill: self.disable_multi_stroke_fill,
+            preserve_vertices: self.preserve_vertices,
+            fixed_decimal_place_digits: self.fixed_decimal_place_digits,
+            randomizer: None,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OptionsBuilderError {
+    MissingRandomness,
+}
+
+impl fmt::Display for OptionsBuilderError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingRandomness => formatter.write_str(
+                "randomness must be supplied through the operation-owned RoughRandomness contract",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for OptionsBuilderError {}
 
 impl Options {
     pub fn random(&mut self) -> f64 {

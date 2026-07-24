@@ -16,18 +16,18 @@ The numbers are same-machine regression anchors, not release performance guarant
 Discarded command:
 
 ```text
-cargo bench -p merman --features render -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 That package-wide command forwards Criterion options to the lib bench harness first and fails with
 `Unrecognized option: 'noplot'`. The effective baseline used explicit `--bench` commands instead:
 
 ```text
-cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench architecture_layout_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench mindmap_layout_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench architecture_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench architecture_layout_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Pipeline Mid Estimates

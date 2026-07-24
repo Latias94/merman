@@ -37,8 +37,8 @@ use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
     sweep::{
-        CrossMinType, minimize_crossings_layer_sweep,
-        minimize_crossings_layer_sweep_hierarchical_with_type,
+        CrossMinType, HierarchySweepDebugTrace, debug_crossings_layer_sweep_hierarchical_with_type,
+        minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_hierarchical_with_type,
         minimize_crossings_layer_sweep_with_type,
     },
 };
@@ -498,6 +498,21 @@ pub fn execute_ported_compound_processors_until_processor(
     target: ProcessorKind,
 ) -> PipelineResult<Vec<GraphExecution>> {
     execute_ported_compound_processors_to(graph, Some(PipelineStop::Processor(target)))
+}
+
+/// Execute a guarded compound prefix, then collect the source-port hierarchical crossing trace.
+///
+/// This is the only public diagnostics entry point that runs the randomized layer sweep outside
+/// the normal full pipeline. It always enters through the same fallible configuration boundary as
+/// every other public executor, so ELK's `randomSeed = 0` sentinel cannot observe the placeholder
+/// `JavaRandom` installed on an unconfigured graph.
+pub fn inspect_compound_crossings_after_processor(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+) -> PipelineResult<(Vec<GraphExecution>, Option<HierarchySweepDebugTrace>)> {
+    let executions = execute_ported_compound_processors_until_processor(graph, target)?;
+    let trace = debug_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
+    Ok((executions, trace))
 }
 
 fn execute_ported_compound_processors_to(

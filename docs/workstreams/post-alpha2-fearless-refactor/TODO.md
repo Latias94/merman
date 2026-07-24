@@ -103,7 +103,7 @@ Closeout: all PA2R tasks through PA2R-140 are complete. Remaining operator-drive
 ## M12 — Binding Surface Final Audit
 
 - [x] PA2R-130 [owner=codex] [deps=PA2R-120] [scope=CHANGELOG.md,crates/merman-wasm/README.md,docs/workstreams/post-alpha2-fearless-refactor]
-  Goal: Reassess the high-level binding surfaces and package docs for duplicated options/error policy, stale examples, or alpha-era public contracts that should be clarified before the next release.
+  Goal: Reassess the high-level binding surfaces and package docs for duplicated options/error policy, stale examples, or prerelease-era public contracts that should be clarified before the next release.
   Validation: release-facing package-name grep; `git diff --check -- CHANGELOG.md crates/merman-wasm/README.md docs/workstreams/post-alpha2-fearless-refactor`
   Review: Public ABI and generated-binding API shape stayed unchanged; stale `@merman/web` user-facing references now match the actual `@mermanjs/web` npm package.
   Evidence: `CHANGELOG.md`; `crates/merman-wasm/README.md`; non-historical release-facing grep passed on 2026-06-08.

@@ -1,10 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{
     Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
-    RenderSemanticModel,
 };
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -14,9 +12,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::TreeViewDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextStyle};
-use merman_render::tree_view::layout_tree_view_diagram_typed;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -77,20 +75,15 @@ fn render_parsed_tree_view_svg(
         .to_owned()
 }
 
-fn layout_tree_view(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-) -> TreeViewDiagramLayout {
-    let RenderSemanticModel::TreeView(model) = parsed.model() else {
-        panic!("expected TreeView render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_tree_view_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .unwrap()
+fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDiagramLayout {
+    let session = environment.begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .expect("TreeView diagram");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone()).unwrap()
 }
 
 #[test]
@@ -493,7 +486,7 @@ root/ :::highlight
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let tree_view = layout_tree_view(&parsed, &session);
+    let tree_view = layout_tree_view(input, &RenderEnvironment::deterministic());
     let content_width = tree_view
         .nodes
         .iter()
@@ -526,7 +519,7 @@ root/ :::highlight
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let tree_view = layout_tree_view(&parsed, &session);
+    let tree_view = layout_tree_view(input, &RenderEnvironment::deterministic());
     let content_width = tree_view
         .nodes
         .iter()
@@ -638,14 +631,10 @@ src/ :::directory-probe
 #[test]
 fn tree_view_layout_measures_directory_labels_with_bold_style() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(
-            "treeView-beta\nverylongdirectoryname/ :::directory-probe\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap();
-    let layout = layout_tree_view(&parsed, &session);
+    let layout = layout_tree_view(
+        "treeView-beta\nverylongdirectoryname/ :::directory-probe\n",
+        &RenderEnvironment::deterministic(),
+    );
     let directory = layout
         .nodes
         .iter()
@@ -666,14 +655,10 @@ fn tree_view_layout_measures_directory_labels_with_bold_style() {
 #[test]
 fn tree_view_layout_measures_descriptions_with_italic_style() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(
-            "treeView-beta\nfile.txt ## a long slanted description\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap();
-    let layout = layout_tree_view(&parsed, &session);
+    let layout = layout_tree_view(
+        "treeView-beta\nfile.txt ## a long slanted description\n",
+        &RenderEnvironment::deterministic(),
+    );
     let node = layout
         .nodes
         .iter()
@@ -707,12 +692,7 @@ fn tree_view_layout_routes_direct_text_bbox_height_through_the_host() {
             [TextMeasurementPhase::SvgBBox],
         ),
     );
-    let session = environment.begin_session().unwrap();
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync("treeView-beta\nfile.txt\n", ParseOptions::strict())
-        .unwrap()
-        .unwrap();
-    let layout = layout_tree_view(&parsed, &session);
+    let layout = layout_tree_view("treeView-beta\nfile.txt\n", &environment);
 
     assert!(layout.nodes.iter().all(|node| node.label_height == 31.0));
     assert!(layout.nodes.iter().all(|node| node.height == 41.0));
@@ -760,46 +740,7 @@ treeView-beta
 }
 
 #[test]
-fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let mut child = TreeViewNodeRenderModel {
-        id: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
-        level: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
-        name: "leaf".to_string(),
-        children: Vec::new(),
-        ..Default::default()
-    };
-    for depth in (0..=MAX_DIAGRAM_NESTING_DEPTH).rev() {
-        child = TreeViewNodeRenderModel {
-            id: depth as i64,
-            level: depth as i64,
-            name: format!("n{depth}"),
-            children: vec![child],
-            ..Default::default()
-        };
-    }
-
-    let model = TreeViewDiagramRenderModel {
-        root: TreeViewNodeRenderModel {
-            children: vec![child],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-
-    let err =
-        layout_tree_view_diagram_typed(&model, &serde_json::json!({}), &measurer).unwrap_err();
-
-    assert!(
-        err.to_string().contains("treeView nesting depth exceeds"),
-        "{err}"
-    );
-}
-
-#[test]
 fn tree_view_public_layout_accepts_max_allowed_chain() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let mut input = String::from("treeView-beta\n");
     for depth in 0..MAX_DIAGRAM_NESTING_DEPTH {
         input.push_str(&" ".repeat(depth));
@@ -814,7 +755,9 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
         .unwrap();
     assert_eq!(parsed.metadata().diagram_type, "treeView");
 
-    let tree_view = layout_tree_view(&parsed, &session);
+    let trusted_environment = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input());
+    let tree_view = layout_tree_view(&input, &trusted_environment);
 
     assert_eq!(tree_view.nodes.len(), MAX_DIAGRAM_NESTING_DEPTH + 1);
     assert_eq!(

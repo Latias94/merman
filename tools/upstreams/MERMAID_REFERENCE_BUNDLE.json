@@ -383,7 +383,7 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "4966c730e449d114b8f8e37a22cb47fe0647920761eaecd6f18de8fa0756ed42",
+    "packageJsonSha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
     "packageLockSha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::client_profile::ClientProtocolProfile;
 use crate::diagnostics::{
     analysis_payload_to_diagnostics, analysis_payload_to_diagnostics_with_profile,
@@ -6,7 +8,7 @@ use merman_analysis::{
     AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticRelated,
     DiagnosticSeverity, SourceDescriptor, SourceMap,
 };
-use tower_lsp::lsp_types::{ClientCapabilities, DiagnosticTag, NumberOrString, Url};
+use tower_lsp_server::ls_types::{ClientCapabilities, DiagnosticTag, NumberOrString, Uri};
 
 #[test]
 fn diagnostics_projection_omits_unnegotiated_extension_fields() {
@@ -26,7 +28,7 @@ fn diagnostics_projection_omits_unnegotiated_extension_fields() {
         .with_span(span)
     };
     let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let profile = ClientProtocolProfile::negotiate(&ClientCapabilities::default());
 
     let diagnostics = analysis_payload_to_diagnostics_with_profile(&payload, &uri, &profile);
@@ -48,7 +50,7 @@ fn diagnostics_projection_preserves_uri_and_message() {
             "no Mermaid diagram detected",
         )],
     );
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics.len(), 1);
@@ -80,7 +82,7 @@ fn diagnostics_projection_accepts_markdown_file_urls() {
             "no Mermaid diagram detected",
         )],
     );
-    let uri = Url::parse("file:///tmp/example.md").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.md").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics.len(), 1);
@@ -96,7 +98,7 @@ fn diagnostics_projection_preserves_analysis_messages_verbatim() {
             "flowchart parser recovered after parse error: unexpected statement separator",
         )],
     );
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics.len(), 1);
@@ -109,7 +111,7 @@ fn diagnostics_projection_preserves_analysis_messages_verbatim() {
 #[test]
 fn flowchart_parse_recovery_does_not_duplicate_lsp_diagnostics() {
     let payload = Analyzer::new().analyze("flowchart TD\nA[unterminated");
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics.len(), 1);
@@ -131,7 +133,7 @@ fn class_and_er_parse_spans_project_to_lsp_diagnostics() {
         ("classDiagram\nA <|--", "class parse"),
         ("erDiagram\nCUSTOMER ||--o{ ORDER :", "er parse"),
     ];
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     for (source, label) in cases {
         let payload = Analyzer::new().analyze(source);
@@ -155,7 +157,7 @@ fn class_and_er_parse_spans_project_to_lsp_diagnostics() {
 #[test]
 fn diagnostics_projection_exposes_identity_without_rule_metadata() {
     let payload = Analyzer::new().analyze("flowchart TD\nA-->B\n");
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert!(diagnostics.is_empty());
@@ -196,7 +198,7 @@ fn deprecated_diagnostics_project_lsp_tag() {
             "deprecated option",
         )],
     );
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics[0].tags, Some(vec![DiagnosticTag::DEPRECATED]));

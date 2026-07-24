@@ -197,7 +197,7 @@ fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
     }
 }
 
-pub fn layout_mindmap_diagram_typed(
+pub(crate) fn layout_mindmap_diagram_typed(
     model: &MindmapModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
@@ -308,7 +308,7 @@ fn layout_mindmap_diagram_model(
         #[cfg(not(feature = "layout-cytoscape"))]
         {
             return Err(Error::MissingCapability {
-                capability: "layout-cytoscape",
+                capability: crate::RenderCapability::LayoutCytoscape,
                 diagram_type: "mindmap".to_string(),
             });
         }

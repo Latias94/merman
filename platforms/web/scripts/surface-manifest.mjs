@@ -1,6 +1,4 @@
-import {
-  publicWebSurfaceDescriptors,
-} from "./web-surface-descriptor.mjs";
+import { webPackageDescriptors } from "./wasm-build/web-surface-descriptor.mjs";
 
 const lifecycleRuntimeExportNames = [
   "initMerman",
@@ -19,18 +17,15 @@ const analysisRuntimeExportNames = [
 ];
 
 const metadataRuntimeExportNames = [
-  "bindingCapabilities",
-  "runtimeContract",
+  "runtimeCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
-  "abiVersion",
+  "transportApiVersion",
   "packageVersion",
 ];
 
-const analysisMetadataRuntimeExportNames = [
-  "lintRuleCatalog",
-];
+const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
   "renderSvg",
@@ -78,15 +73,14 @@ const editorDescriptorValueExportNames = [
   "SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX",
 ];
 
-export const surfaceStableValueExportNames = [
-  "MERMAN_ABI_VERSION",
+export const packageStableValueExportNames = [
+  "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION",
   "UNAVAILABLE_DIAGRAM_DETECTION",
   "SUPPORTED_THEMES",
   "SUPPORTED_HOST_THEME_PRESETS",
   "SUPPORTED_DIAGRAMS",
   "SUPPORTED_ASCII_DIAGRAMS",
   "BINDING_STATUS_CODE_NAMES",
-  "DEFAULT_BINDING_CAPABILITIES",
   "isThemeName",
   "isHostThemePresetName",
   "isDiagramType",
@@ -98,113 +92,89 @@ export const surfaceStableValueExportNames = [
   "encodeOptions",
 ];
 
-export const surfaceRenderValueExportNames = [
+export const packageRenderValueExportNames = [
   "assertSafeSvgForDom",
   "createBrowserTextMeasurementSession",
 ];
 
-const coreRuntimeExportNames = [
-  ...lifecycleRuntimeExportNames,
-  ...analysisRuntimeExportNames,
-  ...metadataRuntimeExportNames,
-  ...analysisMetadataRuntimeExportNames,
-];
-
-const renderSurfaceRuntimeExportNames = [
-  ...coreRuntimeExportNames,
-  ...renderRuntimeExportNames,
-];
-
-const renderOnlySurfaceRuntimeExportNames = [
-  ...lifecycleRuntimeExportNames,
-  ...metadataRuntimeExportNames,
-  ...renderRuntimeExportNames,
-];
-
-const asciiSurfaceRuntimeExportNames = [
-  ...lifecycleRuntimeExportNames,
-  ...metadataRuntimeExportNames,
-  ...asciiRuntimeExportNames,
-];
-
-const editorSurfaceRuntimeExportNames = [
-  ...lifecycleRuntimeExportNames,
-  ...analysisRuntimeExportNames,
-  ...metadataRuntimeExportNames,
-  ...analysisMetadataRuntimeExportNames,
-  ...editorRuntimeExportNames,
-];
-
-const fullRuntimeExportNames = [
-  ...renderSurfaceRuntimeExportNames,
-  ...asciiRuntimeExportNames,
-  ...editorRuntimeExportNames,
-];
+const analysisProfile = {
+  runtimeExportNames: [
+    ...lifecycleRuntimeExportNames,
+    ...analysisRuntimeExportNames,
+    ...metadataRuntimeExportNames,
+    ...analysisMetadataRuntimeExportNames,
+  ],
+  valueExportNames: packageStableValueExportNames,
+};
 
 const runtimeProfiles = Object.freeze({
-  core: {
-    runtimeExportNames: coreRuntimeExportNames,
-    valueExportNames: surfaceStableValueExportNames,
-  },
+  analysis: analysisProfile,
   render: {
-    runtimeExportNames: renderSurfaceRuntimeExportNames,
-    valueExportNames: [
-      ...surfaceStableValueExportNames,
-      ...surfaceRenderValueExportNames,
+    runtimeExportNames: [
+      ...analysisProfile.runtimeExportNames,
+      ...renderRuntimeExportNames,
     ],
-  },
-  "render-only": {
-    runtimeExportNames: renderOnlySurfaceRuntimeExportNames,
     valueExportNames: [
-      ...surfaceStableValueExportNames,
-      ...surfaceRenderValueExportNames,
+      ...packageStableValueExportNames,
+      ...packageRenderValueExportNames,
     ],
   },
   ascii: {
-    runtimeExportNames: asciiSurfaceRuntimeExportNames,
-    valueExportNames: surfaceStableValueExportNames,
+    runtimeExportNames: [
+      ...lifecycleRuntimeExportNames,
+      ...metadataRuntimeExportNames,
+      ...asciiRuntimeExportNames,
+    ],
+    valueExportNames: packageStableValueExportNames,
   },
   editor: {
-    runtimeExportNames: editorSurfaceRuntimeExportNames,
+    runtimeExportNames: [
+      ...analysisProfile.runtimeExportNames,
+      ...editorRuntimeExportNames,
+    ],
     valueExportNames: [
-      ...surfaceStableValueExportNames,
+      ...packageStableValueExportNames,
       ...editorDescriptorValueExportNames,
     ],
   },
   full: {
-    runtimeExportNames: fullRuntimeExportNames,
+    runtimeExportNames: [
+      ...analysisProfile.runtimeExportNames,
+      ...renderRuntimeExportNames,
+      ...asciiRuntimeExportNames,
+      ...editorRuntimeExportNames,
+    ],
     valueExportNames: [
-      ...surfaceStableValueExportNames,
-      ...surfaceRenderValueExportNames,
+      ...packageStableValueExportNames,
+      ...packageRenderValueExportNames,
       ...editorDescriptorValueExportNames,
     ],
   },
 });
 
-export const surfaces = publicWebSurfaceDescriptors.map((descriptor) => {
+export const webPackages = webPackageDescriptors.map((descriptor) => {
   const profile = runtimeProfiles[descriptor.runtime_profile];
+  if (!profile) {
+    throw new Error(`Missing wrapper profile ${descriptor.runtime_profile}.`);
+  }
   return Object.freeze({
-    entry: descriptor.entry,
-    preset: descriptor.preset,
-    pkgDirRel: descriptor.pkg_dir_rel,
-    runtimeProfile: descriptor.runtime_profile,
-    defaultBindingCapabilitiesExportName:
-      descriptor.entry.replaceAll("-", "_").toUpperCase() +
-      "_BINDING_CAPABILITIES",
+    ...descriptor,
     runtimeExportNames: profile.runtimeExportNames,
     valueExportNames: profile.valueExportNames,
   });
 });
 
-export const allSurfaceRuntimeExportNames = unique(
-  surfaces.flatMap((surface) => surface.runtimeExportNames),
+export const publicWebPackages = webPackages.filter(
+  (item) => item.visibility === "public",
 );
 
-export const allSurfaceValueExportNames = unique(
-  surfaces.flatMap((surface) => surface.valueExportNames),
+export const allPackageRuntimeExportNames = unique(
+  webPackages.flatMap((item) => item.runtimeExportNames),
 );
 
-export const surfaceRuntimeExportNames = allSurfaceRuntimeExportNames;
+export const allPackageValueExportNames = unique(
+  webPackages.flatMap((item) => item.valueExportNames),
+);
 
 function unique(names) {
   return [...new Set(names)];

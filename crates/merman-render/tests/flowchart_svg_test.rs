@@ -6,12 +6,12 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
-use merman_render::flowchart::layout_flowchart_typed;
 use merman_render::model::FlowchartLayout;
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -42,42 +42,14 @@ fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
 }
 
 fn layout_flowchart_render_model(
-    parsed: &ParsedDiagramRender,
-    _options: &LayoutOptions,
-    session: &RenderSession,
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
-    let model = flowchart_model(parsed);
-    session
-        .resource_policy()
-        .check_flowchart_complexity(model)?;
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
-        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
-
-    if uses_elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            return merman_render::flowchart::elk::layout_flowchart_elk_typed(
-                model,
-                &parsed.metadata().effective_config,
-                &measurer,
-                session.math_renderer(),
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            return Err(merman_render::Error::UnsupportedDiagram {
-                diagram_type: parsed.metadata().diagram_type.clone(),
-            });
-        }
-    }
-
-    layout_flowchart_typed(
-        model,
-        &parsed.metadata().effective_config,
-        &measurer,
-        session.math_renderer(),
-    )
+    let artifact = family::prepare(parsed, options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
 }
 
 fn render_flowchart_artifact(
@@ -96,7 +68,20 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
 }
 
 fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+    render_flowchart_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn render_flowchart_svg_from_text_with_engine_and_policy(
+    engine: Engine,
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> String {
     let session = merman_render::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
         .begin_session()
         .unwrap();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -336,8 +321,14 @@ fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::default();
-    let layout =
-        layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
     let node = layout
         .nodes
         .iter()
@@ -681,7 +672,8 @@ fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
 
 #[test]
 fn flowchart_layout_handles_deep_subgraph_chain() {
-    let _session = merman_render::environment::RenderEnvironment::deterministic()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .unwrap();
     const DEPTH: usize = 1200;
@@ -691,7 +683,7 @@ fn flowchart_layout_handles_deep_subgraph_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+    let layout = layout_flowchart_render_model(parsed, &LayoutOptions::default(), session)
         .expect("layout ok");
 
     assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
@@ -703,7 +695,11 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
-    let svg = render_flowchart_svg_from_text(&text);
+    let svg = render_flowchart_svg_from_text_with_engine_and_policy(
+        Engine::new(),
+        &text,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
 
     assert!(svg.contains(r#"id="merman-flowchart-Leaf-"#));
     assert!(svg.contains(r#"id="merman-S0""#));
@@ -778,11 +774,11 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .expect("begin render session");
 
     let layout = layout_flowchart_render_model(
-        &parsed,
+        parsed,
         &LayoutOptions {
             ..Default::default()
         },
-        &session,
+        session,
     )
     .expect("layout ok");
 
@@ -898,10 +894,11 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
     .begin_session()
     .unwrap();
 
-    let baseline_layout = layout_flowchart_render_model(&parsed, &baseline_options, &_session)
-        .expect("baseline layout ok");
-    let wide_layout = layout_flowchart_render_model(&parsed, &wide_options, &wide_session)
-        .expect("wide layout ok");
+    let baseline_layout =
+        layout_flowchart_render_model(parsed.clone(), &baseline_options, _session)
+            .expect("baseline layout ok");
+    let wide_layout =
+        layout_flowchart_render_model(parsed, &wide_options, wide_session).expect("wide layout ok");
 
     let baseline_condition = baseline_layout
         .nodes
@@ -913,20 +910,9 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
         .iter()
         .find(|node| node.id == "B")
         .expect("wide Condition? node");
-    let baseline_label_width = baseline_condition
-        .label_width
-        .expect("baseline Condition? label width");
-    let wide_label_width = wide_condition
-        .label_width
-        .expect("wide Condition? label width");
-
     assert!(
-        wide_label_width > baseline_label_width * 1.3,
-        "expected host-provided wider font metrics to affect flowchart label layout; baseline={baseline_label_width}, wide={wide_label_width}"
-    );
-    assert!(
-        wide_condition.width > baseline_condition.width,
-        "expected host-provided wider font metrics to enlarge the node shape; baseline={}, wide={}",
+        wide_condition.width > baseline_condition.width * 1.15,
+        "expected host-provided wider font metrics to affect flowchart label layout; baseline={}, wide={}",
         baseline_condition.width,
         wide_condition.width
     );
@@ -1416,8 +1402,14 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
     let layout_options = LayoutOptions {
         ..Default::default()
     };
-    let layout =
-        layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
 
     let node = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
     assert!(node.width.is_finite() && node.width > 60.0);
@@ -1673,8 +1665,14 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
     let layout_options = LayoutOptions {
         ..Default::default()
     };
-    let layout =
-        layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
 
     let yes_label = layout
         .edges

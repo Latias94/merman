@@ -1,7 +1,7 @@
 mod support;
 
 use merman::MermaidConfig;
-use merman::render::{
+use merman::svg::{
     CssOverridePostprocessor, HeadlessRenderer, RootBackgroundPostprocessor,
     ScopedCssPostprocessor, SvgPipeline,
 };

@@ -19,7 +19,7 @@ profiler output. For CPU attribution, prefer the dedicated single-stage runner:
 
 ```bash
 CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph --profile bench \
-  -p merman --features render --example profile_render \
+  -p merman --features svg --example profile_render \
   -o target/bench/flamegraphs/profile_render_architecture_medium.svg -- \
   --input crates/merman/benches/fixtures/architecture_medium.mmd \
   --stage render --seconds 20
@@ -81,11 +81,11 @@ gh workflow run performance.yml \
    - `parse/*` measures a reused `Engine`
    - `parse_cold_engine/*` measures a fresh `Engine` per iteration
 5. Micro-hotspot validation:
-   - `cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
-   - `cargo bench -p merman --features render --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
-   - `cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
-   - `cargo bench -p merman --features render --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
-   - `cargo bench -p merman --features render --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
+   - `cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
+   - `cargo bench -p merman --features svg --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
+   - `cargo bench -p merman --features svg --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
+   - `cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
+   - `cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
 
 ## 3. Use the right report location
 

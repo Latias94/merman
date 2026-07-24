@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +94,49 @@ class AndroidToolchainTests(unittest.TestCase):
         self.assertTrue((build_android.ANDROID_ROOT / "gradlew.bat").is_file())
         command = build_android.gradle_wrapper_command()
         self.assertIn("gradlew", command[-1])
+
+    def test_default_targets_are_owned_by_the_artifact_recipe(self) -> None:
+        with mock.patch.object(build_android.sys, "argv", ["build-android.py"]):
+            args = build_android.parse_args()
+
+        self.assertEqual(
+            args.targets,
+            list(build_android.ANDROID_NATIVE_RECIPE.build_targets),
+        )
+        self.assertFalse(hasattr(args, "profile"))
+
+    def test_builder_does_not_duplicate_the_profile_capability_tuple(self) -> None:
+        recipe = replace(build_android.ANDROID_NATIVE_RECIPE, features=("svg",))
+
+        build_android.validate_android_native_recipe(recipe)
+
+    def test_native_sdk_build_arguments_are_fully_recipe_owned(self) -> None:
+        target = "aarch64-linux-android"
+        args = build_android.cargo_build_args(target)
+
+        self.assertEqual(args[:4], ["cargo", "build", "--profile", "native-sdk"])
+        self.assertIn("--package", args)
+        self.assertEqual(
+            args[args.index("--package") + 1], build_android.ANDROID_NATIVE_RECIPE.package
+        )
+        self.assertIn("--lib", args)
+        self.assertIn("--no-default-features", args)
+        self.assertEqual(
+            args[args.index("--features") + 1],
+            build_android.ANDROID_NATIVE_RECIPE.feature_argument,
+        )
+        self.assertEqual(args[args.index("--target") + 1], target)
+        self.assertEqual(
+            args[args.index("--manifest-path") + 1],
+            str(
+                build_android.REPO_ROOT
+                / build_android.ANDROID_NATIVE_RECIPE.manifest
+            ),
+        )
+
+    def test_android_build_rejects_a_target_outside_the_recipe(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "does not declare target"):
+            build_android.cargo_build_args("armv7-linux-androideabi")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ mod config;
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
 
-pub fn layout_ishikawa_diagram_typed(
+pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,

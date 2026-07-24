@@ -1,57 +1,20 @@
 use futures::executor::block_on;
-use merman_core::diagrams::flowchart::FlowchartModel;
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
-use merman_render::flowchart::layout_flowchart_typed;
 use merman_render::model::FlowchartLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
-    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-        panic!("expected Flowchart render model");
-    };
-    model
-}
-
 fn layout_flowchart_render_model(
-    parsed: &ParsedDiagramRender,
-    _options: &LayoutOptions,
-    session: &RenderSession,
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
-    let model = flowchart_model(parsed);
-    session
-        .resource_policy()
-        .check_flowchart_complexity(model)?;
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
-        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
-
-    if uses_elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            return merman_render::flowchart::elk::layout_flowchart_elk_typed(
-                model,
-                &parsed.metadata().effective_config,
-                &measurer,
-                session.math_renderer(),
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            return Err(merman_render::Error::UnsupportedDiagram {
-                diagram_type: parsed.metadata().diagram_type.clone(),
-            });
-        }
-    }
-
-    layout_flowchart_typed(
-        model,
-        &parsed.metadata().effective_config,
-        &measurer,
-        session.math_renderer(),
-    )
+    let artifact = family::prepare(parsed, options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
 }
 
 fn render_flowchart_artifact(
@@ -149,8 +112,14 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
     let layout_options = LayoutOptions {
         ..Default::default()
     };
-    let layout =
-        layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
     let node = layout.nodes.iter().find(|n| n.id == "n0").expect("node n0");
 
     let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");

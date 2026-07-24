@@ -1,10 +1,9 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::VennDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::venn::layout_venn_diagram_typed;
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -14,19 +13,11 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .expect("diagram detected");
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
-    let layout = {
-        let RenderSemanticModel::Venn(model) = parsed.model() else {
-            panic!("expected Venn render model");
-        };
-        layout_venn_diagram_typed(
-            model,
-            parsed.metadata().title.as_deref(),
-            parsed.metadata().effective_config.as_value(),
-            session.resource_policy(),
-        )
-        .expect("layout ok")
-    };
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize Venn layout");
+    let layout: VennDiagramLayout =
+        serde_json::from_value(projection["layout"]["VennDiagram"].clone())
+            .expect("Venn layout projection");
     let svg = artifact
         .render_svg(
             &SvgRenderOptions {

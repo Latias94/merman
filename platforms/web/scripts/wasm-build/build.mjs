@@ -26,14 +26,13 @@ import {
   publishStagedOutput,
   recoverOutputTransaction,
 } from "./output-transaction.mjs";
-import { pruneUnownedGeneratedDirectories } from "./package-ownership.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
 import {
-  defaultWebPresetName,
-  webPresetDescriptors,
+  defaultWebPackage,
+  webPackageDescriptors,
 } from "./web-surface-descriptor.mjs";
 
-const presets = new Map(webPresetDescriptors.map((preset) => [preset.name, preset]));
+const packagesById = new Map(webPackageDescriptors.map((item) => [item.id, item]));
 
 export function runBuildWasmCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
@@ -41,9 +40,9 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
     return;
   }
 
-  let parsed;
+  let selected;
   try {
-    parsed = parseCli(args);
+    selected = parseCli(args);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     printUsage();
@@ -51,16 +50,17 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
     return;
   }
 
-  const preset = presets.get(parsed.presetName);
-  if (!preset) {
-    console.error(`Unknown @mermanjs/web WASM preset: ${parsed.presetName}`);
-    printUsage();
-    process.exitCode = 2;
-    return;
-  }
-
   try {
-    buildWasm({ outputDir: parsed.outputDir, preset });
+    for (const descriptor of selected) {
+      buildWasm({
+        outputDir: resolvePackageSubdir(
+          webPackageRoot,
+          `pkg/${descriptor.id}`,
+          `package ${descriptor.id} output`,
+        ),
+        descriptor,
+      });
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode =
@@ -70,73 +70,57 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
   }
 }
 
-export function buildWasm({ outputDir, preset }) {
+export function buildWasm({ outputDir, descriptor }) {
+  const profile = wasmArtifactProfile(descriptor);
   const outputRoot = outputDir.absolute;
-  const rootPackage = normalizePath(outputDir.relative) === "pkg";
   const releaseLock = acquireOutputLock(outputRoot);
   let stageRoot = null;
 
   try {
-    recoverOutputTransaction(outputRoot, { rootPackage });
-    if (rootPackage) {
-      const removed = pruneUnownedGeneratedDirectories(outputRoot);
-      for (const directory of removed) {
-        console.log(`[merman-web] Removed unowned generated output: pkg/${directory}`);
-      }
-    }
+    recoverOutputTransaction(outputRoot);
     stageRoot = createOutputStage(outputRoot);
     console.log(
       [
-        `build-wasm: preset=${preset.name}`,
-        `default_features=${preset.default_features}`,
-        `features=${preset.features.length > 0 ? preset.features.join("+") : "none"}`,
+        `build-wasm: package=${descriptor.name}`,
+        `artifact_profile=${profile.name}`,
+        `default_features=${profile.default_features}`,
+        `features=${profile.features.length > 0 ? profile.features.join("+") : "none"}`,
       ].join(" "),
     );
 
-    const buildMetadata = cargoMetadataForPreset({
-      preset,
-      repoRoot: repositoryRoot,
-    });
-    const inputSnapshot = collectWasmInputEntries({
-      metadata: buildMetadata,
-      repoRoot: repositoryRoot,
-    });
+    const buildMetadata = cargoMetadataForPreset({ preset: profile, repoRoot: repositoryRoot });
+    const inputSnapshot = collectWasmInputEntries({ metadata: buildMetadata, repoRoot: repositoryRoot });
     const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
 
     const releaseBuildLock = acquireWorkspaceWasmBuildLock(repositoryRoot);
     try {
-      run("wasm-pack", wasmPackArgs(preset, stageRoot));
+      run("wasm-pack", wasmPackArgs(profile, stageRoot));
     } finally {
       releaseBuildLock();
     }
     writePackageMetadata(stageRoot);
     cleanPackageOutput(stageRoot);
-    writePresetManifest(preset, stageRoot);
+    writeArtifactProfileManifest(descriptor, stageRoot);
 
     const manifest = buildWasmInputManifest({
-      metadata: cargoMetadataForPreset({
-        preset,
-        repoRoot: repositoryRoot,
-      }),
+      metadata: cargoMetadataForPreset({ preset: profile, repoRoot: repositoryRoot }),
       outputRoot: stageRoot,
-      preset,
+      preset: profile,
       repoRoot: repositoryRoot,
       toolVersions,
     });
     if (JSON.stringify(manifest.inputs) !== JSON.stringify(inputSnapshot)) {
-      throw new Error(
-        "WASM source inputs changed during the build; rerun the same build command.",
-      );
+      throw new Error("WASM source inputs changed during the build; rerun the same build command.");
     }
     writeFileSync(
       path.join(stageRoot, WASM_INPUT_MANIFEST_NAME),
       `${JSON.stringify(manifest, null, 2)}\n`,
     );
 
-    publishStagedOutput(stageRoot, outputRoot, { rootPackage });
+    publishStagedOutput(stageRoot, outputRoot);
     stageRoot = null;
     console.log(
-      `[merman-web] Published ${preset.name} WASM transaction (${manifest.input_digest.slice(0, 12)}).`,
+      `[merman-web] Published ${descriptor.id} WASM transaction (${manifest.input_digest.slice(0, 12)}).`,
     );
   } finally {
     try {
@@ -147,26 +131,41 @@ export function buildWasm({ outputDir, preset }) {
   }
 }
 
-function parseCli(args) {
-  assertKnownArgs(args, {
-    valueArgs: ["--preset", "--out-dir-rel"],
-    booleanArgs: ["--help", "-h"],
-  });
-  const outDirRel = parseArgValue(args, "--out-dir-rel") ?? "pkg";
+export function wasmArtifactProfile(descriptor) {
+  if (!descriptor || typeof descriptor !== "object" || !descriptor.artifact_profile) {
+    throw new Error("Web package descriptor is invalid.");
+  }
+  const profile = descriptor.artifact_profile;
   return {
-    presetName:
-      parseArgValue(args, "--preset") ??
-      process.env.MERMAN_WEB_PRESET ??
-      defaultWebPresetName,
-    outputDir: resolvePackageSubdir(
-      webPackageRoot,
-      outDirRel,
-      "--out-dir-rel",
-    ),
+    name: profile.id,
+    surface: "web",
+    default_features: profile.cargo.default_features,
+    features: [...profile.cargo.features],
+    runtime_capability_ids: [...profile.expected.runtime_ids],
   };
 }
 
-function wasmPackArgs(preset, outputRoot) {
+function parseCli(args) {
+  assertKnownArgs(args, {
+    valueArgs: ["--package"],
+    booleanArgs: ["--all-packages", "--help", "-h"],
+  });
+  const allPackages = args.includes("--all-packages");
+  const id = parseArgValue(args, "--package");
+  if (allPackages && id !== null) {
+    throw new Error("--all-packages and --package are mutually exclusive.");
+  }
+  if (allPackages) return webPackageDescriptors;
+  const descriptor = packagesById.get(id ?? defaultWebPackage.id);
+  if (!descriptor) {
+    throw new Error(
+      `Unknown @mermanjs browser package '${id}'; expected one of: ${[...packagesById.keys()].join(", ")}.`,
+    );
+  }
+  return [descriptor];
+}
+
+function wasmPackArgs(profile, outputRoot) {
   const args = [
     "build",
     "../../crates/merman-wasm",
@@ -178,50 +177,41 @@ function wasmPackArgs(preset, outputRoot) {
     "--out-dir",
     outputRoot,
   ];
-  const cargoArgs = [];
-  if (!preset.default_features) cargoArgs.push("--no-default-features");
-  if (preset.features.length > 0) {
-    cargoArgs.push("--features", preset.features.join(","));
-  }
-  if (cargoArgs.length > 0) args.push("--", ...cargoArgs);
+  const cargoArgs = ["--no-default-features"];
+  if (profile.features.length > 0) cargoArgs.push("--features", profile.features.join(","));
+  args.push("--", ...cargoArgs);
   return args;
 }
 
-function writePresetManifest(preset, outputRoot) {
+function writeArtifactProfileManifest(descriptor, outputRoot) {
   mkdirSync(outputRoot, { recursive: true });
-  const manifest = {
-    schema_version: 1,
-    preset: preset.name,
-    surface: preset.surface,
-    package: "merman-wasm",
-    default_features: preset.default_features,
-    features: preset.features,
-    capabilities: preset.capabilities,
-  };
+  const profile = wasmArtifactProfile(descriptor);
   writeFileSync(
-    path.join(outputRoot, "merman_wasm_preset.json"),
-    `${JSON.stringify(manifest, null, 2)}\n`,
+    path.join(outputRoot, "merman_wasm_artifact_profile.json"),
+    `${JSON.stringify({
+      schema_version: 1,
+      package: descriptor.name,
+      package_id: descriptor.id,
+      artifact_profile: profile.name,
+      default_features: profile.default_features,
+      features: profile.features,
+      runtime_capability_ids: profile.runtime_capability_ids,
+    }, null, 2)}\n`,
   );
 }
 
 function writePackageMetadata(outputRoot) {
   mkdirSync(outputRoot, { recursive: true });
   const workspaceCargo = readFileSync(path.join(repositoryRoot, "Cargo.toml"), "utf8");
-  const wasmCargo = readFileSync(
-    path.join(repositoryRoot, "crates", "merman-wasm", "Cargo.toml"),
-    "utf8",
-  );
+  const wasmCargo = readFileSync(path.join(repositoryRoot, "crates", "merman-wasm", "Cargo.toml"), "utf8");
   const packageJson = {
-    name: "merman-wasm",
+    name: "merman-wasm-build-artifact",
     type: "module",
     collaborators: tomlStringArray(workspaceCargo, "authors"),
     description: tomlString(wasmCargo, "description"),
     version: tomlString(workspaceCargo, "version"),
     license: tomlString(workspaceCargo, "license"),
-    repository: {
-      type: "git",
-      url: tomlString(workspaceCargo, "repository"),
-    },
+    repository: { type: "git", url: tomlString(workspaceCargo, "repository") },
     files: ["merman_wasm_bg.wasm", "merman_wasm.js", "merman_wasm.d.ts"],
     main: "merman_wasm.js",
     homepage: tomlString(workspaceCargo, "homepage"),
@@ -229,10 +219,7 @@ function writePackageMetadata(outputRoot) {
     sideEffects: ["./snippets/*"],
     keywords: tomlStringArray(wasmCargo, "keywords"),
   };
-  writeFileSync(
-    path.join(outputRoot, "package.json"),
-    `${JSON.stringify(packageJson, null, 2)}\n`,
-  );
+  writeFileSync(path.join(outputRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
 function tomlString(source, key) {
@@ -248,10 +235,7 @@ function tomlStringArray(source, key) {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: webPackageRoot,
-    stdio: "inherit",
-  });
+  const result = spawnSync(command, args, { cwd: webPackageRoot, stdio: "inherit" });
   if (result.error) throw new Error(`Failed to run ${command}: ${result.error.message}`);
   if (result.status !== 0) {
     const error = new Error(`${command} exited with status ${result.status ?? 1}`);
@@ -261,20 +245,5 @@ function run(command, args) {
 }
 
 function printUsage() {
-  console.log("usage: node scripts/build-wasm.mjs [--preset <name>] [--out-dir-rel <dir>]");
-  console.log();
-  console.log("Presets:");
-  for (const preset of webPresetDescriptors) {
-    console.log(
-      [
-        `  ${preset.name.padEnd(20)}`,
-        `default_features=${preset.default_features}`,
-        `features=${preset.features.length > 0 ? preset.features.join("+") : "none"}`,
-      ].join(" "),
-    );
-  }
-}
-
-function normalizePath(value) {
-  return value.split(path.sep).join("/");
+  console.log("usage: node scripts/build-wasm.mjs [--package <full|analysis|render|editor|ascii> | --all-packages]");
 }

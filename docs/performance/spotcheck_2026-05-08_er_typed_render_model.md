@@ -23,13 +23,13 @@ this spotcheck uses a slightly longer 30-sample run.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline er_medium -- --noplot --sample-size 30 --warm-up-time 2 --measurement-time 2
+cargo bench -p merman --features svg --bench pipeline er_medium -- --noplot --sample-size 30 --warm-up-time 2 --measurement-time 2
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline er_medium -- --noplot --sample-size 30 --warm-up-time 2 --measurement-time 2
+cargo bench -p merman --features svg --bench pipeline er_medium -- --noplot --sample-size 30 --warm-up-time 2 --measurement-time 2
 ```
 
 ## Mid Estimates

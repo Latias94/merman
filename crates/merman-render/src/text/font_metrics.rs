@@ -154,6 +154,18 @@ struct FontMetricProfile<'a> {
 }
 
 impl VendoredFontMetricsTextMeasurer {
+    pub(crate) fn initialized() -> Self {
+        let _ = crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            FontMetricsVariant::Regular,
+        );
+        let _ = crate::generated::mermaid_calculate_text_dimensions_font_metrics_11_16_0::lookup_exact_font_metrics(
+            MERMAID_CALCULATE_TEXT_DIMENSIONS_FALLBACK_FONT_KEY,
+            FontMetricsVariant::Regular,
+        );
+        Self::default()
+    }
+
     fn metric_profile(table: &FontMetricsTable) -> FontMetricProfile<'_> {
         FontMetricProfile {
             entries: table.entries,

@@ -91,7 +91,7 @@ The alpha line can still change internal architecture without creating long-term
 
 ## System-Wide Impact
 
-This plan affects release confidence rather than end-user features. The expected impact is smaller public surface area, less duplicated parity policy, and clearer evidence for why alpha-era internals are safe to keep evolving.
+This plan affects release confidence rather than end-user features. The expected impact is smaller public surface area, less duplicated parity policy, and clearer evidence for why prerelease internals are safe to keep evolving.
 
 ---
 

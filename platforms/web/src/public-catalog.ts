@@ -1,6 +1,35 @@
 import { SUPPORTED_DIAGRAMS } from "./generated/diagram-catalog.js";
+import {
+  SYSTEM_ADAPTER_IDS,
+  WEB_CAPABILITIES,
+  WEB_CAPABILITY_IDS,
+  WEB_BINDING_OPERATION_IDS,
+  WEB_BINDING_OPERATIONS,
+  WEB_OUTPUT_IDS,
+  WEB_OUTPUTS,
+} from "./generated/capability-surface.js";
+import type {
+  SystemAdapterId,
+  WebBindingOperationId,
+} from "./generated/capability-surface.js";
 
 export { SUPPORTED_DIAGRAMS };
+export {
+  SYSTEM_ADAPTER_IDS,
+  WEB_CAPABILITIES,
+  WEB_CAPABILITY_IDS,
+  WEB_BINDING_OPERATION_IDS,
+  WEB_BINDING_OPERATIONS,
+  WEB_OUTPUT_IDS,
+  WEB_OUTPUTS,
+};
+export type { SystemAdapterId, WebBindingOperationId };
+
+// Runtime vocabulary is returned by the selected artifact. It may contain
+// capabilities that are valid for another target, so it must stay open here.
+export type RuntimeCapabilityId = string;
+export type RuntimeOutputId = string;
+export type RuntimeOperationId = string;
 
 export const SUPPORTED_THEMES = [
   "default",
@@ -60,7 +89,7 @@ export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_NO_DIAGRAM",
   "MERMAN_PARSE_ERROR",
   "MERMAN_RENDER_ERROR",
-  "MERMAN_UNSUPPORTED_FORMAT",
+  "MERMAN_UNSUPPORTED_OPERATION",
   "MERMAN_PANIC",
   "MERMAN_INTERNAL_ERROR",
   "MERMAN_RESOURCE_LIMIT_EXCEEDED",
@@ -68,47 +97,39 @@ export const BINDING_STATUS_CODE_NAMES = [
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
 
-export type SystemAdapterId =
-  | "system-clock"
-  | "system-timezone"
-  | "system-random"
-  | "system-timing";
+export type BindingErrorKind =
+  | "generic"
+  | "unknown-operation"
+  | "missing-capability";
 
 export interface BindingErrorPayload {
   version: number;
   ok: false;
   code: number;
   code_name: BindingStatusCodeName | string;
+  kind: BindingErrorKind | string;
+  capability_id: RuntimeCapabilityId | string | null;
   message: string;
 }
 
-export interface BindingCapabilities {
-  render: boolean;
-  analysis: boolean;
-  ascii: boolean;
-  system_adapter_ids: SystemAdapterId[];
-  cytoscape_layout: boolean;
-  elk_layout: boolean;
-  ratex_math: boolean;
-  editor_language: boolean;
-  text_measurement: TextMeasurementCapabilities;
+export const TEXT_MEASUREMENT_PROVIDER_IDS = [
+  "host-callback",
+  "vendored",
+] as const;
+
+export type TextMeasurementProviderId = string;
+
+export interface RuntimeCapabilities {
+  capability_ids: RuntimeCapabilityId[];
+  output_ids: RuntimeOutputId[];
+  operation_ids: RuntimeOperationId[];
+  system_adapter_ids: string[];
+  text_measurement: TextMeasurementCapabilities | null;
 }
 
 export interface TextMeasurementCapabilities {
-  vendored: boolean;
-  deterministic: boolean;
-  host_callback: boolean;
-  font_assets: boolean;
-}
-
-interface BindingCapabilityFlags {
-  render: boolean;
-  analysis: boolean;
-  ascii: boolean;
-  cytoscape_layout: boolean;
-  elk_layout: boolean;
-  ratex_math: boolean;
-  editor_language: boolean;
+  protocol_version: number;
+  provider_ids: TextMeasurementProviderId[];
 }
 
 export interface DiagramFamilyCapability {
@@ -202,81 +223,6 @@ export interface AsciiCapability {
   evidence: AsciiCapabilityEvidence[];
 }
 
-export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: false,
-  analysis: true,
-  ascii: false,
-  cytoscape_layout: false,
-  elk_layout: false,
-  ratex_math: false,
-  editor_language: false,
-});
-
-export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: true,
-  analysis: true,
-  ascii: false,
-  cytoscape_layout: false,
-  elk_layout: false,
-  ratex_math: false,
-  editor_language: false,
-});
-
-export const RENDER_ONLY_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: true,
-  analysis: false,
-  ascii: false,
-  cytoscape_layout: false,
-  elk_layout: false,
-  ratex_math: false,
-  editor_language: false,
-});
-
-export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: false,
-  analysis: false,
-  ascii: true,
-  cytoscape_layout: false,
-  elk_layout: false,
-  ratex_math: false,
-  editor_language: false,
-});
-
-export const EDITOR_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: false,
-  analysis: true,
-  ascii: false,
-  cytoscape_layout: false,
-  elk_layout: false,
-  ratex_math: false,
-  editor_language: true,
-});
-
-export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
-  render: true,
-  analysis: true,
-  ascii: true,
-  cytoscape_layout: true,
-  elk_layout: true,
-  ratex_math: false,
-  editor_language: true,
-});
-
-export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = FULL_BINDING_CAPABILITIES;
-
-function bindingCapabilities(flags: BindingCapabilityFlags): BindingCapabilities {
-  return {
-    ...flags,
-    system_adapter_ids: [],
-    text_measurement: {
-      vendored: flags.render,
-      deterministic: flags.render,
-      host_callback: flags.render,
-      font_assets: false,
-    },
-  };
-}
-
 export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
@@ -313,6 +259,9 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     typeof payload.version === "number" &&
     typeof payload.code === "number" &&
     typeof payload.code_name === "string" &&
+    typeof payload.kind === "string" &&
+    (payload.capability_id === null ||
+      typeof payload.capability_id === "string") &&
     typeof payload.message === "string"
   );
 }

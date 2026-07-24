@@ -1,39 +1,64 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
+use merman_render::family;
 use merman_render::model::{SwimlaneDirection, SwimlaneLayout};
-use merman_render::swimlane::layout_swimlane_typed;
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 const EPSILON: f64 = 1.0e-6;
 
 struct FixedTextMeasurer;
 
-impl TextMeasurer for FixedTextMeasurer {
-    fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
-        TextMetrics {
-            width: text.chars().count() as f64 * 8.0,
-            height: 20.0,
-            line_count: 1,
-        }
+impl HostTextMeasurer for FixedTextMeasurer {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        let width = request.text.chars().count() as f64 * 8.0;
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::RawBBoxWidth
+            | TextMeasurementOperation::SimpleBBoxWidth
+            | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::RawBBoxHeight
+            | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
+            _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {
+                width,
+                height: 20.0,
+                line_count: 1,
+            }),
+        }))
     }
 }
 
 fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
-    let parsed = futures::executor::block_on(
-        Engine::new().parse_diagram_for_render_model(source, ParseOptions::strict()),
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .map_err(|error| format!("parse failed: {error}"))?
+        .ok_or_else(|| "no diagram detected".to_string())?;
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.swimlane-fixed").unwrap(),
+        "1",
     )
-    .map_err(|error| format!("parse failed: {error}"))?
-    .ok_or_else(|| "no diagram detected".to_string())?;
-    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-        return Err("expected Flowchart render model".to_string());
-    };
-    layout_swimlane_typed(
-        model,
-        &parsed.metadata().effective_config,
-        &FixedTextMeasurer,
-        None,
-    )
-    .map_err(|error| format!("swimlane layout failed: {error}"))
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(FixedTextMeasurer),
+            TextMeasurementPhase::ALL,
+        ),
+    );
+    let session = environment
+        .begin_session()
+        .map_err(|error| format!("render session failed: {error}"))?;
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .map_err(|error| format!("swimlane layout failed: {error}"))?;
+    let projection = artifact
+        .layout_json()
+        .map_err(|error| format!("swimlane projection failed: {error}"))?;
+    serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
+        .map_err(|error| format!("swimlane layout projection failed: {error}"))
 }
 
 fn layout_swimlane(source: &str) -> SwimlaneLayout {
@@ -93,7 +118,7 @@ fn node_by_id<'a>(
 #[test]
 fn basic_lr_uses_lane_owned_sugiyama_and_orthogonal_routes() {
     let layout = layout_swimlane(
-        r#"flowchart LR
+        r#"swimlane-beta LR
 subgraph Customer
   request[Request service]
   receive[Receive update]
@@ -150,7 +175,7 @@ answer --> receive
 #[test]
 fn loose_nodes_are_owned_by_the_synthetic_default_lane() {
     let layout = layout_swimlane(
-        r#"flowchart TB
+        r#"swimlane-beta TB
 A[Start] --> B[Finish]
 "#,
     );
@@ -238,7 +263,7 @@ A --> B
 #[test]
 fn edge_labels_are_layout_waypoints_and_anchor_to_the_original_edge() {
     let layout = layout_swimlane(
-        r#"flowchart TB
+        r#"swimlane-beta TB
 subgraph Team
   A[Draft]
   B[Ship]
@@ -271,7 +296,7 @@ A -->|approval| B
 #[test]
 fn cycles_reverse_only_the_layout_constraint_not_the_rendered_edge() {
     let layout = layout_swimlane(
-        r#"flowchart TB
+        r#"swimlane-beta TB
 subgraph Lane
   A --> B
   B --> C

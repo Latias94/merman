@@ -1025,17 +1025,6 @@ fn build_node(
                 .collect::<String>();
             text = normalize_text_node_text(&raw);
         }
-        if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
-            && n.is_element()
-            && n.tag_name().name() == "text"
-            && is_architecture_diagram(n)
-        {
-            // Mermaid's `createText()` emits `<text><tspan>...</tspan>...</text>` where the number
-            // of `tspan` lines depends on runtime font measurement and layout geometry (e.g. edge
-            // label width derived from endpoint distance). In parity comparisons we treat this as
-            // layout-dependent noise for Architecture diagrams to avoid spurious DOM diffs.
-            children.clear();
-        }
     }
 
     if n.is_element() && n.tag_name().name() == "style" {
@@ -2130,6 +2119,19 @@ mod tests {
             dom_signature_for_comparison(alpha, profile, 3).unwrap(),
             dom_signature_for_comparison(alpha_with_formatting_whitespace, profile, 3).unwrap()
         );
+        assert_ne!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(beta, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_architecture_label_content() {
+        let alpha = r#"<svg aria-roledescription="architecture"><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Alpha</tspan></tspan></text></svg>"#;
+        let beta = r#"<svg aria-roledescription="architecture"><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Beta</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
         assert_ne!(
             dom_signature_for_comparison(alpha, profile, 3).unwrap(),
             dom_signature_for_comparison(beta, profile, 3).unwrap()

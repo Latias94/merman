@@ -234,8 +234,9 @@ fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) 
         }
 
         let Some(rel_end) = text[tag_end..].find('>') else {
-            probe = tag_start;
-            continue;
+            // No later `<` can form a closed tag when the remaining suffix has no `>`.
+            // Advancing by one here made malformed input rescan the same suffix O(n^2).
+            break;
         };
         let end = tag_end + rel_end;
 
@@ -383,15 +384,8 @@ fn collect_hex_style_semicolon_edits(
 }
 
 fn find_hex_style_match(line: &str, keyword: &str, search_start: usize) -> Option<usize> {
-    let mut probe = search_start;
-    while let Some(rel_start) = line[probe..].find(keyword) {
-        let start = probe + rel_start;
-        if let Some(semicolon) = find_hex_style_match_end(line, start + keyword.len()) {
-            return Some(semicolon);
-        }
-        probe = start + keyword.len();
-    }
-    None
+    let start = search_start + line[search_start..].find(keyword)?;
+    find_hex_style_match_end(line, start + keyword.len())
 }
 
 fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
@@ -399,10 +393,13 @@ fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
     while let Some(rel_colon) = line[probe..].find(':') {
         let colon = probe + rel_colon;
         let mut hash = None;
+        let mut token_end = colon + 1;
         for (rel, ch) in line[colon + 1..].char_indices() {
             if ch.is_whitespace() {
+                token_end = colon + 1 + rel;
                 break;
             }
+            token_end = colon + 1 + rel + ch.len_utf8();
             if ch == '#' {
                 hash = Some(colon + 1 + rel);
                 break;
@@ -413,7 +410,9 @@ fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
             return line[hash + 1..].rfind(';').map(|rel| hash + 1 + rel);
         }
 
-        probe = colon + 1;
+        // Skip the complete value token. Re-probing at every byte after a colon makes a
+        // long colon-heavy line quadratic when no hexadecimal color is present.
+        probe = token_end.max(colon + 1);
     }
     None
 }
@@ -658,6 +657,8 @@ fn detect_init(
 ) -> Result<MermaidConfig> {
     let mut merged = MermaidConfig::empty_object();
     let mut config_for_detect = MermaidConfig::empty_object();
+    let mut detected_type = diagram_type.map(str::to_owned);
+    let mut detection_attempted = diagram_type.is_some();
 
     for d in directives {
         if d.ty != "init" && d.ty != "initialize" {
@@ -677,15 +678,16 @@ fn detect_init(
         // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
         if let Some(mut diagram_specific_value) = diagram_specific.take() {
             sanitize_directive(&mut diagram_specific_value);
-            let detected = diagram_type.map(|t| t.to_string()).or_else(|| {
-                registry
+            if !detection_attempted {
+                detection_attempted = true;
+                detected_type = registry
                     .detect_type(input, &mut config_for_detect)
                     .ok()
-                    .map(ToString::to_string)
-            });
+                    .map(ToString::to_string);
+            }
 
-            if let Some(ty) = detected {
-                let key = diagram_config_key_for_type(&ty).to_string();
+            if let Some(ty) = detected_type.as_deref() {
+                let key = diagram_config_key_for_type(ty).to_string();
                 if let Value::Object(obj) = &mut args
                     && let Some(old) = obj.insert(key, diagram_specific_value)
                 {
@@ -808,7 +810,11 @@ fn sanitize_directive(value: &mut Value) {
                 if directive_path_is_css(&path) && !css_braces_are_balanced(s) {
                     *s = "{ /* ERROR: Unbalanced CSS */ }".to_string();
                 }
-                let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
+                let blocked = s.contains('<')
+                    || s.contains('>')
+                    || s.contains("url(data:")
+                    || (directive_path_is_theme_variable(&path)
+                        && !theme_variable_value_is_allowed(s));
                 if blocked {
                     s.clear();
                 }
@@ -826,6 +832,27 @@ fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {
                 .iter()
                 .any(|css_key| key.contains(css_key))
     )
+}
+
+fn directive_path_is_theme_variable(path: &[DirectiveValuePathSegment]) -> bool {
+    matches!(
+        path.iter().rev().nth(1),
+        Some(DirectiveValuePathSegment::Key(key)) if key == "themeVariables"
+    )
+}
+
+fn theme_variable_value_is_allowed(value: &str) -> bool {
+    // Mermaid's directive sanitizer accepts this exact ASCII character set for theme variables.
+    // Keep it source-backed rather than trying to infer whether an individual CSS-like value is
+    // harmless: theme variables feed generated CSS later in the rendering pipeline.
+    value.bytes().all(|byte| {
+        byte.is_ascii_digit()
+            || byte.is_ascii_alphabetic()
+            || matches!(
+                byte,
+                b' ' | b'"' | b'#' | b'%' | b'(' | b')' | b',' | b'.' | b';'
+            )
+    })
 }
 
 fn is_suspicious_directive_key(key: &str) -> bool {
@@ -1144,6 +1171,14 @@ fn yaml_inline_sequence_indicator_count(mut text: &str) -> usize {
 mod tests {
     use super::*;
     use serde_json::{Map, json};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static INIT_DETECTOR_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_flowchart_detector(_text: &str, _config: &mut MermaidConfig) -> bool {
+        INIT_DETECTOR_CALLS.fetch_add(1, Ordering::Relaxed);
+        true
+    }
 
     fn transformed(input: &str, transform: fn(&mut PreprocessedSource)) -> String {
         let mut source = PreprocessedSource::new(input);
@@ -1206,6 +1241,37 @@ A["<span title="😀">Label</span>"]
             .try_map_span(crate::SourceSpan::new(emoji, emoji + '😀'.len_utf8()))
             .expect("normalized attribute value span");
         assert_eq!(&original[mapped.start..mapped.end], "😀");
+    }
+
+    #[test]
+    fn multiple_init_config_directives_detect_the_diagram_only_once() {
+        INIT_DETECTOR_CALLS.store(0, Ordering::Relaxed);
+        let input = concat!(
+            "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
+            "%%{initialize: {\"config\": {\"htmlLabels\": false}}}%%\n",
+            "flowchart TD\nA-->B\n",
+        );
+        let directives = detect_directives(input).expect("directives parse");
+        let mut registry = DetectorRegistry::new();
+        registry.add_fn("flowchart-v2", counting_flowchart_detector);
+
+        let config = detect_init(&directives, input, &registry, None).expect("init merges");
+
+        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            config
+                .as_value()
+                .pointer("/flowchart/curve")
+                .and_then(Value::as_str),
+            Some("linear")
+        );
+        assert_eq!(
+            config
+                .as_value()
+                .pointer("/flowchart/htmlLabels")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]
@@ -1291,6 +1357,36 @@ A["<span title="😀">Label</span>"]
         );
         assert_eq!(value["flowchart"]["fontFamily"], "valid { nested: value; }");
         assert!(value["flowchart"].get("altFontFamily").is_none());
+    }
+
+    #[test]
+    fn sanitize_directive_uses_mermaid_theme_variable_allowlist() {
+        let mut value = json!({
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "secondaryColor": "rgb(1, 2, 3)",
+                "tertiaryColor": "url(javascript:alert(1))",
+                "noteBkgColor": "hsl(120, 50%, 25.5%)",
+                "noteTextColor": "red-blue"
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(value["themeVariables"]["primaryColor"], "#123456");
+        assert_eq!(value["themeVariables"]["secondaryColor"], "rgb(1, 2, 3)");
+        assert_eq!(
+            value["themeVariables"]["tertiaryColor"],
+            Value::String(String::new())
+        );
+        assert_eq!(
+            value["themeVariables"]["noteBkgColor"],
+            "hsl(120, 50%, 25.5%)"
+        );
+        assert_eq!(
+            value["themeVariables"]["noteTextColor"],
+            Value::String(String::new())
+        );
     }
 
     #[test]

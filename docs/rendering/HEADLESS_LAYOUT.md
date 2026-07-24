@@ -6,10 +6,10 @@ unrelated semantic model.
 
 ## Public API
 
-Most callers should use `merman::render::HeadlessRenderer`:
+Most callers should use `merman::svg::HeadlessRenderer`:
 
 ```rust
-use merman::render::{HeadlessRenderer, RenderEnvironment};
+use merman::svg::{HeadlessRenderer, RenderEnvironment};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = HeadlessRenderer::new()
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 When one caller needs layout JSON and SVG from the same operation, use the consuming prepared stage:
 
 ```rust
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = HeadlessRenderer::new().with_diagram_id("layout-example");

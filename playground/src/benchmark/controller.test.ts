@@ -60,7 +60,8 @@ test("realm-cold runs deterministic balanced blocks with one fresh realm per sam
     report.samples.every(
       (sample) =>
         sample.realmCreation?.clockBoundary === "parent-before-sample" &&
-        sample.realmCreation.artifact.id === `benchmark-${sample.engine}`
+        sample.realmCreation.artifact.id ===
+          (sample.engine === "merman" ? "benchmark-merman" : "mermaid")
     )
   );
 });
@@ -333,7 +334,7 @@ function createHarness(
         creationEvidence: {
           artifact: {
             bytes: 17,
-            id: `benchmark-${engine}`,
+            id: engine === "merman" ? "benchmark-merman" : "mermaid",
             schemaVersion: 1,
             sha256: "a".repeat(64),
           },

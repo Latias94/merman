@@ -861,7 +861,7 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
         f"warm-up: {report['method']['warm_up_seconds']}s, "
         f"measurement: {report['method']['measurement_seconds']}s"
     )
-    lines.append("- `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`")
+    lines.append("- `merman`: `cargo bench -p merman --features svg --bench pipeline -- ...`")
     lines.append("- `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`")
     lines.append("- `mermaid-js`: warm `mermaid.render()` calls in one Puppeteer/Chromium process.")
     lines.append("")
@@ -1094,7 +1094,7 @@ def main(argv: list[str]) -> int:
         cwd=repo_root,
         bench_bin="pipeline",
         package="merman",
-        features="render",
+        features="svg",
         toolchain=None,
     )
     mmdr_list = list_criterion_benches(
@@ -1111,7 +1111,7 @@ def main(argv: list[str]) -> int:
         cwd=repo_root,
         bench_bin="pipeline",
         package="merman",
-        features="render",
+        features="svg",
         exact_benches=exact_benches,
         bench_list=merman_list,
         sample_size=args.sample_size,

@@ -4,10 +4,10 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
-import { MERMAN_ABI_VERSION } from "@mermanjs/web/editor";
 
 const root = path.resolve(import.meta.dirname, "..");
-const TEST_WORKER_PROTOCOL = 2;
+const TEST_WORKER_PROTOCOL = 3;
+const TEST_TRANSPORT_API_VERSION = 3;
 const TEST_LEGEND_DIGEST = "sha256:test-generated-token-descriptor";
 const TEST_LEGEND = Object.freeze({
   tokenTypes: Object.freeze(["string", "namespace"]),
@@ -56,9 +56,6 @@ function loadTypeScriptModule(relativePath, options = {}) {
         if (specifier.startsWith(".")) {
           const resolved = path.resolve(path.dirname(sourcePath), specifier);
           return load(path.extname(resolved) ? resolved : `${resolved}.ts`);
-        }
-        if (specifier === "@mermanjs/web/editor") {
-          return { MERMAN_ABI_VERSION };
         }
         throw new Error(
           `unexpected runtime import while testing ${relativePath}: ${specifier}`,
@@ -153,6 +150,8 @@ test("worker owns one native editor session across document updates and queries"
           ok: false,
           code: 1,
           code_name: "MERMAN_INVALID_ARGUMENT",
+          kind: "generic",
+          capability_id: null,
           message: "Rename target must be a valid Mermaid identifier.",
         };
       }
@@ -167,11 +166,32 @@ test("worker owns one native editor session across document updates and queries"
     },
   };
   const editorApi = {
-    MERMAN_ABI_VERSION,
     SEMANTIC_TOKEN_DESCRIPTOR_DIGEST: TEST_LEGEND_DIGEST,
     SEMANTIC_TOKEN_MODIFIER_LSP_NAMES: TEST_LEGEND.tokenModifiers,
     SEMANTIC_TOKEN_TYPE_LSP_NAMES: TEST_LEGEND.tokenTypes,
-    abiVersion: () => MERMAN_ABI_VERSION,
+    transportApiVersion: () => TEST_TRANSPORT_API_VERSION,
+    runtimeCatalog: () => ({
+      schema_version: 1,
+      transport_api_version: TEST_TRANSPORT_API_VERSION,
+      package_version: "test",
+      capabilities: {
+        capability_ids: ["analysis", "editor"],
+        output_ids: [],
+        operation_ids: ["analysis-json", "semantic-json"],
+        system_adapter_ids: [],
+        text_measurement: null,
+      },
+      registry: {
+        diagram_family_count: 35,
+      },
+      resources: {
+        schema_version: 1,
+        general_binding_default_profile: "interactive",
+        cli_default_profile: "trusted-native",
+        limits: [],
+        profiles: [],
+      },
+    }),
     async initMerman() {},
     editorSemanticTokenDescriptor: () => ({ digest: TEST_LEGEND_DIGEST }),
     createEditorSession(source, version, uri) {
@@ -183,7 +203,7 @@ test("worker owns one native editor session across document updates and queries"
   };
 
   loadTypeScriptModule("src/editor/merman-language.worker.ts", {
-    externalModules: { "@mermanjs/web/editor": editorApi },
+    externalModules: { "@mermanjs/web": editorApi },
     globals: { self: scope },
   });
 
@@ -841,7 +861,7 @@ async function initializeClient(worker, client) {
       protocol: TEST_WORKER_PROTOCOL,
       type: "ready",
       requestId: request.requestId,
-      nativeAbi: MERMAN_ABI_VERSION,
+      transportApiVersion: TEST_TRANSPORT_API_VERSION,
       editorSchema: 1,
       legendDigest: TEST_LEGEND_DIGEST,
       legend: TEST_LEGEND,

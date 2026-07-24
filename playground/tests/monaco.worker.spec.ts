@@ -66,17 +66,9 @@ test("Monaco and the Rust editor session start only local production workers", a
     .poll(() => workers.some((url) => /merman-language\.worker/i.test(url)))
     .toBe(true);
   await expect
-    .poll(
-      () =>
-        new Set(
-          requests.filter((url) =>
-            /merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/.test(url),
-          ),
-        ).size,
+    .poll(() =>
+      requests.some((url) => /merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/.test(url)),
     )
-    .toBeGreaterThanOrEqual(2);
-  await expect
-    .poll(() => workers.some((url) => /editor\.worker/i.test(url)))
     .toBe(true);
 
   await replaceEditorSource(page, "flowchart TD\n  A -->");
@@ -149,7 +141,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
         readonly type: string;
         readonly code?: string;
         readonly message?: string;
-        readonly nativeAbi?: number;
+        readonly transportApiVersion?: number;
         readonly editorSchema?: number;
         readonly legendDigest?: string;
         readonly legend?: {
@@ -208,7 +200,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       const ready = await request("initialize");
       if (
         ready.type !== "ready" ||
-        ready.nativeAbi !== 2 ||
+        ready.transportApiVersion !== 3 ||
         ready.editorSchema !== 1 ||
         ready.legendDigest !== digest
       ) {

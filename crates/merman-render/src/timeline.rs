@@ -335,7 +335,7 @@ fn expand_bounds_for_node_text(
     }
 }
 
-pub fn layout_timeline_diagram_typed(
+pub(crate) fn layout_timeline_diagram_typed(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,

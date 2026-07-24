@@ -1,4 +1,4 @@
-//! Generation of the cross-platform host text-measurement ABI contract.
+//! Generation of the cross-platform host text-measurement protocol contract.
 
 use crate::XtaskError;
 use serde::Deserialize;
@@ -7,11 +7,12 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DESCRIPTOR_PATH: &str = "abi/merman-v2.json";
-const ABI_SCHEMA_VERSION: u32 = 1;
-const ABI_VERSION: u32 = 2;
-const ABI_V2_OPERATION_COUNT: usize = 19;
-const ABI_V2_RESULT_KIND_COUNT: usize = 4;
+const DESCRIPTOR_PATH: &str = "abi/text-measurement-v1.json";
+const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
+const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
+const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;
+const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 19;
+const TEXT_MEASUREMENT_RESULT_KIND_COUNT: usize = 4;
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
@@ -27,16 +28,8 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
         ArtifactKind::FfiRust,
     ),
     (
-        "crates/merman-wasm/src/generated/abi.rs",
-        ArtifactKind::WasmRust,
-    ),
-    (
         "crates/merman-ffi/include/merman_text_measurement_abi.h",
         ArtifactKind::CHeader,
-    ),
-    (
-        "platforms/apple/Sources/Merman/Generated/TextMeasurementAbi.swift",
-        ArtifactKind::Swift,
     ),
     (
         "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementOperation.kt",
@@ -47,30 +40,21 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
         ArtifactKind::KotlinResultKinds,
     ),
     (
-        "platforms/flutter/lib/src/generated/text_measurement_abi.dart",
-        ArtifactKind::Dart,
-    ),
-    (
         "platforms/web/src/generated/text-measurement-abi.ts",
         ArtifactKind::TypeScript,
     ),
     (
-        "platforms/python/merman/src/merman/_abi.py",
+        "platforms/python/merman/src/merman/_text_measurement_protocol.py",
         ArtifactKind::Python,
     ),
 ];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct AbiDescriptor {
+struct TextMeasurementProtocolDescriptor {
     schema_version: u32,
-    abi_version: u32,
-    text_measurement: TextMeasurementDescriptor,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TextMeasurementDescriptor {
+    protocol_id: String,
+    protocol_version: u32,
     result_kinds: Vec<ResultKind>,
     operations: Vec<Operation>,
 }
@@ -100,28 +84,22 @@ enum ArtifactKind {
     RenderRust,
     UniffiRust,
     FfiRust,
-    WasmRust,
     CHeader,
-    Swift,
     KotlinOperations,
     KotlinResultKinds,
-    Dart,
     TypeScript,
     Python,
 }
 
 impl ArtifactKind {
-    fn render(self, descriptor: &AbiDescriptor) -> String {
+    fn render(self, descriptor: &TextMeasurementProtocolDescriptor) -> String {
         match self {
             Self::RenderRust => render_render_rust(descriptor),
             Self::UniffiRust => render_uniffi_rust(descriptor),
             Self::FfiRust => render_ffi_rust(descriptor),
-            Self::WasmRust => render_wasm_rust(descriptor),
             Self::CHeader => render_c_header(descriptor),
-            Self::Swift => render_swift(descriptor),
             Self::KotlinOperations => render_kotlin_operations(descriptor),
             Self::KotlinResultKinds => render_kotlin_result_kinds(descriptor),
-            Self::Dart => render_dart(descriptor),
             Self::TypeScript => render_typescript(descriptor),
             Self::Python => render_python(descriptor),
         }
@@ -129,17 +107,18 @@ impl ArtifactKind {
 }
 
 fn descriptor_error(message: impl Into<String>) -> XtaskError {
-    XtaskError::TextMeasurementAbi(message.into())
+    XtaskError::TextMeasurementProtocol(message.into())
 }
 
-fn read_descriptor(path: &Path) -> Result<AbiDescriptor, XtaskError> {
+fn read_descriptor(path: &Path) -> Result<TextMeasurementProtocolDescriptor, XtaskError> {
     let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
         source,
     })?;
-    let descriptor: AbiDescriptor = serde_json::from_str(&text).map_err(|error| {
-        descriptor_error(format!("failed to parse {}: {error}", path.display()))
-    })?;
+    let descriptor: TextMeasurementProtocolDescriptor =
+        serde_json::from_str(&text).map_err(|error| {
+            descriptor_error(format!("failed to parse {}: {error}", path.display()))
+        })?;
     validate_descriptor(&descriptor)?;
     Ok(descriptor)
 }
@@ -215,65 +194,66 @@ fn validate_contiguous_codes(
 ) -> Result<(), XtaskError> {
     let codes = values.into_iter().collect::<BTreeSet<_>>();
     let expected = (0..expected_count)
-        .map(|code| i32::try_from(code).expect("ABI descriptor count fits i32"))
+        .map(|code| i32::try_from(code).expect("protocol descriptor count fits i32"))
         .collect::<BTreeSet<_>>();
     if codes == expected {
         Ok(())
     } else {
         Err(descriptor_error(format!(
-            "{context} codes must be the contiguous ABI range 0..{}; found {codes:?}",
+            "{context} codes must be the contiguous protocol range 0..{}; found {codes:?}",
             expected_count - 1
         )))
     }
 }
 
-fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
-    if descriptor.schema_version != ABI_SCHEMA_VERSION {
+fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result<(), XtaskError> {
+    if descriptor.schema_version != TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION {
         return Err(descriptor_error(format!(
-            "unsupported text-measurement descriptor schema {}; expected {ABI_SCHEMA_VERSION}",
+            "unsupported text-measurement descriptor schema {}; expected {TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION}",
             descriptor.schema_version
         )));
     }
-    if descriptor.abi_version != ABI_VERSION {
+    if descriptor.protocol_id != TEXT_MEASUREMENT_PROTOCOL_ID {
         return Err(descriptor_error(format!(
-            "text-measurement descriptor targets ABI {}; this branch must remain on ABI {ABI_VERSION}",
-            descriptor.abi_version
+            "text-measurement descriptor protocol id `{}`; expected `{TEXT_MEASUREMENT_PROTOCOL_ID}`",
+            descriptor.protocol_id
         )));
     }
-    if descriptor.text_measurement.operations.len() != ABI_V2_OPERATION_COUNT {
+    if descriptor.protocol_version != TEXT_MEASUREMENT_PROTOCOL_VERSION {
         return Err(descriptor_error(format!(
-            "ABI {ABI_VERSION} requires exactly {ABI_V2_OPERATION_COUNT} text-measurement operations; found {}",
-            descriptor.text_measurement.operations.len()
+            "text-measurement descriptor protocol version {}; expected {TEXT_MEASUREMENT_PROTOCOL_VERSION}",
+            descriptor.protocol_version
         )));
     }
-    if descriptor.text_measurement.result_kinds.len() != ABI_V2_RESULT_KIND_COUNT {
+    if descriptor.operations.len() != TEXT_MEASUREMENT_OPERATION_COUNT {
         return Err(descriptor_error(format!(
-            "ABI {ABI_VERSION} requires exactly {ABI_V2_RESULT_KIND_COUNT} text-measurement result kinds; found {}",
-            descriptor.text_measurement.result_kinds.len()
+            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_OPERATION_COUNT} operations; found {}",
+            descriptor.operations.len()
+        )));
+    }
+    if descriptor.result_kinds.len() != TEXT_MEASUREMENT_RESULT_KIND_COUNT {
+        return Err(descriptor_error(format!(
+            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_RESULT_KIND_COUNT} result kinds; found {}",
+            descriptor.result_kinds.len()
         )));
     }
 
-    for kind in &descriptor.text_measurement.result_kinds {
+    for kind in &descriptor.result_kinds {
         validate_identifier(&kind.id, "result kind")?;
         validate_external_name(&kind.external_name, "result kind")?;
         validate_rust_variant(&kind.rust_variant, "result kind")?;
     }
-    for operation in &descriptor.text_measurement.operations {
+    for operation in &descriptor.operations {
         validate_identifier(&operation.id, "operation")?;
         validate_external_name(&operation.external_name, "operation")?;
         validate_rust_variant(&operation.rust_variant, "operation")?;
     }
     validate_unique(
-        descriptor
-            .text_measurement
-            .result_kinds
-            .iter()
-            .map(|kind| kind.id.as_str()),
+        descriptor.result_kinds.iter().map(|kind| kind.id.as_str()),
         "result-kind id",
     )?;
     validate_unique(
         descriptor
-            .text_measurement
             .result_kinds
             .iter()
             .map(|kind| kind.rust_variant.as_str()),
@@ -281,7 +261,6 @@ fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
     )?;
     validate_unique(
         descriptor
-            .text_measurement
             .result_kinds
             .iter()
             .map(|kind| kind.external_name.as_str()),
@@ -289,7 +268,6 @@ fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
     )?;
     validate_unique(
         descriptor
-            .text_measurement
             .operations
             .iter()
             .map(|operation| operation.id.as_str()),
@@ -297,7 +275,6 @@ fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
     )?;
     validate_unique(
         descriptor
-            .text_measurement
             .operations
             .iter()
             .map(|operation| operation.rust_variant.as_str()),
@@ -305,38 +282,28 @@ fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
     )?;
     validate_unique(
         descriptor
-            .text_measurement
             .operations
             .iter()
             .map(|operation| operation.external_name.as_str()),
         "operation external name",
     )?;
     validate_contiguous_codes(
-        descriptor
-            .text_measurement
-            .result_kinds
-            .iter()
-            .map(|kind| kind.code),
-        ABI_V2_RESULT_KIND_COUNT,
+        descriptor.result_kinds.iter().map(|kind| kind.code),
+        TEXT_MEASUREMENT_RESULT_KIND_COUNT,
         "result-kind",
     )?;
     validate_contiguous_codes(
-        descriptor
-            .text_measurement
-            .operations
-            .iter()
-            .map(|operation| operation.code),
-        ABI_V2_OPERATION_COUNT,
+        descriptor.operations.iter().map(|operation| operation.code),
+        TEXT_MEASUREMENT_OPERATION_COUNT,
         "operation",
     )?;
 
     let result_kinds = descriptor
-        .text_measurement
         .result_kinds
         .iter()
         .map(|kind| (kind.id.as_str(), kind))
         .collect::<BTreeMap<_, _>>();
-    for operation in &descriptor.text_measurement.operations {
+    for operation in &descriptor.operations {
         let Some(result_kind) = result_kinds.get(operation.result_kind.as_str()) else {
             return Err(descriptor_error(format!(
                 "operation `{}` references unknown result kind `{}`",
@@ -353,29 +320,20 @@ fn validate_descriptor(descriptor: &AbiDescriptor) -> Result<(), XtaskError> {
     Ok(())
 }
 
-fn sorted_result_kinds(descriptor: &AbiDescriptor) -> Vec<&ResultKind> {
-    let mut values = descriptor
-        .text_measurement
-        .result_kinds
-        .iter()
-        .collect::<Vec<_>>();
+fn sorted_result_kinds(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<&ResultKind> {
+    let mut values = descriptor.result_kinds.iter().collect::<Vec<_>>();
     values.sort_by_key(|kind| kind.code);
     values
 }
 
-fn sorted_operations(descriptor: &AbiDescriptor) -> Vec<&Operation> {
-    let mut values = descriptor
-        .text_measurement
-        .operations
-        .iter()
-        .collect::<Vec<_>>();
+fn sorted_operations(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<&Operation> {
+    let mut values = descriptor.operations.iter().collect::<Vec<_>>();
     values.sort_by_key(|operation| operation.code);
     values
 }
 
-fn result_kind<'a>(descriptor: &'a AbiDescriptor, id: &str) -> &'a ResultKind {
+fn result_kind<'a>(descriptor: &'a TextMeasurementProtocolDescriptor, id: &str) -> &'a ResultKind {
     descriptor
-        .text_measurement
         .result_kinds
         .iter()
         .find(|kind| kind.id == id)
@@ -386,33 +344,20 @@ fn upper_snake(id: &str) -> String {
     id.to_ascii_uppercase()
 }
 
-fn rust_lower_camel(variant: &str) -> String {
-    if let Some(suffix) = variant.strip_prefix("BBox") {
-        return format!("bbox{suffix}");
-    }
-    let mut chars = variant.chars();
-    let mut output = String::new();
-    if let Some(first) = chars.next() {
-        output.push(first.to_ascii_lowercase());
-        output.extend(chars);
-    }
-    output
-}
-
 fn generated_preamble(comment: &str) -> String {
     format!(
-        "{comment} This file is @generated by `cargo run -p xtask -- gen-text-measurement-abi`.\n{comment} Do not edit it directly; edit `{DESCRIPTOR_PATH}` instead.\n\n"
+        "{comment} This file is @generated by `cargo run -p xtask -- gen-text-measurement-protocol`.\n{comment} Do not edit it directly; edit `{DESCRIPTOR_PATH}` instead.\n\n"
     )
 }
 
-fn render_render_rust(descriptor: &AbiDescriptor) -> String {
+fn render_render_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
         output,
-        "pub const TEXT_MEASUREMENT_ABI_VERSION: u32 = {};\n",
-        descriptor.abi_version
+        "pub const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = {};\n",
+        descriptor.protocol_version
     )
     .unwrap();
     output.push_str("#[repr(i32)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\npub enum TextMeasurementResultKind {\n");
@@ -475,19 +420,19 @@ fn render_render_rust(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_uniffi_rust(descriptor: &AbiDescriptor) -> String {
+fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
         output,
-        "pub const MERMAN_UNIFFI_ABI_VERSION: u32 = {};\n",
-        descriptor.abi_version
+        "pub const MERMAN_UNIFFI_TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = {};\n",
+        descriptor.protocol_version
     )
     .unwrap();
     writeln!(
         output,
-        "#[doc(hidden)]\npub const MERMAN_UNIFFI_PYTHON_ABI_MODULE: &str = {:?};\n",
+        "#[doc(hidden)]\npub const MERMAN_UNIFFI_PYTHON_TEXT_MEASUREMENT_PROTOCOL_MODULE: &str = {:?};\n",
         render_python(descriptor)
     )
     .unwrap();
@@ -499,7 +444,7 @@ fn render_uniffi_rust(descriptor: &AbiDescriptor) -> String {
     for kind in &kinds {
         writeln!(output, "    {},", kind.rust_variant).unwrap();
     }
-    output.push_str("}\n\n#[cfg(feature = \"render\")]\nfn uniffi_measurement_operation(\n    operation: merman_bindings_core::TextMeasurementOperation,\n) -> MermanTextMeasurementOperation {\n    match operation {\n");
+    output.push_str("}\n\n#[cfg(feature = \"svg\")]\nfn uniffi_measurement_operation(\n    operation: merman_bindings_core::TextMeasurementOperation,\n) -> MermanTextMeasurementOperation {\n    match operation {\n");
     for operation in &operations {
         writeln!(
             output,
@@ -508,7 +453,7 @@ fn render_uniffi_rust(descriptor: &AbiDescriptor) -> String {
         )
         .unwrap();
     }
-    output.push_str("    }\n}\n\n#[cfg(feature = \"render\")]\nfn uniffi_result_kind(\n    kind: MermanTextMeasurementResultKind,\n) -> merman_bindings_core::HostTextMeasurementResultKind {\n    match kind {\n");
+    output.push_str("    }\n}\n\n#[cfg(feature = \"svg\")]\nfn uniffi_result_kind(\n    kind: MermanTextMeasurementResultKind,\n) -> merman_bindings_core::HostTextMeasurementResultKind {\n    match kind {\n");
     for kind in &kinds {
         writeln!(
             output,
@@ -521,14 +466,14 @@ fn render_uniffi_rust(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_ffi_rust(descriptor: &AbiDescriptor) -> String {
+fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
         output,
-        "pub const MERMAN_ABI_VERSION: u32 = {};\n",
-        descriptor.abi_version
+        "pub const MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = {};\n",
+        descriptor.protocol_version
     )
     .unwrap();
     for operation in &operations {
@@ -582,18 +527,7 @@ fn render_ffi_rust(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_wasm_rust(descriptor: &AbiDescriptor) -> String {
-    let mut output = generated_preamble("//");
-    writeln!(
-        output,
-        "const WASM_ABI_VERSION: u32 = {};",
-        descriptor.abi_version
-    )
-    .unwrap();
-    output
-}
-
-fn render_c_header(descriptor: &AbiDescriptor) -> String {
+fn render_c_header(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
@@ -602,8 +536,8 @@ fn render_c_header(descriptor: &AbiDescriptor) -> String {
     );
     writeln!(
         output,
-        "#define MERMAN_ABI_VERSION {}\n",
-        descriptor.abi_version
+        "#define MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION {}\n",
+        descriptor.protocol_version
     )
     .unwrap();
     output.push_str("enum {\n");
@@ -638,109 +572,14 @@ fn render_c_header(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_swift(descriptor: &AbiDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
-    let operations = sorted_operations(descriptor);
-    let mut output = generated_preamble("//");
-    output.push_str("import MermanFFI\n\n");
-    writeln!(
-        output,
-        "let mermanGeneratedAbiVersion: UInt32 = {}\n",
-        descriptor.abi_version
-    )
-    .unwrap();
-    output.push_str("/// Shape required by a handled host text-measurement result.\npublic enum MermanTextMeasurementResultKind: Int32, CaseIterable, Sendable {\n");
-    for kind in &kinds {
-        writeln!(
-            output,
-            "    case {} = {}",
-            rust_lower_camel(&kind.rust_variant),
-            kind.code
-        )
-        .unwrap();
-    }
-    output.push_str("\n    public var externalName: String {\n        switch self {\n");
-    for kind in &kinds {
-        writeln!(
-            output,
-            "        case .{}: {:?}",
-            rust_lower_camel(&kind.rust_variant),
-            kind.external_name
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n\n    var cAbiRawValue: Int {\n        switch self {\n");
-    for kind in &kinds {
-        writeln!(
-            output,
-            "        case .{}: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{}",
-            rust_lower_camel(&kind.rust_variant),
-            upper_snake(&kind.id)
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n}\n\n/// Stable C ABI operation code for one host text-measurement primitive.\npublic enum MermanTextMeasurementOperation: Int32, CaseIterable, Sendable {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "    case {} = {}",
-            rust_lower_camel(&operation.rust_variant),
-            operation.code
-        )
-        .unwrap();
-    }
-    output.push_str("\n    public var externalName: String {\n        switch self {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "        case .{}: {:?}",
-            rust_lower_camel(&operation.rust_variant),
-            operation.external_name
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n\n    /// Result shape accepted by this operation.\n    public var requiredResultKind: MermanTextMeasurementResultKind {\n        switch self {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "        case .{}: .{}",
-            rust_lower_camel(&operation.rust_variant),
-            rust_lower_camel(&result_kind(descriptor, &operation.result_kind).rust_variant)
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n\n    /// Whether this operation accepts a finite negative length.\n    public var acceptsSignedLength: Bool {\n        switch self {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "        case .{}: {}",
-            rust_lower_camel(&operation.rust_variant),
-            operation.accepts_signed_length
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n\n    var cAbiRawValue: Int {\n        switch self {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "        case .{}: MERMAN_TEXT_MEASUREMENT_OPERATION_{}",
-            rust_lower_camel(&operation.rust_variant),
-            upper_snake(&operation.id)
-        )
-        .unwrap();
-    }
-    output.push_str("        }\n    }\n}\n");
-    output
-}
-
-fn render_kotlin_operations(descriptor: &AbiDescriptor) -> String {
+fn render_kotlin_operations(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     output.push_str("package io.merman\n\nobject MermanTextMeasurementOperation {\n");
     writeln!(
         output,
-        "    const val ABI_VERSION: Int = {}",
-        descriptor.abi_version
+        "    const val PROTOCOL_VERSION: Int = {}",
+        descriptor.protocol_version
     )
     .unwrap();
     for operation in &operations {
@@ -790,7 +629,7 @@ fn render_kotlin_operations(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_kotlin_result_kinds(descriptor: &AbiDescriptor) -> String {
+fn render_kotlin_result_kinds(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let mut output = generated_preamble("//");
     output.push_str("package io.merman\n\nobject MermanTextMeasurementResultKind {\n");
@@ -821,52 +660,14 @@ fn render_kotlin_result_kinds(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_dart(descriptor: &AbiDescriptor) -> String {
+fn render_typescript(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
         output,
-        "const int mermanAbiVersion = {};\n",
-        descriptor.abi_version
-    )
-    .unwrap();
-    output.push_str("/// Shape of a handled host text-measurement result.\nenum MermanTextMeasurementResultKind {\n");
-    for kind in &kinds {
-        writeln!(
-            output,
-            "  {}({}, {:?}),",
-            rust_lower_camel(&kind.rust_variant),
-            kind.code,
-            kind.external_name
-        )
-        .unwrap();
-    }
-    output.push_str("  ;\n\n  const MermanTextMeasurementResultKind(this.code, this.externalName);\n\n  final int code;\n  final String externalName;\n}\n\n/// Exact text-measurement primitive requested by the native renderer.\nenum MermanTextMeasurementOperation {\n");
-    for operation in &operations {
-        writeln!(
-            output,
-            "  {}(\n    {},\n    {:?},\n    MermanTextMeasurementResultKind.{},\n    {},\n  ),",
-            rust_lower_camel(&operation.rust_variant),
-            operation.code,
-            operation.external_name,
-            rust_lower_camel(&result_kind(descriptor, &operation.result_kind).rust_variant),
-            operation.accepts_signed_length
-        )
-        .unwrap();
-    }
-    output.push_str("  ;\n\n  const MermanTextMeasurementOperation(\n    this.code,\n    this.externalName,\n    this.requiredResultKind,\n    this.acceptsSignedLength,\n  );\n\n  final int code;\n  final String externalName;\n  final MermanTextMeasurementResultKind requiredResultKind;\n  final bool acceptsSignedLength;\n\n  static MermanTextMeasurementOperation? fromCode(int code) {\n    for (final value in values) {\n      if (value.code == code) {\n        return value;\n      }\n    }\n    return null;\n  }\n}\n");
-    output
-}
-
-fn render_typescript(descriptor: &AbiDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
-    let operations = sorted_operations(descriptor);
-    let mut output = generated_preamble("//");
-    writeln!(
-        output,
-        "export const MERMAN_ABI_VERSION = {} as const;\n",
-        descriptor.abi_version
+        "export const MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = {} as const;\n",
+        descriptor.protocol_version
     )
     .unwrap();
     output.push_str("export const HOST_TEXT_MEASUREMENT_RESULT_KINDS = [\n");
@@ -894,9 +695,14 @@ fn render_typescript(descriptor: &AbiDescriptor) -> String {
     output
 }
 
-fn render_python(descriptor: &AbiDescriptor) -> String {
+fn render_python(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let mut output = generated_preamble("#");
-    writeln!(output, "ABI_VERSION = {}\n", descriptor.abi_version).unwrap();
+    writeln!(
+        output,
+        "TEXT_MEASUREMENT_PROTOCOL_VERSION = {}\n",
+        descriptor.protocol_version
+    )
+    .unwrap();
     output.push_str("TEXT_MEASUREMENT_RESULT_KINDS = (\n");
     for kind in sorted_result_kinds(descriptor) {
         writeln!(output, "    ({}, {:?}),", kind.code, kind.external_name).unwrap();
@@ -920,24 +726,24 @@ fn render_python(descriptor: &AbiDescriptor) -> String {
     }
     output.push_str(")\n\n");
     output.push_str(
-        "class AbiVersionMismatch(RuntimeError):\n\
-         \x20   \"\"\"Raised when a loaded native library does not implement the packaged ABI.\"\"\"\n\
+        "class TextMeasurementProtocolVersionMismatch(RuntimeError):\n\
+         \x20   \"\"\"Raised when a host text-measurement protocol version is incompatible.\"\"\"\n\
          \n\
          \x20   def __init__(self, actual: int) -> None:\n\
-         \x20       self.expected = ABI_VERSION\n\
+         \x20       self.expected = TEXT_MEASUREMENT_PROTOCOL_VERSION\n\
          \x20       self.actual = actual\n\
-         \x20       super().__init__(f\"expected ABI {self.expected}, got {actual}\")\n\
+         \x20       super().__init__(f\"expected text-measurement protocol {self.expected}, got {actual}\")\n\
          \n\
          \n\
-         def require_abi_version(actual: int) -> None:\n\
-         \x20   \"\"\"Reject a native library whose ABI does not match this package.\"\"\"\n\
-         \x20   if actual != ABI_VERSION:\n\
-         \x20       raise AbiVersionMismatch(actual)\n",
+         def require_text_measurement_protocol_version(actual: int) -> None:\n\
+         \x20   \"\"\"Reject an incompatible host text-measurement protocol.\"\"\"\n\
+         \x20   if actual != TEXT_MEASUREMENT_PROTOCOL_VERSION:\n\
+         \x20       raise TextMeasurementProtocolVersionMismatch(actual)\n",
     );
     output
 }
 
-fn generated_artifacts(descriptor: &AbiDescriptor) -> Vec<(PathBuf, String)> {
+fn generated_artifacts(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<(PathBuf, String)> {
     GENERATED_OUTPUTS
         .iter()
         .map(|(path, kind)| (PathBuf::from(path), kind.render(descriptor)))
@@ -957,7 +763,7 @@ fn write_generated_artifact(path: &Path, contents: &str) -> Result<(), XtaskErro
     })
 }
 
-pub(crate) fn gen_text_measurement_abi(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn gen_text_measurement_protocol(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
@@ -969,7 +775,7 @@ pub(crate) fn gen_text_measurement_abi(args: Vec<String>) -> Result<(), XtaskErr
     Ok(())
 }
 
-pub(crate) fn verify_text_measurement_abi_artifacts() -> Result<Option<String>, XtaskError> {
+pub(crate) fn verify_text_measurement_protocol_artifacts() -> Result<Option<String>, XtaskError> {
     let root = crate::cmd::workspace_root();
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     let mut drift = Vec::new();
@@ -987,17 +793,17 @@ pub(crate) fn verify_text_measurement_abi_artifacts() -> Result<Option<String>, 
         Ok(None)
     } else {
         Ok(Some(format!(
-            "text-measurement ABI projections drifted: {}; regenerate with `cargo run -p xtask -- gen-text-measurement-abi`",
+            "text-measurement protocol projections drifted: {}; regenerate with `cargo run -p xtask -- gen-text-measurement-protocol`",
             drift.join(", ")
         )))
     }
 }
 
-pub(crate) fn verify_text_measurement_abi(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn verify_text_measurement_protocol(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
-    match verify_text_measurement_abi_artifacts()? {
+    match verify_text_measurement_protocol_artifacts()? {
         Some(message) => Err(XtaskError::VerifyFailed(message)),
         None => Ok(()),
     }
@@ -1007,18 +813,19 @@ pub(crate) fn verify_text_measurement_abi(args: Vec<String>) -> Result<(), Xtask
 mod tests {
     use super::*;
 
-    fn committed_descriptor() -> AbiDescriptor {
+    fn committed_descriptor() -> TextMeasurementProtocolDescriptor {
         read_descriptor(&crate::cmd::workspace_root().join(DESCRIPTOR_PATH))
-            .expect("committed ABI descriptor")
+            .expect("committed text-measurement protocol descriptor")
     }
 
     #[test]
-    fn descriptor_is_complete_unique_and_abi_v2_stable() {
+    fn descriptor_is_complete_unique_and_protocol_v1_stable() {
         let descriptor = committed_descriptor();
         assert_eq!(descriptor.schema_version, 1);
-        assert_eq!(descriptor.abi_version, 2);
-        assert_eq!(descriptor.text_measurement.operations.len(), 19);
-        assert_eq!(descriptor.text_measurement.result_kinds.len(), 4);
+        assert_eq!(descriptor.protocol_id, TEXT_MEASUREMENT_PROTOCOL_ID);
+        assert_eq!(descriptor.protocol_version, 1);
+        assert_eq!(descriptor.operations.len(), 19);
+        assert_eq!(descriptor.result_kinds.len(), 4);
         assert_eq!(
             sorted_operations(&descriptor)
                 .into_iter()
@@ -1026,32 +833,44 @@ mod tests {
                 .collect::<Vec<_>>(),
             (0..19).collect::<Vec<_>>()
         );
+        assert_eq!(
+            sorted_result_kinds(&descriptor)
+                .into_iter()
+                .map(|result_kind| result_kind.code)
+                .collect::<Vec<_>>(),
+            (0..4).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn validator_rejects_duplicates_gaps_and_unknown_result_shapes() {
+        let mut wrong_protocol_id = committed_descriptor();
+        wrong_protocol_id.protocol_id = "other".to_string();
+        assert!(validate_descriptor(&wrong_protocol_id).is_err());
+
+        let mut wrong_protocol_version = committed_descriptor();
+        wrong_protocol_version.protocol_version = 2;
+        assert!(validate_descriptor(&wrong_protocol_version).is_err());
+
         let mut duplicate = committed_descriptor();
-        duplicate.text_measurement.operations[1].id =
-            duplicate.text_measurement.operations[0].id.clone();
+        duplicate.operations[1].id = duplicate.operations[0].id.clone();
         assert!(validate_descriptor(&duplicate).is_err());
 
         let mut duplicate_external_name = committed_descriptor();
-        duplicate_external_name.text_measurement.operations[1].external_name =
-            duplicate_external_name.text_measurement.operations[0]
-                .external_name
-                .clone();
+        duplicate_external_name.operations[1].external_name =
+            duplicate_external_name.operations[0].external_name.clone();
         assert!(validate_descriptor(&duplicate_external_name).is_err());
 
         let mut gap = committed_descriptor();
-        gap.text_measurement.operations[18].code = 19;
+        gap.operations[18].code = 19;
         assert!(validate_descriptor(&gap).is_err());
 
         let mut unknown = committed_descriptor();
-        unknown.text_measurement.operations[0].result_kind = "missing".to_string();
+        unknown.operations[0].result_kind = "missing".to_string();
         assert!(validate_descriptor(&unknown).is_err());
 
         let mut invalid_signed = committed_descriptor();
-        invalid_signed.text_measurement.operations[0].accepts_signed_length = true;
+        invalid_signed.operations[0].accepts_signed_length = true;
         assert!(validate_descriptor(&invalid_signed).is_err());
     }
 
@@ -1066,9 +885,7 @@ mod tests {
                 if matches!(
                     kind,
                     ArtifactKind::RenderRust
-                        | ArtifactKind::Swift
                         | ArtifactKind::KotlinOperations
-                        | ArtifactKind::Dart
                         | ArtifactKind::TypeScript
                         | ArtifactKind::Python
                 ) {
@@ -1095,20 +912,32 @@ mod tests {
     }
 
     #[test]
-    fn platform_identifier_projection_preserves_existing_bbox_casing() {
+    fn text_measurement_projections_do_not_define_a_native_abi() {
         let descriptor = committed_descriptor();
-        let swift = ArtifactKind::Swift.render(&descriptor);
-        let dart = ArtifactKind::Dart.render(&descriptor);
-        for identifier in ["bboxX", "titleBBoxX", "createTextBBoxYOffset"] {
-            assert!(swift.contains(identifier), "Swift omitted `{identifier}`");
-            assert!(dart.contains(identifier), "Dart omitted `{identifier}`");
+        let ffi = ArtifactKind::FfiRust.render(&descriptor);
+        let c_header = ArtifactKind::CHeader.render(&descriptor);
+        let typescript = ArtifactKind::TypeScript.render(&descriptor);
+        let python = ArtifactKind::Python.render(&descriptor);
+
+        for projection in [&ffi, &c_header, &typescript, &python] {
+            assert!(projection.contains("TEXT_MEASUREMENT_PROTOCOL_VERSION"));
+            assert!(!projection.contains("MERMAN_ABI_VERSION"));
+            assert!(!projection.contains("ABI_VERSION ="));
         }
-        assert!(!swift.contains("titleBboxX"));
-        assert!(!dart.contains("titleBboxX"));
+        assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION"));
+        assert!(c_header.contains("MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION"));
+        assert!(typescript.contains("MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION"));
+        assert!(python.contains("require_text_measurement_protocol_version"));
+        assert!(
+            !GENERATED_OUTPUTS
+                .iter()
+                .any(|(path, _)| path.ends_with("merman-wasm/src/generated/abi.rs")),
+            "the native WASM ABI must have its own descriptor and generator"
+        );
     }
 
     #[test]
     fn committed_generated_artifacts_have_no_drift() {
-        assert_eq!(verify_text_measurement_abi_artifacts().unwrap(), None);
+        assert_eq!(verify_text_measurement_protocol_artifacts().unwrap(), None);
     }
 }

@@ -25,7 +25,7 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 | `parse_mermaid` | Semantic JSON, typed render model selection, and lenient recovery | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
 | `render_mermaid` | Strict parse, layout, SVG render, and `resvg-safe` output | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
 | `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
-| `ffi_api` | C ABI status, buffer ownership, reusable engine calls, and host text-measure callback handling | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
+| `ffi_api` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
 
 `ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
 options, document URI, and source bytes can evolve independently:

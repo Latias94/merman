@@ -1,19 +1,19 @@
 /// <reference lib="webworker" />
 
 import {
-  abiVersion,
   createEditorSession,
   editorSemanticTokenDescriptor,
   initMerman,
+  runtimeCatalog,
   SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
   SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
   SEMANTIC_TOKEN_TYPE_LSP_NAMES,
+  transportApiVersion,
   type BrowserEditorSession,
-} from "@mermanjs/web/editor";
+} from "@mermanjs/web";
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
-  MERMAN_ABI_VERSION,
   type EditorDocumentSnapshot,
   type EditorWorkerQuery,
   type EditorWorkerRequest,
@@ -31,6 +31,7 @@ let document: EditorDocumentIdentity | null = null;
 let editorSession: BrowserEditorSession | null = null;
 let initialized = false;
 let disposed = false;
+let workerTransportApiVersion: number | null = null;
 
 scope.addEventListener("message", (event: MessageEvent<unknown>) => {
   const request = parseRequest(event.data);
@@ -101,11 +102,25 @@ async function dispatch(request: EditorWorkerRequest): Promise<void> {
 async function initialize(requestId: number): Promise<void> {
   if (!initialized) {
     await initMerman();
-    const nativeAbi = abiVersion();
-    if (nativeAbi !== MERMAN_ABI_VERSION) {
+    const transportVersion = transportApiVersion();
+    if (!Number.isSafeInteger(transportVersion) || transportVersion < 1) {
       throw new WorkerStateError(
         "PROTOCOL_MISMATCH",
-        `Merman native ABI ${nativeAbi} does not match ${MERMAN_ABI_VERSION}.`
+        "Merman returned an invalid Web transport API version."
+      );
+    }
+    const catalog = runtimeCatalog();
+    const capabilities = catalog.capabilities;
+    if (catalog.transport_api_version !== transportVersion) {
+      throw new WorkerStateError(
+        "PROTOCOL_MISMATCH",
+        "Merman Web runtime transport API does not match its runtime catalog."
+      );
+    }
+    if (!capabilities.capability_ids.includes("editor")) {
+      throw new WorkerStateError(
+        "PROTOCOL_MISMATCH",
+        "Merman editor worker was loaded without the editor capability."
       );
     }
     const descriptor = editorSemanticTokenDescriptor();
@@ -115,13 +130,20 @@ async function initialize(requestId: number): Promise<void> {
         `Merman editor legend ${descriptor.digest} does not match ${SEMANTIC_TOKEN_DESCRIPTOR_DIGEST}.`
       );
     }
+    workerTransportApiVersion = transportVersion;
     initialized = true;
+  }
+  if (workerTransportApiVersion === null) {
+    throw new WorkerStateError(
+      "INVALID_STATE",
+      "Editor worker has no initialized Web transport contract."
+    );
   }
   post({
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "ready",
     requestId,
-    nativeAbi: MERMAN_ABI_VERSION,
+    transportApiVersion: workerTransportApiVersion,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
     legend: {

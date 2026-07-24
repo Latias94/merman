@@ -1,11 +1,11 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
-use merman_render::eventmodeling::layout_eventmodeling_diagram_typed;
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
+use merman_render::model::EventModelingDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 #[test]
@@ -74,17 +74,14 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::EventModeling(model) = parsed.model() else {
-        panic!("expected eventmodeling render model");
-    };
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout = layout_eventmodeling_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact
+        .layout_json()
+        .expect("serialize EventModeling layout");
+    let layout: EventModelingDiagramLayout =
+        serde_json::from_value(projection["layout"]["EventModelingDiagram"].clone())
+            .expect("EventModeling layout projection");
 
     assert_close(layout.total_width, 1_157.666_666_666_666_7, 1.0);
     assert_close(layout.boxes[0].width, 134.0, 2.0);

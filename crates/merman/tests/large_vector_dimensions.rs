@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 const HUGE_VECTOR_SOURCE: &str = r#"---
 config:
@@ -14,7 +14,7 @@ xychart-beta
   line [1, 9]
 "#;
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 const EXTREME_VECTOR_SOURCE: &str = r#"---
 config:
   xyChart:
@@ -49,11 +49,11 @@ fn huge_mermaid_dimensions_remain_compact_vector_svg() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(all(feature = "pdf", feature = "png"))]
 fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
-    use merman::render::{
+    use merman::svg::{
         SvgPipeline,
-        raster::{DEFAULT_MAX_RASTER_PIXELS, RasterOptions, svg_raster_plan},
+        export::{DEFAULT_MAX_RASTER_PIXELS, RasterOptions, svg_raster_plan},
     };
 
     let renderer = HeadlessRenderer::new();
@@ -86,11 +86,11 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn raster_limits_apply_before_integer_encoder_dimensions() {
-    use merman::render::{
+    use merman::svg::{
         SvgPipeline,
-        raster::{RasterOptions, RasterSizeLimit, svg_raster_plan},
+        export::{RasterOptions, RasterSizeLimit, svg_raster_plan},
     };
 
     let svg = HeadlessRenderer::new()

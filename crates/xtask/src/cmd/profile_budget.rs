@@ -1,9 +1,14 @@
-use super::wasm_module_surface::{
-    LoadedWasmModule, WasmExport, WasmImport, WasmModuleLoadError, WasmSurfaceProfile,
+use super::{
+    artifact_profiles::{WasmArtifactProfile, load_exact_wasm_artifact_profile},
+    wasm_module_surface::{
+        LoadedWasmModule, WasmExport, WasmImport, WasmModuleLoadError, WasmSurfaceProfile,
+    },
 };
 use crate::XtaskError;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+const TYPST_ADMITTED_MEASURED_CRATES: &[&str] = &["json5", "lol_html", "url"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Profile {
@@ -49,12 +54,23 @@ struct ProfileBudgetOptions {
     profile: Option<Profile>,
     wasm_file: Option<PathBuf>,
     tree_file: Option<PathBuf>,
+    artifact_profile: Option<String>,
     package: Option<String>,
     target: Option<String>,
     no_default_features: bool,
     features: Option<String>,
     depth: Option<usize>,
     extra_forbidden: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CargoTreeInvocation {
+    package: String,
+    manifest_path: Option<PathBuf>,
+    target: Option<String>,
+    no_default_features: bool,
+    features: Option<String>,
+    depth: Option<usize>,
 }
 
 pub(crate) fn profile_budget(args: Vec<String>) -> Result<(), XtaskError> {
@@ -74,9 +90,10 @@ pub(crate) fn profile_budget(args: Vec<String>) -> Result<(), XtaskError> {
     };
 
     if matches!(check, CheckKind::Deps) {
-        let tree = load_cargo_tree(&options)?;
+        let tree = load_cargo_tree(profile, &options)?;
         let dep_failures = check_deps(profile, &tree, &options.extra_forbidden);
-        print_dep_report(profile, &dep_failures);
+        let admitted = admitted_measured_deps(profile, &tree);
+        print_dep_report(profile, &admitted, &dep_failures);
         failures.extend(dep_failures);
     }
 
@@ -146,6 +163,9 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
                 let path = iter.next().ok_or(XtaskError::Usage)?;
                 options.tree_file = Some(PathBuf::from(path));
             }
+            "--artifact-profile" => {
+                options.artifact_profile = Some(iter.next().ok_or(XtaskError::Usage)?);
+            }
             "--package" | "-p" => {
                 options.package = Some(iter.next().ok_or(XtaskError::Usage)?);
             }
@@ -176,23 +196,34 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
 
     match options.check {
         Some(CheckKind::Deps) => {
-            if options.tree_file.is_some() == options.package.is_some() {
+            let input_count = [
+                options.tree_file.is_some(),
+                options.artifact_profile.is_some(),
+                options.package.is_some(),
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count();
+            if input_count != 1 {
+                print_usage();
+                return Err(XtaskError::Usage);
+            }
+            if options.artifact_profile.is_some()
+                && (options.target.is_some()
+                    || options.no_default_features
+                    || options.features.is_some())
+            {
                 print_usage();
                 return Err(XtaskError::Usage);
             }
         }
         Some(CheckKind::Imports | CheckKind::Exports | CheckKind::Wasm) => {
-            if options.wasm_file.is_none() {
+            if options.wasm_file.is_none() || options.artifact_profile.is_some() {
                 print_usage();
                 return Err(XtaskError::Usage);
             }
         }
         None => return Err(XtaskError::Usage),
-    }
-
-    if options.tree_file.is_some() && options.package.is_some() {
-        print_usage();
-        return Err(XtaskError::Usage);
     }
 
     Ok(options)
@@ -213,6 +244,7 @@ fn print_usage() {
     println!();
     println!("Dependency input:");
     println!("  --tree-file <path>");
+    println!("  --artifact-profile <exact-wasm-profile> [--depth <n>]");
     println!(
         "  --package <name> [--target <triple>] [--no-default-features] [--features <features>] [--depth <n>]"
     );
@@ -221,12 +253,13 @@ fn print_usage() {
     println!("  --wasm <module.wasm>");
 }
 
-fn load_cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
+fn load_cargo_tree(profile: Profile, options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
     if let Some(path) = options.tree_file.as_deref() {
         return crate::util::read_text(path);
     }
 
-    cargo_tree(options)
+    let invocation = resolve_cargo_tree_invocation(profile, options)?;
+    cargo_tree(&invocation)
 }
 
 fn load_wasm_module(path: &Path) -> Result<LoadedWasmModule, XtaskError> {
@@ -242,27 +275,80 @@ fn load_wasm_module(path: &Path) -> Result<LoadedWasmModule, XtaskError> {
     })
 }
 
-fn cargo_tree(options: &ProfileBudgetOptions) -> Result<String, XtaskError> {
-    let package = options.package.as_deref().ok_or(XtaskError::Usage)?;
+fn resolve_cargo_tree_invocation(
+    profile: Profile,
+    options: &ProfileBudgetOptions,
+) -> Result<CargoTreeInvocation, XtaskError> {
+    if let Some(profile_id) = options.artifact_profile.as_deref() {
+        let artifact = load_exact_wasm_artifact_profile(profile_id)
+            .map_err(XtaskError::ProfileBudgetFailed)?;
+        return cargo_tree_invocation_from_artifact(profile, &artifact, options.depth);
+    }
+
+    Ok(CargoTreeInvocation {
+        package: options.package.clone().ok_or(XtaskError::Usage)?,
+        manifest_path: None,
+        target: options.target.clone(),
+        no_default_features: options.no_default_features,
+        features: options.features.clone(),
+        depth: options.depth,
+    })
+}
+
+fn cargo_tree_invocation_from_artifact(
+    profile: Profile,
+    artifact: &WasmArtifactProfile,
+    depth: Option<usize>,
+) -> Result<CargoTreeInvocation, XtaskError> {
+    if profile != Profile::Typst || artifact.semantic_target != "typst" {
+        return Err(XtaskError::ProfileBudgetFailed(format!(
+            "dependency profile `{}` cannot consume exact artifact profile `{}` for semantic target `{}`",
+            profile.label(),
+            artifact.id,
+            artifact.semantic_target
+        )));
+    }
+
+    Ok(CargoTreeInvocation {
+        package: artifact.package.clone(),
+        manifest_path: Some(artifact.manifest_path.clone()),
+        target: Some(artifact.target_triple.clone()),
+        no_default_features: !artifact.default_features,
+        features: (!artifact.features.is_empty()).then(|| artifact.features.join(",")),
+        depth,
+    })
+}
+
+fn cargo_tree_command(invocation: &CargoTreeInvocation) -> Command {
     let mut command = Command::new("cargo");
     command
         .arg("tree")
+        .arg("--locked")
         .arg("-p")
-        .arg(package)
+        .arg(&invocation.package)
         .arg("-e")
         .arg("normal");
-    if let Some(target) = options.target.as_deref() {
+    if let Some(manifest_path) = invocation.manifest_path.as_deref() {
+        command.arg("--manifest-path").arg(manifest_path);
+    }
+    if let Some(target) = invocation.target.as_deref() {
         command.arg("--target").arg(target);
     }
-    if options.no_default_features {
+    if invocation.no_default_features {
         command.arg("--no-default-features");
     }
-    if let Some(features) = options.features.as_deref() {
+    if let Some(features) = invocation.features.as_deref() {
         command.arg("--features").arg(features);
     }
-    if let Some(depth) = options.depth {
+    if let Some(depth) = invocation.depth {
         command.arg("--depth").arg(depth.to_string());
     }
+    command
+}
+
+fn cargo_tree(invocation: &CargoTreeInvocation) -> Result<String, XtaskError> {
+    let package = &invocation.package;
+    let mut command = cargo_tree_command(invocation);
 
     let output = command
         .current_dir(crate::cmd::workspace_root())
@@ -308,7 +394,7 @@ fn check_deps(profile: Profile, tree: &str, extra_forbidden: &[String]) -> Vec<S
 
 fn forbidden_crates(profile: Profile) -> &'static [&'static str] {
     match profile {
-        Profile::PureWasm | Profile::Typst => &[
+        Profile::PureWasm => &[
             "console_error_panic_hook",
             "getrandom",
             "json5",
@@ -323,6 +409,29 @@ fn forbidden_crates(profile: Profile) -> &'static [&'static str] {
             "wasm-bindgen-futures",
             "web-time",
         ],
+        Profile::Typst => &[
+            "console_error_panic_hook",
+            "getrandom",
+            "js-sys",
+            "pest",
+            "serde-wasm-bindgen",
+            "serde_yaml",
+            "unsafe-libyaml",
+            "wasm-bindgen",
+            "wasm-bindgen-futures",
+            "web-time",
+        ],
+    }
+}
+
+fn admitted_measured_deps(profile: Profile, tree: &str) -> Vec<&'static str> {
+    match profile {
+        Profile::PureWasm => Vec::new(),
+        Profile::Typst => TYPST_ADMITTED_MEASURED_CRATES
+            .iter()
+            .copied()
+            .filter(|krate| cargo_tree_contains_crate(tree, krate))
+            .collect(),
     }
 }
 
@@ -342,10 +451,11 @@ fn cargo_tree_line_payload(line: &str) -> &str {
     })
 }
 
-fn print_dep_report(profile: Profile, failures: &[String]) {
+fn print_dep_report(profile: Profile, admitted: &[&str], failures: &[String]) {
     println!(
-        "profile-budget deps profile={} failures={}",
+        "profile-budget deps profile={} admitted_measured={} failures={}",
         profile.label(),
+        admitted.join(","),
         failures.len()
     );
     for failure in failures {
@@ -436,5 +546,147 @@ merman-core v0.7.0
 "#;
 
         assert!(check_deps(Profile::PureWasm, tree, &[]).is_empty());
+    }
+
+    #[test]
+    fn typst_profile_admits_measured_language_dependencies_but_rejects_system_adapters() {
+        let tree = r#"
+merman-typst-plugin v0.8.0-alpha.3
+├── json5 v1.3.1
+├── lol_html v2.7.1
+├── url v2.5.8
+├── serde-saphyr v1.0.0-rc.1
+├── getrandom v0.4.3
+├── js-sys v0.3.103
+├── serde_yaml v0.9.34+deprecated
+├── unsafe-libyaml v0.2.11
+└── wasm-bindgen v0.2.126
+"#;
+
+        assert_eq!(
+            admitted_measured_deps(Profile::Typst, tree),
+            vec!["json5", "lol_html", "url"]
+        );
+        let failures = check_deps(Profile::Typst, tree, &[]);
+        assert_eq!(failures.len(), 5);
+        for forbidden in [
+            "getrandom",
+            "js-sys",
+            "serde_yaml",
+            "unsafe-libyaml",
+            "wasm-bindgen",
+        ] {
+            assert!(
+                failures
+                    .iter()
+                    .any(|failure| failure.contains(&format!("`{forbidden}`"))),
+                "missing failure for {forbidden}: {failures:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn artifact_profile_recipe_drives_a_locked_cargo_tree_command() {
+        let artifact = WasmArtifactProfile {
+            id: "typst-wasm".to_string(),
+            semantic_target: "typst".to_string(),
+            package: "merman-typst-plugin".to_string(),
+            manifest_path: PathBuf::from("crates/merman-typst-plugin/Cargo.toml"),
+            cargo_profile: "wasm-size".to_string(),
+            default_features: false,
+            features: vec![
+                "analysis".to_string(),
+                "layout-cytoscape".to_string(),
+                "layout-elk".to_string(),
+                "svg".to_string(),
+            ],
+            target_triple: "wasm32-unknown-unknown".to_string(),
+            artifact_name: "merman_typst_plugin.wasm".to_string(),
+            capabilities: Vec::new(),
+            runtime_ids: Vec::new(),
+            outputs: Vec::new(),
+        };
+        let invocation =
+            cargo_tree_invocation_from_artifact(Profile::Typst, &artifact, Some(8)).unwrap();
+        let command = cargo_tree_command(&invocation);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            [
+                "tree",
+                "--locked",
+                "-p",
+                "merman-typst-plugin",
+                "-e",
+                "normal",
+                "--manifest-path",
+                "crates/merman-typst-plugin/Cargo.toml",
+                "--target",
+                "wasm32-unknown-unknown",
+                "--no-default-features",
+                "--features",
+                "analysis,layout-cytoscape,layout-elk,svg",
+                "--depth",
+                "8",
+            ]
+        );
+    }
+
+    #[test]
+    fn typst_dependency_gate_rejects_a_non_typst_artifact_recipe() {
+        let artifact = WasmArtifactProfile {
+            id: "web-analysis".to_string(),
+            semantic_target: "web".to_string(),
+            package: "merman-wasm".to_string(),
+            manifest_path: PathBuf::from("crates/merman-wasm/Cargo.toml"),
+            cargo_profile: "wasm-size".to_string(),
+            default_features: false,
+            features: vec!["analysis".to_string()],
+            target_triple: "wasm32-unknown-unknown".to_string(),
+            artifact_name: "merman_wasm.wasm".to_string(),
+            capabilities: Vec::new(),
+            runtime_ids: Vec::new(),
+            outputs: Vec::new(),
+        };
+
+        let error =
+            cargo_tree_invocation_from_artifact(Profile::Typst, &artifact, None).unwrap_err();
+        assert!(error.to_string().contains("semantic target `web`"));
+    }
+
+    #[test]
+    fn artifact_profile_mode_rejects_manual_recipe_overrides() {
+        let error = parse_options(vec![
+            "check-deps".to_string(),
+            "--profile".to_string(),
+            "typst-wasm".to_string(),
+            "--artifact-profile".to_string(),
+            "typst-wasm".to_string(),
+            "--features".to_string(),
+            "svg".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(matches!(error, XtaskError::Usage));
+    }
+
+    #[test]
+    fn artifact_profile_mode_is_dependency_only() {
+        let error = parse_options(vec![
+            "check-wasm".to_string(),
+            "--profile".to_string(),
+            "typst-wasm".to_string(),
+            "--artifact-profile".to_string(),
+            "typst-wasm".to_string(),
+            "--wasm".to_string(),
+            "plugin.wasm".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(matches!(error, XtaskError::Usage));
     }
 }

@@ -1,0 +1,162 @@
+use crate::cli::{
+    RenderArgs, RenderFormat, TextCharset, TextColorMode, TextDirection, TextOutputCliArgs,
+};
+use crate::config::{engine_for, parse_options};
+use crate::error::CliError;
+use crate::io::{OutputTarget, read_input, write_output};
+use std::env;
+use std::io::{self, IsTerminal};
+
+pub(crate) fn run_ascii_render(args: RenderArgs) -> Result<(), CliError> {
+    let input = merge_input(args.export.input_file, args.input)?;
+    let format = args
+        .export
+        .output_format
+        .or_else(|| {
+            args.export
+                .output
+                .as_deref()
+                .and_then(format_from_output_path)
+        })
+        .unwrap_or_default();
+    let output = args.export.output.map(OutputTarget::from_cli);
+    let text = read_input(input.as_deref(), args.export.quiet)?;
+    let options = apply_text_options(
+        text_options_for_output(args.export.text, output.as_ref()),
+        format,
+    )?;
+    let renderer = merman::ascii::HeadlessAsciiRenderer::new()
+        .with_engine(engine_for(&args.export.parse)?)
+        .with_parse_options(parse_options(&args.export.parse))
+        .with_ascii_options(options)
+        .with_resource_profile(args.export.render.resource_profile);
+    let Some(rendered) = renderer.render_ascii_sync(&text)? else {
+        return Err(CliError::NoDiagram);
+    };
+    write_output(output.as_ref(), rendered.as_bytes())
+}
+
+fn merge_input(
+    option_input: Option<String>,
+    positional_input: Option<String>,
+) -> Result<Option<String>, CliError> {
+    match (option_input, positional_input) {
+        (Some(a), Some(b)) if a != b => Err(CliError::InvalidInput(
+            "input was provided both positionally and with --input; choose one".to_string(),
+        )),
+        (Some(a), _) => Ok(Some(a)),
+        (_, Some(b)) => Ok(Some(b)),
+        (None, None) => Ok(None),
+    }
+}
+
+fn format_from_output_path(path: &str) -> Option<RenderFormat> {
+    let extension = std::path::Path::new(path)
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "unicode" => Some(RenderFormat::Unicode),
+        "txt" | "ascii" => Some(RenderFormat::Ascii),
+        _ => None,
+    }
+}
+
+fn text_options_for_output(
+    mut text: TextOutputCliArgs,
+    output: Option<&OutputTarget>,
+) -> TextOutputCliArgs {
+    if text.ascii_color == Some(TextColorMode::Auto) {
+        text.ascii_color = Some(resolve_auto_text_color(output));
+    }
+    text
+}
+
+fn resolve_auto_text_color(output: Option<&OutputTarget>) -> TextColorMode {
+    if env::var_os("NO_COLOR").is_some() {
+        return TextColorMode::Plain;
+    }
+
+    let color_term = env::var("COLORTERM")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
+    let truecolor = color_term.contains("truecolor") || color_term.contains("24bit");
+    let force_color =
+        env::var("CLICOLOR_FORCE").is_ok_and(|value| !value.is_empty() && value != "0");
+    if force_color {
+        return if truecolor {
+            TextColorMode::Truecolor
+        } else {
+            TextColorMode::Ansi256
+        };
+    }
+
+    let stdout_target = matches!(output, None | Some(OutputTarget::Stdout));
+    if !stdout_target || !io::stdout().is_terminal() {
+        return TextColorMode::Plain;
+    }
+    if truecolor {
+        TextColorMode::Truecolor
+    } else if term.contains("256color") {
+        TextColorMode::Ansi256
+    } else if !term.is_empty() && term != "dumb" {
+        TextColorMode::Ansi16
+    } else {
+        TextColorMode::Plain
+    }
+}
+
+fn apply_text_options(
+    text: TextOutputCliArgs,
+    format: RenderFormat,
+) -> Result<merman::ascii::AsciiRenderOptions, CliError> {
+    let mut options = match format {
+        RenderFormat::Ascii => merman::ascii::AsciiRenderOptions::ascii(),
+        RenderFormat::Unicode => merman::ascii::AsciiRenderOptions::unicode(),
+    };
+    if let Some(charset) = text.ascii_charset {
+        options.charset = match charset {
+            TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
+            TextCharset::Unicode => merman::ascii::AsciiCharset::Unicode,
+        };
+    }
+    if let Some(direction) = text.ascii_direction {
+        options.default_direction = match direction {
+            TextDirection::LeftRight => merman::ascii::AsciiDirection::LeftRight,
+            TextDirection::TopDown => merman::ascii::AsciiDirection::TopDown,
+        };
+    }
+    if let Some(color_mode) = text.ascii_color {
+        options.color_mode = match color_mode {
+            TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
+            TextColorMode::Auto => {
+                return Err(CliError::InvalidInput(
+                    "ASCII color mode `auto` was not resolved when the render request was created"
+                        .to_string(),
+                ));
+            }
+            TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
+            TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
+            TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
+            TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
+        };
+    }
+    options.sequence_mirror_actors = text.sequence_mirror_actors;
+    if let Some(height) = text.xychart_vertical_plot_height {
+        options.xychart_vertical_plot_height = height;
+    }
+    if let Some(width) = text.xychart_category_band_width {
+        options.xychart_category_band_width = width;
+    }
+    if let Some(width) = text.xychart_horizontal_plot_width {
+        options.xychart_horizontal_plot_width = width;
+    }
+    if let Some(max_grid_cells) = text.ascii_max_grid_cells {
+        options.max_grid_cells = max_grid_cells;
+    }
+    options
+        .validate()
+        .map_err(|err| CliError::InvalidInput(format!("invalid ASCII options: {err}")))?;
+    Ok(options)
+}

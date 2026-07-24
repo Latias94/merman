@@ -14,7 +14,10 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Source of truth: `merman-analysis::AnalysisPayload`
 - Ownership: core emits structured parse diagnostics; analysis owns canonical merge, fallback,
   and recovery policy; editor-core and LSP only project that payload.
-- Transport: `tower-lsp`
+- Transport and server service: `tower-lsp-server`; LSP wire types come from its maintained
+  `ls_types` re-export.
+- Stdio framing: Merman owns frame dispatch so rejected requests cannot consume later pipelined
+  messages; headers are limited to 8 KiB and message bodies to 32 MiB.
 - Coordinate system: UTF-16 LSP positions
 - Markdown fences: remapped to the host document URI and range
 - Visible Problems code: string analysis rule id such as `merman.parse.diagram_parse`; numeric

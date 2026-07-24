@@ -5,14 +5,81 @@ from __future__ import annotations
 
 import argparse
 from email.parser import Parser
+import os
 import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
+from artifact_profile_recipe import (
+    CargoArtifactRecipe,
+    cargo_build_args,
+    cargo_run_example_args,
+    load_artifact_profile,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def production_cdylib_path(recipe: CargoArtifactRecipe) -> Path:
+    library_stem = recipe.target_name.replace("-", "_")
+    if sys.platform == "win32":
+        filename = f"{library_stem}.dll"
+    elif sys.platform == "darwin":
+        filename = f"lib{library_stem}.dylib"
+    else:
+        filename = f"lib{library_stem}.so"
+    return REPO_ROOT / "target" / recipe.cargo_profile / filename
+
+
+def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
+    expected_target_contract = ("cdylib", "rlib", "staticlib")
+    if (
+        recipe.profile_id != "python-uniffi-native"
+        or recipe.package != "merman-uniffi"
+        or recipe.manifest != "crates/merman-uniffi/Cargo.toml"
+        or recipe.cargo_profile != "native-sdk"
+        or recipe.default_features
+        or recipe.target_name != "merman_uniffi"
+        or recipe.target_kinds != expected_target_contract
+        or recipe.crate_types != expected_target_contract
+        or recipe.build_target_kind != "host"
+        or recipe.build_targets
+    ):
+        raise RuntimeError(
+            "python-uniffi-native must remain the exact host native-sdk merman-uniffi "
+            "complete native SDK cdylib recipe"
+        )
+    manifest = REPO_ROOT / recipe.manifest
+    if not manifest.is_file():
+        raise RuntimeError(f"python-uniffi-native manifest does not exist: {manifest}")
+
+
+def python_generator_args(
+    recipe: CargoArtifactRecipe,
+    cdylib: Path,
+    package_dir: Path,
+) -> list[str]:
+    return cargo_run_example_args(
+        recipe,
+        "generate_python_package",
+        locked=True,
+        extra_features=("bindgen-smoke",),
+        example_args=(
+            "--cdylib",
+            str(cdylib),
+            "--package-dir",
+            str(package_dir),
+        ),
+    )
+
+
+def python_generator_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["CARGO_TARGET_DIR"] = str(REPO_ROOT / "target" / "python-uniffi-bindgen")
+    return environment
 
 WHEEL_SMOKE = """
 import merman
@@ -147,18 +214,56 @@ assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LEN
 assert middle_y_offset.length < 0.0
 
 engine = merman.MermanEngine()
-merman.require_abi_version(engine.abi_version())
-try:
-    merman.require_abi_version(merman.ABI_VERSION + 1)
-except merman.AbiVersionMismatch as error:
-    assert error.expected == merman.ABI_VERSION
-    assert error.actual == merman.ABI_VERSION + 1
-else:
-    raise AssertionError("expected mismatched ABI to be rejected")
+assert engine.binding_api_version() == 3
 assert engine.package_version()
+catalog = merman.get_runtime_catalog(engine)
+capabilities = catalog["capabilities"]
+assert catalog["schema_version"] == 1
+assert catalog["transport_api_version"] == engine.binding_api_version()
+assert catalog["package_version"] == engine.package_version()
+assert capabilities["capability_ids"] == sorted(capabilities["capability_ids"])
+assert capabilities["output_ids"] == sorted(capabilities["output_ids"])
+assert capabilities["operation_ids"] == sorted(capabilities["operation_ids"])
+assert not hasattr(merman, "get_runtime_contract")
+assert not hasattr(merman, "get_runtime_capability_vocabulary")
+required_capabilities = {
+    "analysis",
+    "ascii",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "pdf",
+    "png",
+    "svg",
+}
+assert required_capabilities.issubset(
+    set(capabilities["capability_ids"])
+)
+assert {"ascii", "jpeg", "pdf", "png", "svg"}.issubset(
+    set(capabilities["output_ids"])
+)
+assert set(capabilities["output_ids"]).issubset(capabilities["operation_ids"])
 source = "flowchart TD\\nA[Hello] --> B[World]"
+try:
+    engine.execute(
+        merman.MermanOperationRequest(
+            operation_id="not-an-operation",
+            source=source,
+            uri=None,
+            options_json=None,
+        )
+    )
+except merman.MermanError.Binding as error:
+    assert error.kind == merman.MermanErrorKind.UNKNOWN_OPERATION
+    assert error.capability_id is None
+else:
+    raise AssertionError("unknown operation did not preserve its typed binding error")
 assert "Hello" in engine.render_svg(source, None)
 assert "Hello" in engine.render_ascii(source, None)
+assert engine.render_png(source, None).startswith(b"\\x89PNG\\r\\n\\x1a\\n")
+assert engine.render_jpeg(source, None).startswith(b"\\xff\\xd8\\xff")
+assert engine.render_pdf(source, None).startswith(b"%PDF-")
 assert "flowchart-v2" in engine.parse_json(source, None)
 assert "layout" in engine.layout_json(source, None)
 assert engine.validate(source, None).valid
@@ -205,21 +310,21 @@ assert all(rule.configurable for rule in configurable_rules)
 
 measurer = Measurer()
 reusable = engine.reusable_engine_with_text_measurer(None, measurer)
-assert reusable.render_svg(source).startswith("<svg")
-assert "Hello" in reusable.render_ascii(source)
-assert "flowchart-v2" in reusable.parse_json(source)
-assert "layout" in reusable.layout_json(source)
-assert reusable.validate(source).valid
+assert reusable.render_svg(source, None).startswith("<svg")
+assert "Hello" in reusable.render_ascii(source, None)
+assert "flowchart-v2" in reusable.parse_json(source, None)
+assert "layout" in reusable.layout_json(source, None)
+assert reusable.validate(source, None).valid
 assert measurer.calls > 0
 
 setter_measurer = Measurer()
 reusable = engine.reusable_engine(None)
 reusable.set_text_measurer(setter_measurer)
-assert reusable.render_svg(source).startswith("<svg")
+assert reusable.render_svg(source, None).startswith("<svg")
 calls_after_set = setter_measurer.calls
 assert calls_after_set > 0
 reusable.clear_text_measurer()
-assert reusable.render_svg(source).startswith("<svg")
+assert reusable.render_svg(source, None).startswith("<svg")
 assert setter_measurer.calls == calls_after_set
 
 
@@ -234,10 +339,10 @@ class FailingMeasurer(merman.MermanTextMeasurer):
 
 failing_measurer = FailingMeasurer()
 failing = engine.reusable_engine_with_text_measurer(None, failing_measurer)
-assert failing.render_svg(source).startswith("<svg")
+assert failing.render_svg(source, None).startswith("<svg")
 assert failing_measurer.calls > 0
 failing.set_text_measurer(Measurer())
-assert failing.render_svg(source).startswith("<svg")
+assert failing.render_svg(source, None).startswith("<svg")
 print("python wheel smoke passed")
 """
 
@@ -267,9 +372,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(args: list[str], *, cwd: Path = REPO_ROOT) -> None:
+def run(
+    args: list[str],
+    *,
+    cwd: Path = REPO_ROOT,
+    env: dict[str, str] | None = None,
+) -> None:
     print("+", " ".join(args))
-    subprocess.run(args, cwd=cwd, check=True)
+    subprocess.run(args, cwd=cwd, env=env, check=True)
 
 
 def venv_python(venv_dir: Path) -> Path:
@@ -348,21 +458,15 @@ def main() -> int:
     package_dir = Path(args.package_dir).expanduser().resolve()
     wheel_dir = Path(args.wheel_dir).expanduser().resolve()
 
-    run(["cargo", "build", "-p", "merman-uniffi", "--features", "bindgen-smoke"])
+    recipe = load_artifact_profile("python-uniffi-native")
+    validate_python_native_recipe(recipe)
+    run(cargo_build_args(recipe, locked=True))
+    cdylib = production_cdylib_path(recipe)
+    if not cdylib.is_file():
+        raise RuntimeError(f"expected production UniFFI library not found: {cdylib}")
     run(
-        [
-            "cargo",
-            "run",
-            "-p",
-            "merman-uniffi",
-            "--features",
-            "bindgen-smoke",
-            "--example",
-            "generate_python_package",
-            "--",
-            "--package-dir",
-            str(package_dir),
-        ]
+        python_generator_args(recipe, cdylib, package_dir),
+        env=python_generator_environment(),
     )
 
     remove_stale_package_build(package_dir)

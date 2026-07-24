@@ -5,7 +5,7 @@ Last updated: 2026-06-06
 
 ## Why This Lane Exists
 
-`merman` is still pre-1.0, FFI is not published, and the pinned Mermaid baseline is already broad
+The FFI is not published, and the pinned Mermaid baseline is already broad
 enough that shallow module seams are becoming release risk. The next 0.7.0 work should deepen the
 headless render operation, diagram family facts, SVG parity output, render-side theme access, and
 typed semantic ownership before those shapes become compatibility promises.

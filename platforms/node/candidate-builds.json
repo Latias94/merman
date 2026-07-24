@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "status": "private-evaluation",
+  "artifact_profile": {
+    "descriptor": "capabilities/artifact-profiles-v1.json",
+    "id": "rust-static-svg"
+  },
+  "cargo": {
+    "manifest": "crates/merman-node/Cargo.toml",
+    "default_features": false
+  },
+  "candidates": {
+    "node-wasm": {
+      "transport_feature": "transport-wasm",
+      "rust_target": "wasm32-unknown-unknown",
+      "wasm_pack_target": "nodejs",
+      "browser_package_reuse": false,
+      "output": "platforms/node/artifacts/node-wasm"
+    },
+    "napi": {
+      "transport_feature": "transport-napi",
+      "versions": {
+        "napi": "3.11.0",
+        "napi_derive": "3.6.0",
+        "napi_build": "2.3.2",
+        "napi_cli": "3.7.4"
+      },
+      "postinstall_download": false,
+      "aggregate_all_targets": false,
+      "targets": [
+        {
+          "id": "darwin-arm64",
+          "rust_target": "aarch64-apple-darwin",
+          "runtime_ci_required": true
+        },
+        {
+          "id": "darwin-x64",
+          "rust_target": "x86_64-apple-darwin",
+          "runtime_ci_required": true
+        },
+        {
+          "id": "linux-x64-gnu",
+          "rust_target": "x86_64-unknown-linux-gnu",
+          "runtime_ci_required": true
+        },
+        {
+          "id": "linux-x64-musl",
+          "rust_target": "x86_64-unknown-linux-musl",
+          "runtime_ci_required": true
+        },
+        {
+          "id": "win32-x64-msvc",
+          "rust_target": "x86_64-pc-windows-msvc",
+          "runtime_ci_required": true
+        }
+      ]
+    }
+  }
+}

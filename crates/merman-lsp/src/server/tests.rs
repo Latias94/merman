@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::MermanLanguageServer;
 use super::semantic_token_planning_error;
 use super::stale_diagnostic_recompute_error;
@@ -18,10 +20,10 @@ use merman_analysis::{
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{DocumentKind, semantic_token_descriptor};
 use tower::{Service, ServiceExt};
-use tower_lsp::LanguageServer;
-use tower_lsp::jsonrpc::Request;
-use tower_lsp::lsp_types::SemanticTokensResult;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::jsonrpc::Request;
+use tower_lsp_server::ls_types::SemanticTokensResult;
+use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentChanges,
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
@@ -31,13 +33,13 @@ use tower_lsp::lsp_types::{
     SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
     TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    Url, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+    Uri, VersionedTextDocumentIdentifier, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
-use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
+use tower_lsp_server::ls_types::{HoverProviderCapability, OneOf};
 
 async fn assert_cached_snapshot_identity(
     server: &MermanLanguageServer,
-    uri: &Url,
+    uri: &Uri,
     expected: &std::sync::Arc<crate::snapshot::DocumentSnapshot>,
 ) {
     let actual = server
@@ -55,18 +57,18 @@ fn service_can_be_constructed_without_a_tokio_runtime() {
 }
 
 #[test]
-fn published_server_constructor_signatures_remain_source_compatible() {
-    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
+fn published_server_constructor_signatures_use_tower_lsp_server_types() {
+    let _: fn(tower_lsp_server::Client) -> MermanLanguageServer = MermanLanguageServer::new;
     let _: fn() -> (
-        tower_lsp::LspService<MermanLanguageServer>,
-        tower_lsp::ClientSocket,
+        tower_lsp_server::LspService<MermanLanguageServer>,
+        tower_lsp_server::ClientSocket,
     ) = MermanLanguageServer::service;
 }
 
 #[test]
 fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/workspace-symbols.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/workspace-symbols.mmd").unwrap();
     store.upsert(uri.clone(), 1, "flowchart TD\nA[old] --> B\n".to_string());
 
     let (contexts, requests) = store.snapshot_build_requests();
@@ -88,7 +90,7 @@ fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
 fn semantic_token_planner_failures_are_typed_internal_errors() {
     let mut store = DocumentStore::new();
     let snapshot = store.upsert(
-        Url::parse("file:///tmp/token-plan-error.mmd").unwrap(),
+        Uri::from_str("file:///tmp/token-plan-error.mmd").unwrap(),
         7,
         "flowchart TD\nA --> B\n".to_string(),
     );
@@ -97,7 +99,10 @@ fn semantic_token_planner_failures_are_typed_internal_errors() {
         merman_editor_core::TokenPlanError::PositionOverflow { value: usize::MAX },
     );
 
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::InternalError);
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::InternalError
+    );
     assert_eq!(error.message, "semantic token planning failed");
     assert_eq!(
         error.data,
@@ -111,7 +116,7 @@ fn semantic_token_planner_failures_are_typed_internal_errors() {
 #[test]
 fn diagnostic_state_is_bound_to_document_epoch() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/diagnostic-state.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/diagnostic-state.mmd").unwrap();
     store.upsert_text(
         uri.clone(),
         1,
@@ -188,7 +193,7 @@ fn analyzer_configuration_change_classifies_unchanged_options() {
 #[test]
 fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let document = store.open_text(
@@ -230,7 +235,7 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
 #[test]
 fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     store.open_text(
@@ -272,7 +277,7 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
 
 #[test]
 fn diagnostics_for_unsynced_documents_request_full_replacement() {
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let document = StoredDocument {
         uri,
         version: 9,
@@ -388,7 +393,7 @@ fn capabilities_report_the_full_server_envelope() {
 
 #[test]
 fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
-    let uri = Url::parse("untitled:notes").unwrap();
+    let uri = Uri::from_str("untitled:notes").unwrap();
     let document = StoredDocument {
         uri: uri.clone(),
         version: 7,
@@ -437,7 +442,7 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
 
 #[test]
 fn diagnostics_include_rich_editor_projection_warnings() {
-    let uri = Url::parse("file:///tmp/cynefin.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/cynefin.mmd").unwrap();
     let document = StoredDocument {
         uri,
         version: 3,
@@ -464,7 +469,7 @@ fn diagnostics_include_rich_editor_projection_warnings() {
 async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -514,7 +519,7 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
         .client_profile
         .set(crate::client_profile::ClientProtocolProfile::permissive())
         .expect("test profile should initialize once");
-    let uri = Url::parse("file:///tmp/r24-identity.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/r24-identity.mmd").unwrap();
     let version = 11;
 
     {
@@ -682,7 +687,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .client_profile
         .set(crate::client_profile::ClientProtocolProfile::permissive())
         .expect("test profile should initialize once");
-    let uri = Url::parse("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
@@ -762,7 +767,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
 async fn did_open_uses_language_id_and_change_preserves_document_kind() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("untitled:notes").unwrap();
+    let uri = Uri::from_str("untitled:notes").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -813,7 +818,7 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
 async fn did_change_rejects_stale_document_versions() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -874,7 +879,7 @@ async fn did_change_rejects_stale_document_versions() {
 async fn did_change_applies_incremental_changes_in_order() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -929,7 +934,7 @@ async fn did_change_applies_incremental_changes_in_order() {
 async fn stale_diagnostic_context_returns_content_modified_error() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
@@ -962,7 +967,10 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
         .ok_or_else(stale_diagnostic_recompute_error)
         .expect_err("stale context should fail");
 
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
+    );
     assert!(error.message.contains("diagnostic document changed"));
 }
 
@@ -970,7 +978,7 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
 async fn stale_semantic_tokens_record_returns_content_modified_error() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
@@ -1004,7 +1012,10 @@ async fn stale_semantic_tokens_record_returns_content_modified_error() {
         .await
         .expect_err("stale semantic tokens should fail");
 
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
+    );
     assert!(error.message.contains("semantic tokens document changed"));
 }
 
@@ -1012,7 +1023,7 @@ async fn stale_semantic_tokens_record_returns_content_modified_error() {
 async fn stale_initial_diagnostic_context_recomputes_latest_document() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .initialize(
@@ -1077,7 +1088,7 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
 async fn stale_diagnostic_commit_returns_content_modified_error() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
@@ -1113,7 +1124,10 @@ async fn stale_diagnostic_commit_returns_content_modified_error() {
         .await
         .expect_err("stale diagnostic commit should fail");
 
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
+    );
     assert!(error.message.contains("diagnostic document changed"));
 }
 
@@ -1121,7 +1135,7 @@ async fn stale_diagnostic_commit_returns_content_modified_error() {
 async fn diagnostic_pull_reuses_cached_previous_result() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -1174,7 +1188,7 @@ async fn diagnostic_pull_reuses_cached_previous_result() {
 async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -1246,7 +1260,7 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
 #[test]
 fn structure_helpers_produce_hover_and_nested_symbols() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri.clone(),
         1,
@@ -1264,7 +1278,7 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
     assert_eq!(selection_ranges.len(), 1);
     assert!(selection_ranges[0].parent.is_some());
 
-    let markdown_uri = Url::parse("file:///tmp/example.md").unwrap();
+    let markdown_uri = Uri::from_str("file:///tmp/example.md").unwrap();
     let markdown_snapshot = store.upsert(
         markdown_uri,
         1,
@@ -1295,7 +1309,7 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
 #[test]
 fn structure_helpers_cover_navigation_surface() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
     let position = Position::new(1, 0);
 
@@ -1332,7 +1346,7 @@ fn structure_helpers_cover_navigation_surface() {
 async fn lsp_handlers_return_hover_and_symbols() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .initialize(
@@ -1383,7 +1397,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
             "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
         );
         store.upsert(
-            Url::parse("file:///tmp/example.md").unwrap(),
+            Uri::from_str("file:///tmp/example.md").unwrap(),
             1,
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
         );
@@ -1417,7 +1431,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
     let folding_ranges = server
         .folding_range(FoldingRangeParams {
             text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.md").unwrap(),
+                uri: Uri::from_str("file:///tmp/example.md").unwrap(),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1507,7 +1521,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
     ));
 
     let document_symbols = server
-        .document_symbol(tower_lsp::lsp_types::DocumentSymbolParams {
+        .document_symbol(tower_lsp_server::ls_types::DocumentSymbolParams {
             text_document: TextDocumentIdentifier { uri },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1528,6 +1542,9 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .await
         .unwrap()
         .expect("expected workspace symbol response");
+    let WorkspaceSymbolResponse::Flat(workspace_symbols) = workspace_symbols else {
+        panic!("expected flat workspace symbol response");
+    };
     assert!(!workspace_symbols.is_empty());
     assert!(
         workspace_symbols
@@ -1544,12 +1561,12 @@ async fn workspace_symbols_builds_all_missing_snapshots_on_first_request() {
     let last_index = document_count - 1;
     let last_symbol = format!("target_{last_index:02}");
     let first_symbol = "target_00".to_string();
-    let first_uri = Url::parse("file:///tmp/workspace-00.mmd").unwrap();
+    let first_uri = Uri::from_str("file:///tmp/workspace-00.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
         for index in 0..document_count {
-            let uri = Url::parse(&format!("file:///tmp/workspace-{index:02}.mmd")).unwrap();
+            let uri = Uri::from_str(&format!("file:///tmp/workspace-{index:02}.mmd")).unwrap();
             store.upsert_text(
                 uri,
                 1,
@@ -1568,6 +1585,9 @@ async fn workspace_symbols_builds_all_missing_snapshots_on_first_request() {
         .await
         .unwrap()
         .expect("expected workspace symbol response");
+    let WorkspaceSymbolResponse::Flat(workspace_symbols) = workspace_symbols else {
+        panic!("expected flat workspace symbol response");
+    };
 
     assert!(
         workspace_symbols

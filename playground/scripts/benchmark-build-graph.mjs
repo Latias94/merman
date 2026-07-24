@@ -14,8 +14,6 @@ export const NON_LITERAL_DYNAMIC_IMPORT_OWNERS = Object.freeze({
 });
 
 export const MERMAN_WEB_ROOT_IMPORT = "@mermanjs/web";
-export const MERMAN_WASM_SHIM_IMPORT =
-  "@mermanjs/web/pkg/merman_wasm.js";
 
 export const BENCHMARK_ADAPTER_FORBIDDEN_SOURCES = new Set([
   "src/main.tsx",
@@ -36,16 +34,8 @@ export const BENCHMARK_ADAPTER_FORBIDDEN_SOURCES = new Set([
   BENCHMARK_SOURCES.mermanArtifact,
 ]);
 
-const SAFE_MERMAN_WEB_IMPORTS = new Set([
-  "@mermanjs/web/catalog",
-  "@mermanjs/web/svg-safety",
-]);
-const MERMAN_WASM_URL_IMPORT =
-  "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
-const MERMAN_ADAPTER_DYNAMIC_IMPORTS = [
-  MERMAN_WASM_SHIM_IMPORT,
-  MERMAN_WEB_ROOT_IMPORT,
-].sort();
+const SAFE_MERMAN_WEB_IMPORTS = new Set([MERMAN_WEB_ROOT_IMPORT]);
+const MERMAN_ADAPTER_DYNAMIC_IMPORTS = [MERMAN_WEB_ROOT_IMPORT];
 const SCRIPT_EXTENSION = /\.[cm]?[jt]sx?$/i;
 
 export function inspectBenchmarkSourceBoundaries(rootDir) {
@@ -288,17 +278,12 @@ function verifyAdapterWebImports(engine, graph, violations) {
   for (const moduleImport of graph.packageImports) {
     if (!isMermanWebImport(moduleImport.specifier)) continue;
     const isSafeImport = SAFE_MERMAN_WEB_IMPORTS.has(moduleImport.specifier);
-    const isMermanWasmUrl =
-      engine === "merman" &&
-      moduleImport.from === BENCHMARK_SOURCES.mermanAdapter &&
-      moduleImport.kind === "static" &&
-      moduleImport.specifier === MERMAN_WASM_URL_IMPORT;
     const isMermanDynamicEngineImport =
       engine === "merman" &&
       moduleImport.from === BENCHMARK_SOURCES.mermanAdapter &&
       moduleImport.kind === "dynamic" &&
       MERMAN_ADAPTER_DYNAMIC_IMPORTS.includes(moduleImport.specifier);
-    if (!isSafeImport && !isMermanWasmUrl && !isMermanDynamicEngineImport) {
+    if (!isSafeImport && !isMermanDynamicEngineImport) {
       violations.push(
         `${capitalize(engine)} adapter reaches disallowed Merman runtime import ${JSON.stringify(moduleImport.specifier)} from ${moduleImport.from} via a ${moduleImport.kind} edge.`,
       );

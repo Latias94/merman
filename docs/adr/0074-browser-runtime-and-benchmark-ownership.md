@@ -2,12 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-18
-- Amended: 2026-07-22 (package-surface projection delegated to ADR-0076)
-- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `2`, editor-token and diagnostics schema `1`, facts schema `2`
+- Amended: 2026-07-23 (package-surface projection delegated to ADR-0076)
+- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token, diagnostics, and facts schema `1`
 
-The version fields above describe the live transitional runtime when this ADR was amended. U2 has
-completed the independent facts schema `2` migration; U6 still plans native ABI `3`. Neither
-change alters this ADR's realm, lifecycle, cache, or benchmark ownership decisions.
+These version fields describe the first public contract shapes after the 0.8 refactor. Their
+numbering does not preserve unreleased implementation iterations. None alters this ADR's realm,
+lifecycle, cache, or benchmark ownership decisions.
 
 ## Context
 
@@ -160,8 +160,9 @@ headless and foreground browsers without letting the hidden benchmark UI affect 
 
 The Playground loads local Monaco code and its editor worker; it does not use Monaco's default CDN
 loader. Merman language intelligence runs in a dedicated module Worker using the editor artifact
-selected by ADR-0076 (`@mermanjs/editor` and `preset-web-editor` after U8 migration). The current
-`@mermanjs/web/editor`/`browser-editor` pair remains transitional until that surface migration.
+selected by ADR-0076 (`@mermanjs/editor`, backed by the `browser-editor` artifact profile). The
+current `@mermanjs/web/editor`/`browser-editor` pair remains transitional until that surface
+migration.
 The selected editor artifact includes invariant language semantics, analysis, and editor APIs but
 excludes SVG rendering, ASCII, layout, math, and system adapters.
 
@@ -174,8 +175,8 @@ token plan. Results with stale document versions or descriptor digests are disca
 client wait does not claim to interrupt synchronous WASM execution; the completed stale result is
 ignored. Protocol or result-shape mismatch fails closed.
 
-The native browser ABI remains `2`; editor diagnostics remain schema `1` and shared analysis facts
-are schema `2`. These numbers describe different contracts and do not advance together.
+The browser transport API is `3`; the runtime catalog, editor diagnostics, and shared analysis
+facts use schema `1`. These numbers describe different contracts and do not advance together.
 
 ### 7. Examples And Detection Have Canonical Sources
 
@@ -190,9 +191,9 @@ those facts. Source-prefix and regular-expression classification are not fallbac
 
 ### 8. Public Package And Internal Runtime Boundaries
 
-ADR-0076 owns browser package names and their `preset-web-*` capability projections. U8 migrates
+ADR-0076 owns browser package names and their artifact-profile capability projections. U8 migrates
 the current subpath artifacts to those mappings; this ADR no longer owns a particular package
-layout or default preset.
+layout or default artifact.
 
 Whichever mapped package the Playground loads remains an operation-oriented browser binding. Its
 lifecycle functions initialize a realm-local wasm-bindgen module, and its editor-capable surface
@@ -218,7 +219,7 @@ is already deployed.
 Durable guards operate on contracts rather than private spelling:
 
 - TypeScript/package import graphs and public export manifests enforce package ownership.
-- WASM preset manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
+- WASM profile manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
 - Closed channel validators and browser tests enforce realm capability and lifecycle behavior.
 - Generated example checks enforce exact 35-family set coverage, per-example provenance, and
   freshness.
@@ -268,5 +269,6 @@ thread responsive.
 - The editor bundle is larger because Monaco and a Worker WASM are local, but it provides real
   parser-backed language intelligence and makes no runtime CDN dependency.
 - HTTP cache quality remains measurable deployment evidence rather than hidden application policy.
-- Native ABI stays `2`, editor-token and diagnostics schemas stay `1`, facts stays schema `2`, and
-  Mermaid remains pinned to `11.16.0@7c0cafcf`.
+- Native ABI is `3`; editor-token, diagnostics, and facts schemas use version `1`; and Mermaid
+  remains pinned to `11.16.0@7c0cafcf`. These values reflect the later coordinated transport
+  refactor and supersede the versions recorded when this ADR was first accepted.

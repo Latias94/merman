@@ -75,8 +75,6 @@ def main() -> int:
             str(REPO_ROOT / "platforms" / "android" / "build-android.py"),
             "--targets",
             *args.targets,
-            "--profile",
-            "release",
         ],
         cwd=REPO_ROOT,
     )

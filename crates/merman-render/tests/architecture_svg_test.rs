@@ -1,12 +1,11 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::architecture::layout_architecture_diagram_typed;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
-    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman_render::family::{self, RenderFamilyKind};
 use merman_render::model::ArchitectureDiagramLayout;
@@ -114,23 +113,6 @@ fn render_architecture_text_with_engine_and_options(
         .expect("render SVG")
         .svg()
         .to_owned()
-}
-
-fn layout_architecture_typed(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-) -> ArchitectureDiagramLayout {
-    let RenderSemanticModel::Architecture(model) = parsed.model() else {
-        panic!("expected architecture render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_architecture_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        session.render_seed().get(),
-    )
-    .expect("layout ok")
 }
 
 fn render_architecture_fixture(fixture_name: &str) -> String {
@@ -501,7 +483,12 @@ fn architecture_layout_caches_service_child_bounds() {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let layout = layout_architecture_typed(&parsed, &session);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Architecture artifact");
+    let layout: ArchitectureDiagramLayout = serde_json::from_value(
+        artifact.layout_json().expect("serialize layout")["layout"]["ArchitectureDiagram"].clone(),
+    )
+    .expect("architecture layout projection");
     assert!(
         !layout.cytoscape_service_bounds.is_empty(),
         "expected layout to expose Architecture service child bounds"
@@ -638,9 +625,13 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
             .expect("diagram detected");
-        let layout = layout_architecture_typed(&parsed, &session);
         let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare Architecture artifact");
+        let layout: ArchitectureDiagramLayout = serde_json::from_value(
+            artifact.layout_json().expect("serialize layout")["layout"]["ArchitectureDiagram"]
+                .clone(),
+        )
+        .expect("architecture layout projection");
         let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {

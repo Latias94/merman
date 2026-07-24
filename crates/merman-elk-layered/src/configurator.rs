@@ -69,10 +69,10 @@ pub fn configured_options(graph: &LGraph) -> LayeredOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LGraph, RandomSeedPolicy};
+    use crate::LGraph;
 
     #[test]
-    fn raw_graph_with_upstream_zero_requires_an_explicit_policy() {
+    fn raw_graph_with_upstream_zero_fails_closed_at_the_configurator_boundary() {
         let options = LayeredOptions {
             random_seed: 0,
             ..Default::default()
@@ -85,31 +85,5 @@ mod tests {
                 graph_path: "root".to_string(),
             })
         );
-    }
-
-    #[test]
-    fn deterministic_policy_keeps_zero_config_and_reseeds_each_configuration() {
-        let options = LayeredOptions {
-            random_seed: 0,
-            ..Default::default()
-        };
-        let policy = RandomSeedPolicy::deterministic(0x4d45_524d_414e);
-
-        let mut first = LGraph::new("root", options.clone()).with_random_seed_policy(policy);
-        configure_graph_properties(&mut first).unwrap();
-        let first_invocation = first.random.clone().next_long();
-        configure_graph_properties(&mut first).unwrap();
-        let second_invocation = first.random.clone().next_long();
-
-        let mut replayed = LGraph::new("root", options).with_random_seed_policy(policy);
-        configure_graph_properties(&mut replayed).unwrap();
-        let replayed_first = replayed.random.clone().next_long();
-        configure_graph_properties(&mut replayed).unwrap();
-        let replayed_second = replayed.random.clone().next_long();
-
-        assert_eq!(first.options.random_seed, 0);
-        assert_ne!(first_invocation, second_invocation);
-        assert_eq!(first_invocation, replayed_first);
-        assert_eq!(second_invocation, replayed_second);
     }
 }

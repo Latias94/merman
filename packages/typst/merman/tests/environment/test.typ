@@ -5,7 +5,7 @@
 )
 
 #let source = "flowchart LR
-  Input[Environment options] --> Output[Binding ABI 2]
+  Input[Environment options] --> Output[Options schema 1]
 "
 
 #let default-result = mermaid-result(source)
@@ -71,7 +71,7 @@
 #assert.eq(invalid-text-result.code_name, "MERMAN_INVALID_ARGUMENT")
 #assert(
   invalid-text-result.message.contains("environment.text_measurement"),
-  message: "text measurement errors should identify the ABI 2 environment field",
+  message: "text measurement errors should identify the options schema environment field",
 )
 
 #let invalid-math-result = mermaid-result(source, math-renderer: "katex")
@@ -79,7 +79,7 @@
 #assert.eq(invalid-math-result.code_name, "MERMAN_INVALID_ARGUMENT")
 #assert(
   invalid-math-result.message.contains("environment.math_renderer"),
-  message: "math renderer errors should identify the ABI 2 environment field",
+  message: "math renderer errors should identify the options schema environment field",
 )
 
 #let legacy-layout-result = mermaid-result(
@@ -94,10 +94,15 @@
 )
 
 #let capabilities = merman-capabilities()
-#assert(not capabilities.ratex_math, message: "the Typst profile must not advertise browser-bound RaTeX")
+#assert(
+  not capabilities.capabilities.capability_ids.contains("math"),
+  message: "the Typst profile must not advertise browser-bound RaTeX",
+)
 #let ratex-result = mermaid-result(source, math-renderer: "ratex")
 #assert(not ratex-result.ok, message: "ratex must not silently fall back when the feature is absent")
-#assert.eq(ratex-result.code_name, "MERMAN_UNSUPPORTED_FORMAT")
+#assert.eq(ratex-result.code_name, "MERMAN_UNSUPPORTED_OPERATION")
+#assert.eq(ratex-result.kind, "missing-capability")
+#assert.eq(ratex-result.capability_id, "math")
 #assert(
   ratex-result.message.contains("environment.math_renderer=ratex"),
   message: "the unsupported-feature error should identify the requested environment renderer",

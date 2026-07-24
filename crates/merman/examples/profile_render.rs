@@ -1,4 +1,4 @@
-use merman::render::{
+use merman::svg::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
     sanitize_svg_id,
 };
@@ -281,7 +281,7 @@ fn run_end_to_end(
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    merman::render::render_svg_sync(
+    merman::svg::render_svg_sync(
         case.engine,
         case.source,
         case.parse_options,
@@ -291,7 +291,7 @@ fn run_end_to_end(
     .ok_or("no Mermaid diagram detected")?;
 
     run_for_duration(duration, batch_size, || {
-        let svg = merman::render::render_svg_sync(
+        let svg = merman::svg::render_svg_sync(
             case.engine,
             black_box(case.source),
             case.parse_options,

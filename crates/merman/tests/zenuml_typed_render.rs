@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::{HeadlessRenderer, RenderResourcePolicy};
+use merman::svg::{HeadlessRenderer, RenderResourcePolicy};
 
 fn render(source: &str) -> String {
     HeadlessRenderer::new()
@@ -82,29 +82,29 @@ fn zenuml_labels_are_xml_escaped_at_the_family_boundary() {
 fn zenuml_honors_the_shared_label_resource_budget_before_layout() {
     let renderer = HeadlessRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::render::ResourceLimitId::MaxLabelBytes, 4)
+            .with_limit(merman::svg::ResourceLimitId::MaxModelTextBytes, 4)
             .unwrap(),
     );
     let error = renderer
         .render_svg_sync("zenuml\nA->B: a label beyond the budget\n")
         .expect_err("ZenUML must honor the shared label budget");
-    assert!(error.to_string().contains("max_label_bytes"), "{error}");
+    assert!(
+        error.to_string().contains("max_model_text_bytes"),
+        "{error}"
+    );
 }
 
 #[test]
 fn zenuml_honors_its_structural_resource_budget_before_layout() {
     let renderer = HeadlessRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::render::ResourceLimitId::MaxZenumlStatements, 1)
+            .with_limit(merman::svg::ResourceLimitId::MaxModelItems, 1)
             .unwrap(),
     );
     let error = renderer
         .render_svg_sync("zenuml\nA.call()\nB.call()\n")
         .expect_err("ZenUML must honor its family-owned statement budget");
-    assert!(
-        error.to_string().contains("max_zenuml_statements"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("max_model_items"), "{error}");
 }
 
 #[test]

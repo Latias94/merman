@@ -1,5 +1,5 @@
 import MermanLanguageWorker from "./merman-language.worker.ts?worker";
-import { SEMANTIC_TOKEN_DESCRIPTOR_DIGEST } from "@mermanjs/web/editor";
+import { SEMANTIC_TOKEN_DESCRIPTOR_DIGEST } from "@mermanjs/web";
 import {
   createMermanLanguageWorkerClient,
   type EditorLanguageIdentity,

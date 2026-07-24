@@ -1,24 +1,33 @@
 mod executor;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod export;
+#[cfg(feature = "network-icons")]
 mod icons;
+#[cfg(feature = "analysis")]
 mod markdown_export;
 mod plan;
-mod raster;
 mod svg_pipeline;
 
 pub(crate) use executor::run_render;
 pub(crate) use plan::{render_plan_for_mmdc, render_plan_for_subcommand};
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "svg",
+    feature = "network-icons",
+    feature = "parallel-markdown",
+    feature = "shell-completions"
+))]
 mod tests {
     use super::executor::RenderRequest;
+    use super::export::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
     use super::plan::{RenderMode, RenderPlan};
-    use super::raster::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
     use super::svg_pipeline::svg_output_policy;
     use crate::cli::{
         ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind, TextOutputCliArgs,
     };
     use crate::io::OutputTarget;
-    use merman::render::{HeadlessRenderer, RenderEnvironment};
+    use merman::svg::{HeadlessRenderer, RenderEnvironment};
 
     fn assert_root_background(svg: &str, expected: &str) {
         let document = roxmltree::Document::parse(svg).expect("valid SVG XML");

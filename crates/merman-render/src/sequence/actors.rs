@@ -2,7 +2,9 @@ use super::constants::{
     sequence_actor_lifeline_start_y, sequence_actor_visual_height,
     sequence_text_dimensions_height_px,
 };
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::metrics::{
+    SequenceMathHeightMode, measure_sequence_label_for_layout, measure_sequence_math_label,
+};
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
@@ -154,8 +156,22 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 ctx.actor_text_style,
                 wrap_w,
             );
-            let line_count = wrapped_lines.len().max(1) as f64;
-            let text_h = sequence_text_dimensions_height_px(ctx.actor_font_size) * line_count;
+            let wrapped_label = wrapped_lines.join("<br>");
+            let text_h = measure_sequence_math_label(
+                ctx.measurer,
+                &wrapped_label,
+                ctx.actor_text_style,
+                ctx.math_config,
+                ctx.math_renderer,
+                SequenceMathHeightMode::Actor,
+            )
+            .map_or_else(
+                || {
+                    let line_count = wrapped_lines.len().max(1) as f64;
+                    sequence_text_dimensions_height_px(ctx.actor_font_size) * line_count
+                },
+                |(_, height)| height,
+            );
             actor_base_heights.push(ctx.actor_height.max(text_h).max(1.0));
             actor_widths.push(ctx.actor_width_min.max(1.0));
         } else {

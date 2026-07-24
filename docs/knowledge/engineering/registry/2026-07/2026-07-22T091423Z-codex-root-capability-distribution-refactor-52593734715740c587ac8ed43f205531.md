@@ -11,7 +11,7 @@ related_plan: "docs/plans/2026-07-22-001-refactor-capability-driven-feature-and-
 git_branch: "refactor/family-owned-architecture"
 git_commit: "4e2a2d6c6"
 registration_id: "codex-root-capability-distribution-refactor"
-latest_link: "U13 now uses a semantic capability catalog plus exact Cargo artifact recipes; interface contracts remain at their natural owners."
+latest_link: "U13 now uses a semantic capability catalog plus exact Cargo artifact recipes; the global preset lattice is retired and interface contracts remain at their natural owners."
 ---
 
 # Scope
@@ -22,8 +22,10 @@ verification redesign through U1-U16 without retaining obsolete alpha compatibil
 # Current Claim
 
 U1 and U2 are committed. U13 is ready to commit: the capability descriptor owns semantic IDs and
-additive presets, while the artifact descriptor owns exact Cargo recipes. C ABI, UniFFI, LSP, Web,
-Typst, and package contracts remain at their natural owners. Neither descriptor embeds plan units,
+implications, while the artifact descriptor owns exact Cargo recipes. The repository has no
+global `preset-*` Cargo lattice; only the result-named `complete-svg` aggregate remains on the
+Rust facade, and product/artifact profiles select direct leaves. C ABI, UniFFI, LSP, Web, Typst,
+and package contracts remain at their natural owners. Neither descriptor embeds plan units,
 documentation paths, release status, or manual evidence. The fixed-point review has 18 confirmed
 findings: 3 already closed and 15 tracked by U16. Dependency and feature findings are assigned to
 U3/U4/U5/U8/U9/U12.

@@ -1,7 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{RenderEnvironment, TextMeasurementPhase};
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
-use merman_render::mindmap::layout_mindmap_diagram_typed;
+use merman::svg::RenderEnvironment;
+use merman_core::{Engine, ParseOptions};
+use merman_render::{LayoutOptions, family};
 use std::hint::black_box;
 
 const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_009.mmd");
@@ -9,36 +9,27 @@ const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_
 fn bench_mindmap_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
+    let environment = RenderEnvironment::deterministic();
 
     let parsed = engine
         .parse_diagram_for_render_model_sync(MINDMAP_BALANCED_TREE, parse_opts)
         .expect("parse")
         .expect("supported diagram");
-    let RenderSemanticModel::Mindmap(model) = parsed.model() else {
-        panic!("expected mindmap render model");
-    };
-    let effective_config = parsed.metadata().effective_config.as_value();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout_options = LayoutOptions::headless_svg_defaults();
 
     let mut group = c.benchmark_group("layout_stress");
     group.sample_size(50);
 
-    // Mindmap layout is fast (µs–ms scale depending on fixture), so we batch to get stable signals
-    // from fixed-cost + allocation changes inside the manatee COSE pipeline.
-    group.bench_function("mindmap_balanced_tree_layout_x50", move |b| {
+    // Benchmark the canonical operation-owned preparation seam. The parsed model clone is part of
+    // the public API cost because raw family layout entry points are intentionally crate-private.
+    group.bench_function("mindmap_balanced_tree_prepare_x50", move |b| {
         b.iter(|| {
-            let mut acc: usize = 0;
             for _ in 0..50usize {
-                let layouted =
-                    layout_mindmap_diagram_typed(black_box(model), effective_config, &measurer)
-                        .expect("layout");
-                acc ^= layouted.nodes.len();
-                acc ^= layouted.edges.len();
+                let session = environment.begin_session().expect("render session");
+                let artifact = family::prepare(black_box(parsed.clone()), &layout_options, session)
+                    .expect("prepare");
+                black_box(artifact.family_kind());
             }
-            black_box(acc);
         });
     });
 

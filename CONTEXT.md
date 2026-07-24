@@ -37,9 +37,9 @@ Authoritative baseline sources:
 - `crates/merman-core/src/baseline.rs`
 
 Historical implementation comments may still name the Mermaid release where an algorithm was first
-ported. Current assets and APIs must instead use `for_pinned_mermaid_baseline`,
-`pinned_mermaid_baseline_*`, or constants from `merman_core::baseline`; stale version suffixes are
-not an authority for current behavior.
+ported. Current assets and APIs must instead use the owning registry's
+`pinned_mermaid_baseline()` constructor or constants from `merman_core::baseline`; stale version
+suffixes are not an authority for current behavior.
 
 ## Architecture Boundaries
 
@@ -69,9 +69,9 @@ Current contract:
   own root emission or consult fixture-derived root data.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
-- Analysis diagnostics remain schema `1`; parser-backed facts use the independently versioned,
-  incompatible schema `2`. Facts schema `1` and its TextScan-capable alpha shape are rejected at
-  the version boundary rather than supported in parallel.
+- Analysis diagnostics and parser-backed facts each use their independently defined schema `1`.
+  Other facts versions are rejected at the version boundary, and the superseded TextScan path is
+  not supported in parallel.
 - **Capability and Artifact Profiles** are separate contracts. The capability descriptor owns
   additive semantic vocabulary and implications; artifact profiles own exact Cargo build recipes.
   Neither substitutes for the ABI, protocol, package, runtime, or release authority at the surface

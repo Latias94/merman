@@ -546,7 +546,7 @@ fn draw_arrow(
     })
 }
 
-pub fn layout_gitgraph_diagram_typed(
+pub(crate) fn layout_gitgraph_diagram_typed(
     model: &GitGraphRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,

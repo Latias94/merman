@@ -1,39 +1,15 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
-use merman_render::ishikawa::layout_ishikawa_diagram_typed;
+use merman_render::model::IshikawaDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
-
-struct PreciseIshikawaMeasurer;
-
-impl TextMeasurer for PreciseIshikawaMeasurer {
-    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
-        TextMetrics {
-            width: 10.0,
-            height: 16.0,
-            line_count: 1,
-        }
-    }
-
-    fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
-        10.008
-    }
-
-    fn measure_svg_text_bbox_x_with_ascii_overhang(
-        &self,
-        _text: &str,
-        _style: &TextStyle,
-    ) -> (f64, f64) {
-        (5.004, 5.004)
-    }
-}
 
 fn deep_ishikawa_source(depth: usize) -> String {
     let mut source = String::from("ishikawa-beta\n Root\n");
@@ -73,18 +49,10 @@ ishikawa-beta
         .unwrap();
     assert_eq!(parsed.metadata().diagram_type, "ishikawa");
 
-    let ishikawa_layout = {
-        let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
-            panic!("expected Ishikawa render model");
-        };
-        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_ishikawa_diagram_typed(
-            model,
-            parsed.metadata().effective_config.as_value(),
-            &measurer,
-        )
-        .unwrap()
-    };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let ishikawa_layout: IshikawaDiagramLayout =
+        serde_json::from_value(projection["layout"]["IshikawaDiagram"].clone()).unwrap();
     assert!(ishikawa_layout.spine.is_some());
     assert_eq!(ishikawa_layout.pairs.len(), 1);
     assert_eq!(ishikawa_layout.pairs[0].upper.sub_groups.len(), 2);
@@ -98,7 +66,6 @@ ishikawa-beta
         1
     );
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
     let svg = artifact
         .render_svg(
             &SvgRenderOptions {
@@ -417,62 +384,26 @@ ishikawa-beta
 }
 
 #[test]
-fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+fn ishikawa_deep_hierarchy_is_rejected_before_recursive_projection() {
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
 
-    let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
-        panic!("expected Ishikawa render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout = layout_ishikawa_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .unwrap();
-
-    assert!(layout.total_width.is_finite());
-    assert!(layout.total_height.is_finite());
-    assert!(layout.head.is_some());
-    let label_count = layout
-        .pairs
-        .iter()
-        .map(|pair| {
-            1 + pair.upper.sub_groups.len()
-                + pair
-                    .lower
-                    .as_ref()
-                    .map(|branch| 1 + branch.sub_groups.len())
-                    .unwrap_or(0)
-        })
-        .sum::<usize>();
-    assert!(label_count >= DEEP_ISHIKAWA_RENDER_DEPTH);
-}
-
-#[test]
-fn ishikawa_end_anchored_labels_preserve_computed_length_precision() {
-    let input = "ishikawa-beta\n    Root\n    Cause\n        Detail\n";
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
-        .unwrap()
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
         .unwrap();
-    let RenderSemanticModel::Ishikawa(model) = parsed.model() else {
-        panic!("expected Ishikawa render model");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("deep recursive Ishikawa model must be rejected before projection"),
+        Err(error) => error,
+    };
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected typed resource-limit error, got {error}");
     };
 
-    let layout = layout_ishikawa_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &PreciseIshikawaMeasurer,
-    )
-    .unwrap();
-    let label = &layout.pairs[0].upper.sub_groups[0].label;
-    let width = label.bbox.max_x - label.bbox.min_x;
-
-    assert!((width - 10.008).abs() < 1e-12, "label width = {width}");
+    assert_eq!(limit.limit, "typed_model_tree_depth");
+    assert_eq!(limit.actual, DEEP_ISHIKAWA_RENDER_DEPTH);
+    assert!(limit.actual > limit.max);
 }

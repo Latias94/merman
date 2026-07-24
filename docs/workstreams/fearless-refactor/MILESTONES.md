@@ -778,7 +778,7 @@ Scope:
 - Run broad parity gates.
 - Run benchmarks.
 - Update README and contributor guidance.
-- Decide whether any pre-1.0 public API cleanup should happen before release.
+- Decide whether any public API cleanup should happen before the next release.
 
 Progress:
 

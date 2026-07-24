@@ -1,8 +1,8 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::render::{HeadlessRenderer, RenderEnvironment, RenderResourcePolicy};
-#[cfg(feature = "raster")]
+use merman::svg::{HeadlessRenderer, RenderEnvironment, RenderResourcePolicy};
+#[cfg(feature = "png")]
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -25,10 +25,10 @@ fn assert_xml_parseable(name: &str, svg: &str) {
         .unwrap_or_else(|err| panic!("{name}: output should be XML-parseable: {err}\n{svg}"));
 }
 
-#[cfg(feature = "raster")]
-fn finalize_raster_input(svg: &str) -> merman::render::ResvgCompatibleSvg {
+#[cfg(any(feature = "png", feature = "pdf"))]
+fn finalize_raster_input(svg: &str) -> merman::svg::ResvgCompatibleSvg {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    merman::render::finalize_resvg_svg(svg, &session).expect("valid resvg-compatible fixture")
+    merman::svg::finalize_resvg_svg(svg, &session).expect("valid resvg-compatible fixture")
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn mindmap_render_drops_xml_forbidden_control_chars_before_serialization() {
 
 #[test]
 fn raw_svg_options_cannot_bypass_diagram_id_normalization() {
-    let renderer = HeadlessRenderer::new().with_svg_options(merman::render::SvgRenderOptions {
+    let renderer = HeadlessRenderer::new().with_svg_options(merman::svg::SvgRenderOptions {
         diagram_id: Some("x]]>y".to_string()),
         ..Default::default()
     });
@@ -172,7 +172,7 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 </svg>"##;
 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let out = merman::render::svg_resvg_safe(svg, &session).unwrap();
+    let out = merman::svg::svg_resvg_safe(svg, &session).unwrap();
 
     assert_xml_parseable("raw-resvg-safe-active-content", &out);
     let lower = out.to_ascii_lowercase();
@@ -191,7 +191,7 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 fn render_resource_limit_rejects_oversized_source() {
     let renderer = HeadlessRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::render::ResourceLimitId::MaxSourceBytes, 8)
+            .with_limit(merman::svg::ResourceLimitId::MaxSourceBytes, 8)
             .unwrap(),
     );
 
@@ -206,7 +206,7 @@ fn render_resource_limit_rejects_oversized_source() {
 fn render_resource_limit_rejects_oversized_flowchart_model() {
     let renderer = HeadlessRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::render::ResourceLimitId::MaxFlowchartEdges, 1)
+            .with_limit(merman::svg::ResourceLimitId::MaxModelItems, 1)
             .unwrap(),
     );
 
@@ -214,15 +214,15 @@ fn render_resource_limit_rejects_oversized_flowchart_model() {
         .render_svg_sync("flowchart TD\nA-->B\nB-->C")
         .unwrap_err();
 
-    assert!(err.to_string().contains("max_flowchart_edges"), "{err}");
+    assert!(err.to_string().contains("max_model_items"), "{err}");
 }
 
 #[test]
 fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
-    let mut registry = merman::render::IconRegistry::new();
+    let mut registry = merman::svg::IconRegistry::new();
     registry.insert(
         "test:active",
-        merman::render::IconSvg::new(
+        merman::svg::IconSvg::new(
             r##"<script>alert(1)</script><path id="shape" d="M0 0H16V16H0z"/><use href="#shape" onclick="alert(1)"/><a href="javascript:alert(1)"><path d="M1 1H2V2H1z"/></a>"##,
             16.0,
             16.0,
@@ -230,7 +230,7 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
     );
     let renderer = HeadlessRenderer::new()
         .with_environment(RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry)))
-        .with_svg_options(merman::render::SvgRenderOptions {
+        .with_svg_options(merman::svg::SvgRenderOptions {
             diagram_id: Some("security-icon".to_string()),
             ..Default::default()
         });
@@ -249,9 +249,9 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
-    use merman::render::raster::{
+    use merman::svg::export::{
         DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterOptions, svg_raster_plan,
     };
 
@@ -273,9 +273,9 @@ fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn raster_size_limit_rejects_zero_budget_before_pixmap_allocation() {
-    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan};
+    use merman::svg::export::{RasterOptions, RasterSizeLimit, svg_raster_plan};
 
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="black"/></svg>"#;
     let options = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
@@ -295,9 +295,9 @@ fn raster_size_limit_rejects_zero_budget_before_pixmap_allocation() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn custom_raster_size_limit_caps_actual_png_dimensions() {
-    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan, svg_to_png};
+    use merman::svg::export::{RasterOptions, RasterSizeLimit, svg_raster_plan, svg_to_png};
 
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
     let options = RasterOptions::default()
@@ -316,9 +316,9 @@ fn custom_raster_size_limit_caps_actual_png_dimensions() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "pdf")]
 fn default_pdf_conversion_keeps_large_vector_pages_outside_raster_pixel_limits() {
-    use merman::render::raster::svg_to_pdf;
+    use merman::svg::export::svg_to_pdf;
 
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
 
@@ -332,7 +332,7 @@ fn default_pdf_conversion_keeps_large_vector_pages_outside_raster_pixel_limits()
     );
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
     let cursor = Cursor::new(bytes);
     let decoder = png::Decoder::new(cursor);

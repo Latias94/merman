@@ -1,10 +1,11 @@
 use crate::{
     XtaskError,
     cmd::{
+        artifact_profiles::{WasmArtifactProfile, load_wasm_size_artifact_profiles},
         paths,
         typst_artifact::{TypstArtifactSpec, install_typst_artifact, verify_typst_artifact},
         typst_plugin_smoke::validate_typst_plugin,
-        typst_profiles::{TypstWasmProfile, load_typst_profiles},
+        typst_profiles::{load_typst_profiles, validate_typst_artifact_profiles},
         wasm_build_lock::WorkspaceWasmBuildLock,
     },
     util::sha256_hex,
@@ -151,21 +152,6 @@ struct TypstManifestPackage {
     name: String,
     version: String,
     exclude: Vec<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct CargoManifest {
-    workspace: CargoWorkspace,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct CargoWorkspace {
-    package: CargoWorkspacePackage,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct CargoWorkspacePackage {
-    version: String,
 }
 
 impl Default for Options {
@@ -507,25 +493,28 @@ fn build_typst_package_with_options(options: &Options) -> Result<TypstPackageBui
     let root = paths::workspace_root();
     let profile_catalog = load_typst_profiles()?;
     let profile = profile_catalog.resolve_package(options.profile.as_deref())?;
+    let artifact_profiles = load_wasm_size_artifact_profiles().map_err(|error| {
+        XtaskError::TypstPackageFailed(format!(
+            "failed to load the exact Typst artifact recipe: {error}"
+        ))
+    })?;
+    validate_typst_artifact_profiles(&profile_catalog, &artifact_profiles)?;
+    let artifact_profile = artifact_profiles
+        .iter()
+        .find(|artifact| artifact.semantic_target == "typst")
+        .ok_or_else(|| {
+            XtaskError::TypstPackageFailed("the exact Typst artifact recipe is missing".to_string())
+        })?;
     let package_source = root.join("packages").join("typst").join("merman");
     let source_snapshot =
         RuntimePackageSourceSnapshot::capture(&package_source, profile_catalog.artifact_name())?;
-    let package_version = source_snapshot.package_version.clone();
-    verify_typst_readme_version_mapping_bytes(
-        &source_snapshot.required_file("README.md")?.bytes,
-        &package_source.join("README.md"),
-        &package_version,
-    )?;
-    let artifact_spec = TypstArtifactSpec::for_repository_profile(&profile_catalog, profile)?;
+    let artifact_spec =
+        TypstArtifactSpec::for_repository_profile(&profile_catalog, profile, artifact_profile)?;
     let artifact = if options.skip_wasm_build {
         verify_typst_artifact(&artifact_spec)?
     } else {
         let _build_lock = WorkspaceWasmBuildLock::acquire()?;
-        let raw_wasm = build_wasm(
-            profile_catalog.package(),
-            profile,
-            profile_catalog.artifact_name(),
-        )?;
+        let raw_wasm = build_wasm(artifact_profile)?;
         install_typst_artifact(&artifact_spec, &raw_wasm)?
     };
     validate_typst_plugin(artifact.wasm_path(), &profile_catalog, profile)?;
@@ -625,57 +614,6 @@ fn read_typst_package_version_bytes(
         )));
     }
     Ok(version.to_string())
-}
-
-fn read_workspace_version(manifest_path: &Path) -> Result<String, XtaskError> {
-    let manifest_text =
-        fs::read_to_string(manifest_path).map_err(|source| XtaskError::ReadFile {
-            path: manifest_path.display().to_string(),
-            source,
-        })?;
-    let manifest: CargoManifest = toml::from_str(&manifest_text).map_err(|source| {
-        XtaskError::TypstPackageFailed(format!(
-            "failed to parse {}: {source}",
-            manifest_path.display()
-        ))
-    })?;
-    Ok(manifest.workspace.package.version)
-}
-
-#[cfg(test)]
-fn verify_typst_readme_version_mapping(
-    readme_path: &Path,
-    package_version: &str,
-) -> Result<(), XtaskError> {
-    let readme = fs::read(readme_path).map_err(|source| XtaskError::ReadFile {
-        path: readme_path.display().to_string(),
-        source,
-    })?;
-    verify_typst_readme_version_mapping_bytes(&readme, readme_path, package_version)
-}
-
-fn verify_typst_readme_version_mapping_bytes(
-    readme: &[u8],
-    readme_path: &Path,
-    package_version: &str,
-) -> Result<(), XtaskError> {
-    let readme = std::str::from_utf8(readme).map_err(|error| {
-        XtaskError::TypstPackageFailed(format!(
-            "{} must be valid UTF-8: {error}",
-            readme_path.display()
-        ))
-    })?;
-    let workspace_version = read_workspace_version(&paths::workspace_root().join("Cargo.toml"))?;
-    let plugin_abi = load_typst_profiles()?.plugin_abi_version();
-    let expected_row = format!("| `{package_version}` | `{workspace_version}` | `{plugin_abi}` |");
-    if readme.contains(&expected_row) {
-        return Ok(());
-    }
-
-    Err(XtaskError::TypstPackageFailed(format!(
-        "{} version mapping must include Typst package, merman source version, and plugin ABI row `{expected_row}`",
-        readme_path.display()
-    )))
 }
 
 fn is_typst_package_version(version: &str) -> bool {
@@ -800,8 +738,8 @@ fn print_smoke_usage() {
 fn print_profile_names() {
     if let Ok(catalog) = load_typst_profiles() {
         println!(
-            "Typst WASM profiles: {}",
-            catalog.public_profile_names().join(", ")
+            "Typst package profile: {}",
+            catalog.package_profile().name()
         );
     }
 }
@@ -992,22 +930,18 @@ fn compile_typst_fixture(
     )))
 }
 
-fn build_wasm(
-    package: &str,
-    profile: &TypstWasmProfile,
-    artifact_name: &str,
-) -> Result<PathBuf, XtaskError> {
+fn build_wasm(profile: &WasmArtifactProfile) -> Result<PathBuf, XtaskError> {
     let target_root = paths::wasm_build_target_root();
     let mut command = Command::new("cargo");
     command.args([
         "build",
         "--locked",
         "-p",
-        package,
+        &profile.package,
         "--profile",
-        "wasm-size",
+        &profile.cargo_profile,
         "--target",
-        "wasm32-unknown-unknown",
+        &profile.target_triple,
     ]);
     command.arg("--target-dir").arg(&target_root);
     command.current_dir(paths::workspace_root());
@@ -1024,9 +958,9 @@ fn build_wasm(
     }
 
     Ok(target_root
-        .join("wasm32-unknown-unknown")
-        .join("wasm-size")
-        .join(artifact_name))
+        .join(&profile.target_triple)
+        .join(&profile.cargo_profile)
+        .join(&profile.artifact_name))
 }
 
 impl PluginArtifactSnapshot {
@@ -1660,11 +1594,9 @@ mod tests {
         PluginArtifactSnapshot, RuntimePackageSourceSnapshot, collect_typst_files,
         collect_typst_fixtures, copy_dir_recursive, copy_file, create_smoke_run_root,
         install_staged_package, is_typst_package_version, package_manifest, parse_smoke_options,
-        read_workspace_version, serialize_package_manifest, stage_and_install_package,
-        stage_and_install_package_with_hook, typst_fixture_output_path, validate_staged_package,
-        verify_typst_readme_version_mapping, write_staged_file,
+        serialize_package_manifest, stage_and_install_package, stage_and_install_package_with_hook,
+        typst_fixture_output_path, validate_staged_package, write_staged_file,
     };
-    use crate::cmd::paths;
     use crate::util::sha256_hex;
     use std::collections::BTreeSet;
     use std::fs;
@@ -1901,7 +1833,7 @@ mod tests {
         let package = stage_and_install_package(
             &fixture.source_snapshot,
             &fixture.out_dir,
-            "typst-full-elk",
+            "publish",
             &fixture.artifact_wasm,
             &fixture.artifact_manifest,
         )
@@ -1922,7 +1854,7 @@ mod tests {
         assert_eq!(manifest.schema_version, 1);
         assert_eq!(manifest.package_name, "merman");
         assert_eq!(manifest.package_version, "0.2.0");
-        assert_eq!(manifest.profile, "typst-full-elk");
+        assert_eq!(manifest.profile, "publish");
         assert_eq!(manifest.wrapper.path, "lib.typ");
         assert_eq!(manifest.plugin.wasm.sha256, sha256_hex(b"wasm"));
         let bundle_entries = fs::read_dir(&package)
@@ -1958,7 +1890,7 @@ mod tests {
         let error = stage_and_install_package_with_hook(
             &fixture.source_snapshot,
             &fixture.out_dir,
-            "typst-full-elk",
+            "publish",
             &fixture.artifact_wasm,
             &fixture.artifact_manifest,
             || {
@@ -1983,12 +1915,11 @@ mod tests {
         let plugin = PluginArtifactSnapshot::capture(
             &fixture.artifact_wasm,
             &fixture.artifact_manifest,
-            "typst-full-elk",
+            "publish",
             "0.2.0",
         )
         .unwrap();
-        let manifest =
-            package_manifest(&fixture.source_snapshot, "typst-full-elk", &plugin).unwrap();
+        let manifest = package_manifest(&fixture.source_snapshot, "publish", &plugin).unwrap();
         let manifest_bytes = serialize_package_manifest(&manifest).unwrap();
         let staged = temporary.path().join("staged");
         fs::create_dir_all(&staged).unwrap();
@@ -2056,60 +1987,6 @@ mod tests {
         assert!(missing.to_string().contains("shape does not match"));
     }
 
-    #[test]
-    fn typst_readme_version_mapping_matches_package_and_workspace_versions() {
-        let readme = paths::workspace_root()
-            .join("packages")
-            .join("typst")
-            .join("merman")
-            .join("README.md");
-        verify_typst_readme_version_mapping(&readme, "0.2.0").unwrap();
-    }
-
-    #[test]
-    fn typst_readme_version_mapping_rejects_missing_package_version() {
-        let root = unique_test_dir("typst-readme-version");
-        let readme = root.join("README.md");
-        fs::create_dir_all(&root).unwrap();
-        fs::write(
-            &readme,
-            "| Typst package | merman source version | Notes |\n| --- | --- | --- |\n| `9.9.9` | `0.8.0-alpha.2` | stale |\n",
-        )
-        .unwrap();
-
-        let error = verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap_err();
-        assert!(
-            error.to_string().contains("version mapping must include"),
-            "unexpected error: {error}"
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn typst_readme_version_mapping_rejects_missing_plugin_abi() {
-        let root = unique_test_dir("typst-readme-plugin-abi");
-        let readme = root.join("README.md");
-        let workspace_version =
-            read_workspace_version(&paths::workspace_root().join("Cargo.toml")).unwrap();
-        fs::create_dir_all(&root).unwrap();
-        fs::write(
-            &readme,
-            format!(
-                "| Typst package | merman source version | Notes |\n| --- | --- | --- |\n| `0.1.0` | `{workspace_version}` | stale |\n"
-            ),
-        )
-        .unwrap();
-
-        let error = verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap_err();
-        assert!(
-            error.to_string().contains("plugin ABI"),
-            "unexpected error: {error}"
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
     struct PackageFixture {
         package_source: PathBuf,
         out_dir: PathBuf,
@@ -2156,7 +2033,7 @@ mod tests {
         fs::create_dir_all(artifact_wasm.parent().unwrap()).unwrap();
         fs::write(&artifact_wasm, "wasm").unwrap();
         let artifact_manifest_value = serde_json::json!({
-            "profile": "typst-full-elk",
+            "profile": "publish",
             "cargo_package_version": "0.8.0-alpha.3",
             "typst_package_version": "0.2.0",
             "artifact": {

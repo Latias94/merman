@@ -8,24 +8,29 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Replaced the prerelease ABI 2 text-measurement records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`lineCount`; upgrade the Swift sources and XCFramework together and update custom callbacks for operations `0...18`.
-- Raised parser-backed document facts to schema 2. Facts v1 is rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
-- Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the alpha Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
-- Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
-- Expanded the ABI 2 diagram-family capability record. Upgrade custom Swift decoders with the XCFramework; the canonical record now requires logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
+- Replaced the hand-written Swift C binding with direct generated UniFFI bindings. `MermanEngine` is now constructed as `MermanEngine()`; use generated camel-case method labels such as `renderSvg(source:optionsJson:)`, `execute(request:)`, and `runtimeCatalogJson()`. Generic options now belong to `MermanOperationRequest.optionsJson`.
+- Replaced split runtime-contract and capability-vocabulary discovery with one atomic `runtimeCatalogJson()` response. The generated API no longer exposes either legacy endpoint.
+- Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
+- Replaced native ABI version checks with UniFFI binding API `3` and introduced runtime-contract schema `1`. The generated binding rejects a mismatched native library through its contract and API checksum checks.
+- Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
+- Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
+- Added `optionsJson` to reusable convenience methods. Pass `nil` to inherit the engine baseline, or pass request-local options to deeply merge them for one operation; request options cannot change the constructor-owned runtime policy.
 
 ### Added
 
-- Added generated Swift text-measurement operation/result-kind types with `requiredResultKind`.
-- Added the generated `MermanResourceOptionsBuilder` and ABI 2 resource-profile/runtime descriptor
-  so Apple callers can select `interactive`, `constrained`, `trusted-native`, or
-  `unbounded-for-trusted-input` without duplicating limit tables.
+- Added checked-in `Merman.swift`, `MermanFFI.h`, and `MermanFFI.modulemap` generation from the
+  exact `merman-uniffi` static library included in the XCFramework.
+- Added generic operation requests/results and direct SVG, PNG, JPEG, and PDF smoke coverage.
+- Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
+  `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
+  duplicating limit tables.
 
 ### Changed
 
-- Updated the XCFramework engine to the Mermaid 11.16 compatibility baseline, including source-backed Swimlane, Cynefin, Railroad, Wardley, and ZenUML behavior plus parser, layout, SVG, theme, Gantt, TreeView, and edge-routing fixes across existing families.
-- Host text-measurement failures, unsupported operations, and wrong-kind results now fall back per operation instead of invalidating the enclosing render.
+- The XCFramework now packages `libmerman_uniffi.a` with the matching generated UniFFI header and
+  module map for every Apple slice.
+- Generated text-measurement protocols and reusable-engine entrypoints remain present across
+  feature profiles; artifacts without SVG report a typed `svg` missing-capability error when used.
 - XCFramework archives now carry the project license, source-provenance notice, and exact third-party license texts beside the binary bundle.
 
 ## [0.8.0-alpha.3] - 2026-07-09

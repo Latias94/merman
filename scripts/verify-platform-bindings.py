@@ -18,9 +18,20 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from artifact_profile_recipe import (
+    CargoArtifactRecipe,
+    cargo_build_args as project_cargo_build_args,
+    load_artifact_profile,
+)
+
+
+C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
+ANDROID_COMPILE_SDK = 35
 ANDROID_JAR_OUT = REPO_ROOT / "target" / "platforms" / "android" / "merman-android.jar"
 ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
 ANDROID_MAVEN_MODULE_ROOT = (
@@ -29,8 +40,10 @@ ANDROID_MAVEN_MODULE_ROOT = (
 ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
 ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
+    "io/merman/MermanErrorKind.class",
     "io/merman/MermanReusableEngine.class",
     "io/merman/MermanException.class",
+    "io/merman/MermanResourceOptions.class",
     "io/merman/MermanTextMeasureRequest.class",
     "io/merman/MermanTextMeasureResult.class",
     "io/merman/MermanTextMeasurementOperation.class",
@@ -61,6 +74,34 @@ ANDROID_MAVEN_SCM = (
     "https://github.com/Latias94/merman",
 )
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
+
+
+def validate_c_abi_native_recipe(
+    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
+) -> None:
+    expected_target_contract = ("cdylib", "rlib", "staticlib")
+    if (
+        recipe.profile_id != "c-abi-native"
+        or recipe.package != "merman-ffi"
+        or recipe.manifest != "crates/merman-ffi/Cargo.toml"
+        or recipe.cargo_profile != "native-sdk"
+        or recipe.default_features
+        or recipe.target_name != "merman_ffi"
+        or recipe.target_kinds != expected_target_contract
+        or recipe.crate_types != expected_target_contract
+        or recipe.build_target_kind != "host"
+        or recipe.build_targets
+    ):
+        raise RuntimeError(
+            "c-abi-native must remain the exact host native-sdk merman-ffi "
+            "complete native SDK recipe"
+        )
+    manifest = REPO_ROOT / recipe.manifest
+    if not manifest.is_file():
+        raise RuntimeError(f"c-abi-native manifest does not exist: {manifest}")
+
+
+validate_c_abi_native_recipe()
 
 
 def parse_args() -> argparse.Namespace:
@@ -179,6 +220,28 @@ def android_kotlin_compile_sources(android_root: Path = ANDROID_ROOT) -> list[Pa
     return [*sources, smoke_source]
 
 
+def android_compile_jar() -> Path:
+    configured_roots = [
+        os.environ.get("ANDROID_HOME"),
+        os.environ.get("ANDROID_SDK_ROOT"),
+    ]
+    candidate_roots = [Path(root).expanduser() for root in configured_roots if root]
+    candidate_roots.extend(
+        [
+            Path.home() / "Library" / "Android" / "sdk",
+            Path.home() / "Android" / "Sdk",
+        ]
+    )
+    for root in candidate_roots:
+        android_jar = root / "platforms" / f"android-{ANDROID_COMPILE_SDK}" / "android.jar"
+        if android_jar.is_file():
+            return android_jar
+    raise RuntimeError(
+        "Android SDK platform android-35 is required to compile the Kotlin wrapper. "
+        "Set ANDROID_HOME or ANDROID_SDK_ROOT to an SDK containing platforms/android-35/android.jar."
+    )
+
+
 def ensure_android_native_slices() -> None:
     if android_jni_libs_ready():
         return
@@ -190,8 +253,6 @@ def ensure_android_native_slices() -> None:
             "--targets",
             "aarch64-linux-android",
             "x86_64-linux-android",
-            "--profile",
-            "release",
         ]
     )
 
@@ -512,13 +573,40 @@ def assert_android_instrumentation_smoke_report(
     )
 
 
-def host_dynamic_library() -> Path:
-    system = platform.system()
+def host_dynamic_library(
+    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
+    *,
+    host_system: str | None = None,
+) -> Path:
+    validate_c_abi_native_recipe(recipe)
+    system = platform.system() if host_system is None else host_system
+    library_stem = recipe.target_name.replace("-", "_")
     if system == "Windows":
-        return REPO_ROOT / "target" / "debug" / "merman_ffi.dll"
-    if system == "Darwin":
-        return REPO_ROOT / "target" / "debug" / "libmerman_ffi.dylib"
-    return REPO_ROOT / "target" / "debug" / "libmerman_ffi.so"
+        filename = f"{library_stem}.dll"
+    elif system == "Darwin":
+        filename = f"lib{library_stem}.dylib"
+    else:
+        filename = f"lib{library_stem}.so"
+    return REPO_ROOT / "target" / recipe.cargo_profile / filename
+
+
+def run_dart_ffi_native_smoke(
+    dart: str,
+    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
+    *,
+    host_system: str | None = None,
+) -> None:
+    validate_c_abi_native_recipe(recipe)
+    run(project_cargo_build_args(recipe, locked=True))
+    run(
+        [
+            dart,
+            "run",
+            "example/smoke.dart",
+            str(host_dynamic_library(recipe, host_system=host_system)),
+        ],
+        cwd=FLUTTER_ROOT,
+    )
 
 
 def flutter_android_embedding_jar() -> Path:
@@ -570,11 +658,34 @@ def main() -> int:
             return 0
 
         step("Rust FFI host tests")
-        run(["cargo", "nextest", "run", "-p", "merman-ffi"])
+        run(
+            [
+                "cargo",
+                "nextest",
+                "run",
+                "-p",
+                "merman-ffi",
+                "--no-default-features",
+                "--features",
+                C_ABI_NATIVE_RECIPE.feature_argument,
+            ]
+        )
 
         step("Android Rust target check")
         run(["rustup", "target", "add", "aarch64-linux-android"])
-        run(["cargo", "check", "-p", "merman-ffi", "--target", "aarch64-linux-android"])
+        run(
+            [
+                "cargo",
+                "check",
+                "-p",
+                "merman-ffi",
+                "--no-default-features",
+                "--features",
+                C_ABI_NATIVE_RECIPE.feature_argument,
+                "--target",
+                "aarch64-linux-android",
+            ]
+        )
         run(
             [
                 "cargo",
@@ -582,6 +693,9 @@ def main() -> int:
                 "--no-deps",
                 "-p",
                 "merman-ffi",
+                "--no-default-features",
+                "--features",
+                C_ABI_NATIVE_RECIPE.feature_argument,
                 "--target",
                 "aarch64-linux-android",
                 "--",
@@ -597,6 +711,8 @@ def main() -> int:
             [
                 kotlinc,
                 *(str(path) for path in android_kotlin_compile_sources()),
+                "-classpath",
+                str(android_compile_jar()),
                 "-d",
                 str(ANDROID_JAR_OUT),
             ]
@@ -611,8 +727,6 @@ def main() -> int:
                     "--targets",
                     "aarch64-linux-android",
                     "x86_64-linux-android",
-                    "--profile",
-                    "release",
                 ]
             )
 
@@ -620,9 +734,20 @@ def main() -> int:
         flutter = require_command("flutter")
         dart = require_command("dart")
         run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "ffigen", "--config", "ffigen.yaml"], cwd=FLUTTER_ROOT)
+        run(
+            [
+                "git",
+                "diff",
+                "--exit-code",
+                "--",
+                "platforms/flutter/lib/src/generated/native_abi.dart",
+            ],
+            cwd=REPO_ROOT,
+        )
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
         run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
-        run([dart, "run", "tool/callback_transaction_test.dart"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
 
         step("Flutter Android plugin Kotlin compile")
         flutter_jar = flutter_android_embedding_jar()
@@ -668,8 +793,7 @@ def main() -> int:
         run([bash, "-n", bash_path(FLUTTER_ROOT / "build-desktop.sh")])
 
         step("Dart FFI native smoke")
-        run(["cargo", "build", "-p", "merman-ffi"])
-        run([dart, "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
+        run_dart_ffi_native_smoke(dart)
 
         if args.run_android_gradle_build:
             ensure_android_native_slices()
@@ -688,8 +812,11 @@ def main() -> int:
             REPO_ROOT / "Package.swift",
             REPO_ROOT / "scripts" / "build-apple-xcframework.sh",
             REPO_ROOT / "platforms" / "ios" / "build-ios.sh",
-            APPLE_ROOT / "Sources" / "Merman" / "MermanEngine.swift",
-            REPO_ROOT / "crates" / "merman-ffi" / "include" / "merman.h",
+            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "Merman.swift",
+            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "MermanFFI.h",
+            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "MermanFFI.modulemap",
+            REPO_ROOT / "crates" / "merman-uniffi" / "uniffi.toml",
+            REPO_ROOT / "crates" / "merman-uniffi" / "examples" / "generate_swift_bindings.rs",
         ]:
             if not path.exists():
                 raise RuntimeError(f"required Apple binding file not found: {path}")

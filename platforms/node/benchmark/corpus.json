@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "roots": ["../../../fixtures"],
+  "extensions": [".mmd"],
+  "binding_options": {
+    "version": 1,
+    "runtime_policy": "deterministic",
+    "resources": {
+      "profile": "trusted-native"
+    }
+  },
+  "format_options": {
+    "version": 1
+  }
+}

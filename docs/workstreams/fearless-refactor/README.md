@@ -29,7 +29,7 @@ The target state is:
 - Do not relax semantic/layout/SVG parity to simplify implementation.
 - Do not rewrite the whole renderer at once.
 - Do not delete fixtures or upstream baselines just to reduce test time.
-- Do not make public APIs unstable without a migration path or a clear pre-1.0 rationale.
+- Do not make public APIs unstable without a migration path or a clear versioned rationale.
 
 ## Refactor Rules
 

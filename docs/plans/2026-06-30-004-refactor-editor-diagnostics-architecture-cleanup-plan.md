@@ -123,7 +123,7 @@ Outside this plan:
 ### Assumptions
 
 - The previous plan's commit is the baseline; this plan does not need to preserve transitional APIs added only to ship that first pass.
-- `merman-core` is still pre-1.0, so breaking public parse diagnostic internals is acceptable when downstream workspace crates are migrated in the same change.
+- Breaking public parse diagnostic internals is acceptable here because downstream workspace crates are migrated in the same change.
 - External web research is not load-bearing for this plan; the defects and target patterns are visible in local code, tests, capability docs, and the earlier local reference work.
 - Parser span migration should be broad enough to remove the most visible whole-source diagnostics, but implementation may leave a documented fallback ledger for families that require larger parser rewrites.
 

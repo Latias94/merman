@@ -25,6 +25,15 @@ REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS = {
 }
 OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS = {
     "package.json",
+    # U14 rejected these private comparison packages. They remain tracked only as evidence and
+    # must never become an undeclared npm release surface.
+    "platforms/node/package.json",
+    "platforms/node/packages/node/package.json",
+    "platforms/node/packages/node-darwin-arm64/package.json",
+    "platforms/node/packages/node-darwin-x64/package.json",
+    "platforms/node/packages/node-linux-x64-gnu/package.json",
+    "platforms/node/packages/node-linux-x64-musl/package.json",
+    "platforms/node/packages/node-win32-x64-msvc/package.json",
 }
 NON_SURFACE_PACKAGE_MANIFESTS = REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS | OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS
 PACKAGE_INVENTORY_IGNORED_DIRECTORY_NAMES = {
@@ -47,57 +56,10 @@ PACKAGE_INVENTORY_IGNORED_DIRECTORY_NAMES = {
 PACKAGE_INVENTORY_IGNORED_RELATIVE_DIRECTORIES = {
     "platforms/web/pkg",
 }
-REQUIRED_SURFACE_DOCS = [
-    "docs/release/PACKAGE_SURFACES.md",
-    "docs/release/RELEASING.md",
-    "docs/release/ADDING_SURFACE.md",
-    "docs/release/MERMAID_UPGRADE_PLAYBOOK.md",
-    "docs/security/RENDERING_SECURITY.md",
-]
 GENERATED_SURFACES_BEGIN = "<!-- BEGIN GENERATED RELEASE SURFACES -->"
 GENERATED_SURFACES_END = "<!-- END GENERATED RELEASE SURFACES -->"
-GENERATED_RELEASE_DOCS = {"docs/release/PACKAGE_SURFACES.md"}
-WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION = 1
 WEB_SURFACE_DESCRIPTOR_PATH = "platforms/web/web-surface-descriptor.json"
-WEB_CAPABILITY_NAMES = {
-    "render",
-    "analysis",
-    "ascii",
-    "cytoscape_layout",
-    "elk_layout",
-    "ratex_math",
-    "editor_language",
-}
-WEB_RUNTIME_PROFILES = {"core", "render", "render-only", "ascii", "editor", "full"}
-EVIDENCE_ONLY_WEB_PRESETS = {
-    "browser-bridge",
-    "browser-full-no-elk",
-    "browser-math",
-}
-WEB_CAPABILITY_FEATURES = {
-    "render": "render",
-    "analysis": "analysis",
-    "ascii": "ascii",
-    "cytoscape_layout": "layout-cytoscape",
-    "elk_layout": "layout-elk",
-    "ratex_math": "math",
-    "editor_language": "editor-language",
-}
-WEB_RUNTIME_CAPABILITIES = {
-    "core": {"analysis"},
-    "render": {"analysis", "render"},
-    "render-only": {"render"},
-    "ascii": {"ascii"},
-    "editor": {"analysis", "editor_language"},
-    "full": {
-        "analysis",
-        "ascii",
-        "cytoscape_layout",
-        "editor_language",
-        "elk_layout",
-        "render",
-    },
-}
+ARTIFACT_PROFILES_PATH = "capabilities/artifact-profiles-v1.json"
 OPERATIONAL_CHANNEL_STATES = {"published", "artifact-only"}
 PROTECTED_PUBLICATION_KINDS = {
     "crates.io",
@@ -152,8 +114,6 @@ def main(argv: list[str] | None = None) -> int:
         ("package manifest inventory", lambda: check_package_inventory(root, contract)),
         ("publishable crate inventory", lambda: check_publishable_crate_inventory(root, contract)),
         ("web package contract", lambda: check_web_contract(root, contract)),
-        ("release docs contract", lambda: check_release_docs(root, contract)),
-        ("host text measurement docs", lambda: check_host_text_measurement_docs(root)),
         ("blocked channel metadata", lambda: check_blocked_channel_metadata(contract)),
     ]
     if args.check_ci_self:
@@ -211,17 +171,21 @@ def load_release_status_module() -> Any:
     return module
 
 
+def load_web_package_group_module() -> Any:
+    module_path = ROOT / "scripts" / "web_package_group.py"
+    spec = importlib.util.spec_from_file_location("web_package_group", module_path)
+    if spec is None or spec.loader is None:
+        raise CheckFailure("could not load scripts/web_package_group.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def check_surface_paths(root: Path, contract: dict[str, Any]) -> None:
     require_file(root, "docs/release/SURFACES.json")
-    for doc in REQUIRED_SURFACE_DOCS:
-        require_file(root, doc)
-
-    for doc in contract.get("feature_contract", {}).get("docs", []):
-        require_file(root, doc)
 
     for surface in contract["surfaces"]:
-        for doc in surface.get("docs", []):
-            require_file(root, doc)
         for package in surface.get("packages", []):
             require_file(root, package["manifest"])
         for channel in surface.get("channels", []):
@@ -320,10 +284,33 @@ def workflow_job_performs_channel_operation(job: dict[str, Any], kind: str) -> b
         return any(
             not condition_is_always_false(step.get("if"))
             and isinstance(step.get("run"), str)
-            and any(shell_run_invokes(step["run"], command) for command in command_rules[kind])
+            and operation_run_matches_kind(step["run"], kind, command_rules[kind])
             for step in steps
         )
     raise CheckFailure(f"no workflow operation rule for operational channel kind {kind!r}")
+
+
+def operation_run_matches_kind(
+    run: str,
+    kind: str,
+    command_rules: tuple[tuple[str, ...], ...],
+) -> bool:
+    if any(shell_run_invokes(run, command) for command in command_rules):
+        return True
+    return kind == "npm" and shell_run_invokes_web_package_group_reconcile(run)
+
+
+def shell_run_invokes_web_package_group_reconcile(run: str) -> bool:
+    logical_run = run.replace("\\\n", " ")
+    for line in executable_shell_lines(logical_run):
+        tokens = shell_command_tokens(line)
+        if len(tokens) < 3 or tokens[0] != "python3":
+            continue
+        if tokens[1] != "scripts/web_package_group.py" or tokens[2] != "reconcile":
+            continue
+        if "--manifest" in tokens and "--artifact-dir" in tokens and "--report" in tokens:
+            return True
+    return False
 
 
 def condition_is_always_false(value: Any) -> bool:
@@ -370,6 +357,9 @@ def check_workflow_operation_authority(
         if not isinstance(permissions, dict) or permissions.get(name) != expected:
             fail(workflow, f"{owner}: {kind} operation requires {name}: {expected}")
 
+    if kind == "npm" and web_package_group_reconcile_steps(job):
+        check_web_package_group_publish_boundary(job, workflow, owner)
+
     required_env = {
         "crates.io": {"CARGO_REGISTRY_TOKEN"},
         "github-release-assets": {"GH_REPO", "GH_TOKEN"},
@@ -402,6 +392,52 @@ def check_workflow_operation_authority(
                 + ", ".join(missing)
                 + " with trusted values",
             )
+
+
+def web_package_group_reconcile_steps(job: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    result: list[tuple[int, dict[str, Any]]] = []
+    for index, step in enumerate(job.get("steps", [])):
+        if condition_is_always_false(step.get("if")):
+            continue
+        run = step.get("run")
+        if isinstance(run, str) and shell_run_invokes_web_package_group_reconcile(run):
+            result.append((index, step))
+    return result
+
+
+def check_web_package_group_publish_boundary(
+    job: dict[str, Any],
+    workflow: str,
+    owner: str,
+) -> None:
+    reconciles = web_package_group_reconcile_steps(job)
+    if len(reconciles) != 1:
+        fail(workflow, f"{owner}: expected exactly one Web package-group reconcile step")
+    reconcile_index, _reconcile = reconciles[0]
+    trusted_checkout = False
+    for index, step in enumerate(job.get("steps", [])):
+        run = step.get("run")
+        if isinstance(run, str) and "target/npm-package-group/web_package_group.py" in run:
+            fail(
+                workflow,
+                f"{owner}: publish job must not execute code supplied by the downloaded package artifact",
+            )
+        if index >= reconcile_index:
+            continue
+        uses = step.get("uses")
+        if not isinstance(uses, str) or uses.partition("@")[0] != "actions/checkout":
+            continue
+        values = step.get("with") if isinstance(step.get("with"), dict) else {}
+        if (
+            values.get("ref") == "${{ github.workflow_sha }}"
+            and values.get("persist-credentials") in {False, "false"}
+        ):
+            trusted_checkout = True
+    if not trusted_checkout:
+        fail(
+            workflow,
+            f"{owner}: package-group publish must checkout github.workflow_sha without credentials before reconciliation",
+        )
 
 
 def workflow_job_environment(job: dict[str, Any]) -> str | None:
@@ -437,9 +473,7 @@ def active_operation_steps(job: dict[str, Any], kind: str) -> list[dict[str, Any
                 result.append(step)
         elif kind in command_rules:
             run = step.get("run")
-            if isinstance(run, str) and any(
-                shell_run_invokes(run, command) for command in command_rules[kind]
-            ):
+            if isinstance(run, str) and operation_run_matches_kind(run, kind, command_rules[kind]):
                 result.append(step)
     return result
 
@@ -843,10 +877,12 @@ def check_package_inventory(root: Path, contract: dict[str, Any]) -> None:
         for package in surface.get("packages", [])
     }
     package_jsons = {normalize_rel(path.relative_to(root)) for path in iter_package_jsons(root)}
+    dynamic_non_surfaces = web_non_surface_package_manifests(root, contract)
+    non_surface_manifests = NON_SURFACE_PACKAGE_MANIFESTS | dynamic_non_surfaces
     undeclared = sorted(
         package_jsons
         - declared_manifests
-        - NON_SURFACE_PACKAGE_MANIFESTS
+        - non_surface_manifests
     )
     if undeclared:
         fail(
@@ -860,12 +896,37 @@ def check_package_inventory(root: Path, contract: dict[str, Any]) -> None:
         if not manifest.exists():
             fail(rel_path, "allowlisted non-surface package manifest is missing")
 
-    for rel_path in sorted(NON_SURFACE_PACKAGE_MANIFESTS):
+    for rel_path in sorted(non_surface_manifests):
         manifest = root / rel_path
         if manifest.exists() and rel_path != "package.json":
             data = json.loads(manifest.read_text(encoding="utf-8"))
             if data.get("private") is not True:
                 fail(rel_path, "non-surface package manifest must set private: true")
+
+
+def web_non_surface_package_manifests(root: Path, contract: dict[str, Any]) -> set[str]:
+    feature_contract = contract.get("feature_contract")
+    if not isinstance(feature_contract, dict):
+        return set()
+    descriptor_path = feature_contract.get("web_descriptor")
+    if descriptor_path != WEB_SURFACE_DESCRIPTOR_PATH:
+        return set()
+    candidate = root / descriptor_path
+    if not candidate.is_file():
+        return set()
+    descriptor = validate_web_surface_descriptor(read_json(root, descriptor_path), descriptor_path)
+    web_package_group = load_web_package_group_module()
+    manifests = {"platforms/web/package.json"}
+    for entry in descriptor["packages"]:
+        if entry["visibility"] == "candidate":
+            manifests.add(
+                normalize_rel(
+                    Path("platforms/web")
+                    / web_package_group.descriptor_package_path(entry)
+                    / "package.json"
+                )
+            )
+    return manifests
 
 
 def iter_package_jsons(root: Path) -> list[Path]:
@@ -995,233 +1056,88 @@ def cargo_package_is_publishable(package: dict[str, Any]) -> bool:
 def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
     feature_contract = contract["feature_contract"]
     descriptor = load_web_surface_descriptor(root, feature_contract)
-    web_package = read_json(root, "platforms/web/package.json")
-    actual_exports = web_package.get("exports")
-    expected_exports = expected_web_package_exports(descriptor, feature_contract)
-    if actual_exports != expected_exports:
-        actual_keys = set(actual_exports) if isinstance(actual_exports, dict) else set()
-        expected_keys = set(expected_exports)
-        missing = sorted(expected_keys - actual_keys)
-        extra = sorted(actual_keys - expected_keys)
-        wrong = sorted(
-            key
-            for key in expected_keys & actual_keys
-            if actual_exports[key] != expected_exports[key]
-        )
-        details = []
-        if missing:
-            details.append("missing: " + ", ".join(missing))
-        if extra:
-            details.append("unexpected: " + ", ".join(extra))
-        if wrong:
-            details.append("wrong targets: " + ", ".join(wrong))
-        fail(
-            "platforms/web/package.json",
-            "Web exports must exactly match the descriptor and release contract ("
-            + "; ".join(details)
-            + ")",
-        )
+    web_package_group = load_web_package_group_module()
+    try:
+        web_package_group.validate_workspace_manifest(root)
+    except web_package_group.PackageGroupError as error:
+        fail("platforms/web/package.json", str(error))
 
-    expected_presets = set(feature_contract["browser_presets"])
-    descriptor_presets = {preset["name"] for preset in descriptor["presets"]}
-    if descriptor_presets != expected_presets:
-        fail(
-            feature_contract["web_descriptor"],
-            "browser preset mismatch: expected "
-            + ", ".join(sorted(expected_presets))
-            + "; found "
-            + ", ".join(sorted(descriptor_presets)),
-        )
-
-    public_surfaces = descriptor["public_surfaces"]
-    descriptor_subpaths = {"."} | {f"./{surface['entry']}" for surface in public_surfaces}
-    public_presets = {surface["preset"] for surface in public_surfaces}
-    required_public_presets = expected_presets - EVIDENCE_ONLY_WEB_PRESETS
-    if public_presets != required_public_presets:
-        fail(
-            feature_contract["web_descriptor"],
-            "public surfaces should cover shipped presets only: "
-            + ", ".join(sorted(public_presets)),
-        )
-    expected_default = feature_contract["web_default_preset"]
-    if descriptor["default_preset"] != expected_default:
-        fail(
-            feature_contract["web_descriptor"],
-            f"default preset is {descriptor['default_preset']!r}, expected {expected_default!r}",
-        )
-
-    wasm_features = cargo_features(root, "crates/merman-wasm/Cargo.toml")
-    for feature in ["analysis", "ascii", "render", "layout-cytoscape", "layout-elk", "editor-language", "math"]:
-        if feature not in wasm_features:
-            fail("crates/merman-wasm/Cargo.toml", f"missing wasm feature {feature}")
-    for preset in descriptor["presets"]:
-        for feature in preset["features"]:
-            if feature not in wasm_features:
-                fail(
-                    feature_contract["web_descriptor"],
-                    f"preset {preset['name']} references missing wasm feature {feature}",
-                )
-    validate_web_preset_capabilities(root, descriptor, feature_contract["web_descriptor"])
-    validate_web_runtime_profiles(descriptor, feature_contract["web_descriptor"])
-
-    web_docs = "\n".join(
-        [
-            read_text(root, "README.md"),
-            read_text(root, "platforms/web/README.md"),
-            read_text(root, "docs/release/PACKAGE_SURFACES.md"),
-        ]
-    )
-    for surface in public_surfaces:
-        term = f"@mermanjs/web/{surface['entry']}"
-        if term not in web_docs:
-            fail("docs/release/PACKAGE_SURFACES.md", f"missing web subpath docs for {term}")
-    if "@mermanjs/web/analysis" in web_docs and "no `@mermanjs/web/analysis`" not in web_docs:
-        fail("docs/release/PACKAGE_SURFACES.md", "analysis must be documented as absent, not as a package")
-
-    if "./analysis" in descriptor_subpaths:
-        fail(feature_contract["web_descriptor"], "analysis is not a supported public Web surface")
-
-
-def expected_web_package_exports(
-    descriptor: dict[str, Any],
-    feature_contract: dict[str, Any],
-) -> dict[str, Any]:
-    auxiliary = feature_contract.get("web_auxiliary_exports")
-    if not isinstance(auxiliary, dict) or not auxiliary:
-        fail("docs/release/SURFACES.json", "feature_contract.web_auxiliary_exports is required")
-    exports: dict[str, Any] = dict(auxiliary)
-    for surface in descriptor["public_surfaces"]:
-        entry = surface["entry"]
-        exports[f"./{entry}"] = {
-            "import": f"./dist/surfaces/{entry}.js",
-            "types": f"./dist/surfaces/{entry}.d.ts",
-        }
-
-    package_dirs = ["pkg"] + [surface["pkg_dir_rel"] for surface in descriptor["public_surfaces"]]
-    for package_dir in package_dirs:
-        exports[f"./{package_dir}/merman_wasm.js"] = {
-            "import": f"./{package_dir}/merman_wasm.js",
-            "types": f"./{package_dir}/merman_wasm.d.ts",
-        }
-        exports[f"./{package_dir}/merman_wasm_bg.wasm"] = f"./{package_dir}/merman_wasm_bg.wasm"
-    return exports
-
-
-def validate_web_preset_capabilities(
-    root: Path,
-    descriptor: dict[str, Any],
-    rel_path: str,
-) -> None:
-    feature_table = read_toml(root, "crates/merman-wasm/Cargo.toml").get("features", {})
-    for preset in descriptor["presets"]:
-        enabled = cargo_feature_closure(
-            feature_table,
-            preset["features"],
-            include_defaults=preset["default_features"],
-        )
-        expected = {
-            capability: feature in enabled
-            for capability, feature in WEB_CAPABILITY_FEATURES.items()
-        }
-        if preset["capabilities"] != expected:
+    profile_ids = artifact_profile_ids(root)
+    for entry in descriptor["packages"]:
+        if entry["artifact_profile"] not in profile_ids:
             fail(
-                rel_path,
-                f"preset {preset['name']} capabilities do not match its Cargo feature closure",
+                feature_contract["web_descriptor"],
+                f"package {entry['id']} references missing artifact profile {entry['artifact_profile']}",
             )
+        package_dir = root / "platforms" / "web" / web_package_group.descriptor_package_path(entry)
+        try:
+            web_package_group.validate_package_manifest(entry, package_dir, expected_version=None)
+        except web_package_group.PackageGroupError as error:
+            fail(package_dir / "package.json", str(error))
 
+    package_versions: set[str] = set()
+    for entry in descriptor["packages"]:
+        manifest_path = Path("platforms/web") / web_package_group.descriptor_package_path(entry) / "package.json"
+        version = read_json(root, str(manifest_path)).get("version")
+        if not isinstance(version, str) or not version:
+            fail(manifest_path, "Web package version must be a non-empty string")
+        package_versions.add(version)
+    if len(package_versions) != 1:
+        fail(feature_contract["web_descriptor"], "all Web package manifests must share one version")
 
-def cargo_feature_closure(
-    feature_table: dict[str, Any],
-    features: list[str],
-    *,
-    include_defaults: bool,
-) -> set[str]:
-    pending = list(features)
-    if include_defaults:
-        pending.append("default")
-    enabled: set[str] = set()
-    while pending:
-        feature = pending.pop()
-        if feature in enabled:
-            continue
-        enabled.add(feature)
-        for dependency in feature_table.get(feature, []):
-            if dependency in feature_table:
-                pending.append(dependency)
-    return enabled
-
-
-def validate_web_runtime_profiles(descriptor: dict[str, Any], rel_path: str) -> None:
-    presets = {preset["name"]: preset for preset in descriptor["presets"]}
-    for surface in descriptor["public_surfaces"]:
-        profile = surface["runtime_profile"]
-        preset = presets[surface["preset"]]
-        actual = {
-            capability
-            for capability, enabled in preset["capabilities"].items()
-            if enabled
-        }
-        expected = WEB_RUNTIME_CAPABILITIES[profile]
-        if actual != expected:
-            fail(
-                rel_path,
-                f"public surface {surface['entry']} maps profile {profile} to incompatible preset {surface['preset']}",
-            )
-
-
-def check_release_docs(root: Path, contract: dict[str, Any]) -> None:
-    package_surfaces = read_text(root, "docs/release/PACKAGE_SURFACES.md")
-    releasing = read_text(root, "docs/release/RELEASING.md")
-    features = read_text(root, "docs/FEATURES.md")
-    readme = read_text(root, "README.md")
-
-    expected_surface_table = render_public_surface_table(contract)
-    actual_surface_table = generated_markdown_block(
-        package_surfaces,
-        GENERATED_SURFACES_BEGIN,
-        GENERATED_SURFACES_END,
+    group_surface_id = feature_contract["web_package_group_surface"]
+    group_surface = next(
+        (surface for surface in contract["surfaces"] if surface["id"] == group_surface_id),
+        None,
     )
-    if actual_surface_table != expected_surface_table:
+    if group_surface is None:
+        fail("docs/release/SURFACES.json", f"missing Web package group surface {group_surface_id!r}")
+    declared_npm = {
+        package["name"]: package["manifest"]
+        for package in group_surface["packages"]
+        if package["kind"] == "npm"
+    }
+    expected_npm = {
+        entry["name"]: str(
+            Path("platforms/web")
+            / web_package_group.descriptor_package_path(entry)
+            / "package.json"
+        )
+        for entry in web_package_group.public_packages(descriptor)
+    }
+    if declared_npm != expected_npm:
         fail(
-            "docs/release/PACKAGE_SURFACES.md",
-            "generated release surface table is stale; run scripts/verify-release-surfaces.py --write-docs",
+            "docs/release/SURFACES.json",
+            "Web npm release group must exactly match public descriptor packages",
+        )
+    candidate_names = {
+        entry["name"] for entry in descriptor["packages"] if entry["visibility"] == "candidate"
+    }
+    all_declared_npm = {
+        package["name"]
+        for surface in contract["surfaces"]
+        for package in surface["packages"]
+        if package["kind"] == "npm"
+    }
+    leaked_candidates = sorted(candidate_names & all_declared_npm)
+    if leaked_candidates:
+        fail(
+            "docs/release/SURFACES.json",
+            "candidate Web packages must not enter a release contract: " + ", ".join(leaked_candidates),
         )
 
-    documented_states = markdown_state_names(package_surfaces)
-    if documented_states != set(contract["states"]):
-        fail(
-            "docs/release/PACKAGE_SURFACES.md",
-            "release status table must document exactly the contract state catalog",
-        )
 
-    for surface in contract["surfaces"]:
-        if not surface["public"]:
-            continue
-        check_public_surface_entry_point_docs(root, surface)
-
-    descriptor = load_web_surface_descriptor(root, contract["feature_contract"])
-    documented_features = cargo_features(root, "crates/merman-wasm/Cargo.toml") - {"default"}
-    documented_presets = {preset["name"] for preset in descriptor["presets"]}
-    for term in sorted(documented_features | documented_presets):
-        if term not in features + readme + package_surfaces:
-            fail("docs/FEATURES.md", f"missing feature or preset name {term}")
-
-    for command in [
-        "scripts/release-status.py",
-        "scripts/verify-release-surfaces.py",
-    ]:
-        if command not in releasing + package_surfaces:
-            fail("docs/release/RELEASING.md", f"missing release helper command {command}")
-
-
-def check_public_surface_entry_point_docs(root: Path, surface: dict[str, Any]) -> None:
-    owner = f"docs/release/SURFACES.json:{surface['id']}"
-    docs = [doc for doc in surface["docs"] if doc not in GENERATED_RELEASE_DOCS]
-    if not docs:
-        fail(owner, "public surface must declare at least one non-generated documentation file")
-    entry_point = surface["entry_point"]
-    if not any(entry_point in read_text(root, doc) for doc in docs):
-        fail(owner, f"entry point {entry_point!r} is absent from declared non-generated docs")
+def artifact_profile_ids(root: Path) -> set[str]:
+    descriptor = read_json(root, ARTIFACT_PROFILES_PATH)
+    profiles = descriptor.get("profiles")
+    if not isinstance(profiles, list):
+        fail(ARTIFACT_PROFILES_PATH, "profiles must be an array")
+    ids = {profile.get("id") for profile in profiles if isinstance(profile, dict)}
+    if not all(isinstance(profile_id, str) and profile_id for profile_id in ids):
+        fail(ARTIFACT_PROFILES_PATH, "profiles must have string ids")
+    if len(ids) != len(profiles):
+        fail(ARTIFACT_PROFILES_PATH, "profiles must have unique ids")
+    return ids
 
 
 def render_public_surface_table(contract: dict[str, Any]) -> str:
@@ -1257,17 +1173,6 @@ def generated_markdown_block(text: str, begin: str, end: str) -> str:
     return begin + body.rstrip() + "\n" + end
 
 
-def markdown_state_names(text: str) -> set[str]:
-    match = re.search(
-        r"^## Release Status States\s*$\n(?P<body>.*?)(?=^## |\Z)",
-        text,
-        flags=re.MULTILINE | re.DOTALL,
-    )
-    if match is None:
-        fail("docs/release/PACKAGE_SURFACES.md", "missing Release Status States section")
-    return set(re.findall(r"^\| `([^`]+)` \|", match.group("body"), flags=re.MULTILINE))
-
-
 def write_generated_surface_docs(root: Path, contract: dict[str, Any]) -> None:
     rel_path = "docs/release/PACKAGE_SURFACES.md"
     path = require_file(root, rel_path)
@@ -1276,24 +1181,6 @@ def write_generated_surface_docs(root: Path, contract: dict[str, Any]) -> None:
     expected = render_public_surface_table(contract)
     if current != expected:
         path.write_text(text.replace(current, expected), encoding="utf-8")
-
-
-def check_host_text_measurement_docs(root: Path) -> None:
-    readme = read_text(root, "README.md")
-    stale = "This surface does not expose host text-measurement callbacks yet"
-    if stale in readme:
-        fail("README.md", "Python row still says host text measurement is not exposed")
-
-    for rel_path in [
-        "README.md",
-        "docs/bindings/HOST_TEXT_MEASUREMENT.md",
-        "docs/bindings/PYTHON_UNIFFI.md",
-        "platforms/python/merman/README.md",
-    ]:
-        text = read_text(root, rel_path)
-        for token in ["MermanTextMeasurer", "reusable_engine_with_text_measurer"]:
-            if token not in text:
-                fail(rel_path, f"missing host text measurement token {token}")
 
 
 def check_blocked_channel_metadata(contract: dict[str, Any]) -> None:
@@ -1335,6 +1222,7 @@ def check_ci_wiring(root: Path) -> None:
     for test_script in [
         "scripts/test_release_status.py",
         "scripts/test_verify_release_surfaces.py",
+        "scripts/test_web_package_group.py",
     ]:
         if not any(
             shell_run_invokes_python_unittest(step["run"], test_script)
@@ -1447,11 +1335,6 @@ def strip_c_style_comments(text: str) -> str:
     return "".join(result)
 
 
-def cargo_features(root: Path, manifest: str) -> set[str]:
-    data = read_toml(root, manifest)
-    return set(data.get("features", {}))
-
-
 def load_web_surface_descriptor(
     root: Path,
     feature_contract: dict[str, Any],
@@ -1472,135 +1355,11 @@ def validate_web_surface_descriptor(
     descriptor: dict[str, Any],
     rel_path: str = WEB_SURFACE_DESCRIPTOR_PATH,
 ) -> dict[str, Any]:
-    require_exact_keys(
-        descriptor,
-        {"schema_version", "default_preset", "presets", "public_surfaces"},
-        rel_path,
-        "Web surface descriptor",
-    )
-    if descriptor["schema_version"] != WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION:
-        fail(
-            rel_path,
-            f"Web surface descriptor schema must be {WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION}",
-        )
-
-    presets = descriptor["presets"]
-    if not isinstance(presets, list) or not presets:
-        fail(rel_path, "Web surface descriptor presets must be a non-empty array")
-    preset_names: set[str] = set()
-    for index, preset in enumerate(presets):
-        label = f"presets[{index}]"
-        require_exact_keys(
-            preset,
-            {"name", "surface", "default_features", "features", "capabilities"},
-            rel_path,
-            label,
-        )
-        name = require_web_name(preset["name"], rel_path, f"{label}.name")
-        if name in preset_names:
-            fail(rel_path, f"duplicate Web preset name: {name}")
-        preset_names.add(name)
-        if preset["surface"] != "browser":
-            fail(rel_path, f"preset {name} must declare surface browser")
-        if not isinstance(preset["default_features"], bool):
-            fail(rel_path, f"preset {name} default_features must be boolean")
-        features = preset["features"]
-        if not isinstance(features, list):
-            fail(rel_path, f"preset {name} features must be an array")
-        normalized_features = [
-            require_web_name(feature, rel_path, f"preset {name} feature")
-            for feature in features
-        ]
-        if len(set(normalized_features)) != len(normalized_features):
-            fail(rel_path, f"preset {name} contains duplicate features")
-        capabilities = preset["capabilities"]
-        require_exact_keys(
-            capabilities,
-            WEB_CAPABILITY_NAMES,
-            rel_path,
-            f"preset {name} capabilities",
-        )
-        for capability, enabled in capabilities.items():
-            if not isinstance(enabled, bool):
-                fail(rel_path, f"preset {name} capability {capability} must be boolean")
-
-    default_preset = require_web_name(
-        descriptor["default_preset"],
-        rel_path,
-        "default_preset",
-    )
-    if default_preset not in preset_names:
-        fail(rel_path, f"default_preset references unknown preset {default_preset}")
-
-    public_surfaces = descriptor["public_surfaces"]
-    if not isinstance(public_surfaces, list) or not public_surfaces:
-        fail(rel_path, "public_surfaces must be a non-empty array")
-    entries: set[str] = set()
-    public_presets: set[str] = set()
-    package_dirs: set[str] = set()
-    for index, surface in enumerate(public_surfaces):
-        label = f"public_surfaces[{index}]"
-        require_exact_keys(
-            surface,
-            {"entry", "preset", "pkg_dir_rel", "runtime_profile"},
-            rel_path,
-            label,
-        )
-        entry = require_web_name(surface["entry"], rel_path, f"{label}.entry")
-        preset = require_web_name(surface["preset"], rel_path, f"surface {entry} preset")
-        package_dir = surface["pkg_dir_rel"]
-        if not isinstance(package_dir, str) or not re.fullmatch(
-            r"pkg/[a-z0-9][a-z0-9-]*",
-            package_dir,
-        ):
-            fail(rel_path, f"surface {entry} pkg_dir_rel must be a package-relative directory")
-        runtime_profile = require_web_name(
-            surface["runtime_profile"],
-            rel_path,
-            f"surface {entry} runtime_profile",
-        )
-        if entry in entries:
-            fail(rel_path, f"duplicate public Web surface entry: {entry}")
-        if preset in public_presets:
-            fail(rel_path, f"duplicate public Web surface preset: {preset}")
-        if package_dir in package_dirs:
-            fail(rel_path, f"duplicate public Web package directory: {package_dir}")
-        entries.add(entry)
-        public_presets.add(preset)
-        package_dirs.add(package_dir)
-        if preset not in preset_names:
-            fail(rel_path, f"public surface {entry} references unknown preset {preset}")
-        if package_dir != f"pkg/{entry}":
-            fail(rel_path, f"public surface {entry} pkg_dir_rel must be pkg/{entry}")
-        if runtime_profile not in WEB_RUNTIME_PROFILES:
-            fail(
-                rel_path,
-                f"public surface {entry} has unknown runtime profile {runtime_profile}",
-            )
-
-    return descriptor
-
-
-def require_exact_keys(
-    value: Any,
-    expected: set[str],
-    rel_path: str,
-    label: str,
-) -> None:
-    if not isinstance(value, dict):
-        fail(rel_path, f"{label} must be an object")
-    actual = set(value)
-    if actual != expected:
-        fail(
-            rel_path,
-            f"{label} keys must be exactly: {', '.join(sorted(expected))}",
-        )
-
-
-def require_web_name(value: Any, rel_path: str, label: str) -> str:
-    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", value):
-        fail(rel_path, f"{label} must be a lowercase kebab-case name")
-    return value
+    web_package_group = load_web_package_group_module()
+    try:
+        return web_package_group.validate_descriptor(descriptor)
+    except web_package_group.PackageGroupError as error:
+        fail(rel_path, str(error))
 
 
 def require_file(root: Path, rel_path: str) -> Path:

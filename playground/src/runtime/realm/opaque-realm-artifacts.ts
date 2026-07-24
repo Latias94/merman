@@ -2,20 +2,17 @@ import compareBootstrapSource from "../../../.runtime/opaque-compare-bootstrap.j
 import compareBootstrapManifest from "../../../.runtime/opaque-compare-bootstrap.json";
 import benchmarkBootstrapSource from "../../../.runtime/opaque-benchmark-mermaid-bootstrap.js?raw";
 import benchmarkBootstrapManifest from "../../../.runtime/opaque-benchmark-mermaid-bootstrap.json";
-import compareEngineSource from "../../../.runtime/compare-mermaid-engine.js?raw";
-import compareEngineManifest from "../../../.runtime/compare-mermaid-engine.json";
-import benchmarkEngineSource from "../../../.runtime/benchmark-mermaid-engine.js?raw";
-import benchmarkEngineManifest from "../../../.runtime/benchmark-mermaid-engine.json";
+import mermaidEngineManifest from "../../../.runtime/mermaid-engine.json";
 
 import type {
   RealmBootIdentity,
   RealmEngineArtifact,
-  RealmEngineArtifactId,
 } from "./channel-protocol.ts";
 import {
   buildOpaqueRealmDocument,
   type OpaqueRealmScriptArtifact,
 } from "./opaque-realm-document.ts";
+import { createStaticRealmEngineArtifact } from "./static-engine-artifact.ts";
 
 const compareBootstrap = bootstrapArtifact(
   compareBootstrapManifest,
@@ -25,15 +22,34 @@ const benchmarkBootstrap = bootstrapArtifact(
   benchmarkBootstrapManifest,
   benchmarkBootstrapSource
 );
+const OPAQUE_ENGINE_BASE_URL = `${import.meta.env.BASE_URL}opaque-realm/`;
+const MERMAID_ENGINE_URL = `${OPAQUE_ENGINE_BASE_URL}mermaid-engine.js?sha256=${mermaidEngineManifest.sha256}`;
 
-export const compareMermaidEngineArtifact = engineArtifact(
-  compareEngineManifest,
-  compareEngineSource
-);
-export const benchmarkMermaidEngineArtifact = engineArtifact(
-  benchmarkEngineManifest,
-  benchmarkEngineSource
-);
+export function createCompareMermaidEngineArtifact(
+  signal: AbortSignal
+): Promise<RealmEngineArtifact> {
+  return createStaticRealmEngineArtifact(
+    {
+      manifest: mermaidEngineManifest,
+      resourceUrl: null,
+      signal,
+      sourceUrl: MERMAID_ENGINE_URL,
+    }
+  );
+}
+
+export function createBenchmarkMermaidEngineArtifact(
+  signal: AbortSignal
+): Promise<RealmEngineArtifact> {
+  return createStaticRealmEngineArtifact(
+    {
+      manifest: mermaidEngineManifest,
+      resourceUrl: null,
+      signal,
+      sourceUrl: MERMAID_ENGINE_URL,
+    }
+  );
+}
 
 export function createOpaqueCompareRealmDocument(
   boot: RealmBootIdentity
@@ -58,19 +74,5 @@ function bootstrapArtifact(
     schemaVersion: manifest.schemaVersion as 1,
     sha256: manifest.sha256,
     script,
-  });
-}
-
-function engineArtifact(
-  manifest: typeof compareEngineManifest,
-  source: string
-): RealmEngineArtifact {
-  return Object.freeze({
-    bytes: manifest.bytes,
-    id: manifest.id as RealmEngineArtifactId,
-    resourceUrl: null,
-    schemaVersion: manifest.schemaVersion as 1,
-    sha256: manifest.sha256,
-    source,
   });
 }

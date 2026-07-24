@@ -20,13 +20,13 @@ render-model dispatch reads accessibility fields from the typed model.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline gitgraph_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline gitgraph_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline gitgraph_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline gitgraph_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Mid Estimates

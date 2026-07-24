@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -6,9 +6,9 @@ use merman_render::environment::{
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman_render::family::{self, RenderFamilyKind};
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
-use merman_render::treemap::layout_treemap_diagram_typed;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -307,7 +307,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 }
 
 #[test]
-fn treemap_typed_layout_handles_deep_chain() {
+fn treemap_deep_chain_is_rejected_before_recursive_projection() {
     const DEPTH: usize = 1200;
     let source = deep_treemap_chain(DEPTH);
 
@@ -318,22 +318,20 @@ fn treemap_typed_layout_handles_deep_chain() {
         .expect("diagram detected");
 
     let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .expect("begin render session");
-    let RenderSemanticModel::Treemap(model) = parsed.model() else {
-        panic!("expected Treemap render model");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("deep recursive Treemap model must be rejected before projection"),
+        Err(error) => error,
     };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout = layout_treemap_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("layout ok");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected typed resource-limit error, got {error}");
+    };
 
-    assert_eq!(layout.sections.len(), DEPTH + 1);
-    assert_eq!(layout.leaves.len(), 1);
-    assert_eq!(layout.leaves[0].name, "leaf");
+    assert_eq!(limit.limit, "typed_model_tree_depth");
+    assert_eq!(limit.actual, DEPTH + 1);
+    assert!(limit.actual > limit.max);
 }
 
 #[test]

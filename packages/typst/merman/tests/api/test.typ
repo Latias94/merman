@@ -15,8 +15,18 @@
 
 #let result = mermaid-result(source, id: "api-result", pipeline: "readable")
 #assert(result.ok, message: "structured result should render successfully")
+#assert.eq(result.operation, "render-svg")
 #assert.eq(result.code_name, "MERMAN_OK")
+#assert.eq(result.kind, none)
+#assert.eq(result.capability_id, none)
 #assert(result.svg.contains("api-result"), message: "structured result should use renderer options")
+
+#let missing-math = mermaid-result("flowchart TD\nA[\"$$x^2$$\"] --> B")
+#assert(not missing-math.ok, message: "uncompiled math should be a structured capability error")
+#assert.eq(missing-math.operation, "render-svg")
+#assert.eq(missing-math.kind, "missing-capability")
+#assert.eq(missing-math.capability_id, "math")
+#assert.eq(missing-math.svg, none)
 
 #let analysis = analyze-mermaid(source)
 #assert.eq(analysis.version, 1)
@@ -101,9 +111,28 @@
 )
 
 #let capabilities = merman-capabilities()
-#assert(capabilities.render, message: "capabilities should stay exported")
-#assert(capabilities.text_measurement.vendored, message: "capabilities should keep text measurement boundary")
-#assert(not capabilities.text_measurement.host_callback, message: "Typst host callback measurement is not supported")
+#assert.eq(capabilities.schema_version, 1)
+#assert.eq(capabilities.transport_api_version, 2)
+#assert(
+  capabilities.capabilities.capability_ids.contains("svg"),
+  message: "capabilities should stay exported",
+)
+#assert.eq(
+  capabilities.capabilities.operation_ids,
+  ("analysis-json", "svg"),
+)
+#assert(
+  capabilities.capabilities.text_measurement.provider_ids.contains("vendored"),
+  message: "capabilities should keep text measurement boundary",
+)
+#assert(
+  not capabilities.capabilities.text_measurement.provider_ids.contains("host-callback"),
+  message: "Typst host callback measurement is not supported",
+)
+#assert(
+  capabilities.resources.profiles.any(profile => profile.id == "constrained"),
+  message: "the runtime catalog should expose the constrained resource profile",
+)
 
 #let image-profile = mermaid-profile(
   id: "api-image",

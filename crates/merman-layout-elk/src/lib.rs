@@ -15,16 +15,143 @@
 //! behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
+use std::num::NonZeroU64;
 
 mod model;
-pub use merman_elk_layered as source_port;
+use merman_elk_layered as source_port;
 pub use model::*;
-pub use source_port::RandomSeedPolicy as ElkRandomPolicy;
+pub use source_port::{
+    GraphExecution, HierarchySweepDebugTrace, HierarchySweepNodeDebug, LayeredPhase, ProcessorKind,
+};
+
+/// The nonzero random seed captured by the owner of one render/layout operation.
+///
+/// This token is intentionally separate from ELK's signed `randomSeed` option. The latter keeps
+/// Eclipse ELK's Java semantics for every nonzero value and treats zero as an unseeded sentinel.
+/// Passing this token to [`layout_with_operation_seed`] supplies the deterministic replacement
+/// for that sentinel without mutating the source option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ElkOperationSeed(source_port::OperationSeed);
+
+impl ElkOperationSeed {
+    /// Creates an ELK token from the seed captured by an operation owner.
+    pub const fn from_operation_seed(seed: NonZeroU64) -> Self {
+        Self(source_port::OperationSeed::from_operation_seed(seed))
+    }
+
+    const fn source_port_seed(self) -> source_port::OperationSeed {
+        self.0
+    }
+}
 
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, LGraph, LNodeKind,
     LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
 };
+
+/// A guarded diagnostic session for inspecting the source-backed layered pipeline.
+///
+/// The underlying ELK graph remains private. Every method that executes processors enters a
+/// fallible source-port pipeline boundary, so `randomSeed = 0` is either rejected or resolved
+/// from the [`ElkOperationSeed`] supplied at construction.
+///
+/// The former raw re-export is intentionally unavailable:
+///
+/// ```compile_fail
+/// use merman_layout_elk::source_port;
+/// ```
+pub struct SourcePhaseDiagnostics {
+    graph: LGraph,
+}
+
+impl SourcePhaseDiagnostics {
+    /// Builds a raw diagnostic session. Executing a graph that retains ELK's zero seed sentinel
+    /// returns the same typed error as [`layout`].
+    pub fn from_graph(graph: &Graph) -> Result<Self> {
+        Self::from_graph_with_optional_operation_seed(graph, None)
+    }
+
+    /// Builds a diagnostic session using an operation-owned seed for ELK's zero sentinel.
+    pub fn from_graph_with_operation_seed(
+        graph: &Graph,
+        operation_seed: ElkOperationSeed,
+    ) -> Result<Self> {
+        Self::from_graph_with_optional_operation_seed(graph, Some(operation_seed))
+    }
+
+    fn from_graph_with_optional_operation_seed(
+        graph: &Graph,
+        operation_seed: Option<ElkOperationSeed>,
+    ) -> Result<Self> {
+        let input = graph_to_source_input(graph);
+        let lgraph = match operation_seed {
+            Some(operation_seed) => source_port::import_graph_with_operation_seed(
+                &input,
+                operation_seed.source_port_seed(),
+            ),
+            None => source_port::import_graph(&input),
+        }
+        .map_err(Error::SourceImport)?;
+        Ok(Self { graph: lgraph })
+    }
+
+    /// Runs the source-backed pipeline until a phase completes.
+    pub fn execute_until(&mut self, target: LayeredPhase) -> Result<Vec<ProcessorKind>> {
+        source_port::execute_processors_until(&mut self.graph, target)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Runs the source-backed pipeline until a processor completes.
+    pub fn execute_until_processor(&mut self, target: ProcessorKind) -> Result<Vec<ProcessorKind>> {
+        source_port::execute_processors_until_processor(&mut self.graph, target)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Runs every currently ported processor for a flat graph.
+    pub fn execute_all(&mut self) -> Result<Vec<ProcessorKind>> {
+        source_port::execute_ported_processors(&mut self.graph).map_err(Error::SourcePipeline)
+    }
+
+    /// Runs the compound pipeline until a phase completes.
+    pub fn execute_compound_until(&mut self, target: LayeredPhase) -> Result<Vec<GraphExecution>> {
+        source_port::execute_ported_compound_processors_until(&mut self.graph, target)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Runs the compound pipeline until a processor completes.
+    pub fn execute_compound_until_processor(
+        &mut self,
+        target: ProcessorKind,
+    ) -> Result<Vec<GraphExecution>> {
+        source_port::execute_ported_compound_processors_until_processor(&mut self.graph, target)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Runs every currently ported compound processor.
+    pub fn execute_compound_all(&mut self) -> Result<Vec<GraphExecution>> {
+        source_port::execute_ported_compound_processors(&mut self.graph)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Runs the guarded compound prefix used by the hierarchical crossing-sweep diagnostic.
+    pub fn inspect_compound_crossings_after_processor(
+        &mut self,
+        target: ProcessorKind,
+    ) -> Result<(Vec<GraphExecution>, Option<HierarchySweepDebugTrace>)> {
+        source_port::inspect_compound_crossings_after_processor(&mut self.graph, target)
+            .map_err(Error::SourcePipeline)
+    }
+
+    /// Formats the private source graph for human diagnostics without exposing executable phase
+    /// APIs or the mutable `LGraph` itself.
+    pub fn graph_dump(&self) -> String {
+        let mut output = String::new();
+        write_source_graph_dump(&mut output, &self.graph, 0)
+            .expect("writing to String cannot fail");
+        output
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -38,30 +165,29 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
-    layout_with_random_policy(graph, ElkRandomPolicy::require_explicit())
+    let root_scope = vec![graph.id.clone()];
+    Ok(layout_layered_recursive(graph, None, &root_scope, None, None)?.layout)
 }
 
-/// Executes Mermaid's ELK adapter with an explicit resolution policy for ELK's upstream
-/// `randomSeed = 0` sentinel.
+/// Executes Mermaid's ELK adapter using the seed captured by its owning operation.
 ///
 /// Normal Mermaid adapter graphs keep their source default seed of `1`, so this policy affects
-/// only an explicitly configured unseeded graph. Native render operations pass a policy derived
-/// from their immutable operation context; raw callers must choose one rather than accidentally
-/// reading process randomness.
-pub fn layout_with_random_policy(
+/// only an explicitly configured unseeded graph. [`layout`] is the raw/diagnostic API and rejects
+/// the sentinel; this API is for render or layout operation owners that intentionally provide a
+/// single immutable operation seed.
+pub fn layout_with_operation_seed(
     graph: &Graph,
-    random_policy: ElkRandomPolicy,
+    operation_seed: ElkOperationSeed,
 ) -> Result<LayoutResult> {
     let root_scope = vec![graph.id.clone()];
-    Ok(layout_layered_recursive(graph, random_policy, &root_scope, None, None)?.layout)
-}
-
-/// Build the source-backed layered input graph used by [`layout`].
-///
-/// This is intentionally narrow and primarily exists for parity diagnostics that need to inspect
-/// Eclipse ELK processor phases without duplicating Mermaid adapter semantics.
-pub fn source_input_from_graph(graph: &Graph) -> source_port::ElkInputGraph {
-    graph_to_source_input(graph)
+    Ok(layout_layered_recursive(
+        graph,
+        Some(operation_seed.source_port_seed()),
+        &root_scope,
+        None,
+        None,
+    )?
+    .layout)
 }
 
 #[derive(Debug, Clone)]
@@ -76,21 +202,25 @@ struct RecursiveSourceLayout {
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/RecursiveGraphLayoutEngine.java
 fn layout_layered_recursive(
     graph: &Graph,
-    random_policy: ElkRandomPolicy,
+    operation_seed: Option<source_port::OperationSeed>,
     graph_scope: &[String],
     root_spacing_base: Option<f64>,
     root_label: Option<Label>,
 ) -> Result<RecursiveSourceLayout> {
     let mut layout_graph = graph.clone();
     let nested_layouts =
-        prelayout_separate_children(&mut layout_graph, random_policy, graph_scope)?;
+        prelayout_separate_children(&mut layout_graph, operation_seed, graph_scope)?;
 
     let input =
         graph_to_source_input_with_root_context(&layout_graph, root_spacing_base, root_label);
     let scope = graph_scope.iter().map(String::as_str).collect::<Vec<_>>();
-    let mut lgraph =
-        source_port::import_graph_with_random_policy_at_scope(&input, random_policy, &scope)
-            .map_err(Error::SourceImport)?;
+    let mut lgraph = match operation_seed {
+        Some(operation_seed) => {
+            source_port::import_graph_with_operation_seed_at_scope(&input, operation_seed, &scope)
+        }
+        None => source_port::import_graph(&input),
+    }
+    .map_err(Error::SourceImport)?;
     if source_graph_has_nested_graphs(&lgraph) {
         source_port::execute_ported_compound_processors(&mut lgraph)
             .map_err(Error::SourcePipeline)?;
@@ -194,7 +324,7 @@ fn graph_to_source_input_with_root_context(
 
 fn prelayout_separate_children(
     graph: &mut Graph,
-    random_policy: ElkRandomPolicy,
+    operation_seed: Option<source_port::OperationSeed>,
     graph_scope: &[String],
 ) -> Result<HashMap<String, RecursiveSourceLayout>> {
     let mut nested_layouts = HashMap::new();
@@ -205,7 +335,7 @@ fn prelayout_separate_children(
         None,
         root_handling,
         root_direction,
-        random_policy,
+        operation_seed,
         graph_scope,
         &mut nested_layouts,
     )?;
@@ -217,7 +347,7 @@ fn prelayout_separate_children_under(
     parent: Option<&str>,
     parent_handling: HierarchyHandling,
     parent_direction: Direction,
-    random_policy: ElkRandomPolicy,
+    operation_seed: Option<source_port::OperationSeed>,
     graph_scope: &[String],
     nested_layouts: &mut HashMap<String, RecursiveSourceLayout>,
 ) -> Result<()> {
@@ -238,7 +368,7 @@ fn prelayout_separate_children_under(
             child_scope.push(child.id.clone());
             let child_layout = layout_layered_recursive(
                 &child_graph,
-                random_policy,
+                operation_seed,
                 &child_scope,
                 Some(30.0),
                 child.label,
@@ -254,7 +384,7 @@ fn prelayout_separate_children_under(
                 Some(child.id.as_str()),
                 child_handling,
                 child_direction,
-                random_policy,
+                operation_seed,
                 graph_scope,
                 nested_layouts,
             )?;
@@ -427,6 +557,154 @@ fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
         width: graph.size.width + graph.padding.left + graph.padding.right,
         height: graph.size.height + graph.padding.top + graph.padding.bottom,
     }
+}
+
+fn write_source_graph_dump(output: &mut String, graph: &LGraph, depth: usize) -> std::fmt::Result {
+    let indent = "  ".repeat(depth);
+    writeln!(
+        output,
+        "{indent}graph {} parent={:?} size=({}, {}) offset=({}, {}) padding=({}, {}, {}, {})",
+        graph.id,
+        graph.parent_node_id,
+        graph.size.width,
+        graph.size.height,
+        graph.offset.x,
+        graph.offset.y,
+        graph.padding.left,
+        graph.padding.right,
+        graph.padding.top,
+        graph.padding.bottom
+    )?;
+    writeln!(
+        output,
+        "{indent}options direction={:?} port_constraints={:?} thoroughness={} hierarchical_sweepiness={} consider_model_order={:?} force_node_model_order={} port_model_order={}",
+        graph.options.direction,
+        graph.options.port_constraints,
+        graph.options.thoroughness,
+        graph.options.hierarchical_sweepiness,
+        graph.options.consider_model_order_strategy,
+        graph.options.force_node_model_order,
+        graph.options.consider_model_order_port_model_order
+    )?;
+    writeln!(output, "{indent}layerless:")?;
+    for (index, node) in graph.layerless_nodes.iter().enumerate() {
+        writeln!(
+            output,
+            "{indent}- #{index} {} kind={:?} layer={:?} order={:?} pos=({}, {}) size=({}, {}) margin=({}, {}, {}, {}) port_constraints={:?} parent_graph={}",
+            node.id,
+            node.kind,
+            node.layer_index,
+            node.model_order,
+            node.position.x,
+            node.position.y,
+            node.size.width,
+            node.size.height,
+            node.margin.left,
+            node.margin.right,
+            node.margin.top,
+            node.margin.bottom,
+            node.port_constraints,
+            node.nested_graph.is_some()
+        )?;
+        if node.kind == LNodeKind::ExternalPort {
+            writeln!(
+                output,
+                "{indent}  external side={:?} size=({}, {}) ratio_or_position={} replaced={:?}",
+                node.external_port_side,
+                node.external_port_size.width,
+                node.external_port_size.height,
+                node.port_ratio_or_position,
+                node.replaced_external_port_dummy
+            )?;
+        }
+        for (port_index, port) in node.ports.iter().enumerate() {
+            let incoming = port
+                .incoming_edges
+                .iter()
+                .map(|edge| graph.edges[*edge].id.as_str())
+                .collect::<Vec<_>>();
+            let outgoing = port
+                .outgoing_edges
+                .iter()
+                .map(|edge| graph.edges[*edge].id.as_str())
+                .collect::<Vec<_>>();
+            writeln!(
+                output,
+                "{indent}  port #{port_index} {} type={:?} side={:?} order={:?} index={:?} pos=({}, {}) anchor=({}, {}) size=({}, {}) border={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
+                port.id,
+                port.port_type,
+                port.side,
+                port.model_order,
+                port.port_index,
+                port.position.x,
+                port.position.y,
+                port.anchor.x,
+                port.anchor.y,
+                port.size.width,
+                port.size.height,
+                port.border_offset,
+                port.inside_connections,
+                port.port_dummy,
+                node.origin_port,
+                incoming.join(","),
+                outgoing.join(",")
+            )?;
+        }
+    }
+    if !graph.edges.is_empty() {
+        writeln!(output, "{indent}edges:")?;
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let source_attached = graph.edge_source_attached(edge_index);
+            let target_attached = graph.edge_target_attached(edge_index);
+            writeln!(
+                output,
+                "{indent}- #{edge_index} {} {}:{} -> {}:{} segment={:?} reversed={} attached=({source_attached},{target_attached}) bends={:?}",
+                edge.id,
+                edge.source.node,
+                edge.source.port,
+                edge.target.node,
+                edge.target.port,
+                edge.compound_segment,
+                edge.reversed,
+                edge.bend_points
+            )?;
+        }
+    }
+    writeln!(output, "{indent}layers:")?;
+    for (index, layer) in graph.layers.iter().enumerate() {
+        let nodes = layer
+            .nodes
+            .iter()
+            .map(|node| {
+                let lnode = &graph.layerless_nodes[*node];
+                format!(
+                    "{}#{node}[{:?},order={:?},pos=({},{}),size=({},{})]",
+                    lnode.id,
+                    lnode.kind,
+                    lnode.model_order,
+                    lnode.position.x,
+                    lnode.position.y,
+                    lnode.size.width,
+                    lnode.size.height
+                )
+            })
+            .collect::<Vec<_>>();
+        writeln!(
+            output,
+            "{indent}- layer {index} size=({}, {}) nodes={}",
+            layer.size.width,
+            layer.size.height,
+            nodes.join(" -> ")
+        )?;
+    }
+    writeln!(output)?;
+
+    for node in &graph.layerless_nodes {
+        if let Some(nested) = node.nested_graph.as_deref() {
+            write_source_graph_dump(output, nested, depth + 1)?;
+        }
+    }
+    Ok(())
 }
 
 fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
@@ -1269,7 +1547,9 @@ mod tests {
     }
 
     #[test]
-    fn raw_layout_rejects_unseeded_elk_zero_but_operation_policy_is_replayable() {
+    fn raw_layout_rejects_unseeded_elk_zero_but_operation_seed_is_replayable() {
+        use std::num::NonZeroU64;
+
         let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
         graph.options.layered.random_seed = 0;
 
@@ -1280,11 +1560,45 @@ mod tests {
             ))) if graph_path == "root"
         ));
 
-        let policy = ElkRandomPolicy::deterministic(0x6d65_726d_616e);
-        let first = layout_with_random_policy(&graph, policy).expect("deterministic layout");
-        let replayed = layout_with_random_policy(&graph, policy).expect("replayed layout");
+        let operation_seed = ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x6d65_726d_616e).expect("nonzero operation seed"),
+        );
+        let first =
+            layout_with_operation_seed(&graph, operation_seed).expect("deterministic layout");
+        let replayed = layout_with_operation_seed(&graph, operation_seed).expect("replayed layout");
 
         assert_eq!(first, replayed);
+    }
+
+    #[test]
+    fn source_phase_diagnostics_uses_the_same_zero_seed_boundary() {
+        use std::num::NonZeroU64;
+
+        let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
+        graph.options.layered.random_seed = 0;
+
+        let mut raw = SourcePhaseDiagnostics::from_graph(&graph).expect("diagnostic session");
+        assert!(matches!(
+            raw.execute_all(),
+            Err(Error::SourcePipeline(source_port::PipelineError::RandomSeed(
+                source_port::RandomSeedError::Unresolved { graph_path }
+            ))) if graph_path == "root"
+        ));
+
+        let operation_seed = ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x6469_6167_6e6f_7374).expect("nonzero operation seed"),
+        );
+        let mut first =
+            SourcePhaseDiagnostics::from_graph_with_operation_seed(&graph, operation_seed)
+                .expect("seeded diagnostic session");
+        let mut replayed =
+            SourcePhaseDiagnostics::from_graph_with_operation_seed(&graph, operation_seed)
+                .expect("replayed seeded diagnostic session");
+
+        assert_eq!(
+            first.execute_all().unwrap(),
+            replayed.execute_all().unwrap()
+        );
     }
 
     #[test]

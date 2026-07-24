@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 import { toast } from "sonner";
 import {
   selectMermanFacade,

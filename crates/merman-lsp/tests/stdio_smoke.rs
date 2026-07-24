@@ -9,15 +9,15 @@ use std::{
     time::Instant,
 };
 
-use futures::{sink, stream};
+use futures::{StreamExt, channel::mpsc, sink, stream};
 use merman_lsp::{LSP_HANDLER_CONCURRENCY, StdioTermination, serve_stdio, stdio_server};
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::time::{Duration, timeout};
 use tower::Service;
-use tower_lsp::Loopback;
-use tower_lsp::jsonrpc::{Request, Response};
+use tower_lsp_server::Loopback;
+use tower_lsp_server::jsonrpc::{Id, Request, Response};
 
 fn frame(json: &str) -> Vec<u8> {
     format!("Content-Length: {}\r\n\r\n{}", json.len(), json).into_bytes()
@@ -192,6 +192,20 @@ fn read_lsp_response_sync(reader: &mut impl Read, expected_id: i64) -> serde_jso
     }
 }
 
+fn read_lsp_responses_sync(reader: &mut impl Read, expected_ids: &[i64]) -> Vec<serde_json::Value> {
+    let mut responses = Vec::with_capacity(expected_ids.len());
+    while responses.len() < expected_ids.len() {
+        let frame = read_lsp_frame_sync(reader);
+        if expected_ids
+            .iter()
+            .any(|expected_id| frame["id"] == json!(expected_id))
+        {
+            responses.push(frame);
+        }
+    }
+    responses
+}
+
 async fn read_lsp_frame(reader: &mut (impl AsyncRead + Unpin)) -> serde_json::Value {
     let mut header = Vec::new();
     let mut byte = [0u8; 1];
@@ -228,6 +242,36 @@ impl Loopback for EmptyLoopback {
 
     fn split(self) -> (Self::RequestStream, Self::ResponseSink) {
         (stream::empty(), sink::drain())
+    }
+}
+
+struct TestLoopback {
+    requests: Vec<Request>,
+    responses: mpsc::UnboundedSender<Response>,
+}
+
+impl Loopback for TestLoopback {
+    type RequestStream = stream::Iter<std::vec::IntoIter<Request>>;
+    type ResponseSink = mpsc::UnboundedSender<Response>;
+
+    fn split(self) -> (Self::RequestStream, Self::ResponseSink) {
+        (stream::iter(self.requests), self.responses)
+    }
+}
+
+struct LoopbackOnlyService;
+
+impl Service<Request> for LoopbackOnlyService {
+    type Response = Option<Response>;
+    type Error = Infallible;
+    type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: Request) -> Self::Future {
+        panic!("loopback-only service received request: {request}")
     }
 }
 
@@ -372,18 +416,24 @@ async fn stdio_server_processes_overlapping_requests() {
             .await;
     });
 
+    let blocking = frame(r#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#);
+    let ping = frame(r#"{"jsonrpc":"2.0","id":2,"method":"test/ping","params":null}"#);
     client_stdin
-        .write_all(&frame(
-            r#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#,
-        ))
+        .write_all(&blocking[..10])
         .await
-        .expect("write blocking request");
+        .expect("write partial Content-Length header");
+    tokio::task::yield_now().await;
     client_stdin
-        .write_all(&frame(
-            r#"{"jsonrpc":"2.0","id":2,"method":"test/ping","params":null}"#,
-        ))
+        .write_all(&blocking[10..blocking.len() - 5])
         .await
-        .expect("write ping request");
+        .expect("write header and partial body");
+    tokio::task::yield_now().await;
+    let mut final_batch = blocking[blocking.len() - 5..].to_vec();
+    final_batch.extend(ping);
+    client_stdin
+        .write_all(&final_batch)
+        .await
+        .expect("write final body fragment and pipelined request");
 
     let first_response = match timeout(Duration::from_secs(2), read_lsp_frame(&mut client_stdout))
         .await
@@ -407,6 +457,52 @@ async fn stdio_server_processes_overlapping_requests() {
         .expect("blocking request should complete after unblock");
     assert_eq!(second_response["id"], json!(1));
     assert_eq!(second_response["result"], json!("blocked"));
+
+    drop(client_stdin);
+    timeout(Duration::from_secs(2), server_task)
+        .await
+        .expect("stdio server should stop after stdin closes")
+        .expect("stdio server task should not panic");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stdio_server_routes_loopback_requests_and_responses() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (server_stdout, mut client_stdout) = tokio::io::duplex(4096);
+    let (responses_tx, mut responses_rx) = mpsc::unbounded();
+    let client_request = Request::build("client/test").id(42).finish();
+
+    let server_task = tokio::spawn(async move {
+        stdio_server(
+            server_stdin,
+            server_stdout,
+            TestLoopback {
+                requests: vec![client_request],
+                responses: responses_tx,
+            },
+        )
+        .serve(LoopbackOnlyService)
+        .await;
+    });
+
+    let request = timeout(Duration::from_secs(2), read_lsp_frame(&mut client_stdout))
+        .await
+        .expect("loopback request should reach stdout");
+    assert_eq!(request["id"], json!(42));
+    assert_eq!(request["method"], json!("client/test"));
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","id":42,"result":{"received":true}}"#,
+        ))
+        .await
+        .expect("write loopback response");
+    let response = timeout(Duration::from_secs(2), responses_rx.next())
+        .await
+        .expect("loopback response should be routed")
+        .expect("loopback response stream should remain open");
+    assert_eq!(response.id(), &Id::Number(42));
+    assert_eq!(response.result(), Some(&json!({ "received": true })));
 
     drop(client_stdin);
     timeout(Duration::from_secs(2), server_task)
@@ -613,18 +709,22 @@ fn stdio_binary_rejects_exit_requests_without_terminating() {
     let mut stdin = child.stdin.take().expect("child stdin");
     let mut stdout = child.stdout.take().expect("child stdout");
     initialize_lsp_binary_and_wait(&mut stdin, &mut stdout);
+    let mut pipelined = frame(r#"{"jsonrpc":"2.0","id":9,"method":"exit","params":null}"#);
+    pipelined.extend(frame(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#));
     stdin
-        .write_all(&frame(
-            r#"{"jsonrpc":"2.0","id":9,"method":"exit","params":null}"#,
-        ))
-        .expect("write invalid exit request");
-    let rejection = read_lsp_response_sync(&mut stdout, 9);
+        .write_all(&pipelined)
+        .expect("write pipelined invalid exit and shutdown requests");
+    let responses = read_lsp_responses_sync(&mut stdout, &[9, 2]);
+    let rejection = responses
+        .iter()
+        .find(|response| response["id"] == json!(9))
+        .expect("invalid exit response");
     assert_eq!(rejection["id"], json!(9));
     assert_eq!(rejection["error"]["code"], json!(-32600));
-    stdin
-        .write_all(&frame(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#))
-        .expect("write shutdown request");
-    let shutdown_response = read_lsp_response_sync(&mut stdout, 2);
+    let shutdown_response = responses
+        .iter()
+        .find(|response| response["id"] == json!(2))
+        .expect("pipelined shutdown response");
     assert_eq!(shutdown_response["id"], json!(2));
     assert_eq!(shutdown_response["result"], json!(null));
     stdin

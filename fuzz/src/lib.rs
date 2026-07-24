@@ -2,7 +2,7 @@
 
 use chrono::NaiveDate;
 use merman::Engine;
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer, RenderEnvironment, RenderResourcePolicy, ResourceLimitId, RuntimePolicy,
     finalize_resvg_svg,
 };
@@ -33,13 +33,9 @@ pub fn bounded_renderer() -> HeadlessRenderer {
     for (id, value) in [
         (ResourceLimitId::MaxSourceBytes, MAX_RENDER_INPUT_BYTES),
         (ResourceLimitId::MaxSvgBytes, 4 * 1024 * 1024),
-        (ResourceLimitId::MaxFlowchartNodes, 512),
-        (ResourceLimitId::MaxFlowchartEdges, 1_024),
-        (ResourceLimitId::MaxFlowchartSubgraphs, 128),
-        (ResourceLimitId::MaxClassNodes, 512),
-        (ResourceLimitId::MaxClassEdges, 1_024),
-        (ResourceLimitId::MaxClassNamespaces, 128),
-        (ResourceLimitId::MaxLabelBytes, 256 * 1024),
+        (ResourceLimitId::MaxModelItems, 2_048),
+        (ResourceLimitId::MaxModelTextBytes, 256 * 1024),
+        (ResourceLimitId::MaxLayoutWorkUnits, 250_000),
     ] {
         limits
             .apply_limit(id, value)

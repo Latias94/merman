@@ -149,7 +149,7 @@ pub enum Error {
 
     /// Parser failure for a detected diagram.
     ///
-    /// This pre-1.0 API now carries `diagnostic: ParseDiagnostic` instead of a top-level `message`
+    /// This API now carries `diagnostic: ParseDiagnostic` instead of a top-level `message`
     /// field. Call `diagnostic.message()` for the display text and `diagnostic.span()` /
     /// `diagnostic.span_kind()` when projecting editor or CLI diagnostics.
     #[error("Diagram parse error ({diagram_type}): {}", diagnostic.message())]

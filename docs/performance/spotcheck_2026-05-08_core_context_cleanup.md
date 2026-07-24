@@ -22,16 +22,16 @@ Baseline worktree:
 ```text
 git worktree add -f E:\Rust\merman-core-baseline e7e761db^
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\bench-core-baseline'
-cargo bench -p merman --features render --bench pipeline flowchart_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench pipeline state_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline flowchart_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline state_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Current worktree:
 
 ```text
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\bench-core-current'
-cargo bench -p merman --features render --bench pipeline flowchart_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
-cargo bench -p merman --features render --bench pipeline state_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline flowchart_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline state_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Flowchart Medium

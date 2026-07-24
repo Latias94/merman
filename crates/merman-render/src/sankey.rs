@@ -1,10 +1,57 @@
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
-use crate::{Error, Result};
+use crate::{Error, RenderResourcePolicy, Result};
 use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
 use serde_json::Value;
+
+const SANKEY_RELAXATION_ITERATIONS: usize = 6;
+const SANKEY_BASE_LAYOUT_PASSES: usize = 4;
+
+fn sankey_layout_work_units(model: &SankeyDiagramRenderModel) -> usize {
+    let nodes = model.graph.nodes.len();
+    let links = model.graph.links.len();
+    let base_work = nodes
+        .saturating_add(links)
+        .saturating_mul(SANKEY_BASE_LAYOUT_PASSES.saturating_add(SANKEY_RELAXATION_ITERATIONS));
+
+    // Each relaxation direction invokes `target_top`/`source_top` once per link. Those helpers
+    // scan the source and target adjacency lists, so a parallel-edge-heavy graph can cost O(E²)
+    // even when V+E is small. Charge the actual degree-weighted scan before allocating layout
+    // buffers or entering the relaxation loop.
+    let mut source_degrees = HashMap::<&str, usize>::new();
+    let mut target_degrees = HashMap::<&str, usize>::new();
+    for link in &model.graph.links {
+        source_degrees
+            .entry(link.source.as_str())
+            .and_modify(|degree| *degree = degree.saturating_add(1))
+            .or_insert(1);
+        target_degrees
+            .entry(link.target.as_str())
+            .and_modify(|degree| *degree = degree.saturating_add(1))
+            .or_insert(1);
+    }
+
+    let adjacency_scan_work = model.graph.links.iter().fold(0usize, |total, link| {
+        total.saturating_add(
+            source_degrees
+                .get(link.source.as_str())
+                .copied()
+                .unwrap_or_default()
+                .saturating_add(
+                    target_degrees
+                        .get(link.target.as_str())
+                        .copied()
+                        .unwrap_or_default(),
+                ),
+        )
+    });
+    let relaxation_scan_work =
+        adjacency_scan_work.saturating_mul(SANKEY_RELAXATION_ITERATIONS.saturating_mul(2));
+
+    base_work.saturating_add(relaxation_scan_work)
+}
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 mod config;
 
@@ -42,11 +89,97 @@ fn f64_cmp(a: f64, b: f64) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Equal)
 }
 
-pub fn layout_sankey_diagram_typed(
+fn compute_node_depths(nodes: &mut [Node], links: &[Link]) -> Result<()> {
+    let mut remaining_incoming = nodes
+        .iter()
+        .map(|node| node.target_links.len())
+        .collect::<Vec<_>>();
+    let mut queue = remaining_incoming
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &incoming)| (incoming == 0).then_some(index))
+        .collect::<VecDeque<_>>();
+    let mut processed = 0usize;
+
+    while let Some(source) = queue.pop_front() {
+        processed += 1;
+        let depth = nodes[source].depth;
+        for &link_index in &nodes[source].source_links {
+            let target = links[link_index].target;
+            nodes[target].depth = nodes[target].depth.max(depth.saturating_add(1));
+            remaining_incoming[target] -= 1;
+            if remaining_incoming[target] == 0 {
+                queue.push_back(target);
+            }
+        }
+    }
+
+    if processed == nodes.len() {
+        Ok(())
+    } else {
+        Err(Error::InvalidModel {
+            message: "circular link".to_string(),
+        })
+    }
+}
+
+fn compute_node_heights(nodes: &mut [Node], links: &[Link]) -> Result<()> {
+    let mut remaining_outgoing = nodes
+        .iter()
+        .map(|node| node.source_links.len())
+        .collect::<Vec<_>>();
+    let mut queue = remaining_outgoing
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &outgoing)| (outgoing == 0).then_some(index))
+        .collect::<VecDeque<_>>();
+    let mut processed = 0usize;
+
+    while let Some(target) = queue.pop_front() {
+        processed += 1;
+        let height = nodes[target].height;
+        for &link_index in &nodes[target].target_links {
+            let source = links[link_index].source;
+            nodes[source].height = nodes[source].height.max(height.saturating_add(1));
+            remaining_outgoing[source] -= 1;
+            if remaining_outgoing[source] == 0 {
+                queue.push_back(source);
+            }
+        }
+    }
+
+    if processed == nodes.len() {
+        Ok(())
+    } else {
+        Err(Error::InvalidModel {
+            message: "circular link".to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn layout_sankey_diagram_typed(
+    model: &SankeyDiagramRenderModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+) -> Result<SankeyDiagramLayout> {
+    layout_sankey_diagram_typed_with_resource_policy(
+        model,
+        effective_config,
+        text_measurer,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+/// Lays out a Sankey model under the resource policy owned by the render operation.
+pub(crate) fn layout_sankey_diagram_typed_with_resource_policy(
     model: &SankeyDiagramRenderModel,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<SankeyDiagramLayout> {
+    resource_limits.check_layout_work_units(sankey_layout_work_units(model))?;
+
     let SankeyLayoutSettings {
         width,
         height,
@@ -54,7 +187,7 @@ pub fn layout_sankey_diagram_typed(
         node_width: dx,
         node_padding: dy,
     } = SankeyConfigView::new(effective_config).layout_settings();
-    let iterations = 6usize;
+    let iterations = SANKEY_RELAXATION_ITERATIONS;
 
     let mut nodes: Vec<Node> = model
         .graph
@@ -116,66 +249,6 @@ pub fn layout_sankey_diagram_typed(
         let out_sum: f64 = n.source_links.iter().map(|&li| links[li].value).sum();
         let in_sum: f64 = n.target_links.iter().map(|&li| links[li].value).sum();
         n.value = out_sum.max(in_sum);
-    }
-
-    fn compute_node_depths(nodes: &mut [Node], links: &[Link]) -> Result<()> {
-        let n = nodes.len();
-        let mut current: Vec<usize> = (0..n).collect();
-        let mut next: Vec<usize> = Vec::new();
-        let mut next_seen = vec![false; n];
-        let mut x: usize = 0;
-        while !current.is_empty() {
-            for &node_idx in &current {
-                nodes[node_idx].depth = x;
-                for &li in &nodes[node_idx].source_links {
-                    let t = links[li].target;
-                    if !next_seen[t] {
-                        next_seen[t] = true;
-                        next.push(t);
-                    }
-                }
-            }
-            x += 1;
-            if x > n {
-                return Err(Error::InvalidModel {
-                    message: "circular link".to_string(),
-                });
-            }
-            current = next;
-            next = Vec::new();
-            next_seen.fill(false);
-        }
-        Ok(())
-    }
-
-    fn compute_node_heights(nodes: &mut [Node], links: &[Link]) -> Result<()> {
-        let n = nodes.len();
-        let mut current: Vec<usize> = (0..n).collect();
-        let mut next: Vec<usize> = Vec::new();
-        let mut next_seen = vec![false; n];
-        let mut x: usize = 0;
-        while !current.is_empty() {
-            for &node_idx in &current {
-                nodes[node_idx].height = x;
-                for &li in &nodes[node_idx].target_links {
-                    let s = links[li].source;
-                    if !next_seen[s] {
-                        next_seen[s] = true;
-                        next.push(s);
-                    }
-                }
-            }
-            x += 1;
-            if x > n {
-                return Err(Error::InvalidModel {
-                    message: "circular link".to_string(),
-                });
-            }
-            current = next;
-            next = Vec::new();
-            next_seen.fill(false);
-        }
-        Ok(())
     }
 
     compute_node_depths(&mut nodes, &links)?;
@@ -335,17 +408,40 @@ pub fn layout_sankey_diagram_typed(
     }
 
     fn reorder_node_links(nodes: &mut [Node], links: &[Link], node_idx: usize) {
+        let needs_reorder = nodes[node_idx].target_links.iter().any(|&li| {
+            let source = links[li].source;
+            nodes[source].source_links.len() > 1
+        }) || nodes[node_idx].source_links.iter().any(|&li| {
+            let target = links[li].target;
+            nodes[target].target_links.len() > 1
+        });
+        if !needs_reorder {
+            return;
+        }
+
         let node_y0 = nodes.iter().map(|n| n.y0).collect::<Vec<_>>();
 
+        // A multigraph may contain many links between the same pair of nodes. Sorting the same
+        // adjacency list once per parallel link turns one relaxation pass into O(E² log E).
+        // Neighbor sets preserve the resulting order while making the work proportional to the
+        // number of distinct adjacent nodes.
+        let mut sorted_sources = std::collections::HashSet::new();
         let target_links = nodes[node_idx].target_links.clone();
         for li in target_links {
             let source = links[li].source;
+            if !sorted_sources.insert(source) {
+                continue;
+            }
             sort_source_links_by_target_y0(&node_y0, links, &mut nodes[source].source_links);
         }
 
+        let mut sorted_targets = std::collections::HashSet::new();
         let source_links = nodes[node_idx].source_links.clone();
         for li in source_links {
             let target = links[li].target;
+            if !sorted_targets.insert(target) {
+                continue;
+            }
             sort_target_links_by_source_y0(&node_y0, links, &mut nodes[target].target_links);
         }
     }
@@ -595,8 +691,12 @@ mod tests {
     use super::config::{
         DEFAULT_NODE_PADDING_BASE_PX, DEFAULT_NODE_WIDTH_PX, sankey_node_padding_px_with_base,
     };
-    use super::layout_sankey_diagram_typed;
+    use super::{
+        layout_sankey_diagram_typed, layout_sankey_diagram_typed_with_resource_policy,
+        sankey_layout_work_units,
+    };
     use crate::text::DeterministicTextMeasurer;
+    use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_core::diagrams::sankey::{
         SankeyDiagramRenderModel, SankeyRenderGraph, SankeyRenderLink, SankeyRenderNode,
     };
@@ -688,5 +788,106 @@ mod tests {
         )
         .unwrap();
         assert_eq!(hidden_values_layout.node_padding, 18.0);
+    }
+
+    #[test]
+    fn sankey_resource_limits_are_checked_before_layout_allocation() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+        let model = model();
+        let expected_work = sankey_layout_work_units(&model);
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
+            .unwrap();
+
+        let error =
+            layout_sankey_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
+                .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured resource error");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, expected_work);
+        assert_eq!(error.max, expected_work - 1);
+    }
+
+    #[test]
+    fn parallel_sankey_links_are_rejected_by_degree_aware_budget_before_relaxation() {
+        const LINK_COUNT: usize = 1_024;
+        let model = SankeyDiagramRenderModel {
+            graph: SankeyRenderGraph {
+                nodes: vec![
+                    SankeyRenderNode {
+                        id: "A".to_string(),
+                    },
+                    SankeyRenderNode {
+                        id: "B".to_string(),
+                    },
+                ],
+                links: (0..LINK_COUNT)
+                    .map(|_| SankeyRenderLink {
+                        source: "A".to_string(),
+                        target: "B".to_string(),
+                        value: json!(1.0),
+                    })
+                    .collect(),
+            },
+        };
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+        let max_work_units = 1_000_000;
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, max_work_units)
+            .unwrap();
+
+        let error =
+            layout_sankey_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
+                .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured resource error");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert!(error.actual > max_work_units);
+    }
+
+    #[test]
+    fn long_sankey_chain_uses_linear_topological_depth_and_height_propagation() {
+        const NODE_COUNT: usize = 10_000;
+        let nodes = (0..NODE_COUNT)
+            .map(|index| SankeyRenderNode {
+                id: format!("node-{index}"),
+            })
+            .collect();
+        let links = (0..NODE_COUNT - 1)
+            .map(|index| SankeyRenderLink {
+                source: format!("node-{index}"),
+                target: format!("node-{}", index + 1),
+                value: json!(1.0),
+            })
+            .collect();
+        let model = SankeyDiagramRenderModel {
+            graph: SankeyRenderGraph { nodes, links },
+        };
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let layout = layout_sankey_diagram_typed_with_resource_policy(
+            &model,
+            &json!({}),
+            &measurer,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+
+        assert_eq!(layout.nodes.first().unwrap().depth, 0);
+        assert_eq!(layout.nodes.last().unwrap().depth, NODE_COUNT - 1);
+        assert_eq!(layout.nodes.first().unwrap().height, NODE_COUNT - 1);
+        assert_eq!(layout.nodes.last().unwrap().height, 0);
     }
 }

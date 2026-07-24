@@ -1,10 +1,12 @@
+use std::str::FromStr;
+
 use crate::document_store::DocumentStore;
 use crate::snapshot_context::{self, SnapshotContextKind};
 use merman_editor_core::DocumentKind;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::ErrorCode;
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::jsonrpc::ErrorCode;
+use tower_lsp_server::ls_types::Uri;
 
 fn test_store() -> Arc<Mutex<DocumentStore>> {
     Arc::new(Mutex::new(DocumentStore::new()))
@@ -28,7 +30,7 @@ async fn stale_snapshot_commit_returns_purpose_error() {
         SnapshotContextKind::Structure,
     ] {
         let store = test_store();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
         let request = {
             let mut store = store.lock().await;
@@ -66,7 +68,7 @@ async fn stale_snapshot_commit_returns_purpose_error() {
 #[tokio::test(flavor = "current_thread")]
 async fn closed_snapshot_commit_returns_none() {
     let store = test_store();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let request = {
         let mut store = store.lock().await;
@@ -102,7 +104,7 @@ async fn closed_snapshot_commit_returns_none() {
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_snapshot_current_returns_purpose_error() {
     let store = test_store();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
         let mut store = store.lock().await;
@@ -146,7 +148,7 @@ async fn ensure_snapshot_current_returns_purpose_error() {
 #[tokio::test(flavor = "current_thread")]
 async fn snapshot_result_releases_store_lock_and_preempts_compute_error_when_stale() {
     let store = test_store();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
         let mut store = store.lock().await;
@@ -174,7 +176,7 @@ async fn snapshot_result_releases_store_lock_and_preempts_compute_error_when_sta
                 "flowchart TD\nA-->C\n".to_string(),
                 DocumentKind::Diagram,
             );
-            Err(tower_lsp::jsonrpc::Error::invalid_params(
+            Err(tower_lsp_server::jsonrpc::Error::invalid_params(
                 "old snapshot compute error",
             ))
         },

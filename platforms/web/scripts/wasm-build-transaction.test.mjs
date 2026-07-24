@@ -45,29 +45,28 @@ afterEach(() => {
 });
 
 describe("WASM output transaction", () => {
-  it("publishes root artifacts with the manifest last and preserves owned surfaces", () => {
+  it("atomically replaces one package-owned artifact directory", () => {
     const root = fixtureRoot();
-    const output = path.join(root, "pkg");
+    const output = path.join(root, "pkg", "full");
     write(output, "merman_wasm.js", "old");
     write(output, "merman_wasm_inputs.json", "old manifest");
-    write(output, "editor/keep.txt", "surface");
     const stage = createOutputStage(output);
     write(stage, "merman_wasm.js", "new");
     write(stage, "merman_wasm_inputs.json", "new manifest");
 
-    publishStagedOutput(stage, output, { rootPackage: true });
+    publishStagedOutput(stage, output);
 
     assert.equal(read(output, "merman_wasm.js"), "new");
     assert.equal(read(output, "merman_wasm_inputs.json"), "new manifest");
-    assert.equal(read(output, "editor/keep.txt"), "surface");
     assert.equal(existsSync(stage), false);
     assert.equal(existsSync(outputBackupDirectory(output)), false);
   });
 
-  it("atomically replaces a child surface directory", () => {
+  it("does not preserve stale sibling artifacts", () => {
     const root = fixtureRoot();
     const output = path.join(root, "pkg", "editor");
     write(output, "old.txt", "old");
+    write(output, "stale/merman_wasm_bg.wasm", "stale");
     write(output, "merman_wasm_inputs.json", "old manifest");
     const stage = createOutputStage(output);
     write(stage, "new.txt", "new");
@@ -76,11 +75,12 @@ describe("WASM output transaction", () => {
     publishStagedOutput(stage, output);
 
     assert.equal(existsSync(path.join(output, "old.txt")), false);
+    assert.equal(existsSync(path.join(output, "stale")), false);
     assert.equal(read(output, "new.txt"), "new");
     assert.equal(existsSync(outputBackupDirectory(output)), false);
   });
 
-  it("rolls back a partial root publication before the manifest commit point", () => {
+  it("rolls back a failed package-owned publication", () => {
     const root = fixtureRoot();
     const output = path.join(root, "pkg");
     write(output, "merman_wasm.js", "old js");
@@ -92,20 +92,13 @@ describe("WASM output transaction", () => {
     write(stage, "merman_wasm_inputs.json", "new manifest");
 
     assert.throws(
-      () =>
-        publishStagedOutput(stage, output, {
-          rootPackage: true,
-          onPublishStep(step) {
-            if (step.startsWith("new-entry-published:")) {
-              assert.equal(
-                existsSync(path.join(output, "merman_wasm_inputs.json")),
-                false,
-                "partial root output exposed a committed manifest",
-              );
-              throw new Error("injected publish failure");
-            }
-          },
-        }),
+      () => publishStagedOutput(stage, output, {
+        onPublishStep(step) {
+          if (step === "new-output-published") {
+            throw new Error("injected publish failure");
+          }
+        },
+      }),
       /injected publish failure/,
     );
 
@@ -171,7 +164,7 @@ describe("WASM output transaction", () => {
     );
   });
 
-  it("serializes independent package surfaces through one workspace build lock", async () => {
+  it("serializes independent package builds through one workspace build lock", async () => {
     const root = fixtureRoot();
     const first = workspaceLockChild(root, 250);
     await waitForLine(first, "locked");

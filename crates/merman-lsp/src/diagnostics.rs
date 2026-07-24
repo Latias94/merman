@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::client_profile::{ClientProtocolProfile, DiagnosticProtocolProfile};
 use crate::protocol::{DiagnosticIdentityData, range_to_lsp};
 #[cfg(test)]
@@ -9,15 +11,15 @@ use merman_editor_core::{
     EditorDiagnostic, EditorDiagnosticRelated,
     analysis_payload_to_diagnostics as analysis_payload_to_editor_diagnostics,
 };
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity,
-    DiagnosticTag, Location, NumberOrString, Url,
+    DiagnosticTag, Location, NumberOrString, Uri,
 };
 
 #[cfg(test)]
 pub(crate) fn analysis_payload_to_diagnostics(
     payload: &AnalysisPayload,
-    uri: &Url,
+    uri: &Uri,
 ) -> Vec<Diagnostic> {
     analysis_payload_to_diagnostics_with_profile(payload, uri, &ClientProtocolProfile::permissive())
 }
@@ -25,7 +27,7 @@ pub(crate) fn analysis_payload_to_diagnostics(
 #[cfg(test)]
 pub(crate) fn analysis_payload_to_diagnostics_with_profile(
     payload: &AnalysisPayload,
-    uri: &Url,
+    uri: &Uri,
     profile: &ClientProtocolProfile,
 ) -> Vec<Diagnostic> {
     analysis_payload_to_editor_diagnostics(payload)
@@ -36,7 +38,7 @@ pub(crate) fn analysis_payload_to_diagnostics_with_profile(
 
 pub(crate) fn analysis_payload_to_versioned_diagnostics_with_profile(
     payload: &AnalysisPayload,
-    uri: &Url,
+    uri: &Uri,
     document_version: i32,
     profile: &ClientProtocolProfile,
 ) -> Vec<Diagnostic> {
@@ -56,7 +58,7 @@ pub(crate) fn analysis_payload_to_versioned_diagnostics_with_profile(
 #[cfg(test)]
 pub(crate) fn editor_diagnostics_to_versioned_diagnostics(
     diagnostics: &[EditorDiagnostic],
-    uri: &Url,
+    uri: &Uri,
     document_version: i32,
 ) -> Vec<Diagnostic> {
     let profile = ClientProtocolProfile::permissive().diagnostics;
@@ -70,7 +72,7 @@ pub(crate) fn editor_diagnostics_to_versioned_diagnostics(
 }
 
 #[cfg(test)]
-fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Diagnostic {
+fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Uri) -> Diagnostic {
     editor_diagnostic_to_lsp(
         analysis_diagnostic_to_editor(diagnostic),
         uri,
@@ -81,7 +83,7 @@ fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Dia
 #[cfg(test)]
 pub(crate) fn analysis_diagnostic_to_versioned_lsp(
     diagnostic: &AnalysisDiagnostic,
-    uri: &Url,
+    uri: &Uri,
     document_version: i32,
 ) -> Diagnostic {
     editor_diagnostic_to_versioned_lsp(
@@ -95,7 +97,7 @@ pub(crate) fn analysis_diagnostic_to_versioned_lsp(
 #[cfg(test)]
 fn editor_diagnostic_to_lsp(
     diagnostic: EditorDiagnostic,
-    uri: &Url,
+    uri: &Uri,
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
     let data = diagnostic_identity_data(&diagnostic, None, profile);
@@ -104,7 +106,7 @@ fn editor_diagnostic_to_lsp(
 
 fn editor_diagnostic_to_versioned_lsp(
     diagnostic: EditorDiagnostic,
-    uri: &Url,
+    uri: &Uri,
     document_version: i32,
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
@@ -130,7 +132,7 @@ fn diagnostic_identity_data(
 
 fn editor_diagnostic_to_lsp_with_data(
     diagnostic: EditorDiagnostic,
-    uri: &Url,
+    uri: &Uri,
     data: Option<serde_json::Value>,
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
@@ -166,7 +168,7 @@ fn code_description(code: &str) -> Option<CodeDescription> {
     if !code.starts_with("merman.") {
         return None;
     }
-    Url::parse(
+    Uri::from_str(
         "https://github.com/Latias94/merman/blob/main/docs/lsp/DIAGNOSTIC_PROTOCOL.md#canonical-rules",
     )
     .ok()
@@ -196,7 +198,7 @@ fn severity_to_lsp(severity: DiagnosticSeverity) -> LspSeverity {
 
 fn related_information(
     related: Vec<EditorDiagnosticRelated>,
-    uri: &Url,
+    uri: &Uri,
 ) -> Option<Vec<DiagnosticRelatedInformation>> {
     let infos = related
         .into_iter()
@@ -230,7 +232,7 @@ mod tests {
                 "no Mermaid diagram detected",
             )],
         );
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
         assert_eq!(diagnostics.len(), 1);
@@ -257,7 +259,7 @@ mod tests {
                 ..diagnostic
             }],
         );
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
         assert_eq!(
@@ -282,7 +284,7 @@ mod tests {
             )
             .preferred(),
         );
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let projected = analysis_diagnostic_to_lsp(&diagnostic, &uri);
         let data = projected.data.expect("diagnostic identity");
 

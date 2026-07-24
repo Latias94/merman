@@ -97,7 +97,7 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-pub fn layout_pie_diagram_typed(
+pub(crate) fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,

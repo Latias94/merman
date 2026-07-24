@@ -6,6 +6,8 @@ export interface ErrorProjection {
 export interface BindingErrorPayload {
   readonly code: number;
   readonly code_name: string;
+  readonly kind: string;
+  readonly capability_id: string | null;
   readonly message: string;
   readonly ok: false;
   readonly version: number;
@@ -35,6 +37,8 @@ function projectErrorValue(error: unknown): ErrorProjection {
         version: error.version,
         code: error.code,
         code_name: error.code_name,
+        kind: error.kind,
+        capability_id: error.capability_id,
         message: error.message,
       }),
     };
@@ -101,6 +105,9 @@ export function isBindingErrorPayload(
       typeof readProperty(error, "version") === "number" &&
       typeof readProperty(error, "code") === "number" &&
       typeof readProperty(error, "code_name") === "string" &&
+      typeof readProperty(error, "kind") === "string" &&
+      (readProperty(error, "capability_id") === null ||
+        typeof readProperty(error, "capability_id") === "string") &&
       typeof readProperty(error, "message") === "string"
     );
   } catch {

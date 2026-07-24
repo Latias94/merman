@@ -2,8 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  allSurfaceRuntimeExportNames,
-  surfaces,
+  allPackageRuntimeExportNames,
+  webPackages,
 } from "./surface-manifest.mjs";
 import { loadTypeScriptContract } from "./typescript-contract.mjs";
 import { scanWebArchitecture } from "./web-architecture.mjs";
@@ -20,7 +20,7 @@ const generatedTokenDescriptor = path.join(
   "token-descriptor.ts",
 );
 const surfaceRuntime = path.join(root, "src", "surface-runtime.ts");
-const surfaceEntries = surfaces.map((surface) => surface.entry);
+const packageEntries = webPackages.map((descriptor) => descriptor.id);
 
 const contract = loadTypeScriptContract({
   tsconfigPath: path.join(root, "tsconfig.json"),
@@ -76,7 +76,7 @@ const runtimeBindings = contract.exportedFunctionReturnPropertyNames(
   surfaceRuntime,
   "bindSurfaceRuntime",
 );
-const generatedSurfaceBindings = new Set(allSurfaceRuntimeExportNames);
+const generatedPackageBindings = new Set(allPackageRuntimeExportNames);
 const requiredRawWrappers = [...rawWasmExports].filter(
   (name) => !wasmGlueExports.has(name),
 );
@@ -115,18 +115,27 @@ const requiredTypeProperties = new Map([
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
   [
-    "RuntimeContract",
+    "RuntimeCatalog",
     [
       "schema_version",
-      "abi_version",
+      "transport_api_version",
       "package_version",
-      "options_schema_version",
-      "payload_schemas",
-      "features",
+      "capabilities",
       "registry",
       "resources",
     ],
   ],
+  [
+    "RuntimeCapabilities",
+    [
+      "capability_ids",
+      "output_ids",
+      "operation_ids",
+      "system_adapter_ids",
+      "text_measurement",
+    ],
+  ],
+  ["TextMeasurementCapabilities", ["protocol_version", "provider_ids"]],
   [
     "RuntimeResourceContract",
     [
@@ -196,7 +205,7 @@ const exactTypeStringLiterals = new Map([
 ]);
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
-  ["AnalysisFactsResult", "version", "2"],
+  ["AnalysisFactsResult", "version", "1"],
 ];
 
 let failed = false;
@@ -232,13 +241,27 @@ failed ||= reportPolicyFailure(
   "check-contracts: legacy createBrowserTextMeasurer export must be removed",
   publicValueExports.has("createBrowserTextMeasurer"),
 );
+failed ||= reportPolicyFailure(
+  "check-contracts: legacy boolean capability exports must be removed",
+  publicValueExports.has("bindingCapabilities") ||
+    publicValueExports.has("DEFAULT_BINDING_CAPABILITIES"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: legacy ABI version export must be removed",
+  publicValueExports.has("MERMAN_ABI_VERSION") || publicValueExports.has("abiVersion"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: split runtime metadata exports must be removed",
+  publicValueExports.has("runtimeCapabilities") ||
+    publicValueExports.has("runtimeContract"),
+);
 failed ||= reportMissing(
   "check-contracts: runtime-dependent wrappers are not returned by bindSurfaceRuntime()",
   requiredRuntimeBindings.filter((name) => !runtimeBindings.has(name)),
 );
 failed ||= reportMissing(
-  "check-contracts: surface manifest will not regenerate runtime-bound wrappers",
-  requiredRuntimeBindings.filter((name) => !generatedSurfaceBindings.has(name)),
+  "check-contracts: package manifest will not regenerate runtime-bound wrappers",
+  requiredRuntimeBindings.filter((name) => !generatedPackageBindings.has(name)),
 );
 failed ||= reportUnexpected(
   "check-contracts: platform Web imports a Playground-owned Mermaid renderer module",
@@ -295,30 +318,32 @@ for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyTy
   );
 }
 
-for (const surface of surfaces) {
-  const entry = path.join(root, "src", "surfaces", `${surface.entry}.ts`);
+for (const descriptor of webPackages) {
+  const entry = path.join(root, "src", "package-entries", `${descriptor.id}.ts`);
   const actualValues = contract.declaredValueExportNames(entry);
   const expectedValues = new Set([
-    ...surface.runtimeExportNames,
-    ...surface.valueExportNames,
+    "MERMAN_WASM_URL",
+    "loadMermanWasmModule",
+    ...descriptor.runtimeExportNames,
+    ...descriptor.valueExportNames,
   ]);
   const typeStars = contract.typeOnlyStarExportSpecifiers(entry);
   const valueStars = contract.valueStarExportSpecifiers(entry);
 
   failed ||= reportMissing(
-    `check-contracts: ./${surface.entry} surface is missing declared value exports`,
+    `check-contracts: ${descriptor.name} package entry is missing declared value exports`,
     difference(expectedValues, actualValues),
   );
   failed ||= reportUnexpected(
-    `check-contracts: ./${surface.entry} surface exports undeclared values`,
+    `check-contracts: ${descriptor.name} package entry exports undeclared values`,
     difference(actualValues, expectedValues),
   );
   failed ||= reportPolicyFailure(
-    `check-contracts: ./${surface.entry} surface must type-export the shared root contract`,
+    `check-contracts: ${descriptor.name} package entry must type-export the shared root contract`,
     !typeStars.has("../index.js"),
   );
   failed ||= reportUnexpected(
-    `check-contracts: ./${surface.entry} surface has forbidden value star exports`,
+    `check-contracts: ${descriptor.name} package entry has forbidden value star exports`,
     [...valueStars],
   );
 }
@@ -337,7 +362,7 @@ if (failed) {
 console.log(
   `check-contracts: ${requiredRawWrappers.length} wasm exports, ` +
     `${requiredRuntimeBindings.length} runtime bindings, ` +
-    `${surfaceEntries.length} surfaces checked through TypeScript.`,
+    `${packageEntries.length} package entries checked through TypeScript.`,
 );
 
 function difference(left, right) {

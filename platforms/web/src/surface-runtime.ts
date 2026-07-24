@@ -4,6 +4,45 @@ import {
   withMermanRuntimeState,
 } from "./runtime-state.js";
 
+type WorkerGlobalScopeConstructor = new (...args: never[]) => object;
+type ServerProcess = {
+  release?: { name?: unknown };
+  versions?: { node?: unknown };
+};
+
+/// Reject server runtimes at the public browser-package boundary.
+///
+/// A main-window package may use `window` and `document`; an editor package may instead run in a
+/// real browser Worker. Node and SSR runtimes match neither shape. This check intentionally runs
+/// before a caller-supplied loader so a custom WASM source cannot turn a browser package into an
+/// undocumented server transport.
+export function assertBrowserRuntime(): void {
+  const processLike = (
+    globalThis as typeof globalThis & { process?: ServerProcess }
+  ).process;
+  const isNodeRuntime =
+    processLike?.release?.name === "node" &&
+    typeof processLike.versions?.node === "string";
+  const isDenoRuntime = "Deno" in globalThis;
+  const isBunRuntime = "Bun" in globalThis;
+  if (isNodeRuntime || isDenoRuntime || isBunRuntime) {
+    throw new Error(
+      "Merman browser packages require a browser main-thread or Web Worker realm. Use a native or Node transport for SSR and server runtimes.",
+    );
+  }
+  const isBrowserWindow = typeof window !== "undefined" && typeof document !== "undefined";
+  const workerGlobalScope = (
+    globalThis as typeof globalThis & { WorkerGlobalScope?: WorkerGlobalScopeConstructor }
+  ).WorkerGlobalScope;
+  const isBrowserWorker =
+    typeof workerGlobalScope === "function" && globalThis instanceof workerGlobalScope;
+  if (!isBrowserWindow && !isBrowserWorker) {
+    throw new Error(
+      "Merman browser packages require a browser main-thread or Web Worker realm. Use a native or Node transport for SSR and Node.js.",
+    );
+  }
+}
+
 export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
   const state = createMermanRuntimeState(surfaceLoader);
   const withState = <T>(run: () => T): T => withMermanRuntimeState(state, run);
@@ -155,8 +194,7 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
       uri?: string,
       options?: root.SvgBindingOptions | string
     ) => withState(() => root.editorSemanticTokens(source, uri, options)),
-    bindingCapabilities: () => withState(root.bindingCapabilities),
-    runtimeContract: () => withState(root.runtimeContract),
+    runtimeCatalog: () => withState(root.runtimeCatalog),
     supportedDiagrams: () => withState(root.supportedDiagrams),
     diagramFamilyCapabilities: () => withState(root.diagramFamilyCapabilities),
     lintRuleCatalog: () => withState(root.lintRuleCatalog),
@@ -164,7 +202,7 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
     asciiCapabilities: () => withState(root.asciiCapabilities),
     supportedThemes: () => withState(root.supportedThemes),
     supportedHostThemePresets: () => withState(root.supportedHostThemePresets),
-    abiVersion: () => withState(root.abiVersion),
+    transportApiVersion: () => withState(root.transportApiVersion),
     packageVersion: () => withState(root.packageVersion),
   };
 }

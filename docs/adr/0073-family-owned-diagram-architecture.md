@@ -81,7 +81,7 @@ the helper that executes a resolved parser from caller-supplied `ParseMetadata` 
 capability discovery uses `supported_diagrams()` and `diagram_family_capabilities()` instead of
 parser lookup.
 
-This is an intentional alpha API break. The former per-family `parse_*`, typed parser,
+This is an intentional API break. The former per-family `parse_*`, typed parser,
 `*_model_for_render`, and `*_editor_facts` entrypoints have no deprecated aliases. Tests that need
 family-local evidence consume the combined construction; public integration tests consume the
 `Engine` snapshot or render-model facade.
@@ -101,11 +101,11 @@ whole-document degraded coordinate mode. Precise edits still require `source_map
 
 The serialized diagnostics payload and richer facts payload are independent contracts with separate
 version constants. The diagnostics-only `AnalysisPayload` remains version `1`. The parser-only
-`AnalysisFactsPayload` is the sole version `2` facts contract: it has no `text_scan` provenance,
+`AnalysisFactsPayload` is the sole version `1` facts contract: it has no `text_scan` provenance,
 uses `unavailable` for absent body facts, and current writers emit the family-owned
-`rename_policy` on every semantic item. Facts v1 is rejected at the version boundary before its
-body is decoded. This is not a compatibility path for the TextScan-capable alpha shape from
-`0.8.0-alpha.3`; its decoder, executor, and dual projection are removed. Consumers of that alpha
+`rename_policy` on every semantic item. Other versions are rejected at the boundary before the
+body is decoded. This is not a compatibility path for the TextScan-capable prerelease shape from
+`0.8.0-alpha.3`; its decoder, executor, and dual projection are removed. Consumers of that prerelease
 shape must update.
 
 This payload version is unrelated to LSP document revision numbers, Mermaid ids such as
@@ -206,8 +206,8 @@ substrings are not durable architecture guards.
 - Adding a family or alias requires one catalog declaration, family-owned semantic projections,
   a typed render adapter when renderable, parser-backed editor facts when admitted, and parity
   evidence through the canonical operation.
-- Consumers of the superseded TextScan facts shape must migrate directly to the current facts v2
-  contract; rejecting facts v1 does not restore a deprecated alias, TextScan executor, or dual
+- Consumers of the superseded TextScan facts shape must migrate directly to the current facts v1
+  contract; rejecting other payload shapes does not restore a deprecated alias, TextScan executor, or dual
   projection path.
 
 ## Rejected Alternatives
@@ -218,7 +218,7 @@ Rejected because it preserves duplicated dispatch and allows semantic/layout dri
 
 ### Add a permanent compatibility or strangler layer
 
-Rejected because the project is still alpha and the layer would make the transition architecture
+Rejected because the layer would make the transition architecture
 permanent. Migration is documented instead.
 
 ### Keep direct family parser APIs for advanced callers

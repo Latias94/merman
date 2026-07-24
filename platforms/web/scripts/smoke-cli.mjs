@@ -1,38 +1,18 @@
-import path from "node:path";
+import { assertKnownArgs, parseArgValue } from "./arg-parse.mjs";
 
-import { assertKnownArgs, parseArgValue, resolvePackageSubdir } from "./arg-parse.mjs";
-
-export function parseSmokeCli(inputArgs, packageRoot) {
+export function parseSmokeCli(inputArgs) {
   assertKnownArgs(inputArgs, {
-    valueArgs: [
-      "--entry",
-      "--pkg-dir-rel",
-      "--wasm-module-subpath",
-      "--wasm-binary-rel",
-      "--manifest-rel",
-    ],
+    valueArgs: ["--package-id"],
   });
-  const selectedPkgDirRel = parseArgValue(inputArgs, "--pkg-dir-rel") ?? "pkg";
-  const pkgDir = resolvePackageSubdir(packageRoot, selectedPkgDirRel, "--pkg-dir-rel");
-  const pkgDirRel = normalizePath(pkgDir.relative);
+  const packageId = parseArgValue(inputArgs, "--package-id");
+  if (!packageId || !/^[a-z0-9][a-z0-9-]*$/.test(packageId)) {
+    throw new Error("--package-id must be a lowercase package identifier.");
+  }
   return {
-    entrySubpath: parseArgValue(inputArgs, "--entry") ?? ".",
-    pkgDirRel,
-    wasmModuleSubpath:
-      parseArgValue(inputArgs, "--wasm-module-subpath") ?? `./${pkgDirRel}/merman_wasm.js`,
-    wasmBinaryRel:
-      parseArgValue(inputArgs, "--wasm-binary-rel") ??
-      normalizePath(path.join(pkgDirRel, "merman_wasm_bg.wasm")),
-    manifestRel:
-      parseArgValue(inputArgs, "--manifest-rel") ??
-      normalizePath(path.join(pkgDirRel, "merman_wasm_preset.json")),
+    packageId,
   };
 }
 
 export function smokeUsage() {
-  return "usage: node scripts/smoke.mjs [--entry <subpath>] [--pkg-dir-rel <dir>] [--wasm-module-subpath <subpath>] [--wasm-binary-rel <path>] [--manifest-rel <path>]";
-}
-
-function normalizePath(value) {
-  return value.split(path.sep).join("/");
+  return "usage: node scripts/smoke.mjs [--package-id <full|analysis|render|editor|ascii>]";
 }

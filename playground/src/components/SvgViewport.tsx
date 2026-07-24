@@ -9,7 +9,7 @@ import {
   type RefObject,
   type WheelEvent,
 } from "react";
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 import {
   normalizeSvgForResponsivePreview,
   parseSvgDimensions,

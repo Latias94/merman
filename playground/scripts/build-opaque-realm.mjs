@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,23 +16,27 @@ const playgroundRoot = path.resolve(
   ".."
 );
 const outputRoot = path.join(playgroundRoot, ".runtime");
+const publicEngineRoot = path.join(playgroundRoot, "public", "opaque-realm");
 const legacyOutputs = new Set([
   "opaque-benchmark-mermaid.js",
   "opaque-benchmark-mermaid.json",
   "opaque-compare.js",
   "opaque-compare.json",
+  "compare-mermaid-engine.js",
+  "compare-mermaid-engine.json",
+  "benchmark-mermaid-engine.js",
+  "benchmark-mermaid-engine.json",
+]);
+const legacyPublicEngineOutputs = new Set([
+  "compare-mermaid-engine.js",
+  "benchmark-mermaid-engine.js",
 ]);
 
 const engines = [
   {
-    id: "compare-mermaid",
-    file: "compare-mermaid-engine",
-    entry: "src/runtime/realm/engines/compare-mermaid-artifact-entry.ts",
-  },
-  {
-    id: "benchmark-mermaid",
-    file: "benchmark-mermaid-engine",
-    entry: "src/benchmark/realm/engines/benchmark-mermaid-artifact-entry.ts",
+    id: "mermaid",
+    file: "mermaid-engine",
+    entry: "src/runtime/realm/engines/mermaid-engine-artifact-entry.ts",
   },
   {
     id: "benchmark-merman",
@@ -38,13 +48,13 @@ const engines = [
 const bootstraps = [
   {
     id: "compare",
-    engineId: "compare-mermaid",
+    engineId: "mermaid",
     file: "opaque-compare-bootstrap",
     entry: "src/runtime/realm/opaque-compare-entry.ts",
   },
   {
     id: "benchmark",
-    engineId: "benchmark-mermaid",
+    engineId: "mermaid",
     file: "opaque-benchmark-mermaid-bootstrap",
     entry: "src/benchmark/realm/opaque-mermaid-entry.ts",
   },
@@ -67,16 +77,29 @@ for (const artifact of bootstraps) {
 }
 const expectedOutputs = new Set(generated.map(({ file }) => file));
 await mkdir(outputRoot, { recursive: true });
+await mkdir(publicEngineRoot, { recursive: true });
 await rejectUnknownOutputs(expectedOutputs);
+await rejectUnknownPublicEngineOutputs();
 for (const { file, value } of generated) {
   await atomicWrite(path.join(outputRoot, file), value);
+}
+for (const { file, value } of generated.filter(({ file }) =>
+  file.endsWith("-engine.js")
+)) {
+  await atomicWrite(path.join(publicEngineRoot, file), value);
 }
 for (const legacy of legacyOutputs) {
   await unlink(path.join(outputRoot, legacy)).catch((error) => {
     if (error?.code !== "ENOENT") throw error;
   });
 }
+for (const legacy of legacyPublicEngineOutputs) {
+  await unlink(path.join(publicEngineRoot, legacy)).catch((error) => {
+    if (error?.code !== "ENOENT") throw error;
+  });
+}
 await assertExactOutputs(expectedOutputs);
+await assertExactPublicEngineOutputs();
 
 async function buildArtifact(artifact, format, engineManifest = null) {
   const output = await build({
@@ -174,6 +197,41 @@ async function assertExactOutputs(expected) {
   if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
     throw new Error(
       `Opaque realm output set is invalid: expected ${wanted.join(", ")}; found ${actual.join(", ")}`
+    );
+  }
+}
+
+function publicEngineFiles() {
+  return generated
+    .map(({ file }) => file)
+    .filter((file) => file.endsWith("-engine.js"))
+    .sort();
+}
+
+async function rejectUnknownPublicEngineOutputs() {
+  const expected = new Set(publicEngineFiles());
+  const entries = await readdir(publicEngineRoot, { withFileTypes: true });
+  const unknown = entries
+    .filter(
+      (entry) =>
+        !entry.isFile() ||
+        (!expected.has(entry.name) && !legacyPublicEngineOutputs.has(entry.name))
+    )
+    .map((entry) => entry.name)
+    .sort();
+  if (unknown.length > 0) {
+    throw new Error(
+      `Opaque realm public artifact directory contains unowned files: ${unknown.join(", ")}`
+    );
+  }
+}
+
+async function assertExactPublicEngineOutputs() {
+  const actual = (await readdir(publicEngineRoot)).sort();
+  const expected = publicEngineFiles();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Opaque realm public artifact set is invalid: expected ${expected.join(", ")}; found ${actual.join(", ")}`
     );
   }
 }

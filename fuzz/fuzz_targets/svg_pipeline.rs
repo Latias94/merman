@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::render::{RenderEnvironment, svg_resvg_safe};
+use merman::svg::{RenderEnvironment, svg_resvg_safe};
 use merman_fuzz::{MAX_SVG_INPUT_BYTES, assert_resvg_safe_svg, bounded_utf8, is_well_formed_svg};
 
 fuzz_target!(|data: &[u8]| {

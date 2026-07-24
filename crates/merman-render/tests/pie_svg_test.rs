@@ -1,12 +1,11 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
 use merman_render::model::PieDiagramLayout;
-use merman_render::pie::layout_pie_diagram_typed;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
@@ -15,21 +14,14 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::Pie(model) = parsed.model() else {
-        panic!("expected pie render model");
-    };
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_pie_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("layout ok")
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize Pie layout");
+    serde_json::from_value(projection["layout"]["PieDiagram"].clone())
+        .expect("Pie layout projection")
 }
 
 fn render_pie_from_text(text: &str) -> String {

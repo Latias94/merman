@@ -23,13 +23,13 @@ temporary worktree was removed.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline zenuml_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline zenuml_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline zenuml_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline zenuml_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Mid Estimates

@@ -11,8 +11,8 @@ use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{
-    Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Url,
+use tower_lsp_server::ls_types::{
+    Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
 };
 
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
@@ -38,11 +38,11 @@ pub struct DocumentStore {
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     next_document_epoch: u64,
-    documents: HashMap<Url, DocumentRecord>,
-    snapshots: HashMap<Url, Arc<DocumentSnapshot>>,
-    analysis_payloads: HashMap<Url, Arc<AnalysisPayload>>,
-    diagnostic_state: HashMap<Url, StoredDiagnosticState>,
-    semantic_tokens_state: HashMap<Url, StoredSemanticTokensState>,
+    documents: HashMap<Uri, DocumentRecord>,
+    snapshots: HashMap<Uri, Arc<DocumentSnapshot>>,
+    analysis_payloads: HashMap<Uri, Arc<AnalysisPayload>>,
+    diagnostic_state: HashMap<Uri, StoredDiagnosticState>,
+    semantic_tokens_state: HashMap<Uri, StoredSemanticTokensState>,
 }
 
 impl Default for DocumentStore {
@@ -53,7 +53,7 @@ impl Default for DocumentStore {
 
 #[derive(Debug, Clone)]
 pub struct StoredDocument {
-    pub uri: Url,
+    pub uri: Uri,
     pub version: i32,
     pub text: Arc<str>,
     pub kind: DocumentKind,
@@ -207,7 +207,7 @@ impl DocumentStore {
         DocumentEpoch(self.next_document_epoch)
     }
 
-    pub fn diagnostic_context(&self, uri: &Url) -> Option<DiagnosticContext> {
+    pub fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {
         self.documents.get(uri).map(|record| {
             DiagnosticContext::new(
                 record.document.clone(),
@@ -224,7 +224,7 @@ impl DocumentStore {
 
     pub fn upsert_text(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         text: String,
         kind: DocumentKind,
@@ -247,7 +247,7 @@ impl DocumentStore {
 
     fn upsert_resource_limited(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         kind: DocumentKind,
         resource_limit: DocumentResourceLimit,
@@ -266,7 +266,7 @@ impl DocumentStore {
 
     fn upsert_discarded_source(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         kind: DocumentKind,
         discarded_source: DocumentDiscardedSource,
@@ -285,7 +285,7 @@ impl DocumentStore {
 
     fn upsert_sync_error(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         kind: DocumentKind,
         sync_error: DocumentSyncError,
@@ -302,7 +302,7 @@ impl DocumentStore {
         self.upsert_document(uri, document)
     }
 
-    fn upsert_document(&mut self, uri: Url, document: StoredDocument) -> StoredDocument {
+    fn upsert_document(&mut self, uri: Uri, document: StoredDocument) -> StoredDocument {
         self.analysis_executor.invalidate(&uri);
         self.snapshots.remove(&uri);
         self.analysis_payloads.remove(&uri);
@@ -356,7 +356,7 @@ impl DocumentStore {
 
     pub fn open_text(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         text: String,
         kind: DocumentKind,
@@ -366,7 +366,7 @@ impl DocumentStore {
 
     pub fn apply_text_changes(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
@@ -420,7 +420,7 @@ impl DocumentStore {
 
     fn apply_unavailable_source_text_changes(
         &mut self,
-        uri: Url,
+        uri: Uri,
         version: i32,
         kind: DocumentKind,
         unavailable_source: UnavailableSourceState,
@@ -467,14 +467,14 @@ impl DocumentStore {
     }
 
     #[cfg(test)]
-    pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> Arc<DocumentSnapshot> {
-        let kind = DocumentKind::from_path(uri.path());
+    pub fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
+        let kind = DocumentKind::from_path(uri.path().as_str());
         self.upsert_text(uri.clone(), version, text, kind);
         self.snapshot(&uri)
             .expect("snapshot should exist after inserting document text")
     }
 
-    pub fn get(&self, uri: &Url) -> Option<&StoredDocument> {
+    pub fn get(&self, uri: &Uri) -> Option<&StoredDocument> {
         self.documents.get(uri).map(|record| &record.document)
     }
 
@@ -484,11 +484,11 @@ impl DocumentStore {
     }
 
     #[cfg(test)]
-    pub fn snapshot(&mut self, uri: &Url) -> Option<Arc<DocumentSnapshot>> {
+    pub fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context(uri).map(|context| context.snapshot)
     }
 
-    pub fn snapshot_context(&mut self, uri: &Url) -> Option<SnapshotContext> {
+    pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
         if let Some(snapshot) = self.snapshots.get(uri) {
             return Some(self.cached_snapshot_context(
                 uri,
@@ -502,7 +502,7 @@ impl DocumentStore {
         self.insert_built_analysis(&request, analysis)
     }
 
-    pub(crate) fn snapshot_build_request(&self, uri: &Url) -> Option<AnalysisBuildRequest> {
+    pub(crate) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
         if record.document.has_unavailable_source() {
             return None;
@@ -568,17 +568,17 @@ impl DocumentStore {
             .all(|context| self.is_snapshot_context_current(context))
     }
 
-    fn is_document_epoch_current(&self, uri: &Url, document_epoch: DocumentEpoch) -> bool {
+    fn is_document_epoch_current(&self, uri: &Uri, document_epoch: DocumentEpoch) -> bool {
         self.documents
             .get(uri)
             .is_some_and(|record| record.epoch == document_epoch)
     }
 
-    pub fn has_snapshot(&self, uri: &Url) -> bool {
+    pub fn has_snapshot(&self, uri: &Uri) -> bool {
         self.snapshots.contains_key(uri)
     }
 
-    pub fn has_analysis_payload(&self, uri: &Url) -> bool {
+    pub fn has_analysis_payload(&self, uri: &Uri) -> bool {
         self.analysis_payloads.contains_key(uri)
     }
 
@@ -586,7 +586,7 @@ impl DocumentStore {
         self.analysis_executor.clone()
     }
 
-    pub fn remove(&mut self, uri: &Url) {
+    pub fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
         self.documents.remove(uri);
         self.snapshots.remove(uri);
@@ -669,7 +669,7 @@ impl DocumentStore {
 
     fn cached_snapshot_context(
         &self,
-        uri: &Url,
+        uri: &Uri,
         snapshot: &Arc<DocumentSnapshot>,
         document_epoch: DocumentEpoch,
     ) -> SnapshotContext {
@@ -716,7 +716,7 @@ impl DocumentStore {
     }
 
     #[cfg(test)]
-    pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
+    pub fn semantic_tokens_state(&self, uri: &Uri) -> Option<&SemanticTokensState> {
         self.semantic_tokens_state
             .get(uri)
             .map(|stored| &stored.state)
@@ -724,7 +724,7 @@ impl DocumentStore {
 
     pub fn semantic_tokens_state_for_delta(
         &self,
-        uri: &Url,
+        uri: &Uri,
         previous_result_id: &str,
     ) -> Option<SemanticTokensState> {
         self.semantic_tokens_state.get(uri).and_then(|stored| {
@@ -753,7 +753,7 @@ impl DocumentStore {
         true
     }
 
-    pub fn diagnostic_state(&self, uri: &Url) -> Option<DocumentDiagnosticState> {
+    pub fn diagnostic_state(&self, uri: &Uri) -> Option<DocumentDiagnosticState> {
         self.diagnostic_state.get(uri).and_then(|stored| {
             (stored.generation == self.diagnostic_generation
                 && self.is_document_epoch_current(uri, stored.document_epoch))

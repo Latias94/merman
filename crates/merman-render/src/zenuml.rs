@@ -267,7 +267,7 @@ pub struct ZenumlGroupLayout {
     pub height: f64,
 }
 
-pub fn layout_zenuml_diagram_typed(
+pub(crate) fn layout_zenuml_diagram_typed(
     model: &ZenumlDiagramRenderModel,
     measurer: &dyn TextMeasurer,
 ) -> Result<ZenumlDiagramLayout> {

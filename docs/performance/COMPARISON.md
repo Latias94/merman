@@ -27,7 +27,7 @@ LLVM version: 20.1.1
 
 ## Method
 
-- `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
+- `merman`: `cargo bench -p merman --features svg --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
 - Filter: "end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium)"
 - Exact benches: `end_to_end/flowchart_medium`, `end_to_end/class_medium`, `end_to_end/mindmap_medium`, `end_to_end/architecture_medium`

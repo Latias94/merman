@@ -1,13 +1,17 @@
 use crate::error::CliError;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use std::path::PathBuf;
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone)]
 pub(crate) enum OutputTarget {
     Stdout,
     File(PathBuf),
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
 impl OutputTarget {
     pub(crate) fn from_cli(raw: String) -> Self {
         if raw == "-" {
@@ -46,6 +50,7 @@ pub(crate) fn read_input(path: Option<&str>, quiet: bool) -> Result<String, CliE
     Ok(buf)
 }
 
+#[cfg(feature = "svg")]
 pub(crate) fn read_optional_text_file(
     path: Option<&str>,
     label: &str,
@@ -64,6 +69,7 @@ pub(crate) fn read_named_text_file(path: &str, label: &str) -> Result<String, Cl
     Ok(std::fs::read_to_string(path_ref)?)
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) fn write_output(target: Option<&OutputTarget>, bytes: &[u8]) -> Result<(), CliError> {
     match target {
         None | Some(OutputTarget::Stdout) => {
@@ -98,12 +104,14 @@ fn write_stdout_bytes(stdout: &mut impl Write, bytes: &[u8]) -> Result<(), CliEr
     })
 }
 
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     ensure_output_dir(path)?;
     std::fs::write(path, bytes)?;
     Ok(())
 }
 
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 fn ensure_output_dir(path: &Path) -> Result<(), CliError> {
     let Some(parent) = path.parent() else {
         return Ok(());

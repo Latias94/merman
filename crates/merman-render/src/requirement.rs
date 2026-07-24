@@ -1,6 +1,7 @@
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
+use crate::resources::{ModelComplexity, RenderResourcePolicy};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
@@ -11,6 +12,28 @@ use serde_json::Value;
 mod config;
 
 pub(crate) use config::RequirementConfigView;
+
+fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
+    let node_count = model
+        .requirements
+        .iter()
+        .filter(|node| node.name != "__proto__")
+        .count()
+        .saturating_add(
+            model
+                .elements
+                .iter()
+                .filter(|node| node.name != "__proto__")
+                .count(),
+        );
+    let edge_count = model.relationships.len();
+    // Dugong's ranking, crossing, and routing phases repeatedly inspect graph incidence. Charge a
+    // deterministic V*E upper bound before constructing the graph rather than exposing a
+    // Requirement-specific public threshold.
+    node_count
+        .saturating_add(edge_count)
+        .saturating_add(node_count.saturating_mul(edge_count))
+}
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
@@ -202,11 +225,15 @@ fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
     }
 }
 
-pub fn layout_requirement_diagram_typed(
+/// Lays out a Requirement model under the resource policy owned by the render operation.
+pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementDiagramLayout> {
+    resource_limits.check_model_complexity(ModelComplexity::from_requirement(model))?;
+    resource_limits.check_layout_work_units(requirement_layout_work_units(model))?;
     let direction = if model.direction.trim().is_empty() {
         normalize_dir("TB")
     } else {

@@ -24,7 +24,7 @@ parity and predictable headless output remain the top priorities.
 `merman` includes Criterion benchmarks for the headless pipeline.
 
 ```bash
-cargo bench -p merman --features render --bench pipeline
+cargo bench -p merman --features svg --bench pipeline
 ```
 
 Notes:
@@ -226,11 +226,11 @@ Some render paths are fast enough (µs-scale) that small changes get lost in noi
 stabilize A/B comparisons.
 
 ```bash
-cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 ```
 
 ## Future work

@@ -7,7 +7,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> **Alpha:** Python and native APIs may break before the stable release. The package currently targets UniFFI ABI `2`; install the Python wheel and native library as one artifact rather than mixing releases. The source-tree README describes `Unreleased`, while each PyPI artifact preserves the documentation for that published version.
+> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `3`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. The source-tree README describes `Unreleased`, while each PyPI artifact preserves the documentation for that published version.
 
 ## Install
 
@@ -25,31 +25,42 @@ Published wheels currently target CPython-compatible Python `3.9+` on macOS univ
 import merman
 
 engine = merman.MermanEngine()
-abi_version = engine.abi_version()
-if abi_version != 2:
-    raise RuntimeError(f"expected Merman ABI 2, got {abi_version}")
+merman.require_text_measurement_protocol_version(
+    merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
+)
 
 source = "flowchart TD\nA[Hello] --> B[World]"
 svg = engine.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same engine exposes `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog.
+The same engine exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. `MermanOperationRequest` plus `engine.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and operation metadata. Generic options belong in `MermanOperationRequest.options_json`; `execute()` has no separate options argument.
 
 ## Reuse An Engine
 
-Use a reusable engine when calls share one options document:
+Use a reusable engine when calls share baseline options:
 
 ```python
 reusable = engine.reusable_engine('{"svg":{"pipeline":"readable"}}')
-svg = reusable.render_svg(source)
+svg = reusable.render_svg(source, '{"svg":{"diagram_id":"preview"}}')
 facts = reusable.analyze_document_facts_json(
     "```mermaid\n" + source + "\n```",
+    None,
     "file:///workspace/README.md",
 )
 ```
 
 `options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants.
+Reusable request options deeply merge over the construction baseline for one operation without
+mutating it. They cannot change the constructor-owned `runtime_policy`.
+`MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the
+latter carries a non-null, descriptor-owned `capability_id`.
+
+Omitting `runtime_policy` always selects deterministic runtime state, even though release wheels
+compile native adapters. Use `{"runtime_policy":"native"}` only when an operation should consult
+the host clock, time-zone rules, and random source. Generic operation metadata records the selected
+policy; a custom slim build missing a requested adapter raises the generated unsupported-operation
+error.
 
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
 
@@ -68,18 +79,22 @@ svg = engine.render_svg(source, resource_options)
 Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative
 local editing. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `engine.runtime_contract_json()` to inspect the loaded resource catalog and exact profile
-values instead of duplicating limits in application code.
+Call `engine.runtime_catalog_json()` to inspect the loaded runtime catalog and exact profile values
+instead of duplicating limits in application code. `merman.get_runtime_catalog(engine)` strictly
+validates its flat schema `1` artifact facts, package identity, transport API, sorted stable IDs,
+and local output/operation relations as one atomic response. New stable IDs remain forward
+compatible. This direct binding API version is `3` and is independent from native C ABI and the
+text-measurement protocol version.
 
-Diagnostics use schema `1` and parser-facts use schema `2`, independently of UniFFI ABI `2`.
-Facts v1 is rejected at its version boundary; consumers of the removed alpha TextScan shape must
-migrate to parser-backed items and explicit unavailable bodies.
+Diagnostics and parser facts both use their final schema `1`, independently of UniFFI binding API
+`3`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape
+must migrate to parser-backed items and explicit unavailable bodies.
 
 ## Text Measurement
 
 Merman owns a deterministic vendored text measurer by default. Keep it for servers, CLIs, CI, and documentation builds.
 
-GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer` and install it with `reusable_engine_with_text_measurer(...)` or `set_text_measurer(...)`; `clear_text_measurer()` restores the built-in measurer. ABI 2 exposes 19 exact measurement operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and callback exceptions fall back for that operation.
+GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer` and install it with `reusable_engine_with_text_measurer(...)` or `set_text_measurer(...)`; `clear_text_measurer()` restores the built-in measurer. Text-measurement protocol 1 exposes 19 exact operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and callback exceptions fall back for that operation.
 
 Use a real font API from the surface that displays the SVG rather than estimating width from character counts. Keep callbacks fast, and do not re-enter or replace the measurer on the same reusable engine while a callback is active. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md) documents every operation and fallback; the repository's [Python smoke example](https://github.com/Latias94/merman/blob/main/platforms/python/merman/examples/smoke.py) exercises all generated callback shapes for contract testing.
 
@@ -102,8 +117,9 @@ Query `diagram_family_capabilities()` and `ascii_capabilities()` at runtime inst
 Generate bindings and the adjacent native library from this checkout:
 
 ```sh
-cargo build -p merman-uniffi --features bindgen-smoke
-cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- \
+cargo build -p merman-uniffi --release --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,pdf,png,svg,system-clock,system-random,system-timezone
+cargo run -p merman-uniffi --no-default-features --features 'analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,pdf,png,svg,system-clock,system-random,system-timezone,bindgen-smoke' --example generate_python_package -- \
+  --cdylib target/release/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 ```
@@ -113,6 +129,9 @@ Build and install-smoke a platform wheel with:
 ```sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
+
+The helper resolves the descriptor-owned `python-uniffi-native` recipe. The bundled release
+library excludes `bindgen-smoke`; only the source-generation process enables that feature.
 
 ## Documentation And Releases
 

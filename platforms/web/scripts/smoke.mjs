@@ -3,13 +3,13 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
-  allSurfaceRuntimeExportNames,
-  allSurfaceValueExportNames,
-  surfaces,
+  allPackageRuntimeExportNames,
+  allPackageValueExportNames,
+  webPackages,
 } from "./surface-manifest.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,38 +21,25 @@ const tokenEquivalenceEvidence = JSON.parse(
   )
 );
 const args = process.argv.slice(2);
-const fullSurface = surfaces.find((surface) => surface.entry === "full");
-if (!fullSurface) {
-  throw new Error("surface manifest is missing the full entry");
+const fullPackage = webPackages.find((descriptor) => descriptor.id === "full");
+if (!fullPackage) {
+  throw new Error("package manifest is missing the full package");
 }
-const editorRuntimeExports = fullSurface.runtimeExportNames.filter((name) =>
+const editorRuntimeExports = fullPackage.runtimeExportNames.filter((name) =>
   name.startsWith("editor")
 );
 
-const surfaceSmokeCases = [
-  surfaceSmokeCase("default", ".", "pkg"),
-  ...surfaces.map((surface) =>
-    surfaceSmokeCase(surface.entry, `./${surface.entry}`, surface.pkgDirRel)
-  ),
-];
+const packageSmokeCases = webPackages;
 
 if (args.length === 0) {
-  await runPureSubpathSmoke();
-  for (const smokeCase of surfaceSmokeCases) {
+  await runPureDistSmoke();
+  for (const descriptor of packageSmokeCases) {
     const result = spawnSync(
       process.execPath,
       [
         fileURLToPath(import.meta.url),
-        "--entry",
-        smokeCase.entry,
-        "--pkg-dir-rel",
-        smokeCase.pkgDirRel,
-        "--wasm-module-subpath",
-        smokeCase.wasmModuleSubpath,
-        "--wasm-binary-rel",
-        smokeCase.wasmBinaryRel,
-        "--manifest-rel",
-        smokeCase.manifestRel,
+        "--package-id",
+        descriptor.id,
       ],
       {
         cwd: packageRoot,
@@ -61,7 +48,7 @@ if (args.length === 0) {
     );
     if (result.error) {
       console.error(
-        `@mermanjs/web smoke failed to spawn ${smokeCase.name}: ${result.error.message}`
+        `@mermanjs/web smoke failed to spawn ${descriptor.id}: ${result.error.message}`
       );
       process.exit(1);
     }
@@ -69,44 +56,53 @@ if (args.length === 0) {
       process.exit(result.status ?? 1);
     }
   }
-  await runSameProcessSurfaceSmoke();
+  await runSameProcessPackageSmoke();
   console.log(
-    `@mermanjs/web smoke matrix passed surfaces=${surfaceSmokeCases
-      .map((smokeCase) => smokeCase.name)
+    `@mermanjs/web smoke matrix passed packages=${packageSmokeCases
+      .map((descriptor) => descriptor.id)
       .join(",")}`
   );
   process.exit(0);
 }
 
 const {
-  entrySubpath,
-  pkgDirRel,
-  wasmModuleSubpath,
-  wasmBinaryRel,
-  manifestRel,
+  packageId,
 } = parseCli(args);
+const packageDescriptor = packageDescriptorForId(packageId);
+const browserPackageRoot = path.join(packageRoot, packageDescriptor.package_dir);
 
-const api = await import(toPackageSpecifier(entrySubpath));
-const textMeasurementAbi = await import(
-  toPackageSpecifier("./text-measurement-abi")
+const packageApi = await import(packageEntryUrl(packageDescriptor));
+const textMeasurementAbi = await import(sharedDistUrl("generated/text-measurement-abi.js"));
+const exportedWasmModule = await import(
+  pathToFileURL(path.join(browserPackageRoot, "artifacts", "wasm", "merman_wasm.js")).href,
 );
-const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
-const surfaceContract = surfaceContractForEntry(entrySubpath);
-const completeCytoscapeRenderSurface = entrySubpath === "." || entrySubpath === "./full";
+const surfaceContract = packageContract(packageDescriptor);
+const api = projectInternalApiForSurface(
+  await import(sharedDistUrl("index.js")),
+  surfaceContract,
+);
 const cytoscapeLayoutDiagramTypes = new Set(["architecture", "mindmap"]);
 
 assert.equal(typeof exportedWasmModule.default, "function");
-assertSurfaceExports(api, surfaceContract);
-if (typeof import.meta.resolve === "function") {
-  assert.match(
-    import.meta.resolve(toPackageSpecifier(wasmBinaryRel)),
-    /merman_wasm_bg\.wasm$/
-  );
-}
-
-const wasmBinary = await readFile(path.join(packageRoot, wasmBinaryRel));
+assertSurfaceExports(packageApi, surfaceContract);
+const wasmBinary = await readFile(path.join(browserPackageRoot, "artifacts", "wasm", "merman_wasm_bg.wasm"));
+let customLoaderCalled = false;
+const initializeBrowserPackage = () =>
+  packageApi.initMerman({
+    loader: async () => {
+      customLoaderCalled = true;
+      return exportedWasmModule;
+    },
+    wasm: wasmBinary,
+  });
+assert.throws(initializeBrowserPackage, /browser main-thread or Web Worker realm/);
+assert.equal(customLoaderCalled, false, "Node must not invoke a custom browser-package loader");
+await withNodeDomShim(() => {
+  assert.throws(initializeBrowserPackage, /browser main-thread or Web Worker realm/);
+});
+assert.equal(customLoaderCalled, false, "Node DOM shims must not invoke a browser-package loader");
 await assertNoDeprecatedWasmBindgenInitWarning(() =>
-  api.initMerman({ wasm: wasmBinary })
+  api.initMerman({ loader: async () => exportedWasmModule, wasm: wasmBinary })
 );
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
@@ -120,7 +116,7 @@ const options = {
   environment: { text_measurement: "deterministic" },
 };
 const presetManifest = JSON.parse(
-  await readFile(path.join(packageRoot, manifestRel), "utf8")
+  await readFile(path.join(browserPackageRoot, "artifacts", "provenance.json"), "utf8")
 );
 
 class FakeMeasureElement {
@@ -239,11 +235,19 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(api.abiVersion(), textMeasurementAbi.MERMAN_ABI_VERSION);
-assert.equal(api.MERMAN_ABI_VERSION, textMeasurementAbi.MERMAN_ABI_VERSION);
+assert.ok(Number.isSafeInteger(api.transportApiVersion()));
+assert.ok(api.transportApiVersion() > 0);
+assert.equal(
+  api.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+  textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION
+);
 assert.equal(Object.isFrozen(api.UNAVAILABLE_DIAGRAM_DETECTION), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
-if (surfaceContract.render) {
+const runtimeCatalog = api.runtimeCatalog();
+const capabilities = runtimeCatalog.capabilities;
+const hasCapability = (id) => capabilities.capability_ids.includes(id);
+const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
+if (hasCapability("svg")) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
   assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
   assert.equal(typeof api.createBrowserTextMeasurementSession, "function");
@@ -353,76 +357,64 @@ if (surfaceContract.render) {
   });
 }
 
-const capabilities = api.bindingCapabilities();
-const runtimeContract = api.runtimeContract();
-const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
-assert.equal(runtimeContract.schema_version, 4);
-assert.equal(runtimeContract.abi_version, api.abiVersion());
-assert.equal(runtimeContract.package_version, api.packageVersion());
-assert.equal(runtimeContract.options_schema_version, 1);
-assert.deepEqual(runtimeContract.features, capabilities);
+assert.equal(runtimeCatalog.schema_version, 1);
+assert.equal(runtimeCatalog.transport_api_version, api.transportApiVersion());
+assert.equal(runtimeCatalog.package_version, api.packageVersion());
+assert.deepEqual(runtimeCatalog.capabilities, capabilities);
 assert.equal(
-  runtimeContract.registry.diagram_family_count,
+  runtimeCatalog.registry.diagram_family_count,
   api.diagramFamilyCapabilities().length
 );
-if (surfaceContract.render || surfaceContract.analysis || surfaceContract.ascii) {
-  assert.equal(runtimeContract.resources.schema_version, 1);
-  assert.equal(
-    runtimeContract.resources.general_binding_default_profile,
-    "interactive"
-  );
-  assert.equal(runtimeContract.resources.cli_default_profile, "trusted-native");
-  const resourceLimitIds = runtimeContract.resources.limits
-    .map((limit) => limit.id)
-    .sort();
-  assert.ok(resourceLimitIds.includes("max_source_bytes"));
-  if (surfaceContract.render) {
-    assert.ok(
-      runtimeContract.resources.limits.some(
-        (limit) => limit.id === "max_svg_tree_depth" && limit.hard_cap
-      )
-    );
-  } else if (surfaceContract.ascii) {
-    assert.deepEqual(resourceLimitIds, [
-      "max_class_edges",
-      "max_class_namespaces",
-      "max_class_nodes",
-      "max_flowchart_edges",
-      "max_flowchart_nodes",
-      "max_flowchart_subgraphs",
-      "max_label_bytes",
-      "max_source_bytes",
-    ]);
-  } else {
-    assert.deepEqual(resourceLimitIds, ["max_source_bytes"]);
-  }
+assert.equal(runtimeCatalog.resources.schema_version, 1);
+assert.equal(
+  runtimeCatalog.resources.general_binding_default_profile,
+  "interactive"
+);
+assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
+const resourceLimitIds = runtimeCatalog.resources.limits
+  .map((limit) => limit.id)
+  .sort();
+assert.ok(resourceLimitIds.includes("max_source_bytes"));
+if (hasCapability("svg")) {
+  assert.deepEqual(resourceLimitIds, [
+    "max_layout_work_units",
+    "max_model_items",
+    "max_model_nesting_depth",
+    "max_model_text_bytes",
+    "max_source_bytes",
+    "max_svg_bytes",
+    "max_svg_elements",
+  ]);
+} else if (hasCapability("ascii")) {
+  assert.deepEqual(resourceLimitIds, [
+    "max_model_items",
+    "max_model_nesting_depth",
+    "max_model_text_bytes",
+    "max_source_bytes",
+  ]);
 } else {
-  assert.equal(runtimeContract.resources, null);
+  assert.deepEqual(resourceLimitIds, ["max_source_bytes"]);
 }
-assert.equal(typeof capabilities.render, "boolean");
-assert.equal(typeof capabilities.analysis, "boolean");
-assert.equal(typeof capabilities.ascii, "boolean");
+assert.deepEqual(capabilities.capability_ids, presetManifest.runtime_capability_ids);
+assert.ok(
+  capabilities.output_ids.every((outputId) =>
+    capabilities.operation_ids.includes(outputId)
+  )
+);
+assert.ok(
+  capabilities.system_adapter_ids.every((adapterId) =>
+    capabilities.capability_ids.includes(adapterId)
+  )
+);
 assert.deepEqual(capabilities.system_adapter_ids, []);
-assert.equal(typeof capabilities.cytoscape_layout, "boolean");
-assert.equal(typeof capabilities.ratex_math, "boolean");
-assert.equal(typeof capabilities.editor_language, "boolean");
-assert.equal(typeof capabilities.text_measurement, "object");
-assert.equal(typeof capabilities.text_measurement.vendored, "boolean");
-assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
-assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
-assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
-assert.equal(capabilities.render, surfaceContract.render);
-assert.equal(capabilities.analysis, surfaceContract.analysis);
-assert.equal(capabilities.ascii, surfaceContract.ascii);
-assert.equal(capabilities.editor_language, surfaceContract.editor);
-assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
-assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
-assert.equal(capabilities.analysis, presetManifest.capabilities.analysis);
-assert.equal(defaultCapabilities.render, surfaceContract.render);
-assert.equal(defaultCapabilities.analysis, surfaceContract.analysis);
-assert.equal(defaultCapabilities.ascii, surfaceContract.ascii);
-assert.equal(defaultCapabilities.editor_language, surfaceContract.editor);
-assert.equal(defaultCapabilities.text_measurement.host_callback, defaultCapabilities.render);
+if (hasCapability("svg")) {
+  assert.deepEqual(capabilities.text_measurement, {
+    protocol_version: textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    provider_ids: ["host-callback", "vendored"],
+  });
+} else {
+  assert.equal(capabilities.text_measurement, null);
+}
 
 const familyCapabilities = api.diagramFamilyCapabilities();
 assert.equal(Array.isArray(familyCapabilities), true);
@@ -444,7 +436,7 @@ assert.equal(
   true
 );
 
-if (capabilities.analysis) {
+if (hasCapability("analysis")) {
   const lintRules = api.lintRuleCatalog();
   assert.equal(Array.isArray(lintRules), true);
   const rawLintRuleCatalog = exportedWasmModule.lintRuleCatalog();
@@ -623,10 +615,10 @@ if (capabilities.analysis) {
   assert.equal(typeof api.lintRuleCatalog, "undefined");
 }
 
-assertEditorLanguageSurface(capabilities.editor_language);
+assertEditorLanguageSurface(hasCapability("editor"));
 
-if (capabilities.render) {
-  assert.equal(capabilities.text_measurement.host_callback, true);
+if (hasCapability("svg")) {
+  assert.ok(capabilities.text_measurement?.provider_ids.includes("host-callback"));
 
   const rawGantt = `gantt
 title Project Development Plan
@@ -746,7 +738,7 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");
 
-  if (capabilities.analysis) {
+  if (hasCapability("analysis")) {
     const valid = api.validate(source, deterministicTime);
     assert.equal(valid.valid, true);
     assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
@@ -756,7 +748,7 @@ User Testing    :c2, after c1, 5d`;
     assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
   }
 } else {
-  if (capabilities.analysis) {
+  if (hasCapability("analysis")) {
     const valid = api.validate(source, deterministicTime);
     assert.equal(valid.valid, true);
     assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
@@ -773,10 +765,10 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(typeof api.layoutObject, "undefined");
   assert.equal(typeof api.createBrowserTextMeasurementSession, "undefined");
   assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
-  assert.equal(capabilities.text_measurement.host_callback, false);
+  assert.equal(capabilities.text_measurement, null);
 }
 
-if (capabilities.ascii) {
+if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
@@ -787,12 +779,12 @@ if (capabilities.ascii) {
 }
 
 assert.match(api.encodeOptions(options), /deterministic/);
-if (capabilities.render) {
+if (hasCapability("svg")) {
   assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 }
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
-if (capabilities.render) {
+if (hasCapability("svg")) {
   assert.deepEqual(api.supportedHostThemePresets(), [
     ...api.SUPPORTED_HOST_THEME_PRESETS,
   ]);
@@ -809,7 +801,7 @@ for (const diagram of api.supportedDiagrams()) {
   assert.equal(api.isDiagramType(diagram), true);
 }
 
-if (capabilities.ascii) {
+if (hasCapability("ascii")) {
   const asciiDiagrams = api.asciiSupportedDiagrams();
   for (const diagram of asciiDiagrams) {
     assert.equal(api.isAsciiDiagramType(diagram), true);
@@ -960,7 +952,7 @@ const repositoryFixturePaths = {
   ],
 };
 
-if (capabilities.render) {
+if (hasCapability("svg")) {
   for (const diagram of api.supportedDiagrams()) {
     const fixtureName = fixtureNames[diagram];
     const repositoryFixturePath = repositoryFixturePaths[diagram];
@@ -989,10 +981,19 @@ if (capabilities.render) {
         true,
         `unexpected render feature absence for ${diagram}`
       );
-      assert.equal(error?.code_name, "MERMAN_RENDER_ERROR");
-      assert.match(error?.message ?? "", new RegExp(`unsupported diagram type for layout: ${diagram}`));
+      assert.equal(error?.code_name, "MERMAN_UNSUPPORTED_OPERATION");
+      assert.equal(error?.kind, "missing-capability");
+      assert.equal(error?.capability_id, "layout-cytoscape");
+      assert.match(
+        error?.message ?? "",
+        new RegExp(
+          "compiled renderer lacks capability `layout-cytoscape` required by diagram `" +
+            diagram +
+            "`"
+        )
+      );
     }
-    if (capabilities.analysis) {
+    if (hasCapability("analysis")) {
       const detection = api.detectDiagramFacts(fixture, deterministicTime);
       assert.equal(detection.status, "available", `detection unavailable for ${diagram}`);
       assert.equal(detection.diagramType, diagram, `detection mismatch for ${diagram}`);
@@ -1008,13 +1009,10 @@ if (capabilities.render) {
 console.log(
   [
     "@mermanjs/web smoke passed",
-    `entry=${entrySubpath}`,
+    `package=${packageDescriptor.name}`,
     `diagrams=${api.supportedDiagrams().length}`,
-    `render=${capabilities.render}`,
-    `analysis=${capabilities.analysis}`,
-    `ascii=${capabilities.ascii}`,
-    `ratex_math=${capabilities.ratex_math}`,
-    `editor_language=${capabilities.editor_language}`,
+    `capabilities=${capabilities.capability_ids.join(",") || "none"}`,
+    `outputs=${capabilities.output_ids.join(",") || "none"}`,
     `text_measurement=${JSON.stringify(capabilities.text_measurement)}`,
   ].join(" ")
 );
@@ -1270,18 +1268,18 @@ function sha256(value) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
-function assertUnsupportedFormat(run) {
+function assertUnsupportedOperation(run) {
   let error = null;
   try {
     run();
   } catch (caught) {
     error = caught;
   }
-  assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
-  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+  assert.ok(error, "expected MERMAN_UNSUPPORTED_OPERATION error");
+  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_OPERATION");
 }
 
-async function runSameProcessSurfaceSmoke() {
+async function runSameProcessPackageSmoke() {
   const source = "flowchart TD\nA[Hello] --> B[World]";
   const options = {
     fixed_today: "2026-06-10",
@@ -1289,34 +1287,83 @@ async function runSameProcessSurfaceSmoke() {
     svg: { pipeline: "readable" },
     environment: { text_measurement: "deterministic" },
   };
-  const core = await import(toPackageSpecifier("./core"));
-  const full = await import(toPackageSpecifier("./full"));
+  const analysisDescriptor = packageDescriptorForId("analysis");
+  const fullDescriptor = packageDescriptorForId("full");
+  const { bindSurfaceRuntime } = await import(sharedDistUrl("surface-runtime.js"));
+  const analysisWasm = await import(
+    pathToFileURL(
+      path.join(packageRoot, analysisDescriptor.package_dir, "artifacts", "wasm", "merman_wasm.js")
+    ).href,
+  );
+  const fullWasm = await import(
+    pathToFileURL(
+      path.join(packageRoot, fullDescriptor.package_dir, "artifacts", "wasm", "merman_wasm.js")
+    ).href,
+  );
+  const analysis = projectInternalApiForSurface(
+    bindSurfaceRuntime(async () => analysisWasm),
+    packageContract(analysisDescriptor),
+  );
+  const full = projectInternalApiForSurface(
+    bindSurfaceRuntime(async () => fullWasm),
+    packageContract(fullDescriptor),
+  );
 
-  await core.initMerman({
+  await analysis.initMerman({
     wasm: await readFile(
-      path.join(packageRoot, "pkg/core/merman_wasm_bg.wasm")
+      path.join(packageRoot, analysisDescriptor.package_dir, "artifacts", "wasm", "merman_wasm_bg.wasm")
     ),
   });
-  assert.equal(core.bindingCapabilities().render, false);
+  assert.equal(
+    analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    false
+  );
   assert.deepEqual(
-    core.runtimeContract().resources.limits.map((limit) => limit.id),
+    analysis.runtimeCatalog().resources.limits.map((limit) => limit.id),
     ["max_source_bytes"]
   );
-  assert.equal(typeof core.renderSvg, "undefined");
+  assert.equal(typeof analysis.renderSvg, "undefined");
 
   await full.initMerman({
     wasm: await readFile(
-      path.join(packageRoot, "pkg/full/merman_wasm_bg.wasm")
+      path.join(packageRoot, fullDescriptor.package_dir, "artifacts", "wasm", "merman_wasm_bg.wasm")
     ),
   });
-  assert.equal(full.bindingCapabilities().render, true);
   assert.equal(
-    full.runtimeContract().resources.general_binding_default_profile,
+    full.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    true
+  );
+  assert.equal(
+    full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
   assert.match(full.renderSvg(source, options), /<svg/);
-  assert.equal(core.bindingCapabilities().render, false);
-  assert.equal(typeof core.renderSvg, "undefined");
+  assert.equal(
+    analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    false
+  );
+  assert.equal(typeof analysis.renderSvg, "undefined");
+}
+
+async function withNodeDomShim(run) {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: {} });
+  try {
+    return await run();
+  } finally {
+    restoreGlobalProperty("window", previousWindow);
+    restoreGlobalProperty("document", previousDocument);
+  }
+}
+
+function restoreGlobalProperty(name, descriptor) {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+  } else {
+    delete globalThis[name];
+  }
 }
 
 async function assertNoDeprecatedWasmBindgenInitWarning(run) {
@@ -1337,17 +1384,13 @@ async function assertNoDeprecatedWasmBindgenInitWarning(run) {
   );
 }
 
-async function runPureSubpathSmoke() {
-  const catalogSpecifier = toPackageSpecifier("./catalog");
-  const svgSafetySpecifier = toPackageSpecifier("./svg-safety");
-  const textMeasurementAbiSpecifier = toPackageSpecifier(
-    "./text-measurement-abi"
-  );
-  const catalogFile = fileURLToPath(import.meta.resolve(catalogSpecifier));
-  const svgSafetyFile = fileURLToPath(import.meta.resolve(svgSafetySpecifier));
-  const textMeasurementAbiFile = fileURLToPath(
-    import.meta.resolve(textMeasurementAbiSpecifier)
-  );
+async function runPureDistSmoke() {
+  const catalogSpecifier = sharedDistUrl("public-catalog.js");
+  const svgSafetySpecifier = sharedDistUrl("svg-safety.js");
+  const textMeasurementAbiSpecifier = sharedDistUrl("generated/text-measurement-abi.js");
+  const catalogFile = fileURLToPath(catalogSpecifier);
+  const svgSafetyFile = fileURLToPath(svgSafetySpecifier);
+  const textMeasurementAbiFile = fileURLToPath(textMeasurementAbiSpecifier);
   assert.equal(catalogFile, path.join(packageRoot, "dist", "public-catalog.js"));
   assert.equal(svgSafetyFile, path.join(packageRoot, "dist", "svg-safety.js"));
   assert.equal(
@@ -1370,7 +1413,7 @@ async function runPureSubpathSmoke() {
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);
   assert.equal(typeof svgSafety.assertSafeSvgForDom, "function");
-  assert.equal(textMeasurementAbi.MERMAN_ABI_VERSION, 2);
+  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
     Array.from({ length: 19 }, (_, code) => code)
@@ -1457,38 +1500,51 @@ function moduleSpecifiers(source, file) {
   return specifiers;
 }
 
-function surfaceContractForEntry(subpath) {
-  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
-  if (subpath === "." || trimmed === "index" || trimmed === "full") {
-    return buildSurfaceContract(fullSurface);
-  }
-
-  const surface = surfaces.find((candidate) => candidate.entry === trimmed);
-  if (!surface) {
-    throw new Error(`unknown smoke entry subpath: ${subpath}`);
-  }
-  return buildSurfaceContract(surface);
+function packageContract(descriptor) {
+  return {
+    ...descriptor,
+    render: descriptor.runtimeExportNames.includes("renderSvg"),
+    analysis: descriptor.runtimeExportNames.includes("analyze"),
+    ascii: descriptor.runtimeExportNames.includes("renderAscii"),
+    editor: descriptor.runtimeExportNames.includes("editorDiagnostics"),
+  };
 }
 
-function buildSurfaceContract(surface) {
-  return {
-    ...surface,
-    render: surface.runtimeExportNames.includes("renderSvg"),
-    analysis: surface.runtimeExportNames.includes("analyze"),
-    ascii: surface.runtimeExportNames.includes("renderAscii"),
-    editor: surface.runtimeExportNames.includes("editorDiagnostics"),
-  };
+function projectInternalApiForSurface(api, contract) {
+  const allowed = new Set([
+    ...contract.runtimeExportNames,
+    ...contract.valueExportNames,
+  ]);
+  const surfaceOwnedExports = new Set([
+    ...allPackageRuntimeExportNames,
+    ...allPackageValueExportNames,
+  ]);
+  return new Proxy(api, {
+    get(target, property, receiver) {
+      if (
+        typeof property === "string" &&
+        surfaceOwnedExports.has(property) &&
+        !allowed.has(property)
+      ) {
+        return undefined;
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
 }
 
 function assertSurfaceExports(moduleApi, contract) {
   const expectedRuntimeExports = new Set(contract.runtimeExportNames);
   const expectedValueExports = new Set(contract.valueExportNames);
 
-  for (const name of allSurfaceRuntimeExportNames) {
+  assert.equal(typeof moduleApi.MERMAN_WASM_URL, "string");
+  assert.equal(typeof moduleApi.loadMermanWasmModule, "function");
+
+  for (const name of allPackageRuntimeExportNames) {
     assertExport(moduleApi, name, expectedRuntimeExports.has(name));
   }
 
-  for (const name of allSurfaceValueExportNames) {
+  for (const name of allPackageValueExportNames) {
     assertExport(moduleApi, name, expectedValueExports.has(name));
   }
 }
@@ -1501,33 +1557,28 @@ function assertExport(moduleApi, name, enabled) {
   }
 }
 
-function toPackageSpecifier(subpath) {
-  if (subpath === "." || subpath === "" || subpath === "./index") {
-    return "@mermanjs/web";
-  }
-  if (subpath.startsWith("./")) {
-    return `@mermanjs/web/${subpath.slice(2)}`;
-  }
-  return `@mermanjs/web/${subpath.replace(/^\//, "")}`;
+function packageDescriptorForId(id) {
+  const descriptor = webPackages.find((candidate) => candidate.id === id);
+  if (!descriptor) throw new Error(`Unknown Web package ${id}.`);
+  return descriptor;
 }
 
-function parseCli(inputArgs, root = packageRoot) {
+function packageEntryUrl(descriptor) {
+  return pathToFileURL(
+    path.join(packageRoot, descriptor.package_dir, "dist", "package-entries", `${descriptor.id}.js`),
+  ).href;
+}
+
+function sharedDistUrl(relative) {
+  return pathToFileURL(path.join(packageRoot, "dist", relative)).href;
+}
+
+function parseCli(inputArgs) {
   try {
-    return parseSmokeCli(inputArgs, root);
+    return parseSmokeCli(inputArgs);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error(smokeUsage());
     process.exit(2);
   }
-}
-
-function surfaceSmokeCase(name, entry, pkgDirRel) {
-  return {
-    name,
-    entry,
-    pkgDirRel,
-    wasmModuleSubpath: `./${pkgDirRel}/merman_wasm.js`,
-    wasmBinaryRel: `${pkgDirRel}/merman_wasm_bg.wasm`,
-    manifestRel: `${pkgDirRel}/merman_wasm_preset.json`,
-  };
 }

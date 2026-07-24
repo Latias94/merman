@@ -234,7 +234,10 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         let session = environment.begin_session().expect("begin render session");
         let artifact = match family::prepare(parsed, &layout_opts, session) {
             Ok(v) => v,
-            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+            Err(
+                merman_render::Error::UnsupportedDiagram { .. }
+                | merman_render::Error::MissingCapability { .. },
+            ) => {
                 continue;
             }
             Err(err) => {

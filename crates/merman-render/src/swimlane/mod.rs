@@ -69,7 +69,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
     Bounds::from_points(points)
 }
 
-pub fn layout_swimlane_typed(
+pub(crate) fn layout_swimlane_typed(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,

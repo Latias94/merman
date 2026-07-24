@@ -5,6 +5,7 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use regex::Regex;
 
@@ -14,18 +15,38 @@ fn render_block_svg_from_text(text: &str) -> String {
 }
 
 fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
-    try_render_block_svg_from_text_with_engine(engine, text).expect("svg render ok")
+    try_render_block_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
+    )
+    .expect("svg render ok")
 }
 
 fn try_render_block_svg_from_text_with_engine(
     engine: &Engine,
     text: &str,
 ) -> merman_render::Result<String> {
+    try_render_block_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn try_render_block_svg_from_text_with_engine_and_policy(
+    engine: &Engine,
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
     Ok(artifact
@@ -98,7 +119,12 @@ fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
 #[test]
 fn block_public_svg_render_handles_deep_chain() {
     const DEPTH: usize = 1200;
-    let svg = render_block_svg_from_text(&deep_block_chain(DEPTH));
+    let svg = try_render_block_svg_from_text_with_engine_and_policy(
+        &Engine::new(),
+        &deep_block_chain(DEPTH),
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("deep Block SVG render");
 
     assert!(
         svg.contains(r#"id="merman-leaf""#),
@@ -206,15 +232,18 @@ block
 
 #[test]
 fn block_svg_rejects_unsupported_cluster_theme_color() {
-    let engine = legacy_init_theme_compat_engine();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "clusterBkg": "not-a-css-color"
+        }
+    })));
     let error = try_render_block_svg_from_text_with_engine(
         &engine,
-        r##"%%{init: {"themeVariables": {"clusterBkg": "not-a-css-color"}}}%%
-block
+        r#"block
   block
     A["Alpha"]
   end
-"##,
+"#,
     )
     .expect_err("unsupported khroma color must fail the render operation");
 

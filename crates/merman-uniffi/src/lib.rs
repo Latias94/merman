@@ -5,18 +5,44 @@
 //! This crate exposes an idiomatic generated-binding surface over `merman-bindings-core`. It does
 //! not replace the canonical C ABI in `merman-ffi`.
 
-use merman_bindings_core::{BindingEngine, BindingError, BindingStatus};
-#[cfg(feature = "render")]
+use merman_bindings_core::{BindingEngine, BindingError, BindingErrorKind, BindingStatus};
+#[cfg(feature = "svg")]
 use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
 use serde_json::Value;
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock, RwLock};
+
+/// Version of the direct UniFFI binding API.
+///
+/// This version belongs to the generated UniFFI surface only. It is intentionally independent
+/// from both the C ABI and the text-measurement protocol, whose versions are owned by their
+/// respective descriptors.
+pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MermanErrorKind {
+    Generic,
+    UnknownOperation,
+    MissingCapability,
+    ReentrantCall,
+}
+
+impl From<BindingErrorKind> for MermanErrorKind {
+    fn from(kind: BindingErrorKind) -> Self {
+        match kind {
+            BindingErrorKind::Generic => Self::Generic,
+            BindingErrorKind::UnknownOperation => Self::UnknownOperation,
+            BindingErrorKind::MissingCapability => Self::MissingCapability,
+            BindingErrorKind::ReentrantCall => Self::ReentrantCall,
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
@@ -24,6 +50,8 @@ pub enum MermanError {
     Binding {
         code: i32,
         code_name: String,
+        kind: MermanErrorKind,
+        capability_id: Option<String>,
         message: String,
     },
 }
@@ -34,6 +62,8 @@ impl MermanError {
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
+            kind: error.kind().into(),
+            capability_id: error.capability_id().map(str::to_string),
             message: error.message().to_string(),
         }
     }
@@ -43,9 +73,16 @@ impl MermanError {
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
+            kind: MermanErrorKind::Generic,
+            capability_id: None,
             message: message.into(),
         }
     }
+}
+
+#[cfg(any(not(feature = "analysis"), not(feature = "svg")))]
+fn missing_capability_error(capability_id: &'static str, message: &'static str) -> MermanError {
+    MermanError::from_binding(BindingError::missing_capability(capability_id, message))
 }
 
 impl From<uniffi::UnexpectedUniFFICallbackError> for MermanError {
@@ -61,104 +98,138 @@ pub struct MermanEngine;
 
 #[derive(uniffi::Object)]
 pub struct MermanReusableEngine {
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     base: BindingEngine,
-    #[cfg(feature = "render")]
-    render_gate: Arc<Mutex<ReusableRenderGate>>,
+    #[cfg(feature = "svg")]
+    lifecycle: Arc<ReusableEngineLifecycle>,
     inner: RwLock<BindingEngine>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 #[derive(Debug, Default)]
-struct ReusableRenderGate {
+struct ReusableEngineLifecycle {
+    // This Arc is the reusable engine's opaque identity. The callback adapter holds the same
+    // lifecycle until it returns, so dropping a foreign object cannot invalidate its callback
+    // boundary or leak that boundary into another engine instance.
+    state: Mutex<ReusableEngineLifecycleState>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Default)]
+struct ReusableEngineLifecycleState {
     active_renders: usize,
     active_callbacks: usize,
     active_mutations: usize,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
+impl ReusableEngineLifecycle {
+    fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, ReusableEngineLifecycleState> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(feature = "svg")]
 struct ReusableRenderGuard {
-    gate: Arc<Mutex<ReusableRenderGate>>,
+    lifecycle: Arc<ReusableEngineLifecycle>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 struct ReusableMutationGuard {
-    gate: Arc<Mutex<ReusableRenderGate>>,
+    lifecycle: Arc<ReusableEngineLifecycle>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 struct ReusableCallbackGuard {
-    gate: Arc<Mutex<ReusableRenderGate>>,
+    lifecycle: Arc<ReusableEngineLifecycle>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl Drop for ReusableRenderGuard {
     fn drop(&mut self) {
-        if let Ok(mut gate) = self.gate.lock() {
-            gate.active_renders = gate.active_renders.saturating_sub(1);
-        }
+        let mut state = self.lifecycle.lock_state();
+        debug_assert!(
+            state.active_renders > 0,
+            "render guard must have an active render"
+        );
+        state.active_renders = state.active_renders.saturating_sub(1);
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl Drop for ReusableMutationGuard {
     fn drop(&mut self) {
-        if let Ok(mut gate) = self.gate.lock() {
-            gate.active_mutations = gate.active_mutations.saturating_sub(1);
-        }
+        let mut state = self.lifecycle.lock_state();
+        debug_assert!(
+            state.active_mutations > 0,
+            "mutation guard must have an active mutation"
+        );
+        state.active_mutations = state.active_mutations.saturating_sub(1);
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl Drop for ReusableCallbackGuard {
     fn drop(&mut self) {
-        if let Ok(mut gate) = self.gate.lock() {
-            gate.active_callbacks = gate.active_callbacks.saturating_sub(1);
-        }
+        let mut state = self.lifecycle.lock_state();
+        debug_assert!(
+            state.active_callbacks > 0,
+            "callback guard must have an active callback"
+        );
+        state.active_callbacks = state.active_callbacks.saturating_sub(1);
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl ReusableRenderGuard {
-    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
-        let mut state = gate
-            .lock()
-            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
+    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
+        let mut state = lifecycle.lock_state();
         if state.active_callbacks > 0 || state.active_mutations > 0 {
             return Err(reentrant_render_error());
         }
-        state.active_renders += 1;
+        state.active_renders = state
+            .active_renders
+            .checked_add(1)
+            .ok_or_else(|| MermanError::internal("reusable engine render count overflow"))?;
         Ok(Self {
-            gate: Arc::clone(gate),
+            lifecycle: Arc::clone(lifecycle),
         })
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl ReusableMutationGuard {
-    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
-        let mut state = gate
-            .lock()
-            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
+    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
+        let mut state = lifecycle.lock_state();
         if state.active_renders > 0 || state.active_callbacks > 0 || state.active_mutations > 0 {
             return Err(reentrant_render_error());
         }
-        state.active_mutations += 1;
+        state.active_mutations = state
+            .active_mutations
+            .checked_add(1)
+            .ok_or_else(|| MermanError::internal("reusable engine mutation count overflow"))?;
         Ok(Self {
-            gate: Arc::clone(gate),
+            lifecycle: Arc::clone(lifecycle),
         })
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl ReusableCallbackGuard {
-    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
-        let mut state = gate
-            .lock()
-            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
-        state.active_callbacks += 1;
+    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
+        let mut state = lifecycle.lock_state();
+        state.active_callbacks = state
+            .active_callbacks
+            .checked_add(1)
+            .ok_or_else(|| MermanError::internal("reusable engine callback count overflow"))?;
         Ok(Self {
-            gate: Arc::clone(gate),
+            lifecycle: Arc::clone(lifecycle),
         })
     }
 }
@@ -169,6 +240,28 @@ pub struct MermanValidationResult {
     pub error: Option<String>,
     pub code: i32,
     pub code_name: String,
+}
+
+/// A transport-neutral operation request.
+///
+/// `operation_id` is validated by the canonical binding-operation catalog. `uri` is required only by
+/// document operations. `options_json` configures a one-shot engine or overrides a reusable
+/// engine's baseline for this operation.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanOperationRequest {
+    pub operation_id: String,
+    pub source: String,
+    pub uri: Option<String>,
+    pub options_json: Option<String>,
+}
+
+/// Binary-safe output returned by [`MermanEngine::execute`] and reusable engines.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanOperationResult {
+    pub operation_id: String,
+    pub media_type: String,
+    pub data: Vec<u8>,
+    pub metadata_json: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -280,7 +373,6 @@ pub struct MermanTextMeasureResult {
     pub raw_width: Option<f64>,
 }
 
-#[cfg(feature = "render")]
 #[uniffi::export(with_foreign)]
 pub trait MermanTextMeasurer: Send + Sync {
     fn measure(
@@ -289,21 +381,18 @@ pub trait MermanTextMeasurer: Send + Sync {
     ) -> Result<Option<MermanTextMeasureResult>, MermanError>;
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 struct UniffiHostTextMeasurer {
     callback: Arc<dyn MermanTextMeasurer>,
-    render_gate: Arc<Mutex<ReusableRenderGate>>,
+    lifecycle: Arc<ReusableEngineLifecycle>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl UniffiHostTextMeasurer {
-    fn new(
-        callback: Arc<dyn MermanTextMeasurer>,
-        render_gate: Arc<Mutex<ReusableRenderGate>>,
-    ) -> Self {
+    fn new(callback: Arc<dyn MermanTextMeasurer>, lifecycle: Arc<ReusableEngineLifecycle>) -> Self {
         Self {
             callback,
-            render_gate,
+            lifecycle,
         }
     }
 
@@ -311,7 +400,7 @@ impl UniffiHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
-        let _callback_guard = ReusableCallbackGuard::enter(&self.render_gate)
+        let _callback_guard = ReusableCallbackGuard::enter(&self.lifecycle)
             .map_err(|error| HostTextMeasurementError::new(error.to_string()))?;
         let result = match self.callback.measure(MermanTextMeasureRequest {
             operation: uniffi_measurement_operation(request.operation),
@@ -355,7 +444,7 @@ impl UniffiHostTextMeasurer {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 impl HostTextMeasurer for UniffiHostTextMeasurer {
     fn measure(
         &self,
@@ -365,7 +454,7 @@ impl HostTextMeasurer for UniffiHostTextMeasurer {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn uniffi_measurement_phase(
     phase: merman_bindings_core::TextMeasurementPhase,
 ) -> MermanTextMeasurementPhase {
@@ -379,7 +468,7 @@ fn uniffi_measurement_phase(
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn uniffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> MermanTextWrapMode {
     match wrap_mode {
         merman_bindings_core::WrapMode::SvgLike => MermanTextWrapMode::SvgLike,
@@ -388,7 +477,7 @@ fn uniffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> MermanTextWrap
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn uniffi_line_height(
     style: &merman_bindings_core::TextStyle,
     wrap_mode: merman_bindings_core::WrapMode,
@@ -401,7 +490,7 @@ fn uniffi_line_height(
     style.font_size.max(1.0) * factor
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn uniffi_white_space(
     max_width: Option<f64>,
     wrap_mode: merman_bindings_core::WrapMode,
@@ -416,6 +505,7 @@ fn uniffi_white_space(
     }
 }
 
+#[cfg(feature = "analysis")]
 fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintRuleCatalogEntry {
     MermanLintRuleCatalogEntry {
         id: rule.id.to_string(),
@@ -442,18 +532,33 @@ impl MermanEngine {
         Arc::new(Self)
     }
 
-    pub fn abi_version(&self) -> u32 {
-        MERMAN_UNIFFI_ABI_VERSION
+    pub fn binding_api_version(&self) -> u32 {
+        UNIFFI_BINDING_API_VERSION
     }
 
     pub fn package_version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
 
-    pub fn runtime_contract_json(&self) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::runtime_contract_json(
-            MERMAN_UNIFFI_ABI_VERSION,
+    /// Returns the complete, self-validating runtime catalog for this artifact.
+    ///
+    /// The catalog atomically combines the artifact's runtime contract with the
+    /// descriptor-owned vocabulary required to validate it. Foreign bindings
+    /// must consume this endpoint instead of composing separate metadata reads.
+    pub fn runtime_catalog_json(&self) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::runtime_catalog_json(
+            UNIFFI_BINDING_API_VERSION,
         ))
+    }
+
+    /// Executes a descriptor-owned output operation with a fresh engine configuration.
+    pub fn execute(
+        &self,
+        request: MermanOperationRequest,
+    ) -> Result<MermanOperationResult, MermanError> {
+        let engine = binding_engine_for_transport(options_bytes(request.options_json.as_deref()))
+            .map_err(MermanError::from_binding)?;
+        execute_operation(&engine, &request, b"")
     }
 
     pub fn render_svg(
@@ -461,10 +566,31 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.render_svg(source.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request("svg", source, options_json)))
+    }
+
+    pub fn render_png(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("png", source, options_json)))
+    }
+
+    pub fn render_jpeg(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("jpeg", source, options_json)))
+    }
+
+    pub fn render_pdf(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("pdf", source, options_json)))
     }
 
     pub fn render_ascii(
@@ -472,10 +598,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.render_ascii(source.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request("ascii", source, options_json)))
     }
 
     pub fn parse_json(
@@ -483,10 +606,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.parse_json(source.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request(
+            "semantic-json",
+            source,
+            options_json,
+        )))
     }
 
     pub fn layout_json(
@@ -494,10 +618,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.layout_json(source.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request(
+            "layout-json",
+            source,
+            options_json,
+        )))
     }
 
     pub fn analyze_json(
@@ -505,10 +630,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.analyze_json(source.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request(
+            "analysis-json",
+            source,
+            options_json,
+        )))
     }
 
     pub fn analyze_document_json(
@@ -517,10 +643,12 @@ impl MermanEngine {
         options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.analyze_document_json(source.as_bytes(), uri.as_bytes())),
-        )
+        string_operation_output(self.execute(operation_request_with_uri(
+            "document-analysis-json",
+            source,
+            uri,
+            options_json,
+        )))
     }
 
     pub fn analyze_document_facts_json(
@@ -529,11 +657,12 @@ impl MermanEngine {
         options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        string_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref())).and_then(
-                |engine| engine.analyze_document_facts_json(source.as_bytes(), uri.as_bytes()),
-            ),
-        )
+        string_operation_output(self.execute(operation_request_with_uri(
+            "document-analysis-facts-json",
+            source,
+            uri,
+            options_json,
+        )))
     }
 
     pub fn validate(
@@ -541,10 +670,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
-        validation_output(
-            binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .and_then(|engine| engine.validate_json(source.as_bytes())),
-        )
+        validation_operation_output(self.execute(operation_request(
+            "validation-json",
+            source,
+            options_json,
+        )))
     }
 
     pub fn reusable_engine(
@@ -626,18 +756,40 @@ impl MermanEngine {
             .collect()
     }
 
-    pub fn lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
-        merman_bindings_core::lint_rule_catalog()
-            .into_iter()
-            .map(uniffi_lint_rule)
-            .collect()
+    pub fn lint_rule_catalog(&self) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
+        #[cfg(feature = "analysis")]
+        {
+            Ok(merman_bindings_core::lint_rule_catalog()
+                .into_iter()
+                .map(uniffi_lint_rule)
+                .collect())
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            Err(missing_capability_error(
+                "analysis",
+                "lint rule catalog requires the analysis capability",
+            ))
+        }
     }
 
-    pub fn configurable_lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
-        merman_bindings_core::configurable_lint_rule_catalog()
-            .into_iter()
-            .map(uniffi_lint_rule)
-            .collect()
+    pub fn configurable_lint_rule_catalog(
+        &self,
+    ) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
+        #[cfg(feature = "analysis")]
+        {
+            Ok(merman_bindings_core::configurable_lint_rule_catalog()
+                .into_iter()
+                .map(uniffi_lint_rule)
+                .collect())
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            Err(missing_capability_error(
+                "analysis",
+                "configurable lint rule catalog requires the analysis capability",
+            ))
+        }
     }
 }
 
@@ -647,81 +799,163 @@ impl MermanReusableEngine {
     pub fn new(options_json: Option<String>) -> Result<Arc<Self>, MermanError> {
         let inner = binding_engine_for_transport(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
-        #[cfg(feature = "render")]
-        let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
+        #[cfg(feature = "svg")]
+        let lifecycle = ReusableEngineLifecycle::new();
         Ok(Arc::new(Self {
-            #[cfg(feature = "render")]
+            #[cfg(feature = "svg")]
             base: inner.clone(),
-            #[cfg(feature = "render")]
-            render_gate,
+            #[cfg(feature = "svg")]
+            lifecycle,
             inner: RwLock::new(inner),
         }))
     }
 
-    pub fn render_svg(&self, source: String) -> Result<String, MermanError> {
-        #[cfg(feature = "render")]
+    pub fn render_svg(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request("svg", source, options_json)))
+    }
+
+    pub fn render_png(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("png", source, options_json)))
+    }
+
+    pub fn render_jpeg(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("jpeg", source, options_json)))
+    }
+
+    pub fn render_pdf(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<Vec<u8>, MermanError> {
+        binary_operation_output(self.execute(operation_request("pdf", source, options_json)))
+    }
+
+    /// Executes an operation using the reusable baseline plus request-local option overrides.
+    pub fn execute(
+        &self,
+        request: MermanOperationRequest,
+    ) -> Result<MermanOperationResult, MermanError> {
+        #[cfg(feature = "svg")]
         {
-            self.render_svg_with_render_lock(source)
+            // Every operation on a host-measurer-enabled reusable engine shares this gate. It
+            // prevents a callback from observing a concurrent mutation regardless of whether the
+            // selected output is vector, binary, layout JSON, or a non-rendering operation.
+            self.with_render_call_host(|inner| {
+                execute_operation(
+                    &inner,
+                    &request,
+                    options_bytes(request.options_json.as_deref()),
+                )
+            })
         }
-        #[cfg(not(feature = "render"))]
+        #[cfg(not(feature = "svg"))]
         {
             let inner = self.current_inner()?;
-            string_output(inner.render_svg(source.as_bytes()))
+            execute_operation(
+                &inner,
+                &request,
+                options_bytes(request.options_json.as_deref()),
+            )
         }
     }
 
-    pub fn render_ascii(&self, source: String) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        string_output(inner.render_ascii(source.as_bytes()))
+    pub fn render_ascii(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request("ascii", source, options_json)))
     }
 
-    pub fn parse_json(&self, source: String) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        string_output(inner.parse_json(source.as_bytes()))
+    pub fn parse_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            "semantic-json",
+            source,
+            options_json,
+        )))
     }
 
-    pub fn layout_json(&self, source: String) -> Result<String, MermanError> {
-        #[cfg(feature = "render")]
-        {
-            self.layout_json_with_render_lock(source)
-        }
-        #[cfg(not(feature = "render"))]
-        {
-            let inner = self.current_inner()?;
-            string_output(inner.layout_json(source.as_bytes()))
-        }
+    pub fn layout_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            "layout-json",
+            source,
+            options_json,
+        )))
     }
 
-    pub fn analyze_json(&self, source: String) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        string_output(inner.analyze_json(source.as_bytes()))
+    pub fn analyze_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            "analysis-json",
+            source,
+            options_json,
+        )))
     }
 
     pub fn analyze_document_json(
         &self,
         source: String,
+        options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        string_output(inner.analyze_document_json(source.as_bytes(), uri.as_bytes()))
+        string_operation_output(self.execute(operation_request_with_uri(
+            "document-analysis-json",
+            source,
+            uri,
+            options_json,
+        )))
     }
 
     pub fn analyze_document_facts_json(
         &self,
         source: String,
+        options_json: Option<String>,
         uri: String,
     ) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        string_output(inner.analyze_document_facts_json(source.as_bytes(), uri.as_bytes()))
+        string_operation_output(self.execute(operation_request_with_uri(
+            "document-analysis-facts-json",
+            source,
+            uri,
+            options_json,
+        )))
     }
 
-    pub fn validate(&self, source: String) -> Result<MermanValidationResult, MermanError> {
-        let inner = self.current_inner()?;
-        validation_output(inner.validate_json(source.as_bytes()))
+    pub fn validate(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<MermanValidationResult, MermanError> {
+        validation_operation_output(self.execute(operation_request(
+            "validation-json",
+            source,
+            options_json,
+        )))
     }
 }
 
-#[cfg(feature = "render")]
 #[uniffi::export]
 impl MermanEngine {
     pub fn reusable_engine_with_text_measurer(
@@ -733,7 +967,6 @@ impl MermanEngine {
     }
 }
 
-#[cfg(feature = "render")]
 #[uniffi::export]
 impl MermanReusableEngine {
     #[uniffi::constructor]
@@ -741,34 +974,66 @@ impl MermanReusableEngine {
         options_json: Option<String>,
         measurer: Arc<dyn MermanTextMeasurer>,
     ) -> Result<Arc<Self>, MermanError> {
-        let base = binding_engine_for_transport(options_bytes(options_json.as_deref()))
-            .map_err(MermanError::from_binding)?;
-        let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
-        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
-            measurer,
-            Arc::clone(&render_gate),
-        ));
-        let inner = base.with_host_text_measurer(host_text_measurer.clone());
-        Ok(Arc::new(Self {
-            base,
-            render_gate,
-            inner: RwLock::new(inner),
-        }))
+        #[cfg(feature = "svg")]
+        {
+            let base = binding_engine_for_transport(options_bytes(options_json.as_deref()))
+                .map_err(MermanError::from_binding)?;
+            let lifecycle = ReusableEngineLifecycle::new();
+            let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
+                measurer,
+                Arc::clone(&lifecycle),
+            ));
+            let inner = base.with_host_text_measurer(host_text_measurer.clone());
+            Ok(Arc::new(Self {
+                base,
+                lifecycle,
+                inner: RwLock::new(inner),
+            }))
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            drop((options_json, measurer));
+            Err(missing_capability_error(
+                "svg",
+                "host text measurement requires the svg capability",
+            ))
+        }
     }
 
     pub fn set_text_measurer(
         &self,
         measurer: Arc<dyn MermanTextMeasurer>,
     ) -> Result<(), MermanError> {
-        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
-            measurer,
-            Arc::clone(&self.render_gate),
-        ));
-        self.replace_render_inner(self.base.with_host_text_measurer(host_text_measurer))
+        #[cfg(feature = "svg")]
+        {
+            let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
+                measurer,
+                Arc::clone(&self.lifecycle),
+            ));
+            self.replace_render_inner(self.base.with_host_text_measurer(host_text_measurer))
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            drop(measurer);
+            Err(missing_capability_error(
+                "svg",
+                "host text measurement requires the svg capability",
+            ))
+        }
     }
 
     pub fn clear_text_measurer(&self) -> Result<(), MermanError> {
-        self.replace_render_inner(self.base.clone())
+        #[cfg(feature = "svg")]
+        {
+            self.replace_render_inner(self.base.clone())
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            Err(missing_capability_error(
+                "svg",
+                "host text measurement requires the svg capability",
+            ))
+        }
     }
 }
 
@@ -780,7 +1045,7 @@ impl MermanReusableEngine {
             .map_err(|_| MermanError::internal("reusable engine lock poisoned"))
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     fn replace_render_inner(&self, next_inner: BindingEngine) -> Result<(), MermanError> {
         let _mutation_guard = self.enter_render_mutation()?;
         let mut inner = self
@@ -791,17 +1056,7 @@ impl MermanReusableEngine {
         Ok(())
     }
 
-    #[cfg(feature = "render")]
-    fn render_svg_with_render_lock(&self, source: String) -> Result<String, MermanError> {
-        self.with_render_call_host(|inner| string_output(inner.render_svg(source.as_bytes())))
-    }
-
-    #[cfg(feature = "render")]
-    fn layout_json_with_render_lock(&self, source: String) -> Result<String, MermanError> {
-        self.with_render_call_host(|inner| string_output(inner.layout_json(source.as_bytes())))
-    }
-
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     fn with_render_call_host<T>(
         &self,
         run: impl FnOnce(BindingEngine) -> Result<T, MermanError>,
@@ -811,20 +1066,22 @@ impl MermanReusableEngine {
         run(inner)
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     fn enter_render_call(&self) -> Result<ReusableRenderGuard, MermanError> {
-        ReusableRenderGuard::enter(&self.render_gate)
+        ReusableRenderGuard::enter(&self.lifecycle)
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     fn enter_render_mutation(&self) -> Result<ReusableMutationGuard, MermanError> {
-        ReusableMutationGuard::enter(&self.render_gate)
+        ReusableMutationGuard::enter(&self.lifecycle)
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn reentrant_render_error() -> MermanError {
-    MermanError::internal("reentrant reusable engine render call")
+    MermanError::from_binding(BindingError::reentrant_call(
+        "reentrant reusable engine call",
+    ))
 }
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
@@ -832,22 +1089,80 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 }
 
 fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
-    #[cfg(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    ))]
-    {
-        BindingEngine::try_native(options_json)
+    BindingEngine::from_options(options_json)
+}
+
+fn operation_request(
+    operation_id: &str,
+    source: String,
+    options_json: Option<String>,
+) -> MermanOperationRequest {
+    MermanOperationRequest {
+        operation_id: operation_id.to_string(),
+        source,
+        uri: None,
+        options_json,
     }
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
-    {
-        BindingEngine::new(options_json)
+}
+
+fn operation_request_with_uri(
+    operation_id: &str,
+    source: String,
+    uri: String,
+    options_json: Option<String>,
+) -> MermanOperationRequest {
+    MermanOperationRequest {
+        operation_id: operation_id.to_string(),
+        source,
+        uri: Some(uri),
+        options_json,
     }
+}
+
+fn execute_operation(
+    engine: &BindingEngine,
+    request: &MermanOperationRequest,
+    options_json: &[u8],
+) -> Result<MermanOperationResult, MermanError> {
+    let result = engine
+        .execute(merman_bindings_core::BindingOperationRequest {
+            operation_id: &request.operation_id,
+            source: request.source.as_bytes(),
+            uri: request.uri.as_deref().map(str::as_bytes),
+            options_json,
+        })
+        .map_err(MermanError::from_binding)?;
+    let metadata_json = String::from_utf8(result.metadata_json).map_err(|error| {
+        MermanError::internal(format!("operation metadata was not UTF-8: {error}"))
+    })?;
+
+    Ok(MermanOperationResult {
+        operation_id: result.operation.operation_id().to_string(),
+        media_type: result.media_type.to_string(),
+        data: result.data,
+        metadata_json,
+    })
+}
+
+fn binary_operation_output(
+    result: Result<MermanOperationResult, MermanError>,
+) -> Result<Vec<u8>, MermanError> {
+    result.map(|result| result.data)
+}
+
+fn string_operation_output(
+    result: Result<MermanOperationResult, MermanError>,
+) -> Result<String, MermanError> {
+    let result = result?;
+    String::from_utf8(result.data)
+        .map_err(|error| MermanError::internal(format!("operation output was not UTF-8: {error}")))
+}
+
+fn validation_operation_output(
+    result: Result<MermanOperationResult, MermanError>,
+) -> Result<MermanValidationResult, MermanError> {
+    let result = result?;
+    validation_output(Ok(result.data))
 }
 
 fn string_output(result: Result<Vec<u8>, BindingError>) -> Result<String, MermanError> {
@@ -908,60 +1223,121 @@ mod tests {
     use super::*;
     #[cfg(feature = "analysis")]
     use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
-    #[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     use std::sync::{Barrier, Condvar, Mutex as StdMutex, mpsc};
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     use std::thread;
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     use std::time::Duration;
 
     fn engine() -> Arc<MermanEngine> {
         MermanEngine::new()
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(any(
+        not(feature = "analysis"),
+        not(feature = "svg"),
+        not(all(
+            feature = "system-clock",
+            feature = "system-timezone",
+            feature = "system-random"
+        ))
+    ))]
+    fn assert_missing_capability(error: &MermanError, expected_capability_id: &str) {
+        let MermanError::Binding {
+            code,
+            code_name,
+            kind,
+            capability_id,
+            ..
+        } = error;
+        assert_eq!(*code, BindingStatus::UnsupportedOperation.code());
+        assert_eq!(
+            code_name.as_str(),
+            BindingStatus::UnsupportedOperation.code_name()
+        );
+        assert_eq!(*kind, MermanErrorKind::MissingCapability);
+        assert_eq!(capability_id.as_deref(), Some(expected_capability_id));
+    }
+
+    #[cfg(feature = "svg")]
+    fn assert_reentrant_error(error: &MermanError) {
+        let MermanError::Binding {
+            code,
+            code_name,
+            kind,
+            message,
+            ..
+        } = error;
+        assert_eq!(*code, BindingStatus::InvalidArgument.code());
+        assert_eq!(
+            code_name.as_str(),
+            BindingStatus::InvalidArgument.code_name()
+        );
+        assert_eq!(*kind, MermanErrorKind::ReentrantCall);
+        assert!(message.contains("reentrant reusable engine call"));
+    }
+
+    #[cfg(feature = "svg")]
     struct CountingTextMeasurer {
         calls: AtomicUsize,
         font_styles: StdMutex<Vec<String>>,
         operations: StdMutex<Vec<MermanTextMeasurementOperation>>,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     struct FailingTextMeasurer {
         calls: AtomicUsize,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     struct MissingTextMeasurer {
         calls: AtomicUsize,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     struct BlockingFailingTextMeasurer {
         state: (StdMutex<BlockingFailingTextMeasurerState>, Condvar),
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     struct ReentrantTextMeasurer {
         engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
+    struct ReentrantRenderTextMeasurer {
+        engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
+    }
+
+    #[cfg(feature = "svg")]
     struct CrossThreadReentrantTextMeasurer {
         engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     struct BlockingFailingTextMeasurerState {
         entered: bool,
         released: bool,
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(not(feature = "svg"))]
+    struct UnavailableTextMeasurer;
+
+    #[cfg(not(feature = "svg"))]
+    impl MermanTextMeasurer for UnavailableTextMeasurer {
+        fn measure(
+            &self,
+            _request: MermanTextMeasureRequest,
+        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
+            Ok(None)
+        }
+    }
+
+    #[cfg(feature = "svg")]
     impl CountingTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -988,7 +1364,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl FailingTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1001,7 +1377,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MissingTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1014,7 +1390,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl BlockingFailingTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1044,7 +1420,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl ReentrantTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1057,7 +1433,20 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
+    impl ReentrantRenderTextMeasurer {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                engine: StdMutex::new(None),
+            })
+        }
+
+        fn set_engine(&self, engine: Arc<MermanReusableEngine>) {
+            *self.engine.lock().unwrap() = Some(engine);
+        }
+    }
+
+    #[cfg(feature = "svg")]
     impl CrossThreadReentrantTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1070,7 +1459,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for CountingTextMeasurer {
         fn measure(
             &self,
@@ -1147,7 +1536,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for FailingTextMeasurer {
         fn measure(
             &self,
@@ -1158,7 +1547,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for MissingTextMeasurer {
         fn measure(
             &self,
@@ -1169,7 +1558,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for BlockingFailingTextMeasurer {
         fn measure(
             &self,
@@ -1186,7 +1575,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for ReentrantTextMeasurer {
         fn measure(
             &self,
@@ -1199,13 +1588,36 @@ mod tests {
                 .as_ref()
                 .expect("reentrant measurer should have an engine")
                 .clone();
-            Err(engine
+            let error = engine
                 .clear_text_measurer()
-                .expect_err("reentrant clear should fail before taking the render lock"))
+                .expect_err("reentrant clear should fail before taking the render lock");
+            assert_reentrant_error(&error);
+            Err(error)
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
+    impl MermanTextMeasurer for ReentrantRenderTextMeasurer {
+        fn measure(
+            &self,
+            _request: MermanTextMeasureRequest,
+        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
+            let engine = self
+                .engine
+                .lock()
+                .unwrap()
+                .as_ref()
+                .expect("reentrant render measurer should have an engine")
+                .clone();
+            let error = engine
+                .render_svg("flowchart TD\nNested[Call]".to_string(), None)
+                .expect_err("same-engine callback reentry must be rejected");
+            assert_reentrant_error(&error);
+            Err(error)
+        }
+    }
+
+    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for CrossThreadReentrantTextMeasurer {
         fn measure(
             &self,
@@ -1220,23 +1632,26 @@ mod tests {
                 .clone();
             let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
-                let result = engine.clear_text_measurer();
+                let result = engine.render_svg("flowchart TD\nNested[Call]".to_string(), None);
                 tx.send(result).ok();
             });
 
             match rx.recv_timeout(Duration::from_secs(1)) {
-                Ok(Err(error)) => Err(error),
-                Ok(Ok(())) => Err(MermanError::internal(
-                    "cross-thread reentrant clear succeeded",
+                Ok(Err(error)) => {
+                    assert_reentrant_error(&error);
+                    Err(error)
+                }
+                Ok(Ok(_)) => Err(MermanError::internal(
+                    "cross-thread reentrant render succeeded",
                 )),
                 Err(_) => Err(MermanError::internal(
-                    "cross-thread reentrant clear did not finish",
+                    "cross-thread reentrant render did not finish",
                 )),
             }
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_renders_svg() {
         let svg = engine()
@@ -1246,6 +1661,123 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
+    }
+
+    #[test]
+    fn generic_operation_uses_the_descriptor_owned_semantic_path() {
+        let result = engine()
+            .execute(MermanOperationRequest {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
+                uri: None,
+                options_json: Some(r#"{"runtime_policy":"deterministic"}"#.to_string()),
+            })
+            .unwrap();
+
+        assert_eq!(result.operation_id, "semantic-json");
+        assert_eq!(result.media_type, "application/json");
+        assert!(
+            String::from_utf8(result.data)
+                .unwrap()
+                .contains("flowchart-v2")
+        );
+        let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
+        assert_eq!(metadata["operation_id"], "semantic-json");
+        assert_eq!(metadata["version"], 1);
+        assert_eq!(metadata["runtime_policy"], "deterministic");
+    }
+
+    #[cfg(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    ))]
+    #[test]
+    fn generic_one_shot_operation_accepts_request_runtime_policy() {
+        let result = engine()
+            .execute(MermanOperationRequest {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
+            })
+            .unwrap();
+        let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
+
+        assert_eq!(metadata["runtime_policy"], "native");
+    }
+
+    #[cfg(not(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    )))]
+    #[test]
+    fn generic_one_shot_native_policy_names_the_missing_system_capability() {
+        let error = engine()
+            .execute(MermanOperationRequest {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
+            })
+            .unwrap_err();
+        let expected_capability_id = if !cfg!(feature = "system-clock") {
+            "system-clock"
+        } else if !cfg!(feature = "system-timezone") {
+            "system-timezone"
+        } else {
+            "system-random"
+        };
+
+        assert_missing_capability(&error, expected_capability_id);
+    }
+
+    #[test]
+    fn generic_operation_distinguishes_unknown_operation_from_missing_capability() {
+        let error = engine()
+            .execute(MermanOperationRequest {
+                operation_id: "not-an-operation".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: None,
+            })
+            .expect_err("unknown operation must fail before dispatch");
+
+        let MermanError::Binding {
+            kind,
+            capability_id,
+            ..
+        } = error;
+        assert_eq!(kind, MermanErrorKind::UnknownOperation);
+        assert_eq!(capability_id, None);
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn engine_exposes_real_png_output() {
+        let bytes = engine()
+            .render_png("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
+            .unwrap();
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[cfg(feature = "jpeg")]
+    #[test]
+    fn engine_exposes_real_jpeg_output() {
+        let bytes = engine()
+            .render_jpeg("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
+            .unwrap();
+        assert_eq!(&bytes[..3], b"\xff\xd8\xff");
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn engine_exposes_real_pdf_output() {
+        let bytes = engine()
+            .render_pdf("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
+            .unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
     }
 
     #[cfg(feature = "layout-cytoscape")]
@@ -1262,14 +1794,14 @@ mod tests {
     }
 
     #[test]
-    fn engine_exposes_versions() {
+    fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(engine.abi_version(), MERMAN_UNIFFI_ABI_VERSION);
+        assert_eq!(engine.binding_api_version(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn uniffi_preserves_exact_host_measurement_operations() {
         assert_eq!(
@@ -1322,10 +1854,7 @@ mod tests {
         );
 
         let callback = CountingTextMeasurer::new();
-        let host = UniffiHostTextMeasurer::new(
-            callback,
-            Arc::new(Mutex::new(ReusableRenderGate::default())),
-        );
+        let host = UniffiHostTextMeasurer::new(callback, ReusableEngineLifecycle::new());
         let style = merman_bindings_core::TextStyle::default();
         let result = host
             .call_host(merman_bindings_core::HostTextMeasurementRequest {
@@ -1361,7 +1890,7 @@ mod tests {
         assert!(raw_height > 0.0);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_accepts_options_json() {
         let svg = engine()
@@ -1392,7 +1921,7 @@ mod tests {
         assert!(text.contains("World"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_returns_semantic_json() {
         let json: Value = serde_json::from_str(
@@ -1408,7 +1937,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_returns_layout_json() {
         let json: Value = serde_json::from_str(
@@ -1559,9 +2088,9 @@ mod tests {
         assert!(ascii_capabilities.is_empty());
         assert!(engine.supported_themes().contains(&"default".to_string()));
         let host_theme_presets = engine.supported_host_theme_presets();
-        #[cfg(feature = "render")]
+        #[cfg(feature = "svg")]
         assert!(host_theme_presets.contains(&"one-dark".to_string()));
-        #[cfg(not(feature = "render"))]
+        #[cfg(not(feature = "svg"))]
         assert!(host_theme_presets.is_empty());
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
@@ -1577,9 +2106,9 @@ mod tests {
                 && !capability.has_header
                 && capability.config_namespace.as_deref() == Some("flowchart")
         }));
-        let lint_rules = engine.lint_rule_catalog();
         #[cfg(feature = "analysis")]
         {
+            let lint_rules = engine.lint_rule_catalog().unwrap();
             assert!(lint_rules.iter().any(|rule| {
                 rule.id == "merman.authoring.flowchart.explicit_direction"
                     && rule.origin == "merman_authoring"
@@ -1591,82 +2120,83 @@ mod tests {
             assert!(
                 engine
                     .configurable_lint_rule_catalog()
+                    .unwrap()
                     .iter()
                     .all(|rule| rule.configurable && rule.category != "internal")
             );
         }
         #[cfg(not(feature = "analysis"))]
         {
-            assert!(lint_rules.is_empty());
-            assert!(engine.configurable_lint_rule_catalog().is_empty());
+            let lint_error = engine.lint_rule_catalog().unwrap_err();
+            assert_missing_capability(&lint_error, "analysis");
+            let configurable_error = engine.configurable_lint_rule_catalog().unwrap_err();
+            assert_missing_capability(&configurable_error, "analysis");
         }
-        let runtime_contract: serde_json::Value =
-            serde_json::from_str(&engine.runtime_contract_json().unwrap()).unwrap();
+        let runtime_catalog: serde_json::Value =
+            serde_json::from_str(&engine.runtime_catalog_json().unwrap()).unwrap();
+        let runtime_catalog = runtime_catalog
+            .as_object()
+            .expect("runtime catalog must be an object");
         assert_eq!(
-            runtime_contract["schema_version"],
-            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
+            runtime_catalog
+                .keys()
+                .map(String::as_str)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from([
+                "capabilities",
+                "package_version",
+                "registry",
+                "resources",
+                "schema_version",
+                "transport_api_version",
+            ])
         );
-        assert_eq!(runtime_contract["abi_version"], MERMAN_UNIFFI_ABI_VERSION);
-        assert_eq!(runtime_contract["options_schema_version"], 1);
-        assert!(runtime_contract["features"].get("core_host").is_none());
         assert_eq!(
-            runtime_contract["features"]["system_adapter_ids"],
-            serde_json::json!(merman_bindings_core::binding_capabilities().system_adapter_ids)
+            runtime_catalog["schema_version"],
+            merman_bindings_core::RUNTIME_CATALOG_SCHEMA_VERSION
         );
         assert_eq!(
-            runtime_contract["features"]["render"],
-            cfg!(feature = "render")
+            runtime_catalog["transport_api_version"],
+            UNIFFI_BINDING_API_VERSION
         );
-        if cfg!(any(
-            feature = "render",
-            feature = "analysis",
-            feature = "ascii"
-        )) {
-            assert_eq!(
-                runtime_contract["resources"]["general_binding_default_profile"],
-                "interactive"
-            );
-        } else {
-            assert!(runtime_contract["resources"].is_null());
-        }
+        assert_eq!(
+            runtime_catalog["capabilities"]["system_adapter_ids"],
+            serde_json::json!(
+                merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids
+            )
+        );
+        assert_eq!(
+            runtime_catalog["capabilities"]["capability_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == "svg")),
+            cfg!(feature = "svg")
+        );
+        assert!(runtime_catalog.get("features").is_none());
+        assert!(runtime_catalog.get("options_schema_version").is_none());
+        assert!(runtime_catalog.get("payload_schemas").is_none());
+        assert_eq!(
+            runtime_catalog["resources"]["general_binding_default_profile"],
+            "interactive"
+        );
     }
 
     #[test]
     fn typed_resource_options_builder_uses_the_shared_descriptor() {
-        #[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
-        {
-            let json = resource_options_json(
-                MermanResourceProfile::Constrained,
-                vec![MermanResourceLimitOverride {
-                    id: MermanResourceLimitId::MaxSourceBytes,
-                    value: 4096,
-                }],
-            )
-            .unwrap();
-            let value: Value = serde_json::from_str(&json).unwrap();
-            assert_eq!(value["version"], 1);
-            assert_eq!(value["resources"]["profile"], "constrained");
-            assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
-        }
-        #[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
-        {
-            let error = resource_options_json(MermanResourceProfile::Constrained, Vec::new())
-                .expect_err("a feature-empty UniFFI build has no resource-aware operation");
-            let MermanError::Binding {
-                code,
-                code_name,
-                message,
-            } = error;
-            assert_eq!(code, BindingStatus::UnsupportedFormat.code());
-            assert_eq!(code_name, BindingStatus::UnsupportedFormat.code_name());
-            assert_eq!(
-                message,
-                "resource options requires at least one resource-aware operation"
-            );
-        }
+        let json = resource_options_json(
+            MermanResourceProfile::Constrained,
+            vec![MermanResourceLimitOverride {
+                id: MermanResourceLimitId::MaxSourceBytes,
+                value: 4096,
+            }],
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["resources"]["profile"], "constrained");
+        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_reuses_options() {
         let reusable = MermanReusableEngine::new(Some(
@@ -1679,10 +2209,46 @@ mod tests {
         .unwrap();
 
         let svg = reusable
-            .render_svg("flowchart TD\nA[Hello]".to_string())
+            .render_svg("flowchart TD\nA[Hello]".to_string(), None)
             .unwrap();
         assert!(svg.contains("id=\"uniffi-reusable\""));
         assert!(svg.contains("data-merman-foreignobject"));
+
+        let request_svg = reusable
+            .render_svg(
+                "flowchart TD\nA[Hello]".to_string(),
+                Some(r#"{"svg":{"diagram_id":"request override"}}"#.to_string()),
+            )
+            .unwrap();
+        assert!(request_svg.contains("id=\"request-override\""));
+        assert!(request_svg.contains("data-merman-foreignobject"));
+
+        let baseline_svg = reusable
+            .render_svg("flowchart TD\nA[Hello]".to_string(), None)
+            .unwrap();
+        assert!(baseline_svg.contains("id=\"uniffi-reusable\""));
+    }
+
+    #[test]
+    fn reusable_engine_rejects_request_runtime_policy() {
+        let reusable = MermanReusableEngine::new(None).unwrap();
+        let error = reusable
+            .execute(MermanOperationRequest {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: Some(r#"{"runtime_policy":"deterministic"}"#.to_string()),
+            })
+            .unwrap_err();
+        let MermanError::Binding {
+            code,
+            code_name,
+            message,
+            ..
+        } = error;
+        assert_eq!(code, BindingStatus::OptionsJsonError.code());
+        assert_eq!(code_name, BindingStatus::OptionsJsonError.code_name());
+        assert!(message.contains("cannot set runtime_policy"));
     }
 
     #[cfg(feature = "analysis")]
@@ -1695,7 +2261,11 @@ mod tests {
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let json: Value = serde_json::from_str(
             &reusable
-                .analyze_document_json(source.to_string(), "file:///tmp/example.md".to_string())
+                .analyze_document_json(
+                    source.to_string(),
+                    None,
+                    "file:///tmp/example.md".to_string(),
+                )
                 .unwrap(),
         )
         .unwrap();
@@ -1704,7 +2274,7 @@ mod tests {
         assert_eq!(json["valid"], true);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_uses_host_text_measurer() {
         let measurer = CountingTextMeasurer::new();
@@ -1714,15 +2284,17 @@ mod tests {
             .render_svg(
                 "flowchart TD\nA[Measured label] --> B[Done]\nclassDef emphasized font-style:italic\nclass A emphasized"
                     .to_string(),
+                Some(r#"{"svg":{"diagram_id":"request-measured"}}"#.to_string()),
             )
             .unwrap();
         assert!(svg.contains("<svg"));
+        assert!(svg.contains("id=\"request-measured\""));
         assert!(measurer.calls() > 0);
         assert!(measurer.saw_font_style("italic"));
         assert!(measurer.saw_operation(MermanTextMeasurementOperation::Wrapped));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_allows_concurrent_render_calls_without_callback_reentry() {
         let reusable = MermanReusableEngine::new(None).unwrap();
@@ -1740,7 +2312,7 @@ mod tests {
                 let source = source.clone();
                 thread::spawn(move || {
                     barrier.wait();
-                    reusable.render_svg(source)
+                    reusable.render_svg(source, None)
                 })
             })
             .collect::<Vec<_>>();
@@ -1751,28 +2323,34 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_falls_back_when_host_text_measurer_errors() {
         let measurer = FailingTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
 
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
 
         assert!(svg.contains("<svg"));
         assert!(measurer.calls() > 0);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_layout_falls_back_when_host_text_measurer_errors() {
         let measurer = FailingTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
 
         let layout = reusable
-            .layout_json("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .layout_json(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
 
         let layout: Value = serde_json::from_str(&layout).unwrap();
@@ -1780,21 +2358,24 @@ mod tests {
         assert!(measurer.calls() > 0);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_falls_back_when_host_text_measurer_returns_none() {
         let measurer = MissingTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
 
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
 
         assert!(svg.contains("<svg"));
         assert!(measurer.calls() > 0);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_rejects_text_measurer_replacement_during_inflight_render() {
         let failing_measurer = BlockingFailingTextMeasurer::new();
@@ -1802,7 +2383,10 @@ mod tests {
             MermanReusableEngine::with_text_measurer(None, failing_measurer.clone()).unwrap();
         let render_engine = reusable.clone();
         let render_handle = thread::spawn(move || {
-            render_engine.render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            render_engine.render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
         });
 
         failing_measurer.wait_until_entered();
@@ -1817,10 +2401,11 @@ mod tests {
         });
 
         let set_result = set_done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        let message = match set_result.unwrap_err() {
-            MermanError::Binding { message, .. } => message,
+        let (kind, message) = match set_result.unwrap_err() {
+            MermanError::Binding { kind, message, .. } => (kind, message),
         };
-        assert!(message.contains("reentrant reusable engine render call"));
+        assert_eq!(kind, MermanErrorKind::ReentrantCall);
+        assert!(message.contains("reentrant reusable engine call"));
         set_handle.join().unwrap();
 
         failing_measurer.release();
@@ -1832,12 +2417,58 @@ mod tests {
             .set_text_measurer(MissingTextMeasurer::new())
             .unwrap();
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
         assert!(svg.contains("<svg"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engines_isolate_active_host_callbacks() {
+        let blocking_measurer = BlockingFailingTextMeasurer::new();
+        let first =
+            MermanReusableEngine::with_text_measurer(None, blocking_measurer.clone()).unwrap();
+        let first_render = first.clone();
+        let first_handle = thread::spawn(move || {
+            first_render.render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
+        });
+
+        blocking_measurer.wait_until_entered();
+
+        let second = MermanReusableEngine::new(None).unwrap();
+        let (second_done_tx, second_done_rx) = mpsc::channel();
+        let second_handle = thread::spawn(move || {
+            second_done_tx
+                .send(second.render_svg(
+                    "flowchart TD\nC[Independent] --> D[Engine]".to_string(),
+                    None,
+                ))
+                .unwrap();
+        });
+        let second_result = second_done_rx.recv_timeout(Duration::from_secs(1));
+
+        blocking_measurer.release();
+
+        let first_svg = first_handle.join().unwrap().unwrap();
+        second_handle.join().unwrap();
+        let second_svg = second_result
+            .expect("independent engine render must not wait for another engine callback")
+            .expect("independent engine render must not be rejected by another engine callback");
+        assert!(first_svg.contains("<svg"));
+        assert!(second_svg.contains("<svg"));
+
+        first
+            .clear_text_measurer()
+            .expect("callback completion must release the first engine lifecycle");
+    }
+
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_falls_back_after_reentrant_host_mutation_is_rejected() {
         let measurer = ReentrantTextMeasurer::new();
@@ -1845,27 +2476,50 @@ mod tests {
         measurer.set_engine(reusable.clone());
 
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
 
         assert!(svg.contains("<svg"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_falls_back_after_cross_thread_reentrant_mutation_is_rejected() {
+    fn reusable_engine_rejects_same_engine_render_reentry_from_callback() {
+        let measurer = ReentrantRenderTextMeasurer::new();
+        let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
+        measurer.set_engine(reusable.clone());
+
+        let svg = reusable
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert!(svg.contains("<svg"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engine_rejects_cross_thread_same_engine_render_reentry_without_blocking() {
         let measurer = CrossThreadReentrantTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
         measurer.set_engine(reusable.clone());
 
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
 
         assert!(svg.contains("<svg"));
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn reusable_engine_can_set_and_clear_host_text_measurer() {
         let reusable = MermanReusableEngine::new(None).unwrap();
@@ -1873,7 +2527,10 @@ mod tests {
 
         reusable.set_text_measurer(measurer.clone()).unwrap();
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
         assert!(svg.contains("<svg"));
         let calls_after_set = measurer.calls();
@@ -1881,13 +2538,44 @@ mod tests {
 
         reusable.clear_text_measurer().unwrap();
         let svg = reusable
-            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
             .unwrap();
         assert!(svg.contains("<svg"));
         assert_eq!(measurer.calls(), calls_after_set);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn text_measurer_api_remains_visible_and_reports_missing_svg_capability() {
+        let constructor_error =
+            match MermanReusableEngine::with_text_measurer(None, Arc::new(UnavailableTextMeasurer))
+            {
+                Ok(_) => panic!("text-measurer constructor must require svg"),
+                Err(error) => error,
+            };
+        assert_missing_capability(&constructor_error, "svg");
+
+        let engine_error = match engine()
+            .reusable_engine_with_text_measurer(None, Arc::new(UnavailableTextMeasurer))
+        {
+            Ok(_) => panic!("engine text-measurer constructor must require svg"),
+            Err(error) => error,
+        };
+        assert_missing_capability(&engine_error, "svg");
+
+        let reusable = MermanReusableEngine::new(None).unwrap();
+        let set_error = reusable
+            .set_text_measurer(Arc::new(UnavailableTextMeasurer))
+            .unwrap_err();
+        assert_missing_capability(&set_error, "svg");
+        let clear_error = reusable.clear_text_measurer().unwrap_err();
+        assert_missing_capability(&clear_error, "svg");
+    }
+
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_error_preserves_binding_status() {
         let err = engine()
@@ -1897,14 +2585,18 @@ mod tests {
         let MermanError::Binding {
             code,
             code_name,
+            kind,
+            capability_id,
             message,
         } = err;
         assert_eq!(code, BindingStatus::OptionsJsonError.code());
         assert_eq!(code_name, BindingStatus::OptionsJsonError.code_name());
+        assert_eq!(kind, MermanErrorKind::Generic);
+        assert_eq!(capability_id, None);
         assert!(message.contains("invalid options_json"));
     }
 
-    #[cfg(not(feature = "render"))]
+    #[cfg(not(feature = "svg"))]
     #[test]
     fn engine_reports_render_feature_as_unavailable() {
         let err = engine()
@@ -1914,10 +2606,14 @@ mod tests {
         let MermanError::Binding {
             code,
             code_name,
+            kind,
+            capability_id,
             message,
         } = err;
-        assert_eq!(code, BindingStatus::UnsupportedFormat.code());
-        assert_eq!(code_name, BindingStatus::UnsupportedFormat.code_name());
-        assert_eq!(message, "SVG rendering requires the render feature");
+        assert_eq!(code, BindingStatus::UnsupportedOperation.code());
+        assert_eq!(code_name, BindingStatus::UnsupportedOperation.code_name());
+        assert_eq!(kind, MermanErrorKind::MissingCapability);
+        assert_eq!(capability_id.as_deref(), Some("svg"));
+        assert_eq!(message, "SVG rendering requires the svg feature");
     }
 }

@@ -3,12 +3,11 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::cynefin::layout_cynefin_diagram_typed;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfile, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::model::CynefinDiagramLayout;
@@ -36,19 +35,11 @@ fn parse_layout_and_render_with_environment(
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse cynefin")
         .expect("detect cynefin");
-    let layout = {
-        let RenderSemanticModel::Cynefin(model) = parsed.model() else {
-            panic!("expected cynefin render model");
-        };
-        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_cynefin_diagram_typed(
-            model,
-            parsed.metadata().effective_config.as_value(),
-            &measurer,
-        )
-        .expect("layout cynefin")
-    };
     let artifact = family::prepare(parsed, layout_options, session).expect("prepare cynefin");
+    let projection = artifact.layout_json().expect("serialize Cynefin layout");
+    let layout: CynefinDiagramLayout =
+        serde_json::from_value(projection["layout"]["CynefinDiagram"].clone())
+            .expect("Cynefin layout projection");
     let svg = artifact
         .render_svg(
             &SvgRenderOptions {

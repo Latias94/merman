@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043`
+Semantic digest: `sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748`
 
 ## Public Leaves
 
@@ -36,20 +36,19 @@ Semantic digest: `sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672f
 | `png` | `png` | `image/png` | `native` |
 | `svg` | `svg` | `image/svg+xml` | `native`, `web`, `typst` |
 
-## Additive Presets
+## Binding Operations
 
-| ID | Targets | Effective leaves | Expected runtime report |
-| --- | --- | --- | --- |
-| `preset-all` | `native` | `analysis`, `ascii`, `editor`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `editor`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-ci-lint` | `native` | `analysis` | `analysis` |
-| `preset-editor` | `native` | `analysis`, `editor` | `analysis`, `editor` |
-| `preset-mmdc` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `pdf`, `png`, `shell-completions`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing`, `network-icons`, `parallel-markdown`, `shell-completions` |
-| `preset-native-sdk` | `native` | `analysis`, `ascii`, `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `pdf`, `png`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `analysis`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-native-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg`, `system-clock`, `system-random`, `system-timezone`, `system-timing` | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`, `system-random`, `system-timing` |
-| `preset-static-svg` | `native` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` |
-| `preset-svg-basic` | `native`, `web`, `typst` | `svg` | `svg` |
-| `preset-web-analysis` | `web` | `analysis` | `analysis` |
-| `preset-web-ascii` | `web` | `ascii` | `ascii` |
-| `preset-web-editor` | `web` | `analysis`, `editor` | `analysis`, `editor` |
-| `preset-web-full` | `web` | `analysis`, `ascii`, `editor`, `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `analysis`, `editor`, `ascii`, `layout-cytoscape`, `layout-elk`, `math` |
-| `preset-web-render` | `web` | `layout-cytoscape`, `layout-elk`, `math`, `svg` | `svg`, `layout-cytoscape`, `layout-elk`, `math` |
+| ID | Capability | Media type | Requires URI | Targets |
+| --- | --- | --- | --- | --- |
+| `analysis-facts-json` | `analysis` | `application/json` | no | `native`, `web` |
+| `analysis-json` | `analysis` | `application/json` | no | `native`, `web`, `typst` |
+| `ascii` | `ascii` | `text/plain; charset=utf-8` | no | `native`, `web` |
+| `document-analysis-facts-json` | `analysis` | `application/json` | yes | `native`, `web` |
+| `document-analysis-json` | `analysis` | `application/json` | yes | `native`, `web` |
+| `jpeg` | `jpeg` | `image/jpeg` | no | `native` |
+| `layout-json` | `svg` | `application/json` | no | `native`, `web` |
+| `pdf` | `pdf` | `application/pdf` | no | `native` |
+| `png` | `png` | `image/png` | no | `native` |
+| `semantic-json` | none | `application/json` | no | `native`, `web` |
+| `svg` | `svg` | `image/svg+xml` | no | `native`, `web`, `typst` |
+| `validation-json` | `analysis` | `application/json` | no | `native`, `web` |

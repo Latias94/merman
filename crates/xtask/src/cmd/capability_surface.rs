@@ -19,6 +19,10 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
         ArtifactKind::TypeScript,
     ),
     (
+        "platforms/web/src/generated/capability-surface.ts",
+        ArtifactKind::WebTypeScript,
+    ),
+    (
         "capabilities/generated/merman_capability_surface.h",
         ArtifactKind::CHeader,
     ),
@@ -48,10 +52,9 @@ struct CapabilitySurfaceDescriptor {
     schema_version: u32,
     descriptor_id: String,
     targets: Vec<TargetDescriptor>,
-    runtime_capabilities: Vec<RuntimeCapabilityDescriptor>,
     capabilities: Vec<CapabilityDescriptor>,
     outputs: Vec<OutputDescriptor>,
-    presets: Vec<PresetDescriptor>,
+    binding_operations: Vec<BindingOperationDescriptor>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -85,31 +88,6 @@ impl CapabilityKind {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct RuntimeCapabilityDescriptor {
-    id: String,
-    kind: RuntimeCapabilityKind,
-    description: String,
-    targets: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum RuntimeCapabilityKind {
-    Adapter,
-    Transport,
-}
-
-impl RuntimeCapabilityKind {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Adapter => "adapter",
-            Self::Transport => "transport",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct CapabilityDescriptor {
     id: String,
     kind: CapabilityKind,
@@ -136,20 +114,78 @@ struct OutputDescriptor {
     targets: Vec<String>,
 }
 
+/// A required JSON field whose value may be either a stable capability ID or explicit `null`.
+///
+/// Keeping this as a transparent wrapper rather than a bare `Option<String>` makes omission a
+/// descriptor-schema error. Invariant operations must declare `"capability": null` instead of
+/// silently acquiring a fake optional feature requirement.
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
+struct NullableCapabilityId(Option<String>);
+
+impl<'de> Deserialize<'de> for NullableCapabilityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct NullableCapabilityIdVisitor;
+
+        impl serde::de::Visitor<'_> for NullableCapabilityIdVisitor {
+            type Value = NullableCapabilityId;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a capability ID string or explicit null")
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NullableCapabilityId(None))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NullableCapabilityId(None))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NullableCapabilityId(Some(value.to_owned())))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NullableCapabilityId(Some(value)))
+            }
+        }
+
+        deserializer.deserialize_any(NullableCapabilityIdVisitor)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct PresetDescriptor {
+struct BindingOperationDescriptor {
     id: String,
+    capability: NullableCapabilityId,
     description: String,
+    media_type: String,
+    requires_uri: bool,
     targets: Vec<String>,
-    includes: Vec<String>,
-    expected_runtime_capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum ArtifactKind {
     Rust,
     TypeScript,
+    WebTypeScript,
     CHeader,
     Markdown,
 }
@@ -159,6 +195,7 @@ impl ArtifactKind {
         match self {
             Self::Rust => render_rust(descriptor),
             Self::TypeScript => render_typescript(descriptor),
+            Self::WebTypeScript => render_web_typescript(descriptor),
             Self::CHeader => render_c_header(descriptor),
             Self::Markdown => render_markdown(descriptor),
         }
@@ -282,28 +319,7 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         )?;
     }
 
-    let runtime_ids = validate_unique_ids(
-        descriptor
-            .runtime_capabilities
-            .iter()
-            .enumerate()
-            .map(|(index, capability)| (index, capability.id.as_str())),
-        "runtime_capabilities",
-    )?;
-    for (index, capability) in descriptor.runtime_capabilities.iter().enumerate() {
-        validate_kebab_id(&capability.id, &format!("runtime_capabilities[{index}].id"))?;
-        require_non_empty(
-            &capability.description,
-            &format!("runtime_capabilities[{index}].description"),
-        )?;
-        validate_targets(
-            &capability.targets,
-            &format!("runtime_capabilities[{index}].targets"),
-            &target_ids,
-        )?;
-    }
-
-    let capability_ids = validate_unique_ids(
+    validate_unique_ids(
         descriptor
             .capabilities
             .iter()
@@ -320,12 +336,6 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
     for (index, capability) in descriptor.capabilities.iter().enumerate() {
         let base = format!("capabilities[{index}]");
         validate_kebab_id(&capability.id, &format!("{base}.id"))?;
-        if runtime_ids.contains(&capability.id) {
-            return Err(format!(
-                "{base}.id: public capability `{}` duplicates a runtime-only capability ID",
-                capability.id
-            ));
-        }
         if capability.id.starts_with("preset-") {
             return Err(format!(
                 "{base}.id: public leaf `{}` must not use the preset namespace",
@@ -440,81 +450,74 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         }
     }
 
-    let preset_ids = validate_unique_ids(
+    validate_unique_ids(
         descriptor
-            .presets
+            .binding_operations
             .iter()
             .enumerate()
-            .map(|(index, preset)| (index, preset.id.as_str())),
-        "presets",
+            .map(|(index, operation)| (index, operation.id.as_str())),
+        "binding_operations",
     )?;
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    for (index, preset) in descriptor.presets.iter().enumerate() {
-        let base = format!("presets[{index}]");
-        validate_kebab_id(&preset.id, &format!("{base}.id"))?;
-        if !preset.id.starts_with("preset-") {
-            return Err(format!(
-                "{base}.id: public preset `{}` must use the `preset-` namespace",
-                preset.id
-            ));
-        }
-        require_non_empty(&preset.description, &format!("{base}.description"))?;
-        validate_targets(&preset.targets, &format!("{base}.targets"), &target_ids)?;
-        validate_string_set(&preset.includes, &format!("{base}.includes"))?;
-        validate_string_set(
-            &preset.expected_runtime_capabilities,
-            &format!("{base}.expected_runtime_capabilities"),
-        )?;
-        for (include_index, include) in preset.includes.iter().enumerate() {
-            if !capability_ids.contains(include) && !preset_ids.contains(include) {
+    for (index, operation) in descriptor.binding_operations.iter().enumerate() {
+        let base = format!("binding_operations[{index}]");
+        validate_kebab_id(&operation.id, &format!("{base}.id"))?;
+        require_non_empty(&operation.description, &format!("{base}.description"))?;
+        require_non_empty(&operation.media_type, &format!("{base}.media_type"))?;
+        let operation_targets =
+            validate_targets(&operation.targets, &format!("{base}.targets"), &target_ids)?;
+        if let Some(capability_id) = operation.capability.0.as_deref() {
+            let Some(capability) = capability_by_id.get(capability_id) else {
                 return Err(format!(
-                    "{base}.includes[{include_index}]: unknown capability or preset `{include}`"
+                    "{base}.capability: unknown capability `{capability_id}`"
                 ));
+            };
+            for target in &operation_targets {
+                if !capability.targets.contains(target) {
+                    return Err(format!(
+                        "{base}.targets: capability `{capability_id}` is unavailable on target `{target}`"
+                    ));
+                }
             }
         }
     }
 
-    let effective_presets = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
-    for (index, preset) in descriptor.presets.iter().enumerate() {
-        validate_preset_contract(
-            index,
-            preset,
-            effective_presets
-                .get(preset.id.as_str())
-                .expect("effective preset exists"),
-            &capability_by_id,
-            &runtime_ids,
-            descriptor,
-        )?;
-    }
-
-    for (capability_index, capability) in descriptor.capabilities.iter().enumerate() {
-        let included = descriptor.presets.iter().any(|preset| {
-            preset
-                .targets
-                .iter()
-                .any(|target| capability.targets.contains(target))
-                && effective_presets
-                    .get(preset.id.as_str())
-                    .is_some_and(|set| set.contains(&capability.id))
-        });
-        let omitted = descriptor.presets.iter().any(|preset| {
-            preset
-                .targets
-                .iter()
-                .any(|target| capability.targets.contains(target))
-                && effective_presets
-                    .get(preset.id.as_str())
-                    .is_some_and(|set| !set.contains(&capability.id))
-        });
-        if !included || !omitted {
+    for output in &descriptor.outputs {
+        let Some((operation_index, operation)) = descriptor
+            .binding_operations
+            .iter()
+            .enumerate()
+            .find(|(_, operation)| operation.id == output.id)
+        else {
             return Err(format!(
-                "capabilities[{capability_index}].preset_coverage: `{}` needs at least one applicable preset include and omission",
-                capability.id
+                "outputs[id={}]: legacy output must have one matching binding operation",
+                output.id
+            ));
+        };
+        let base = format!("binding_operations[{operation_index}]");
+        if operation.capability.0.as_deref() != Some(output.capability.as_str()) {
+            return Err(format!(
+                "{base}.capability: must match legacy output `{}` capability `{}`",
+                output.id, output.capability
+            ));
+        }
+        if operation.media_type != output.media_type {
+            return Err(format!(
+                "{base}.media_type: must match legacy output `{}` media type `{}`",
+                output.id, output.media_type
+            ));
+        }
+        if operation.requires_uri {
+            return Err(format!(
+                "{base}.requires_uri: legacy output `{}` must not require a URI",
+                output.id
+            ));
+        }
+        let operation_targets = operation.targets.iter().cloned().collect::<BTreeSet<_>>();
+        let output_targets = output.targets.iter().cloned().collect::<BTreeSet<_>>();
+        if operation_targets != output_targets {
+            return Err(format!(
+                "{base}.targets: must match legacy output `{}` targets",
+                output.id
             ));
         }
     }
@@ -564,136 +567,6 @@ fn validate_implication_cycles(
     Ok(())
 }
 
-fn expand_capability(
-    id: &str,
-    capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-    result: &mut BTreeSet<String>,
-) {
-    if !result.insert(id.to_string()) {
-        return;
-    }
-    for implication in &capability_by_id[id].implications {
-        expand_capability(implication, capability_by_id, result);
-    }
-}
-
-fn effective_preset_sets(
-    descriptor: &CapabilitySurfaceDescriptor,
-    capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-    preset_by_id: &BTreeMap<&str, &PresetDescriptor>,
-) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
-    fn expand_preset(
-        id: &str,
-        capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-        preset_by_id: &BTreeMap<&str, &PresetDescriptor>,
-        cache: &mut BTreeMap<String, BTreeSet<String>>,
-        stack: &mut Vec<String>,
-    ) -> Result<BTreeSet<String>, String> {
-        if let Some(result) = cache.get(id) {
-            return Ok(result.clone());
-        }
-        if let Some(start) = stack.iter().position(|candidate| candidate == id) {
-            let mut cycle = stack[start..].to_vec();
-            cycle.push(id.to_string());
-            return Err(format!(
-                "presets[id={id}].includes: preset cycle: {}",
-                cycle.join(" -> ")
-            ));
-        }
-        stack.push(id.to_string());
-        let preset = preset_by_id[id];
-        let mut result = BTreeSet::new();
-        for include in &preset.includes {
-            if capability_by_id.contains_key(include.as_str()) {
-                expand_capability(include, capability_by_id, &mut result);
-            } else {
-                result.extend(expand_preset(
-                    include,
-                    capability_by_id,
-                    preset_by_id,
-                    cache,
-                    stack,
-                )?);
-            }
-        }
-        stack.pop();
-        cache.insert(id.to_string(), result.clone());
-        Ok(result)
-    }
-
-    let mut result = BTreeMap::new();
-    for preset in &descriptor.presets {
-        expand_preset(
-            &preset.id,
-            capability_by_id,
-            preset_by_id,
-            &mut result,
-            &mut Vec::new(),
-        )?;
-    }
-    Ok(result)
-}
-
-fn validate_preset_contract(
-    index: usize,
-    preset: &PresetDescriptor,
-    effective: &BTreeSet<String>,
-    capability_by_id: &BTreeMap<&str, &CapabilityDescriptor>,
-    runtime_ids: &BTreeSet<String>,
-    descriptor: &CapabilitySurfaceDescriptor,
-) -> Result<(), String> {
-    let base = format!("presets[{index}]");
-    for capability_id in effective {
-        let capability = capability_by_id[capability_id.as_str()];
-        for target in &preset.targets {
-            if !capability.targets.contains(target) {
-                return Err(format!(
-                    "{base}.includes: capability `{capability_id}` is unavailable on target `{target}`"
-                ));
-            }
-        }
-    }
-
-    let mut runtime_public = BTreeSet::new();
-    for (runtime_index, runtime_id) in preset.expected_runtime_capabilities.iter().enumerate() {
-        if let Some(capability) = capability_by_id.get(runtime_id.as_str()) {
-            for target in &preset.targets {
-                if !capability.targets.contains(target) {
-                    return Err(format!(
-                        "{base}.expected_runtime_capabilities[{runtime_index}]: `{runtime_id}` is unavailable on target `{target}`"
-                    ));
-                }
-            }
-            runtime_public.insert(runtime_id.clone());
-        } else if runtime_ids.contains(runtime_id) {
-            let runtime = descriptor
-                .runtime_capabilities
-                .iter()
-                .find(|capability| capability.id == *runtime_id)
-                .expect("known runtime capability");
-            for target in &preset.targets {
-                if !runtime.targets.contains(target) {
-                    return Err(format!(
-                        "{base}.expected_runtime_capabilities[{runtime_index}]: `{runtime_id}` is unavailable on target `{target}`"
-                    ));
-                }
-            }
-        } else {
-            return Err(format!(
-                "{base}.expected_runtime_capabilities[{runtime_index}]: unknown runtime capability `{runtime_id}`"
-            ));
-        }
-    }
-    if runtime_public != *effective {
-        return Err(format!(
-            "{base}.expected_runtime_capabilities: public capability report must equal the effective preset; expected [{}], found [{}]",
-            join_set(effective),
-            join_set(&runtime_public)
-        ));
-    }
-    Ok(())
-}
-
 fn read_descriptor(path: &Path) -> Result<CapabilitySurfaceDescriptor, XtaskError> {
     let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
@@ -717,31 +590,23 @@ fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         .targets
         .sort_by(|left, right| left.id.cmp(&right.id));
     canonical
-        .runtime_capabilities
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    canonical
         .capabilities
         .sort_by(|left, right| left.id.cmp(&right.id));
     canonical
         .outputs
         .sort_by(|left, right| left.id.cmp(&right.id));
     canonical
-        .presets
+        .binding_operations
         .sort_by(|left, right| left.id.cmp(&right.id));
     for capability in &mut canonical.capabilities {
         capability.targets.sort();
         capability.implications.sort();
     }
-    for runtime in &mut canonical.runtime_capabilities {
-        runtime.targets.sort();
-    }
     for output in &mut canonical.outputs {
         output.targets.sort();
     }
-    for preset in &mut canonical.presets {
-        preset.targets.sort();
-        preset.includes.sort();
-        preset.expected_runtime_capabilities.sort();
+    for operation in &mut canonical.binding_operations {
+        operation.targets.sort();
     }
     let bytes = serde_json::to_vec(&canonical).map_err(|error| error.to_string())?;
     Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
@@ -749,14 +614,6 @@ fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
 
 fn sorted_targets(descriptor: &CapabilitySurfaceDescriptor) -> Vec<&TargetDescriptor> {
     let mut values = descriptor.targets.iter().collect::<Vec<_>>();
-    values.sort_by(|left, right| left.id.cmp(&right.id));
-    values
-}
-
-fn sorted_runtime_capabilities(
-    descriptor: &CapabilitySurfaceDescriptor,
-) -> Vec<&RuntimeCapabilityDescriptor> {
-    let mut values = descriptor.runtime_capabilities.iter().collect::<Vec<_>>();
     values.sort_by(|left, right| left.id.cmp(&right.id));
     values
 }
@@ -773,8 +630,10 @@ fn sorted_outputs(descriptor: &CapabilitySurfaceDescriptor) -> Vec<&OutputDescri
     values
 }
 
-fn sorted_presets(descriptor: &CapabilitySurfaceDescriptor) -> Vec<&PresetDescriptor> {
-    let mut values = descriptor.presets.iter().collect::<Vec<_>>();
+fn sorted_binding_operations(
+    descriptor: &CapabilitySurfaceDescriptor,
+) -> Vec<&BindingOperationDescriptor> {
+    let mut values = descriptor.binding_operations.iter().collect::<Vec<_>>();
     values.sort_by(|left, right| left.id.cmp(&right.id));
     values
 }
@@ -787,17 +646,6 @@ fn sorted_string_refs(values: &[String]) -> Vec<&str> {
 
 fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let digest = semantic_digest(descriptor)?;
-    let capability_by_id = descriptor
-        .capabilities
-        .iter()
-        .map(|capability| (capability.id.as_str(), capability))
-        .collect::<BTreeMap<_, _>>();
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
     );
@@ -817,10 +665,6 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     for target in sorted_targets(descriptor) {
         writeln!(out, "    {:?},", target.id).unwrap();
     }
-    out.push_str("];\n\npub const RUNTIME_CAPABILITY_IDS: &[&str] = &[\n");
-    for capability in sorted_runtime_capabilities(descriptor) {
-        writeln!(out, "    {:?},", capability.id).unwrap();
-    }
     out.push_str("];\n\npub const CAPABILITY_IDS: &[&str] = &[\n");
     for capability in sorted_capabilities(descriptor) {
         writeln!(out, "    {:?},", capability.id).unwrap();
@@ -829,9 +673,9 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     for output in sorted_outputs(descriptor) {
         writeln!(out, "    {:?},", output.id).unwrap();
     }
-    out.push_str("];\n\npub const PRESET_IDS: &[&str] = &[\n");
-    for preset in sorted_presets(descriptor) {
-        writeln!(out, "    {:?},", preset.id).unwrap();
+    out.push_str("];\n\npub const BINDING_OPERATION_IDS: &[&str] = &[\n");
+    for operation in sorted_binding_operations(descriptor) {
+        writeln!(out, "    {:?},", operation.id).unwrap();
     }
     out.push_str("];\n\n");
 
@@ -843,18 +687,6 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
             target.id, target.description
         )
         .unwrap();
-    }
-    out.push_str("];\n\n");
-
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct RuntimeCapabilityDescriptor {\n    pub id: &'static str,\n    pub kind: &'static str,\n    pub description: &'static str,\n    pub targets: &'static [&'static str],\n}\n\npub const RUNTIME_CAPABILITIES: &[RuntimeCapabilityDescriptor] = &[\n");
-    for capability in sorted_runtime_capabilities(descriptor) {
-        out.push_str("    RuntimeCapabilityDescriptor {\n");
-        writeln!(out, "        id: {:?},", capability.id).unwrap();
-        writeln!(out, "        kind: {:?},", capability.kind.as_str()).unwrap();
-        writeln!(out, "        description: {:?},", capability.description).unwrap();
-        out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&capability.targets));
-        out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
 
@@ -885,20 +717,21 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct CapabilityPresetDescriptor {\n    pub id: &'static str,\n    pub description: &'static str,\n    pub targets: &'static [&'static str],\n    pub capabilities: &'static [&'static str],\n    pub expected_runtime_capabilities: &'static [&'static str],\n}\n\npub const CAPABILITY_PRESETS: &[CapabilityPresetDescriptor] = &[\n");
-    for preset in sorted_presets(descriptor) {
-        out.push_str("    CapabilityPresetDescriptor {\n");
-        writeln!(out, "        id: {:?},", preset.id).unwrap();
-        writeln!(out, "        description: {:?},", preset.description).unwrap();
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct BindingOperationDescriptor {\n    pub id: &'static str,\n    pub capability_id: Option<&'static str>,\n    pub description: &'static str,\n    pub media_type: &'static str,\n    pub requires_uri: bool,\n    pub targets: &'static [&'static str],\n}\n\npub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = &[\n");
+    for operation in sorted_binding_operations(descriptor) {
+        out.push_str("    BindingOperationDescriptor {\n");
+        writeln!(out, "        id: {:?},", operation.id).unwrap();
+        writeln!(
+            out,
+            "        capability_id: {:?},",
+            operation.capability.0.as_deref()
+        )
+        .unwrap();
+        writeln!(out, "        description: {:?},", operation.description).unwrap();
+        writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
+        writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
         out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&preset.targets));
-        out.push_str("],\n        capabilities: &[");
-        write_quoted_list(&mut out, effective[&preset.id].iter().map(String::as_str));
-        out.push_str("],\n        expected_runtime_capabilities: &[");
-        write_quoted_list(
-            &mut out,
-            sorted_string_refs(&preset.expected_runtime_capabilities),
-        );
+        write_quoted_list(&mut out, sorted_string_refs(&operation.targets));
         out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
@@ -922,17 +755,6 @@ fn write_typescript_value(
 
 fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let digest = semantic_digest(descriptor)?;
-    let capability_by_id = descriptor
-        .capabilities
-        .iter()
-        .map(|capability| (capability.id.as_str(), capability))
-        .collect::<BTreeMap<_, _>>();
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
     );
@@ -957,21 +779,6 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
                 .map(|target| serde_json::json!({
                     "id": target.id,
                     "description": target.description,
-                }))
-                .collect::<Vec<_>>()
-        ),
-    )?;
-    write_typescript_value(
-        &mut out,
-        "RUNTIME_CAPABILITIES",
-        serde_json::json!(
-            sorted_runtime_capabilities(descriptor)
-                .into_iter()
-                .map(|capability| serde_json::json!({
-                    "id": capability.id,
-                    "kind": capability.kind.as_str(),
-                    "description": capability.description,
-                    "targets": sorted_string_refs(&capability.targets),
                 }))
                 .collect::<Vec<_>>()
         ),
@@ -1010,18 +817,17 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
     )?;
     write_typescript_value(
         &mut out,
-        "CAPABILITY_PRESETS",
+        "BINDING_OPERATIONS",
         serde_json::json!(
-            sorted_presets(descriptor)
+            sorted_binding_operations(descriptor)
                 .into_iter()
-                .map(|preset| serde_json::json!({
-                    "id": preset.id,
-                    "description": preset.description,
-                    "targets": sorted_string_refs(&preset.targets),
-                    "capabilities": effective[&preset.id].iter().collect::<Vec<_>>(),
-                    "expected_runtime_capabilities": sorted_string_refs(
-                        &preset.expected_runtime_capabilities,
-                    ),
+                .map(|operation| serde_json::json!({
+                    "id": operation.id,
+                    "capability": operation.capability.0.as_deref(),
+                    "description": operation.description,
+                    "media_type": operation.media_type,
+                    "requires_uri": operation.requires_uri,
+                    "targets": sorted_string_refs(&operation.targets),
                 }))
                 .collect::<Vec<_>>()
         ),
@@ -1034,14 +840,6 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
                 .map(|value| value.id.as_str())
                 .collect::<Vec<_>>(),
             "TargetId",
-        ),
-        (
-            "RUNTIME_CAPABILITY_IDS",
-            sorted_runtime_capabilities(descriptor)
-                .into_iter()
-                .map(|value| value.id.as_str())
-                .collect::<Vec<_>>(),
-            "RuntimeCapabilityId",
         ),
         (
             "CAPABILITY_IDS",
@@ -1060,13 +858,133 @@ fn render_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String,
             "OutputId",
         ),
         (
-            "PRESET_IDS",
-            sorted_presets(descriptor)
+            "BINDING_OPERATION_IDS",
+            sorted_binding_operations(descriptor)
                 .into_iter()
                 .map(|value| value.id.as_str())
                 .collect::<Vec<_>>(),
-            "CapabilityPresetId",
+            "BindingOperationId",
         ),
+    ] {
+        write_typescript_value(&mut out, name, serde_json::json!(ids))?;
+        writeln!(out, "export type {type_name} = (typeof {name})[number];\n").unwrap();
+    }
+    while out.ends_with('\n') {
+        out.pop();
+    }
+    out.push('\n');
+    Ok(out)
+}
+
+/// Emit the browser-local projection used by the published Web package.
+///
+/// The package has a separate TypeScript compilation root, so it cannot import the workspace-wide
+/// projection directly without publishing unrelated repository paths. Keep this projection narrow:
+/// it contains only the vocabulary needed to validate browser runtime reports, while the canonical
+/// descriptor remains the sole source of those IDs and relationships.
+fn render_web_typescript(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
+    let digest = semantic_digest(descriptor)?;
+    let web_capabilities = sorted_capabilities(descriptor)
+        .into_iter()
+        .filter(|capability| capability.targets.iter().any(|target| target == "web"))
+        .collect::<Vec<_>>();
+    let web_outputs = sorted_outputs(descriptor)
+        .into_iter()
+        .filter(|output| output.targets.iter().any(|target| target == "web"))
+        .collect::<Vec<_>>();
+    let web_binding_operations = sorted_binding_operations(descriptor)
+        .into_iter()
+        .filter(|operation| operation.targets.iter().any(|target| target == "web"))
+        .collect::<Vec<_>>();
+    let system_adapter_ids = sorted_capabilities(descriptor)
+        .into_iter()
+        .filter(|capability| capability.kind == CapabilityKind::Adapter)
+        .map(|capability| capability.id.as_str())
+        .collect::<Vec<_>>();
+
+    let mut out = String::from(
+        "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
+    );
+    writeln!(
+        out,
+        "export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = {} as const;",
+        descriptor.schema_version
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "export const CAPABILITY_DESCRIPTOR_DIGEST = {digest:?} as const;\n"
+    )
+    .unwrap();
+
+    write_typescript_value(
+        &mut out,
+        "WEB_CAPABILITIES",
+        serde_json::json!(
+            web_capabilities
+                .iter()
+                .map(|capability| serde_json::json!({
+                    "id": capability.id,
+                    "kind": capability.kind.as_str(),
+                    "implications": sorted_string_refs(&capability.implications),
+                }))
+                .collect::<Vec<_>>()
+        ),
+    )?;
+    write_typescript_value(
+        &mut out,
+        "WEB_OUTPUTS",
+        serde_json::json!(
+            web_outputs
+                .iter()
+                .map(|output| serde_json::json!({
+                    "id": output.id,
+                    "capability": output.capability,
+                }))
+                .collect::<Vec<_>>()
+        ),
+    )?;
+    write_typescript_value(
+        &mut out,
+        "WEB_BINDING_OPERATIONS",
+        serde_json::json!(
+            web_binding_operations
+                .iter()
+                .map(|operation| serde_json::json!({
+                    "id": operation.id,
+                    "capability": operation.capability.0.as_deref(),
+                    "media_type": operation.media_type,
+                    "requires_uri": operation.requires_uri,
+                }))
+                .collect::<Vec<_>>()
+        ),
+    )?;
+    for (name, ids, type_name) in [
+        (
+            "WEB_CAPABILITY_IDS",
+            web_capabilities
+                .iter()
+                .map(|capability| capability.id.as_str())
+                .collect::<Vec<_>>(),
+            "WebCapabilityId",
+        ),
+        (
+            "WEB_OUTPUT_IDS",
+            web_outputs
+                .iter()
+                .map(|output| output.id.as_str())
+                .collect::<Vec<_>>(),
+            "WebOutputId",
+        ),
+        (
+            "WEB_BINDING_OPERATION_IDS",
+            web_binding_operations
+                .iter()
+                .map(|operation| operation.id.as_str())
+                .collect::<Vec<_>>(),
+            "WebBindingOperationId",
+        ),
+        ("SYSTEM_ADAPTER_IDS", system_adapter_ids, "SystemAdapterId"),
     ] {
         write_typescript_value(&mut out, name, serde_json::json!(ids))?;
         writeln!(out, "export type {type_name} = (typeof {name})[number];\n").unwrap();
@@ -1097,23 +1015,14 @@ fn c_array_name_or_null(name: &str, values: &[&str]) -> String {
     }
 }
 
+fn c_nullable_string(value: Option<&str>) -> String {
+    value
+        .map(|value| format!("{value:?}"))
+        .unwrap_or_else(|| "NULL".to_string())
+}
+
 fn render_c_header(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let digest = semantic_digest(descriptor)?;
-    let capability_by_id = descriptor
-        .capabilities
-        .iter()
-        .map(|capability| (capability.id.as_str(), capability))
-        .collect::<BTreeMap<_, _>>();
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
-    let native_presets = sorted_presets(descriptor)
-        .into_iter()
-        .filter(|preset| preset.targets.iter().any(|target| target == "native"))
-        .collect::<Vec<_>>();
     let mut out = String::from(
         "/* @generated by `cargo run -p xtask -- gen-capability-surface`. */\n/* Source: capabilities/feature-surface-v1.json. Do not edit directly. */\n\n#ifndef MERMAN_CAPABILITY_SURFACE_H\n#define MERMAN_CAPABILITY_SURFACE_H\n\n#include <stddef.h>\n\n",
     );
@@ -1139,16 +1048,6 @@ fn render_c_header(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         .unwrap();
     }
     out.push('\n');
-    for capability in sorted_runtime_capabilities(descriptor) {
-        writeln!(
-            out,
-            "#define MERMAN_RUNTIME_CAPABILITY_{} {:?}",
-            upper_snake(&capability.id),
-            capability.id
-        )
-        .unwrap();
-    }
-    out.push('\n');
     for capability in sorted_capabilities(descriptor) {
         writeln!(
             out,
@@ -1169,54 +1068,18 @@ fn render_c_header(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         .unwrap();
     }
     out.push('\n');
-    for preset in sorted_presets(descriptor) {
-        let suffix = preset.id.strip_prefix("preset-").unwrap_or(&preset.id);
+    for operation in sorted_binding_operations(descriptor) {
         writeln!(
             out,
-            "#define MERMAN_PRESET_{} {:?}",
-            upper_snake(suffix),
-            preset.id
+            "#define MERMAN_BINDING_OPERATION_{} {:?}",
+            upper_snake(&operation.id),
+            operation.id
         )
         .unwrap();
     }
-
     out.push_str(
-        "\ntypedef struct MermanRuntimeCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanRuntimeCapabilityDescriptor;\n\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanCapabilityPresetDescriptor {\n    const char *id;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *capability_ids;\n    size_t capability_count;\n    const char *const *expected_runtime_capability_ids;\n    size_t expected_runtime_capability_count;\n} MermanCapabilityPresetDescriptor;\n\n",
+        "\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanBindingOperationDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    int requires_uri;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanBindingOperationDescriptor;\n\n",
     );
-
-    for capability in sorted_runtime_capabilities(descriptor) {
-        let name = format!(
-            "MERMAN_RUNTIME_CAPABILITY_{}_TARGETS",
-            upper_snake(&capability.id)
-        );
-        write_c_string_array(&mut out, &name, &sorted_string_refs(&capability.targets));
-    }
-    out.push_str(
-        "static const MermanRuntimeCapabilityDescriptor MERMAN_RUNTIME_CAPABILITIES[] = {\n",
-    );
-    for capability in sorted_runtime_capabilities(descriptor) {
-        let targets = sorted_string_refs(&capability.targets);
-        let targets_name = format!(
-            "MERMAN_RUNTIME_CAPABILITY_{}_TARGETS",
-            upper_snake(&capability.id)
-        );
-        writeln!(
-            out,
-            "    {{ {:?}, {:?}, {:?}, {}, {} }},",
-            capability.id,
-            capability.kind.as_str(),
-            capability.description,
-            c_array_name_or_null(&targets_name, &targets),
-            targets.len()
-        )
-        .unwrap();
-    }
-    writeln!(
-        out,
-        "}};\n#define MERMAN_RUNTIME_CAPABILITY_COUNT {}u\n",
-        descriptor.runtime_capabilities.len()
-    )
-    .unwrap();
 
     for capability in sorted_capabilities(descriptor) {
         let prefix = format!("MERMAN_CAPABILITY_{}", upper_snake(&capability.id));
@@ -1286,81 +1149,49 @@ fn render_c_header(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
     )
     .unwrap();
 
-    for preset in &native_presets {
-        let suffix = upper_snake(preset.id.strip_prefix("preset-").unwrap_or(&preset.id));
+    for operation in sorted_binding_operations(descriptor) {
         write_c_string_array(
             &mut out,
-            &format!("MERMAN_PRESET_{suffix}_TARGETS"),
-            &sorted_string_refs(&preset.targets),
-        );
-        let capabilities = effective[&preset.id]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        write_c_string_array(
-            &mut out,
-            &format!("MERMAN_PRESET_{suffix}_CAPABILITIES"),
-            &capabilities,
-        );
-        write_c_string_array(
-            &mut out,
-            &format!("MERMAN_PRESET_{suffix}_EXPECTED_RUNTIME_CAPABILITIES"),
-            &sorted_string_refs(&preset.expected_runtime_capabilities),
+            &format!(
+                "MERMAN_BINDING_OPERATION_{}_TARGETS",
+                upper_snake(&operation.id)
+            ),
+            &sorted_string_refs(&operation.targets),
         );
     }
-    out.push_str(
-        "static const MermanCapabilityPresetDescriptor MERMAN_NATIVE_CAPABILITY_PRESETS[] = {\n",
-    );
-    for preset in &native_presets {
-        let suffix = upper_snake(preset.id.strip_prefix("preset-").unwrap_or(&preset.id));
-        let targets = sorted_string_refs(&preset.targets);
-        let capabilities = effective[&preset.id]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        let expected = sorted_string_refs(&preset.expected_runtime_capabilities);
+    out.push_str("static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {\n");
+    for operation in sorted_binding_operations(descriptor) {
+        let targets = sorted_string_refs(&operation.targets);
+        let targets_name = format!(
+            "MERMAN_BINDING_OPERATION_{}_TARGETS",
+            upper_snake(&operation.id)
+        );
         writeln!(
             out,
-            "    {{ {:?}, {:?}, {}, {}, {}, {}, {}, {} }},",
-            preset.id,
-            preset.description,
-            c_array_name_or_null(&format!("MERMAN_PRESET_{suffix}_TARGETS"), &targets),
-            targets.len(),
-            c_array_name_or_null(
-                &format!("MERMAN_PRESET_{suffix}_CAPABILITIES"),
-                &capabilities,
-            ),
-            capabilities.len(),
-            c_array_name_or_null(
-                &format!("MERMAN_PRESET_{suffix}_EXPECTED_RUNTIME_CAPABILITIES"),
-                &expected,
-            ),
-            expected.len()
+            "    {{ {:?}, {}, {:?}, {:?}, {}, {}, {} }},",
+            operation.id,
+            c_nullable_string(operation.capability.0.as_deref()),
+            operation.description,
+            operation.media_type,
+            if operation.requires_uri { 1 } else { 0 },
+            c_array_name_or_null(&targets_name, &targets),
+            targets.len()
         )
         .unwrap();
     }
     writeln!(
         out,
-        "}};\n#define MERMAN_NATIVE_CAPABILITY_PRESET_COUNT {}u\n\n#endif /* MERMAN_CAPABILITY_SURFACE_H */",
-        native_presets.len()
+        "}};\n#define MERMAN_BINDING_OPERATION_COUNT {}u\n",
+        descriptor.binding_operations.len()
     )
     .unwrap();
+
+    writeln!(out, "\n#endif /* MERMAN_CAPABILITY_SURFACE_H */").unwrap();
     Ok(out)
 }
 
 fn render_markdown(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let digest = semantic_digest(descriptor)?;
-    let capability_by_id = descriptor
-        .capabilities
-        .iter()
-        .map(|capability| (capability.id.as_str(), capability))
-        .collect::<BTreeMap<_, _>>();
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    let effective = effective_preset_sets(descriptor, &capability_by_id, &preset_by_id)?;
     let mut out = format!(
         "<!-- @generated by `cargo run -p xtask -- gen-capability-surface`; do not edit. -->\n\n# Capability Surface v1\n\nSemantic digest: `{digest}`\n\n## Public Leaves\n\n| ID | Kind | Targets | Implies | Description |\n| --- | --- | --- | --- | --- |\n"
     );
@@ -1390,20 +1221,24 @@ fn render_markdown(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
         )
         .unwrap();
     }
-    out.push_str("\n## Additive Presets\n\n| ID | Targets | Effective leaves | Expected runtime report |\n| --- | --- | --- | --- |\n");
-    for preset in sorted_presets(descriptor) {
+    out.push_str(
+        "\n## Binding Operations\n\n| ID | Capability | Media type | Requires URI | Targets |\n| --- | --- | --- | --- | --- |\n",
+    );
+    for operation in sorted_binding_operations(descriptor) {
+        let capability = operation
+            .capability
+            .0
+            .as_deref()
+            .map(|capability| format!("`{capability}`"))
+            .unwrap_or_else(|| "none".to_string());
         writeln!(
             out,
-            "| `{}` | {} | {} | {} |",
-            preset.id,
-            code_list(preset.targets.iter().map(String::as_str)),
-            code_list(effective[&preset.id].iter().map(String::as_str)),
-            code_list(
-                preset
-                    .expected_runtime_capabilities
-                    .iter()
-                    .map(String::as_str)
-            )
+            "| `{}` | {} | `{}` | {} | {} |",
+            operation.id,
+            capability,
+            operation.media_type,
+            if operation.requires_uri { "yes" } else { "no" },
+            code_list(operation.targets.iter().map(String::as_str))
         )
         .unwrap();
     }
@@ -1436,14 +1271,6 @@ fn code_list<'a>(values: impl IntoIterator<Item = &'a str>) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     }
-}
-
-fn join_set(values: &BTreeSet<String>) -> String {
-    values
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn generated_artifacts(
@@ -1503,23 +1330,14 @@ pub(crate) fn gen_capability_surface(args: Vec<String>) -> Result<(), XtaskError
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ResolvedPresetContract {
-    pub(super) targets: BTreeSet<String>,
-    pub(super) capabilities: BTreeSet<String>,
-    pub(super) expected_runtime_capabilities: BTreeSet<String>,
-}
-
-#[derive(Debug, Clone)]
 pub(super) struct CapabilityContractCatalog {
     pub(super) schema_version: u32,
     pub(super) digest: String,
     pub(super) target_ids: BTreeSet<String>,
     pub(super) capability_targets: BTreeMap<String, BTreeSet<String>>,
     pub(super) capability_implications: BTreeMap<String, BTreeSet<String>>,
-    pub(super) runtime_capability_targets: BTreeMap<String, BTreeSet<String>>,
     pub(super) output_capabilities: BTreeMap<String, String>,
     pub(super) output_targets: BTreeMap<String, BTreeSet<String>>,
-    pub(super) presets: BTreeMap<String, ResolvedPresetContract>,
 }
 
 pub(super) fn load_capability_contract_catalog(
@@ -1527,18 +1345,6 @@ pub(super) fn load_capability_contract_catalog(
 ) -> Result<CapabilityContractCatalog, XtaskError> {
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     validate_descriptor(&descriptor).map_err(surface_error)?;
-    let capability_by_id = descriptor
-        .capabilities
-        .iter()
-        .map(|capability| (capability.id.as_str(), capability))
-        .collect::<BTreeMap<_, _>>();
-    let preset_by_id = descriptor
-        .presets
-        .iter()
-        .map(|preset| (preset.id.as_str(), preset))
-        .collect::<BTreeMap<_, _>>();
-    let effective = effective_preset_sets(&descriptor, &capability_by_id, &preset_by_id)
-        .map_err(surface_error)?;
     let digest = semantic_digest(&descriptor).map_err(surface_error)?;
 
     Ok(CapabilityContractCatalog {
@@ -1569,16 +1375,6 @@ pub(super) fn load_capability_contract_catalog(
                 )
             })
             .collect(),
-        runtime_capability_targets: descriptor
-            .runtime_capabilities
-            .iter()
-            .map(|capability| {
-                (
-                    capability.id.clone(),
-                    capability.targets.iter().cloned().collect(),
-                )
-            })
-            .collect(),
         output_capabilities: descriptor
             .outputs
             .iter()
@@ -1588,24 +1384,6 @@ pub(super) fn load_capability_contract_catalog(
             .outputs
             .iter()
             .map(|output| (output.id.clone(), output.targets.iter().cloned().collect()))
-            .collect(),
-        presets: descriptor
-            .presets
-            .iter()
-            .map(|preset| {
-                (
-                    preset.id.clone(),
-                    ResolvedPresetContract {
-                        targets: preset.targets.iter().cloned().collect(),
-                        capabilities: effective[&preset.id].clone(),
-                        expected_runtime_capabilities: preset
-                            .expected_runtime_capabilities
-                            .iter()
-                            .cloned()
-                            .collect(),
-                    },
-                )
-            })
             .collect(),
     })
 }
@@ -1683,6 +1461,21 @@ mod tests {
 
     const KTD4_INITIAL_OUTPUTS: &[&str] = &["ascii", "jpeg", "pdf", "png", "svg"];
 
+    const P1_BINDING_OPERATION_IDS: &[&str] = &[
+        "analysis-facts-json",
+        "analysis-json",
+        "ascii",
+        "document-analysis-facts-json",
+        "document-analysis-json",
+        "jpeg",
+        "layout-json",
+        "pdf",
+        "png",
+        "semantic-json",
+        "svg",
+        "validation-json",
+    ];
+
     fn committed_value() -> Value {
         let path = crate::cmd::workspace_root().join(DESCRIPTOR_PATH);
         serde_json::from_str(&fs::read_to_string(path).expect("committed descriptor"))
@@ -1709,12 +1502,12 @@ mod tests {
             .unwrap()
     }
 
-    fn preset_index(value: &Value, id: &str) -> usize {
-        value["presets"]
+    fn binding_operation_index(value: &Value, id: &str) -> usize {
+        value["binding_operations"]
             .as_array()
             .unwrap()
             .iter()
-            .position(|preset| preset["id"] == id)
+            .position(|operation| operation["id"] == id)
             .unwrap()
     }
 
@@ -1740,6 +1533,21 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             KTD4_INITIAL_OUTPUTS.iter().copied().collect()
         );
+        assert_eq!(
+            descriptor
+                .binding_operations
+                .iter()
+                .map(|operation| operation.id.as_str())
+                .collect::<BTreeSet<_>>(),
+            P1_BINDING_OPERATION_IDS.iter().copied().collect()
+        );
+        let semantic_operation = descriptor
+            .binding_operations
+            .iter()
+            .find(|operation| operation.id == "semantic-json")
+            .expect("semantic JSON operation must be declared");
+        assert_eq!(semantic_operation.capability.0.as_deref(), None);
+        assert!(!semantic_operation.requires_uri);
     }
 
     #[test]
@@ -1747,6 +1555,7 @@ mod tests {
         let descriptor = committed_descriptor();
         let rust = render_rust(&descriptor).unwrap();
         let typescript = render_typescript(&descriptor).unwrap();
+        let web_typescript = render_web_typescript(&descriptor).unwrap();
         let c = render_c_header(&descriptor).unwrap();
 
         assert!(typescript.ends_with('\n'));
@@ -1754,11 +1563,10 @@ mod tests {
 
         for required in [
             "TARGETS",
-            "RUNTIME_CAPABILITIES",
             "CAPABILITIES",
             "implications",
             "OUTPUTS",
-            "CAPABILITY_PRESETS",
+            "BINDING_OPERATIONS",
         ] {
             assert!(rust.contains(required), "Rust projection missed {required}");
             assert!(
@@ -1777,171 +1585,64 @@ mod tests {
             );
         }
         for required in [
-            "MermanRuntimeCapabilityDescriptor",
             "MermanCapabilityDescriptor",
             "MermanOutputDescriptor",
-            "MermanCapabilityPresetDescriptor",
+            "MermanBindingOperationDescriptor",
             "MERMAN_TARGET_WEB",
-            "MERMAN_RUNTIME_CAPABILITY_BROWSER_TIME",
-            "MERMAN_PRESET_NATIVE_SVG",
         ] {
             assert!(c.contains(required), "C projection missed {required}");
         }
         assert!(!c.contains("@mermanjs/"));
         assert!(!c.contains("typst-publish"));
+        assert!(typescript.contains("\"capability\": null"));
+        assert!(web_typescript.contains("WEB_BINDING_OPERATIONS"));
+        assert!(c.contains("MERMAN_BINDING_OPERATION_SEMANTIC_JSON"));
     }
 
     #[test]
-    fn committed_additive_presets_and_implications_match_ktd4() {
-        fn ids(values: &[&str]) -> BTreeSet<String> {
-            values.iter().map(|value| (*value).to_string()).collect()
-        }
+    fn fixture_rejects_invalid_binding_operation_descriptors() {
+        let committed = committed_value();
+        let semantic = binding_operation_index(&committed, "semantic-json");
+        let png = binding_operation_index(&committed, "png");
+        let svg = binding_operation_index(&committed, "svg");
 
-        let descriptor = committed_descriptor();
-        let capability_by_id = descriptor
-            .capabilities
-            .iter()
-            .map(|capability| (capability.id.as_str(), capability))
-            .collect::<BTreeMap<_, _>>();
-        let preset_by_id = descriptor
-            .presets
-            .iter()
-            .map(|preset| (preset.id.as_str(), preset))
-            .collect::<BTreeMap<_, _>>();
-        let effective =
-            effective_preset_sets(&descriptor, &capability_by_id, &preset_by_id).unwrap();
-
-        let expected = BTreeMap::from([
-            ("preset-svg-basic", ids(&["svg"])),
-            (
-                "preset-native-svg",
-                ids(&[
-                    "svg",
-                    "layout-cytoscape",
-                    "layout-elk",
-                    "math",
-                    "system-clock",
-                    "system-timezone",
-                    "system-random",
-                    "system-timing",
-                ]),
-            ),
-            (
-                "preset-static-svg",
-                ids(&["svg", "layout-cytoscape", "layout-elk", "math"]),
-            ),
-            ("preset-editor", ids(&["analysis", "editor"])),
-            ("preset-ci-lint", ids(&["analysis"])),
-            (
-                "preset-native-sdk",
-                ids(&[
-                    "svg",
-                    "analysis",
-                    "ascii",
-                    "png",
-                    "jpeg",
-                    "pdf",
-                    "layout-cytoscape",
-                    "layout-elk",
-                    "math",
-                    "system-clock",
-                    "system-timezone",
-                    "system-random",
-                    "system-timing",
-                ]),
-            ),
-            (
-                "preset-mmdc",
-                ids(&[
-                    "svg",
-                    "analysis",
-                    "ascii",
-                    "png",
-                    "jpeg",
-                    "pdf",
-                    "layout-cytoscape",
-                    "layout-elk",
-                    "math",
-                    "system-clock",
-                    "system-timezone",
-                    "system-random",
-                    "system-timing",
-                    "network-icons",
-                    "parallel-markdown",
-                    "shell-completions",
-                ]),
-            ),
-            (
-                "preset-all",
-                ids(&[
-                    "svg",
-                    "analysis",
-                    "editor",
-                    "ascii",
-                    "png",
-                    "jpeg",
-                    "pdf",
-                    "layout-cytoscape",
-                    "layout-elk",
-                    "math",
-                    "system-clock",
-                    "system-timezone",
-                    "system-random",
-                    "system-timing",
-                ]),
-            ),
-            ("preset-web-analysis", ids(&["analysis"])),
-            (
-                "preset-web-render",
-                ids(&["svg", "layout-cytoscape", "layout-elk", "math"]),
-            ),
-            ("preset-web-editor", ids(&["analysis", "editor"])),
-            ("preset-web-ascii", ids(&["ascii"])),
-            (
-                "preset-web-full",
-                ids(&[
-                    "svg",
-                    "analysis",
-                    "editor",
-                    "ascii",
-                    "layout-cytoscape",
-                    "layout-elk",
-                    "math",
-                ]),
-            ),
-        ])
-        .into_iter()
-        .map(|(id, capabilities)| (id.to_string(), capabilities))
-        .collect::<BTreeMap<_, _>>();
-        assert_eq!(effective, expected);
-
-        for id in ["layout-cytoscape", "layout-elk", "math"] {
-            assert_eq!(
-                capability_by_id[id]
-                    .implications
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<BTreeSet<_>>(),
-                BTreeSet::from(["svg"]),
-                "{id} must imply svg"
-            );
-        }
-        assert_eq!(
-            capability_by_id["math"]
-                .targets
-                .iter()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["native", "web"]),
-            "Typst math remains unavailable until its dedicated admission gates pass"
+        let mut missing_capability = committed.clone();
+        missing_capability["binding_operations"][semantic]
+            .as_object_mut()
+            .unwrap()
+            .remove("capability");
+        let error = validate_fixture(missing_capability).unwrap_err();
+        assert!(
+            error.contains("missing field `capability`"),
+            "unexpected diagnostic: {error}"
         );
-        assert_eq!(
-            preset_by_id["preset-web-render"]
-                .expected_runtime_capabilities
-                .iter()
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            ids(&["svg", "layout-cytoscape", "layout-elk", "math",])
+
+        let mut unknown_capability = committed.clone();
+        unknown_capability["binding_operations"][semantic]["capability"] =
+            json!("unknown-capability");
+        let error = validate_fixture(unknown_capability).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{semantic}].capability"))
+                && error.contains("unknown capability"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut invalid_target = committed.clone();
+        invalid_target["binding_operations"][png]["targets"] = json!(["web"]);
+        let error = validate_fixture(invalid_target).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{png}].targets"))
+                && error.contains("unavailable on target `web`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut mismatched_legacy_output = committed;
+        mismatched_legacy_output["binding_operations"][svg]["media_type"] = json!("text/plain");
+        let error = validate_fixture(mismatched_legacy_output).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{svg}].media_type"))
+                && error.contains("must match legacy output"),
+            "unexpected diagnostic: {error}"
         );
     }
 
@@ -2006,22 +1707,6 @@ mod tests {
     }
 
     #[test]
-    fn fixture_rejects_runtime_and_public_capability_id_collision() {
-        let mut descriptor = committed_value();
-        let index = capability_index(&descriptor, "svg");
-        descriptor["capabilities"][index]["id"] =
-            descriptor["runtime_capabilities"][0]["id"].clone();
-
-        let error = validate_fixture(descriptor).expect_err("ambiguous capability ID must fail");
-        assert!(
-            error.contains(&format!(
-                "capabilities[{index}].id: public capability `typst-transport` duplicates a runtime-only capability ID"
-            )),
-            "unexpected diagnostic: {error}"
-        );
-    }
-
-    #[test]
     fn fixture_rejects_implication_cycle() {
         let mut descriptor = committed_value();
         let svg = capability_index(&descriptor, "svg");
@@ -2051,29 +1736,7 @@ mod tests {
     }
 
     #[test]
-    fn fixture_rejects_target_invalid_preset() {
-        let mut descriptor = committed_value();
-        let index = preset_index(&descriptor, "preset-native-svg");
-        descriptor["presets"][index]["targets"] = json!(["typst"]);
-        let error = validate_fixture(descriptor).expect_err("invalid target must fail");
-        assert!(
-            error.contains(&format!("presets[{index}].includes"))
-                && error.contains("unavailable on target `typst`"),
-            "unexpected diagnostic: {error}"
-        );
-    }
-
-    #[test]
     fn fixture_rejects_nonsemantic_build_and_exclusion_fields() {
-        let mut with_excludes = committed_value();
-        let preset = preset_index(&with_excludes, "preset-svg-basic");
-        with_excludes["presets"][preset]["excludes"] = json!(["math"]);
-        let error = validate_fixture(with_excludes).unwrap_err();
-        assert!(
-            error.contains("unknown field `excludes`"),
-            "unexpected diagnostic: {error}"
-        );
-
         let mut with_surface_mappings = committed_value();
         with_surface_mappings["surface_mappings"] = json!([]);
         let error = validate_fixture(with_surface_mappings).unwrap_err();

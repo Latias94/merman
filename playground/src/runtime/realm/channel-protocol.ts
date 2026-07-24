@@ -10,7 +10,11 @@ import {
 export const REALM_PROTOCOL_VERSION = 2 as const;
 
 export const REALM_BUDGETS = Object.freeze({
-  engineArtifactBytes: 20 * 1024 * 1024,
+  // Engine artifacts are generated, hash-bound program inputs. They are kept
+  // separate from user-controlled protocol messages so a large Mermaid engine
+  // cannot force the source/SVG budgets to grow with it.
+  engineArtifactBytes: 40 * 1024 * 1024,
+  realmInitBytes: 48 * 1024 * 1024,
   sourceBytes: 2 * 1024 * 1024,
   configBytes: 1024 * 1024,
   svgBytes: 24 * 1024 * 1024,
@@ -33,8 +37,7 @@ export const BENCHMARK_BUDGETS = Object.freeze({
 
 export type RealmKind = "compare" | "benchmark";
 export type RealmEngineArtifactId =
-  | "compare-mermaid"
-  | "benchmark-mermaid"
+  | "mermaid"
   | "benchmark-merman";
 
 export interface RealmEngineArtifactIdentity {
@@ -212,17 +215,37 @@ export function utf8ByteLength(value: string): number {
 }
 
 export function assertEncodedMessageBudget(value: unknown): void {
+  assertEncodedBudget(
+    value,
+    REALM_BUDGETS.messageBytes,
+    "message",
+    "Realm message exceeds the 25 MiB budget."
+  );
+}
+
+export function assertRealmInitBudget(value: unknown): void {
+  assertEncodedBudget(
+    value,
+    REALM_BUDGETS.realmInitBytes,
+    "engineArtifact",
+    "Realm initialization exceeds the 48 MiB engine-artifact budget."
+  );
+}
+
+function assertEncodedBudget(
+  value: unknown,
+  maxBytes: number,
+  resource: string,
+  errorMessage: string
+): void {
   let encoded: string;
   try {
     encoded = typeof value === "string" ? value : JSON.stringify(value);
   } catch {
     throw new RealmProtocolError("Realm message is not JSON-encodable.");
   }
-  if (exceedsUtf8Budget(encoded, REALM_BUDGETS.messageBytes)) {
-    throw new RealmBudgetError(
-      "message",
-      "Realm message exceeds the 25 MiB budget."
-    );
+  if (exceedsUtf8Budget(encoded, maxBytes)) {
+    throw new RealmBudgetError(resource, errorMessage);
   }
 }
 
@@ -262,7 +285,7 @@ export function validateRealmInit(
   expected: RealmBootIdentity,
   expectedArtifact: RealmEngineArtifactIdentity
 ): RealmInit {
-  assertEncodedMessageBudget(value);
+  assertRealmInitBudget(value);
   const message = expectRecord(value, "init");
   assertExactKeys(message, [
     "type",

@@ -104,7 +104,7 @@ The first breaking rule-id migrations are:
 
 | Risk | Severity | Likelihood | Mitigation |
 | --- | --- | --- | --- |
-| Existing alpha users lose authoring diagnostics | Medium | Medium | Document `lint.profile = "recommended"` and `enable_rules` |
+| Existing users lose authoring diagnostics | Medium | Medium | Document `lint.profile = "recommended"` and `enable_rules` |
 | Rule origins are assigned too casually | High | Medium | Require source/docs/fixture evidence for Mermaid syntax and compatibility origins |
 | Hosts treat recommended as official | Medium | Medium | Keep authoring IDs under `merman.authoring.*` and default severity as hint |
 | Strict profile becomes vague | Medium | Medium | Reserve strict for future rules until a later ADR defines its bar |

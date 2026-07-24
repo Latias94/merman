@@ -140,7 +140,7 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 }
 
-pub fn layout_cynefin_diagram_typed(
+pub(crate) fn layout_cynefin_diagram_typed(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,

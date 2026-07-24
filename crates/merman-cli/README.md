@@ -18,8 +18,10 @@ while developer subcommands expose merman's parse, layout, and render internals.
 cargo install merman-cli
 ```
 
-The default binary includes SVG/PNG/JPG/PDF export, ASCII/Unicode text output, and RaTeX math
-rendering.
+The default binary is the complete CLI feature set: SVG/PNG/JPG/PDF export,
+ASCII/Unicode text output, RaTeX math rendering, Markdown batch export, offline-first Iconify
+packs, shell completions, and native time/random environment adapters. Network access remains
+opt-in at runtime through `--allow-network`.
 
 This crate installs `merman-cli`, not `mmdc`.
 
@@ -28,6 +30,33 @@ From a local checkout:
 ```sh
 cargo install --path crates/merman-cli
 ```
+
+## Build Profiles
+
+The CLI exposes small, additive capability features. A Cargo feature can only add code, so an
+artifact that must exclude capabilities must always use `--no-default-features` with one exact
+direct feature list. Run `merman-cli capabilities --json` in a built
+artifact to inspect its authoritative, machine-readable contract.
+
+| Exact build recipe | Intended use | Available surface |
+| --- | --- | --- |
+| Default | `mmdc` replacement | Complete local CLI, including SVG, exports, analysis, Markdown, optional network icon loading, parallel Markdown work, and completions. |
+| `--no-default-features --features analysis,svg,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math` | Full local engine without CLI-only integrations | Full local renderer and analysis, but no network icon loader, parallel Markdown worker pool, or completion generator. |
+| `--no-default-features --features analysis` | CI linting and source fixes | `capabilities`, `detect`, `parse`, `lint`, `fix`, and `lint-rules`; no SVG renderer, output backends, layout engines, math, network client, Rayon pool, or completion generator. |
+| `--no-default-features --features svg` | Basic SVG-only tooling | Parse/detect/layout and SVG rendering; unavailable output formats and tool integrations are absent from help, and omitted layout engines return typed missing-capability errors. |
+
+For example, install a slim CI binary with:
+
+```sh
+cargo install merman-cli --no-default-features --features analysis
+```
+
+The public leaves are `analysis`, `svg`, `ascii`, `png`, `jpeg`, `pdf`,
+`layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`,
+`system-random`, `system-timing`, `network-icons`, `parallel-markdown`, and
+`shell-completions`. Output and layout leaves pull in their necessary SVG capability. Prefer the
+default for a complete CLI, or an explicit direct list when you own the deployment profile and
+have checked `capabilities --json`.
 
 ## Quick Start
 
@@ -98,8 +127,9 @@ merman-cli -i diagram.mmd -o diagram.txt -e unicode
 
 ## Markdown Input
 
-`.md` and `.markdown` input files activate Markdown mode. Mermaid code blocks are extracted,
-rendered as numbered artefacts, and optionally rewritten back into Markdown image links.
+`.md` and `.markdown` input files activate Markdown mode when the `analysis` capability is
+compiled. Mermaid code blocks are extracted, rendered as numbered artefacts, and optionally
+rewritten back into Markdown image links.
 
 ```sh
 merman-cli -i README.md -o README.svg
@@ -131,8 +161,8 @@ Markdown mode does not support stdout output because it may need to write multip
 
 ## Icon Packs
 
-Iconify packs are loaded into a Rust SVG icon registry, so Flowchart, Architecture, and TreeView
-nodes can embed real icon SVGs without a browser.
+Iconify packs are loaded into a Rust SVG icon registry when `network-icons` is compiled, so
+Flowchart, Architecture, and TreeView nodes can embed real icon SVGs without a browser.
 
 Load an Iconify package name:
 
@@ -161,7 +191,8 @@ registration while keeping rendering browserless. Any HTTP(S) icon pack source r
 
 ### ASCII/Unicode
 
-ASCII/Unicode output is enabled in the default CLI binary:
+ASCII/Unicode output is enabled in the default CLI binary and requires the `ascii` capability in
+a custom artifact:
 
 ```sh
 printf "flowchart LR\nA --> B\n" | merman-cli -i - -o out.txt -e ascii
@@ -180,16 +211,18 @@ denser relationship graphs return explicit diagnostics instead of silently dropp
 
 ### RaTeX Math
 
-RaTeX math rendering is enabled by default:
+RaTeX math rendering is enabled by default and requires the `math` capability in a custom
+artifact:
 
 ```sh
 printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | merman-cli render --math-renderer ratex -
 ```
 
-Use `--no-default-features` only when you intentionally want to exclude default binary capabilities
-such as RaTeX and ASCII/Unicode. In that build, `--math-renderer ratex` remains unavailable unless
-the `math` feature is enabled explicitly, and ASCII/Unicode output remains unavailable unless
-the `ascii` feature is enabled explicitly.
+Do not use a bare `--no-default-features` build as a deployment profile. Select an exact artifact
+profile or leaf set, then use `capabilities --json` and `--help` to confirm the binary surface. For example,
+`--features svg` does not enable RaTeX or ASCII/Unicode; a `ratex` request returns a typed
+missing-capability error, while `ascii` output is absent. Add `math` or `ascii` only when those
+capabilities are required.
 
 ### Developer Subcommands
 

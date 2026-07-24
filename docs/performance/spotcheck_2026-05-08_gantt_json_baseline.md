@@ -16,7 +16,7 @@ before changing the render-model boundary.
 ## Command
 
 ```text
-cargo bench -p merman --features render --bench pipeline gantt_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline gantt_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Mid Estimates

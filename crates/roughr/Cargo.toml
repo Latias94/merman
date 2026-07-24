@@ -42,9 +42,6 @@ default = []
 name = "roughr"
 path = "src/lib.rs"
 
-[dependencies.derive_builder]
-version = "0.20.2"
-
 [dependencies.euclid]
 version = "0.22"
 

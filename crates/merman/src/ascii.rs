@@ -297,7 +297,7 @@ Task: task1, 2026-01-01, 1d
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         )
         .with_limit(
-            merman_core::resources::InputResourceLimitId::MaxFlowchartNodes,
+            merman_core::resources::InputResourceLimitId::MaxModelItems,
             1,
         )
         .unwrap();

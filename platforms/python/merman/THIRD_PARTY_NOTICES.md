@@ -119,17 +119,17 @@ Manatee contains Rust translations and adaptations of the newer CoSE base behavi
 
 Architecture layout and styling use source-backed Cytoscape behavior and defaults.
 
-- Version: `3.33.1`
+- Version: `3.34.0`
 - Source: <https://github.com/cytoscape/cytoscape.js.git>
-- Source ref: `v3.33.1`
-- Source commit: `72af5edb6cd988851f42dc25f9e1092fd2d9e7cf`
+- Source ref: `v3.34.0`
+- Source commit: `22716bfb75834b56fa6679648b0abb06f4ae691c`
 - Source path: `.`
 - Relationship: `behavior-reference`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `elk-render`, `ratex-render`, `rust-render-base`, `source-archive`, `typst-publish`, `web-full`
 - Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
 - Legal files:
-  - [`THIRD_PARTY_LICENSES/cytoscape/LICENSE`](THIRD_PARTY_LICENSES/cytoscape/LICENSE) (license, SHA-256 `e4b62495bacaefaf330f38f226e20d1d60d658d444998ba7406a191f96a2e701`)
+  - [`THIRD_PARTY_LICENSES/cytoscape/LICENSE`](THIRD_PARTY_LICENSES/cytoscape/LICENSE) (license, SHA-256 `eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203`)
 
 ### cytoscape.js-cose-bilkent (`cytoscape-cose-bilkent`)
 
@@ -280,10 +280,10 @@ dugong-graphlib is a modified Rust translation of the graph model used by Dagre.
 
 The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license.
 
-- Version: `ratex-katex-fonts@0.1.12`
+- Version: `ratex-katex-fonts@0.1.13`
 - Source: <https://github.com/erweixin/RaTeX.git>
-- Source ref: `crates.io:ratex-katex-fonts@0.1.12`
-- Source commit: `00315b83897aa44611bb7597fc80cbc54daf9a37`
+- Source ref: `crates.io:ratex-katex-fonts@0.1.13`
+- Source commit: `d7d1bf2818a74ed227f00566c578ee4502b8c48c`
 - Source path: `crates/ratex-katex-fonts/fonts`
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
@@ -375,12 +375,12 @@ This Rust renderer is retained as an ASCII and headless rendering behavior refer
 
 ### RaTeX (`ratex`)
 
-Optional math rendering links the RaTeX 0.1.12 crate family; its separately licensed embedded fonts are recorded as their own component.
+Optional math rendering links the RaTeX 0.1.13 crate family; its separately licensed embedded fonts are recorded as their own component.
 
-- Version: `0.1.12`
+- Version: `0.1.13`
 - Source: <https://github.com/erweixin/RaTeX.git>
-- Source ref: `crates.io:ratex-*@0.1.12`
-- Source commit: `00315b83897aa44611bb7597fc80cbc54daf9a37`
+- Source ref: `crates.io:ratex-*@0.1.13`
+- Source commit: `d7d1bf2818a74ed227f00566c578ee4502b8c48c`
 - Source path: `crates`
 - Relationship: `linked`
 - License expression: `MIT`

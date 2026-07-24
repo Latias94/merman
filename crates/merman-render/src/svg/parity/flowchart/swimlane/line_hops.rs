@@ -197,7 +197,7 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
             }
             for &other_segment_index in &active_by_edge[other_edge_index] {
                 inspected_pairs = inspected_pairs.saturating_add(1);
-                resource_limits.check_swimlane_line_hop_segment_pairs(inspected_pairs)?;
+                resource_limits.check_layout_work_units(inspected_pairs)?;
 
                 let other = segments[other_segment_index];
                 if other.max_y <= current.min_y || current.max_y <= other.min_y {
@@ -838,16 +838,48 @@ mod tests {
             .map(|(id, points)| edge(id, points))
             .collect::<Vec<_>>();
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 32)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
             .unwrap();
 
         let error = super::find_edge_intersections(&edges, limits).unwrap_err();
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected line-hop segment-pair resource limit");
         };
-        assert_eq!(error.limit, "max_swimlane_line_hop_segment_pairs");
+        assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, 33);
         assert_eq!(error.max, 32);
+    }
+
+    #[test]
+    fn segment_pair_budget_is_inclusive() {
+        let point_sets = (0..3)
+            .map(|index| vec![point(0.0, index as f64), point(10.0, 3.0 - index as f64)])
+            .collect::<Vec<_>>();
+        let ids = (0..point_sets.len())
+            .map(|index| format!("edge-{index}"))
+            .collect::<Vec<_>>();
+        let edges = ids
+            .iter()
+            .zip(&point_sets)
+            .map(|(id, points)| edge(id, points))
+            .collect::<Vec<_>>();
+        let exact_limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 3)
+            .unwrap();
+
+        super::find_edge_intersections(&edges, exact_limits)
+            .expect("three segments have exactly three cross-edge candidate pairs");
+
+        let narrow_limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 2)
+            .unwrap();
+        let error = super::find_edge_intersections(&edges, narrow_limits).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected line-hop segment-pair resource limit");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 3);
+        assert_eq!(error.max, 2);
     }
 
     #[test]
@@ -867,7 +899,7 @@ mod tests {
             .map(|(id, points)| edge(id, points))
             .collect::<Vec<_>>();
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxSwimlaneLineHopSegmentPairs, 1)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
 
         let crossings = super::find_edge_intersections(&edges, limits)

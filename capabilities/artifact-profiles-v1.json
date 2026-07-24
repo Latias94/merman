@@ -4,21 +4,102 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043"
+    "digest": "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748"
   },
   "profiles": [
     {
-      "id": "c-abi-native",
-      "description": "Current host C library build.",
+      "id": "android-native",
+      "description": "Full native SDK JNI library slices for the published Android targets.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ffi",
         "manifest": "crates/merman-ffi/Cargo.toml",
-        "profile": "release",
+        "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "layout-cytoscape", "render", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-linux-android",
+            "x86_64-linux-android"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "apple-uniffi-native",
+      "description": "Full native SDK UniFFI static libraries for the published Apple XCFramework slices.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-uniffi",
+        "manifest": "crates/merman-uniffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_uniffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin",
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+            "x86_64-apple-darwin",
+            "x86_64-apple-ios"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "c-abi-native",
+      "description": "Full native SDK C library build for host consumers.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
           "name": "merman_ffi",
@@ -30,26 +111,26 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
-        "outputs": ["ascii", "svg"]
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
-      "id": "cli-release",
-      "description": "Current complete command-line release build.",
+      "id": "cli-analysis",
+      "description": "Analysis-only command-line build for lint and CI workflows.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["ascii", "layout-cytoscape", "layout-elk", "math"],
+        "features": ["analysis"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -65,7 +146,40 @@
         }
       },
       "expected": {
-        "preset": "preset-mmdc",
+        "capabilities": ["analysis"],
+        "runtime_ids": ["analysis"],
+        "outputs": []
+      }
+    },
+    {
+      "id": "cli-release",
+      "description": "Current complete command-line release build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-cli",
+        "manifest": "crates/merman-cli/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
+          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
+          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman-cli",
+          "kinds": ["bin"],
+          "crate_types": ["bin"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin", "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"
+          ]
+        }
+      },
+      "expected": {
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
           "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
@@ -75,6 +189,88 @@
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
           "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
           "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "flutter-desktop-native",
+      "description": "Full native SDK C libraries for the Flutter desktop target set.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "x86_64-pc-windows-gnu",
+            "x86_64-unknown-linux-gnu"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "flutter-ios-native",
+      "description": "Full native SDK C libraries for the Flutter iOS device and simulator slices.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+            "x86_64-apple-ios"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
@@ -142,6 +338,74 @@
       }
     },
     {
+      "id": "python-uniffi-native",
+      "description": "Full native SDK UniFFI dynamic library for the published Python wheel.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-uniffi",
+        "manifest": "crates/merman-uniffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_uniffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "rust-all",
+      "description": "Exhaustive facade build for the complete Rust capability matrix.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
+          "math", "pdf", "png", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
+          "math", "pdf", "png", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
       "id": "rust-analysis",
       "description": "Current analysis library build.",
       "semantic_target": "native",
@@ -163,6 +427,69 @@
         "capabilities": ["analysis"],
         "runtime_ids": ["analysis"],
         "outputs": []
+      }
+    },
+    {
+      "id": "rust-ascii-native",
+      "description": "Native ASCII renderer build with explicit system adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ascii",
+        "manifest": "crates/merman-ascii/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman_ascii",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "ascii", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "ascii", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii"]
+      }
+    },
+    {
+      "id": "rust-bindings-core-native-sdk",
+      "description": "Full native SDK binding-core build for direct transport owners.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-bindings-core",
+        "manifest": "crates/merman-bindings-core/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman_bindings_core",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
@@ -214,15 +541,15 @@
       }
     },
     {
-      "id": "rust-facade",
-      "description": "Current merman facade default build.",
+      "id": "rust-editor-facade",
+      "description": "Editor-capable facade build with no rendering backend.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman",
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["analysis", "editor"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -232,21 +559,240 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": ["system-clock", "system-random", "system-timezone", "system-timing"],
-        "runtime_ids": ["system-clock", "system-random", "system-timezone", "system-timing"],
+        "capabilities": ["analysis", "editor"],
+        "runtime_ids": ["analysis", "editor"],
         "outputs": []
       }
     },
     {
-      "id": "rustdoc-proc-macro",
-      "description": "Current rustdoc proc-macro build.",
+      "id": "rust-export-native-sdk",
+      "description": "Native raster and PDF export library build.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-export",
+        "manifest": "crates/merman-export/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["jpeg", "pdf", "png"],
+        "target": {
+          "name": "merman_export",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["jpeg", "pdf", "png", "svg"],
+        "runtime_ids": ["jpeg", "pdf", "png", "svg"],
+        "outputs": ["jpeg", "pdf", "png"]
+      }
+    },
+    {
+      "id": "rust-export-pdf",
+      "description": "PDF-only export backend build used to measure its admitted upstream closure.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-export",
+        "manifest": "crates/merman-export/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["pdf"],
+        "target": {
+          "name": "merman_export",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["pdf", "svg"],
+        "runtime_ids": ["pdf", "svg"],
+        "outputs": ["pdf"]
+      }
+    },
+    {
+      "id": "rust-export-png",
+      "description": "PNG-only export backend build used to prove PDF dependencies stay excluded.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-export",
+        "manifest": "crates/merman-export/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["png"],
+        "target": {
+          "name": "merman_export",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["png", "svg"],
+        "runtime_ids": ["png", "svg"],
+        "outputs": ["png"]
+      }
+    },
+    {
+      "id": "rust-native-sdk",
+      "description": "Full native SDK facade build for binding owners.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "rust-native-svg",
+      "description": "Normal native SVG facade build with explicit system adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "layout-cytoscape", "layout-elk", "math", "svg",
+          "system-clock", "system-random", "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "rust-render-native-svg",
+      "description": "Native SVG renderer build with explicit layout, math, and system adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-render",
+        "manifest": "crates/merman-render/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [
+          "layout-cytoscape", "layout-elk", "math", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "target": {
+          "name": "merman_render",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": [
+          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "runtime_ids": [
+          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "system-timezone", "system-timing"
+        ],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "rust-static-svg",
+      "description": "Static SVG facade build without compiled system adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "rust-svg-basic",
+      "description": "Basic SVG facade build without optional layout or math engines.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman",
+        "manifest": "crates/merman/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["svg"],
+        "target": {
+          "name": "merman",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["svg"],
+        "runtime_ids": ["svg"],
+        "outputs": ["svg"]
+      }
+    },
+    {
+      "id": "rustdoc-static-svg",
+      "description": "Deterministic static-SVG rustdoc proc-macro build.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-rustdoc",
         "manifest": "crates/merman-rustdoc/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": [],
+        "features": ["svg"],
         "target": {
           "name": "merman_rustdoc",
           "kinds": ["proc-macro"],
@@ -256,8 +802,8 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": ["svg"],
-        "runtime_ids": ["svg"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -270,7 +816,7 @@
         "manifest": "crates/merman-typst-plugin/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["analysis", "layout-cytoscape", "layout-elk", "render"],
+        "features": ["analysis", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_typst_plugin",
           "kinds": ["cdylib", "rlib"],
@@ -285,7 +831,7 @@
       "expected": {
         "capabilities": ["analysis", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": [
-          "analysis", "layout-cytoscape", "layout-elk", "svg", "typst-transport"
+          "analysis", "layout-cytoscape", "layout-elk", "svg"
         ],
         "outputs": ["svg"]
       }
@@ -300,32 +846,113 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "layout-cytoscape", "render", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
         ],
         "target": {
           "name": "merman_uniffi",
-          "kinds": ["cdylib", "rlib"],
-          "crate_types": ["cdylib", "rlib"],
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
           "required_features": []
         },
         "build_target": { "kind": "host" }
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "layout-cytoscape", "svg", "system-clock",
-          "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
         ],
-        "outputs": ["ascii", "svg"]
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
-      "id": "web-wasm",
-      "description": "Current fused browser WASM build.",
+      "id": "web-analysis",
+      "description": "Browser WASM artifact for diagnostics and semantic analysis.",
+      "semantic_target": "web",
+      "cargo": {
+        "package": "merman-wasm",
+        "manifest": "crates/merman-wasm/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["analysis"],
+        "target": {
+          "name": "merman_wasm",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": ["analysis"],
+        "runtime_ids": ["analysis"],
+        "outputs": []
+      }
+    },
+    {
+      "id": "web-ascii",
+      "description": "Browser WASM artifact for ASCII diagram output.",
+      "semantic_target": "web",
+      "cargo": {
+        "package": "merman-wasm",
+        "manifest": "crates/merman-wasm/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["ascii"],
+        "target": {
+          "name": "merman_wasm",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": ["ascii"],
+        "runtime_ids": ["ascii"],
+        "outputs": ["ascii"]
+      }
+    },
+    {
+      "id": "web-editor",
+      "description": "Browser WASM artifact for parser-backed editor intelligence.",
+      "semantic_target": "web",
+      "cargo": {
+        "package": "merman-wasm",
+        "manifest": "crates/merman-wasm/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["editor"],
+        "target": {
+          "name": "merman_wasm",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": ["analysis", "editor"],
+        "runtime_ids": ["analysis", "editor"],
+        "outputs": []
+      }
+    },
+    {
+      "id": "web-full",
+      "description": "Complete retained browser workflow in one WASM artifact, excluding math pending admission.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
@@ -333,7 +960,7 @@
         "profile": "wasm-size",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "editor-language", "layout-cytoscape", "layout-elk", "render"
+          "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
         ],
         "target": {
           "name": "merman_wasm",
@@ -354,6 +981,33 @@
           "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
         ],
         "outputs": ["ascii", "svg"]
+      }
+    },
+    {
+      "id": "web-render",
+      "description": "Candidate browser WASM artifact for the independent analysis and SVG render workflow.",
+      "semantic_target": "web",
+      "cargo": {
+        "package": "merman-wasm",
+        "manifest": "crates/merman-wasm/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["analysis", "svg"],
+        "target": {
+          "name": "merman_wasm",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-unknown-unknown"]
+        }
+      },
+      "expected": {
+        "capabilities": ["analysis", "svg"],
+        "runtime_ids": ["analysis", "svg"],
+        "outputs": ["svg"]
       }
     }
   ]

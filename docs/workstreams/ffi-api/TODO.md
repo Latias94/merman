@@ -57,7 +57,7 @@ Last updated: 2026-05-30
   Review: Keep UniFFI optional; do not let generated APIs redefine the canonical C ABI.
   Evidence: UniFFI smoke docs and generated binding notes.
   Handoff: DONE_WITH_CONCERNS. Split UniFFI into a follow-on package lane. UniFFI 0.31.1 is
-  available and production-used, but it is pre-1.0 and would require a shared safe bindings facade
+  available and production-used, but it is alpha and would require a shared safe bindings facade
   or duplicated options/error plumbing before it is worth adding.
 
 ## M4 — Closeout

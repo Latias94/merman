@@ -11,7 +11,7 @@ const npmrc = await readFile(
   "utf8"
 );
 
-test("dev, build, and test fail closed on both consumed WASM surfaces", () => {
+test("dev, build, and test fail closed on the complete browser package", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
   assert.equal(packageJson.packageManager, "npm@11.17.0");
   assert.equal(packageJson.engines.node, ">=22.12.0");
@@ -28,8 +28,8 @@ test("dev, build, and test fail closed on both consumed WASM surfaces", () => {
   }
   assert.match(packageJson.scripts.build, /npm run verify:dist$/u);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /verify-wasm-inputs\.mjs/);
-  assert.match(packageJson.scripts["verify:wasm-inputs"], /--preset browser-editor/);
-  assert.match(packageJson.scripts["verify:wasm-inputs"], /--out-dir-rel pkg\/editor/);
+  assert.match(packageJson.scripts["verify:wasm-inputs"], /--package full/);
+  assert.equal(packageJson.dependencies["@mermanjs/web"], "file:../platforms/web/packages/full");
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
 });

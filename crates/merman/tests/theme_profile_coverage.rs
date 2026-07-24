@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::{HeadlessRenderer, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemeProfile};
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     commit

@@ -78,9 +78,10 @@ fixture-specific comparator exceptions.
 
 ## Resource contract
 
-ZenUML owns structural limits instead of borrowing Flowchart or Sequence limits. Interactive,
-Typst, trusted-native, and unbounded profiles populate `max_zenuml_participants`,
-`max_zenuml_statements`, and `max_zenuml_fragments`; `max_source_bytes`, `max_label_bytes`, nesting
-depth, and `max_svg_bytes` remain the shared outer bounds. All structural and label checks run on
-the typed semantic model before layout. The optional fields extend the existing ABI 2 JSON options
-without changing the ABI number.
+ZenUML owns the accounting for participants, groups, statements, retained text, and semantic
+nesting, but exposes no family-specific resource knobs. The typed semantic model charges those
+values to the shared `max_model_items`, `max_model_text_bytes`, and
+`max_model_nesting_depth` budgets before layout. Source, derived layout work, SVG element, and SVG
+byte budgets use the same family-neutral contract as every other diagram. This keeps the binding
+surface stable as the grammar evolves while still making every added semantic construct
+resource-accounted.

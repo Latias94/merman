@@ -1,4 +1,4 @@
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

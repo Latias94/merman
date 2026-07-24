@@ -91,6 +91,9 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
+      - name: Verify exact artifact dependency closures
+        run: python3 scripts/verify_artifact_dependency_closures.py
+
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
 
@@ -322,6 +325,7 @@ jobs:
           swift package describe
           swift build
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
   web-npm-dry-run:
     needs: validate-inputs
@@ -362,7 +366,7 @@ jobs:
         run: |
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-editor-token-descriptor
-          cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-web-diagram-catalog
 
       - name: Install web package dependencies
@@ -372,14 +376,34 @@ jobs:
         run: npm run build --prefix platforms/web
 
       - name: Verify web package
-        run: npm run prepack --prefix platforms/web
+        run: npm run verify:packages --prefix platforms/web
 
       - name: Smoke web package
         run: npm run smoke --prefix platforms/web
 
-      - name: Pack npm package dry-run
-        working-directory: platforms/web
-        run: npm pack --dry-run
+      - name: Pack and verify Web package group dry-run
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/merman-web-package-group"
+          mkdir -p "$artifact_dir"
+          source_sha="$(git rev-parse HEAD)"
+          python3 scripts/web_package_group.py pack \
+            --root . \
+            --descriptor platforms/web/web-surface-descriptor.json \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --source-sha "$source_sha" \
+            --target-dist-tag staging
+          python3 scripts/web_package_group.py verify-artifact \
+            --manifest "$artifact_dir/web-package-group.json" \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --source-sha "$source_sha" \
+            --target-dist-tag staging \
+            --descriptor platforms/web/web-surface-descriptor.json
 
   vscode-extension-dry-run:
     needs: validate-inputs
@@ -440,7 +464,9 @@ jobs:
         run: npm ci
 
       - name: Build release runtime binaries
-        run: cargo build --release --locked -p merman-lsp -p merman-cli
+        run: |
+          cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
+          cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension
@@ -552,9 +578,6 @@ jobs:
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
       - name: Inject Android libraries into Flutter package
@@ -565,17 +588,11 @@ jobs:
       - name: Build and inject iOS XCFramework
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: bash platforms/flutter/build-ios.sh
 
       - name: Build desktop native libraries
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: bash platforms/flutter/build-desktop.sh --all
 
       - name: Setup Dart with pub.dev OIDC credentials

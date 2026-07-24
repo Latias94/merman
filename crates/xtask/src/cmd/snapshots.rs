@@ -63,9 +63,9 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
     }))
 }
 
-fn layout_snapshot_environment() -> merman::render::RenderEnvironment {
-    merman::render::RenderEnvironment::deterministic()
-        .with_text_measurement_policy(merman::render::TextMeasurementPolicy::deterministic())
+fn layout_snapshot_environment() -> merman::svg::RenderEnvironment {
+    merman::svg::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::deterministic())
 }
 
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
@@ -530,10 +530,12 @@ enum GeneratedArtifactCheck {
     DompurifyDefaults,
     EditorTokenDescriptor,
     LalrpopParsers,
+    NativeAbi,
     PlaygroundExampleCatalog,
     ResourceContract,
     ThemeSnapshot,
-    TextMeasurementAbi,
+    TextMeasurementProtocol,
+    TypstProfileConstants,
     WebDiagramCatalog,
 }
 
@@ -557,17 +559,19 @@ fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::LalrpopParsers]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 10] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
     [
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
         GeneratedArtifactCheck::EditorTokenDescriptor,
         GeneratedArtifactCheck::LalrpopParsers,
+        GeneratedArtifactCheck::NativeAbi,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
         GeneratedArtifactCheck::ResourceContract,
         GeneratedArtifactCheck::ThemeSnapshot,
-        GeneratedArtifactCheck::TextMeasurementAbi,
+        GeneratedArtifactCheck::TextMeasurementProtocol,
+        GeneratedArtifactCheck::TypstProfileConstants,
         GeneratedArtifactCheck::WebDiagramCatalog,
     ]
 }
@@ -580,10 +584,12 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
             GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
             GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
+            GeneratedArtifactCheck::NativeAbi => "native ABI",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
             GeneratedArtifactCheck::ResourceContract => "resource contract",
             GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
-            GeneratedArtifactCheck::TextMeasurementAbi => "text-measurement ABI",
+            GeneratedArtifactCheck::TextMeasurementProtocol => "text-measurement protocol",
+            GeneratedArtifactCheck::TypstProfileConstants => "Typst profile constants",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
     }
@@ -639,13 +645,17 @@ fn verify_generated_artifact_check(
             super::verify_editor_token_descriptor_artifacts()
         }
         GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
+        GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
         GeneratedArtifactCheck::ResourceContract => super::verify_resource_contract_artifacts(),
         GeneratedArtifactCheck::ThemeSnapshot => verify_theme_snapshot_artifact(tmp_dir),
-        GeneratedArtifactCheck::TextMeasurementAbi => {
-            super::verify_text_measurement_abi_artifacts()
+        GeneratedArtifactCheck::TextMeasurementProtocol => {
+            super::verify_text_measurement_protocol_artifacts()
+        }
+        GeneratedArtifactCheck::TypstProfileConstants => {
+            super::verify_typst_profile_constants_artifact()
         }
         GeneratedArtifactCheck::WebDiagramCatalog => verify_web_diagram_catalog_artifact(tmp_dir),
     }
@@ -995,10 +1005,12 @@ mod tests {
                 GeneratedArtifactCheck::DompurifyDefaults,
                 GeneratedArtifactCheck::EditorTokenDescriptor,
                 GeneratedArtifactCheck::LalrpopParsers,
+                GeneratedArtifactCheck::NativeAbi,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
                 GeneratedArtifactCheck::ResourceContract,
                 GeneratedArtifactCheck::ThemeSnapshot,
-                GeneratedArtifactCheck::TextMeasurementAbi,
+                GeneratedArtifactCheck::TextMeasurementProtocol,
+                GeneratedArtifactCheck::TypstProfileConstants,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
         );
@@ -1026,6 +1038,7 @@ mod tests {
             GeneratedArtifactCheck::LalrpopParsers.label(),
             "checked-in LALRPOP parsers"
         );
+        assert_eq!(GeneratedArtifactCheck::NativeAbi.label(), "native ABI");
         assert_eq!(
             GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
             "Playground example catalog"
@@ -1043,8 +1056,12 @@ mod tests {
             "Mermaid theme snapshot"
         );
         assert_eq!(
-            GeneratedArtifactCheck::TextMeasurementAbi.label(),
-            "text-measurement ABI"
+            GeneratedArtifactCheck::TextMeasurementProtocol.label(),
+            "text-measurement protocol"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::TypstProfileConstants.label(),
+            "Typst profile constants"
         );
         assert_eq!(
             verify_web_diagram_catalog_checks(),
@@ -1191,7 +1208,7 @@ mod tests {
         let session = layout_snapshot_environment()
             .begin_session()
             .expect("begin layout snapshot render session");
-        let route = session.text_measurement_route(merman::render::TextMeasurementPhase::Layout);
+        let route = session.text_measurement_route(merman::svg::TextMeasurementPhase::Layout);
 
         assert_eq!(
             route.primary.profile().as_str(),

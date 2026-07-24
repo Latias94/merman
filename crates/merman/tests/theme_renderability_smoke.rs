@@ -1,7 +1,7 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn legacy_init_theme_compat_config() -> MermaidConfig {
     MermaidConfig::from_value(serde_json::json!({
@@ -702,13 +702,26 @@ mindmap
 
 #[test]
 fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
-    let svg = render_svg(
+    let svg = render_svg_with_site_config(
         "mindmap-neo-visible-audit",
-        r##"%%{init: {"theme": "redux", "look": "neo", "themeVariables": {"THEME_COLOR_LIMIT": 2, "mainBkg": "#111827", "nodeBorder": "#38bdf8", "strokeWidth": 3, "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
-mindmap
+        r##"mindmap
   Root
     Child
 "##,
+        MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 2,
+                "mainBkg": "#111827",
+                "nodeBorder": "#38bdf8",
+                "strokeWidth": 3,
+                "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))",
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566"
+            }
+        })),
     );
 
     assert!(

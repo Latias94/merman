@@ -15,10 +15,10 @@ base64.workspace = true
 brotli.workspace = true
 flate2.workspace = true
 fs2.workspace = true
-futures.workspace = true
+futures = { workspace = true, features = ["executor"] }
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
-merman = { path = "../merman", features = ["render"] }
+merman = { path = "../merman", features = ["svg"] }
 merman-analysis.workspace = true
 merman-core = { path = "../merman-core" }
 merman-editor-core.workspace = true
@@ -27,16 +27,14 @@ merman-layout-elk.workspace = true
 merman-render = { path = "../merman-render", features = [
     "layout-cytoscape",
     "layout-elk",
-    "font-metrics-generation",
 ] }
 merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false }
 regex.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde-saphyr.workspace = true
+serde-saphyr = { workspace = true, features = ["deserialize", "serialize"] }
 sha2.workspace = true
-syn.workspace = true
 thiserror.workspace = true
 tempfile = "3.27.0"
 toml.workspace = true

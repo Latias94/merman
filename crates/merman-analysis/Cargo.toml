@@ -13,6 +13,9 @@ readme = "README.md"
 keywords = ["mermaid", "diagnostics", "lint", "lsp", "parser"]
 categories = ["parser-implementations", "development-tools"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
 default = []
 system-clock = ["merman-core/system-clock"]
@@ -22,9 +25,8 @@ system-timing = ["merman-core/system-timing"]
 
 [dependencies]
 chrono.workspace = true
-json5.workspace = true
 merman-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
+serde-saphyr = { workspace = true, features = ["serialize"] }
 thiserror.workspace = true

@@ -7,7 +7,7 @@ Default `render_svg_sync` stays parity-oriented. Use a profile only when a host 
 ## Rust API
 
 ```rust
-use merman::render::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
 
 let profile = HostThemeProfile::from_preset(HostThemePreset::OneDark);
 let renderer = HeadlessRenderer::new()
@@ -19,7 +19,7 @@ let svg = renderer.render_svg_sync(source)?;
 Use request-scoped helpers when only one diagram render should use a host theme:
 
 ```rust
-use merman::render::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
 
 let renderer = HeadlessRenderer::new().with_diagram_id("preview");
 let profile = HostThemeProfile::from_preset(HostThemePreset::GruvboxDark);
@@ -106,5 +106,5 @@ Series palette is mapped to Mermaid's existing palette entry points such as `cSc
 For a stronger visual showcase, run:
 
 ```bash
-cargo run -p merman --features render --example example_13_stylized_theme_showcase > showcase.svg
+cargo run -p merman --features svg --example example_13_stylized_theme_showcase > showcase.svg
 ```

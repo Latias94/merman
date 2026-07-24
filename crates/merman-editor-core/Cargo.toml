@@ -13,6 +13,9 @@ readme = "README.md"
 keywords = ["mermaid", "editor", "language-tools", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
 default = []
 system-clock = ["merman-analysis/system-clock", "merman-core/system-clock"]

@@ -180,7 +180,7 @@ def run_checkout(
         cwd=checkout,
         bench_bin="pipeline",
         package="merman",
-        features="render",
+        features="svg",
         env=env,
         toolchain=None,
     )
@@ -189,7 +189,7 @@ def run_checkout(
         cwd=checkout,
         bench_bin="pipeline",
         package="merman",
-        features="render",
+        features="svg",
         exact_benches=exact_benches,
         bench_list=bench_list,
         sample_size=sample_size,

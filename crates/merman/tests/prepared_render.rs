@@ -1,5 +1,5 @@
 use merman::ParseOptions;
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderExecutionPath,
     RenderResourcePolicy, RuntimePolicy, SvgRenderOptions, prepare_render_sync,
     prepare_semantic_sync, render_svg_sync,
@@ -7,10 +7,7 @@ use merman::render::{
 
 fn assert_info_artifact(prepared: &PreparedRender) {
     assert_eq!(prepared.metadata().diagram_type, "info");
-    assert_eq!(
-        prepared.family_kind(),
-        merman::render::RenderFamilyKind::Info
-    );
+    assert_eq!(prepared.family_kind(), merman::svg::RenderFamilyKind::Info);
 }
 
 #[test]
@@ -90,7 +87,7 @@ A --> B
         .with_layout_options(LayoutOptions::headless_svg_defaults())
         .with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(merman::render::ResourceLimitId::MaxFlowchartNodes, 1)
+                .with_limit(merman::svg::ResourceLimitId::MaxModelItems, 1)
                 .unwrap(),
         );
     let semantic = renderer
@@ -118,7 +115,7 @@ A --> B
     };
     let message = error.to_string();
     assert!(
-        message.contains("max_flowchart_nodes") || message.contains("flowchart-v2"),
+        message.contains("max_model_items") || message.contains("flowchart-v2"),
         "{message}"
     );
 }
@@ -140,7 +137,7 @@ fn high_level_render_matches_the_prepared_artifact_path() {
     assert_eq!(prepared.metadata().diagram_type, "flowchart-v2");
     assert_eq!(
         prepared.family_kind(),
-        merman::render::RenderFamilyKind::Flowchart
+        merman::svg::RenderFamilyKind::Flowchart
     );
 
     let prepared_svg = prepared.render_svg(&svg_options).unwrap();
@@ -201,10 +198,7 @@ Second: second,after first,2ms
     .unwrap()
     .expect("Gantt should produce a prepared render artifact");
 
-    assert_eq!(
-        prepared.family_kind(),
-        merman::render::RenderFamilyKind::Gantt
-    );
+    assert_eq!(prepared.family_kind(), merman::svg::RenderFamilyKind::Gantt);
     let diagnostics = prepared
         .gantt_time_axis_diagnostics()
         .expect("Gantt tasks should expose time-axis diagnostics");
@@ -297,7 +291,7 @@ align row api db
         .expect("Architecture should produce a typed prepared artifact");
     assert_eq!(
         prepared.family_kind(),
-        merman::render::RenderFamilyKind::Architecture
+        merman::svg::RenderFamilyKind::Architecture
     );
     let prepared_svg = prepared.render_svg(&svg_options).unwrap();
     let high_level_svg = render_svg_sync(

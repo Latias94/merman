@@ -9,7 +9,7 @@ as a release-grade benchmark.
 - Date: 2026-05-09
 - Git state: working tree after the XYChart axis tick cache cleanup
 - Bench command:
-  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 "xychart_medium"`
+  `cargo bench -p merman --features svg --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 "xychart_medium"`
 
 ## Code Change
 

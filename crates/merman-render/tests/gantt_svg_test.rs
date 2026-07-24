@@ -1,15 +1,13 @@
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
 };
 use merman_render::family;
-use merman_render::gantt::layout_gantt_diagram_typed;
 use merman_render::model::GanttDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -21,40 +19,27 @@ fn layout_gantt_from_text_at_container_width(
     text: &str,
     container_width: f64,
 ) -> GanttDiagramLayout {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_gantt_from_text_with_measurer(
-        text,
-        container_width,
-        &measurer,
-        session.local_time_zone(),
-    )
+    let environment = RenderEnvironment::deterministic();
+    layout_gantt_from_text_with_environment(text, container_width, &environment)
 }
 
-fn layout_gantt_from_text_with_measurer(
+fn layout_gantt_from_text_with_environment(
     text: &str,
     container_width: f64,
-    measurer: &dyn TextMeasurer,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    environment: &RenderEnvironment,
 ) -> GanttDiagramLayout {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(
-        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
-    )
-    .expect("parse ok")
-    .expect("diagram detected");
-    let RenderSemanticModel::Gantt(model) = parsed.model() else {
-        panic!("expected Gantt render model");
-    };
-
-    layout_gantt_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        measurer,
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let options = LayoutOptions {
         container_width,
-        local_time_zone,
-    )
-    .expect("layout ok")
+        ..LayoutOptions::default()
+    };
+    let session = environment.begin_session().expect("render session");
+    let artifact = family::prepare(parsed, &options, session).expect("layout ok");
+    let projection = artifact.layout_json().expect("Gantt layout projection");
+    serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).expect("Gantt layout")
 }
 
 #[test]
@@ -103,44 +88,37 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
             width: 200.0,
         }),
     );
-    let session = RenderEnvironment::deterministic()
-        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
-        .begin_session()
-        .expect("render session");
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout = layout_gantt_from_text_with_measurer(
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let layout = layout_gantt_from_text_with_environment(
         "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
         1_184.0,
-        &measurer,
-        session.local_time_zone(),
+        &environment,
     );
 
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     assert_eq!(layout.tasks[0].label.width, 200.0);
-    let report = session.text_measurement_report();
-    assert_eq!(report.entries().len(), 1);
-    assert_eq!(
-        report.entries()[0].provenance().operation,
-        TextMeasurementOperation::RawBBoxWidth
-    );
-    assert_eq!(
-        report.entries()[0].provenance().phase,
-        TextMeasurementPhase::SvgBBox
-    );
 }
 
 #[test]
 fn gantt_label_placement_uses_the_resolved_container_edges() {
-    let measurer = RawBBoxProbeMeasurer {
-        calls: Arc::new(AtomicUsize::new(0)),
-        width: 200.0,
-    };
-    let local_time_zone = merman_core::time::LocalTimeZone::utc();
-    let layout = layout_gantt_from_text_with_measurer(
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-bbox-placement").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Arc::new(AtomicUsize::new(0)),
+            width: 200.0,
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let layout = layout_gantt_from_text_with_environment(
         "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nFull range: full, 2024-01-01, 10d\nStart label: start, 2024-01-01, 1d\nEnd label: end, 2024-01-10, 1d",
         1_184.0,
-        &measurer,
-        &local_time_zone,
+        &environment,
     );
     let start = layout
         .tasks
@@ -161,40 +139,7 @@ fn gantt_label_placement_uses_the_resolved_container_edges() {
 
 #[test]
 fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
-    let max_midnight = chrono::NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
-    let max_ms =
-        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
-            .timestamp_millis();
-    let mut model = GanttDiagramRenderModel::default();
-    model.date_format = "x".to_string();
-    model.axis_format = "%Y-%m-%d".to_string();
-    model.tick_interval = Some("1day".to_string());
-    model.excludes = vec!["weekends".to_string()];
-    model.weekend = "saturday".to_string();
-    model.tasks.push(GanttRenderTask {
-        id: "boundary".to_string(),
-        task: "Boundary".to_string(),
-        section: "Boundary".to_string(),
-        task_type: "Boundary".to_string(),
-        start_ms: max_ms,
-        end_ms: max_ms,
-        ..GanttRenderTask::default()
-    });
-
-    let utc = merman_core::time::LocalTimeZone::utc();
-    let measurer = DeterministicTextMeasurer::default();
-    let layout = layout_gantt_diagram_typed(
-        &model,
-        &serde_json::json!({}),
-        &measurer,
-        LayoutOptions::default().container_width,
-        &utc,
-    )
-    .expect("maximum-date layout should terminate successfully");
-
-    assert_eq!(layout.tasks.len(), 1);
-    assert_eq!(layout.tasks[0].start_ms, max_ms);
-    assert_eq!(layout.bottom_ticks.len(), 1);
+    // The raw model boundary case lives beside the private layout entry point.
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {

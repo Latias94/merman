@@ -66,11 +66,8 @@ PROTECTED_PUBLICATION_KINDS = {
 ENVIRONMENT_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 TOP_LEVEL_KEYS = {"schema_version", "states", "release_kinds", "feature_contract", "surfaces"}
 FEATURE_CONTRACT_KEYS = {
-    "docs",
-    "browser_presets",
     "web_descriptor",
-    "web_default_preset",
-    "web_auxiliary_exports",
+    "web_package_group_surface",
 }
 SURFACE_KEYS = {
     "id",
@@ -151,15 +148,8 @@ def validate_contract(data: dict[str, Any]) -> None:
     if not isinstance(feature_contract, dict):
         raise SurfaceError("SURFACES.json feature_contract must be an object")
     reject_unknown_keys(feature_contract, FEATURE_CONTRACT_KEYS, "feature_contract")
-    for key in ["docs", "browser_presets"]:
-        require_string_list(feature_contract, key, "feature_contract")
     require_str(feature_contract, "web_descriptor", "feature_contract")
-    require_str(feature_contract, "web_default_preset", "feature_contract")
-    auxiliary_exports = feature_contract.get("web_auxiliary_exports")
-    if not isinstance(auxiliary_exports, dict) or not auxiliary_exports:
-        raise SurfaceError("feature_contract: web_auxiliary_exports must be a non-empty object")
-    if not all(isinstance(key, str) and key.strip() for key in auxiliary_exports):
-        raise SurfaceError("feature_contract: web_auxiliary_exports keys must be non-empty strings")
+    require_str(feature_contract, "web_package_group_surface", "feature_contract")
 
     surfaces = require_array(data, "surfaces", "SURFACES.json", allow_empty=False)
     seen_ids: set[str] = set()
@@ -382,9 +372,12 @@ def channel_probe(channel: dict[str, Any], surface: dict[str, Any], version: str
     target = parse_release_version(version)
     kind = channel.get("kind")
     if kind == "npm":
-        package = first_package_name(surface, "npm")
-        if package:
-            return probe_npm(package, target, channel["dist_tags"])
+        packages = package_records(surface, "npm")
+        if packages:
+            return probe_many(
+                [(package["name"], package_registry_version(package, target)) for package in packages],
+                lambda package, package_version: probe_npm(package, package_version, channel["dist_tags"]),
+            )
     if kind == "pub.dev":
         package = first_package_name(surface, "flutter")
         if package:

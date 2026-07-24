@@ -18,13 +18,13 @@ layer deserialized that JSON into private renderer structs.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline sankey_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline sankey_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline sankey_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline sankey_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 The typed worktree was run multiple times while tightening the materialization boundary. The final

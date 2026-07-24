@@ -16,21 +16,12 @@ enum MermanResourceProfile {
 
 enum MermanResourceLimitId {
   maxSourceBytes('max_source_bytes', true),
+  maxModelItems('max_model_items', true),
+  maxModelTextBytes('max_model_text_bytes', true),
+  maxModelNestingDepth('max_model_nesting_depth', true),
+  maxLayoutWorkUnits('max_layout_work_units', true),
   maxSvgBytes('max_svg_bytes', true),
   maxSvgElements('max_svg_elements', true),
-  maxSvgTreeDepth('max_svg_tree_depth', false),
-  maxFlowchartNodes('max_flowchart_nodes', true),
-  maxFlowchartEdges('max_flowchart_edges', true),
-  maxFlowchartSubgraphs('max_flowchart_subgraphs', true),
-  maxClassNodes('max_class_nodes', true),
-  maxClassEdges('max_class_edges', true),
-  maxClassNamespaces('max_class_namespaces', true),
-  maxZenumlParticipants('max_zenuml_participants', true),
-  maxZenumlStatements('max_zenuml_statements', true),
-  maxZenumlFragments('max_zenuml_fragments', true),
-  maxVennAreas('max_venn_areas', true),
-  maxSwimlaneLineHopSegmentPairs('max_swimlane_line_hop_segment_pairs', true),
-  maxLabelBytes('max_label_bytes', true),
   ;
 
   const MermanResourceLimitId(this.id, this.overridable);

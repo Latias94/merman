@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -33,6 +34,7 @@ assert VERSION_SCRIPT_SPEC.loader is not None
 VERSION_SCRIPT_SPEC.loader.exec_module(release_version_script)
 
 SOURCE_SHA = "a" * 40
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -44,6 +46,19 @@ def replace_nth(text: str, old: str, new: str, occurrence: int) -> str:
     if len(parts) <= occurrence + 1:
         raise AssertionError(f"test fixture does not contain occurrence {occurrence} of {old!r}")
     return old.join(parts[: occurrence + 1]) + new + old.join(parts[occurrence + 1 :])
+
+
+def web_package_entries() -> list[dict]:
+    descriptor_path = REPOSITORY_ROOT / release_projection.WEB_DESCRIPTOR
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    packages = descriptor.get("packages")
+    if not isinstance(packages, list):
+        raise AssertionError("Web package descriptor must declare packages")
+    return packages
+
+
+def web_package_manifest(entry: dict) -> Path:
+    return release_projection.WEB_DESCRIPTOR.parent / entry["package_dir"] / "package.json"
 
 
 class ReleaseStatusVersionTests(unittest.TestCase):
@@ -95,8 +110,9 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Cargo workspace dependency merman-core", labels)
         self.assertIn("Cargo.lock package merman-lsp", labels)
         self.assertIn("fuzz/Cargo.lock package merman-ffi", labels)
-        self.assertIn("Web lock workspace package", labels)
-        self.assertIn("Playground local Web lock", labels)
+        self.assertIn("Web package @mermanjs/web", labels)
+        self.assertIn("Web lock package @mermanjs/web", labels)
+        self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
         self.assertIn("Python package", labels)
         self.assertIn("Flutter Android package", labels)
@@ -118,6 +134,11 @@ class ReleaseProjectionTests(unittest.TestCase):
     def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
         version = release_projection.verify_repository(self.ROOT).authority
         canonical = version.canonical
+        entries = web_package_entries()
+        default_entry = next(entry for entry in entries if entry["id"] == "full")
+        playground_lock_digest = hashlib.sha256(
+            (self.ROOT / release_projection.PLAYGROUND_LOCK).read_text(encoding="utf-8").encode("utf-8")
+        ).hexdigest()
         mutations = [
             (
                 Path("Cargo.toml"),
@@ -168,43 +189,47 @@ class ReleaseProjectionTests(unittest.TestCase):
                     'name = "merman"\nversion = "9.9.9"',
                 ),
             ),
-            (
-                release_projection.WEB_PACKAGE,
-                lambda text: replace_once(
-                    text,
-                    f'"version": "{canonical}"',
-                    '"version": "9.9.9"',
-                ),
-            ),
-            (
-                release_projection.WEB_LOCK,
-                lambda text: replace_nth(
-                    text,
-                    f'"version": "{canonical}"',
-                    '"version": "9.9.9"',
-                    0,
-                ),
-            ),
-            (
-                release_projection.WEB_LOCK,
-                lambda text: replace_nth(
-                    text,
-                    f'"version": "{canonical}"',
-                    '"version": "9.9.9"',
-                    1,
-                ),
-            ),
+            *[
+                (
+                    web_package_manifest(entry),
+                    lambda text, expected=canonical: replace_once(
+                        text,
+                        f'"version": "{expected}"',
+                        '"version": "9.9.9"',
+                    ),
+                )
+                for entry in entries
+            ],
+            *[
+                (
+                    release_projection.WEB_LOCK,
+                    lambda text, entry=entry, expected=canonical: replace_once(
+                        text,
+                        (
+                            f'"{entry["package_dir"]}": {{\n'
+                            f'      "name": "{entry["name"]}",\n'
+                            f'      "version": "{expected}"'
+                        ),
+                        (
+                            f'"{entry["package_dir"]}": {{\n'
+                            f'      "name": "{entry["name"]}",\n'
+                            '      "version": "9.9.9"'
+                        ),
+                    ),
+                )
+                for entry in entries
+            ],
             (
                 release_projection.PLAYGROUND_LOCK,
                 lambda text: replace_once(
                     text,
                     (
-                        '"../platforms/web": {\n'
+                        f'"../platforms/web/{default_entry["package_dir"]}": {{\n'
                         '      "name": "@mermanjs/web",\n'
                         f'      "version": "{canonical}"'
                     ),
                     (
-                        '"../platforms/web": {\n'
+                        f'"../platforms/web/{default_entry["package_dir"]}": {{\n'
                         '      "name": "@mermanjs/web",\n'
                         '      "version": "9.9.9"'
                     ),
@@ -214,8 +239,8 @@ class ReleaseProjectionTests(unittest.TestCase):
                 release_projection.PLAYGROUND_LICENSE_REPORT,
                 lambda text: replace_once(
                     text,
-                    f" - @mermanjs/web@{canonical}",
-                    " - @mermanjs/web@9.9.9",
+                    f"package-lock.json SHA-256: {playground_lock_digest}",
+                    "package-lock.json SHA-256: " + "0" * 64,
                 ),
             ),
             (
@@ -315,6 +340,8 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn(Path("Cargo.toml"), updates)
         self.assertIn(release_projection.FUZZ_LOCK, updates)
+        for entry in web_package_entries():
+            self.assertIn(web_package_manifest(entry), updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
@@ -867,7 +894,7 @@ class ReleaseStatusContractTests(unittest.TestCase):
         data = contract(
             surfaces=[
                 surface(
-                    surface_id="web-wasm",
+                    surface_id="web-package-group",
                     entry_point="@mermanjs/web",
                     channels=[
                         channel(
@@ -956,6 +983,45 @@ class ReleaseStatusContractTests(unittest.TestCase):
         self.assertEqual(checked, ["alpha@1.0.0", "beta@1.0.0"])
         self.assertEqual(row["state"], "missing")
         self.assertIn("beta missing", row["reason"])
+
+    def test_npm_probe_checks_every_public_package_in_a_group(self) -> None:
+        original_probe_npm = release_status.probe_npm
+        checked: list[str] = []
+        try:
+            def probe_npm(
+                package: str,
+                version: str,
+                _dist_tags: dict[str, str],
+            ) -> dict[str, str]:
+                checked.append(f"{package}@{version}")
+                state = "missing" if package.endswith("-editor") else "found"
+                return {"state": state, "reason": f"{package} {state}"}
+
+            release_status.probe_npm = probe_npm
+            row = release_status.channel_probe(
+                {"kind": "npm", "dist_tags": dist_tags()},
+                {
+                    "packages": [
+                        {"kind": "npm", "name": "@mermanjs/web"},
+                        {"kind": "npm", "name": "@mermanjs/web-analysis"},
+                        {"kind": "npm", "name": "@mermanjs/web-editor"},
+                    ]
+                },
+                "1.0.0-alpha.1",
+            )
+        finally:
+            release_status.probe_npm = original_probe_npm
+
+        self.assertEqual(
+            checked,
+            [
+                "@mermanjs/web@1.0.0-alpha.1",
+                "@mermanjs/web-analysis@1.0.0-alpha.1",
+                "@mermanjs/web-editor@1.0.0-alpha.1",
+            ],
+        )
+        self.assertEqual(row["state"], "missing")
+        self.assertIn("@mermanjs/web-editor missing", row["reason"])
 
     def test_crates_probe_uses_manifest_version_when_declared(self) -> None:
         package = {
@@ -1170,13 +1236,8 @@ def contract(*, surfaces: list[dict] | None = None) -> dict:
         ],
         "release_kinds": ["stable", "prerelease"],
         "feature_contract": {
-            "docs": ["README.md"],
-            "browser_presets": ["browser-full"],
             "web_descriptor": "platforms/web/web-surface-descriptor.json",
-            "web_default_preset": "browser-full",
-            "web_auxiliary_exports": {
-                ".": {"import": "./dist/index.js", "types": "./dist/index.d.ts"}
-            },
+            "web_package_group_surface": "web-package-group",
         },
         "surfaces": surfaces
         or [

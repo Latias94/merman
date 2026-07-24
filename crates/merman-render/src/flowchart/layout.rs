@@ -954,13 +954,39 @@ fn extract_clusters_recursively(
     }
 }
 
-pub fn layout_flowchart_typed(
+pub(crate) fn layout_flowchart_typed(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
     layout_flowchart_with_model(model, effective_config, measurer, math_renderer)
+}
+
+/// Estimates the graphlib pre-pass work performed for flowchart clusters.
+///
+/// `adjust_flowchart_clusters_and_edges` scans every edge for every cluster and the recursive
+/// extractor scans the edge set again while copying each cluster's descendants. The estimate
+/// intentionally charges only those source-backed inspections (plus a small linear layout
+/// baseline); the Dagre/ELK kernels remain responsible for their own internal work.
+pub(crate) fn flowchart_layout_work_units(model: &FlowchartModel) -> usize {
+    let nodes = model.nodes.len().saturating_add(model.subgraphs.len());
+    let edges = model.edges.len();
+    let subgraphs = model.subgraphs.len();
+    let baseline = nodes.saturating_add(edges).saturating_mul(4);
+    if subgraphs == 0 || edges == 0 {
+        return baseline;
+    }
+
+    let depth = merman_core::resources::FlowchartComplexity::from_model(model)
+        .subgraph_depth
+        .max(1);
+    let cluster_edge_scans = subgraphs.saturating_mul(edges).saturating_mul(depth);
+    let extraction_edge_scans = nodes.saturating_mul(edges);
+
+    baseline
+        .saturating_add(cluster_edge_scans)
+        .saturating_add(extraction_edge_scans)
 }
 
 fn layout_flowchart_with_model(
@@ -1464,7 +1490,6 @@ fn layout_flowchart_with_model(
             &mut extracted_graphs,
             0,
         );
-
         // Explicit-direction extraction can rebind a cross-boundary edge to the cluster node.
         // Refresh root endpoints after extraction so output lookup uses the surviving nodes.
         for ek in g.edge_keys() {
@@ -2969,10 +2994,86 @@ fn layout_flowchart_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::sync::mpsc;
     use std::time::Duration;
 
     const DEEP_SUBGRAPH_DEPTH: usize = 10_000;
+    const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
+
+    struct NonLatticeComputedLengthMeasurer;
+
+    impl TextMeasurer for NonLatticeComputedLengthMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMetrics {
+                width: 40.0,
+                height: 18.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            NON_LATTICE_COMPUTED_LENGTH_PX
+        }
+    }
+
+    #[test]
+    fn dagre_preserves_operation_computed_length_precision() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            &NonLatticeComputedLengthMeasurer,
+            None,
+        )
+        .expect("layout ok");
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .expect("node A");
+
+        assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+    }
+
+    #[test]
+    fn unknown_shape_is_rejected_instead_of_becoming_a_rectangle() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TB\nA[known]\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let mut model = model.clone();
+        model.nodes[0].layout_shape = Some("definitely-unknown".to_string());
+        let error = layout_flowchart_typed(
+            &model,
+            &parsed.metadata().effective_config,
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+        )
+        .expect_err("unknown Flowchart shapes must not silently become rectangles");
+        let Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel for unknown Flowchart shape");
+        };
+        assert_eq!(
+            message,
+            "No such shape: definitely-unknown. Please check your syntax."
+        );
+    }
 
     #[derive(Debug)]
     struct DeepTraversalOutcome {

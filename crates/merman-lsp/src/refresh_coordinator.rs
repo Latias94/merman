@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tower_lsp::Client;
+use tower_lsp_server::Client;
 
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -185,7 +185,7 @@ impl RefreshTransport {
 
 async fn supervise_refresh<F>(kind: &str, refresh: F)
 where
-    F: std::future::Future<Output = tower_lsp::jsonrpc::Result<()>>,
+    F: std::future::Future<Output = tower_lsp_server::jsonrpc::Result<()>>,
 {
     let result = match tokio::time::timeout(REFRESH_TIMEOUT, refresh).await {
         Ok(result) => result,
@@ -204,7 +204,7 @@ mod tests {
     use super::*;
     use crate::refresh_transport::RefreshClient;
     use futures::StreamExt;
-    use tower_lsp::jsonrpc::Response;
+    use tower_lsp_server::jsonrpc::Response;
 
     #[tokio::test(start_paused = true)]
     async fn timed_out_refresh_releases_waiter_and_allows_a_follow_up() {
@@ -241,7 +241,7 @@ mod tests {
                     serde_json::Value::Null,
                 ))
                 .is_none(),
-            "late managed responses must not reach tower-lsp"
+            "late managed responses must not reach tower-lsp-server"
         );
         assert_eq!(responses.pending_count(), 1);
 

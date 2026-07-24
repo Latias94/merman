@@ -14,9 +14,10 @@ surface, not a general-purpose complete Eclipse ELK distribution.
 
 Source-backed Eclipse ELK layered work lives in `merman-elk-layered`, an
 EPL-2.0 crate that keeps translated ELK algorithm code behind an explicit
-license boundary. `merman-layout-elk` re-exports that crate as `source_port`
-for diagnostics and focused parity work. The removed compatibility algorithm
-has no fallback alias.
+license boundary. Its phase implementations are not re-exported: diagnostics
+use `SourcePhaseDiagnostics`, which preserves the same guarded execution
+boundary as production layout. The removed compatibility algorithm has no
+fallback alias.
 
 ## Random seed authority
 
@@ -26,6 +27,6 @@ that sentinel with a typed error. Normal Mermaid graphs use the upstream
 nonzero default and continue to use `layout` directly.
 
 An operation owner that intentionally accepts the sentinel must call
-`layout_with_random_policy` with an `ElkRandomPolicy` derived from its immutable
-operation context. This keeps replayed layouts byte-stable while preserving the
-configured `randomSeed` value in the source model.
+`layout_with_operation_seed` with an `ElkOperationSeed` created from the immutable,
+nonzero seed it captured for that operation. This keeps replayed layouts byte-stable
+while preserving the configured `randomSeed` value in the source model.

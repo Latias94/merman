@@ -1,5 +1,5 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use merman::render::{
+use merman::svg::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
 };
 use merman_core::{Engine, ParseOptions};
@@ -19,7 +19,7 @@ fn bench_architecture_stress(c: &mut Criterion) {
         .expect("parse")
         .expect("supported diagram");
     let svg_opts = SvgRenderOptions {
-        diagram_id: Some(merman::render::sanitize_svg_id(
+        diagram_id: Some(merman::svg::sanitize_svg_id(
             "stress_architecture_batch3_many_services_one_group_059",
         )),
         ..SvgRenderOptions::default()

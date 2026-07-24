@@ -36,12 +36,17 @@ const BENCHMARK_MERMAN_ENGINE_MANIFEST = path.join(
   ".runtime",
   "benchmark-merman-engine.json",
 );
+const OPAQUE_ENGINE_ASSETS = [
+  "mermaid-engine",
+  "benchmark-merman-engine",
+];
 const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(ROOT);
 const expectedCspPolicies = createExpectedCspPolicies(opaqueRealmCspHashes);
 
-const MERMAN_WASM_SHIM_SOURCE = "../platforms/web/pkg/merman_wasm.js";
+const MERMAN_WASM_SHIM_SOURCE =
+  "../platforms/web/packages/full/artifacts/wasm/merman_wasm.js";
 const MERMAN_WASM_BINARY_SOURCE =
-  "../platforms/web/pkg/merman_wasm_bg.wasm";
+  "../platforms/web/packages/full/artifacts/wasm/merman_wasm_bg.wasm";
 
 if (process.env.SKIP_VERIFY_DIST_WASM === "1") {
   process.exit(0);
@@ -116,6 +121,7 @@ if (!isNonEmptyFile(MANIFEST_FILE)) {
 
 const manifest = loadBuildManifest();
 verifyOwnedEditorWorkers();
+verifyOpaqueEngineAssets();
 const indexEntry = requireManifestEntry(manifest, "index.html");
 const benchmarkEntry = requireManifestEntry(manifest, "benchmark.html");
 loadBenchmarkSourceBoundaries();
@@ -305,7 +311,7 @@ console.log(
     "[merman-playground] dist WASM present.",
     `  WASM: ${relativeToDist(wasm)}`,
     `  JS shim: ${relativeToDist(shim)}`,
-    "  Compare execution: opaque inline realm artifact",
+    "  Compare execution: opaque verified static realm artifact",
     `  Benchmark entry: ${relativeToDist(BENCHMARK_HTML)}`,
     "  Trusted Benchmark engines: Merman only",
   ].join("\n"),
@@ -339,6 +345,51 @@ function loadBuildManifest() {
     }
   }
   return manifest;
+}
+
+function verifyOpaqueEngineAssets() {
+  const publicRoot = path.join(DIST, "opaque-realm");
+  const expected = OPAQUE_ENGINE_ASSETS.map((name) => `${name}.js`).sort();
+  let actual;
+  try {
+    actual = readdirSync(publicRoot).sort();
+  } catch (error) {
+    fail([`  Missing opaque realm engine assets: ${errorMessage(error)}`]);
+    return;
+  }
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail([
+      `  Opaque realm engine asset set is invalid: expected ${expected.join(", ")}; found ${actual.join(", ")}`,
+    ]);
+  }
+  for (const name of OPAQUE_ENGINE_ASSETS) {
+    const sourcePath = path.join(ROOT, ".runtime", `${name}.js`);
+    const manifestPath = path.join(ROOT, ".runtime", `${name}.json`);
+    const publicPath = path.join(publicRoot, `${name}.js`);
+    if (!isNonEmptyFile(sourcePath) || !isNonEmptyFile(manifestPath)) {
+      fail([`  Missing generated opaque realm source: ${name}`]);
+    }
+    if (!isNonEmptyFile(publicPath)) {
+      fail([`  Missing published opaque realm source: ${name}`]);
+    }
+    let identity;
+    try {
+      identity = JSON.parse(readFileSync(manifestPath, "utf8"));
+    } catch (error) {
+      fail([`  Invalid opaque realm manifest ${name}: ${errorMessage(error)}`]);
+      continue;
+    }
+    const source = readFileSync(sourcePath, "utf8");
+    const published = readFileSync(publicPath, "utf8");
+    const digest = createHash("sha256").update(published).digest("hex");
+    if (
+      source !== published ||
+      identity?.bytes !== Buffer.byteLength(published) ||
+      identity?.sha256 !== digest
+    ) {
+      fail([`  Published opaque realm source drifted from ${name} identity.`]);
+    }
+  }
 }
 
 function loadBenchmarkSourceBoundaries() {

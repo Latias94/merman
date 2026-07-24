@@ -525,7 +525,8 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
     }
 }
 
-pub fn layout_er_diagram_typed(
+#[cfg(not(feature = "layout-elk"))]
+pub(crate) fn layout_er_diagram_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -534,32 +535,35 @@ pub fn layout_er_diagram_typed(
         model,
         effective_config,
         measurer,
-        ErElkAuthority::RequireExplicit,
+        ErElkAuthority::Raw,
     )
 }
 
 #[cfg(feature = "layout-elk")]
-/// Lays out an ER diagram while giving ELK's upstream `randomSeed = 0` sentinel an
-/// operation-owned deterministic fallback.
-pub fn layout_er_diagram_typed_with_elk_random_policy(
+/// Lays out an ER diagram through ELK using the render operation's captured seed.
+///
+/// This remains crate-private so the public typed API stays fail-closed for ELK's unseeded
+/// `randomSeed = 0` source sentinel.
+pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
-    random_policy: elk::ElkRandomPolicy,
+    operation_seed: elk::ElkOperationSeed,
 ) -> Result<ErDiagramLayout> {
     layout_er_diagram_typed_with_elk_authority(
         model,
         effective_config,
         measurer,
-        ErElkAuthority::Deterministic(random_policy),
+        ErElkAuthority::Operation(operation_seed),
     )
 }
 
 #[derive(Debug, Clone, Copy)]
 enum ErElkAuthority {
-    RequireExplicit,
+    #[cfg(not(feature = "layout-elk"))]
+    Raw,
     #[cfg(feature = "layout-elk")]
-    Deterministic(elk::ElkRandomPolicy),
+    Operation(elk::ElkOperationSeed),
 }
 
 fn layout_er_diagram_typed_with_elk_authority(
@@ -573,23 +577,23 @@ fn layout_er_diagram_typed_with_elk_authority(
     if settings.algorithm == ErLayoutAlgorithm::Elk {
         #[cfg(feature = "layout-elk")]
         {
-            let random_policy = match elk_authority {
-                ErElkAuthority::RequireExplicit => elk::ElkRandomPolicy::require_explicit(),
-                ErElkAuthority::Deterministic(policy) => policy,
+            let operation_seed = match elk_authority {
+                ErElkAuthority::Operation(operation_seed) => Some(operation_seed),
             };
             return layout_er_diagram_elk_typed(
                 model,
                 effective_config,
                 measurer,
                 settings,
-                random_policy,
+                operation_seed,
             );
         }
         #[cfg(not(feature = "layout-elk"))]
         {
             let _ = elk_authority;
-            return Err(Error::UnsupportedDiagram {
-                diagram_type: "er (layout: elk)".to_string(),
+            return Err(Error::MissingCapability {
+                capability: crate::RenderCapability::LayoutElk,
+                diagram_type: "er".to_string(),
             });
         }
     }
@@ -957,109 +961,20 @@ fn layout_er_diagram_elk_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
-    random_policy: elk::ElkRandomPolicy,
+    operation_seed: Option<elk::ElkOperationSeed>,
 ) -> Result<ErDiagramLayout> {
-    let ErLayoutSettings {
-        algorithm: _,
-        graph,
-        label_style,
-        attr_style,
-        relationship_label_style,
-        relationship_html_labels,
-        entity_measurement,
-    } = settings;
-
-    let mut entities: Vec<&ErEntity> = model.entities.values().collect();
-    entities.sort_by(|left, right| {
-        fn counter(id: &str) -> Option<usize> {
-            id.rsplit_once('-')?.1.parse().ok()
-        }
-        (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
-    });
-
-    let nodes = entities
-        .into_iter()
-        .map(|entity| {
-            let (width, height) = entity_box_dimensions(
-                entity,
-                measurer,
-                &label_style,
-                &attr_style,
-                entity_measurement,
-            );
-            elk::Node {
-                id: entity.id.clone(),
-                kind: elk::NodeKind::Leaf,
-                width,
-                height,
-                parent: None,
-                direction: None,
-                hierarchy_handling: None,
-                layer_constraint: None,
-                label: None,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let entity_ids = nodes
-        .iter()
-        .map(|node| node.id.as_str())
-        .collect::<std::collections::HashSet<_>>();
-    let mut edges = Vec::with_capacity(model.relationships.len());
-    for (index, relationship) in model.relationships.iter().enumerate() {
-        if !entity_ids.contains(relationship.entity_a.as_str())
-            || !entity_ids.contains(relationship.entity_b.as_str())
-        {
-            return Err(Error::InvalidModel {
-                message: format!(
-                    "relationship references missing entities: {} -> {}",
-                    relationship.entity_a, relationship.entity_b
-                ),
-            });
-        }
-        let (label_width, label_height) = edge_label_metrics(
-            &relationship.role_a,
-            measurer,
-            &relationship_label_style,
-            relationship_html_labels,
-        );
-        edges.push(elk::Edge {
-            id: format!("er-rel-{index}"),
-            source: relationship.entity_a.clone(),
-            target: relationship.entity_b.clone(),
-            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
-                width: label_width,
-                height: label_height,
-            }),
-            minlen: 1,
-            inside_self_loops_yo: false,
-        });
-    }
-
-    let elk_graph = elk::Graph {
-        id: "root".to_string(),
-        direction: match graph.rankdir {
-            dugong::RankDir::LR => elk::Direction::Right,
-            dugong::RankDir::RL => elk::Direction::Left,
-            dugong::RankDir::BT => elk::Direction::Up,
-            dugong::RankDir::TB => elk::Direction::Down,
-        },
-        nodes,
-        edges,
-        // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
-        // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
-        spacing: elk::Spacing::default(),
-        options: er_elk_layout_options(effective_config),
-    };
+    let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
     let source_edge_by_id = elk_graph
         .edges
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
         .collect::<HashMap<_, _>>();
-    let elk_layout = elk::layout_with_random_policy(&elk_graph, random_policy).map_err(|err| {
-        Error::InvalidModel {
-            message: format!("ER ELK layout failed: {err}"),
-        }
+    let elk_layout = match operation_seed {
+        Some(operation_seed) => elk::layout_with_operation_seed(&elk_graph, operation_seed),
+        None => elk::layout(&elk_graph),
+    }
+    .map_err(|err| Error::InvalidModel {
+        message: format!("ER ELK layout failed: {err}"),
     })?;
 
     let mut out_nodes = elk_layout
@@ -1150,6 +1065,107 @@ fn layout_er_diagram_elk_typed(
 }
 
 #[cfg(feature = "layout-elk")]
+fn er_elk_graph(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    settings: &ErLayoutSettings,
+) -> Result<elk::Graph> {
+    let ErLayoutSettings {
+        algorithm: _,
+        graph,
+        label_style,
+        attr_style,
+        relationship_label_style,
+        relationship_html_labels,
+        entity_measurement,
+    } = settings;
+
+    let mut entities: Vec<&ErEntity> = model.entities.values().collect();
+    entities.sort_by(|left, right| {
+        fn counter(id: &str) -> Option<usize> {
+            id.rsplit_once('-')?.1.parse().ok()
+        }
+        (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
+    });
+
+    let nodes = entities
+        .into_iter()
+        .map(|entity| {
+            let (width, height) = entity_box_dimensions(
+                entity,
+                measurer,
+                label_style,
+                attr_style,
+                *entity_measurement,
+            );
+            elk::Node {
+                id: entity.id.clone(),
+                kind: elk::NodeKind::Leaf,
+                width,
+                height,
+                parent: None,
+                direction: None,
+                hierarchy_handling: None,
+                layer_constraint: None,
+                label: None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let entity_ids = nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut edges = Vec::with_capacity(model.relationships.len());
+    for (index, relationship) in model.relationships.iter().enumerate() {
+        if !entity_ids.contains(relationship.entity_a.as_str())
+            || !entity_ids.contains(relationship.entity_b.as_str())
+        {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "relationship references missing entities: {} -> {}",
+                    relationship.entity_a, relationship.entity_b
+                ),
+            });
+        }
+        let (label_width, label_height) = edge_label_metrics(
+            &relationship.role_a,
+            measurer,
+            relationship_label_style,
+            *relationship_html_labels,
+        );
+        edges.push(elk::Edge {
+            id: format!("er-rel-{index}"),
+            source: relationship.entity_a.clone(),
+            target: relationship.entity_b.clone(),
+            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
+                width: label_width,
+                height: label_height,
+            }),
+            minlen: 1,
+            inside_self_loops_yo: false,
+        });
+    }
+
+    Ok(elk::Graph {
+        id: "root".to_string(),
+        direction: match graph.rankdir {
+            dugong::RankDir::LR => elk::Direction::Right,
+            dugong::RankDir::RL => elk::Direction::Left,
+            dugong::RankDir::BT => elk::Direction::Up,
+            dugong::RankDir::TB => elk::Direction::Down,
+        },
+        nodes,
+        edges,
+        // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
+        // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
+        spacing: elk::Spacing::default(),
+        options: er_elk_layout_options(effective_config),
+    })
+}
+
+#[cfg(feature = "layout-elk")]
 fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
     use crate::config::{config_bool, config_string};
 
@@ -1226,6 +1242,70 @@ mod tests {
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     };
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn er_elk_keeps_the_source_default_nonzero_seed() {
+        assert_eq!(
+            super::er_elk_layout_options(&serde_json::Value::Null)
+                .layered
+                .random_seed,
+            1
+        );
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn er_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
+        use std::num::NonZeroU64;
+
+        let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+            direction: "TB".to_string(),
+            ..Default::default()
+        };
+        for id in ["CUSTOMER", "ORDER"] {
+            model.entities.insert(
+                id.to_string(),
+                merman_core::diagrams::er::ErEntityRenderModel {
+                    id: id.to_string(),
+                    label: id.to_string(),
+                    ..Default::default()
+                },
+            );
+        }
+        model
+            .relationships
+            .push(merman_core::diagrams::er::ErRelationshipRenderModel {
+                entity_a: "CUSTOMER".to_string(),
+                role_a: "places".to_string(),
+                entity_b: "ORDER".to_string(),
+                ..Default::default()
+            });
+
+        let effective_config = serde_json::json!({ "layout": "elk" });
+        let settings =
+            super::ErConfigView::new(&effective_config).layout_settings(&model.direction);
+        let mut graph = super::er_elk_graph(
+            &model,
+            &effective_config,
+            &VendoredFontMetricsTextMeasurer::default(),
+            &settings,
+        )
+        .expect("ER ELK adapter graph");
+        graph.options.layered.random_seed = 0;
+
+        assert!(super::elk::layout(&graph).is_err());
+
+        let operation_seed = super::elk::ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x6572_2d73_6565_6421).expect("nonzero operation seed"),
+        );
+        let first = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("seeded ER layout");
+        let replayed = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("replayed seeded ER layout");
+
+        assert_eq!(first, replayed);
+    }
 
     struct ErProbeMeasurer;
 

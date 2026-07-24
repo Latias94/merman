@@ -330,10 +330,10 @@ impl<'a> Parser<'a> {
         }
         let had_par_expr = !anonymous && matches!(self.peek_kind(), TokenKind::OpenParen);
         let label = if had_par_expr {
-            let par = {
-                let grammar = Grammar::new(self.source, &self.tokens);
-                grammar.par_expr(self.cursor)
-            };
+            let (par, depth_error) = self.grammar_match(|grammar, start| grammar.par_expr(start));
+            if let Some(span) = depth_error {
+                self.report_expression_depth_error(span);
+            }
             par.and_then(|par| {
                 self.cursor = par.end;
                 par.label
@@ -418,10 +418,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_required_par_expr(&mut self, diagnostic: &str) -> Option<SpannedText> {
-        let par = {
-            let grammar = Grammar::new(self.source, &self.tokens);
-            grammar.par_expr(self.cursor)
-        };
+        let (par, depth_error) = self.grammar_match(|grammar, start| grammar.par_expr(start));
+        if let Some(span) = depth_error {
+            self.report_expression_depth_error(span);
+            return None;
+        }
         if let Some(par) = par {
             self.cursor = par.end;
             par.label
@@ -462,10 +463,11 @@ impl<'a> Parser<'a> {
             let name = if is_catch { "catch" } else { "finally" };
             let branch_start = self.bump().span.start;
             let details = if is_catch && matches!(self.peek_kind(), TokenKind::OpenParen) {
-                let invocation = {
-                    let grammar = Grammar::new(self.source, &self.tokens);
-                    grammar.invocation(self.cursor)
-                };
+                let (invocation, depth_error) =
+                    self.grammar_match(|grammar, start| grammar.invocation(start));
+                if let Some(span) = depth_error {
+                    self.report_expression_depth_error(span);
+                }
                 invocation.map(|invocation| {
                     self.cursor = invocation.end;
                     trimmed_text(
@@ -576,10 +578,11 @@ impl<'a> Parser<'a> {
             self.tokens[self.cursor.saturating_sub(1)].kind,
             TokenKind::Keyword(Keyword::Return)
         ) {
-            let expr = {
-                let grammar = Grammar::new(self.source, &self.tokens);
-                grammar.expression(self.cursor)
-            };
+            let (expr, depth_error) =
+                self.grammar_match(|grammar, start| grammar.expression(start));
+            if let Some(span) = depth_error {
+                self.report_expression_depth_error(span);
+            }
             let value = expr.map(|expr| {
                 self.cursor = expr.end;
                 trimmed_text(self.source, expr.span.start, expr.span.end)
@@ -646,18 +649,22 @@ impl<'a> Parser<'a> {
         depth: usize,
         comment: Option<SpannedText>,
     ) -> Option<StatementSyntax> {
-        let creation = {
-            let grammar = Grammar::new(self.source, &self.tokens);
-            grammar.creation_body(self.cursor)
-        };
+        let (creation, depth_error) =
+            self.grammar_match(|grammar, start| grammar.creation_body(start));
+        if let Some(span) = depth_error {
+            self.report_expression_depth_error(span);
+            return None;
+        }
         if let Some(creation) = creation {
             return self.consume_creation(depth, comment, creation);
         }
 
-        let message = {
-            let grammar = Grammar::new(self.source, &self.tokens);
-            grammar.message_body(self.cursor)
-        };
+        let (message, depth_error) =
+            self.grammar_match(|grammar, start| grammar.message_body(start));
+        if let Some(span) = depth_error {
+            self.report_expression_depth_error(span);
+            return None;
+        }
         if let Some(message) = message.filter(|message| {
             let grammar = Grammar::new(self.source, &self.tokens);
             grammar.message_candidate_is_complete(message.end)
@@ -803,6 +810,22 @@ impl<'a> Parser<'a> {
         if let Some(comment) = self.comments.get_mut(self.cursor) {
             *comment = None;
         }
+    }
+
+    fn grammar_match<T>(
+        &self,
+        parse: impl FnOnce(&Grammar<'_>, usize) -> Option<T>,
+    ) -> (Option<T>, Option<SourceSpan>) {
+        let grammar = Grammar::new(self.source, &self.tokens);
+        let value = parse(&grammar, self.cursor);
+        (value, grammar.expression_depth_error())
+    }
+
+    fn report_expression_depth_error(&mut self, span: SourceSpan) {
+        self.error(
+            format!("ZenUML expression nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"),
+            span,
+        );
     }
 
     fn advance_to_offset(&mut self, offset: usize) {
@@ -1035,7 +1058,9 @@ struct ParExprMatch {
 struct Grammar<'a> {
     source: &'a str,
     tokens: &'a [Token],
-    expression_depth_exceeded: Cell<bool>,
+    expression_depth_error: Cell<Option<SourceSpan>>,
+    #[cfg(test)]
+    participant_candidate_evaluations: Cell<usize>,
 }
 
 enum GrammarValue {
@@ -1228,16 +1253,28 @@ impl<'a> Grammar<'a> {
         Self {
             source,
             tokens,
-            expression_depth_exceeded: Cell::new(false),
+            expression_depth_error: Cell::new(None),
+            #[cfg(test)]
+            participant_candidate_evaluations: Cell::new(0),
         }
+    }
+
+    fn expression_depth_error(&self) -> Option<SourceSpan> {
+        self.expression_depth_error.get()
     }
 
     #[cfg(test)]
     fn expression_depth_exceeded(&self) -> bool {
-        self.expression_depth_exceeded.get()
+        self.expression_depth_error.get().is_some()
+    }
+
+    #[cfg(test)]
+    fn participant_candidate_evaluations(&self) -> usize {
+        self.participant_candidate_evaluations.get()
     }
 
     fn run_grammar_task(&self, initial: GrammarTask) -> GrammarValue {
+        self.expression_depth_error.set(None);
         let mut tasks = vec![initial];
         let mut result = None;
 
@@ -1249,7 +1286,10 @@ impl<'a> Grammar<'a> {
                     depth,
                 } => {
                     if depth > MAX_DIAGRAM_NESTING_DEPTH {
-                        self.expression_depth_exceeded.set(true);
+                        if self.expression_depth_error.get().is_none() {
+                            self.expression_depth_error
+                                .set(Some(self.span(start, start.saturating_add(1))));
+                        }
                         result = Some(GrammarValue::Expression(None));
                     } else {
                         tasks.push(GrammarTask::ExpressionAfterPrefix { min_bp, depth });
@@ -1299,7 +1339,7 @@ impl<'a> Grammar<'a> {
                 } => {
                     let Some(right) = take_expression(&mut result) else {
                         result = Some(GrammarValue::Expression(
-                            (!self.expression_depth_exceeded.get()).then_some(left),
+                            self.expression_depth_error.get().is_none().then_some(left),
                         ));
                         continue;
                     };
@@ -1347,7 +1387,7 @@ impl<'a> Grammar<'a> {
                             end: expr.end,
                             span: self.span(start, expr.end),
                         })));
-                    } else if self.expression_depth_exceeded.get() {
+                    } else if self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Expression(None));
                     } else {
                         tasks.push(GrammarTask::PrefixTryParenthesized { start, depth });
@@ -1361,7 +1401,7 @@ impl<'a> Grammar<'a> {
                             min_bp: 0,
                             depth: depth + 1,
                         });
-                    } else if self.expression_depth_exceeded.get() {
+                    } else if self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Expression(None));
                     } else {
                         tasks.push(GrammarTask::PrefixTryCreation { start, depth });
@@ -1391,7 +1431,7 @@ impl<'a> Grammar<'a> {
                             end: creation.end,
                             span: creation.span,
                         })));
-                    } else if self.expression_depth_exceeded.get() {
+                    } else if self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Expression(None));
                     } else {
                         tasks.push(GrammarTask::PrefixTryMessagePath { start, depth });
@@ -1404,7 +1444,7 @@ impl<'a> Grammar<'a> {
                             start: from_to.end,
                             depth,
                         });
-                    } else if self.expression_depth_exceeded.get() {
+                    } else if self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Expression(None));
                     } else {
                         tasks.push(GrammarTask::PrefixTryFunc { start, depth });
@@ -1433,7 +1473,7 @@ impl<'a> Grammar<'a> {
                                 span: func.span,
                             })));
                         }
-                        _ if self.expression_depth_exceeded.get() => {
+                        _ if self.expression_depth_error.get().is_some() => {
                             result = Some(GrammarValue::Expression(None));
                         }
                         _ if self.is_atom(start) => {
@@ -1494,7 +1534,7 @@ impl<'a> Grammar<'a> {
                     invocation_start,
                 } => {
                     let invocation = take_invocation(&mut result);
-                    if invocation.is_none() && self.expression_depth_exceeded.get() {
+                    if invocation.is_none() && self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Creation(None));
                         continue;
                     }
@@ -1574,7 +1614,7 @@ impl<'a> Grammar<'a> {
                     first_emoji,
                 } => {
                     let Some(signature) = take_signature(&mut result) else {
-                        if self.expression_depth_exceeded.get() {
+                        if self.expression_depth_error.get().is_some() {
                             result = Some(GrammarValue::Func(None));
                         } else {
                             let span = self.span(start, end);
@@ -1640,7 +1680,7 @@ impl<'a> Grammar<'a> {
                             formatted,
                             invoked: true,
                         })));
-                    } else if self.expression_depth_exceeded.get() {
+                    } else if self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Signature(None));
                     } else {
                         result = Some(GrammarValue::Signature(Some(SignatureMatch {
@@ -1763,7 +1803,7 @@ impl<'a> Grammar<'a> {
                     assignment_end,
                 } => {
                     let expression = take_expression(&mut result);
-                    if expression.is_none() && self.expression_depth_exceeded.get() {
+                    if expression.is_none() && self.expression_depth_error.get().is_some() {
                         result = Some(GrammarValue::Parameter(None));
                         continue;
                     }
@@ -1819,6 +1859,12 @@ impl<'a> Grammar<'a> {
     }
 
     fn participant_candidates(&self, start: usize) -> Vec<ParticipantMatch> {
+        #[cfg(test)]
+        self.participant_candidate_evaluations.set(
+            self.participant_candidate_evaluations
+                .get()
+                .saturating_add(1),
+        );
         let mut out = Vec::new();
         match self.kind(start) {
             Some(TokenKind::Annotation(value)) => {
@@ -2295,7 +2341,7 @@ impl<'a> Grammar<'a> {
         match self.run_grammar_task(GrammarTask::Expression {
             start,
             min_bp: 0,
-            depth: 1,
+            depth: 0,
         }) {
             GrammarValue::Expression(value) => value,
             _ => unreachable!("expression task returned a different grammar value"),
@@ -2726,6 +2772,11 @@ mod tests {
 
             assert!(grammar.head_suffix_terminal(start));
             assert!(prediction.select(&grammar, start).is_none());
+            let chunk_count = count.div_ceil(MAX_DIAGRAM_NESTING_DEPTH);
+            assert!(
+                grammar.participant_candidate_evaluations() <= count + chunk_count + 1,
+                "head prediction must evaluate declarations linearly with one lookahead per chunk"
+            );
         }
     }
 
@@ -2749,6 +2800,15 @@ mod tests {
             .expect("long flat ZenUML declaration parse must not overflow the stack");
     }
 
+    fn nested_expression_cases(depth: usize) -> [String; 4] {
+        [
+            format!("{}x", "!".repeat(depth)),
+            format!("{}x{}", "(".repeat(depth), ")".repeat(depth)),
+            format!("{}x", "value=".repeat(depth)),
+            format!("{}x{}", "F(".repeat(depth), ")".repeat(depth)),
+        ]
+    }
+
     fn assert_expression_depth_is_bounded(source: String) {
         let raw_tokens = super::super::lexer::lex(&source);
         let tokens = super::super::lexer::parser_tokens(&raw_tokens);
@@ -2760,12 +2820,7 @@ mod tests {
     #[test]
     fn expression_grammar_bounds_every_recursive_form() {
         let excessive = MAX_DIAGRAM_NESTING_DEPTH + 1;
-        let cases = [
-            format!("{}x", "!".repeat(excessive)),
-            format!("{}x{}", "(".repeat(excessive), ")".repeat(excessive)),
-            format!("{}x", "value=".repeat(excessive)),
-            format!("{}x{}", "F(".repeat(excessive), ")".repeat(excessive)),
-        ];
+        let cases = nested_expression_cases(excessive);
 
         let handle = std::thread::Builder::new()
             .name("zenuml-expression-depth-small-stack".to_string())
@@ -2779,6 +2834,35 @@ mod tests {
         handle
             .join()
             .expect("bounded ZenUML expressions must not overflow the stack");
+    }
+
+    #[test]
+    fn expression_depth_boundary_is_accepted_and_excess_is_a_parse_diagnostic() {
+        for expression in nested_expression_cases(MAX_DIAGRAM_NESTING_DEPTH) {
+            let source = format!("zenuml\nreturn {expression}");
+            let parsed = parse_source(&source);
+            assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+            assert_eq!(parsed.document.statements.len(), 1, "{source}");
+        }
+
+        for expression in nested_expression_cases(MAX_DIAGRAM_NESTING_DEPTH + 1) {
+            let source = format!("zenuml\nreturn {expression}\nAfter.call()");
+            let parsed = parse_source(&source);
+            assert!(
+                parsed.diagnostics.iter().any(|diagnostic| diagnostic
+                    .message
+                    .contains("ZenUML expression nesting depth exceeds")),
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+            assert!(
+                parsed.document.statements.iter().any(|statement| matches!(
+                    &statement.kind,
+                    StatementKindSyntax::Message(message) if message.signature.value == "call()"
+                )),
+                "parser did not recover after the bounded expression: {source}"
+            );
+        }
     }
 
     #[test]

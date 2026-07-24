@@ -497,7 +497,7 @@ decision. Use the already mature families as regression anchors while the closur
   - `crates/merman-analysis/README.md`
 - **Approach:** Extend `AnalysisOptions` and serialized payloads carefully so rule config,
   resource limits, deterministic time controls, Mermaid config, and feature flags have one meaning
-  across transports. Keep public JSON additive where possible, but allow alpha internal Rust API
+  across transports. Keep public JSON additive where possible, but allow coordinated internal Rust API
   breaks when they simplify the contract.
 - **Patterns to follow:** Existing `analyze_json` surfaces, CLI lint options, and ADR 0066 / ADR
   0069 binding strategy.

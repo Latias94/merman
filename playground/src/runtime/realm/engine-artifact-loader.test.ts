@@ -11,7 +11,7 @@ import {
 const source = "export const value = 1;";
 const artifact = {
   bytes: Buffer.byteLength(source),
-  id: "compare-mermaid" as const,
+  id: "mermaid" as const,
   resourceUrl: null,
   schemaVersion: 1 as const,
   sha256: createHash("sha256").update(source).digest("hex"),

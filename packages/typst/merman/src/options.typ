@@ -203,6 +203,15 @@
   }
 }
 
+#let layout-container-width(layout) = {
+  let layout = dictionary-or-none(layout, "merman layout")
+  if layout != none and "container_width" in layout {
+    layout.at("container_width")
+  } else {
+    none
+  }
+}
+
 #let build-environment-options(
   environment,
   text-measurement,
@@ -307,6 +316,7 @@
   let profile-host-theme = profile-field(profile, "host-theme", alt: "host_theme")
   let profile-typography = profile-field(profile, "typography")
   let profile-layout = profile-field(profile, "layout")
+  let profile-layout-container-width = layout-container-width(profile-layout)
   let profile-environment = profile-field(profile, "environment")
   let profile-text-measurement = profile-field(profile, "text-measurement")
   let profile-math-renderer = profile-field(profile, "math-renderer")
@@ -405,12 +415,13 @@
     direct_options: options,
     direct_container_width: container-width,
     profile_layout: profile-layout,
+    profile_layout_container_width: profile-layout-container-width,
     profile_options: profile-options,
   )
 }
 
 #let config-with-context-width(config, width) = {
-  if width == none or config.direct_layout != none or config.direct_container_width != none or config.direct_options != none or config.profile_options != none {
+  if width == none or config.direct_layout != none or config.direct_container_width != none or config.direct_options != none or config.profile_options != none or config.profile_layout_container_width != none {
     config
   } else {
     let binding-options = config.binding_options

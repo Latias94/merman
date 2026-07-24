@@ -1,18 +1,47 @@
-use crate::cli::{
-    Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, LintArgs, LintOutputFormat,
-    LintRulesArgs, ParseArgs, RenderCliArgs,
-};
-use crate::config::{engine_for, parse_options, renderer_for, runtime_policy_for, site_config_for};
+use crate::cli::{CapabilitiesArgs, Cli, Command, DetectArgs, ParseArgs};
+use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
-use crate::io::{read_input, write_stdout, write_stdout_line};
-use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
-use clap::CommandFactory;
-use merman_analysis::document::analyze_document;
-use merman_analysis::{AnalysisPayload, AnalysisRuleConfig, Analyzer, SourceDescriptor};
+#[cfg(any(feature = "analysis", feature = "shell-completions"))]
+use crate::io::write_stdout;
+use crate::io::{read_input, write_stdout_line};
 use serde::Serialize;
 use serde_json::Value;
+
+#[cfg(feature = "analysis")]
+use crate::cli::ParseCliArgs;
+#[cfg(feature = "analysis")]
+use crate::cli::{
+    AnalysisCliArgs, FixArgs, LintArgs, LintOutputFormat, LintRuleSeverityOverride, LintRulesArgs,
+};
+#[cfg(feature = "analysis")]
+use crate::config::{runtime_policy_for, site_config_for};
+#[cfg(feature = "analysis")]
+use crate::io::write_file;
+#[cfg(feature = "analysis")]
+use merman_analysis::document::analyze_document;
+#[cfg(feature = "analysis")]
+use merman_analysis::{
+    AnalysisPayload, AnalysisRuleConfig, Analyzer, DiagnosticFixEdit, SourceDescriptor,
+};
+#[cfg(feature = "analysis")]
 use std::fmt::Write as _;
+#[cfg(feature = "analysis")]
 use std::path::Path;
+
+#[cfg(all(feature = "ascii", not(feature = "svg")))]
+use crate::ascii_render::run_ascii_render;
+#[cfg(feature = "shell-completions")]
+use crate::cli::CompletionArgs;
+#[cfg(feature = "svg")]
+use crate::cli::LayoutArgs;
+#[cfg(feature = "svg")]
+use crate::config::renderer_for;
+#[cfg(feature = "svg")]
+use crate::render::render_plan_for_mmdc;
+#[cfg(feature = "svg")]
+use crate::render::{render_plan_for_subcommand, run_render};
+#[cfg(feature = "shell-completions")]
+use clap::CommandFactory;
 
 #[derive(Serialize)]
 struct MetaOut<'a> {
@@ -30,6 +59,10 @@ struct ParseOut<'a> {
 
 pub(crate) fn run(cli: Cli) -> Result<i32, CliError> {
     let exit_code = match cli.command {
+        Some(Command::Capabilities(args)) => {
+            run_capabilities(args)?;
+            0
+        }
         Some(Command::Detect(args)) => {
             run_detect(args)?;
             0
@@ -38,36 +71,55 @@ pub(crate) fn run(cli: Cli) -> Result<i32, CliError> {
             run_parse(args)?;
             0
         }
+        #[cfg(feature = "svg")]
         Some(Command::Layout(args)) => {
             run_layout(args)?;
             0
         }
+        #[cfg(feature = "analysis")]
         Some(Command::Lint(args)) => run_lint(args)?,
+        #[cfg(feature = "analysis")]
+        Some(Command::Fix(args)) => run_fix(args)?,
+        #[cfg(feature = "analysis")]
         Some(Command::LintRules(args)) => {
             run_lint_rules(args)?;
             0
         }
+        #[cfg(feature = "svg")]
         Some(Command::Render(args)) => {
             let plan = render_plan_for_subcommand(args)?;
             run_render(plan)?;
             0
         }
+        #[cfg(all(feature = "ascii", not(feature = "svg")))]
+        Some(Command::Render(args)) => {
+            run_ascii_render(args)?;
+            0
+        }
+        #[cfg(feature = "shell-completions")]
         Some(Command::Completion(args)) => {
             run_completion(args)?;
             0
         }
+        #[cfg(feature = "svg")]
         None => {
             let plan = render_plan_for_mmdc(cli.input, cli.export)?;
             run_render(plan)?;
             0
         }
+        #[cfg(not(feature = "svg"))]
+        None => unreachable!("clap requires a subcommand when SVG top-level mode is absent"),
     };
     Ok(exit_code)
 }
 
+fn run_capabilities(args: CapabilitiesArgs) -> Result<(), CliError> {
+    crate::capabilities::write_compiled_capabilities(args.json)
+}
+
 fn run_detect(args: DetectArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
-    let engine = engine_for(&args.parse, &RenderCliArgs::default())?;
+    let engine = engine_for(&args.parse)?;
     let meta = engine.parse_metadata_sync(&text)?;
     write_stdout_line(&meta.diagram_type)?;
     Ok(())
@@ -75,7 +127,7 @@ fn run_detect(args: DetectArgs) -> Result<(), CliError> {
 
 fn run_parse(args: ParseArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
-    let engine = engine_for(&args.parse, &RenderCliArgs::default())?;
+    let engine = engine_for(&args.parse)?;
     let Some(parsed) = engine.parse_diagram_sync(&text, parse_options(&args.parse))? else {
         return Err(CliError::NoDiagram);
     };
@@ -97,6 +149,7 @@ fn run_parse(args: ParseArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(feature = "svg")]
 fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
     let renderer = renderer_for(&args.parse, &args.render, None)?;
@@ -106,13 +159,14 @@ fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
     print_json(&layout_json, args.pretty)
 }
 
+#[cfg(feature = "analysis")]
 fn run_lint(args: LintArgs) -> Result<i32, CliError> {
-    let text = read_input(lint_input_path(&args), false)?;
-    let source_path = lint_display_path(args.input.as_deref(), args.stdin_file_name.as_deref());
-    let markdown_mode = args.markdown || is_markdown_input(source_path.as_deref());
-    let source = lint_source_descriptor(markdown_mode, source_path.as_deref());
-    let analyzer = Analyzer::with_options(lint_analyzer_options(&args, source.clone())?);
-
+    let (text, source) = read_analysis_input(
+        args.input.as_deref(),
+        args.stdin_file_name.as_deref(),
+        &args.analysis,
+    )?;
+    let analyzer = analyzer_for(&args.analysis, source.clone())?;
     let payload = analyze_document(&text, &analyzer, source);
 
     match args.format {
@@ -123,6 +177,35 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
     Ok(i32::from(!payload.valid))
 }
 
+#[cfg(feature = "analysis")]
+fn run_fix(args: FixArgs) -> Result<i32, CliError> {
+    let (text, source) = read_analysis_input(
+        args.input.as_deref(),
+        args.stdin_file_name.as_deref(),
+        &args.analysis,
+    )?;
+    let analyzer = analyzer_for(&args.analysis, source.clone())?;
+    let payload = analyze_document(&text, &analyzer, source.clone());
+    let fixed = apply_diagnostic_fixes(&text, &payload, args.all)?;
+
+    if args.write {
+        let Some(path) = args.input.as_deref().filter(|path| *path != "-") else {
+            return Err(CliError::InvalidInput(
+                "--write requires a file input, not stdin".to_string(),
+            ));
+        };
+        write_file(Path::new(path), fixed.as_bytes())?;
+    } else if let Some(path) = args.output.as_deref() {
+        write_file(Path::new(path), fixed.as_bytes())?;
+    } else {
+        write_stdout(fixed.as_bytes())?;
+    }
+
+    let after = analyze_document(&fixed, &analyzer, source);
+    Ok(i32::from(!after.valid))
+}
+
+#[cfg(feature = "analysis")]
 fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
     match args.format {
         LintOutputFormat::Json => {
@@ -144,6 +227,7 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
     }
 }
 
+#[cfg(feature = "shell-completions")]
 fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
     let mut command = Cli::command();
     let mut output = Vec::new();
@@ -160,6 +244,7 @@ fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(feature = "analysis")]
 fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) -> Result<(), CliError> {
     let mut output = String::new();
     output
@@ -182,6 +267,7 @@ fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) -> Resul
     write_stdout(output.as_bytes())
 }
 
+#[cfg(feature = "analysis")]
 fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
     let mut output = String::new();
     if payload.diagnostics.is_empty() {
@@ -218,28 +304,52 @@ fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
     write_stdout(output.as_bytes())
 }
 
-fn lint_analyzer_options(
-    args: &LintArgs,
-    source: SourceDescriptor,
-) -> Result<merman_analysis::AnalysisOptions, CliError> {
-    let time_args = crate::cli::ParseCliArgs {
+#[cfg(feature = "analysis")]
+fn read_analysis_input(
+    input: Option<&str>,
+    stdin_file_name: Option<&str>,
+    args: &AnalysisCliArgs,
+) -> Result<(String, SourceDescriptor), CliError> {
+    let input_path = match input {
+        Some(path) => Some(path),
+        None if stdin_file_name.is_some() => Some("-"),
+        None => None,
+    };
+    let text = read_input(input_path, false)?;
+    let source_path = match input {
+        Some("-") | None => stdin_file_name.map(ToString::to_string),
+        Some(path) => Some(path.to_string()),
+    };
+    let markdown_mode = args.markdown || is_markdown_input(source_path.as_deref());
+    Ok((
+        text,
+        analysis_source_descriptor(markdown_mode, source_path.as_deref()),
+    ))
+}
+
+#[cfg(feature = "analysis")]
+fn analyzer_for(args: &AnalysisCliArgs, source: SourceDescriptor) -> Result<Analyzer, CliError> {
+    let parse = ParseCliArgs {
         config_file: args.config_file.clone(),
         theme: None,
         fixed_today: args.fixed_today,
         fixed_local_offset_minutes: args.fixed_local_offset_minutes,
         ..Default::default()
     };
-    let runtime_policy = runtime_policy_for(&time_args)?;
-    let site_config = site_config_for(&time_args, &RenderCliArgs::default())?;
-    Ok(merman_analysis::AnalysisOptions::default()
-        .with_source(source)
-        .with_site_config(site_config)
-        .with_runtime_policy(runtime_policy)
-        .with_max_source_bytes(args.max_source_bytes)
-        .with_rule_config(lint_rule_config(args)))
+    let runtime_policy = runtime_policy_for(&parse)?;
+    let site_config = site_config_for(&parse)?;
+    Ok(Analyzer::with_options(
+        merman_analysis::AnalysisOptions::default()
+            .with_source(source)
+            .with_site_config(site_config)
+            .with_runtime_policy(runtime_policy)
+            .with_max_source_bytes(args.max_source_bytes)
+            .with_rule_config(lint_rule_config(args)),
+    ))
 }
 
-fn lint_rule_config(args: &LintArgs) -> AnalysisRuleConfig {
+#[cfg(feature = "analysis")]
+fn lint_rule_config(args: &AnalysisCliArgs) -> AnalysisRuleConfig {
     let mut config = AnalysisRuleConfig::default();
     if let Some(profile) = args.lint_profile {
         config.set_profile(profile);
@@ -250,28 +360,14 @@ fn lint_rule_config(args: &LintArgs) -> AnalysisRuleConfig {
     for rule_id in &args.disable_rules {
         config.disable_rule(rule_id.clone());
     }
-    for override_ in &args.rule_severities {
-        config.set_rule_severity(override_.rule_id.clone(), override_.severity);
+    for LintRuleSeverityOverride { rule_id, severity } in &args.rule_severities {
+        config.set_rule_severity(rule_id.clone(), *severity);
     }
     config
 }
 
-fn lint_display_path(input: Option<&str>, stdin_file_name: Option<&str>) -> Option<String> {
-    match input {
-        Some("-") | None => stdin_file_name.map(ToString::to_string),
-        Some(path) => Some(path.to_string()),
-    }
-}
-
-fn lint_input_path(args: &LintArgs) -> Option<&str> {
-    match args.input.as_deref() {
-        Some(path) => Some(path),
-        None if args.stdin_file_name.is_some() => Some("-"),
-        None => None,
-    }
-}
-
-fn lint_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDescriptor {
+#[cfg(feature = "analysis")]
+fn analysis_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDescriptor {
     if markdown_mode {
         return merman_analysis::source_descriptor_for_markdown_path(path);
     }
@@ -283,9 +379,136 @@ fn lint_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDesc
     source
 }
 
+#[cfg(feature = "analysis")]
 fn is_markdown_input(input: Option<&str>) -> bool {
     input
         .map(Path::new)
         .map(merman_analysis::markdown::is_markdown_path)
         .unwrap_or(false)
+}
+
+#[cfg(feature = "analysis")]
+fn apply_diagnostic_fixes(
+    text: &str,
+    payload: &AnalysisPayload,
+    apply_all: bool,
+) -> Result<String, CliError> {
+    let fixes = payload.diagnostics.iter().flat_map(|diagnostic| {
+        if apply_all {
+            diagnostic.fixes.iter().collect::<Vec<_>>()
+        } else {
+            diagnostic
+                .fixes
+                .iter()
+                .find(|fix| fix.is_preferred)
+                .or_else(|| diagnostic.fixes.first())
+                .into_iter()
+                .collect()
+        }
+    });
+    let edits = fixes.flat_map(|fix| fix.edits.iter()).collect::<Vec<_>>();
+    apply_fix_edits(text, edits)
+}
+
+#[cfg(feature = "analysis")]
+fn apply_fix_edits(text: &str, edits: Vec<&DiagnosticFixEdit>) -> Result<String, CliError> {
+    let mut edits = edits;
+    edits.sort_by_key(|edit| (edit.span.byte_start, edit.span.byte_end));
+
+    let mut previous_end = 0;
+    for edit in &edits {
+        let start = edit.span.byte_start;
+        let end = edit.span.byte_end;
+        if start > end
+            || end > text.len()
+            || !text.is_char_boundary(start)
+            || !text.is_char_boundary(end)
+        {
+            return Err(CliError::InvalidInput(
+                "diagnostic fix contains an invalid UTF-8 byte range".to_string(),
+            ));
+        }
+        if start < previous_end {
+            return Err(CliError::InvalidInput(
+                "selected diagnostic fixes overlap; choose a narrower fix set".to_string(),
+            ));
+        }
+        previous_end = end;
+    }
+
+    let mut result = text.to_string();
+    for edit in edits.into_iter().rev() {
+        result.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.replacement);
+    }
+    Ok(result)
+}
+
+#[cfg(all(test, feature = "analysis"))]
+mod tests {
+    use super::*;
+    use merman_analysis::{
+        AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan,
+        LspRange, SourceDescriptor, Utf16Position,
+    };
+
+    fn span(start: usize, end: usize) -> DiagnosticSpan {
+        DiagnosticSpan {
+            byte_start: start,
+            byte_end: end,
+            line: 1,
+            column: start + 1,
+            end_line: 1,
+            end_column: end + 1,
+            lsp_range: LspRange::new(
+                Utf16Position {
+                    line: 0,
+                    character: start,
+                },
+                Utf16Position {
+                    line: 0,
+                    character: end,
+                },
+            ),
+        }
+    }
+
+    #[test]
+    fn diagnostic_fix_application_rejects_overlapping_edits() {
+        let edits = [
+            DiagnosticFixEdit::new(span(0, 2), "A"),
+            DiagnosticFixEdit::new(span(1, 3), "B"),
+        ];
+        let error = apply_fix_edits("abcd", edits.iter().collect()).expect_err("overlap");
+        assert!(error.to_string().contains("overlap"));
+    }
+
+    #[test]
+    fn diagnostic_fix_application_uses_byte_ranges_without_shifting_later_edits() {
+        let edits = [
+            DiagnosticFixEdit::new(span(0, 1), "first"),
+            DiagnosticFixEdit::new(span(4, 5), "second"),
+        ];
+        assert_eq!(
+            apply_fix_edits("a中b", edits.iter().collect()).expect("apply edits"),
+            "first中second"
+        );
+    }
+
+    #[test]
+    fn default_fix_selection_prefers_preferred_fix_per_diagnostic() {
+        let diagnostic = AnalysisDiagnostic::error("test", DiagnosticCategory::Parse, "test")
+            .with_fix(DiagnosticFix::new(
+                "fallback",
+                vec![DiagnosticFixEdit::new(span(0, 1), "x")],
+            ))
+            .with_fix(
+                DiagnosticFix::new("preferred", vec![DiagnosticFixEdit::new(span(0, 1), "y")])
+                    .preferred(),
+            );
+        let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
+        assert_eq!(
+            apply_diagnostic_fixes("a", &payload, false).expect("apply preferred fix"),
+            "y"
+        );
+    }
 }

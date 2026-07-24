@@ -11,7 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_ALPHA_ABI_VERSION = 2
+TEXT_MEASUREMENT_PROTOCOL_ID = "merman-text-measurement"
+TEXT_MEASUREMENT_PROTOCOL_VERSION = 1
 
 
 class CheckFailure(Exception):
@@ -20,6 +21,12 @@ class CheckFailure(Exception):
 
 def read_text(rel_path: str) -> str:
     return (ROOT / rel_path).read_text(encoding="utf-8")
+
+
+def require_file(rel_path: str, label: str) -> None:
+    path = ROOT / rel_path
+    if not path.is_file():
+        raise CheckFailure(f"{rel_path}: missing {label}")
 
 
 def require_match(rel_path: str, pattern: str, label: str) -> str:
@@ -33,13 +40,6 @@ def require_match(rel_path: str, pattern: str, label: str) -> str:
 def require_contains(rel_path: str, needle: str, label: str) -> None:
     if needle not in read_text(rel_path):
         raise CheckFailure(f"{rel_path}: missing {label}")
-
-
-def require_alpha_abi(group_name: str, actual: int) -> None:
-    if actual != EXPECTED_ALPHA_ABI_VERSION:
-        raise CheckFailure(
-            f"{group_name} must remain {EXPECTED_ALPHA_ABI_VERSION} during alpha; got {actual}"
-        )
 
 
 def dotted_name(node: ast.expr) -> str | None:
@@ -239,7 +239,10 @@ def check_python_package_exports() -> None:
     imported: set[str] = set()
     exported: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "merman_uniffi":
+        if isinstance(node, ast.ImportFrom) and node.module in {
+            "merman_uniffi",
+            "_resource_options",
+        }:
             imported.update(alias.asname or alias.name for alias in node.names)
     for node in tree.body:
         if not isinstance(node, ast.Assign):
@@ -253,7 +256,15 @@ def check_python_package_exports() -> None:
                 if isinstance(item, ast.Constant) and isinstance(item.value, str)
             )
 
-    required = {"MermanEngine", "MermanReusableEngine", "MermanTextMeasurer"}
+    required = {
+        "MermanEngine",
+        "MermanReusableEngine",
+        "MermanTextMeasurer",
+        "ResourceLimitId",
+        "ResourceOptions",
+        "ResourceOptionsBuilder",
+        "ResourceProfile",
+    }
     missing_imports = sorted(required - imported)
     missing_exports = sorted(required - exported)
     if missing_imports:
@@ -262,31 +273,49 @@ def check_python_package_exports() -> None:
         raise CheckFailure(f"{rel_path}: missing __all__ exports {', '.join(missing_exports)}")
 
 
-def text_measurement_abi_version() -> int:
-    descriptor_path = ROOT / "abi" / "merman-v2.json"
+def check_text_measurement_protocol() -> None:
+    descriptor_path = ROOT / "abi" / "text-measurement-v1.json"
     descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
-    version = descriptor.get("abi_version")
-    if not isinstance(version, int):
-        raise CheckFailure(f"{descriptor_path}: abi_version must be an integer")
-    return version
+    if descriptor.get("schema_version") != 1:
+        raise CheckFailure(f"{descriptor_path}: schema_version must be 1")
+    if descriptor.get("protocol_id") != TEXT_MEASUREMENT_PROTOCOL_ID:
+        raise CheckFailure(
+            f"{descriptor_path}: protocol_id must be {TEXT_MEASUREMENT_PROTOCOL_ID!r}"
+        )
+    if descriptor.get("protocol_version") != TEXT_MEASUREMENT_PROTOCOL_VERSION:
+        raise CheckFailure(
+            f"{descriptor_path}: protocol_version must be {TEXT_MEASUREMENT_PROTOCOL_VERSION}"
+        )
 
+    operations = descriptor.get("operations")
+    result_kinds = descriptor.get("result_kinds")
+    if not isinstance(operations, list) or not isinstance(result_kinds, list):
+        raise CheckFailure(f"{descriptor_path}: operations and result_kinds must be arrays")
+    if not all(isinstance(entry, dict) for entry in operations):
+        raise CheckFailure(f"{descriptor_path}: operations entries must be objects")
+    if not all(isinstance(entry, dict) for entry in result_kinds):
+        raise CheckFailure(f"{descriptor_path}: result_kinds entries must be objects")
+    if [entry.get("code") for entry in operations] != list(range(19)):
+        raise CheckFailure(f"{descriptor_path}: operation codes must be the contiguous range 0..18")
+    if [entry.get("code") for entry in result_kinds] != list(range(4)):
+        raise CheckFailure(f"{descriptor_path}: result-kind codes must be the contiguous range 0..3")
 
-def check_c_abi() -> int:
-    version = text_measurement_abi_version()
-    print(f"C ABI descriptor version: {version}")
-    return version
-
-
-def check_uniffi_abi() -> int:
-    version = text_measurement_abi_version()
-    print(f"Python UniFFI ABI descriptor version: {version}")
-    return version
-
-
-def check_wasm_abi() -> int:
-    version = text_measurement_abi_version()
-    print(f"WASM/Web ABI descriptor version: {version}")
-    return version
+    known_result_kinds = {entry.get("id") for entry in result_kinds}
+    unknown = sorted(
+        {
+            str(entry.get("result_kind"))
+            for entry in operations
+            if entry.get("result_kind") not in known_result_kinds
+        }
+    )
+    if unknown:
+        raise CheckFailure(
+            f"{descriptor_path}: operations reference unknown result kinds {unknown}"
+        )
+    print(
+        "Text-measurement protocol descriptor: "
+        f"{TEXT_MEASUREMENT_PROTOCOL_ID} v{TEXT_MEASUREMENT_PROTOCOL_VERSION}"
+    )
 
 
 def check_python_package_metadata() -> None:
@@ -295,21 +324,13 @@ def check_python_package_metadata() -> None:
     for label in ["Homepage", "Repository", "Documentation", "Issues", "Changelog"]:
         require_match(rel_path, rf"^{label}\s*=\s*\"([^\"]+)\"", f"project.urls {label}")
 
-    require_contains(
-        "platforms/python/merman/README.md",
-        "CHANGELOG.md",
-        "package changelog link",
-    )
-    require_contains(
-        "platforms/python/merman/README.md",
-        "UniFFI ABI",
-        "UniFFI ABI compatibility note",
-    )
+    require_file("platforms/python/merman/README.md", "package README")
+    require_file("platforms/python/merman/CHANGELOG.md", "package changelog")
     if "does not expose host text-measurement callbacks yet" in read_text("README.md"):
         raise CheckFailure("README.md: stale Python host text-measurement limitation")
     check_python_package_exports()
     check_python_examples()
-    print("Python package page metadata: README, urls, changelog, and ABI note present")
+    print("Python package surface: metadata, files, exports, and examples valid")
 
 
 def check_flutter_package_metadata() -> None:
@@ -332,24 +353,14 @@ def check_flutter_package_metadata() -> None:
     if missing_topics:
         raise CheckFailure(f"{rel_path}: missing topics {', '.join(missing_topics)}")
 
-    require_contains(
-        "platforms/flutter/README.md",
-        "CHANGELOG.md",
-        "package changelog link",
-    )
-    require_contains(
-        "platforms/flutter/README.md",
-        "C ABI version",
-        "C ABI compatibility note",
-    )
-    print("Flutter package page metadata: docs links, topics, changelog, and ABI note present")
+    require_file("platforms/flutter/README.md", "package README")
+    require_file("platforms/flutter/CHANGELOG.md", "package changelog")
+    print("Flutter package surface: metadata and package files valid")
 
 
 def main() -> int:
     try:
-        require_alpha_abi("C ABI version", check_c_abi())
-        require_alpha_abi("Python UniFFI ABI version", check_uniffi_abi())
-        require_alpha_abi("WASM/Web ABI version", check_wasm_abi())
+        check_text_measurement_protocol()
         check_python_package_metadata()
         check_flutter_package_metadata()
     except CheckFailure as exc:

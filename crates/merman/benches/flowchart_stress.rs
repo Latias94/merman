@@ -1,5 +1,5 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use merman::render::{
+use merman::svg::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
 };
 use merman_core::{Engine, ParseOptions};
@@ -28,7 +28,7 @@ fn bench_flowchart_stress(c: &mut Criterion) {
             .expect("parse")
             .expect("supported diagram");
         let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::render::sanitize_svg_id(name)),
+            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
         // Pre-check that rendering works once, outside measurement.

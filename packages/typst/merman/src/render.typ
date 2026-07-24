@@ -8,7 +8,23 @@
 
 #let render-svg-result-with-config(source, config) = {
   let source-text = source-text-value(source)
-  json(merman-plugin.render_svg_json(bytes(source-text), options-bytes(config.binding_options)))
+  let envelope = json(
+    merman-plugin.render_svg_json(bytes(source-text), options-bytes(config.binding_options)),
+  )
+  if envelope.operation != "render-svg" {
+    panic("merman Typst plugin returned an unexpected render operation")
+  }
+  (
+    version: envelope.version,
+    operation: envelope.operation,
+    ok: envelope.ok,
+    code: envelope.code,
+    code_name: envelope.code_name,
+    kind: envelope.kind,
+    capability_id: envelope.capability_id,
+    message: envelope.message,
+    svg: if envelope.ok { envelope.data.svg } else { none },
+  )
 }
 
 #let render-svg-result(source, ..args) = {
@@ -21,7 +37,13 @@
 
 #let analyze-payload-with-config(source, config) = {
   let source-text = source-text-value(source)
-  json(merman-plugin.analyze_json(bytes(source-text), options-bytes(config.binding_options)))
+  let envelope = json(
+    merman-plugin.analyze_json(bytes(source-text), options-bytes(config.binding_options)),
+  )
+  if envelope.operation != "analyze" {
+    panic("merman Typst plugin returned an unexpected analysis operation")
+  }
+  if envelope.ok { envelope.data.analysis } else { envelope }
 }
 
 #let analyze-payload(source, ..args) = {
@@ -62,7 +84,7 @@
 ) = context {
   let inferred-host-theme = context-host-theme(text.font, text.size)
   let base-config = render-config(context-host-theme: inferred-host-theme, ..args)
-  if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none {
+  if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none or base-config.profile_layout_container_width != none {
     let result = render-svg-result-with-config(source, base-config)
     result-image(result, width, height, fit, alt, scale, error-mode)
   } else {

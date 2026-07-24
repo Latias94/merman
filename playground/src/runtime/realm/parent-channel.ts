@@ -34,11 +34,12 @@ export async function createBrowserCompareRealmSession(
 ): Promise<MermaidRealmSession> {
   const kind: RealmKind = "compare";
   const {
-    compareMermaidEngineArtifact,
+    createCompareMermaidEngineArtifact,
     createOpaqueCompareRealmDocument,
   } = await import(
     "./opaque-realm-artifacts.ts"
   );
+  const engineArtifact = await createCompareMermaidEngineArtifact(signal);
   let disposed = false;
   let transportAvailable = false;
   let incomingSequence = 0;
@@ -60,7 +61,7 @@ export async function createBrowserCompareRealmSession(
   const channel = await createAuthenticatedBrowserRealmChannel({
     kind,
     createRealmDocument: createOpaqueCompareRealmDocument,
-    engineArtifact: compareMermaidEngineArtifact,
+    engineArtifact,
     initialViewport,
     signal,
     label: "Mermaid realm",

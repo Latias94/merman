@@ -1,6 +1,7 @@
 package io.merman.examples
 
 import io.merman.MermanEngine
+import io.merman.MermanErrorKind
 import io.merman.MermanException
 import io.merman.MermanReusableEngine
 import io.merman.MermanTextMeasureResult
@@ -171,6 +172,17 @@ fun runMermanSmoke() {
         "semantic JSON smoke failed"
     }
 
+    val unknownOperationError = runCatching {
+        MermanEngine.executeBytes("not-an-operation", source)
+    }.exceptionOrNull()
+    check(
+        unknownOperationError is MermanException &&
+            unknownOperationError.kind == MermanErrorKind.UNKNOWN_OPERATION &&
+            unknownOperationError.capabilityId == null,
+    ) {
+        "unknown operation did not preserve its machine-readable binding error"
+    }
+
     val layoutJson = MermanEngine.layoutJson(source)
     check(layoutJson.contains("layout")) {
         "layout JSON smoke failed"
@@ -199,7 +211,7 @@ fun runMermanSmoke() {
         "file:///tmp/example.md",
     )
     check(
-        documentFactsJson.contains("\"version\":2") &&
+        documentFactsJson.contains("\"version\":1") &&
             documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\""),
     ) {
         "document facts JSON smoke failed"
@@ -214,17 +226,18 @@ fun runMermanSmoke() {
     check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
     }
-    val runtimeContractJson = MermanEngine.runtimeContractJson()
+    val runtimeCatalogJson = MermanEngine.runtimeCatalogJson()
     check(
-        runtimeContractJson.contains("\"schema_version\":4") &&
-            runtimeContractJson.contains("\"abi_version\":2") &&
-            runtimeContractJson.contains("\"system_adapter_ids\":[") &&
-            !runtimeContractJson.contains("\"core_host\"") &&
-            runtimeContractJson.contains("\"analysis\":1") &&
-            runtimeContractJson.contains("\"analysis_facts\":2") &&
-            runtimeContractJson.contains("\"general_binding_default_profile\":\"interactive\""),
+        runtimeCatalogJson.contains("\"schema_version\":1") &&
+            runtimeCatalogJson.contains("\"capabilities\":") &&
+            runtimeCatalogJson.contains("\"registry\":") &&
+            runtimeCatalogJson.contains("\"resources\":") &&
+            runtimeCatalogJson.contains("\"operation_ids\":[") &&
+            runtimeCatalogJson.contains("\"transport_api_version\":1") &&
+            runtimeCatalogJson.contains("\"system_adapter_ids\":[") &&
+            runtimeCatalogJson.contains("\"general_binding_default_profile\":\"interactive\""),
     ) {
-        "runtime contract smoke failed"
+        "runtime catalog smoke failed"
     }
     check(MermanEngine.lintRuleCatalogJson().contains("\"version\":1")) {
         "lint rule catalog envelope smoke failed"
@@ -329,7 +342,7 @@ fun runMermanSmoke() {
             "file:///tmp/example.md",
         )
         check(
-            reusableDocumentFactsJson.contains("\"version\":2") &&
+            reusableDocumentFactsJson.contains("\"version\":1") &&
                 reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\""),
         ) {
             "reusable document facts JSON smoke failed"
@@ -348,7 +361,7 @@ fun runMermanSmoke() {
                     reentrantEngine.renderSvg(textMeasureSource)
                     error("reentrant render unexpectedly succeeded")
                 } catch (error: MermanException) {
-                    check(error.message?.contains("re-entered") == true) {
+                    check(error.kind == MermanErrorKind.REENTRANT_CALL) {
                         "unexpected reentrant error: ${error.message}"
                     }
                     reentryRejected = true
@@ -365,29 +378,85 @@ fun runMermanSmoke() {
     }
 
     val closingEngine = MermanReusableEngine()
-    var closeFromCallbackObserved = false
+    var closeFromCallbackRejected = false
     try {
         closingEngine.setTextMeasurer {
-            if (!closeFromCallbackObserved) {
-                closeFromCallbackObserved = true
-                closingEngine.close()
+            if (!closeFromCallbackRejected) {
+                try {
+                    closingEngine.close()
+                    error("callback-time close unexpectedly succeeded")
+                } catch (error: MermanException) {
+                    check(error.kind == MermanErrorKind.REENTRANT_CALL) {
+                        "unexpected callback-time close error: ${error.message}"
+                    }
+                    closeFromCallbackRejected = true
+                }
             }
             null
         }
         val closingSvg = closingEngine.renderSvg(textMeasureSource)
-        check(closingSvg.contains("<svg") && closeFromCallbackObserved) {
-            "close-from-callback render smoke failed"
+        check(closingSvg.contains("<svg") && closeFromCallbackRejected) {
+            "callback-time close guard smoke failed"
         }
-        try {
-            closingEngine.renderSvg(textMeasureSource)
-            error("closed reusable engine unexpectedly rendered")
-        } catch (error: MermanException) {
-            check(error.message?.contains("closed") == true) {
-                "unexpected closed-engine error: ${error.message}"
-            }
+        check(closingEngine.renderSvg(textMeasureSource).contains("<svg")) {
+            "engine was not usable after rejected callback-time close"
         }
     } finally {
         closingEngine.close()
+    }
+
+    val crossThreadEngine = MermanReusableEngine()
+    try {
+        var crossThreadChecked = false
+        crossThreadEngine.setTextMeasurer {
+            if (!crossThreadChecked) {
+                var nestedError: Throwable? = null
+                val nested = Thread {
+                    nestedError = runCatching {
+                        crossThreadEngine.renderSvg(textMeasureSource)
+                    }.exceptionOrNull()
+                }
+                nested.start()
+                nested.join(2_000)
+                check(!nested.isAlive) {
+                    "cross-thread callback reentry did not fail promptly"
+                }
+                check(
+                    nestedError is MermanException &&
+                        (nestedError as MermanException).kind == MermanErrorKind.REENTRANT_CALL,
+                ) {
+                    "cross-thread callback reentry did not preserve its typed error"
+                }
+                crossThreadChecked = true
+            }
+            null
+        }
+        val outerSvg = crossThreadEngine.renderSvg(textMeasureSource)
+        check(outerSvg.contains("<svg") && crossThreadChecked) {
+            "cross-thread callback guard smoke failed"
+        }
+    } finally {
+        crossThreadEngine.close()
+    }
+
+    val callbackEngine = MermanReusableEngine()
+    val independentEngine = MermanReusableEngine()
+    try {
+        var independentEngineRendered = false
+        callbackEngine.setTextMeasurer {
+            if (!independentEngineRendered) {
+                independentEngineRendered =
+                    independentEngine.renderSvg(textMeasureSource).contains("<svg")
+            }
+            null
+        }
+        val callbackSvg = callbackEngine.renderSvg(textMeasureSource)
+        check(callbackSvg.contains("<svg") && independentEngineRendered) {
+            "independent engine did not remain callable during a host callback"
+        }
+    } finally {
+        callbackEngine.close()
+        independentEngine.close()
     }
 
     val throwingEngine = MermanReusableEngine()

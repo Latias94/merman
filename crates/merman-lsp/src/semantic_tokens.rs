@@ -9,12 +9,12 @@ use merman_editor_core::{
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     Range, SemanticToken, SemanticTokens, SemanticTokensDelta, SemanticTokensEdit,
     SemanticTokensFullDeltaResult, SemanticTokensOptions,
 };
 #[cfg(test)]
-use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
+use tower_lsp_server::ls_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
 
 pub(crate) fn semantic_tokens_options_with_profile(
     profile: &ClientProtocolProfile,
@@ -262,7 +262,8 @@ mod tests {
     use serde::Deserialize;
     use std::fs;
     use std::path::PathBuf;
-    use tower_lsp::lsp_types::{Position, Url};
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{Position, Uri};
 
     #[derive(Debug, Deserialize)]
     struct TokenEquivalenceEvidence {
@@ -328,7 +329,7 @@ mod tests {
     #[test]
     fn full_sequence_is_the_planner_packed_sequence() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(
             uri,
             1,
@@ -357,7 +358,7 @@ mod tests {
 
     #[test]
     fn projection_filters_unsupported_tokens_before_reencoding_relative_positions() {
-        let capabilities: tower_lsp::lsp_types::ClientCapabilities =
+        let capabilities: tower_lsp_server::ls_types::ClientCapabilities =
             serde_json::from_value(serde_json::json!({
                 "textDocument": {
                     "semanticTokens": {
@@ -414,7 +415,7 @@ mod tests {
     #[test]
     fn unavailable_semantics_are_a_valid_empty_plan_not_a_planner_failure() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/unknown.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/unknown.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "not a Mermaid diagram\n".to_string());
 
         let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
@@ -445,7 +446,7 @@ mod tests {
             .chain(&evidence.recovery_cases)
             .enumerate()
         {
-            let uri = Url::parse(&format!("file:///token-equivalence/{}.mmd", case.id)).unwrap();
+            let uri = Uri::from_str(&format!("file:///token-equivalence/{}.mmd", case.id)).unwrap();
             let snapshot = store.upsert(uri, version as i32 + 1, case.source.clone());
             let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
 
@@ -499,7 +500,7 @@ mod tests {
     #[test]
     fn range_filters_absolute_plan_then_reencodes_relative_tokens() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.md").unwrap();
         let snapshot = store.upsert(
             uri,
             1,
@@ -553,7 +554,7 @@ mod tests {
     #[test]
     fn result_id_binds_document_tokens_to_descriptor_digest() {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 7, "flowchart TD\nA --> B\n".to_string());
         let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
         let result_id = semantic_tokens_result_id(&snapshot, &tokens.data);

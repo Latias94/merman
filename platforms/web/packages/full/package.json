@@ -1,0 +1,35 @@
+{
+  "name": "@mermanjs/web",
+  "version": "0.8.0-alpha.3",
+  "description": "Browser-only Merman WebAssembly SDK with the complete admitted browser capability set.",
+  "type": "module",
+  "main": "./dist/package-entries/full.js",
+  "types": "./dist/package-entries/full.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/package-entries/full.js",
+      "types": "./dist/package-entries/full.d.ts"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web/packages/full#readme",
+  "keywords": ["mermaid", "diagram", "wasm", "svg", "browser"],
+  "license": "MIT OR Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "artifacts",
+    "dist",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_LICENSES",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "merman": {
+    "artifact_profile": "web-full"
+  }
+}

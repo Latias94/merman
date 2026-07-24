@@ -1,7 +1,7 @@
 # Package Surfaces
 
 Status: maintained release surface contract.
-Last updated: 2026-07-21
+Last updated: 2026-07-23
 
 This document records merman package surfaces, current readiness, and the CI gates that protect
 each publication or artifact build.
@@ -18,7 +18,7 @@ each publication or artifact build.
 | `rustdoc` | Rustdoc integration | `merman-rustdoc` | `published` | `crates.io` (`published`) |
 | `cli` | Command line interface | `merman-cli` | `published` | `github-release` (`published`), `crates.io` (`published`) |
 | `homebrew` | Homebrew CLI formula | `merman-cli` | `stable-only` | `homebrew-core` (`published`) |
-| `web-wasm` | Browser WebAssembly package | `@mermanjs/web` | `published` | `npm` (`published`), `crates.io` (`published`) |
+| `web-package-group` | Browser WebAssembly package group | `@mermanjs/web` | `published` | `npm` (`published`) |
 | `vscode` | VS Code extension | `merman-vscode` | `artifact-only` | `github-actions-vsix` (`artifact-only`), `vs-marketplace` (`credential-blocked`) |
 | `c-abi` | Native C ABI | `merman-ffi` | `published` | `crates.io` (`published`) |
 | `python` | Python UniFFI package | `merman` | `published` | `pypi` (`published`), `github-release-wheels` (`published`), `crates.io` (`published`) |
@@ -45,7 +45,8 @@ The repository-owned release surface set is:
 4. GitHub Release wheels and PyPI publishing for Python.
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.
-7. npm publishing for `@mermanjs/web` through `release-web.yml` after trusted publisher setup.
+7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
+   `release-web.yml` after Trusted Publishing setup.
 8. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
@@ -86,8 +87,9 @@ available. It reports observed status separately from the declared release state
 
 Merman CI keeps publication separate from validation:
 
-- `python scripts/verify-release-surfaces.py` checks this document, `SURFACES.json`, package
-  manifests, Web source subpaths, feature/preset names, and release workflow paths.
+- `python scripts/verify-release-surfaces.py` checks `SURFACES.json`, package manifests, the closed
+  Web package descriptor, public/candidate ownership, and release workflow operations. It does not
+  treat prose wording as a build gate.
 - `cargo run -p xtask -- verify-mermaid-reference` checks that the selected Mermaid and companion
   behavior graph, package locks, generated runtime labels, and provenance agree.
 - `cargo run -p xtask -- verify-editor-token-descriptor` checks the single editor-language token
@@ -99,8 +101,9 @@ Merman CI keeps publication separate from validation:
 - `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
 - `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
 - `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.
-- `apple-ffi-smoke` builds `Merman.xcframework` and validates the root Swift package.
-- `web-npm-dry-run` builds the TypeScript/WASM package and runs `npm pack --dry-run`.
+- `apple-uniffi-smoke` builds `Merman.xcframework` and validates the generated UniFFI Swift package.
+- `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
+  then packs and verifies the complete lockstep npm group without publishing it.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -112,182 +115,75 @@ preflight passes. Platform publishing is manual so a fixed workflow on `main` ca
 assets for an existing release tag without moving that tag. Registry credentials still need to be
 configured per surface before the corresponding workflow can publish.
 
-## Browser WASM Presets
+## Browser WASM Package Group
 
-ADR-0069 keeps `@mermanjs/web` as one npm package. The default
-entry point uses the `browser-full` preset. The package also publishes opt-in subpaths for
-`browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, `browser-editor`, and
-explicit `browser-full` artifacts. Source,
-CI, and local package builds can still choose a different browser preset through
-`platforms/web/scripts/build-wasm.mjs`; the TypeScript wrapper exposes `bindingCapabilities()` so
-callers can discover the active artifact's compiled capabilities after initialization, including
-whether `editor_language` is compiled. `diagramFamilyCapabilities()` reports the one complete
-pinned Mermaid language catalog shared by all artifacts, and `lintRuleCatalog()` lets editor
-integrations discover the governed analyzer rule table and its evidence references without
-hard-coding them.
-The editor-bearing presets expose `editorSemanticTokenDescriptor()` and
-`editorSemanticTokens()`. The descriptor is generated from
-`editor-language/token-descriptor-v1.json`; the token query returns the descriptor's validated
-five-word LSP-relative UTF-16 sequence as a `Uint32Array`. Token codes, modifier bits, precedence,
-legend indices, sorting, and overlap resolution are not redefined by the TypeScript wrapper.
-The published subpaths are capability-specific TypeScript entry points: they type-re-export the
-shared public option/result types and stable helper values, then export only the runtime wrappers
-that the subpath supports. Unsupported render, ASCII, or editor wrappers are absent from slim
-subpaths instead of being exported as throwing stubs.
-`platforms/web/web-surface-descriptor.json` is the single machine-readable preset/subpath mapping;
-the WASM builder, surface generator, Python release verifier, package checks, and tests consume it
-without extracting private JavaScript names or source formatting.
+`platforms/web` is a private build workspace, not an npm product. The public browser SDK is a
+lockstep package group described by `platforms/web/web-surface-descriptor.json`. Each published
+package exports only `.` and contains exactly one owned WASM artifact at
+`artifacts/wasm/merman_wasm_bg.wasm`; raw `pkg/**` files and package subpaths are not public API.
 
-| Preset | Default features | Extra features | Intended use |
-| --- | ---: | --- | --- |
-| `browser-core` | no | `analysis` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
-| `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation. Editor-language entry points are unavailable. |
-| `browser-render-only` | no | `render` | SVG/parse/layout artifact with metadata only. Analysis, validation, lint catalog, ASCII, and editor-language entry points are unavailable. |
-| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact with metadata only. Analysis, validation, lint catalog, render, parse, layout, and editor-language entry points are unavailable. |
-| `browser-editor` | no | `editor-language` | Complete 35-family language catalog, analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, parse/layout JSON, ASCII, host, and ELK entry points are unavailable. |
-| `browser-full` | yes | none | Default npm artifact: browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
-| `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
-| `browser-math` | yes | `math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
+| Package | Artifact profile | Intended use |
+| --- | --- | --- |
+| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
+| `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
+| `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
+| `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
+| `@mermanjs/web-render` | `web-render` | Private candidate for SVG rendering. It is not published until independent admission proves its package-size and behavior contract. |
 
-`npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
-the hand-written TypeScript wrapper, `MermanWasmModule`, `bindSurfaceRuntime()`, and the generated
-capability-specific subpath entry templates. It also rejects value star re-exports and unsupported
-runtime wrapper exports in slim subpaths. `npm run prepack --prefix platforms/web` runs that
-contract check and
-requires `browser-full` unless `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional
-local slim package. This protects the public npm package from accidentally publishing a slim artifact
-under the default import path. It also checks that every package subpath has matching TypeScript,
-wasm-bindgen, WASM, and preset manifest artifacts.
+The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
+then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
+the artifact's typed missing-capability behavior; consumers should not infer support from package
+names or Cargo features.
 
-There is intentionally no `@mermanjs/web/analysis` subpath. `@mermanjs/web/core` is already the
-smallest analysis-capable browser artifact because analysis, validation, registry metadata, and
-document facts all share the same minimal core bindings. A separate analysis alias would expand the
-public API without reducing the WASM payload.
+Release builds pack every public member into one verified artifact group. The manifest records the
+release version, source commit, target dist-tag, package/profile identity, tarball hash and npm
+integrity, and legal-material digest. Publication first makes every exact version available under a
+staging tag, then promotes the requested public dist-tag only after the complete group verifies. A
+promotion failure restores previously changed tags and leaves a reconciliation report for a safe
+rerun. npm cannot provide cross-package transactions; this is the strongest recoverable boundary.
 
 ## Compatibility And Migration Notes
 
 Current release semantics are intentionally explicit:
 
-- Low-level Rust `merman/render` enables SVG/layout support only. `merman/layout-elk` is the
-  explicit feature that pulls `merman-layout-elk` and the EPL-2.0 `merman-elk-layered` source port.
-- CLI defaults remain compatibility-oriented and enable `layout-elk` through the CLI crate's own
-  default feature set.
-- Native FFI defaults stay conservative: `render` does not imply ELK. Downstream native artifacts
-  that want ELK must enable `layout-elk` or publish a distinct full artifact.
-- Rust source callers that match `merman_core::Error::DiagramParse` must migrate from the old raw
-  message field to `diagnostic: ParseDiagnostic`. The displayed error message remains compatible,
-  and callers can use `diagnostic.message()`, `span()`, `span_kind()`, and `code()` for structured
-  parser metadata. The current native ABI version remains 2 during alpha development. Its exact
-  host text-measurement contract has 19 operations with contiguous codes 0 through 18 and tagged
-  result kinds. Operation 17 (`create-text-middle-bbox-y-offset`, signed length) measures
-  Architecture createText under inherited `dominant-baseline="middle"`; it is not interchangeable
-  with operation 14's ordinary createText bbox y. Operation 18 (`raw-bbox-height`, length) measures
-  direct raw SVG `<text>.getBBox().height`. Callbacks and generated bindings must implement the
-  current ABI 2 shape and handle the complete operation range.
-- `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
-  browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`,
-  `@mermanjs/web/render-only`, `@mermanjs/web/ascii`, and `@mermanjs/web/editor`; these slim
-  subpaths omit unsupported runtime wrapper exports. The editor subpath has the same complete
-  35-family language catalog as the Playground and LSP. Its diagnostics, detection, code actions,
-  completion, structure, navigation,
-  rename, and packed semantic tokens are projections of one analyzed document snapshot in the
-  dedicated Worker; there is no Monarch or regex fallback.
-  `@mermanjs/web/full` is the explicit full-preset subpath.
-- Browser WASM ABI 2 is required by the current 0.8 wrapper and render-environment contract.
-  `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
-  whether `analysis` and `editor_language` are available. `diagramFamilyCapabilities()` reports
-  the complete shared parser/render family catalog. `lintRuleCatalog()` is available on analysis-capable artifacts and
-  reports analyzer rule ids, evidence references, default profiles, origins, configurability, and
-  fixability. Consumers that load custom artifacts must keep the generated wasm-bindgen artifact and
-  TypeScript wrapper from the same package
-  version/ABI; the 0.8 wrapper does not provide compatibility fallback for custom browser artifacts
-  with a different ABI or without these metadata exports.
-- `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
-  artifact is Typst-compatible or pure-WASM compatible.
-- `merman-typst-plugin` is the Typst-compatible transport. Its Cargo default and public package
-  profile `publish` both resolve to canonical profile `typst-full-elk`, built with exactly
-  `render`, `analysis`, `layout-cytoscape`, and `layout-elk`. The closed ABI 2 surface exports
-  `abi_version`, `package_version`, `capabilities_json`, `render_svg_json`, and `analyze_json`.
-  `--no-default-features` builds the internal protocol bridge only; it is not a public package
-  profile. The Typst plugin replaces caller-provided `resources` with the fixed `constrained`
-  policy at every call, so document input cannot select a trusted or unbounded host profile.
-- Publishable Typst artifacts live under
-  `target/typst-wasm-artifacts/<canonical-profile>/`. The profile directory contains only the
-  stripped WASM and `manifest.json`; the manifest binds the canonical profile and features, ABI,
-  package and Mermaid versions, input tree, toolchain, effective Rust flags, and artifact digest.
-  `build-typst-package --skip-wasm-build` verifies that provenance before reuse and copies it into
-  the package as `merman_typst_plugin.manifest.json`. The package also contains
-  `merman_package.manifest.json`, which binds that artifact to a frozen, fully enumerated wrapper
-  self-contained wrapper and legal-material snapshot. Staging validates exact shape and bytes, then
-  rechecks live source identity before atomic installation. Raw Cargo output under
-  `target/wasm-build/` is private build input and must not be consumed by CI or release packaging.
-- A future public browser package, additional npm export path, or changed default artifact needs a
-  new migration note and release decision.
+- Cargo features describe positive capabilities; the source of truth for an exact shipped artifact
+  is the artifact profile catalog, not historical `full`, `tiny`, or per-diagram feature aliases.
+  The Rust facade keeps only the result-named `complete-svg` convenience aggregate; products and
+  release profiles select direct leaf features.
+- Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
+  requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
+  initialization rather than relying on struct layout compatibility.
+- Browser package identity is part of the public API. Migrate old
+  `@mermanjs/web/<subpath>` imports to the matching standalone package in the table above. There is
+  no compatibility subpath or raw WASM fallback.
+- `merman-wasm` is the wasm-bindgen implementation crate published through crates.io. It is not a
+  browser package, a Node module, or evidence that a Typst artifact supports the same capability set.
+- A new public browser package, changed default package, or candidate admission requires a separate
+  release decision with a descriptor entry, artifact profile, package-size evidence, independent
+  installation smoke, and a migration note.
 
 ## Release Gates By Surface
 
 | Surface | Required local gate before release changes |
 | --- | --- |
-| Browser npm package | `cargo run -p xtask -- verify-mermaid-reference`; `cargo run -p xtask -- verify-editor-token-descriptor`; `cargo run -p xtask -- verify-web-diagram-catalog`; `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
-| VS Code extension | `cargo build --release --locked -p merman-lsp -p merman-cli`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
-| Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:render-only --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
-| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
-| Typst transport | `cargo run --locked -p xtask -- build-typst-package --profile publish`; `cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm`; `cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm`; `cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build`; PR CI compiles package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs `wasm-size-matrix` plus the tests-only package smoke on Typst 0.15.0. The skipped build path remains a gate because it verifies the profile-owned provenance manifest before copying the artifact. |
+| Browser npm package group | `cargo run -p xtask -- verify-mermaid-reference`; `cargo run -p xtask -- verify-editor-token-descriptor`; `cargo run -p xtask -- verify-artifact-profiles`; `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run verify:packages --prefix platforms/web`; `python3 scripts/web_package_group.py validate-descriptor --descriptor platforms/web/web-surface-descriptor.json` |
+| VS Code extension | `cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio`; `cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
+| Browser artifact evidence | `cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json`; inspect the selected artifact profile instead of a legacy feature-profile name. |
+| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
+| Typst transport | `cargo run --locked -p xtask -- verify-typst-profile-constants`; `cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm`; `cargo run --locked -p xtask -- build-typst-package --profile publish`; `cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json`; `cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build`. The package builder consumes the sole `publish` profile and canonical `typst-wasm` artifact recipe, then validates the generated artifact, flat runtime catalog, plugin ABI `2`, size, package provenance, and Typst examples without exposing a private target path. PR CI compiles package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs the size matrix plus the tests-only package smoke. The dependency gate derives package, manifest, target, default-feature policy, and features from the exact artifact profile. Its admitted `json5`, `lol_html`, and `url` dependencies are pure-Rust parts of invariant Mermaid semantics and remain measured by the artifact size budget. |
 
 ## WASM Size Matrix
 
-Use the xtask size matrix before changing WASM feature presets:
+Use the xtask size matrix before changing an artifact profile:
 
 ```bash
-cargo run -p xtask -- wasm-size-matrix --surface browser
-cargo run -p xtask -- wasm-size-matrix --surface typst
-cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-The command builds `wasm-size` artifacts and prints raw, stripped, gzip, and brotli bytes for named
-presets. gzip and brotli are measured from the stripped artifact unless `--no-strip` is used. The
-budget file is intentionally a regression guard with headroom, not a product target. It keeps
-browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes do
-not accidentally compare unlike surfaces.
-
-The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. The
-2026-07-22 measurements include the ICU4X collation data used to reproduce Mermaid's Swimlane
-`localeCompare` ordering rather than substituting Rust byte ordering:
-
-| Package artifact | Preset | Raw bytes | gzip bytes | brotli bytes | Budget source |
-| --- | --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 10,199,393 | 3,840,060 | 2,707,333 | `docs/release/WASM_SIZE_BUDGETS.json` |
-| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 2,652,820 | 925,486 | 690,626 | measured |
-| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 8,000,016 | 2,930,737 | 2,063,928 | measured |
-| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 7,754,567 | 2,824,643 | 1,995,754 | measured |
-| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,775,409 | 970,159 | 735,690 | measured |
-| `platforms/web/pkg/editor/merman_wasm_bg.wasm` | `browser-editor` | 3,450,375 | 1,315,950 | 992,116 | measured |
-| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 10,199,393 | 3,840,060 | 2,707,333 | measured |
-
-For the current Typst publish artifact, also run:
-
-```bash
-cargo run --locked -p xtask -- build-typst-package --profile publish
-cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
-cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm
-cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
-```
-
-Observed 2026-07-19 matrix values, measured from the exact profile descriptors with compression
-applied to `wasm-tools strip --all` output:
-
-| Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Browser | `browser-bridge` | no | none | 3,132,879 | 2,232,230 | 681,924 | 521,464 |
-| Browser | `browser-core` | no | `analysis` | 4,088,849 | 2,956,873 | 886,906 | 662,096 |
-| Browser | `browser-render` | no | `render`, `analysis` | 10,036,036 | 7,688,279 | 2,389,785 | 1,598,148 |
-| Browser | `browser-render-only` | no | `render` | 9,593,092 | 7,389,779 | 2,285,872 | 1,536,742 |
-| Browser | `browser-ascii` | no | `ascii` | 4,273,421 | 3,100,695 | 931,323 | 707,493 |
-| Browser | `browser-editor` | no | `editor-language` | 5,313,319 | 3,901,365 | 1,270,356 | 941,247 |
-| Browser | `browser-full-no-elk` | no | `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 12,670,877 | 9,702,444 | 3,119,444 | 2,111,940 |
-| Browser | `browser-full` | yes | none | 13,573,233 | 10,348,509 | 3,307,400 | 2,248,122 |
-| Browser | `browser-math` | yes | `math` | 16,842,133 | 13,069,360 | 4,252,461 | 2,927,677 |
-| Typst | `typst-bridge` | no | none | 62,063 | 46,146 | 19,500 | 16,574 |
-| Typst | `typst-render-only-no-elk` | no | `render` | 8,796,764 | 7,009,094 | 2,212,276 | 1,484,121 |
-| Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 9,166,305 | 7,259,433 | 2,297,231 | 1,535,192 |
-| Typst | `typst-full-elk` (`publish`) | no | `render`, `analysis`, `layout-cytoscape`, `layout-elk` | 11,445,996 | 8,987,989 | 2,919,785 | 1,986,128 |
+The command builds declared `wasm-size` artifacts and reports raw, stripped, gzip, and brotli
+bytes together with the exact Cargo profile, target, feature set, runtime IDs, capabilities, and
+output IDs. The schema-2 budget file must cover every exact Web and Typst artifact profile once,
+with no legacy feature-profile entries or stale profiles. Compare only artifacts with the same profile and
+target; browser and Typst transports deliberately have different closures.

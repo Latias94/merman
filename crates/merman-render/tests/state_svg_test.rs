@@ -1,6 +1,5 @@
 mod common;
 
-use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -136,14 +135,27 @@ Active --> [*]: done"#,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "transitionColor": "#202020",
+            "mainBkg": "#606060",
+            "stateBorder": "#040404",
+            "strokeWidth": 4,
+            "useGradient": true,
+            "gradientStart": "#112233",
+            "gradientStop": "#445566",
+            "dropShadow": "url(#drop-shadow)",
+            "radius": 3
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"look": "neo", "themeVariables": {"transitionColor": "#202020", "mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4, "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566", "dropShadow": "url(#drop-shadow)", "radius": 3}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Active: start
 state Active {
   Idle --> Busy
-}"##,
+}"#,
     );
 
     assert!(

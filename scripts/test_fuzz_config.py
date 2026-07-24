@@ -204,7 +204,7 @@ class FuzzConfigTests(unittest.TestCase):
         options = data[2:options_end]
         source = data[options_end:]
 
-        self.assertEqual(selector % 18, 4, "seed must select merman_render_svg")
+        self.assertEqual(selector % 18, 4, "seed must select the ABI 3 SVG operation")
         self.assertIsInstance(json.loads(options), dict)
         self.assertTrue(source.startswith(b"flowchart TD\n"))
 

@@ -273,16 +273,25 @@ fn write_actor_label(
     wrap: bool,
     ctx: &ActorLabelContext<'_>,
 ) {
-    if !wrap
-        && let Some(katex) = sequence_katex_label(
+    let wrapped_label = wrap.then(|| {
+        crate::sequence::wrap_sequence_label_like_mermaid_lines(
             label,
             ctx.measurer,
             ctx.style,
-            ctx.config,
-            ctx.math_renderer,
-            SequenceMathHeightMode::Actor,
+            ctx.wrap_width_px,
         )
-    {
+        .join("<br>")
+    });
+    let rendered_label = wrapped_label.as_deref().unwrap_or(label);
+
+    if let Some(katex) = sequence_katex_label(
+        rendered_label,
+        ctx.measurer,
+        ctx.style,
+        ctx.config,
+        ctx.math_renderer,
+        SequenceMathHeightMode::Actor,
+    ) {
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
         out.push_str("<switch>");
@@ -295,7 +304,7 @@ fn write_actor_label(
             h = fmt(katex.height),
             html = katex.html,
         );
-        let raw_lines = crate::text::split_html_br_lines(label);
+        let raw_lines = crate::text::split_html_br_lines(rendered_label);
         let line_count = raw_lines.len();
         write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx.style);
         out.push_str("</switch>");
@@ -304,18 +313,13 @@ fn write_actor_label(
 
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
-    if wrap {
-        let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
-            label,
-            ctx.measurer,
-            ctx.style,
-            ctx.wrap_width_px,
-        );
+    if let Some(wrapped_label) = wrapped_label {
+        let raw_lines = crate::text::split_html_br_lines(&wrapped_label);
         write_actor_label_lines(
             out,
             cx,
             cy,
-            raw_lines.iter().map(String::as_str),
+            raw_lines.iter().copied(),
             raw_lines.len(),
             ctx.style,
         );

@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use merman::{MermaidConfig, render::HeadlessRenderer};
+use merman::{
+    MermaidConfig,
+    svg::{HeadlessRenderer, RenderEnvironment},
+};
 use serde_json::Value;
 
 use crate::error::{Error, Result};
@@ -141,7 +144,9 @@ fn render_mermaid_svg(
     site_theme: Option<&str>,
     context: &str,
 ) -> Result<String> {
-    let mut renderer = HeadlessRenderer::new().with_diagram_id(diagram_id);
+    let mut renderer = HeadlessRenderer::new()
+        .with_environment(RenderEnvironment::deterministic())
+        .with_diagram_id(diagram_id);
     if let Some(theme) = site_theme {
         let mut config = MermaidConfig::empty_object();
         config.set_value("theme", Value::String(theme.to_string()));

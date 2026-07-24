@@ -13,7 +13,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = "0.7"
+//! merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"] }
 //! ```
 //!
 //! This works for local `cargo doc` and for docs.rs because the examples below use
@@ -25,7 +25,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "0.7", optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"], optional = true }
 //!
 //! [features]
 //! doc-diagrams = ["dep:merman-rustdoc"]
@@ -179,17 +179,27 @@
 
 extern crate proc_macro;
 
+#[cfg(feature = "svg")]
 mod doc;
+#[cfg(feature = "svg")]
 mod error;
+#[cfg(feature = "svg")]
 mod expand;
+#[cfg(feature = "svg")]
 mod html;
+#[cfg(feature = "svg")]
 mod options;
+#[cfg(feature = "svg")]
 mod render;
+#[cfg(feature = "svg")]
 mod svg;
 
 use proc_macro::TokenStream;
+#[cfg(feature = "svg")]
 use proc_macro2::TokenStream as TokenStream2;
+#[cfg(feature = "svg")]
 use quote::quote;
+#[cfg(feature = "svg")]
 use syn::LitStr;
 
 /// Render Mermaid code fences in rustdoc comments as inline SVG.
@@ -205,6 +215,7 @@ use syn::LitStr;
 /// pub fn example() {}
 /// ````
 #[proc_macro_attribute]
+#[cfg(feature = "svg")]
 pub fn merman(args: TokenStream, input: TokenStream) -> TokenStream {
     let input: TokenStream2 = input.into();
     let args: TokenStream2 = args.into();
@@ -220,6 +231,18 @@ pub fn merman(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 }
 
+/// Report a missing renderer capability instead of compiling an accidental partial macro.
+#[cfg(not(feature = "svg"))]
+#[proc_macro_attribute]
+pub fn merman(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let mut output = "compile_error!(\"merman-rustdoc requires the `svg` feature; enable it on the dependency\");"
+        .parse::<TokenStream>()
+        .expect("static compile_error token stream");
+    output.extend(input);
+    output
+}
+
+#[cfg(feature = "svg")]
 fn compile_error_with_input(input: TokenStream2, message: &str) -> TokenStream {
     let message = LitStr::new(message, proc_macro2::Span::call_site());
     quote! {

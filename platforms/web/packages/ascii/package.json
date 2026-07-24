@@ -1,0 +1,35 @@
+{
+  "name": "@mermanjs/web-ascii",
+  "version": "0.8.0-alpha.3",
+  "description": "Browser-only Merman WebAssembly SDK for ASCII diagram output.",
+  "type": "module",
+  "main": "./dist/package-entries/ascii.js",
+  "types": "./dist/package-entries/ascii.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/package-entries/ascii.js",
+      "types": "./dist/package-entries/ascii.d.ts"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web/packages/ascii#readme",
+  "keywords": ["mermaid", "diagram", "wasm", "ascii", "browser"],
+  "license": "MIT OR Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "artifacts",
+    "dist",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_LICENSES",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "merman": {
+    "artifact_profile": "web-ascii"
+  }
+}

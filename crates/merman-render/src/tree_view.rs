@@ -26,7 +26,7 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE: f64 = 2.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
 
-pub fn layout_tree_view_diagram_typed(
+pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -329,4 +329,48 @@ fn qualify_tree_view_icon(icon: &str, default_icon_pack: &str) -> String {
 
 pub(crate) fn is_tree_view_highlight_class(css_class: Option<&str>) -> bool {
     css_class.is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+
+    #[test]
+    fn layout_rejects_typed_model_beyond_nesting_limit() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let mut child = TreeViewNode {
+            id: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
+            level: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
+            name: "leaf".to_string(),
+            children: Vec::new(),
+            ..Default::default()
+        };
+        for depth in (0..=MAX_DIAGRAM_NESTING_DEPTH).rev() {
+            child = TreeViewNode {
+                id: depth as i64,
+                level: depth as i64,
+                name: format!("n{depth}"),
+                children: vec![child],
+                ..Default::default()
+            };
+        }
+
+        let model = TreeViewDiagramRenderModel {
+            root: TreeViewNode {
+                children: vec![child],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let error =
+            layout_tree_view_diagram_typed(&model, &Value::Object(Default::default()), &measurer)
+                .unwrap_err();
+        assert!(
+            error.to_string().contains("treeView nesting depth exceeds"),
+            "{error}"
+        );
+    }
 }

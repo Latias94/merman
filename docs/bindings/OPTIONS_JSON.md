@@ -1,11 +1,17 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-21
+Last updated: 2026-07-23
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
 Swift, Flutter/Dart FFI, and Python UniFFI package.
+
+Reusable engines keep construction options as an immutable baseline. Each operation may supply
+request options that deeply merge over that baseline: nested objects merge recursively, while
+arrays and scalar leaves replace the baseline value. Request-local overrides do not mutate later
+operations. Runtime policy is engine-owned, so reusable requests cannot set it; one-shot operations
+may select it while constructing their temporary engine.
 
 Unknown top-level fields are ignored. The `layout` and `environment` service objects reject unknown
 fields so removed service paths cannot be silently ignored. Invalid JSON, invalid UTF-8,
@@ -16,6 +22,7 @@ unsupported enum values, or non-finite numeric values return binding errors inst
 ```json
 {
   "version": 1,
+  "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
   "host_theme": {
@@ -81,13 +88,12 @@ unsupported enum values, or non-finite numeric values return binding errors inst
     "profile": "interactive",
     "limits": {
       "max_source_bytes": 2097152,
-      "max_svg_bytes": 25165824,
-      "max_flowchart_nodes": 8000,
-      "max_flowchart_edges": 16000,
-      "max_flowchart_subgraphs": 2000,
-      "max_venn_areas": 8000,
-      "max_swimlane_line_hop_segment_pairs": 250000,
-      "max_label_bytes": 2097152
+      "max_model_items": 32000,
+      "max_model_text_bytes": 2097152,
+      "max_model_nesting_depth": 256,
+      "max_layout_work_units": 250000,
+      "max_svg_elements": 250000,
+      "max_svg_bytes": 25165824
     }
   },
   "lint": {
@@ -124,8 +130,9 @@ Every field is optional.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `version` | integer | `1` | Options-schema version. Omit it for schema 1 compatibility; any supplied value other than `1` is rejected at the version boundary. |
-| `fixed_today` | string | system local date | Fixed local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. |
-| `fixed_local_offset_minutes` | integer | system local timezone | Fixed local timezone offset in minutes for deterministic local-time parsing and rendering. |
+| `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
+| `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
+| `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
 | `host_theme` | object | none | Opt-in host/editor theme profile compiled into Mermaid config and SVG output settings. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
@@ -136,12 +143,32 @@ Every field is optional.
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
 
+## Runtime Policy
+
+Omitting `runtime_policy` always selects `deterministic`, regardless of which system adapters were
+compiled into the artifact. That policy uses Unix epoch time, UTC, a fixed operation seed, and no
+timing instrumentation. This makes identical options reproducible across native artifacts, WASM,
+and hosts with different local settings.
+
+Set `"runtime_policy": "native"` only when the operation should consult the host clock, complete
+system time-zone rules, and random source. Compiling system adapters makes the policy available; it
+does not select it. An artifact missing any required adapter rejects the native policy at engine
+creation with a typed missing-capability error instead of silently falling back to deterministic
+state. Native timing instrumentation remains a separate explicit capability and is not enabled by
+the native policy.
+
+Generic binding operation metadata records the selected policy as
+`"runtime_policy": "deterministic"` or `"runtime_policy": "native"`. Hosts should retain that
+metadata with rendered or analyzed output when reproducibility matters.
+
 ## Fixed Time Options
 
 `fixed_today` and `fixed_local_offset_minutes` are host-level deterministic controls for diagrams
 whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
 and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
-ASCII render entry points that parse Mermaid source through the shared engine.
+ASCII render entry points that parse Mermaid source through the shared engine. These values
+override the selected runtime policy; they do not implicitly switch a deterministic engine to the
+native policy.
 
 ## Lint Options
 
@@ -364,20 +391,17 @@ vector-PDF filter, embedded-image, and aggregate encoding budgets remain indepen
 | --- | --- | --- | --- |
 | `resources.profile` | string | `interactive` | `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`. |
 | `resources.limits.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
+| `resources.limits.max_model_items` | positive integer | profile value | Aggregate semantic entities and relationships across every diagram family. |
+| `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
+| `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
+| `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
-| `resources.limits.max_flowchart_nodes` | positive integer | profile value | Flowchart nodes plus subgraph layout nodes. |
-| `resources.limits.max_flowchart_edges` | positive integer | profile value | Flowchart edge cardinality. |
-| `resources.limits.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
-| `resources.limits.max_class_nodes` | positive integer | profile value | Class diagram node cardinality. |
-| `resources.limits.max_class_edges` | positive integer | profile value | Class diagram edge cardinality. |
-| `resources.limits.max_class_namespaces` | positive integer | profile value | Class diagram namespace cardinality. |
-| `resources.limits.max_zenuml_participants` | positive integer | profile value | ZenUML participant cardinality. |
-| `resources.limits.max_zenuml_statements` | positive integer | profile value | ZenUML statement cardinality. |
-| `resources.limits.max_zenuml_fragments` | positive integer | profile value | ZenUML fragment and group cardinality. |
-| `resources.limits.max_venn_areas` | positive integer | profile value | Venn source areas plus pairwise areas synthesized by the layout engine. |
-| `resources.limits.max_swimlane_line_hop_segment_pairs` | positive integer | profile value | Broad-phase segment pairs inspected while finding Swimlane line hops. |
-| `resources.limits.max_label_bytes` | positive integer | profile value | Aggregate model label bytes. |
+
+The seven public limits are intentionally family-neutral. Each family performs source-backed,
+deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
+candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
+choose a workload profile instead of maintaining diagram-specific threshold tables.
 
 `interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
 the Typst plugin for every call; caller-provided `resources` values are replaced at that transport
@@ -404,7 +428,8 @@ batch job. `unbounded-for-trusted-input` must only be used inside an outer trust
 
 These defaults are engineering admission baselines, not latency or memory SLOs. Hosts should
 measure their own diagrams and set explicit overrides only after observing peak memory and timeout
-behavior. A profile override cannot raise `max_svg_tree_depth`, which is a hard backend capability.
+behavior. The SVG backend also enforces an internal tree-depth capability; it is not a public
+override because increasing it would not make the backend stack-safe.
 
 ### Calibration Evidence
 
@@ -422,31 +447,34 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under resource-contract schema `1`: an unknown id, zero value, removed flat
-field, or attempt to override the non-tunable `max_svg_tree_depth` backend capability is rejected.
+Limit ids are closed under resource-contract schema `1`: an unknown id, zero value, or removed flat
+or family-specific field is rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
 exact value or `null` for every profile. This avoids copying profile values into host libraries.
 
 ## Runtime Contract Discovery
 
 Query the loaded artifact rather than inferring capabilities or resource values from a package
-name. Runtime-contract schema `3` includes native ABI, package version, options schema, payload
-schemas, compiled features, complete language-catalog family count, plus the resource descriptor
-for every compiled resource-aware operation. Render, analysis, and ASCII artifacts expose only
-the limit ids their operations can enforce; an artifact with none of those operations returns
-`resources: null`.
+name. Runtime-contract schema `1` includes the transport API version, package and payload schema
+versions, compiled capability and output IDs, complete language-catalog facts, plus the resource
+descriptor for every compiled resource-aware operation. Render, analysis, and ASCII artifacts
+expose only the limit ids their operations can enforce; an artifact with none of those operations
+returns `resources: null`.
 
 | Surface | API |
 | --- | --- |
-| C | `merman_runtime_contract_json()` |
-| Android/Kotlin | `MermanEngine.runtimeContractJson()` |
-| Apple/Swift | `MermanEngine.runtimeContract()` |
-| Flutter/Dart | `MermanEngine.runtimeContract()` |
-| UniFFI/Python | `MermanEngine.runtime_contract_json()` |
-| Web/TypeScript | `runtimeContract()` |
+| C | `MermanNativeApi.runtime_catalog()` after `merman_get_native_api()` |
+| Android/Kotlin | `MermanEngine.runtimeCatalogJson()` |
+| Apple/Swift | `MermanEngine().runtimeCatalogJson()` |
+| Flutter/Dart | `Merman.open().runtimeCatalog` |
+| UniFFI/Python | `MermanEngine.runtime_catalog_json()` / `merman.get_runtime_catalog(engine)` |
+| Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `2` and payload schema numbers. Reject a
-contract schema newer than the host understands before interpreting its nested fields.
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `3`, and payload
+schema numbers. Reject a contract schema newer than the host understands before interpreting its
+nested fields. The atomic runtime catalog carries the vocabulary beside the contract; validate it
+before trusting the contract's capability IDs, so its descriptor-owned direct implications do not
+need to be copied into each host package.
 
 ## SVG Options
 
@@ -553,6 +581,7 @@ Deterministic layout for tests:
 
 ```json
 {
+  "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
   "environment": {
@@ -582,7 +611,7 @@ Strict resource profile override:
   "resources": {
     "profile": "constrained",
     "limits": {
-      "max_flowchart_nodes": 500
+      "max_model_items": 500
     }
   }
 }
@@ -592,17 +621,18 @@ Strict resource profile override:
 
 Invalid options produce binding errors:
 
-| Error | Code name |
+| Error | Native ABI 3 status |
 | --- | --- |
-| Invalid UTF-8 | `MERMAN_UTF8_ERROR` |
-| Invalid JSON | `MERMAN_OPTIONS_JSON_ERROR` |
-| Unsupported option value | `MERMAN_INVALID_ARGUMENT` |
-| Feature-gated format disabled | `MERMAN_UNSUPPORTED_FORMAT` |
-| Resource budget exceeded | `MERMAN_RESOURCE_LIMIT_EXCEEDED` |
+| Invalid UTF-8 | `MERMAN_NATIVE_STATUS_UTF8_ERROR` |
+| Invalid JSON | `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR` |
+| Unsupported option value | `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` |
+| Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
+| Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
 Platform wrappers surface those errors through their native exception type:
 
-- C ABI: non-zero `MermanResult.code` with a JSON error payload.
+- C ABI: non-zero `MermanNativeStatus`, mirrored in `MermanNativeResult.status`, with the structured
+  JSON error payload in `MermanNativeResult.metadata_or_error_json`.
 - Android: `MermanException`.
 - Apple: `MermanError.binding`.
 - Flutter/Dart: `MermanException`.
@@ -617,7 +647,7 @@ typed builders now sit above that contract and are produced from the Rust resour
 | --- | --- |
 | C | `MermanResourceProfile`, `MermanResourceLimitId`, `MermanResourceLimitOverride` and `merman_resource_options_json()` |
 | Android/Kotlin | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
-| Apple/Swift | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
+| Apple/Swift | generated `resourceOptionsJson(profile:overrides:)` |
 | Flutter/Dart | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
 | Python/UniFFI | `ResourceOptionsBuilder` / `ResourceOptions` |
 | Web/TypeScript | closed `ResourceProfile`/`ResourceLimitId` unions and `resourceOptions()`; use `rawResourceOptionsJson()` only for an explicitly external contract |

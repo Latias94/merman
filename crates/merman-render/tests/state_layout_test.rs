@@ -1,7 +1,9 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
 use merman_render::model::StateDiagramLayout;
-use merman_render::state::layout_state_diagram_typed;
+use merman_render::resources::RenderResourcePolicy;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -52,40 +54,41 @@ fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagra
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::State(model) = parsed.model() else {
-        panic!("expected State render model");
-    };
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_state_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("typed State layout")
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+    let projection = artifact.layout_json().expect("State layout projection");
+    serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
 }
 
 fn layout_state_from_text_with_options(
     text: &str,
     parse_options: ParseOptions,
 ) -> StateDiagramLayout {
+    layout_state_from_text_with_options_and_policy(
+        text,
+        parse_options,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn layout_state_from_text_with_options_and_policy(
+    text: &str,
+    parse_options: ParseOptions,
+    resource_policy: RenderResourcePolicy,
+) -> StateDiagramLayout {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(text, parse_options)
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::State(model) = parsed.model() else {
-        panic!("expected State render model");
-    };
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_state_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("typed State layout")
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+    let projection = artifact.layout_json().expect("State layout projection");
+    serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
 }
 
 #[test]
@@ -106,7 +109,11 @@ fn state_layout_handles_deep_composite_chain() {
     const DEPTH: usize = 512;
     let text = deep_state_composite_chain(DEPTH);
 
-    let layout = layout_state_from_text_with_options(&text, ParseOptions::strict());
+    let layout = layout_state_from_text_with_options_and_policy(
+        &text,
+        ParseOptions::strict(),
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
 
     assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
     assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));

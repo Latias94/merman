@@ -1,5 +1,5 @@
 use crate::XtaskError;
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
 use merman_core::{Engine, ParseOptions};
 use serde::{Deserialize, Serialize};

@@ -1,98 +1,124 @@
 # merman-ffi
 
-[![Crates.io](https://img.shields.io/crates/v/merman-ffi.svg)](https://crates.io/crates/merman-ffi)
-[![Documentation](https://docs.rs/merman-ffi/badge.svg)](https://docs.rs/merman-ffi)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
+Embed Merman's headless Mermaid parser, analyzer, layout engine, and render/export backends in a
+C-compatible host. It does not require a browser or JavaScript runtime.
 
-Embed Merman's headless Mermaid parser, analyzer, layout engine, and SVG/terminal renderer in any C-compatible host. No browser or JavaScript runtime is required.
-
-> **Alpha:** the library reports C ABI `2`, but prerelease ABI 2 records can still be replaced in place before the stable release. Always ship the header and native library from the same Merman release and keep the runtime ABI and struct-size checks.
+> **Native ABI 3:** this crate exposes native ABI 3 only. The ABI 2 entry points and records shipped
+> in `0.8.0-alpha.2` and `0.8.0-alpha.3` were removed; rebuild those hosts against the ABI 3 header
+> and library from the same Merman release.
 
 ## Build
 
-The crates.io package contains source for `cdylib`, `staticlib`, and `rlib` artifacts; it is not a prebuilt native SDK.
+`merman-ffi` has no default features. Choose an explicit capability set:
+
+The committed `c-abi-native` artifact profile owns the complete release recipe used by C
+consumers and Flutter packaging.
 
 ```sh
-cargo build -p merman-ffi --release
+# Canonical native SDK artifact: SVG, analysis, ASCII, PNG, JPEG, PDF, layouts, math, and native adapters.
+cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+
+# A semantic-only embedding.
+cargo build -p merman-ffi --release --no-default-features
+
+# A focused SVG artifact.
+cargo build -p merman-ffi --release --no-default-features --features svg
 ```
 
-Include `include/merman.h` from the same crate archive or source release as the library, then link
-the resulting `merman_ffi` artifact. Do not substitute a header from the repository's moving
-`main` branch for a released native library.
+The crate produces `cdylib`, `staticlib`, and `rlib` artifacts. Include the release-matched
+[`include/merman.h`](include/merman.h) instead of copying a header from a moving branch.
 
-## Minimal C Example
+## ABI 3 Model
+
+The C surface has one exported discovery symbol:
 
 ```c
-#include "merman.h"
-#include <stdio.h>
-
-static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
-
-int main(void) {
-    if (merman_abi_version() != MERMAN_ABI_VERSION) return 1;
-
-    MermanResult result = merman_render_svg(source, sizeof(source) - 1, NULL, 0);
-    if (result.code != MERMAN_OK) {
-        merman_buffer_free(result.data);
-        return 2;
-    }
-
-    fwrite(result.data.data, 1, result.data.len, stdout);
-    merman_buffer_free(result.data);
-    return 0;
-}
+MermanNativeStatus merman_get_native_api(
+    const MermanNativeApiRequest *request,
+    MermanNativeApi *out_api
+);
 ```
 
-Every non-empty `MermanResult.data` buffer must be released exactly once with
-`merman_buffer_free`; never pass it to the host allocator. The crate archive includes
-`examples/render_svg.c` for a complete consumer and `examples/render_svg_engine.c` for the
-reusable engine, both matched to the packaged header.
+The host supplies `MERMAN_NATIVE_ABI_VERSION` and
+`MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST`, then receives a size-tagged function table. Before
+consuming a record, initialize caller-owned input records with
+`MERMAN_NATIVE_STRUCT_SIZE(Type)`. The generated C header and release C smoke test carry the
+compile-run layout fingerprint; applications should not implement a second runtime offset probe.
+`MermanNativeResult` is a write-only output record: use
+`MERMAN_NATIVE_RESULT_INIT`, which initializes its required `struct_size` without requiring a
+host to initialize fields Merman will overwrite. This makes mixed headers, binaries, and foreign
+struct packing fail at discovery rather than during rendering.
 
-## Public Surface
+Every operation follows the same path:
 
-The stateless and reusable-engine entry points expose:
+1. Call `merman_get_native_api`.
+2. Create an engine token with `api.engine_new`.
+3. Set `MermanNativeOperationRequest.operation` to the requested operation enum.
+4. Call `api.execute_collect`.
+5. Release every result with `api.result_free`, then release the token with `api.engine_free`.
 
-- Mermaid source to SVG or Unicode terminal text;
-- semantic and layout JSON;
-- diagram and Markdown/MDX document diagnostics;
-- parser-backed document facts for editor integrations;
-- validation, themes, lint rules, ASCII grades, and the complete diagram-family capability catalog.
+Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's
+deterministic clock, UTC time zone, and fixed random seed, even when native adapters are compiled.
+Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system
+clock, time-zone, and random adapters. If one is unavailable, engine creation returns the typed
+unsupported-operation status. Successful generic operation metadata includes
+`"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
 
-Use `merman_engine_new` when several calls share one options document. Concurrent read-style calls require a thread-safe callback and `user_data`; callback replacement is an exclusive mutation. Do not re-enter the same engine from a callback, and release it exactly once with `merman_engine_free`.
+`MermanNativeOperationRequest.options_json` accepts the same generic options document for one
+operation. Request objects recursively override the reusable engine baseline, while omitted nested
+values remain inherited and the baseline itself is not mutated. `runtime_policy` remains
+constructor-owned and is rejected in request options.
 
-`options_json` uses the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). `NULL/0` selects defaults. The default SVG pipeline targets Mermaid parity; `readable` and `resvg-safe` are explicit alternatives for consumers with stricter SVG support.
+`api.runtime_catalog` returns the flat schema-1 catalog with package version, compiled capability,
+operation, and output IDs, registry facts, resource defaults/limits, and text-measurement
+providers. It is the source of truth for the loaded artifact; do not infer availability from Cargo
+feature names.
 
-## Compatibility Contracts
+The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis,
+validation, and URI-requiring document analysis. An unavailable operation returns the typed
+`MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API.
+Failure JSON schema `1` further distinguishes `unknown-operation` from `missing-capability`; only the
+latter carries the exact descriptor `capability_id`. All other failures use `generic` with a null
+capability ID.
 
-- Native ABI: `2`. Hosts must compare `merman_abi_version()` with `MERMAN_ABI_VERSION` and verify every exposed struct size before use.
-- Diagnostics and parser-facts payload schemas: diagnostics `1`, facts `2`. These schema numbers are independent of the native ABI. Facts v1 is rejected at its version boundary; the removed alpha TextScan shape is not accepted.
-- Text measurement: ABI 2 defines 19 exact operations (`0..18`) and four tagged result kinds. A handled callback must return the result kind required by `request.operation`; do not infer a shape from zero-valued fields.
-- Diagram discovery: query `merman_diagram_family_capabilities_json()` instead of hard-coding parser, editor, layout, or render availability.
-- Runtime discovery: query `merman_runtime_contract_json()` for schema `3` ABI/package/options/payload versions, compiled features, registry facts, and the descriptor-driven resource catalog. Only artifacts without render, analysis, and ASCII report `resources: null`.
+[`examples/render_svg.c`](examples/render_svg.c) is the minimal discovery-and-render program.
+[`examples/render_svg_engine.c`](examples/render_svg_engine.c) also shows a host text-measurement
+callback installed when the engine is created.
 
-This prerelease replaced the earlier ABI 2 text-measurement records without changing the numeric ABI. Rebuild the native library and host bindings together; old headers will fail the struct-size contract.
+## Ownership And Callbacks
 
-## Text Measurement Ownership
+`MermanNativeResult.data` and `metadata_or_error_json` are Merman-owned only after Merman has
+written the result, and only until `api.result_free(&result)`. Ownership is bound to the exact
+result record address Merman wrote; copying or moving a live result does not transfer ownership.
+Call `result_free` on that original record for each Merman-written result, including failures,
+before reuse. Repeated calls and calls on a full-size record with only `struct_size` initialized
+are harmless, and nested buffer fields are never treated as allocation authority. Inputs and
+callback request slices are borrowed for the call only.
 
-Merman owns a deterministic vendored text measurer by default. It is appropriate for servers, CLIs, CI, and documentation builds, and it keeps rendering available when no GUI font API exists.
+Engine values are opaque nonzero tokens, not pointers. `engine_free` retires a token immediately;
+an already active operation retains its internal state safely, but the host must not make another
+call with the retired token. It is not a quiescence barrier: keep the configured text-measurement
+callback and `user_data` valid until every operation started before retirement has returned. Any
+thread that re-enters or retires the same engine while a host text-measurement callback is active
+receives a typed reentrancy failure; other engine tokens remain usable.
 
-Preview hosts can install `merman_engine_set_text_measure_callback` on a reusable engine when geometry must match the final font stack. The callback is synchronous and may run on any rendering thread. Measure with the same DOM, canvas, Core Text, Android text layout, or Flutter text stack that displays the SVG; return `handled = 0` when an operation cannot be answered immediately and faithfully. Unsupported, invalid, wrong-kind, or failed requests fall back per operation without transferring ownership of the render.
-
-The exact request lifetimes, operation/result mapping, concurrency rules, and signed-length exceptions are specified in the [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#host-text-measurement) and [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
+Merman provides deterministic vendored text measurement by default. A preview host can set
+`MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback
+is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will
+fall back for that request. The operation/result-kind contract is generated in
+[`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
 
 ## Feature Selection
 
-Default builds enable the full registry, host environment, SVG rendering, analysis, and terminal output. Minimal source builds can opt into the required surfaces:
+The public feature names describe callable capabilities:
 
-```sh
-cargo build -p merman-ffi --release --no-default-features --features analysis
-cargo build -p merman-ffi --release --no-default-features --features render
-cargo build -p merman-ffi --release --no-default-features --features ascii
-cargo build -p merman-ffi --release --features layout-elk,math
-```
-
-Entry points remain exported when their feature is absent and return `MERMAN_UNSUPPORTED_FORMAT` with an operation-specific message. `merman_resource_options_json` is available when render, analysis, or ASCII is compiled and rejects limit IDs unavailable to that artifact; query `runtime_contract.features` and `runtime_contract.resources` before calling it. The `raster` Cargo feature prepares shared conversion support, but the C ABI does not yet expose raster byte-output functions.
+- `svg`, `analysis`, and `ascii` enable their corresponding operation families.
+- `png`, `jpeg`, and `pdf` add real binary output operations.
+- `layout-cytoscape`, `layout-elk`, and `math` add their rendering capabilities.
+- `system-clock`, `system-timezone`, and `system-random` install native adapters.
+Use the generated runtime catalog to determine what the loaded artifact actually supports. The
+full wire contract, status semantics, callback rules, and C snippets are in
+[the FFI protocol](../../docs/bindings/FFI_PROTOCOL.md).
 
 ## Platform Wrappers
 
@@ -101,10 +127,8 @@ Entry points remain exported when their feature is absent and return `MERMAN_UNS
 - [Flutter / Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
 - [Python / UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
 
-Project scope and diagram coverage live in the [main README](https://github.com/Latias94/merman#readme) and [alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md). Release changes are recorded in the [project changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
-
 ## License And Notices
 
 Merman is available under MIT or Apache-2.0. The crate archive includes the release-matched
 `LICENSE-MIT` and `LICENSE-APACHE` texts. Project-wide source provenance and third-party legal
-materials are recorded in [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+materials are recorded in [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).

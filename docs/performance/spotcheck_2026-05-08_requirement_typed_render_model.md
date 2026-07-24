@@ -19,13 +19,13 @@ semantic model in the parity renderer.
 Parent JSON baseline:
 
 ```text
-cargo bench -p merman --features render --bench pipeline requirement_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline requirement_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Typed worktree:
 
 ```text
-cargo bench -p merman --features render --bench pipeline requirement_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features svg --bench pipeline requirement_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 The typed worktree was run twice. The first post-migration run showed `render/requirement_medium`

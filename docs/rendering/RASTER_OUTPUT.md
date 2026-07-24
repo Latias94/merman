@@ -1,4 +1,4 @@
-# SVG, Raster, and PDF Output
+# SVG, PNG, JPEG, and PDF Output
 
 Merman exposes four output contracts from the same headless render operation. SVG is the pure
 vector path. PNG and JPEG allocate a final pixel buffer. PDF keeps ordinary SVG geometry as vector
@@ -87,12 +87,19 @@ PDF filter sampling is controlled by `--pdf-filter-scale`, `--pdf-max-filter-pix
 
 ## Library usage
 
-Enable the `raster` feature on the `merman` crate and choose options for the actual output type:
+Enable only the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`) on the `merman`
+crate. PNG and JPEG share private bitmap preparation; PDF remains a separate vector export path.
+The following example uses both `png` and `pdf`:
+
+```toml
+[dependencies]
+merman = { version = "0.8.0-alpha.3", default-features = false, features = ["png", "pdf"] }
+```
 
 ```rust
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer,
-    raster::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions},
+    export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions},
 };
 
 let renderer = HeadlessRenderer::new().with_diagram_id("export-doc-example");
@@ -119,16 +126,21 @@ let pdf = renderer
 The same path is available as a runnable repository example:
 
 ```sh
-cargo run -p merman --features raster --example example_05_raster_output
+cargo run -p merman --features png --example example_05_raster_output
 ```
 
 If an application already owns SVG text, finalize it before calling low-level encoders. Those
 encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
+```toml
+[dependencies]
+merman = { version = "0.8.0-alpha.3", default-features = false, features = ["png", "jpeg", "pdf"] }
+```
+
 ```rust
-use merman::render::{
+use merman::svg::{
     RenderEnvironment, finalize_resvg_svg,
-    raster::{
+    export::{
         PdfOptions, RasterOptions, svg_to_jpeg, svg_to_pdf_with_options, svg_to_png,
     },
 };
@@ -145,6 +157,11 @@ let pdf = svg_to_pdf_with_options(&svg, &PdfOptions::default())?;
 # let _ = (png, jpeg, pdf);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+The `pdf` feature exposes no PNG or JPEG API. Its current `krilla-svg` dependency still brings a
+transitive SVG/raster implementation closure, so this is an API and direct-feature boundary rather
+than a claim that a PDF-only binary contains no raster implementation at all. The artifact-profile
+closure checks record that residual explicitly.
 
 Use `prepare_raster` or `prepare_pdf` when a host needs to inspect the allocation plan or reserve
 memory before encoding. Their scheduling weights include the native recursive-backend worker stack

@@ -1,9 +1,11 @@
+use std::str::FromStr;
+
 use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quickfix() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -67,7 +69,7 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quic
     let diagnostic = params.diagnostics[0].clone();
     assert_eq!(
         diagnostic.severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
+        Some(tower_lsp_server::ls_types::DiagnosticSeverity::WARNING)
     );
     assert_eq!(
         diagnostic.code,
@@ -110,7 +112,7 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quic
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_returns_negotiated_quickfix_with_versioned_edit() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/quickfix.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/quickfix.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({

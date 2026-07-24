@@ -1,4 +1,4 @@
-use merman::render::{HeadlessRenderer, SvgRenderOptions};
+use merman::svg::{HeadlessRenderer, SvgRenderOptions};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

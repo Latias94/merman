@@ -60,7 +60,7 @@ or GitHub Release after publication.
 Every new surface needs a package-choice explanation, not just a maintainer workflow note:
 
 - `README.md` for first-contact users.
-- `docs/FEATURES.md` when a feature flag or preset changes dependency weight.
+- `docs/FEATURES.md` when a feature flag, artifact profile, or dependency boundary changes.
 - `docs/release/PACKAGE_SURFACES.md` for release readiness and package/subpath matrices.
 - The package README closest to the entry point.
 

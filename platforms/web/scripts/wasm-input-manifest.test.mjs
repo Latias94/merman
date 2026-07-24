@@ -46,7 +46,9 @@ describe("WASM input manifest", () => {
       "Cargo.toml",
       "Cargo.lock",
       "rust-toolchain.toml",
-      "abi/merman-v2.json",
+      "abi/text-measurement-v1.json",
+      "capabilities/artifact-profiles-v1.json",
+      "capabilities/feature-surface-v1.json",
       "platforms/web/web-surface-descriptor.json",
       "platforms/web/scripts/build-wasm.mjs",
       "platforms/web/scripts/wasm-build/input-manifest.mjs",
@@ -58,7 +60,7 @@ describe("WASM input manifest", () => {
     }
   });
 
-  it("invalidates additions, dependency sources, preset features, and artifacts", () => {
+  it("invalidates additions, dependency sources, artifact profile features, and artifacts", () => {
     const fixture = createFixture();
     const manifest = buildManifest(fixture);
 
@@ -66,10 +68,10 @@ describe("WASM input manifest", () => {
     assertInvalid(fixture, manifest, "crates/merman-core/src/new_module.rs");
     rmSync(resolve(fixture, "crates/merman-core/src/new_module.rs"));
 
-    const changedPreset = buildManifest(fixture, {
-      features: ["editor-language", "layout-elk"],
+    const changedProfile = buildManifest(fixture, {
+      features: ["editor", "layout-elk"],
     });
-    assert.notEqual(changedPreset.input_digest, manifest.input_digest);
+    assert.notEqual(changedProfile.input_digest, manifest.input_digest);
     const changedTool = buildManifest(fixture, {}, { rustc: "rustc 1.96.0" });
     assert.notEqual(changedTool.input_digest, manifest.input_digest);
     assertInvalid(
@@ -79,29 +81,19 @@ describe("WASM input manifest", () => {
       { rustc: "rustc 1.96.0" }
     );
 
-    write(fixture, "platforms/web/pkg/merman_wasm_bg.wasm", "different bytes");
+    write(fixture, "platforms/web/pkg/full/merman_wasm_bg.wasm", "different bytes");
     assertInvalid(fixture, manifest, "artifact");
   });
 
-  it("keeps sibling surface artifacts outside the root artifact contract", () => {
+  it("fails closed for sibling WASM artifacts", () => {
     const fixture = createFixture();
     const manifest = buildManifest(fixture);
     write(
       fixture,
-      "platforms/web/pkg/core/merman_wasm_bg.wasm",
+      "platforms/web/pkg/full/core/merman_wasm_bg.wasm",
       "independent core surface"
     );
     assert.match(verify(fixture, manifest).reasons.join("\n"), /unowned.*core/i);
-    assert.deepEqual(
-      verifyWasmInputManifest({
-        ...fixture,
-        allowedArtifactDirectories: ["core"],
-        manifest,
-        preset: preset(),
-        toolVersions: toolVersions(),
-      }),
-      { ok: true, reasons: [] },
-    );
   });
 
   it("fails closed for missing, corrupt, or structurally stale manifests", () => {
@@ -162,11 +154,11 @@ function toolVersions(overrides = {}) {
 
 function preset(overrides = {}) {
   return {
-    name: "browser-full",
-    surface: "full",
+    name: "web-full",
+    surface: "web",
     default_features: false,
-    features: ["editor-language"],
-    capabilities: { render: true, editor_language: true },
+    features: ["editor"],
+    runtime_capability_ids: ["analysis", "editor", "svg"],
     ...overrides,
   };
 }
@@ -175,7 +167,7 @@ function createFixture() {
   const repoRoot = mkdtempSync(path.join(os.tmpdir(), "merman-wasm-inputs-"));
   roots.push(repoRoot);
   const packageRoot = path.join(repoRoot, "platforms", "web");
-  const outputRoot = path.join(packageRoot, "pkg");
+  const outputRoot = path.join(packageRoot, "pkg", "full");
   const metadata = {
     packages: [
       {
@@ -229,23 +221,25 @@ function createFixture() {
     "Cargo.lock": "version = 4\n",
     "rust-toolchain.toml": "[toolchain]\nchannel = \"1.95.0\"\n",
     "README.md": "initial docs\n",
-    "abi/merman-v2.json": "{\"version\":2}\n",
+    "abi/text-measurement-v1.json": "{\"protocol_version\":1}\n",
+    "capabilities/artifact-profiles-v1.json": "{\"schema_version\":1}\n",
+    "capabilities/feature-surface-v1.json": "{\"schema_version\":1}\n",
     "crates/merman-core/Cargo.toml": "[package]\nname = \"merman-core\"\n",
     "crates/merman-core/src/lib.rs": "pub struct Core;\n",
     "crates/merman-wasm/Cargo.toml": "[package]\nname = \"merman-wasm\"\n",
     "crates/merman-wasm/src/lib.rs": "pub fn render() {}\n",
     "crates/test-helper/Cargo.toml": "[package]\nname = \"test-helper\"\n",
     "crates/test-helper/src/lib.rs": "pub fn helper() {}\n",
-    "platforms/web/web-surface-descriptor.json": "{\"schema_version\":1}\n",
+    "platforms/web/web-surface-descriptor.json": "{\"schema_version\":3}\n",
     "platforms/web/scripts/build-wasm.mjs": "// build\n",
     "platforms/web/scripts/wasm-build/input-manifest.mjs": "// manifest\n",
     "platforms/web/scripts/wasm-build/new-owned-module.mjs": "// owned\n",
-    "platforms/web/pkg/merman_wasm.js": "export default {};\n",
-    "platforms/web/pkg/merman_wasm.d.ts": "export default function init(): void;\n",
-    "platforms/web/pkg/merman_wasm_bg.wasm": "wasm bytes",
-    "platforms/web/pkg/merman_wasm_bg.wasm.d.ts": "export const memory: WebAssembly.Memory;\n",
-    "platforms/web/pkg/merman_wasm_preset.json": "{\"preset\":\"browser-full\"}\n",
-    "platforms/web/pkg/package.json": "{\"type\":\"module\"}\n",
+    "platforms/web/pkg/full/merman_wasm.js": "export default {};\n",
+    "platforms/web/pkg/full/merman_wasm.d.ts": "export default function init(): void;\n",
+    "platforms/web/pkg/full/merman_wasm_bg.wasm": "wasm bytes",
+    "platforms/web/pkg/full/merman_wasm_bg.wasm.d.ts": "export const memory: WebAssembly.Memory;\n",
+    "platforms/web/pkg/full/merman_wasm_artifact_profile.json": "{\"artifact_profile\":\"web-full\"}\n",
+    "platforms/web/pkg/full/package.json": "{\"type\":\"module\"}\n",
   })) {
     write({ repoRoot }, relative, contents);
   }

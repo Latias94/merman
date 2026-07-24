@@ -25,7 +25,7 @@ Exit criteria:
 
 - bindings-core, CLI, raster, and FFI-facing code use canonical operations where appropriate.
 - Adapter-specific policy remains local to adapters.
-- Shallow pre-1.0 convenience methods are deleted, demoted, or explicitly retained with reason.
+- Shallow convenience methods are deleted, demoted, or explicitly retained with reason.
 
 ## M3 — Diagram Family Facts And Admission
 

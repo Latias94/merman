@@ -1,133 +1,323 @@
 use libloading::Library;
-use merman_ffi::{MermanBuffer, MermanResult};
-use std::ffi::c_char;
+use serde_json::Value;
+use std::mem::{MaybeUninit, align_of, offset_of, size_of};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[repr(C)]
-struct MermanApi {
-    render_enabled: i32,
-    ascii_enabled: i32,
-    analysis_enabled: i32,
-    abi_version: extern "C" fn() -> u32,
-    package_version: extern "C" fn() -> *const c_char,
-    buffer_struct_size: extern "C" fn() -> usize,
-    result_struct_size: extern "C" fn() -> usize,
-    engine_result_struct_size: extern "C" fn() -> usize,
-    host_text_measure_request_struct_size: extern "C" fn() -> usize,
-    host_text_measure_result_struct_size: extern "C" fn() -> usize,
-    engine_new: unsafe extern "C" fn(*const u8, usize) -> merman_ffi::MermanEngineResult,
-    engine_free: unsafe extern "C" fn(*mut merman_ffi::MermanEngine),
-    engine_set_text_measure_callback: unsafe extern "C" fn(
-        *mut merman_ffi::MermanEngine,
-        Option<merman_ffi::MermanHostTextMeasureCallback>,
-        *mut std::ffi::c_void,
-    ) -> MermanResult,
-    engine_render_svg:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    engine_render_ascii:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    engine_analyze_json:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    engine_analyze_document_json: unsafe extern "C" fn(
-        *const merman_ffi::MermanEngine,
-        *const u8,
-        usize,
-        *const u8,
-        usize,
-    ) -> MermanResult,
-    engine_analyze_document_facts_json: unsafe extern "C" fn(
-        *const merman_ffi::MermanEngine,
-        *const u8,
-        usize,
-        *const u8,
-        usize,
-    ) -> MermanResult,
-    engine_parse_json:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    engine_layout_json:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    engine_validate_json:
-        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
-    render_svg: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    render_ascii: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    analyze_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    analyze_document_json:
-        unsafe extern "C" fn(*const u8, usize, *const u8, usize, *const u8, usize) -> MermanResult,
-    analyze_document_facts_json:
-        unsafe extern "C" fn(*const u8, usize, *const u8, usize, *const u8, usize) -> MermanResult,
-    parse_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    layout_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    validate_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
-    supported_diagrams_json: extern "C" fn() -> MermanResult,
-    runtime_contract_json: extern "C" fn() -> MermanResult,
-    ascii_capabilities_json: extern "C" fn() -> MermanResult,
-    diagram_family_capabilities_json: extern "C" fn() -> MermanResult,
-    lint_rule_catalog_json: extern "C" fn() -> MermanResult,
-    supported_themes_json: extern "C" fn() -> MermanResult,
-    supported_host_theme_presets_json: extern "C" fn() -> MermanResult,
-    buffer_free: unsafe extern "C" fn(MermanBuffer),
-}
+type NativeGetApi = unsafe extern "C" fn(
+    *const merman_ffi::MermanNativeApiRequest,
+    *mut merman_ffi::MermanNativeApi,
+) -> merman_ffi::MermanNativeStatus;
 
 #[test]
 fn c_consumer_smoke() {
     let library_path = compile_c_consumer();
 
     unsafe {
-        let library = Library::new(&library_path).unwrap_or_else(|err| {
+        let library = Library::new(&library_path).unwrap_or_else(|error| {
             panic!(
-                "failed to load C consumer smoke library {}: {err}",
+                "failed to load C consumer smoke library {}: {error}",
                 library_path.display()
             )
         });
-        let smoke: libloading::Symbol<unsafe extern "C" fn(MermanApi) -> i32> = library
+        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi, i32) -> i32> = library
             .get(b"merman_c_consumer_smoke")
             .expect("load merman_c_consumer_smoke symbol");
 
-        let rc = smoke(MermanApi {
-            render_enabled: i32::from(cfg!(feature = "render")),
-            ascii_enabled: i32::from(cfg!(feature = "ascii")),
-            analysis_enabled: i32::from(cfg!(feature = "analysis")),
-            abi_version: merman_ffi::merman_abi_version,
-            package_version: merman_ffi::merman_package_version,
-            buffer_struct_size: merman_ffi::merman_buffer_struct_size,
-            result_struct_size: merman_ffi::merman_result_struct_size,
-            engine_result_struct_size: merman_ffi::merman_engine_result_struct_size,
-            host_text_measure_request_struct_size:
-                merman_ffi::merman_host_text_measure_request_struct_size,
-            host_text_measure_result_struct_size:
-                merman_ffi::merman_host_text_measure_result_struct_size,
-            engine_new: merman_ffi::merman_engine_new,
-            engine_free: merman_ffi::merman_engine_free,
-            engine_set_text_measure_callback: merman_ffi::merman_engine_set_text_measure_callback,
-            engine_render_svg: merman_ffi::merman_engine_render_svg,
-            engine_render_ascii: merman_ffi::merman_engine_render_ascii,
-            engine_analyze_json: merman_ffi::merman_engine_analyze_json,
-            engine_analyze_document_json: merman_ffi::merman_engine_analyze_document_json,
-            engine_analyze_document_facts_json:
-                merman_ffi::merman_engine_analyze_document_facts_json,
-            engine_parse_json: merman_ffi::merman_engine_parse_json,
-            engine_layout_json: merman_ffi::merman_engine_layout_json,
-            engine_validate_json: merman_ffi::merman_engine_validate_json,
-            render_svg: merman_ffi::merman_render_svg,
-            render_ascii: merman_ffi::merman_render_ascii,
-            analyze_json: merman_ffi::merman_analyze_json,
-            analyze_document_json: merman_ffi::merman_analyze_document_json,
-            analyze_document_facts_json: merman_ffi::merman_analyze_document_facts_json,
-            parse_json: merman_ffi::merman_parse_json,
-            layout_json: merman_ffi::merman_layout_json,
-            validate_json: merman_ffi::merman_validate_json,
-            supported_diagrams_json: merman_ffi::merman_supported_diagrams_json,
-            runtime_contract_json: merman_ffi::merman_runtime_contract_json,
-            ascii_capabilities_json: merman_ffi::merman_ascii_capabilities_json,
-            diagram_family_capabilities_json: merman_ffi::merman_diagram_family_capabilities_json,
-            lint_rule_catalog_json: merman_ffi::merman_lint_rule_catalog_json,
-            supported_themes_json: merman_ffi::merman_supported_themes_json,
-            supported_host_theme_presets_json: merman_ffi::merman_supported_host_theme_presets_json,
-            buffer_free: merman_ffi::merman_buffer_free,
-        });
-        assert_eq!(rc, 0, "C consumer smoke returned {rc}");
+        let result = smoke(
+            merman_ffi::merman_get_native_api,
+            i32::from(has_native_sdk_operation_features()),
+        );
+        assert_eq!(result, 0, "C consumer smoke returned {result}");
+
+        let c_layout: libloading::Symbol<unsafe extern "C" fn() -> u64> = library
+            .get(b"merman_c_layout_fingerprint")
+            .expect("load merman_c_layout_fingerprint symbol");
+        assert_eq!(
+            c_layout(),
+            rust_layout_fingerprint(),
+            "the generated C header and Rust repr(C) projection disagree"
+        );
     }
+
+    if matches_native_sdk_artifact_profile() {
+        assert_c_abi_native_runtime_catalog();
+    }
+}
+
+fn has_native_sdk_operation_features() -> bool {
+    cfg!(all(
+        feature = "svg",
+        feature = "analysis",
+        feature = "ascii",
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf",
+        feature = "layout-cytoscape",
+        feature = "layout-elk",
+        feature = "math",
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random",
+    ))
+}
+
+fn matches_native_sdk_artifact_profile() -> bool {
+    has_native_sdk_operation_features() && !cfg!(feature = "system-timing")
+}
+
+fn hash_size_t(mut hash: u64, value: usize) -> u64 {
+    for byte in value.to_ne_bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(1_099_511_628_211);
+    }
+    hash
+}
+
+fn rust_layout_fingerprint() -> u64 {
+    macro_rules! hash_record {
+        ($hash:ident, $type:ty) => {
+            $hash = hash_size_t($hash, size_of::<$type>());
+            $hash = hash_size_t($hash, align_of::<$type>());
+        };
+    }
+    macro_rules! hash_field {
+        ($hash:ident, $type:ty, $field:ident) => {
+            $hash = hash_size_t($hash, offset_of!($type, $field));
+        };
+    }
+
+    let mut hash = 14_695_981_039_346_656_037_u64;
+
+    hash_record!(hash, merman_ffi::MermanNativeSlice);
+    hash_field!(hash, merman_ffi::MermanNativeSlice, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeSlice, data);
+    hash_field!(hash, merman_ffi::MermanNativeSlice, len);
+
+    hash_record!(hash, merman_ffi::MermanNativeBuffer);
+    hash_field!(hash, merman_ffi::MermanNativeBuffer, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeBuffer, data);
+    hash_field!(hash, merman_ffi::MermanNativeBuffer, len);
+
+    hash_record!(hash, merman_ffi::MermanNativeTextMeasureRequest);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        struct_size
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        text_measurement_protocol_version
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, text);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        font_family
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, font_size);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        font_weight
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, font_style);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, max_width);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        line_height
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        letter_spacing
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        word_spacing
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, wrap_mode);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, direction);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        white_space
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureRequest,
+        has_max_width
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, phase);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureRequest, operation);
+
+    hash_record!(hash, merman_ffi::MermanNativeTextMeasureResult);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, handled);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeTextMeasureResult,
+        has_raw_width
+    );
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, result_kind);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, width);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, height);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, length);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, bbox_left);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, bbox_right);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, raw_width);
+    hash_field!(hash, merman_ffi::MermanNativeTextMeasureResult, line_count);
+
+    hash_record!(hash, merman_ffi::MermanNativeEngineConfig);
+    hash_field!(hash, merman_ffi::MermanNativeEngineConfig, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeEngineConfig, options_json);
+    hash_field!(hash, merman_ffi::MermanNativeEngineConfig, text_measure);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineConfig,
+        text_measure_user_data
+    );
+
+    hash_record!(hash, merman_ffi::MermanNativeOperationRequest);
+    hash_field!(hash, merman_ffi::MermanNativeOperationRequest, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeOperationRequest, operation);
+    hash_field!(hash, merman_ffi::MermanNativeOperationRequest, source);
+    hash_field!(hash, merman_ffi::MermanNativeOperationRequest, uri);
+    hash_field!(hash, merman_ffi::MermanNativeOperationRequest, options_json);
+
+    hash_record!(hash, merman_ffi::MermanNativeResult);
+    hash_field!(hash, merman_ffi::MermanNativeResult, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeResult, status);
+    hash_field!(hash, merman_ffi::MermanNativeResult, operation);
+    hash_field!(hash, merman_ffi::MermanNativeResult, media_type);
+    hash_field!(hash, merman_ffi::MermanNativeResult, data);
+    hash_field!(hash, merman_ffi::MermanNativeResult, metadata_or_error_json);
+
+    hash_record!(hash, merman_ffi::MermanNativeApiRequest);
+    hash_field!(hash, merman_ffi::MermanNativeApiRequest, struct_size);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApiRequest,
+        expected_abi_version
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApiRequest,
+        expected_layout_descriptor_digest
+    );
+
+    hash_record!(hash, merman_ffi::MermanNativeApi);
+    hash_field!(hash, merman_ffi::MermanNativeApi, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeApi, abi_version);
+    hash_field!(hash, merman_ffi::MermanNativeApi, layout_descriptor_digest);
+    hash_field!(hash, merman_ffi::MermanNativeApi, capability_catalog_digest);
+    hash_field!(hash, merman_ffi::MermanNativeApi, package_version);
+    hash_field!(hash, merman_ffi::MermanNativeApi, runtime_catalog);
+    hash_field!(hash, merman_ffi::MermanNativeApi, engine_new);
+    hash_field!(hash, merman_ffi::MermanNativeApi, engine_free);
+    hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
+    hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
+
+    hash
+}
+
+fn assert_c_abi_native_runtime_catalog() {
+    let catalog = runtime_catalog_through_function_table();
+    let profiles: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../capabilities/artifact-profiles-v1.json"
+    )))
+    .expect("artifact profile descriptor must be valid JSON");
+    let profiles = profiles["profiles"]
+        .as_array()
+        .expect("artifact profiles must be an array");
+
+    for profile_id in [
+        "android-native",
+        "c-abi-native",
+        "flutter-desktop-native",
+        "flutter-ios-native",
+    ] {
+        let profile = profiles
+            .iter()
+            .find(|profile| profile["id"] == profile_id)
+            .unwrap_or_else(|| panic!("missing {profile_id} artifact profile"));
+        let expected = &profile["expected"];
+
+        assert_eq!(
+            string_ids(&catalog["capabilities"]["capability_ids"]),
+            string_ids(&expected["capabilities"]),
+            "the real C ABI runtime capabilities drifted from {profile_id}"
+        );
+        assert_eq!(
+            string_ids(&catalog["capabilities"]["capability_ids"]),
+            string_ids(&expected["runtime_ids"]),
+            "the real C ABI runtime IDs drifted from {profile_id}"
+        );
+        assert_eq!(
+            string_ids(&catalog["capabilities"]["output_ids"]),
+            string_ids(&expected["outputs"]),
+            "the real C ABI output report drifted from {profile_id}"
+        );
+    }
+}
+
+fn string_ids(value: &Value) -> Vec<&str> {
+    value
+        .as_array()
+        .expect("expected ID list")
+        .iter()
+        .map(|value| value.as_str().expect("expected string ID"))
+        .collect()
+}
+
+fn runtime_catalog_through_function_table() -> Value {
+    let digest = merman_ffi::MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes();
+    let request = merman_ffi::MermanNativeApiRequest {
+        struct_size: u32::try_from(size_of::<merman_ffi::MermanNativeApiRequest>()).unwrap(),
+        expected_abi_version: merman_ffi::MERMAN_NATIVE_ABI_VERSION,
+        expected_layout_descriptor_digest: merman_ffi::MermanNativeSlice {
+            struct_size: u32::try_from(size_of::<merman_ffi::MermanNativeSlice>()).unwrap(),
+            data: digest.as_ptr(),
+            len: digest.len(),
+        },
+    };
+    let mut api = MaybeUninit::<merman_ffi::MermanNativeApi>::uninit();
+    unsafe {
+        api.as_mut_ptr()
+            .cast::<u32>()
+            .write(u32::try_from(size_of::<merman_ffi::MermanNativeApi>()).unwrap());
+    }
+    assert_eq!(
+        unsafe { merman_ffi::merman_get_native_api(&request, api.as_mut_ptr()) },
+        merman_ffi::MERMAN_NATIVE_STATUS_OK
+    );
+    let api = unsafe { api.assume_init() };
+
+    let mut result = MaybeUninit::<merman_ffi::MermanNativeResult>::uninit();
+    unsafe {
+        result
+            .as_mut_ptr()
+            .cast::<u32>()
+            .write(u32::try_from(size_of::<merman_ffi::MermanNativeResult>()).unwrap());
+    }
+    assert_eq!(
+        unsafe { api.runtime_catalog.unwrap()(result.as_mut_ptr()) },
+        merman_ffi::MERMAN_NATIVE_STATUS_OK
+    );
+    let mut result = unsafe { result.assume_init() };
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+        )
+    };
+    let catalog = serde_json::from_slice(bytes).expect("runtime catalog JSON");
+    unsafe { api.result_free.unwrap()(&mut result) };
+    catalog
 }
 
 fn compile_c_consumer() -> PathBuf {
@@ -160,6 +350,10 @@ fn compile_c_consumer() -> PathBuf {
             .arg(&source);
     } else {
         command
+            .arg("-std=c11")
+            .arg("-Wall")
+            .arg("-Wextra")
+            .arg("-Werror")
             .arg("-shared")
             .arg("-fPIC")
             .arg("-I")
@@ -212,7 +406,7 @@ fn current_target() -> &'static str {
 fn run_compile_command(mut command: Command, library_path: &Path) {
     let output = command
         .output()
-        .unwrap_or_else(|err| panic!("failed to run C compiler: {err}"));
+        .unwrap_or_else(|error| panic!("failed to run C compiler: {error}"));
     if !output.status.success() {
         panic!(
             "failed to compile C consumer smoke library {}\nstatus: {}\nstdout:\n{}\nstderr:\n{}",

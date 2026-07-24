@@ -99,8 +99,47 @@ fn cli_pdf_preserves_large_intrinsic_vector_page_by_default() {
     );
 }
 
+#[cfg(not(any(feature = "png", feature = "jpeg")))]
 #[test]
-fn cli_pdf_is_independent_of_raster_pixel_limit_flags() {
+fn cli_pdf_profile_does_not_expose_raster_pixel_limit_flags() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("large.svg");
+    let out = tmp.path().join("large.pdf");
+    fs::write(&input, large_svg_input()).expect("write svg");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "pdf",
+            "--raster-max-width",
+            "1",
+            "--raster-max-height",
+            "1",
+            "--raster-max-pixels",
+            "1",
+            "--out",
+            out.to_string_lossy().as_ref(),
+            input.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .expect("run cli");
+
+    assert!(
+        !output.status.success(),
+        "PDF-only builds must reject PNG/JPEG-only raster limits"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("unexpected argument '--raster-max-width'"),
+        "unexpected error: {stderr}"
+    );
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+#[test]
+fn cli_pdf_ignores_raster_pixel_limit_flags_when_raster_is_compiled() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("large.svg");
     let out = tmp.path().join("large.pdf");

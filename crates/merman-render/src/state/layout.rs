@@ -1232,7 +1232,7 @@ fn compact_self_loop_edges(
     edges
 }
 
-pub fn layout_state_diagram_typed(
+pub(crate) fn layout_state_diagram_typed(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,

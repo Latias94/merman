@@ -12,21 +12,12 @@ public enum class MermanResourceProfile(public val id: String) {
 
 public enum class MermanResourceLimitId(public val id: String, public val overridable: Boolean) {
     MAX_SOURCE_BYTES("max_source_bytes", true),
+    MAX_MODEL_ITEMS("max_model_items", true),
+    MAX_MODEL_TEXT_BYTES("max_model_text_bytes", true),
+    MAX_MODEL_NESTING_DEPTH("max_model_nesting_depth", true),
+    MAX_LAYOUT_WORK_UNITS("max_layout_work_units", true),
     MAX_SVG_BYTES("max_svg_bytes", true),
     MAX_SVG_ELEMENTS("max_svg_elements", true),
-    MAX_SVG_TREE_DEPTH("max_svg_tree_depth", false),
-    MAX_FLOWCHART_NODES("max_flowchart_nodes", true),
-    MAX_FLOWCHART_EDGES("max_flowchart_edges", true),
-    MAX_FLOWCHART_SUBGRAPHS("max_flowchart_subgraphs", true),
-    MAX_CLASS_NODES("max_class_nodes", true),
-    MAX_CLASS_EDGES("max_class_edges", true),
-    MAX_CLASS_NAMESPACES("max_class_namespaces", true),
-    MAX_ZENUML_PARTICIPANTS("max_zenuml_participants", true),
-    MAX_ZENUML_STATEMENTS("max_zenuml_statements", true),
-    MAX_ZENUML_FRAGMENTS("max_zenuml_fragments", true),
-    MAX_VENN_AREAS("max_venn_areas", true),
-    MAX_SWIMLANE_LINE_HOP_SEGMENT_PAIRS("max_swimlane_line_hop_segment_pairs", true),
-    MAX_LABEL_BYTES("max_label_bytes", true),
 }
 
 public class MermanResourceOptionsBuilder(

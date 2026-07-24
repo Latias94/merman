@@ -1,10 +1,11 @@
-use crate::Result;
 use crate::config::json_f64;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
 };
+use crate::resources::ModelComplexity;
 use crate::text::TextMeasurer;
+use crate::{RenderResourcePolicy, Result};
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
 
@@ -12,8 +13,60 @@ mod config;
 
 pub(crate) use config::RadarConfigView;
 
-fn json_i64(v: &Value) -> Option<i64> {
-    v.as_i64().or_else(|| v.as_u64().map(|n| n as i64))
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RadarLayoutWork {
+    axes: usize,
+    graticule_shapes: usize,
+    graticule_points: usize,
+    curve_entry_scans: usize,
+    curve_shapes: usize,
+    curve_points: usize,
+    legend_items: usize,
+}
+
+impl RadarLayoutWork {
+    fn from_model(model: &RadarDiagramRenderModel, ticks: usize) -> Self {
+        let axes = model.axes.len();
+        let curves = model.curves.len();
+        Self {
+            axes,
+            graticule_shapes: ticks,
+            graticule_points: if model.options.graticule.trim() == "polygon" {
+                ticks.saturating_mul(axes)
+            } else {
+                0
+            },
+            curve_entry_scans: model.curves.iter().fold(0usize, |total, curve| {
+                total.saturating_add(curve.entries.len())
+            }),
+            curve_shapes: curves,
+            curve_points: curves.saturating_mul(axes),
+            legend_items: if model.options.show_legend { curves } else { 0 },
+        }
+    }
+
+    fn total(self) -> usize {
+        [
+            self.axes,
+            self.graticule_shapes,
+            self.graticule_points,
+            self.curve_entry_scans,
+            self.curve_shapes,
+            self.curve_points,
+            self.legend_items,
+        ]
+        .into_iter()
+        .fold(0usize, usize::saturating_add)
+    }
+}
+
+fn nonnegative_usize(v: &Value) -> usize {
+    if let Some(value) = v.as_u64() {
+        return usize::try_from(value).unwrap_or(usize::MAX);
+    }
+    v.as_i64()
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(0)
 }
 
 fn fmt_number(v: f64) -> String {
@@ -89,11 +142,28 @@ fn closed_round_curve_path(points: &[LayoutPoint], tension: f64) -> String {
     out
 }
 
-pub fn layout_radar_diagram_typed(
+#[cfg(test)]
+pub(crate) fn layout_radar_diagram_typed(
+    model: &RadarDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<RadarDiagramLayout> {
+    layout_radar_diagram_typed_with_resource_policy(
+        model,
+        effective_config,
+        measurer,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+/// Lays out a Radar model under the resource policy owned by the render operation.
+pub(crate) fn layout_radar_diagram_typed_with_resource_policy(
     model: &RadarDiagramRenderModel,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<RadarDiagramLayout> {
+    resource_limits.check_model_complexity(ModelComplexity::from_radar(model))?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),
@@ -122,6 +192,9 @@ pub fn layout_radar_diagram_typed(
     let title_y = -center_y;
 
     let axis_count = model.axes.len();
+    let ticks = nonnegative_usize(&model.options.ticks);
+    let layout_work = RadarLayoutWork::from_model(model, ticks);
+    resource_limits.check_layout_work_units(layout_work.total())?;
     let mut axes: Vec<RadarAxisLayout> = Vec::new();
     if axis_count > 0 {
         for (i, axis) in model.axes.iter().enumerate() {
@@ -140,7 +213,6 @@ pub fn layout_radar_diagram_typed(
         }
     }
 
-    let ticks = json_i64(&model.options.ticks).unwrap_or(0).max(0);
     let mut graticules: Vec<RadarGraticuleShapeLayout> = Vec::new();
     if ticks > 0 {
         for t in 1..=ticks {
@@ -252,8 +324,9 @@ pub fn layout_radar_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use super::layout_radar_diagram_typed;
+    use super::{layout_radar_diagram_typed, layout_radar_diagram_typed_with_resource_policy};
     use crate::text::DeterministicTextMeasurer;
+    use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_core::diagrams::radar::{
         RadarDiagramRenderModel, RadarRenderAxis, RadarRenderCurve, RadarRenderOptions,
     };
@@ -305,5 +378,85 @@ mod tests {
 
         assert_eq!(layout.legend_items.len(), 2);
         assert_eq!(layout.legend_items[1].y - layout.legend_items[0].y, 20.0);
+    }
+
+    #[test]
+    fn radar_work_budget_is_checked_before_the_layout_allocates_shapes() {
+        let mut model = RadarDiagramRenderModel::default();
+        model.options.ticks = json!(3);
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 2)
+            .unwrap();
+
+        let error =
+            layout_radar_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
+                .unwrap_err();
+
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 3);
+    }
+
+    #[test]
+    fn radar_polygon_work_is_aggregated_before_allocating_points() {
+        let mut model = RadarDiagramRenderModel::default();
+        model.axes = vec![
+            RadarRenderAxis {
+                name: "a".to_string(),
+                label: "A".to_string(),
+            },
+            RadarRenderAxis {
+                name: "b".to_string(),
+                label: "B".to_string(),
+            },
+        ];
+        model.options.ticks = json!(3);
+        model.options.graticule = "polygon".to_string();
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .unwrap();
+
+        let error =
+            layout_radar_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
+                .unwrap_err();
+
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 11);
+    }
+
+    #[test]
+    fn radar_too_large_unsigned_tick_count_is_rejected_without_integer_wraparound() {
+        let mut model = RadarDiagramRenderModel::default();
+        model.options.ticks = json!(u64::MAX);
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+
+        let error =
+            layout_radar_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
+                .unwrap_err();
+
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, usize::MAX);
     }
 }

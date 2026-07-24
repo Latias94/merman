@@ -111,6 +111,30 @@ const MAX_TOTAL_EMBEDDED_IMAGE_PIXELS = 32 * 1024 * 1024;
 const MAX_SAFE_SVG_SOURCE_CODE_UNITS = 64 * 1024 * 1024;
 const MAX_SAFE_SVG_SOURCE_UTF8_BYTES = 64 * 1024 * 1024;
 const MAX_SAFE_SVG_ATTRIBUTE_CODE_UNITS = 25 * 1024 * 1024;
+const PNG_ANIMATION_CHUNKS = new Set(["acTL", "fcTL", "fdAT"]);
+const PNG_STATIC_CHUNKS = new Set([
+  "IHDR",
+  "PLTE",
+  "IDAT",
+  "IEND",
+  "tRNS",
+  "cHRM",
+  "gAMA",
+  "iCCP",
+  "sBIT",
+  "sRGB",
+  "cICP",
+  "mDCV",
+  "iTXt",
+  "tEXt",
+  "zTXt",
+  "bKGD",
+  "hIST",
+  "pHYs",
+  "sPLT",
+  "eXIf",
+  "tIME",
+]);
 const PNG_COMPRESSED_METADATA_CHUNKS = new Set(["iCCP", "zTXt"]);
 const RASTER_DATA_IMAGE_URL = /^data:image\/(png|gif|jpe?g|webp);base64,([a-z0-9+/]*={0,2})$/i;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/;
@@ -783,7 +807,9 @@ function inspectPng(bytes: Uint8Array): RasterImageInspection | null {
   let width = 0;
   let height = 0;
   let sawHeader = false;
+  let sawPalette = false;
   let sawImageData = false;
+  let imageDataEnded = false;
   let sawEnd = false;
   let animated = false;
 
@@ -794,6 +820,9 @@ function inspectPng(bytes: Uint8Array): RasterImageInspection | null {
     const length = readU32Be(bytes, cursor);
     const type = asciiSlice(bytes, cursor + 4, 4);
     if (length === null || type === null || length > bytes.length - cursor - 12) {
+      return null;
+    }
+    if (!PNG_STATIC_CHUNKS.has(type) && !PNG_ANIMATION_CHUNKS.has(type)) {
       return null;
     }
     const dataStart = cursor + 8;
@@ -821,6 +850,9 @@ function inspectPng(bytes: Uint8Array): RasterImageInspection | null {
       return null;
     }
 
+    if (PNG_ANIMATION_CHUNKS.has(type)) {
+      animated = true;
+    }
     if (PNG_COMPRESSED_METADATA_CHUNKS.has(type)) {
       return null;
     }
@@ -830,12 +862,15 @@ function inspectPng(bytes: Uint8Array): RasterImageInspection | null {
         return null;
       }
     }
-    if (type === "acTL") {
-      if (length !== 8) {
+    if (type === "PLTE") {
+      if (sawPalette || sawImageData || length === 0 || length % 3 !== 0 || length > 768) {
         return null;
       }
-      animated = true;
+      sawPalette = true;
     } else if (type === "IDAT") {
+      if (imageDataEnded) {
+        return null;
+      }
       sawImageData = true;
     } else if (type === "IEND") {
       if (length !== 0 || next !== bytes.length) {
@@ -844,6 +879,8 @@ function inspectPng(bytes: Uint8Array): RasterImageInspection | null {
       sawEnd = true;
       cursor = next;
       break;
+    } else if (sawImageData) {
+      imageDataEnded = true;
     }
     cursor = next;
   }
@@ -930,7 +967,8 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
   }
 
   let cursor = 13;
-  if ((packed & 0x80) !== 0) {
+  const hasGlobalColorTable = (packed & 0x80) !== 0;
+  if (hasGlobalColorTable) {
     const colorTableBytes = 3 * 2 ** ((packed & 0x07) + 1);
     if (colorTableBytes > bytes.length - cursor) {
       return null;
@@ -939,6 +977,8 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
   }
 
   let imageDescriptors = 0;
+  let animationSignaled = false;
+  let pendingGraphicControl = false;
   let sawTrailer = false;
   while (cursor < bytes.length) {
     const block = bytes[cursor];
@@ -948,14 +988,48 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
       break;
     }
     if (block === 0x21) {
-      if (cursor >= bytes.length) {
+      const label = bytes[cursor];
+      if (label === undefined) {
         return null;
       }
       cursor += 1;
-      const next = skipGifSubBlocks(bytes, cursor);
-      if (next === null) {
+      if (label === 0xf9) {
+        const control = bytes[cursor + 1];
+        if (
+          pendingGraphicControl ||
+          bytes[cursor] !== 4 ||
+          control === undefined ||
+          (control & 0xe0) !== 0 ||
+          ((control >> 2) & 0x07) > 3 ||
+          (control & 0x02) !== 0 ||
+          bytes[cursor + 5] !== 0
+        ) {
+          return null;
+        }
+        pendingGraphicControl = true;
+        cursor += 6;
+        continue;
+      }
+      if (label === 0xfe) {
+        const next = skipGifSubBlocks(bytes, cursor);
+        if (next === null) {
+          return null;
+        }
+        cursor = next;
+        continue;
+      }
+      if (label !== 0xff || bytes[cursor] !== 11) {
         return null;
       }
+      const application = asciiSlice(bytes, cursor + 1, 11);
+      const next = skipGifSubBlocks(bytes, cursor);
+      if (
+        next === null ||
+        (application !== "NETSCAPE2.0" && application !== "ANIMEXTS1.0")
+      ) {
+        return null;
+      }
+      animationSignaled = true;
       cursor = next;
       continue;
     }
@@ -975,6 +1049,7 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
       imageWidth === null ||
       imageHeight === null ||
       imagePacked === undefined ||
+      (imagePacked & 0x18) !== 0 ||
       imageWidth === 0 ||
       imageHeight === 0 ||
       imageLeft + imageWidth > width ||
@@ -983,14 +1058,21 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
       return null;
     }
     cursor += 9;
-    if ((imagePacked & 0x80) !== 0) {
+    const hasLocalColorTable = (imagePacked & 0x80) !== 0;
+    if (hasLocalColorTable) {
       const colorTableBytes = 3 * 2 ** ((imagePacked & 0x07) + 1);
       if (colorTableBytes > bytes.length - cursor) {
         return null;
       }
       cursor += colorTableBytes;
     }
-    if (cursor >= bytes.length) {
+    const minimumCodeSize = bytes[cursor];
+    if (
+      (!hasGlobalColorTable && !hasLocalColorTable) ||
+      minimumCodeSize === undefined ||
+      minimumCodeSize < 2 ||
+      minimumCodeSize > 8
+    ) {
       return null;
     }
     cursor += 1;
@@ -999,10 +1081,16 @@ function inspectGif(bytes: Uint8Array): RasterImageInspection | null {
       return null;
     }
     cursor = next;
+    pendingGraphicControl = false;
   }
 
-  return sawTrailer && imageDescriptors > 0
-    ? { format: "gif", width, height, animated: imageDescriptors > 1 }
+  return sawTrailer && imageDescriptors > 0 && !pendingGraphicControl
+    ? {
+        format: "gif",
+        width,
+        height,
+        animated: animationSignaled || imageDescriptors > 1,
+      }
     : null;
 }
 
@@ -1141,6 +1229,7 @@ function inspectWebp(bytes: Uint8Array): RasterImageInspection | null {
   let sawDimensions = false;
   let sawExtendedHeader = false;
   let sawImageData = false;
+  let sawAlpha = false;
   let animated = false;
   while (cursor < bytes.length) {
     if (bytes.length - cursor < 8) {
@@ -1156,9 +1245,23 @@ function inspectWebp(bytes: Uint8Array): RasterImageInspection | null {
     if (paddedLength > bytes.length - dataStart) {
       return null;
     }
+    if ((chunkLength & 1) !== 0 && bytes[dataStart + chunkLength] !== 0) {
+      return null;
+    }
+    if (
+      cursor === 12 &&
+      chunkType !== "VP8X" &&
+      chunkType !== "VP8 " &&
+      chunkType !== "VP8L"
+    ) {
+      return null;
+    }
+    if (cursor > 12 && !sawExtendedHeader) {
+      return null;
+    }
 
     if (chunkType === "VP8X") {
-      if (sawDimensions || chunkLength !== 10) {
+      if (cursor !== 12 || sawDimensions || chunkLength !== 10) {
         return null;
       }
       const flags = bytes[dataStart];
@@ -1171,7 +1274,8 @@ function inspectWebp(bytes: Uint8Array): RasterImageInspection | null {
         bytes[dataStart + 2] !== 0 ||
         bytes[dataStart + 3] !== 0 ||
         parsedWidth === null ||
-        parsedHeight === null
+        parsedHeight === null ||
+        (parsedWidth + 1) * (parsedHeight + 1) > 0xffffffff
       ) {
         return null;
       }
@@ -1213,7 +1317,7 @@ function inspectWebp(bytes: Uint8Array): RasterImageInspection | null {
       }
       sawImageData = true;
     } else if (chunkType === "VP8L") {
-      if (chunkLength < 5 || sawImageData || bytes[dataStart] !== 0x2f) {
+      if (chunkLength < 5 || sawImageData || sawAlpha || bytes[dataStart] !== 0x2f) {
         return null;
       }
       const b1 = bytes[dataStart + 1];
@@ -1243,6 +1347,17 @@ function inspectWebp(bytes: Uint8Array): RasterImageInspection | null {
       sawImageData = true;
     } else if (chunkType === "ANIM" || chunkType === "ANMF") {
       animated = true;
+    } else if (chunkType === "ALPH") {
+      if (!sawExtendedHeader || sawAlpha || sawImageData || chunkLength === 0) {
+        return null;
+      }
+      sawAlpha = true;
+    } else if (
+      chunkType !== "ICCP" &&
+      chunkType !== "EXIF" &&
+      chunkType !== "XMP "
+    ) {
+      return null;
     }
 
     cursor = dataStart + paddedLength;

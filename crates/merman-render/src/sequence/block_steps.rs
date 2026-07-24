@@ -3,7 +3,9 @@ use super::messages::{
     SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
     sequence_message_horizontal_model,
 };
-use super::metrics::measure_svg_like_with_html_br;
+use super::metrics::{
+    SequenceMathHeightMode, measure_sequence_math_label, measure_svg_like_with_html_br,
+};
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
 use super::{
     bracketize_sequence_block_label, sequence_block_label_wrap_width,
@@ -104,6 +106,17 @@ fn block_label_step(
     }
 
     let label = bracketize_sequence_block_label(raw_label);
+    if let Some((_, height)) = measure_sequence_math_label(
+        frame_ctx.measurer,
+        &label,
+        frame_ctx.msg_text_style,
+        frame_ctx.math_config,
+        frame_ctx.math_renderer,
+        SequenceMathHeightMode::Bound,
+    ) {
+        return step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height);
+    }
+
     let measured_label = match frame_width {
         Some(width) => wrap_sequence_label_like_mermaid_lines(
             &label,

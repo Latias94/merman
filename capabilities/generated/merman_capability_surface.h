@@ -7,13 +7,11 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
 #define MERMAN_TARGET_WEB "web"
-
-#define MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT "typst-transport"
 
 #define MERMAN_CAPABILITY_ANALYSIS "analysis"
 #define MERMAN_CAPABILITY_ASCII "ascii"
@@ -39,27 +37,18 @@
 #define MERMAN_OUTPUT_PNG "png"
 #define MERMAN_OUTPUT_SVG "svg"
 
-#define MERMAN_PRESET_ALL "preset-all"
-#define MERMAN_PRESET_CI_LINT "preset-ci-lint"
-#define MERMAN_PRESET_EDITOR "preset-editor"
-#define MERMAN_PRESET_MMDC "preset-mmdc"
-#define MERMAN_PRESET_NATIVE_SDK "preset-native-sdk"
-#define MERMAN_PRESET_NATIVE_SVG "preset-native-svg"
-#define MERMAN_PRESET_STATIC_SVG "preset-static-svg"
-#define MERMAN_PRESET_SVG_BASIC "preset-svg-basic"
-#define MERMAN_PRESET_WEB_ANALYSIS "preset-web-analysis"
-#define MERMAN_PRESET_WEB_ASCII "preset-web-ascii"
-#define MERMAN_PRESET_WEB_EDITOR "preset-web-editor"
-#define MERMAN_PRESET_WEB_FULL "preset-web-full"
-#define MERMAN_PRESET_WEB_RENDER "preset-web-render"
-
-typedef struct MermanRuntimeCapabilityDescriptor {
-    const char *id;
-    const char *kind;
-    const char *description;
-    const char *const *target_ids;
-    size_t target_count;
-} MermanRuntimeCapabilityDescriptor;
+#define MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON "analysis-facts-json"
+#define MERMAN_BINDING_OPERATION_ANALYSIS_JSON "analysis-json"
+#define MERMAN_BINDING_OPERATION_ASCII "ascii"
+#define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON "document-analysis-facts-json"
+#define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON "document-analysis-json"
+#define MERMAN_BINDING_OPERATION_JPEG "jpeg"
+#define MERMAN_BINDING_OPERATION_LAYOUT_JSON "layout-json"
+#define MERMAN_BINDING_OPERATION_PDF "pdf"
+#define MERMAN_BINDING_OPERATION_PNG "png"
+#define MERMAN_BINDING_OPERATION_SEMANTIC_JSON "semantic-json"
+#define MERMAN_BINDING_OPERATION_SVG "svg"
+#define MERMAN_BINDING_OPERATION_VALIDATION_JSON "validation-json"
 
 typedef struct MermanCapabilityDescriptor {
     const char *id;
@@ -80,25 +69,15 @@ typedef struct MermanOutputDescriptor {
     size_t target_count;
 } MermanOutputDescriptor;
 
-typedef struct MermanCapabilityPresetDescriptor {
+typedef struct MermanBindingOperationDescriptor {
     const char *id;
+    const char *capability_id;
     const char *description;
+    const char *media_type;
+    int requires_uri;
     const char *const *target_ids;
     size_t target_count;
-    const char *const *capability_ids;
-    size_t capability_count;
-    const char *const *expected_runtime_capability_ids;
-    size_t expected_runtime_capability_count;
-} MermanCapabilityPresetDescriptor;
-
-static const char *const MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT_TARGETS[] = {
-    "typst",
-};
-
-static const MermanRuntimeCapabilityDescriptor MERMAN_RUNTIME_CAPABILITIES[] = {
-    { "typst-transport", "transport", "Typst wasm-minimal-protocol transport.", MERMAN_RUNTIME_CAPABILITY_TYPST_TRANSPORT_TARGETS, 1 },
-};
-#define MERMAN_RUNTIME_CAPABILITY_COUNT 1u
+} MermanBindingOperationDescriptor;
 
 static const char *const MERMAN_CAPABILITY_ANALYSIS_TARGETS[] = {
     "native",
@@ -260,216 +239,80 @@ static const MermanOutputDescriptor MERMAN_OUTPUTS[] = {
 };
 #define MERMAN_OUTPUT_COUNT 5u
 
-static const char *const MERMAN_PRESET_ALL_TARGETS[] = {
+static const char *const MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS[] = {
     "native",
+    "web",
 };
 
-static const char *const MERMAN_PRESET_ALL_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "editor",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "pdf",
-    "png",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_ALL_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "editor",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "pdf",
-    "png",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_CI_LINT_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_CI_LINT_CAPABILITIES[] = {
-    "analysis",
-};
-
-static const char *const MERMAN_PRESET_CI_LINT_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "analysis",
-};
-
-static const char *const MERMAN_PRESET_EDITOR_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_EDITOR_CAPABILITIES[] = {
-    "analysis",
-    "editor",
-};
-
-static const char *const MERMAN_PRESET_EDITOR_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "analysis",
-    "editor",
-};
-
-static const char *const MERMAN_PRESET_MMDC_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_MMDC_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "network-icons",
-    "parallel-markdown",
-    "pdf",
-    "png",
-    "shell-completions",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_MMDC_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "network-icons",
-    "parallel-markdown",
-    "pdf",
-    "png",
-    "shell-completions",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SDK_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SDK_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "pdf",
-    "png",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SDK_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "analysis",
-    "ascii",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "pdf",
-    "png",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SVG_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SVG_CAPABILITIES[] = {
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_NATIVE_SVG_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-};
-
-static const char *const MERMAN_PRESET_STATIC_SVG_TARGETS[] = {
-    "native",
-};
-
-static const char *const MERMAN_PRESET_STATIC_SVG_CAPABILITIES[] = {
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "svg",
-};
-
-static const char *const MERMAN_PRESET_STATIC_SVG_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "svg",
-};
-
-static const char *const MERMAN_PRESET_SVG_BASIC_TARGETS[] = {
+static const char *const MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS[] = {
     "native",
     "typst",
     "web",
 };
 
-static const char *const MERMAN_PRESET_SVG_BASIC_CAPABILITIES[] = {
-    "svg",
+static const char *const MERMAN_BINDING_OPERATION_ASCII_TARGETS[] = {
+    "native",
+    "web",
 };
 
-static const char *const MERMAN_PRESET_SVG_BASIC_EXPECTED_RUNTIME_CAPABILITIES[] = {
-    "svg",
+static const char *const MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS[] = {
+    "native",
+    "web",
 };
 
-static const MermanCapabilityPresetDescriptor MERMAN_NATIVE_CAPABILITY_PRESETS[] = {
-    { "preset-all", "Exhaustive non-tool Rust build and test workflow.", MERMAN_PRESET_ALL_TARGETS, 1, MERMAN_PRESET_ALL_CAPABILITIES, 14, MERMAN_PRESET_ALL_EXPECTED_RUNTIME_CAPABILITIES, 14 },
-    { "preset-ci-lint", "Lean CLI lint workflow.", MERMAN_PRESET_CI_LINT_TARGETS, 1, MERMAN_PRESET_CI_LINT_CAPABILITIES, 1, MERMAN_PRESET_CI_LINT_EXPECTED_RUNTIME_CAPABILITIES, 1 },
-    { "preset-editor", "Editor library and LSP library workflow.", MERMAN_PRESET_EDITOR_TARGETS, 1, MERMAN_PRESET_EDITOR_CAPABILITIES, 2, MERMAN_PRESET_EDITOR_EXPECTED_RUNTIME_CAPABILITIES, 2 },
-    { "preset-mmdc", "Default complete CLI workflow.", MERMAN_PRESET_MMDC_TARGETS, 1, MERMAN_PRESET_MMDC_CAPABILITIES, 16, MERMAN_PRESET_MMDC_EXPECTED_RUNTIME_CAPABILITIES, 16 },
-    { "preset-native-sdk", "Native SDK and binding artifact workflow.", MERMAN_PRESET_NATIVE_SDK_TARGETS, 1, MERMAN_PRESET_NATIVE_SDK_CAPABILITIES, 13, MERMAN_PRESET_NATIVE_SDK_EXPECTED_RUNTIME_CAPABILITIES, 13 },
-    { "preset-native-svg", "Default native Rust SVG workflow.", MERMAN_PRESET_NATIVE_SVG_TARGETS, 1, MERMAN_PRESET_NATIVE_SVG_CAPABILITIES, 8, MERMAN_PRESET_NATIVE_SVG_EXPECTED_RUNTIME_CAPABILITIES, 8 },
-    { "preset-static-svg", "Static-site SVG workflow with no system adapters.", MERMAN_PRESET_STATIC_SVG_TARGETS, 1, MERMAN_PRESET_STATIC_SVG_CAPABILITIES, 4, MERMAN_PRESET_STATIC_SVG_EXPECTED_RUNTIME_CAPABILITIES, 4 },
-    { "preset-svg-basic", "SVG workflow without optional layout or math engines.", MERMAN_PRESET_SVG_BASIC_TARGETS, 3, MERMAN_PRESET_SVG_BASIC_CAPABILITIES, 1, MERMAN_PRESET_SVG_BASIC_EXPECTED_RUNTIME_CAPABILITIES, 1 },
+static const char *const MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS[] = {
+    "native",
+    "web",
 };
-#define MERMAN_NATIVE_CAPABILITY_PRESET_COUNT 8u
+
+static const char *const MERMAN_BINDING_OPERATION_JPEG_TARGETS[] = {
+    "native",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_PDF_TARGETS[] = {
+    "native",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_PNG_TARGETS[] = {
+    "native",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_SVG_TARGETS[] = {
+    "native",
+    "typst",
+    "web",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
+static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
+    { "analysis-facts-json", "analysis", "Analyze Mermaid input and return semantic facts JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS, 2 },
+    { "analysis-json", "analysis", "Analyze Mermaid input and return diagnostics JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS, 3 },
+    { "ascii", "ascii", "Render Mermaid input as terminal text.", "text/plain; charset=utf-8", 0, MERMAN_BINDING_OPERATION_ASCII_TARGETS, 2 },
+    { "document-analysis-facts-json", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2 },
+    { "document-analysis-json", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2 },
+    { "jpeg", "jpeg", "Render Mermaid input as JPEG.", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1 },
+    { "layout-json", "svg", "Render Mermaid input into layout model JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2 },
+    { "pdf", "pdf", "Render Mermaid input as PDF.", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1 },
+    { "png", "png", "Render Mermaid input as PNG.", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1 },
+    { "semantic-json", NULL, "Parse Mermaid input into canonical semantic JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2 },
+    { "svg", "svg", "Render Mermaid input as SVG.", "image/svg+xml", 0, MERMAN_BINDING_OPERATION_SVG_TARGETS, 3 },
+    { "validation-json", "analysis", "Validate Mermaid input and return validation JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2 },
+};
+#define MERMAN_BINDING_OPERATION_COUNT 12u
+
 
 #endif /* MERMAN_CAPABILITY_SURFACE_H */

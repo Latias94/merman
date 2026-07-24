@@ -58,7 +58,7 @@ The contract has these rules:
      wrappers may add typed helpers after the JSON contract is stable.
    - Callers must ignore unknown fields and tolerate missing optional fields.
 
-3. `validate_json` remains a compatibility projection during alpha migration.
+3. `validate_json` remains a compatibility projection during migration.
    - Existing callers keep top-level `valid`, `error`, `message`, `code`, and `code_name` fields.
    - Once analysis exists, validation should be derived from diagnostics instead of calling a
      render-owned parse path directly.
@@ -209,7 +209,7 @@ Ship a standalone linter before changing the shared bindings.
 - Document-level analysis gives JavaScript lint adapters a non-LSP bridge for `.mmd`, Markdown,
   and MDX while preserving host-document coordinates.
 - Binding packages gain a richer payload without changing every host around a Rust enum.
-- Existing `validate` users have a migration bridge during alpha.
+- Existing `validate` users have a temporary migration bridge.
 - Parser families need incremental span and warning upgrades.
 - Documentation and tests must distinguish implemented APIs from reserved protocol extensions:
   `textDocument/diagnostic` pull is implemented, but `workspace/diagnostic` remains unimplemented

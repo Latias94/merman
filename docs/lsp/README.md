@@ -10,7 +10,7 @@ navigation, code-action, and semantic-token surfaces. The semantic editor querie
 browser integrations through `merman-editor-core`; editor-core owns protocol-neutral document
 snapshots, UTF-16 ranges, completion, symbols, navigation, rename, and semantic-token selection.
 `merman-lsp` keeps the LSP lifecycle, capability negotiation, diagnostics publication,
-semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projection.
+semantic-token delta state, custom requests, and `tower_lsp_server::ls_types` projection.
 
 ## Responsibilities
 
@@ -50,10 +50,10 @@ semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projecti
 
 - LSP behavior is driven by parser-backed semantic facts.
 - LSP consumes typed editor snapshots backed by `FenceTextIndex`; it does not round-trip serialized
-  facts JSON. The separately exposed binding wire uses the current `AnalysisFactsPayload` v2.
-  Facts v1 is rejected at the version boundary before nested fields are decoded. Current writers
-  always emit `rename_policy`; readers conservatively map an omitted additive policy in a v2
-  semantic item to `none`. This field default does not decode the TextScan-capable alpha shape
+  facts JSON. The separately exposed binding wire uses the current `AnalysisFactsPayload` v1.
+  Other versions are rejected at the boundary before nested fields are decoded. Current writers
+  always emit `rename_policy`; readers conservatively map an omitted additive policy in a v1
+  semantic item to `none`. This field default does not decode the TextScan-capable prerelease shape
   shipped in `0.8.0-alpha.3`: that implementation, executor, and parallel projection path are
   deleted. The diagnostics-only payload is an independent v1 contract.
 - `Unavailable` provenance means no parser-backed body facts exist, so unknown or unsupported body

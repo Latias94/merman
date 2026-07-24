@@ -1,269 +1,769 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-//! C ABI exports for embedding `merman` in non-Rust hosts.
+//! Native ABI 3 exports for embedding Merman in C-compatible hosts.
 //!
-//! This crate is the only place where the public FFI boundary owns unsafe code. The core
-//! parser/render crates and shared binding facade remain safe Rust APIs.
+//! The only exported C symbol is [`merman_get_native_api`]. Hosts discover a size-tagged
+//! function table and execute every operation through the shared binding operation path. No raw Rust
+//! allocation or Rust object pointer crosses this boundary.
 
-use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
-use std::collections::BTreeMap;
-use std::ffi::c_char;
+#[cfg(feature = "svg")]
+use merman_bindings_core::HostMeasurementResult;
+use merman_bindings_core::{
+    BindingEngine, BindingError, BindingErrorKind, BindingOperationRequest, BindingStatus,
+};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, TryLockError};
-
-fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
-    #[cfg(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    ))]
-    {
-        BindingEngine::try_native(options_json)
-    }
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
-    {
-        BindingEngine::new(options_json)
-    }
-}
-
-fn transport_render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.render_svg(source)
-}
-
-fn transport_render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.render_ascii(source)
-}
-
-fn transport_parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.parse_json(source)
-}
-
-fn transport_layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.layout_json(source)
-}
-
-fn transport_analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.analyze_json(source)
-}
-
-fn transport_analyze_document_json(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.analyze_document_json(source, uri)
-}
-
-fn transport_analyze_document_facts_json(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.analyze_document_facts_json(source, uri)
-}
-
-fn transport_validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    binding_engine_for_transport(options_json)?.validate_json(source)
-}
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 #[cfg(target_os = "android")]
 mod android_jni;
 
-const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
-
-pub const MERMAN_WRAP_MODE_SVG_LIKE: i32 = 0;
-pub const MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
-pub const MERMAN_WRAP_MODE_HTML_LIKE: i32 = 2;
-
-pub const MERMAN_TEXT_DIRECTION_AUTO: i32 = 0;
-pub const MERMAN_TEXT_DIRECTION_LTR: i32 = 1;
-pub const MERMAN_TEXT_DIRECTION_RTL: i32 = 2;
-
-pub const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
-pub const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
-pub const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
-pub const MERMAN_TEXT_WHITE_SPACE_PRE_WRAP: i32 = 3;
-
-pub const MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
-pub const MERMAN_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
-pub const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
-pub const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
-
 include!("generated/text_measurement_abi.rs");
-include!("generated/resource_contract.rs");
+include!("generated/abi3.rs");
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanBuffer {
-    pub data: *mut u8,
-    pub len: usize,
+const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
+
+#[cfg(feature = "svg")]
+const MERMAN_WRAP_MODE_SVG_LIKE: i32 = 0;
+#[cfg(feature = "svg")]
+const MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
+#[cfg(feature = "svg")]
+const MERMAN_WRAP_MODE_HTML_LIKE: i32 = 2;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_DIRECTION_AUTO: i32 = 0;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
+#[cfg(feature = "svg")]
+const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
+
+#[derive(Debug)]
+struct NativeFailure {
+    status: MermanNativeStatus,
+    kind: BindingErrorKind,
+    capability_id: Option<&'static str>,
+    message: String,
 }
 
-impl MermanBuffer {
-    const fn empty() -> Self {
+impl NativeFailure {
+    fn new(status: MermanNativeStatus, message: impl Into<String>) -> Self {
         Self {
-            data: ptr::null_mut(),
-            len: 0,
+            status,
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            message: message.into(),
+        }
+    }
+
+    fn reentrant_call(message: impl Into<String>) -> Self {
+        Self {
+            status: MERMAN_NATIVE_STATUS_REENTRANT_CALL,
+            kind: BindingErrorKind::ReentrantCall,
+            capability_id: None,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(not(feature = "svg"))]
+    fn missing_capability(capability_id: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+            kind: BindingErrorKind::MissingCapability,
+            capability_id: Some(capability_id),
+            message: message.into(),
         }
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanResult {
-    pub code: i32,
-    pub data: MermanBuffer,
+#[derive(Debug)]
+struct NativeExecution {
+    operation: MermanNativeOperationCode,
+    media_type: &'static str,
+    data: Vec<u8>,
+    metadata_json: Vec<u8>,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanResourceLimitOverride {
-    pub id: i32,
-    pub value: usize,
-}
-
-// C receives a pointer-shaped opaque token. This type is never allocated or dereferenced.
-#[repr(C)]
-pub struct MermanEngine {
-    _private: [u8; 0],
-}
-
-struct FfiEngineState {
-    #[cfg(feature = "render")]
-    base: BindingEngine,
-    inner: RwLock<BindingEngine>,
+struct NativeEngineState {
+    engine: BindingEngine,
+    coordinator: Arc<NativeExecutionCoordinator>,
 }
 
 #[derive(Default)]
-struct FfiEngineRegistry {
-    last_token: usize,
-    engines: BTreeMap<usize, Arc<FfiEngineState>>,
+struct NativeEngineRegistry {
+    last_token: MermanNativeEngineToken,
+    engines: BTreeMap<MermanNativeEngineToken, Arc<NativeEngineState>>,
 }
 
-impl FfiEngineRegistry {
-    fn register(&mut self, engine: Arc<FfiEngineState>) -> Result<*mut MermanEngine, BindingError> {
+impl NativeEngineRegistry {
+    fn register(
+        &mut self,
+        engine: Arc<NativeEngineState>,
+    ) -> Result<MermanNativeEngineToken, NativeFailure> {
         let token = self.last_token.checked_add(1).ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                "engine handle token space is exhausted",
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                "native engine token space is exhausted",
             )
         })?;
+        if token == 0 {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                "native engine token space is exhausted",
+            ));
+        }
+        engine.coordinator.bind_token(token);
         self.last_token = token;
         let previous = self.engines.insert(token, engine);
-        debug_assert!(previous.is_none(), "engine handle tokens are never reused");
-        Ok(ptr::without_provenance_mut(token))
+        debug_assert!(previous.is_none(), "native engine tokens are never reused");
+        Ok(token)
     }
 
-    fn acquire(&self, handle: usize) -> Option<Arc<FfiEngineState>> {
-        self.engines.get(&handle).map(Arc::clone)
+    fn acquire(&self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
+        self.engines.get(&token).map(Arc::clone)
     }
 
-    fn retire(&mut self, handle: usize) -> Option<Arc<FfiEngineState>> {
-        self.engines.remove(&handle)
+    fn retire(&mut self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
+        self.engines.remove(&token)
     }
 }
 
-static ENGINE_REGISTRY: OnceLock<Mutex<FfiEngineRegistry>> = OnceLock::new();
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanEngineResult {
-    pub code: i32,
-    pub engine: *mut MermanEngine,
-    pub data: MermanBuffer,
+#[derive(Default)]
+struct NativeAllocationRegistry {
+    results: BTreeMap<usize, NativeResultAllocation>,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanHostTextMeasureRequest {
-    pub text: *const u8,
-    pub text_len: usize,
-    pub font_family: *const u8,
-    pub font_family_len: usize,
-    pub font_size: f64,
-    pub font_weight: *const u8,
-    pub font_weight_len: usize,
-    pub font_style: *const u8,
-    pub font_style_len: usize,
-    pub max_width: f64,
-    pub line_height: f64,
-    pub letter_spacing: f64,
-    pub word_spacing: f64,
-    pub wrap_mode: i32,
-    pub direction: i32,
-    pub white_space: i32,
-    pub has_max_width: u8,
-    pub phase: i32,
-    pub operation: i32,
+struct NativeResultAllocation {
+    data: Vec<u8>,
+    metadata_or_error_json: Vec<u8>,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct MermanHostTextMeasureResult {
-    pub handled: u8,
-    pub has_raw_width: u8,
-    pub result_kind: i32,
-    pub width: f64,
-    pub height: f64,
-    pub length: f64,
-    pub bbox_left: f64,
-    pub bbox_right: f64,
-    pub raw_width: f64,
-    pub line_count: usize,
+static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
+static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
+static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
+static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
+static ACTIVE_CALLBACK_TOKENS: OnceLock<Mutex<BTreeSet<MermanNativeEngineToken>>> = OnceLock::new();
+// Serializes the callback-active transition with engine retirement. Without this
+// lifecycle lock, `engine_free` can observe the callback token before the
+// callback entry has published it (or vice versa) and retire an engine during
+// the small publication window.
+static ENGINE_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+#[derive(Default)]
+struct NativeExecutionState {
+    operation_active: bool,
+    callback_active: bool,
 }
 
-#[cfg(test)]
-impl MermanHostTextMeasureResult {
-    const fn unhandled() -> Self {
+struct NativeExecutionCoordinator {
+    token: AtomicU64,
+    state: Mutex<NativeExecutionState>,
+    ready: Condvar,
+}
+
+impl NativeExecutionCoordinator {
+    fn new() -> Self {
         Self {
-            handled: 0,
-            has_raw_width: 0,
-            result_kind: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS,
-            width: 0.0,
-            height: 0.0,
-            length: 0.0,
-            bbox_left: 0.0,
-            bbox_right: 0.0,
-            raw_width: 0.0,
-            line_count: 0,
+            token: AtomicU64::new(0),
+            state: Mutex::new(NativeExecutionState::default()),
+            ready: Condvar::new(),
         }
     }
+
+    fn bind_token(&self, token: MermanNativeEngineToken) {
+        assert_ne!(token, 0);
+        assert_eq!(
+            self.token
+                .compare_exchange(0, token, Ordering::AcqRel, Ordering::Acquire),
+            Ok(0),
+            "a native execution coordinator is bound exactly once",
+        );
+    }
+
+    fn enter_operation(&self) -> Result<NativeOperationGuard<'_>, NativeFailure> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            if state.callback_active {
+                return Err(reentrant_call_failure());
+            }
+            if !state.operation_active {
+                state.operation_active = true;
+                return Ok(NativeOperationGuard { coordinator: self });
+            }
+            state = self
+                .ready
+                .wait(state)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    fn invoke_host_callback<T>(&self, callback: impl FnOnce() -> T) -> T {
+        let token = self.token.load(Ordering::Acquire);
+        debug_assert_ne!(token, 0, "host callbacks require a bound engine token");
+
+        {
+            let _lifecycle_guard = engine_lifecycle_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            debug_assert!(
+                state.operation_active,
+                "host callbacks run inside an operation"
+            );
+            debug_assert!(
+                !state.callback_active,
+                "host callbacks are not recursively nested"
+            );
+            state.callback_active = true;
+            active_callback_tokens()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(token);
+            self.ready.notify_all();
+        }
+
+        struct CallbackGuard<'a> {
+            coordinator: &'a NativeExecutionCoordinator,
+            token: MermanNativeEngineToken,
+        }
+
+        impl Drop for CallbackGuard<'_> {
+            fn drop(&mut self) {
+                let _lifecycle_guard = engine_lifecycle_lock()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                {
+                    let mut state = self
+                        .coordinator
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.callback_active = false;
+                    self.coordinator.ready.notify_all();
+                }
+                active_callback_tokens()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .remove(&self.token);
+            }
+        }
+
+        let _guard = CallbackGuard {
+            coordinator: self,
+            token,
+        };
+        callback()
+    }
 }
 
-pub type MermanHostTextMeasureCallback = unsafe extern "C" fn(
-    request: MermanHostTextMeasureRequest,
-    user_data: *mut std::ffi::c_void,
-) -> MermanHostTextMeasureResult;
+struct NativeOperationGuard<'a> {
+    coordinator: &'a NativeExecutionCoordinator,
+}
 
-#[cfg(feature = "render")]
+impl Drop for NativeOperationGuard<'_> {
+    fn drop(&mut self) {
+        let mut state = self
+            .coordinator
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        debug_assert!(
+            !state.callback_active,
+            "operation cannot end during a host callback"
+        );
+        state.operation_active = false;
+        self.coordinator.ready.notify_all();
+    }
+}
+
+fn active_callback_tokens() -> &'static Mutex<BTreeSet<MermanNativeEngineToken>> {
+    ACTIVE_CALLBACK_TOKENS.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn engine_lifecycle_lock() -> &'static Mutex<()> {
+    ENGINE_LIFECYCLE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn callback_is_active(token: MermanNativeEngineToken) -> bool {
+    active_callback_tokens()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(&token)
+}
+
+fn reentrant_call_failure() -> NativeFailure {
+    NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")
+}
+
+fn native_struct_size<T>() -> u32 {
+    u32::try_from(size_of::<T>()).expect("native ABI record sizes fit in u32")
+}
+
+fn native_status_name(status: MermanNativeStatus) -> &'static str {
+    match status {
+        MERMAN_NATIVE_STATUS_OK => "ok",
+        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT => "invalid-argument",
+        MERMAN_NATIVE_STATUS_UTF8_ERROR => "utf8-error",
+        MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR => "options-json-error",
+        MERMAN_NATIVE_STATUS_NO_DIAGRAM => "no-diagram",
+        MERMAN_NATIVE_STATUS_PARSE_ERROR => "parse-error",
+        MERMAN_NATIVE_STATUS_RENDER_ERROR => "render-error",
+        MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => "unsupported-operation",
+        MERMAN_NATIVE_STATUS_PANIC => "panic",
+        MERMAN_NATIVE_STATUS_INTERNAL_ERROR => "internal-error",
+        MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED => "resource-limit-exceeded",
+        MERMAN_NATIVE_STATUS_ABI_MISMATCH => "abi-mismatch",
+        MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH => "abi-layout-mismatch",
+        MERMAN_NATIVE_STATUS_CALLBACK_ERROR => "callback-error",
+        MERMAN_NATIVE_STATUS_REENTRANT_CALL => "reentrant-call",
+        MERMAN_NATIVE_STATUS_INVALID_ENGINE => "invalid-engine",
+        _ => "unknown-status",
+    }
+}
+
+fn native_error_kind_name(kind: BindingErrorKind) -> &'static str {
+    match kind {
+        BindingErrorKind::Generic => MERMAN_NATIVE_ERROR_KIND_GENERIC,
+        BindingErrorKind::UnknownOperation => MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
+        BindingErrorKind::MissingCapability => MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY,
+        BindingErrorKind::ReentrantCall => MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL,
+    }
+}
+
+fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "version": MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
+        "ok": false,
+        "status": failure.status,
+        "status_name": native_status_name(failure.status),
+        "kind": native_error_kind_name(failure.kind),
+        "capability_id": failure.capability_id,
+        "message": failure.message.as_str(),
+    }))
+    .unwrap_or_else(|_| {
+        format!(
+            "{{\"version\":{},\"ok\":false,\"status\":9,\"status_name\":\"internal-error\",\"kind\":\"generic\",\"capability_id\":null,\"message\":\"native error serialization failed\"}}",
+            MERMAN_NATIVE_RESULT_SCHEMA_VERSION
+        )
+        .into_bytes()
+    })
+}
+
+fn native_success_json(operation: &str) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "version": MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
+        "ok": true,
+        "operation": operation,
+    }))
+    .unwrap_or_default()
+}
+
+fn native_failure_from_binding(error: BindingError) -> NativeFailure {
+    let status = match error.status() {
+        BindingStatus::Ok => MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+        BindingStatus::InvalidArgument => MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+        BindingStatus::Utf8Error => MERMAN_NATIVE_STATUS_UTF8_ERROR,
+        BindingStatus::OptionsJsonError => MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR,
+        BindingStatus::NoDiagram => MERMAN_NATIVE_STATUS_NO_DIAGRAM,
+        BindingStatus::ParseError => MERMAN_NATIVE_STATUS_PARSE_ERROR,
+        BindingStatus::RenderError => MERMAN_NATIVE_STATUS_RENDER_ERROR,
+        BindingStatus::UnsupportedOperation => MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+        BindingStatus::Panic => MERMAN_NATIVE_STATUS_PANIC,
+        BindingStatus::InternalError => MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+        BindingStatus::ResourceLimitExceeded => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+    };
+    NativeFailure {
+        status,
+        kind: error.kind(),
+        capability_id: error.capability_id(),
+        message: error.message().to_string(),
+    }
+}
+
+fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
+    BindingEngine::from_options(options_json)
+}
+
+fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
+    ENGINE_REGISTRY.get_or_init(|| Mutex::new(NativeEngineRegistry::default()))
+}
+
+fn allocation_registry() -> &'static Mutex<NativeAllocationRegistry> {
+    ALLOCATION_REGISTRY.get_or_init(|| Mutex::new(NativeAllocationRegistry::default()))
+}
+
+fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {
+    if let Some(bytes) = RUNTIME_CATALOG.get() {
+        return Ok(bytes);
+    }
+
+    let candidate = merman_bindings_core::runtime_catalog_json(MERMAN_NATIVE_ABI_VERSION)
+        .map_err(native_failure_from_binding)?
+        .into_boxed_slice();
+    let _ = RUNTIME_CATALOG.set(candidate);
+    Ok(RUNTIME_CATALOG
+        .get()
+        .expect("runtime catalog must be initialized after set"))
+}
+
+fn runtime_catalog_digest_bytes() -> Result<&'static [u8], NativeFailure> {
+    if let Some(bytes) = RUNTIME_CATALOG_DIGEST.get() {
+        return Ok(bytes);
+    }
+
+    let catalog = runtime_catalog_bytes()?;
+    let digest = format!("sha256:{:x}", Sha256::digest(catalog))
+        .into_bytes()
+        .into_boxed_slice();
+    let _ = RUNTIME_CATALOG_DIGEST.set(digest);
+    Ok(RUNTIME_CATALOG_DIGEST
+        .get()
+        .expect("runtime catalog digest must be initialized after set"))
+}
+
+fn static_slice(bytes: &'static [u8]) -> MermanNativeSlice {
+    MermanNativeSlice {
+        struct_size: native_struct_size::<MermanNativeSlice>(),
+        data: if bytes.is_empty() {
+            ptr::null()
+        } else {
+            bytes.as_ptr()
+        },
+        len: bytes.len(),
+    }
+}
+
+#[cfg(any(feature = "svg", test))]
+fn borrowed_slice(bytes: &[u8]) -> MermanNativeSlice {
+    MermanNativeSlice {
+        struct_size: native_struct_size::<MermanNativeSlice>(),
+        data: if bytes.is_empty() {
+            ptr::null()
+        } else {
+            bytes.as_ptr()
+        },
+        len: bytes.len(),
+    }
+}
+
+fn empty_buffer() -> MermanNativeBuffer {
+    MermanNativeBuffer {
+        struct_size: native_struct_size::<MermanNativeBuffer>(),
+        data: ptr::null_mut(),
+        len: 0,
+    }
+}
+
+fn owned_buffer_view(bytes: &mut Vec<u8>) -> MermanNativeBuffer {
+    if bytes.is_empty() {
+        return empty_buffer();
+    }
+
+    MermanNativeBuffer {
+        struct_size: native_struct_size::<MermanNativeBuffer>(),
+        data: bytes.as_mut_ptr(),
+        len: bytes.len(),
+    }
+}
+
+fn register_result_allocation(
+    result: *mut MermanNativeResult,
+    data: Vec<u8>,
+    metadata_or_error_json: Vec<u8>,
+) -> (MermanNativeBuffer, MermanNativeBuffer) {
+    let mut registry = allocation_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.results.insert(
+        result as usize,
+        NativeResultAllocation {
+            data,
+            metadata_or_error_json,
+        },
+    );
+    let allocation = registry
+        .results
+        .get_mut(&(result as usize))
+        .expect("result allocation was inserted");
+    let data = owned_buffer_view(&mut allocation.data);
+    let metadata_or_error_json = owned_buffer_view(&mut allocation.metadata_or_error_json);
+    (data, metadata_or_error_json)
+}
+
+fn release_result_allocation(result: *mut MermanNativeResult) {
+    let mut registry = allocation_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _ = registry.results.remove(&(result as usize));
+}
+
+fn operation_media_type(operation: MermanNativeOperationCode) -> Option<&'static str> {
+    merman_native_operation_descriptor(operation).and_then(|descriptor| descriptor.media_type)
+}
+
+fn normalized_operation(operation: MermanNativeOperationCode) -> MermanNativeOperationCode {
+    if merman_native_operation_descriptor(operation).is_some() {
+        operation
+    } else {
+        MERMAN_NATIVE_OPERATION_NONE
+    }
+}
+
+fn empty_native_result(
+    status: MermanNativeStatus,
+    operation: MermanNativeOperationCode,
+    media_type: Option<&'static str>,
+) -> MermanNativeResult {
+    MermanNativeResult {
+        struct_size: native_struct_size::<MermanNativeResult>(),
+        status,
+        operation: normalized_operation(operation),
+        media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
+        data: empty_buffer(),
+        metadata_or_error_json: empty_buffer(),
+    }
+}
+
+fn validate_struct_size<T>(actual: u32, name: &str) -> Result<(), NativeFailure> {
+    let required = native_struct_size::<T>();
+    if actual < required {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name}.struct_size is {actual}; expected at least {required}"),
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn read_record_struct_size<T>(record: *const T) -> u32 {
+    unsafe { ptr::read(record.cast::<u32>()) }
+}
+
+unsafe fn result_is_writable(out_result: *mut MermanNativeResult) -> Result<(), NativeFailure> {
+    if out_result.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_result must not be null",
+        ));
+    }
+    let struct_size = unsafe { read_record_struct_size(out_result) };
+    validate_struct_size::<MermanNativeResult>(struct_size, "out_result")
+}
+
+unsafe fn write_native_result(
+    out_result: *mut MermanNativeResult,
+    status: MermanNativeStatus,
+    operation: MermanNativeOperationCode,
+    media_type: Option<&'static str>,
+    data: Vec<u8>,
+    metadata_or_error_json: Vec<u8>,
+) {
+    let (data, metadata_or_error_json) =
+        register_result_allocation(out_result, data, metadata_or_error_json);
+    unsafe {
+        ptr::write(
+            out_result,
+            MermanNativeResult {
+                struct_size: native_struct_size::<MermanNativeResult>(),
+                status,
+                operation: normalized_operation(operation),
+                media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
+                data,
+                metadata_or_error_json,
+            },
+        );
+    }
+}
+
+unsafe fn write_native_failure(
+    out_result: *mut MermanNativeResult,
+    operation: MermanNativeOperationCode,
+    failure: &NativeFailure,
+) {
+    unsafe {
+        write_native_result(
+            out_result,
+            failure.status,
+            operation,
+            operation_media_type(operation),
+            Vec::new(),
+            native_error_json(failure),
+        );
+    }
+}
+
+unsafe fn write_failure_if_possible(
+    out_result: *mut MermanNativeResult,
+    operation: MermanNativeOperationCode,
+    failure: &NativeFailure,
+) {
+    if unsafe { result_is_writable(out_result) }.is_ok() {
+        unsafe { write_native_failure(out_result, operation, failure) };
+    }
+}
+
+unsafe fn native_slice_bytes<'a>(
+    slice: MermanNativeSlice,
+    name: &str,
+) -> Result<&'a [u8], NativeFailure> {
+    validate_struct_size::<MermanNativeSlice>(slice.struct_size, name)?;
+    if slice.len == 0 {
+        return Ok(&[]);
+    }
+    if slice.data.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name}.data must not be null when len is non-zero"),
+        ));
+    }
+    Ok(unsafe { std::slice::from_raw_parts(slice.data, slice.len) })
+}
+
+unsafe fn read_engine_config(
+    config: *const MermanNativeEngineConfig,
+) -> Result<MermanNativeEngineConfig, NativeFailure> {
+    if config.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "config must not be null",
+        ));
+    }
+    validate_struct_size::<MermanNativeEngineConfig>(
+        unsafe { read_record_struct_size(config) },
+        "config",
+    )?;
+    Ok(unsafe { ptr::read(config) })
+}
+
+struct NativeOperationRequest<'a> {
+    operation: MermanNativeOperationCode,
+    source: &'a [u8],
+    uri: Option<&'a [u8]>,
+    options_json: &'a [u8],
+}
+
+unsafe fn read_operation_request<'a>(
+    request: *const MermanNativeOperationRequest,
+) -> Result<NativeOperationRequest<'a>, NativeFailure> {
+    if request.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "request must not be null",
+        ));
+    }
+    validate_struct_size::<MermanNativeOperationRequest>(
+        unsafe { read_record_struct_size(request) },
+        "request",
+    )?;
+    let request = unsafe { ptr::read(request) };
+    let source = unsafe { native_slice_bytes(request.source, "request.source") }?;
+    let uri = unsafe { native_slice_bytes(request.uri, "request.uri") }?;
+    let options_json = unsafe { native_slice_bytes(request.options_json, "request.options_json") }?;
+    Ok(NativeOperationRequest {
+        operation: request.operation,
+        source,
+        uri: (!uri.is_empty()).then_some(uri),
+        options_json,
+    })
+}
+
+fn acquire_engine(token: MermanNativeEngineToken) -> Result<Arc<NativeEngineState>, NativeFailure> {
+    if token == 0 {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+            "engine token 0 is not valid",
+        ));
+    }
+    let registry = engine_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.acquire(token).ok_or_else(|| {
+        NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+            "engine token is unknown or has already been released",
+        )
+    })
+}
+
+fn execute_with_engine<T>(
+    token: MermanNativeEngineToken,
+    request: NativeOperationRequest<'_>,
+    consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
+) -> Result<T, NativeFailure> {
+    if callback_is_active(token) {
+        return Err(reentrant_call_failure());
+    }
+    let state = acquire_engine(token)?;
+    let _operation = state.coordinator.enter_operation()?;
+
+    let operation = merman_bindings_core::BindingOperationKind::from_native_code(request.operation)
+        .map_err(native_failure_from_binding)?;
+    let result = state
+        .engine
+        .execute(BindingOperationRequest {
+            operation_id: operation.operation_id(),
+            source: request.source,
+            uri: request.uri,
+            options_json: request.options_json,
+        })
+        .map_err(native_failure_from_binding)?;
+
+    consume(NativeExecution {
+        operation: result.operation.native_code(),
+        media_type: result.media_type,
+        data: result.data,
+        metadata_json: result.metadata_json,
+    })
+}
+
+#[cfg(feature = "svg")]
 #[derive(Clone)]
-struct FfiHostTextMeasurer {
-    callback: MermanHostTextMeasureCallback,
+struct NativeHostTextMeasurer {
+    callback: MermanNativeTextMeasureCallback,
     user_data: usize,
+    coordinator: Arc<NativeExecutionCoordinator>,
 }
 
-#[cfg(feature = "render")]
-impl FfiHostTextMeasurer {
+#[cfg(feature = "svg")]
+impl NativeHostTextMeasurer {
     const DEFAULT_FONT_STYLE: &'static [u8] = b"normal";
     const DEFAULT_FONT_WEIGHT: &'static [u8] = b"normal";
 
-    fn new(callback: MermanHostTextMeasureCallback, user_data: *mut std::ffi::c_void) -> Self {
+    fn new(
+        callback: MermanNativeTextMeasureCallback,
+        user_data: *mut std::ffi::c_void,
+        coordinator: Arc<NativeExecutionCoordinator>,
+    ) -> Self {
         Self {
             callback,
             user_data: user_data as usize,
+            coordinator,
         }
     }
 
-    fn call_host(
+    fn measure_host(
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
-    ) -> merman_bindings_core::HostMeasurementResult {
-        let text = request.text;
+    ) -> HostMeasurementResult {
         let style = request.style;
         let max_width = request.max_width;
         let wrap_mode = request.wrap_mode;
@@ -278,67 +778,112 @@ impl FfiHostTextMeasurer {
             .as_deref()
             .map(str::as_bytes)
             .unwrap_or(Self::DEFAULT_FONT_STYLE);
-        let result = unsafe {
+        let native_request = MermanNativeTextMeasureRequest {
+            struct_size: native_struct_size::<MermanNativeTextMeasureRequest>(),
+            text_measurement_protocol_version: MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            text: borrowed_slice(request.text.as_bytes()),
+            font_family: borrowed_slice(font_family),
+            font_size: style.font_size,
+            font_weight: borrowed_slice(font_weight),
+            font_style: borrowed_slice(font_style),
+            max_width: max_width.unwrap_or(0.0),
+            line_height: ffi_line_height(style, wrap_mode),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
+            wrap_mode: ffi_wrap_mode(wrap_mode),
+            direction: MERMAN_TEXT_DIRECTION_AUTO,
+            white_space: ffi_white_space(max_width, wrap_mode),
+            has_max_width: u8::from(max_width.is_some()),
+            phase: ffi_measurement_phase(request.phase),
+            operation: request.operation.external_code(),
+        };
+        let mut native_result = MermanNativeTextMeasureResult {
+            struct_size: native_struct_size::<MermanNativeTextMeasureResult>(),
+            handled: 0,
+            has_raw_width: 0,
+            result_kind: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS,
+            width: 0.0,
+            height: 0.0,
+            length: 0.0,
+            bbox_left: 0.0,
+            bbox_right: 0.0,
+            raw_width: 0.0,
+            line_count: 0,
+        };
+        let status = self.coordinator.invoke_host_callback(|| unsafe {
             (self.callback)(
-                MermanHostTextMeasureRequest {
-                    text: text.as_ptr(),
-                    text_len: text.len(),
-                    font_family: font_family.as_ptr(),
-                    font_family_len: font_family.len(),
-                    font_size: style.font_size,
-                    font_weight: font_weight.as_ptr(),
-                    font_weight_len: font_weight.len(),
-                    font_style: font_style.as_ptr(),
-                    font_style_len: font_style.len(),
-                    max_width: max_width.unwrap_or(0.0),
-                    line_height: ffi_line_height(style, wrap_mode),
-                    letter_spacing: 0.0,
-                    word_spacing: 0.0,
-                    wrap_mode: ffi_wrap_mode(wrap_mode),
-                    direction: MERMAN_TEXT_DIRECTION_AUTO,
-                    white_space: ffi_white_space(max_width, wrap_mode),
-                    has_max_width: u8::from(max_width.is_some()),
-                    phase: ffi_measurement_phase(request.phase),
-                    operation: request.operation.external_code(),
-                },
+                &native_request,
+                &mut native_result,
                 self.user_data as *mut std::ffi::c_void,
             )
-        };
-
-        if result.handled == 0 {
+        });
+        if status != MERMAN_NATIVE_STATUS_OK {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "host text-measure callback returned an error status",
+            ));
+        }
+        if validate_struct_size::<MermanNativeTextMeasureResult>(
+            native_result.struct_size,
+            "host text-measure result",
+        )
+        .is_err()
+            || native_result.handled > 1
+            || native_result.has_raw_width > 1
+        {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "host text-measure callback returned an invalid result record",
+            ));
+        }
+        if native_result.handled == 0 {
             return Ok(None);
+        }
+
+        let Some(kind) = merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
+            native_result.result_kind,
+        ) else {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "host text-measure callback returned an unknown result kind",
+            ));
+        };
+        if kind
+            != merman_bindings_core::HostTextMeasurementResultKind::expected_for_operation(
+                request.operation,
+            )
+        {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "host text-measure callback returned the wrong result kind",
+            ));
         }
 
         Ok(Some(
             merman_bindings_core::host_text_measurement_from_values(
-                merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
-                    result.result_kind,
-                ),
+                Some(kind),
                 merman_bindings_core::HostTextMeasurementValues {
-                    width: result.width,
-                    height: result.height,
-                    line_count: result.line_count,
-                    length: result.length,
-                    bbox_left: result.bbox_left,
-                    bbox_right: result.bbox_right,
-                    raw_width: (result.has_raw_width != 0).then_some(result.raw_width),
+                    width: native_result.width,
+                    height: native_result.height,
+                    line_count: native_result.line_count,
+                    length: native_result.length,
+                    bbox_left: native_result.bbox_left,
+                    bbox_right: native_result.bbox_right,
+                    raw_width: (native_result.has_raw_width != 0)
+                        .then_some(native_result.raw_width),
                 },
             ),
         ))
     }
 }
 
-#[cfg(feature = "render")]
-impl merman_bindings_core::HostTextMeasurer for FfiHostTextMeasurer {
+#[cfg(feature = "svg")]
+impl merman_bindings_core::HostTextMeasurer for NativeHostTextMeasurer {
     fn measure(
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
-    ) -> merman_bindings_core::HostMeasurementResult {
-        self.call_host(request)
+    ) -> HostMeasurementResult {
+        self.measure_host(request)
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn ffi_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> i32 {
     match phase {
         merman_bindings_core::TextMeasurementPhase::Layout => MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT,
@@ -352,7 +897,7 @@ fn ffi_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> i
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn ffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
     match wrap_mode {
         merman_bindings_core::WrapMode::SvgLike => MERMAN_WRAP_MODE_SVG_LIKE,
@@ -361,7 +906,7 @@ fn ffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn ffi_line_height(
     style: &merman_bindings_core::TextStyle,
     wrap_mode: merman_bindings_core::WrapMode,
@@ -374,7 +919,7 @@ fn ffi_line_height(
     style.font_size.max(1.0) * factor
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 fn ffi_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::WrapMode) -> i32 {
     match wrap_mode {
         merman_bindings_core::WrapMode::HtmlLike if max_width.is_some() => {
@@ -386,2396 +931,1252 @@ fn ffi_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::Wrap
     }
 }
 
-/// Return the C ABI protocol version implemented by this library.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_abi_version() -> u32 {
-    MERMAN_ABI_VERSION
-}
-
-/// Return the `merman-ffi` crate package version as a static C string.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_package_version() -> *const c_char {
-    PACKAGE_VERSION.as_ptr().cast()
-}
-
-/// Return the versioned runtime contract as UTF-8 JSON.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_runtime_contract_json() -> MermanResult {
-    ffi_result(|| merman_bindings_core::runtime_contract_json(MERMAN_ABI_VERSION))
-}
-
-/// Build versioned options JSON from typed resource-profile and limit identifiers.
-///
-/// # Safety
-///
-/// `overrides` may be null only when `overrides_len == 0`; otherwise it must point to a readable
-/// contiguous array of `MermanResourceLimitOverride` values for the duration of this call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_resource_options_json(
-    profile: i32,
-    overrides: *const MermanResourceLimitOverride,
-    overrides_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe { resource_options_json_impl(profile, overrides, overrides_len) })
-}
-
-/// Return the Rust-side size of `MermanBuffer`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_buffer_struct_size() -> usize {
-    std::mem::size_of::<MermanBuffer>()
-}
-
-/// Return the Rust-side size of `MermanResult`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_result_struct_size() -> usize {
-    std::mem::size_of::<MermanResult>()
-}
-
-/// Return the Rust-side size of `MermanResourceLimitOverride`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_resource_limit_override_struct_size() -> usize {
-    std::mem::size_of::<MermanResourceLimitOverride>()
-}
-
-/// Return the Rust-side size of `MermanEngineResult`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_engine_result_struct_size() -> usize {
-    std::mem::size_of::<MermanEngineResult>()
-}
-
-/// Return the Rust-side size of `MermanHostTextMeasureRequest`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_host_text_measure_request_struct_size() -> usize {
-    std::mem::size_of::<MermanHostTextMeasureRequest>()
-}
-
-/// Return the Rust-side size of `MermanHostTextMeasureResult`.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_host_text_measure_result_struct_size() -> usize {
-    std::mem::size_of::<MermanHostTextMeasureResult>()
-}
-
-/// Create a reusable engine for repeated calls with the same options.
-///
-/// # Safety
-///
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of `options_len` bytes for the duration of the call.
-/// - A returned non-null engine handle must be released with `merman_engine_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_new(
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanEngineResult {
-    ffi_engine_result(|| unsafe { engine_new_impl(options_json, options_len) })
-}
-
-/// Free an engine returned by `merman_engine_new`.
-///
-/// Passing null is a no-op.
-///
-/// # Safety
-///
-/// Non-null engine handles must have been returned by this crate. Calling this function consumes
-/// the host handle. If a call is active, state destruction is deferred until its lease ends;
-/// callers must not use the handle again after requesting release.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_free(engine: *mut MermanEngine) {
-    retire_engine_handle(engine);
-}
-
-/// Install a host-provided text measurer on a reusable engine.
-///
-/// The callback is used for future layout/render calls made through this engine. Passing a null
-/// callback resets the engine to the measurer configured by `merman_engine_new`.
-///
-/// # Safety
-///
-/// - `engine` must be a live handle returned by `merman_engine_new`.
-/// - `callback`, when non-null, must remain callable for as long as the engine can call it.
-/// - `user_data` is never dereferenced by merman; it is passed back unchanged.
-/// - Mutating the callback while any call or callback is active returns `MERMAN_INVALID_ARGUMENT`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_set_text_measure_callback(
-    engine: *mut MermanEngine,
-    callback: Option<MermanHostTextMeasureCallback>,
-    user_data: *mut std::ffi::c_void,
-) -> MermanResult {
-    ffi_result(|| unsafe { engine_set_text_measure_callback_impl(engine, callback, user_data) })
-}
-
-/// Render Mermaid source to SVG bytes using a reusable engine.
-///
-/// # Safety
-///
-/// - `engine` must be a live pointer returned by `merman_engine_new`.
-/// - `source` may be null only when `source_len == 0`.
-/// - Non-null source pointers must be valid for reads of `source_len` bytes.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_render_svg(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::render_svg)
-    })
-}
-
-/// Render Mermaid source to Unicode ASCII-art text using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_render_svg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_render_ascii(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::render_ascii)
-    })
-}
-
-/// Parse Mermaid source to semantic JSON bytes using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_render_svg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_parse_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::parse_json)
-    })
-}
-
-/// Layout Mermaid source to layout JSON bytes using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_render_svg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_layout_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::layout_json)
-    })
-}
-
-/// Analyze Mermaid source to diagnostics JSON bytes using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_render_svg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_analyze_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::analyze_json)
-    })
-}
-
-/// Analyze a host document to diagnostics JSON bytes using a reusable engine.
-///
-/// # Safety
-///
-/// - `engine` must be a live pointer returned by `merman_engine_new`.
-/// - `source` and `uri` may be null only when their paired length is zero.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_analyze_document_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_uri_call(
-            engine,
-            source,
-            source_len,
-            uri,
-            uri_len,
-            BindingEngine::analyze_document_json,
-        )
-    })
-}
-
-/// Analyze a host document to syntax/facts JSON bytes using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_analyze_document_json`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_analyze_document_facts_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_uri_call(
-            engine,
-            source,
-            source_len,
-            uri,
-            uri_len,
-            BindingEngine::analyze_document_facts_json,
-        )
-    })
-}
-
-/// Validate Mermaid source using a reusable engine.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_engine_render_svg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_engine_validate_json(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_engine_source_call(engine, source, source_len, BindingEngine::validate_json)
-    })
-}
-
-/// Analyze Mermaid source to diagnostics JSON bytes.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_analyze_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_analyze_json,
-        )
-    })
-}
-
-/// Analyze a host document to diagnostics JSON bytes.
-///
-/// # Safety
-///
-/// - `source` and `uri` may be null only when their paired length is zero.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_analyze_document_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_uri_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            uri,
-            uri_len,
-            transport_analyze_document_json,
-        )
-    })
-}
-
-/// Analyze a host document to syntax/facts JSON bytes.
-///
-/// # Safety
-///
-/// Safety rules are identical to `merman_analyze_document_json`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_analyze_document_facts_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_uri_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            uri,
-            uri_len,
-            transport_analyze_document_facts_json,
-        )
-    })
-}
-
-/// Render Mermaid source to SVG bytes.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_render_svg(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_render_svg,
-        )
-    })
-}
-
-/// Render Mermaid source to Unicode ASCII-art text.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_render_ascii(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_render_ascii,
-        )
-    })
-}
-
-/// Parse Mermaid source to semantic JSON bytes.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_parse_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_parse_json,
-        )
-    })
-}
-
-/// Layout Mermaid source to layout JSON bytes.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_layout_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_layout_json,
-        )
-    })
-}
-
-/// Validate Mermaid source and return a JSON validation payload.
-///
-/// # Safety
-///
-/// - `source` may be null only when `source_len == 0`.
-/// - `options_json` may be null only when `options_len == 0`.
-/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
-/// - Returned non-empty buffers must be released with `merman_buffer_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_validate_json(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> MermanResult {
-    ffi_result(|| unsafe {
-        ffi_source_options_call(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            transport_validate_json,
-        )
-    })
-}
-
-/// Return supported diagram type metadata as a JSON string array.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_supported_diagrams_json() -> MermanResult {
-    ffi_result(merman_bindings_core::supported_diagrams_json)
-}
-
-/// Return ASCII rendering capability metadata as a JSON array.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_ascii_capabilities_json() -> MermanResult {
-    ffi_result(merman_bindings_core::ascii_capabilities_json)
-}
-
-/// Return the complete diagram family capability catalog as a JSON array.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_diagram_family_capabilities_json() -> MermanResult {
-    ffi_result(merman_bindings_core::diagram_family_capabilities_json)
-}
-
-/// Return lint rule catalog metadata as a versioned JSON response object.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_lint_rule_catalog_json() -> MermanResult {
-    ffi_result(merman_bindings_core::lint_rule_catalog_json)
-}
-
-/// Return supported theme metadata as a JSON string array.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_supported_themes_json() -> MermanResult {
-    ffi_result(merman_bindings_core::supported_themes_json)
-}
-
-/// Return supported host/editor theme preset metadata as a JSON string array.
-#[unsafe(no_mangle)]
-pub extern "C" fn merman_supported_host_theme_presets_json() -> MermanResult {
-    ffi_result(merman_bindings_core::supported_host_theme_presets_json)
-}
-
-/// Free a buffer returned by this crate.
-///
-/// Passing a null buffer is a no-op.
-///
-/// # Safety
-///
-/// Non-null buffers must have been returned by this crate and must not be freed more than once.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn merman_buffer_free(buffer: MermanBuffer) {
-    if buffer.data.is_null() || buffer.len == 0 {
-        return;
-    }
-
-    let raw = ptr::slice_from_raw_parts_mut(buffer.data, buffer.len);
-    unsafe {
-        drop(Box::from_raw(raw));
-    }
-}
-
-fn ffi_result<F>(f: F) -> MermanResult
-where
-    F: FnOnce() -> Result<Vec<u8>, BindingError>,
-{
+fn status_boundary(f: impl FnOnce() -> MermanNativeStatus) -> MermanNativeStatus {
     match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(Ok(bytes)) => MermanResult {
-            code: BindingStatus::Ok.code(),
-            data: buffer_from_vec(bytes),
-        },
-        Ok(Err(err)) => error_result(err.status(), err.message()),
-        Err(_) => error_result(BindingStatus::Panic, "panic caught at merman FFI boundary"),
+        Ok(status) => status,
+        Err(_) => MERMAN_NATIVE_STATUS_PANIC,
     }
 }
 
-fn ffi_engine_result<F>(f: F) -> MermanEngineResult
-where
-    F: FnOnce() -> Result<BindingEngine, BindingError>,
-{
-    match catch_unwind(AssertUnwindSafe(|| f().and_then(register_engine))) {
-        Ok(Ok(engine)) => MermanEngineResult {
-            code: BindingStatus::Ok.code(),
-            engine,
-            data: MermanBuffer::empty(),
-        },
-        Ok(Err(err)) => MermanEngineResult {
-            code: err.status().code(),
-            engine: ptr::null_mut(),
-            data: buffer_from_vec(error_payload_json_bytes(err.status(), err.message())),
-        },
-        Err(_) => MermanEngineResult {
-            code: BindingStatus::Panic.code(),
-            engine: ptr::null_mut(),
-            data: buffer_from_vec(error_payload_json_bytes(
-                BindingStatus::Panic,
-                "panic caught at merman FFI boundary",
-            )),
-        },
+unsafe fn result_status_boundary(
+    out_result: *mut MermanNativeResult,
+    operation: MermanNativeOperationCode,
+    f: impl FnOnce() -> MermanNativeStatus,
+) -> MermanNativeStatus {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(status) => status,
+        Err(_) => {
+            let failure = NativeFailure::new(
+                MERMAN_NATIVE_STATUS_PANIC,
+                "a Rust panic was caught at the native ABI boundary",
+            );
+            unsafe { write_failure_if_possible(out_result, operation, &failure) };
+            failure.status
+        }
+    }
+}
+
+/// Discovers the generated native ABI 3 function table.
+///
+/// # Safety
+///
+/// `request` and `out_api` must point to writable/readable records with the generated ABI layouts.
+/// Their `struct_size` fields must describe at least the record prefix consumed by this ABI, and all
+/// slices referenced by `request` must remain valid for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_get_native_api(
+    request: *const MermanNativeApiRequest,
+    out_api: *mut MermanNativeApi,
+) -> MermanNativeStatus {
+    status_boundary(|| unsafe { get_native_api_impl(request, out_api) })
+}
+
+unsafe fn get_native_api_impl(
+    request: *const MermanNativeApiRequest,
+    out_api: *mut MermanNativeApi,
+) -> MermanNativeStatus {
+    let result = (|| {
+        if request.is_null() {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "request must not be null",
+            ));
+        }
+        if out_api.is_null() {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "out_api must not be null",
+            ));
+        }
+        validate_struct_size::<MermanNativeApiRequest>(
+            unsafe { read_record_struct_size(request) },
+            "request",
+        )?;
+        let request = unsafe { ptr::read(request) };
+        let output_size = unsafe { read_record_struct_size(out_api) };
+        validate_struct_size::<MermanNativeApi>(output_size, "out_api")?;
+        if request.expected_abi_version != MERMAN_NATIVE_ABI_VERSION {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_ABI_MISMATCH,
+                format!(
+                    "native ABI {} was requested; this library implements {}",
+                    request.expected_abi_version, MERMAN_NATIVE_ABI_VERSION
+                ),
+            ));
+        }
+        let expected_digest = unsafe {
+            native_slice_bytes(
+                request.expected_layout_descriptor_digest,
+                "request.expected_layout_descriptor_digest",
+            )
+        }?;
+        if expected_digest != MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes() {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH,
+                "native ABI descriptor digest does not match this library",
+            ));
+        }
+
+        let capability_catalog_digest = runtime_catalog_digest_bytes()?;
+        let api = MermanNativeApi {
+            struct_size: native_struct_size::<MermanNativeApi>(),
+            abi_version: MERMAN_NATIVE_ABI_VERSION,
+            layout_descriptor_digest: static_slice(
+                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            ),
+            capability_catalog_digest: static_slice(capability_catalog_digest),
+            package_version: static_slice(PACKAGE_VERSION),
+            runtime_catalog: Some(native_runtime_catalog),
+            engine_new: Some(native_engine_new),
+            engine_free: Some(native_engine_free),
+            execute_collect: Some(native_execute_collect),
+            result_free: Some(native_result_free),
+        };
+        unsafe { ptr::write(out_api, api) };
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => MERMAN_NATIVE_STATUS_OK,
+        Err(failure) => failure.status,
+    }
+}
+
+unsafe extern "C" fn native_runtime_catalog(
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            runtime_catalog_impl(out_result)
+        })
+    }
+}
+
+fn runtime_catalog_impl(out_result: *mut MermanNativeResult) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    match runtime_catalog_bytes() {
+        Ok(catalog) => {
+            unsafe {
+                write_native_result(
+                    out_result,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_NONE,
+                    None,
+                    Vec::new(),
+                    catalog.to_vec(),
+                );
+            }
+            MERMAN_NATIVE_STATUS_OK
+        }
+        Err(failure) => {
+            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+            failure.status
+        }
+    }
+}
+
+unsafe extern "C" fn native_engine_new(
+    config: *const MermanNativeEngineConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            engine_new_impl(config, out_engine, out_result)
+        })
     }
 }
 
 unsafe fn engine_new_impl(
-    options_json: *const u8,
-    options_len: usize,
-) -> Result<BindingEngine, BindingError> {
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    binding_engine_for_transport(options_bytes)
-}
-
-fn engine_registry() -> &'static Mutex<FfiEngineRegistry> {
-    ENGINE_REGISTRY.get_or_init(|| Mutex::new(FfiEngineRegistry::default()))
-}
-
-fn lock_engine_registry() -> MutexGuard<'static, FfiEngineRegistry> {
-    engine_registry()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-fn register_engine(inner: BindingEngine) -> Result<*mut MermanEngine, BindingError> {
-    let engine = Arc::new(FfiEngineState {
-        #[cfg(feature = "render")]
-        base: inner.clone(),
-        inner: RwLock::new(inner),
-    });
-    lock_engine_registry().register(engine)
-}
-
-fn acquire_engine_lease(engine: *const MermanEngine) -> Result<Arc<FfiEngineState>, BindingError> {
-    if engine.is_null() {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "engine handle is null",
-        ));
+    config: *const MermanNativeEngineConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
     }
-    lock_engine_registry()
-        .acquire(engine.addr())
-        .ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InvalidArgument,
-                "engine handle is unknown or was already freed",
-            )
-        })
-}
-
-fn retire_engine_handle(engine: *mut MermanEngine) {
-    if engine.is_null() {
-        return;
+    if out_engine.is_null() {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_engine must not be null",
+        );
+        unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+        return failure.status;
     }
-    let retired = lock_engine_registry().retire(engine.addr());
-    drop(retired);
-}
+    unsafe { ptr::write(out_engine, 0) };
 
-fn with_engine_read<T>(
-    engine: *const MermanEngine,
-    f: impl FnOnce(&BindingEngine) -> Result<T, BindingError>,
-) -> Result<T, BindingError> {
-    let engine = acquire_engine_lease(engine)?;
-    let inner = match engine.inner.try_read() {
-        Ok(inner) => inner,
-        Err(TryLockError::WouldBlock) => {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "engine cannot be used during an active mutation",
-            ));
-        }
-        Err(TryLockError::Poisoned(_)) => {
-            return Err(BindingError::new(
-                BindingStatus::InternalError,
-                "engine state lock is poisoned",
-            ));
-        }
-    };
-    f(&inner)
-}
+    let outcome = (|| {
+        let config = unsafe { read_engine_config(config) }?;
+        let options_json =
+            unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
+        let coordinator = Arc::new(NativeExecutionCoordinator::new());
+        let engine =
+            binding_engine_for_transport(options_json).map_err(native_failure_from_binding)?;
 
-unsafe fn engine_set_text_measure_callback_impl(
-    engine: *mut MermanEngine,
-    callback: Option<MermanHostTextMeasureCallback>,
-    user_data: *mut std::ffi::c_void,
-) -> Result<Vec<u8>, BindingError> {
-    #[cfg(not(feature = "render"))]
-    {
-        let _ = (engine, callback, user_data);
-        Err(BindingError::new(
-            BindingStatus::UnsupportedFormat,
-            "host text measurement requires the render feature",
-        ))
-    }
-
-    #[cfg(feature = "render")]
-    {
-        let engine = acquire_engine_lease(engine)?;
-        let mut inner = match engine.inner.try_write() {
-            Ok(inner) => inner,
-            Err(TryLockError::WouldBlock) => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    "engine cannot be mutated during an active call",
-                ));
-            }
-            Err(TryLockError::Poisoned(_)) => {
-                return Err(BindingError::new(
-                    BindingStatus::InternalError,
-                    "engine state lock is poisoned",
-                ));
-            }
-        };
-        if let Some(callback) = callback {
-            let measurer = FfiHostTextMeasurer::new(callback, user_data);
-            *inner = inner.with_host_text_measurer(Arc::new(measurer));
+        #[cfg(feature = "svg")]
+        let engine = if let Some(callback) = config.text_measure {
+            let measurer = NativeHostTextMeasurer::new(
+                callback,
+                config.text_measure_user_data,
+                Arc::clone(&coordinator),
+            );
+            engine.with_host_text_measurer(Arc::new(measurer))
         } else {
-            *inner = engine.base.clone();
+            engine
+        };
+
+        #[cfg(not(feature = "svg"))]
+        let engine = {
+            if config.text_measure.is_some() {
+                return Err(NativeFailure::missing_capability(
+                    "svg",
+                    "host text measurement requires an artifact with the svg capability",
+                ));
+            }
+            engine
+        };
+
+        let state = Arc::new(NativeEngineState {
+            engine,
+            coordinator: Arc::clone(&coordinator),
+        });
+        let token = engine_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .register(state)?;
+        Ok(token)
+    })();
+
+    match outcome {
+        Ok(token) => {
+            unsafe { ptr::write(out_engine, token) };
+            unsafe {
+                write_native_result(
+                    out_result,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_NONE,
+                    None,
+                    Vec::new(),
+                    native_success_json("engine-new"),
+                );
+            }
+            MERMAN_NATIVE_STATUS_OK
         }
-        Ok(Vec::new())
+        Err(failure) => {
+            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+            failure.status
+        }
     }
 }
 
-unsafe fn ffi_engine_source_call<F>(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-    f: F,
-) -> Result<Vec<u8>, BindingError>
-where
-    F: FnOnce(&BindingEngine, &[u8]) -> Result<Vec<u8>, BindingError>,
-{
-    with_engine_read(engine, |inner| {
-        let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-        f(inner, source_bytes)
+unsafe extern "C" fn native_engine_free(engine: MermanNativeEngineToken) -> MermanNativeStatus {
+    status_boundary(|| {
+        let _lifecycle_guard = engine_lifecycle_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if callback_is_active(engine) {
+            return MERMAN_NATIVE_STATUS_REENTRANT_CALL;
+        }
+        let retired = engine_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retire(engine);
+        if retired.is_some() {
+            MERMAN_NATIVE_STATUS_OK
+        } else {
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE
+        }
     })
 }
 
-unsafe fn ffi_engine_source_uri_call<F>(
-    engine: *const MermanEngine,
-    source: *const u8,
-    source_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-    f: F,
-) -> Result<Vec<u8>, BindingError>
-where
-    F: FnOnce(&BindingEngine, &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
-{
-    with_engine_read(engine, |inner| {
-        let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-        let uri_bytes = unsafe { raw_bytes(uri, uri_len, "uri")? };
-        f(inner, source_bytes, uri_bytes)
-    })
+unsafe extern "C" fn native_execute_collect(
+    engine: MermanNativeEngineToken,
+    request: *const MermanNativeOperationRequest,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            execute_collect_impl(engine, request, out_result)
+        })
+    }
 }
 
-#[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
-unsafe fn resource_options_json_impl(
-    profile: i32,
-    overrides: *const MermanResourceLimitOverride,
-    overrides_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let profile = profile_id(profile).ok_or_else(|| {
-        BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!("unknown resource profile code: {profile}"),
-        )
-    })?;
-    let overrides = if overrides_len == 0 {
-        &[]
-    } else {
-        if overrides.is_null() {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "resource overrides pointer is null while overrides_len is non-zero",
-            ));
+unsafe fn execute_collect_impl(
+    engine: MermanNativeEngineToken,
+    request: *const MermanNativeOperationRequest,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    let request = match unsafe { read_operation_request(request) } {
+        Ok(request) => request,
+        Err(failure) => {
+            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+            return failure.status;
         }
-        unsafe { std::slice::from_raw_parts(overrides, overrides_len) }
     };
-    let overrides = overrides
-        .iter()
-        .map(|override_| {
-            let id = limit_id(override_.id).ok_or_else(|| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unknown resource limit code: {}", override_.id),
-                )
-            })?;
-            Ok((id, override_.value))
-        })
-        .collect::<Result<Vec<_>, BindingError>>()?;
-    merman_bindings_core::resource_options_json(profile, &overrides)
-}
-
-#[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
-unsafe fn resource_options_json_impl(
-    profile: i32,
-    overrides: *const MermanResourceLimitOverride,
-    overrides_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let _ = (profile, overrides, overrides_len);
-    Err(merman_bindings_core::render_resource_options_unavailable())
-}
-
-unsafe fn ffi_source_options_call<F>(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-    f: F,
-) -> Result<Vec<u8>, BindingError>
-where
-    F: FnOnce(&[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
-{
-    let request = unsafe {
-        FfiSourceOptionsRequest::from_raw(source, source_len, options_json, options_len)?
-    };
-    f(request.source, request.options_json)
-}
-
-unsafe fn ffi_source_options_uri_call<F>(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-    uri: *const u8,
-    uri_len: usize,
-    f: F,
-) -> Result<Vec<u8>, BindingError>
-where
-    F: FnOnce(&[u8], &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
-{
-    let request = unsafe {
-        FfiSourceOptionsUriRequest::from_raw(
-            source,
-            source_len,
-            options_json,
-            options_len,
-            uri,
-            uri_len,
-        )?
-    };
-    f(request.source, request.options_json, request.uri)
-}
-
-struct FfiSourceOptionsRequest<'a> {
-    source: &'a [u8],
-    options_json: &'a [u8],
-}
-
-impl<'a> FfiSourceOptionsRequest<'a> {
-    unsafe fn from_raw(
-        source: *const u8,
-        source_len: usize,
-        options_json: *const u8,
-        options_len: usize,
-    ) -> Result<Self, BindingError> {
-        let source = unsafe { raw_bytes(source, source_len, "source")? };
-        let options_json = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-        Ok(Self {
-            source,
-            options_json,
-        })
-    }
-}
-
-struct FfiSourceOptionsUriRequest<'a> {
-    source: &'a [u8],
-    options_json: &'a [u8],
-    uri: &'a [u8],
-}
-
-impl<'a> FfiSourceOptionsUriRequest<'a> {
-    unsafe fn from_raw(
-        source: *const u8,
-        source_len: usize,
-        options_json: *const u8,
-        options_len: usize,
-        uri: *const u8,
-        uri_len: usize,
-    ) -> Result<Self, BindingError> {
-        let source = unsafe { raw_bytes(source, source_len, "source")? };
-        let options_json = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-        let uri = unsafe { raw_bytes(uri, uri_len, "uri")? };
-        Ok(Self {
-            source,
-            options_json,
-            uri,
-        })
-    }
-}
-
-unsafe fn raw_bytes<'a>(
-    data: *const u8,
-    len: usize,
-    name: &'static str,
-) -> Result<&'a [u8], BindingError> {
-    if data.is_null() {
-        if len == 0 {
-            return Ok(&[]);
+    let operation = normalized_operation(request.operation);
+    match execute_with_engine(engine, request, |execution| {
+        unsafe {
+            write_native_result(
+                out_result,
+                MERMAN_NATIVE_STATUS_OK,
+                execution.operation,
+                Some(execution.media_type),
+                execution.data,
+                execution.metadata_json,
+            );
         }
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!("{name} pointer is null but length is {len}"),
-        ));
+        Ok(())
+    }) {
+        Ok(()) => MERMAN_NATIVE_STATUS_OK,
+        Err(failure) => {
+            unsafe { write_native_failure(out_result, operation, &failure) };
+            failure.status
+        }
     }
-
-    if len == 0 {
-        return Ok(&[]);
-    }
-
-    Ok(unsafe { std::slice::from_raw_parts(data, len) })
 }
 
-fn buffer_from_vec(bytes: Vec<u8>) -> MermanBuffer {
-    if bytes.is_empty() {
-        return MermanBuffer::empty();
-    }
-    let mut boxed = bytes.into_boxed_slice();
-    let buffer = MermanBuffer {
-        data: boxed.as_mut_ptr(),
-        len: boxed.len(),
-    };
-    std::mem::forget(boxed);
-    buffer
-}
-
-fn error_result(status: BindingStatus, message: &str) -> MermanResult {
-    MermanResult {
-        code: status.code(),
-        data: buffer_from_vec(error_payload_json_bytes(status, message)),
-    }
+unsafe extern "C" fn native_result_free(result: *mut MermanNativeResult) {
+    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if result.is_null() {
+            return;
+        }
+        if validate_struct_size::<MermanNativeResult>(read_record_struct_size(result), "result")
+            .is_err()
+        {
+            return;
+        }
+        release_result_allocation(result);
+        ptr::write(
+            result,
+            empty_native_result(MERMAN_NATIVE_STATUS_OK, MERMAN_NATIVE_OPERATION_NONE, None),
+        );
+    }));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "analysis")]
-    use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
-    use serde_json::Value;
-    use std::ffi::CStr;
 
-    fn call_render(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_render_svg(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
+    #[repr(C)]
+    struct StructSizeOnly {
+        struct_size: u32,
+    }
+
+    fn api_table() -> MermanNativeApi {
+        let mut api = MermanNativeApi {
+            struct_size: native_struct_size::<MermanNativeApi>(),
+            abi_version: 0,
+            layout_descriptor_digest: static_slice(&[]),
+            capability_catalog_digest: static_slice(&[]),
+            package_version: static_slice(&[]),
+            runtime_catalog: None,
+            engine_new: None,
+            engine_free: None,
+            execute_collect: None,
+            result_free: None,
+        };
+        let request = MermanNativeApiRequest {
+            struct_size: native_struct_size::<MermanNativeApiRequest>(),
+            expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
+            expected_layout_descriptor_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            ),
+        };
+        let status = unsafe { merman_get_native_api(&request, &mut api) };
+        assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+        api
+    }
+
+    fn native_result() -> MermanNativeResult {
+        empty_native_result(MERMAN_NATIVE_STATUS_OK, MERMAN_NATIVE_OPERATION_NONE, None)
+    }
+
+    fn result_json(result: &MermanNativeResult) -> serde_json::Value {
+        let bytes = if result.metadata_or_error_json.data.is_null() {
+            &[]
+        } else {
+            unsafe {
+                std::slice::from_raw_parts(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                )
+            }
+        };
+        serde_json::from_slice(bytes).expect("native result metadata must be valid JSON")
+    }
+
+    fn native_config() -> MermanNativeEngineConfig {
+        MermanNativeEngineConfig {
+            struct_size: native_struct_size::<MermanNativeEngineConfig>(),
+            options_json: borrowed_slice(&[]),
+            text_measure: None,
+            text_measure_user_data: ptr::null_mut(),
         }
     }
 
-    fn call_render_ascii(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_render_ascii(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
-        }
-    }
-
-    fn call_parse(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_parse_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
-        }
-    }
-
-    fn call_validate(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_validate_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
-        }
-    }
-
-    fn call_analyze(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_analyze_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
-        }
-    }
-
-    fn call_analyze_document(source: &[u8], options: &[u8], uri: &[u8]) -> MermanResult {
-        unsafe {
-            merman_analyze_document_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-                uri.as_ptr(),
-                uri.len(),
-            )
-        }
-    }
-
-    fn call_analyze_document_facts(source: &[u8], options: &[u8], uri: &[u8]) -> MermanResult {
-        unsafe {
-            merman_analyze_document_facts_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-                uri.as_ptr(),
-                uri.len(),
-            )
-        }
-    }
-
-    fn call_layout(source: &[u8], options: &[u8]) -> MermanResult {
-        unsafe {
-            merman_layout_json(
-                source.as_ptr(),
-                source.len(),
-                options.as_ptr(),
-                options.len(),
-            )
-        }
-    }
-
-    fn call_engine(options: &[u8]) -> MermanEngineResult {
-        unsafe { merman_engine_new(options.as_ptr(), options.len()) }
-    }
-
-    fn call_engine_render(engine: *const MermanEngine, source: &[u8]) -> MermanResult {
-        unsafe { merman_engine_render_svg(engine, source.as_ptr(), source.len()) }
-    }
-
-    fn call_engine_analyze_document(
-        engine: *const MermanEngine,
+    fn native_request(
+        operation: MermanNativeOperationCode,
         source: &[u8],
-        uri: &[u8],
-    ) -> MermanResult {
-        unsafe {
-            merman_engine_analyze_document_json(
-                engine,
-                source.as_ptr(),
-                source.len(),
-                uri.as_ptr(),
-                uri.len(),
-            )
-        }
+    ) -> MermanNativeOperationRequest {
+        native_request_with_options(operation, source, &[])
     }
 
-    fn call_engine_analyze_document_facts(
-        engine: *const MermanEngine,
+    fn native_request_with_options(
+        operation: MermanNativeOperationCode,
         source: &[u8],
-        uri: &[u8],
-    ) -> MermanResult {
-        unsafe {
-            merman_engine_analyze_document_facts_json(
-                engine,
-                source.as_ptr(),
-                source.len(),
-                uri.as_ptr(),
-                uri.len(),
-            )
-        }
-    }
-
-    fn take_buffer(buffer: MermanBuffer) -> Vec<u8> {
-        if buffer.data.is_null() || buffer.len == 0 {
-            return Vec::new();
-        }
-        let bytes = unsafe { std::slice::from_raw_parts(buffer.data, buffer.len).to_vec() };
-        unsafe { merman_buffer_free(buffer) };
-        bytes
-    }
-
-    fn take_text(buffer: MermanBuffer) -> String {
-        String::from_utf8(take_buffer(buffer)).expect("FFI output should be UTF-8")
-    }
-
-    fn take_error(result: MermanResult) -> Value {
-        serde_json::from_str(&take_text(result.data)).expect("error payload should be JSON")
-    }
-
-    fn foreign_object_width_before_label(svg: &str, label: &str) -> f64 {
-        let label_start = svg.find(label).expect("label text");
-        let before_label = &svg[..label_start];
-        let width_marker = r#"<foreignObject width=""#;
-        let width_start = before_label
-            .rfind(width_marker)
-            .map(|idx| idx + width_marker.len())
-            .expect("foreignObject width marker");
-        let width_end = svg[width_start..]
-            .find('"')
-            .map(|idx| width_start + idx)
-            .expect("foreignObject width end");
-        svg[width_start..width_end]
-            .parse::<f64>()
-            .expect("foreignObject width number")
-    }
-
-    fn expect_render_feature_error(result: MermanResult) {
-        assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
-        let error = take_error(result);
-        assert_eq!(
-            error["code_name"],
-            BindingStatus::UnsupportedFormat.code_name()
-        );
-        assert!(
-            error["message"]
-                .as_str()
-                .unwrap()
-                .contains("render feature")
-        );
-    }
-
-    fn expect_analysis_feature_error(result: MermanResult) {
-        assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
-        let error = take_error(result);
-        assert_eq!(
-            error["code_name"],
-            BindingStatus::UnsupportedFormat.code_name()
-        );
-        assert!(
-            error["message"]
-                .as_str()
-                .unwrap()
-                .contains("analysis feature")
-        );
-    }
-
-    #[test]
-    fn abi_introspection_reports_contract_values() {
-        assert_eq!(merman_abi_version(), MERMAN_ABI_VERSION);
-        assert_eq!(
-            merman_buffer_struct_size(),
-            std::mem::size_of::<MermanBuffer>()
-        );
-        assert_eq!(
-            merman_result_struct_size(),
-            std::mem::size_of::<MermanResult>()
-        );
-        assert_eq!(
-            merman_host_text_measure_request_struct_size(),
-            std::mem::size_of::<MermanHostTextMeasureRequest>()
-        );
-        assert_eq!(
-            merman_host_text_measure_result_struct_size(),
-            std::mem::size_of::<MermanHostTextMeasureResult>()
-        );
-
-        let version = unsafe { CStr::from_ptr(merman_package_version()) };
-        assert_eq!(version.to_str().unwrap(), env!("CARGO_PKG_VERSION"));
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn ffi_measurement_operation_codes_match_the_core_contract() {
-        let ffi_codes = MERMAN_TEXT_MEASUREMENT_OPERATIONS;
-        let core_codes = merman_bindings_core::TextMeasurementOperation::ALL
-            .map(merman_bindings_core::TextMeasurementOperation::external_code);
-
-        assert_eq!(ffi_codes, core_codes);
-        assert_eq!(ffi_codes, std::array::from_fn(|code| code as i32));
-    }
-
-    #[test]
-    fn render_svg_returns_svg_for_flowchart() {
-        let result = call_render(b"flowchart TD\nA[Hello] --> B[World]", b"");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let svg = take_text(result.data);
-            assert!(svg.contains("<svg"));
-            assert!(svg.contains("Hello"));
-            assert!(svg.contains("World"));
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[cfg(feature = "layout-cytoscape")]
-    #[test]
-    fn complete_ffi_build_renders_architecture() {
-        let result = call_render(
-            b"architecture-beta\n  service api(server)[API service]\n",
-            b"",
-        );
-
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let svg = take_text(result.data);
-        assert!(svg.contains("<svg"));
-    }
-
-    #[test]
-    fn render_svg_accepts_options_json() {
-        let options = br#"{
-            "environment": { "text_measurement": "deterministic" },
-            "layout": { "container_width": 640, "container_height": 480 },
-            "svg": { "diagram_id": "ffi diagram", "pipeline": "readable" }
-        }"#;
-        let result = call_render(b"flowchart TD\nA[Hello]", options);
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let svg = take_text(result.data);
-            assert!(svg.contains("id=\"ffi-diagram\""));
-            assert!(svg.contains("data-merman-foreignobject"));
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn render_ascii_returns_text_or_feature_error() {
-        let result = call_render_ascii(b"flowchart TD\nA[Hello] --> B[World]", b"");
-
-        if cfg!(feature = "ascii") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let text = take_text(result.data);
-            assert!(text.contains("Hello"));
-            assert!(text.contains("World"));
-        } else {
-            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
-            let error = take_error(result);
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::UnsupportedFormat.code_name()
-            );
-        }
-    }
-
-    #[test]
-    fn parse_json_returns_semantic_model() {
-        let result = call_parse(b"flowchart TD\nA[Hello] --> B[World]", b"");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert!(json.is_object());
-            assert_eq!(
-                json.get("type").and_then(Value::as_str),
-                Some("flowchart-v2")
-            );
-            assert!(json.get("nodes").and_then(Value::as_array).is_some());
-            assert!(json.get("edges").and_then(Value::as_array).is_some());
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn layout_json_returns_layouted_diagram() {
-        let result = call_layout(b"flowchart TD\nA[Hello] --> B[World]", b"");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert!(json.get("meta").is_some());
-            assert!(json.get("layout").is_some());
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn validate_json_returns_status_payload() {
-        let valid = call_validate(b"flowchart TD\nA[Hello]", b"");
-        if cfg!(feature = "analysis") {
-            assert_eq!(valid.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-            assert_eq!(json["valid"], true);
-            assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
-        } else {
-            expect_analysis_feature_error(valid);
-        }
-
-        let invalid = call_validate(b"", b"");
-        if cfg!(feature = "analysis") {
-            assert_eq!(invalid.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
-            assert_eq!(json["valid"], false);
-            assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
-        } else {
-            expect_analysis_feature_error(invalid);
-        }
-    }
-
-    #[test]
-    fn analyze_json_returns_diagnostics_payload() {
-        let valid = call_analyze(b"flowchart TD\nA[Hello]", b"");
-        if cfg!(feature = "analysis") {
-            assert_eq!(valid.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-            assert_eq!(json["version"], 1);
-            assert_eq!(json["valid"], true);
-            assert_eq!(json["summary"]["errors"], 0);
-        } else {
-            expect_analysis_feature_error(valid);
-        }
-
-        let invalid = call_analyze(b"", b"");
-        if cfg!(feature = "analysis") {
-            assert_eq!(invalid.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
-            assert_eq!(json["version"], 1);
-            assert_eq!(json["valid"], false);
-            assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
-        } else {
-            expect_analysis_feature_error(invalid);
-        }
-    }
-
-    #[test]
-    fn analyze_document_json_returns_markdown_document_payload() {
-        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
-        let result = call_analyze_document(source, b"", b"file:///tmp/example.md");
-
-        if cfg!(feature = "analysis") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert_eq!(json["version"], 1);
-            assert_eq!(json["source"]["kind"], "markdown");
-            assert_eq!(json["valid"], true);
-        } else {
-            expect_analysis_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn analyze_document_facts_json_returns_host_ranges() {
-        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
-        let result = call_analyze_document_facts(source, b"", b"file:///tmp/example.md");
-
-        if cfg!(feature = "analysis") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            #[cfg(feature = "analysis")]
-            assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
-            assert_eq!(json["source"]["kind"], "markdown");
-            assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
-            assert_eq!(
-                json["diagrams"][0]["syntax"]["fact_source"],
-                "parser_complete"
-            );
-            assert!(
-                json["diagrams"][0]["syntax"]["semantic_items"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| {
-                        item["name"] == "A" && item["rename_policy"] == "flowchart_node_id"
-                    }))
-            );
-
-            let unavailable = call_analyze_document_facts(
-                b"```mermaid\nunknownDiagram\nPretendNode --> OtherNode\n```\n",
-                b"",
-                b"file:///tmp/unknown.md",
-            );
-            assert_eq!(unavailable.code, BindingStatus::Ok.code());
-            let unavailable_json: Value =
-                serde_json::from_str(&take_text(unavailable.data)).unwrap();
-            #[cfg(feature = "analysis")]
-            assert_eq!(unavailable_json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
-            assert_eq!(
-                unavailable_json["diagrams"][0]["syntax"]["fact_source"],
-                "unavailable"
-            );
-            assert_eq!(
-                unavailable_json["diagrams"][0]["syntax"]["semantic_items"],
-                serde_json::json!([])
-            );
-        } else {
-            expect_analysis_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn malformed_directives_never_return_ffi_panic() {
-        // This first input is the minimized source from fuzz run 29806388495. The rest
-        // cover the directive forms which previously reached the same editor-only panic.
-        let sources: &[&[u8]] = &[
-            b"\x00\x36arjav  A --> B\n%$aboxscriD\n  uchart TD\n  %%{init[A:API] Orl(> B\n",
-            b"%%{unknown-directive: {\"theme\": \"dark\"}}%%\nflowchart TD\nA --> B\n",
-            b"%%{init[A:API] Orl(> B\nflowchart TD\nA --> B\n",
-            b"%%{initialize: {\"theme\": }}%%\nflowchart TD\nA --> B\n",
-        ];
-        let uri = b"file:///tmp/malformed-directive.mmd";
-
-        for source in sources {
-            let result = call_analyze_document_facts(source, b"", uri);
-            assert_ne!(
-                result.code,
-                BindingStatus::Panic.code(),
-                "one-shot document facts API returned MERMAN_PANIC for {source:?}"
-            );
-            let _ = take_buffer(result.data);
-        }
-
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
-        let _ = take_buffer(engine.data);
-
-        for source in sources {
-            let result = call_engine_analyze_document_facts(engine.engine, source, uri);
-            assert_ne!(
-                result.code,
-                BindingStatus::Panic.code(),
-                "reusable document facts API returned MERMAN_PANIC for {source:?}"
-            );
-            let _ = take_buffer(result.data);
-        }
-
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[test]
-    fn metadata_entry_points_return_json_contracts() {
-        let diagrams = merman_supported_diagrams_json();
-        let runtime_contract = merman_runtime_contract_json();
-        let ascii_capabilities = merman_ascii_capabilities_json();
-        let family_capabilities = merman_diagram_family_capabilities_json();
-        let lint_rules = merman_lint_rule_catalog_json();
-        let themes = merman_supported_themes_json();
-        let host_theme_presets = merman_supported_host_theme_presets_json();
-
-        assert_eq!(diagrams.code, BindingStatus::Ok.code());
-        assert_eq!(runtime_contract.code, BindingStatus::Ok.code());
-        assert_eq!(ascii_capabilities.code, BindingStatus::Ok.code());
-        assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
-        let lint_rules_json = if cfg!(feature = "analysis") {
-            assert_eq!(lint_rules.code, BindingStatus::Ok.code());
-            Some(take_text(lint_rules.data))
-        } else {
-            expect_analysis_feature_error(lint_rules);
-            None
-        };
-        assert_eq!(themes.code, BindingStatus::Ok.code());
-        assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
-
-        let diagrams: Value = serde_json::from_str(&take_text(diagrams.data)).unwrap();
-        let runtime_contract: Value =
-            serde_json::from_str(&take_text(runtime_contract.data)).unwrap();
-        let ascii_capabilities: Value =
-            serde_json::from_str(&take_text(ascii_capabilities.data)).unwrap();
-        let family_capabilities: Value =
-            serde_json::from_str(&take_text(family_capabilities.data)).unwrap();
-        let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
-        let host_theme_presets: Value =
-            serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
-
-        assert!(
-            diagrams
-                .as_array()
-                .unwrap()
-                .contains(&Value::String("flowchart".to_string()))
-        );
-        assert_eq!(
-            runtime_contract["schema_version"],
-            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
-        );
-        assert_eq!(runtime_contract["abi_version"], MERMAN_ABI_VERSION);
-        assert_eq!(runtime_contract["options_schema_version"], 1);
-        assert!(runtime_contract["features"].get("core_host").is_none());
-        assert_eq!(
-            runtime_contract["features"]["system_adapter_ids"],
-            serde_json::json!(merman_bindings_core::binding_capabilities().system_adapter_ids)
-        );
-        assert_eq!(
-            runtime_contract["features"]["render"],
-            cfg!(feature = "render")
-        );
-        if cfg!(any(
-            feature = "render",
-            feature = "analysis",
-            feature = "ascii"
-        )) {
-            assert_eq!(
-                runtime_contract["resources"]["general_binding_default_profile"],
-                "interactive"
-            );
-        } else {
-            assert!(runtime_contract["resources"].is_null());
-        }
-        let ascii_capabilities = ascii_capabilities.as_array().unwrap();
-        if cfg!(feature = "ascii") {
-            let sequence = ascii_capabilities
-                .iter()
-                .find(|capability| capability["diagram_type"] == "sequence")
-                .expect("expected ASCII capability metadata to include sequence");
-            assert_eq!(sequence["support_level"], "full");
-
-            let gantt = ascii_capabilities
-                .iter()
-                .find(|capability| capability["diagram_type"] == "gantt")
-                .expect("expected ASCII capability metadata to include gantt");
-            assert_eq!(gantt["support_level"], "summary");
-
-            let class = ascii_capabilities
-                .iter()
-                .find(|capability| capability["diagram_type"] == "class")
-                .expect("expected ASCII capability metadata to include class");
-            assert_eq!(class["summary_fallback"], true);
-        } else {
-            assert!(ascii_capabilities.is_empty());
-        }
-        assert!(family_capabilities.as_array().unwrap().iter().any(
-            |capability| capability["diagram_type"] == "flowchart"
-                && capability["logical_family_kind"] == "flowchart"
-                && capability["metadata_id"] == "flowchart"
-                && capability["render_model_kind"] == "flowchart"
-                && capability["has_detector"] == true
-                && capability["has_semantic_parser"] == true
-                && capability["has_editor_parser"] == true
-                && capability["has_combined_parser"] == true
-                && capability["has_render_parser"] == true
-                && capability["has_header"] == false
-                && capability["config_namespace"] == "flowchart"
-        ));
-        if let Some(lint_rules_json) = lint_rules_json {
-            let lint_rules: Value = serde_json::from_str(&lint_rules_json).unwrap();
-            assert_eq!(lint_rules["version"], 1);
-            let lint_rules = lint_rules["rules"].as_array().unwrap();
-            assert!(lint_rules.iter().any(|rule| {
-                rule["id"] == "merman.authoring.config.prefer_init_directive"
-                    && rule["origin"] == "merman_authoring"
-                    && rule["evidence"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
-            }));
-        }
-        assert!(
-            themes
-                .as_array()
-                .unwrap()
-                .contains(&Value::String("default".to_string()))
-        );
-        assert!(host_theme_presets.is_array());
-        if cfg!(feature = "render") {
-            assert!(
-                host_theme_presets
-                    .as_array()
-                    .unwrap()
-                    .contains(&Value::String("one-dark".to_string()))
-            );
-        }
-    }
-
-    #[test]
-    fn parse_json_uses_same_error_payload() {
-        let result = call_parse(&[0xff], b"");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Utf8Error.code());
-            let error = take_error(result);
-            assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn null_source_with_nonzero_len_returns_invalid_argument() {
-        let result = unsafe { merman_render_svg(ptr::null(), 1, ptr::null(), 0) };
-
-        assert_eq!(result.code, BindingStatus::InvalidArgument.code());
-        let error = take_error(result);
-        assert_eq!(
-            error["code_name"],
-            BindingStatus::InvalidArgument.code_name()
-        );
-    }
-
-    #[test]
-    fn invalid_source_utf8_returns_utf8_error() {
-        let result = call_render(&[0xff], b"");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Utf8Error.code());
-            let error = take_error(result);
-            assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn empty_source_returns_no_diagram() {
-        let result = unsafe { merman_render_svg(ptr::null(), 0, ptr::null(), 0) };
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::NoDiagram.code());
-            let error = take_error(result);
-            assert_eq!(error["code_name"], BindingStatus::NoDiagram.code_name());
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn invalid_options_json_returns_options_json_error() {
-        let result = call_render(b"flowchart TD\nA", b"{");
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::OptionsJsonError.code());
-            let error = take_error(result);
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::OptionsJsonError.code_name()
-            );
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn render_resource_limit_error_uses_dedicated_status() {
-        let result = call_render(
-            b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
-        );
-
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::ResourceLimitExceeded.code());
-            let error = take_error(result);
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::ResourceLimitExceeded.code_name()
-            );
-            assert!(
-                error["message"]
-                    .as_str()
-                    .unwrap()
-                    .contains("max_source_bytes")
-            );
-        } else {
-            expect_render_feature_error(result);
-        }
-    }
-
-    #[test]
-    fn typed_resource_options_builder_returns_versioned_json_and_rejects_invalid_codes() {
-        let overrides = [MermanResourceLimitOverride { id: 0, value: 4096 }];
-        let result =
-            unsafe { merman_resource_options_json(1, overrides.as_ptr(), overrides.len()) };
-        if cfg!(any(
-            feature = "render",
-            feature = "analysis",
-            feature = "ascii"
-        )) {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let value: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert_eq!(value["version"], 1);
-            assert_eq!(value["resources"]["profile"], "constrained");
-            assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
-
-            let invalid = unsafe { merman_resource_options_json(99, std::ptr::null(), 0) };
-            assert_eq!(invalid.code, BindingStatus::InvalidArgument.code());
-            unsafe { merman_buffer_free(invalid.data) };
-        } else {
-            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
-            let error = take_error(result);
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::UnsupportedFormat.code_name()
-            );
-            assert_eq!(
-                error["message"],
-                "resource options requires at least one resource-aware operation"
-            );
-        }
-        assert_eq!(
-            merman_resource_limit_override_struct_size(),
-            std::mem::size_of::<MermanResourceLimitOverride>()
-        );
-    }
-
-    #[test]
-    fn unsupported_ratex_without_feature_returns_unsupported_format() {
-        let result = call_render(
-            b"flowchart TD\nA[Hello]",
-            br#"{ "environment": { "math_renderer": "ratex" } }"#,
-        );
-
-        if cfg!(feature = "math") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            unsafe { merman_buffer_free(result.data) };
-        } else {
-            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
-            let error = take_error(result);
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::UnsupportedFormat.code_name()
-            );
-        }
-    }
-
-    #[test]
-    fn buffer_free_accepts_null_buffer() {
-        unsafe { merman_buffer_free(MermanBuffer::empty()) };
-    }
-
-    #[test]
-    fn ffi_result_catches_panic() {
-        let result = ffi_result(|| -> Result<Vec<u8>, BindingError> { panic!("boom") });
-
-        assert_eq!(result.code, BindingStatus::Panic.code());
-        let error = take_error(result);
-        assert_eq!(error["code_name"], BindingStatus::Panic.code_name());
-    }
-
-    #[test]
-    fn ffi_source_options_request_decodes_source_and_null_options() {
-        let source = b"flowchart TD\nA[Hello]";
-        let request = unsafe {
-            FfiSourceOptionsRequest::from_raw(source.as_ptr(), source.len(), ptr::null(), 0)
-        }
-        .unwrap();
-
-        assert_eq!(request.source, source);
-        assert!(request.options_json.is_empty());
-    }
-
-    #[test]
-    fn ffi_source_options_uri_request_decodes_uri() {
-        let source = b"flowchart TD\nA[Hello]";
-        let uri = b"file:///tmp/example.mmd";
-        let request = unsafe {
-            FfiSourceOptionsUriRequest::from_raw(
-                source.as_ptr(),
-                source.len(),
-                ptr::null(),
-                0,
-                uri.as_ptr(),
-                uri.len(),
-            )
-        }
-        .unwrap();
-
-        assert_eq!(request.source, source);
-        assert!(request.options_json.is_empty());
-        assert_eq!(request.uri, uri);
-    }
-
-    #[test]
-    fn ffi_engine_source_call_decodes_engine_and_source() {
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        let source = b"flowchart TD\nA[Hello]";
-        let output = unsafe {
-            ffi_engine_source_call(
-                engine.engine,
-                source.as_ptr(),
-                source.len(),
-                |_engine, source| Ok(source.to_vec()),
-            )
-        }
-        .unwrap();
-
-        assert_eq!(output, source);
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn ffi_engine_source_call_rejects_active_mutation() {
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        let lease = acquire_engine_lease(engine.engine).unwrap();
-        let mutation = lease.inner.try_write().unwrap();
-        let source = b"flowchart TD\nA[Hello]";
-
-        let err = unsafe {
-            ffi_engine_source_call(
-                engine.engine,
-                source.as_ptr(),
-                source.len(),
-                |_engine, _source| Ok(Vec::new()),
-            )
-        }
-        .unwrap_err();
-
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("active mutation"));
-        drop(mutation);
-        drop(lease);
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[test]
-    fn ffi_engine_source_uri_call_decodes_engine_source_and_uri() {
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        let source = b"flowchart TD\nA[Hello]";
-        let uri = b"file:///tmp/example.mmd";
-        let output = unsafe {
-            ffi_engine_source_uri_call(
-                engine.engine,
-                source.as_ptr(),
-                source.len(),
-                uri.as_ptr(),
-                uri.len(),
-                |_engine, source, uri| {
-                    let mut output = source.to_vec();
-                    output.push(b'\n');
-                    output.extend_from_slice(uri);
-                    Ok(output)
-                },
-            )
-        }
-        .unwrap();
-
-        assert_eq!(output, b"flowchart TD\nA[Hello]\nfile:///tmp/example.mmd");
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[test]
-    fn reusable_engine_renders_with_cached_options() {
-        let options = br#"{
-            "environment": { "text_measurement": "deterministic" },
-            "svg": { "diagram_id": "ffi engine", "pipeline": "readable" }
-        }"#;
-        let engine = call_engine(options);
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
-        assert!(engine.data.data.is_null());
-
-        let result = call_engine_render(engine.engine, b"flowchart TD\nA[Hello]");
-        if cfg!(feature = "render") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let svg = take_text(result.data);
-            assert!(svg.contains("id=\"ffi-engine\""));
-            assert!(svg.contains("data-merman-foreignobject"));
-        } else {
-            expect_render_feature_error(result);
-        }
-
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[test]
-    fn reusable_engine_analyzes_documents_with_cached_options() {
-        let engine = call_engine(br#"{ "analysis": { "profile": "strict" } }"#);
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
-
-        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
-        let result = call_engine_analyze_document(engine.engine, source, b"file:///tmp/example.md");
-
-        if cfg!(feature = "analysis") {
-            assert_eq!(result.code, BindingStatus::Ok.code());
-            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert_eq!(json["source"]["kind"], "markdown");
-        } else {
-            expect_analysis_feature_error(result);
-        }
-
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[test]
-    fn reusable_engine_can_use_host_text_measure_callback() {
-        #[derive(Default)]
-        struct CallbackProbe {
-            saw_condition: bool,
-            saw_nowrap: bool,
-            saw_break_spaces: bool,
-            saw_font_style: bool,
-            saw_spacing_defaults: bool,
-            operations: [bool; 19],
-        }
-
-        unsafe extern "C" fn measure_condition(
-            request: MermanHostTextMeasureRequest,
-            user_data: *mut std::ffi::c_void,
-        ) -> MermanHostTextMeasureResult {
-            if user_data.is_null() {
-                return MermanHostTextMeasureResult::unhandled();
-            }
-            let text = unsafe { std::slice::from_raw_parts(request.text, request.text_len) };
-            if text == b"Condition?" && request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE {
-                let probe = unsafe { &mut *(user_data.cast::<CallbackProbe>()) };
-                if let Ok(operation) = usize::try_from(request.operation)
-                    && operation < probe.operations.len()
-                {
-                    probe.operations[operation] = true;
-                }
-                probe.saw_condition = true;
-                let font_style = unsafe {
-                    std::slice::from_raw_parts(request.font_style, request.font_style_len)
-                };
-                probe.saw_font_style |= font_style == b"italic"
-                    && request.direction == MERMAN_TEXT_DIRECTION_AUTO
-                    && request.line_height > request.font_size;
-                probe.saw_spacing_defaults |=
-                    request.letter_spacing == 0.0 && request.word_spacing == 0.0;
-                if request.has_max_width == 0 {
-                    probe.saw_nowrap |= request.white_space == MERMAN_TEXT_WHITE_SPACE_NOWRAP;
-                } else {
-                    probe.saw_break_spaces |=
-                        request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES;
-                }
-                let mut result = MermanHostTextMeasureResult::unhandled();
-                result.handled = 1;
-                match request.operation {
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS => {
-                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
-                        result.width = 140.0;
-                        result.height = 24.0;
-                        result.line_count = 1;
-                    }
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH => {
-                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                        result.length = 140.0;
-                    }
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT => {
-                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                        result.length = 24.0;
-                    }
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET => {
-                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                        result.length = if request.operation
-                            == MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
-                        {
-                            -2.0
-                        } else {
-                            -1.0
-                        };
-                    }
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG
-                    | MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X => {
-                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS;
-                        result.bbox_left = 70.0;
-                        result.bbox_right = 70.0;
-                    }
-                    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH => {
-                        result.result_kind =
-                            MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH;
-                        result.width = 140.0;
-                        result.height = 24.0;
-                        result.raw_width = 140.0;
-                        result.line_count = 1;
-                        result.has_raw_width = 1;
-                    }
-                    _ => result.handled = 0,
-                }
-                return result;
-            }
-            MermanHostTextMeasureResult::unhandled()
-        }
-
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
-        let source = b"flowchart TD\nA[Start] --> B{Condition?}\nclassDef emphasized font-style:italic\nclass B emphasized";
-
-        let baseline = call_engine_render(engine.engine, source);
-        if !cfg!(feature = "render") {
-            expect_render_feature_error(baseline);
-            unsafe { merman_engine_free(engine.engine) };
-            return;
-        }
-        assert_eq!(baseline.code, BindingStatus::Ok.code());
-        let baseline_svg = take_text(baseline.data);
-        let baseline_width = foreign_object_width_before_label(&baseline_svg, "Condition?");
-
-        let mut callback_probe = CallbackProbe::default();
-        let set_result = unsafe {
-            merman_engine_set_text_measure_callback(
-                engine.engine,
-                Some(measure_condition),
-                (&mut callback_probe as *mut CallbackProbe).cast(),
-            )
-        };
-        assert_eq!(set_result.code, BindingStatus::Ok.code());
-        assert!(set_result.data.data.is_null());
-
-        let measured = call_engine_render(engine.engine, source);
-        assert_eq!(measured.code, BindingStatus::Ok.code());
-        let measured_svg = take_text(measured.data);
-        let measured_width = foreign_object_width_before_label(&measured_svg, "Condition?");
-        assert!(
-            measured_width > baseline_width + 40.0,
-            "expected host callback width to affect layout; baseline={baseline_width}, measured={measured_width}"
-        );
-        assert!(callback_probe.saw_condition);
-        assert!(callback_probe.saw_nowrap);
-        assert!(callback_probe.saw_break_spaces);
-        assert!(callback_probe.saw_font_style);
-        assert!(callback_probe.saw_spacing_defaults);
-        assert!(callback_probe.operations[MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED as usize]);
-
-        let reset = unsafe {
-            merman_engine_set_text_measure_callback(engine.engine, None, ptr::null_mut())
-        };
-        assert_eq!(reset.code, BindingStatus::Ok.code());
-
-        let reset_result = call_engine_render(engine.engine, source);
-        assert_eq!(reset_result.code, BindingStatus::Ok.code());
-        let reset_svg = take_text(reset_result.data);
-        let reset_width = foreign_object_width_before_label(&reset_svg, "Condition?");
-        assert!(
-            (reset_width - baseline_width).abs() < 0.001,
-            "expected null callback to restore base text measurer; baseline={baseline_width}, reset={reset_width}"
-        );
-
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn ffi_callback_preserves_wrong_result_kind_for_invalid_fallback() {
-        unsafe extern "C" fn wrong_kind(
-            _request: MermanHostTextMeasureRequest,
-            _user_data: *mut std::ffi::c_void,
-        ) -> MermanHostTextMeasureResult {
-            let mut result = MermanHostTextMeasureResult::unhandled();
-            result.handled = 1;
-            result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
-            result.width = 73.0;
-            result.height = 12.0;
-            result.line_count = 1;
-            result
-        }
-
-        let host = FfiHostTextMeasurer::new(wrong_kind, std::ptr::null_mut());
-        let style = merman_bindings_core::TextStyle::default();
-        let result = host
-            .call_host(merman_bindings_core::HostTextMeasurementRequest {
-                operation: merman_bindings_core::TextMeasurementOperation::ComputedLength,
-                phase: merman_bindings_core::TextMeasurementPhase::ComputedLength,
-                text: "wrong-kind",
-                style: &style,
-                max_width: None,
-                wrap_mode: merman_bindings_core::WrapMode::SvgLike,
-            })
-            .expect("callback transport")
-            .expect("handled result");
-
-        assert!(matches!(
-            result,
-            merman_bindings_core::HostTextMeasurement::Metrics(_)
-        ));
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn ffi_callback_forwards_new_measurement_operations_and_result_shapes() {
-        unsafe extern "C" fn measure_new_operation(
-            request: MermanHostTextMeasureRequest,
-            _user_data: *mut std::ffi::c_void,
-        ) -> MermanHostTextMeasureResult {
-            let mut result = MermanHostTextMeasureResult::unhandled();
-            result.handled = 1;
-            match request.operation {
-                MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS => {
-                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
-                    result.width = 81.0;
-                    result.height = 17.0;
-                    result.line_count = 1;
-                }
-                MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH => {
-                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                    result.length = 93.5;
-                }
-                MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET => {
-                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                    result.length = -3.25;
-                }
-                MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT => {
-                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
-                    result.length = 19.25;
-                }
-                _ => result.handled = 0,
-            }
-            result
-        }
-
-        let host = FfiHostTextMeasurer::new(measure_new_operation, std::ptr::null_mut());
-        let style = merman_bindings_core::TextStyle::default();
-        let request = |operation| merman_bindings_core::HostTextMeasurementRequest {
+        options_json: &[u8],
+    ) -> MermanNativeOperationRequest {
+        MermanNativeOperationRequest {
+            struct_size: native_struct_size::<MermanNativeOperationRequest>(),
             operation,
-            phase: merman_bindings_core::TextMeasurementPhase::Layout,
-            text: "new-operation",
-            style: &style,
-            max_width: None,
-            wrap_mode: merman_bindings_core::WrapMode::SvgLike,
-        };
+            source: borrowed_slice(source),
+            uri: borrowed_slice(&[]),
+            options_json: borrowed_slice(options_json),
+        }
+    }
 
-        let metrics = host
-            .call_host(request(
-                merman_bindings_core::TextMeasurementOperation::MermaidCalculateTextDimensions,
-            ))
-            .expect("callback transport")
-            .expect("handled dimensions result");
-        let merman_bindings_core::HostTextMeasurement::Metrics(metrics) = metrics else {
-            panic!("Mermaid dimensions must use the metrics result shape");
-        };
-        assert_eq!(
-            (metrics.width, metrics.height, metrics.line_count),
-            (81.0, 17.0, 1)
+    #[cfg(feature = "svg")]
+    struct ReentrantTextMeasureContext {
+        token: MermanNativeEngineToken,
+        other_token: MermanNativeEngineToken,
+        nested_status: MermanNativeStatus,
+        nested_result_status: MermanNativeStatus,
+        free_status: MermanNativeStatus,
+        other_engine_status: MermanNativeStatus,
+        nested_error_was_typed: bool,
+    }
+
+    #[cfg(feature = "svg")]
+    struct ConcurrentFreeTextMeasureContext {
+        blocked_once: std::sync::atomic::AtomicBool,
+        entered: std::sync::Barrier,
+        proceed: std::sync::Barrier,
+    }
+
+    #[cfg(feature = "svg")]
+    struct CrossThreadReentrantTextMeasureContext {
+        token: MermanNativeEngineToken,
+        nested_status: MermanNativeStatus,
+    }
+
+    #[cfg(feature = "svg")]
+    unsafe extern "C" fn reentrant_text_measure_callback(
+        _request: *const MermanNativeTextMeasureRequest,
+        out_result: *mut MermanNativeTextMeasureResult,
+        user_data: *mut std::ffi::c_void,
+    ) -> MermanNativeStatus {
+        let context = unsafe { &mut *(user_data.cast::<ReentrantTextMeasureContext>()) };
+        let nested_request = native_request(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nNested --> Call",
         );
-
-        let length = host
-            .call_host(request(
-                merman_bindings_core::TextMeasurementOperation::CanvasMeasureTextWidth,
-            ))
-            .expect("callback transport")
-            .expect("handled canvas result");
-        let merman_bindings_core::HostTextMeasurement::Length(length) = length else {
-            panic!("canvas text width must use the length result shape");
-        };
-        assert_eq!(length, 93.5);
-
-        let middle_y_offset = host
-            .call_host(request(
-                merman_bindings_core::TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
-            ))
-            .expect("callback transport")
-            .expect("handled createText middle y-offset result");
-        let merman_bindings_core::HostTextMeasurement::Length(middle_y_offset) = middle_y_offset
-        else {
-            panic!("createText middle y-offset must use the length result shape");
-        };
-        assert_eq!(middle_y_offset, -3.25);
-
-        let raw_height = host
-            .call_host(request(
-                merman_bindings_core::TextMeasurementOperation::RawBBoxHeight,
-            ))
-            .expect("callback transport")
-            .expect("handled raw bbox height result");
-        let merman_bindings_core::HostTextMeasurement::Length(raw_height) = raw_height else {
-            panic!("raw bbox height must use the length result shape");
-        };
-        assert_eq!(raw_height, 19.25);
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn reusable_engine_rejects_text_measure_callback_mutation_from_callback() {
-        struct CallbackMutationProbe {
-            engine: *mut MermanEngine,
-            set_code: i32,
-        }
-
-        unsafe extern "C" fn measure_and_mutate(
-            request: MermanHostTextMeasureRequest,
-            user_data: *mut std::ffi::c_void,
-        ) -> MermanHostTextMeasureResult {
-            let probe = unsafe { &mut *(user_data.cast::<CallbackMutationProbe>()) };
-            if probe.set_code == BindingStatus::Ok.code() {
-                let result = unsafe {
-                    merman_engine_set_text_measure_callback(probe.engine, None, ptr::null_mut())
-                };
-                probe.set_code = result.code;
-                if !result.data.data.is_null() {
-                    unsafe { merman_buffer_free(result.data) };
-                }
-            }
-            MermanHostTextMeasureResult {
-                handled: 1,
-                width: (request.text_len as f64 * 8.0).max(1.0),
-                height: request.line_height.max(1.0),
-                line_count: 1,
-                ..MermanHostTextMeasureResult::unhandled()
-            }
-        }
-
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        let mut probe = CallbackMutationProbe {
-            engine: engine.engine,
-            set_code: BindingStatus::Ok.code(),
-        };
-        let set_result = unsafe {
-            merman_engine_set_text_measure_callback(
-                engine.engine,
-                Some(measure_and_mutate),
-                (&mut probe as *mut CallbackMutationProbe).cast(),
-            )
-        };
-        assert_eq!(set_result.code, BindingStatus::Ok.code());
-
-        let rendered = call_engine_render(engine.engine, b"flowchart TD\nA[Measured] --> B[Done]");
-        assert_eq!(rendered.code, BindingStatus::Ok.code());
-        let svg = take_text(rendered.data);
-        assert!(svg.contains("<svg"));
-        assert_eq!(probe.set_code, BindingStatus::InvalidArgument.code());
-
-        unsafe { merman_engine_free(engine.engine) };
-    }
-
-    #[cfg(feature = "render")]
-    #[test]
-    fn reusable_engine_defers_free_requested_from_text_measure_callback() {
-        struct CallbackFreeProbe {
-            engine: *mut MermanEngine,
-            free_called: bool,
-        }
-
-        unsafe extern "C" fn measure_and_free(
-            request: MermanHostTextMeasureRequest,
-            user_data: *mut std::ffi::c_void,
-        ) -> MermanHostTextMeasureResult {
-            let probe = unsafe { &mut *(user_data.cast::<CallbackFreeProbe>()) };
-            if !probe.free_called {
-                probe.free_called = true;
-                unsafe { merman_engine_free(probe.engine) };
-            }
-            MermanHostTextMeasureResult {
-                handled: 1,
-                width: (request.text_len as f64 * 8.0).max(1.0),
-                height: request.line_height.max(1.0),
-                line_count: 1,
-                ..MermanHostTextMeasureResult::unhandled()
-            }
-        }
-
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        let mut probe = CallbackFreeProbe {
-            engine: engine.engine,
-            free_called: false,
-        };
-        let set_result = unsafe {
-            merman_engine_set_text_measure_callback(
-                engine.engine,
-                Some(measure_and_free),
-                (&mut probe as *mut CallbackFreeProbe).cast(),
-            )
-        };
-        assert_eq!(set_result.code, BindingStatus::Ok.code());
-
-        let rendered = call_engine_render(engine.engine, b"flowchart TD\nA[Measured] --> B[Done]");
-        assert_eq!(rendered.code, BindingStatus::Ok.code());
-        let svg = take_text(rendered.data);
-        assert!(svg.contains("<svg"));
-        assert!(probe.free_called);
-    }
-
-    #[test]
-    fn reusable_engine_reports_invalid_options_json() {
-        let engine = call_engine(b"{");
-
-        if cfg!(any(
-            feature = "analysis",
-            feature = "render",
-            feature = "ascii"
-        )) {
-            assert_eq!(engine.code, BindingStatus::OptionsJsonError.code());
-            assert!(engine.engine.is_null());
-            let error: Value = serde_json::from_str(&take_text(engine.data)).unwrap();
-            assert_eq!(
-                error["code_name"],
-                BindingStatus::OptionsJsonError.code_name()
-            );
+        let mut nested_result = native_result();
+        context.nested_status =
+            unsafe { native_execute_collect(context.token, &nested_request, &mut nested_result) };
+        context.nested_result_status = nested_result.status;
+        let error_json = if nested_result.metadata_or_error_json.data.is_null() {
+            &[]
         } else {
-            assert_eq!(engine.code, BindingStatus::Ok.code());
-            unsafe { merman_engine_free(engine.engine) };
-        }
-    }
-
-    #[test]
-    fn reusable_engine_rejects_null_engine() {
-        let result = unsafe {
-            merman_engine_render_svg(
-                ptr::null(),
-                b"flowchart TD\nA".as_ptr(),
-                b"flowchart TD\nA".len(),
-            )
+            unsafe {
+                std::slice::from_raw_parts(
+                    nested_result.metadata_or_error_json.data,
+                    nested_result.metadata_or_error_json.len,
+                )
+            }
         };
+        context.nested_error_was_typed = error_json
+            .windows(b"\"status_name\":\"reentrant-call\"".len())
+            .any(|window| window == b"\"status_name\":\"reentrant-call\"");
+        unsafe { native_result_free(&mut nested_result) };
+        context.free_status = unsafe { native_engine_free(context.token) };
 
-        assert_eq!(result.code, BindingStatus::InvalidArgument.code());
-        let error = take_error(result);
-        assert_eq!(
-            error["code_name"],
-            BindingStatus::InvalidArgument.code_name()
-        );
-        assert!(error["message"].as_str().unwrap().contains("engine"));
-    }
+        let mut other_result = native_result();
+        context.other_engine_status = unsafe {
+            native_execute_collect(context.other_token, &nested_request, &mut other_result)
+        };
+        unsafe { native_result_free(&mut other_result) };
 
-    #[test]
-    fn engine_result_struct_size_is_reported() {
-        assert_eq!(
-            merman_engine_result_struct_size(),
-            std::mem::size_of::<MermanEngineResult>()
-        );
-    }
-
-    #[test]
-    fn reusable_engine_can_render_concurrently_through_c_abi() {
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
-        let engine_addr = engine.engine as usize;
-
-        let mut handles = Vec::new();
-        for _ in 0..8 {
-            handles.push(std::thread::spawn(move || {
-                let engine = engine_addr as *const MermanEngine;
-                for _ in 0..8 {
-                    let result = call_engine_render(engine, b"flowchart TD\nA[Hello] --> B[World]");
-                    if cfg!(feature = "render") {
-                        assert_eq!(result.code, BindingStatus::Ok.code());
-                        let svg = take_text(result.data);
-                        assert!(svg.contains("<svg"));
-                    } else {
-                        expect_render_feature_error(result);
-                    }
-                }
-            }));
+        if !out_result.is_null() {
+            unsafe { (*out_result).handled = 0 };
         }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        unsafe { merman_engine_free(engine.engine) };
+        MERMAN_NATIVE_STATUS_OK
     }
 
-    #[test]
-    fn engine_lease_survives_free_before_first_state_access() {
-        let engine = call_engine(b"");
-        assert_eq!(engine.code, BindingStatus::Ok.code());
-        assert!(!engine.engine.is_null());
+    #[cfg(feature = "svg")]
+    unsafe extern "C" fn concurrent_free_text_measure_callback(
+        _request: *const MermanNativeTextMeasureRequest,
+        out_result: *mut MermanNativeTextMeasureResult,
+        user_data: *mut std::ffi::c_void,
+    ) -> MermanNativeStatus {
+        let context = unsafe { &*(user_data.cast::<ConcurrentFreeTextMeasureContext>()) };
+        if !context
+            .blocked_once
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            context.entered.wait();
+            context.proceed.wait();
+        }
+        if !out_result.is_null() {
+            unsafe { (*out_result).handled = 0 };
+        }
+        MERMAN_NATIVE_STATUS_OK
+    }
 
-        let lease = acquire_engine_lease(engine.engine).expect("live handle should yield a lease");
-        let engine_addr = engine.engine as usize;
-        std::thread::spawn(move || unsafe {
-            merman_engine_free(engine_addr as *mut MermanEngine);
+    #[cfg(feature = "svg")]
+    unsafe extern "C" fn cross_thread_reentrant_text_measure_callback(
+        _request: *const MermanNativeTextMeasureRequest,
+        out_result: *mut MermanNativeTextMeasureResult,
+        user_data: *mut std::ffi::c_void,
+    ) -> MermanNativeStatus {
+        let context = unsafe { &mut *(user_data.cast::<CrossThreadReentrantTextMeasureContext>()) };
+        let token = context.token;
+        context.nested_status = std::thread::spawn(move || {
+            let request = native_request(
+                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                b"flowchart TD\nNested --> Call",
+            );
+            let mut nested_result = native_result();
+            let status = unsafe { native_execute_collect(token, &request, &mut nested_result) };
+            unsafe { native_result_free(&mut nested_result) };
+            status
         })
         .join()
-        .unwrap();
-        assert_eq!(Arc::strong_count(&lease), 1);
+        .expect("cross-thread reentrant callback task");
 
-        let error = match acquire_engine_lease(engine.engine) {
-            Ok(_) => panic!("free must retire the handle"),
-            Err(error) => error,
+        if !out_result.is_null() {
+            unsafe { (*out_result).handled = 0 };
+        }
+        MERMAN_NATIVE_STATUS_OK
+    }
+
+    #[test]
+    fn api_discovery_requires_exact_version_and_digest() {
+        let mut api = MermanNativeApi {
+            struct_size: native_struct_size::<MermanNativeApi>(),
+            abi_version: 0,
+            layout_descriptor_digest: static_slice(&[]),
+            capability_catalog_digest: static_slice(&[]),
+            package_version: static_slice(&[]),
+            runtime_catalog: None,
+            engine_new: None,
+            engine_free: None,
+            execute_collect: None,
+            result_free: None,
         };
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        let wrong_version = MermanNativeApiRequest {
+            struct_size: native_struct_size::<MermanNativeApiRequest>(),
+            expected_abi_version: 2,
+            expected_layout_descriptor_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            ),
+        };
+        assert_eq!(
+            unsafe { merman_get_native_api(&wrong_version, &mut api) },
+            MERMAN_NATIVE_STATUS_ABI_MISMATCH
+        );
 
-        let state = lease
-            .inner
-            .try_read()
-            .expect("the pre-free lease must keep engine state alive");
-        let validation = state.validate_json(b"flowchart TD\nA");
-        if cfg!(feature = "analysis") {
-            assert!(validation.is_ok());
-        } else {
-            assert_eq!(
-                validation.unwrap_err().status(),
-                BindingStatus::UnsupportedFormat
+        let wrong_digest = MermanNativeApiRequest {
+            struct_size: native_struct_size::<MermanNativeApiRequest>(),
+            expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
+            expected_layout_descriptor_digest: borrowed_slice(b"sha256:wrong"),
+        };
+        assert_eq!(
+            unsafe { merman_get_native_api(&wrong_digest, &mut api) },
+            MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH
+        );
+
+        let api = api_table();
+        assert_eq!(api.abi_version, MERMAN_NATIVE_ABI_VERSION);
+        assert!(api.engine_new.is_some());
+        assert!(api.execute_collect.is_some());
+        assert!(api.result_free.is_some());
+    }
+
+    #[test]
+    fn undersized_records_are_rejected_before_full_record_reads() {
+        let mut prefix = StructSizeOnly {
+            struct_size: native_struct_size::<StructSizeOnly>(),
+        };
+        let mut api = api_table();
+        assert_eq!(
+            unsafe {
+                merman_get_native_api(
+                    (&prefix as *const StructSizeOnly).cast::<MermanNativeApiRequest>(),
+                    &mut api,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+
+        let discovery = MermanNativeApiRequest {
+            struct_size: native_struct_size::<MermanNativeApiRequest>(),
+            expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
+            expected_layout_descriptor_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            ),
+        };
+        assert_eq!(
+            unsafe {
+                merman_get_native_api(
+                    &discovery,
+                    (&mut prefix as *mut StructSizeOnly).cast::<MermanNativeApi>(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+
+        let mut result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe {
+                api.engine_new.unwrap()(
+                    (&prefix as *const StructSizeOnly).cast::<MermanNativeEngineConfig>(),
+                    &mut token,
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        assert_eq!(
+            unsafe {
+                api.execute_collect.unwrap()(
+                    token,
+                    (&prefix as *const StructSizeOnly).cast::<MermanNativeOperationRequest>(),
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        unsafe {
+            api.result_free.unwrap()(
+                (&mut prefix as *mut StructSizeOnly).cast::<MermanNativeResult>(),
+            )
+        };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[test]
+    fn runtime_catalog_is_the_flat_artifact_owned_contract() {
+        let api = api_table();
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.runtime_catalog.unwrap()(&mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK);
+        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
+
+        let catalog = unsafe {
+            std::slice::from_raw_parts(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+            )
+        };
+        let catalog: serde_json::Value = serde_json::from_slice(catalog).unwrap();
+        let root = catalog.as_object().unwrap();
+        assert_eq!(
+            root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+            [
+                "capabilities",
+                "package_version",
+                "registry",
+                "resources",
+                "schema_version",
+                "transport_api_version",
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(catalog["schema_version"], 1);
+        assert_eq!(catalog["transport_api_version"], MERMAN_NATIVE_ABI_VERSION);
+        assert_eq!(catalog["package_version"], env!("CARGO_PKG_VERSION"));
+        assert!(catalog.get("runtime_contract").is_none());
+        assert!(catalog.get("capability_vocabulary").is_none());
+
+        for field in [
+            "capability_ids",
+            "operation_ids",
+            "output_ids",
+            "system_adapter_ids",
+        ] {
+            let ids = catalog["capabilities"][field]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_str().unwrap())
+                .collect::<Vec<_>>();
+            let mut sorted = ids.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(ids, sorted, "{field} must be sorted and unique");
+        }
+        assert!(
+            catalog["registry"]["diagram_family_count"]
+                .as_u64()
+                .is_some_and(|count| count > 0)
+        );
+        assert_eq!(catalog["resources"]["schema_version"], 1);
+
+        let expected_digest = format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&catalog).unwrap())
+        );
+        let reported_digest = unsafe {
+            std::slice::from_raw_parts(
+                api.capability_catalog_digest.data,
+                api.capability_catalog_digest.len,
+            )
+        };
+        assert_eq!(reported_digest, expected_digest.as_bytes());
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[test]
+    fn result_output_only_requires_an_initialized_struct_size() {
+        let api = api_table();
+        let mut raw_result = std::mem::MaybeUninit::<MermanNativeResult>::uninit();
+        unsafe {
+            ptr::addr_of_mut!((*raw_result.as_mut_ptr()).struct_size)
+                .write(native_struct_size::<MermanNativeResult>());
+        }
+
+        assert_eq!(
+            unsafe { api.runtime_catalog.unwrap()(raw_result.as_mut_ptr()) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+
+        let result = unsafe { raw_result.assume_init_mut() };
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK);
+        assert!(!result.metadata_or_error_json.data.is_null());
+        unsafe { api.result_free.unwrap()(result) };
+    }
+
+    #[test]
+    fn result_ownership_is_bound_to_the_written_record_address() {
+        let mut original = native_result();
+        unsafe {
+            write_native_result(
+                &mut original,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                Some("application/json"),
+                b"owned by Merman".to_vec(),
+                b"{\"ok\":true}".to_vec(),
             );
         }
+        let original_key = (&mut original as *mut MermanNativeResult) as usize;
+        assert!(
+            allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&original_key)
+        );
+
+        let mut copied = unsafe { ptr::read(&original) };
+        unsafe { native_result_free(&mut copied) };
+        assert!(
+            allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&original_key)
+        );
+        let original_data =
+            unsafe { std::slice::from_raw_parts(original.data.data, original.data.len) };
+        assert_eq!(original_data, b"owned by Merman");
+
+        unsafe { native_result_free(&mut original) };
+        assert!(
+            !allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&original_key)
+        );
     }
 
     #[test]
-    fn freed_engine_handle_never_rebinds_to_a_new_engine() {
-        let first = call_engine(b"");
-        assert_eq!(first.code, BindingStatus::Ok.code());
-        assert!(!first.engine.is_null());
-        let stale = first.engine;
-        unsafe { merman_engine_free(stale) };
+    fn result_free_is_idempotent_and_ignores_unowned_buffer_fields() {
+        let mut current = native_result();
+        unsafe {
+            write_native_result(
+                &mut current,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                Some("application/json"),
+                b"current allocation".to_vec(),
+                Vec::new(),
+            );
+        }
+        let mut forged_copy = native_result();
+        forged_copy.data = current.data;
+        unsafe { native_result_free(&mut forged_copy) };
+        let current_data =
+            unsafe { std::slice::from_raw_parts(current.data.data, current.data.len) };
+        assert_eq!(current_data, b"current allocation");
 
-        let replacement = call_engine(b"");
-        assert_eq!(replacement.code, BindingStatus::Ok.code());
-        assert!(!replacement.engine.is_null());
-        assert_ne!(stale.addr(), replacement.engine.addr());
-
-        let error = match acquire_engine_lease(stale) {
-            Ok(_) => panic!("a retired handle must not identify a replacement engine"),
-            Err(error) => error,
+        let mut foreign = b"host allocation".to_vec();
+        let mut result = native_result();
+        result.data = MermanNativeBuffer {
+            struct_size: native_struct_size::<MermanNativeBuffer>(),
+            data: foreign.as_mut_ptr(),
+            len: foreign.len(),
         };
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(acquire_engine_lease(replacement.engine).is_ok());
 
-        unsafe { merman_engine_free(replacement.engine) };
+        unsafe { native_result_free(&mut result) };
+        assert_eq!(foreign, b"host allocation");
+        assert!(result.data.data.is_null());
+        assert!(result.metadata_or_error_json.data.is_null());
+
+        unsafe { native_result_free(&mut result) };
+        assert_eq!(foreign, b"host allocation");
+
+        unsafe { native_result_free(&mut current) };
     }
 
     #[test]
-    fn engine_registry_rejects_token_exhaustion_without_reuse() {
-        let inner = BindingEngine::new(b"").unwrap();
-        let state = Arc::new(FfiEngineState {
-            #[cfg(feature = "render")]
-            base: inner.clone(),
-            inner: RwLock::new(inner),
+    fn result_free_reads_only_the_initialized_struct_size_prefix() {
+        let mut raw_result = std::mem::MaybeUninit::<MermanNativeResult>::uninit();
+        unsafe {
+            ptr::addr_of_mut!((*raw_result.as_mut_ptr()).struct_size)
+                .write(native_struct_size::<MermanNativeResult>());
+            native_result_free(raw_result.as_mut_ptr());
+        }
+        let result = unsafe { raw_result.assume_init() };
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK);
+        assert!(result.data.data.is_null());
+        assert!(result.metadata_or_error_json.data.is_null());
+    }
+
+    #[test]
+    fn semantic_operation_uses_tokenized_engine_and_owned_results() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        let config = native_config();
+        let status = unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) };
+        assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+        assert_ne!(token, 0);
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let request = native_request(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nA --> B",
+        );
+        let mut result = native_result();
+        let status = unsafe { api.execute_collect.unwrap()(token, &request, &mut result) };
+        assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_SEMANTIC_JSON);
+        assert!(!result.data.data.is_null());
+        let bytes = unsafe { std::slice::from_raw_parts(result.data.data, result.data.len) };
+        assert!(bytes.starts_with(b"{"));
+        let metadata = unsafe {
+            std::slice::from_raw_parts(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+            )
+        };
+        let metadata: serde_json::Value = serde_json::from_slice(metadata).unwrap();
+        assert_eq!(metadata["runtime_policy"], "deterministic");
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert!(result.data.data.is_null());
+
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE
+        );
+    }
+
+    #[test]
+    fn request_options_cannot_override_the_engine_runtime_policy() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let request = native_request_with_options(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nA --> B",
+            br#"{"runtime_policy":"native"}"#,
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR
+        );
+        let error = result_json(&result);
+        assert_eq!(error["status_name"], "options-json-error");
+        assert!(
+            error["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("cannot set runtime_policy"))
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[test]
+    fn unknown_operation_code_has_a_distinct_machine_readable_error() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let request = native_request(i32::MAX, b"flowchart TD\nA --> B");
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
+        let error = result_json(&result);
+        assert_eq!(error["version"], MERMAN_NATIVE_RESULT_SCHEMA_VERSION);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
+        assert!(error["capability_id"].is_null());
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[test]
+    fn acquired_engine_state_survives_token_retirement() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let acquired = acquire_engine(token).expect("live token must be acquirable");
+        assert_eq!(
+            acquired.coordinator.token.load(Ordering::Acquire),
+            token,
+            "the callback guard must use the published token in every build profile"
+        );
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let failure = match acquire_engine(token) {
+            Ok(_) => panic!("retired token must reject new calls"),
+            Err(failure) => failure,
+        };
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ENGINE);
+
+        let operation = acquired
+            .coordinator
+            .enter_operation()
+            .expect("an already acquired engine remains alive after retirement");
+        drop(operation);
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE
+        );
+    }
+
+    #[cfg(not(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    )))]
+    #[test]
+    fn native_policy_failure_preserves_the_first_missing_adapter_id() {
+        let api = api_table();
+        let mut config = native_config();
+        config.options_json = borrowed_slice(br#"{"runtime_policy":"native"}"#);
+        let mut result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_eq!(token, 0);
+        let error = result_json(&result);
+        let expected_capability = if !cfg!(feature = "system-clock") {
+            "system-clock"
+        } else if !cfg!(feature = "system-timezone") {
+            "system-timezone"
+        } else {
+            "system-random"
+        };
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], expected_capability);
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn text_measurement_callback_cannot_reenter_the_same_engine() {
+        let api = api_table();
+        let mut other_config_result = native_result();
+        let mut other_token = 0;
+        assert_eq!(
+            unsafe {
+                api.engine_new.unwrap()(
+                    &native_config(),
+                    &mut other_token,
+                    &mut other_config_result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut other_config_result) };
+
+        let mut context = Box::new(ReentrantTextMeasureContext {
+            token: 0,
+            other_token,
+            nested_status: MERMAN_NATIVE_STATUS_OK,
+            nested_result_status: MERMAN_NATIVE_STATUS_OK,
+            free_status: MERMAN_NATIVE_STATUS_OK,
+            other_engine_status: MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+            nested_error_was_typed: false,
         });
-        let mut registry = FfiEngineRegistry {
-            last_token: usize::MAX,
-            engines: BTreeMap::new(),
-        };
+        let mut config = native_config();
+        config.text_measure = Some(reentrant_text_measure_callback);
+        config.text_measure_user_data = (&mut *context as *mut ReentrantTextMeasureContext).cast();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+        context.token = token;
 
-        let error = registry.register(state).unwrap_err();
+        let request = native_request_with_options(
+            MERMAN_NATIVE_OPERATION_SVG,
+            b"flowchart TD\nA[Measured] --> B[Fallback]",
+            br#"{"svg":{"diagram_id":"callback-request"}}"#,
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(context.nested_status, MERMAN_NATIVE_STATUS_REENTRANT_CALL);
+        assert_eq!(
+            context.nested_result_status,
+            MERMAN_NATIVE_STATUS_REENTRANT_CALL
+        );
+        assert_eq!(context.free_status, MERMAN_NATIVE_STATUS_REENTRANT_CALL);
+        assert_eq!(context.other_engine_status, MERMAN_NATIVE_STATUS_OK);
+        assert!(context.nested_error_was_typed);
+        let svg = unsafe { std::slice::from_raw_parts(result.data.data, result.data.len) };
+        assert!(
+            svg.windows(b"id=\"callback-request\"".len())
+                .any(|window| window == b"id=\"callback-request\"")
+        );
 
-        assert_eq!(error.status(), BindingStatus::InternalError);
-        assert_eq!(registry.last_token, usize::MAX);
-        assert!(registry.engines.is_empty());
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(other_token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn text_measurement_callback_cannot_reenter_the_same_engine_from_another_thread() {
+        let api = api_table();
+        let mut context = Box::new(CrossThreadReentrantTextMeasureContext {
+            token: 0,
+            nested_status: MERMAN_NATIVE_STATUS_OK,
+        });
+        let mut config = native_config();
+        config.text_measure = Some(cross_thread_reentrant_text_measure_callback);
+        config.text_measure_user_data =
+            (&mut *context as *mut CrossThreadReentrantTextMeasureContext).cast();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+        context.token = token;
+
+        let request = native_request(
+            MERMAN_NATIVE_OPERATION_SVG,
+            b"flowchart TD\nA[Measured] --> B[Fallback]",
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(context.nested_status, MERMAN_NATIVE_STATUS_REENTRANT_CALL);
+
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn engine_free_is_rejected_while_any_thread_is_in_a_host_callback() {
+        let api = api_table();
+        let context = Box::new(ConcurrentFreeTextMeasureContext {
+            blocked_once: std::sync::atomic::AtomicBool::new(false),
+            entered: std::sync::Barrier::new(2),
+            proceed: std::sync::Barrier::new(2),
+        });
+        let mut config = native_config();
+        config.text_measure = Some(concurrent_free_text_measure_callback);
+        config.text_measure_user_data = (&*context as *const ConcurrentFreeTextMeasureContext)
+            .cast_mut()
+            .cast();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let execution = std::thread::spawn(move || {
+            let request = native_request(
+                MERMAN_NATIVE_OPERATION_SVG,
+                b"flowchart TD\nA[Measured] --> B[Still alive]",
+            );
+            let mut result = native_result();
+            let status = unsafe { native_execute_collect(token, &request, &mut result) };
+            let rendered_svg = if result.data.data.is_null() {
+                Vec::new()
+            } else {
+                unsafe { std::slice::from_raw_parts(result.data.data, result.data.len).to_vec() }
+            };
+            unsafe { native_result_free(&mut result) };
+            (status, rendered_svg)
+        });
+
+        context.entered.wait();
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_REENTRANT_CALL
+        );
+        context.proceed.wait();
+        let (status, rendered_svg) = execution.join().expect("native execution thread");
+        assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+        assert!(rendered_svg.starts_with(b"<svg"));
+
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn binary_outputs_use_the_same_generic_operation_path() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        let config = native_config();
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        for (operation, signature) in [
+            (MERMAN_NATIVE_OPERATION_PNG, b"\x89PNG\r\n\x1a\n".as_slice()),
+            (MERMAN_NATIVE_OPERATION_JPEG, b"\xff\xd8\xff".as_slice()),
+            (MERMAN_NATIVE_OPERATION_PDF, b"%PDF-".as_slice()),
+        ] {
+            let request = native_request(operation, b"flowchart TD\nA[Hello] --> B[World]");
+            let mut result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+                MERMAN_NATIVE_STATUS_OK,
+                "operation {operation} must be callable through execute_collect"
+            );
+            assert_eq!(result.operation, operation);
+            let data = unsafe { std::slice::from_raw_parts(result.data.data, result.data.len) };
+            assert!(
+                data.starts_with(signature),
+                "operation {operation} did not return its declared binary format"
+            );
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn unavailable_svg_is_a_typed_native_error() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        let config = native_config();
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let request = native_request(MERMAN_NATIVE_OPERATION_SVG, b"flowchart TD\nA --> B");
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
+        let error = result_json(&result);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], "svg");
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_free.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
     }
 }

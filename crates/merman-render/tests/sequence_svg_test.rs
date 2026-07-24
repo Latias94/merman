@@ -3,12 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::environment::{
-    RenderEnvironment, RenderSession, TextMeasurementPhase, TextMeasurementPolicy,
-};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
-use merman_render::sequence::layout_sequence_diagram_typed_with_title;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 #[cfg(feature = "math")]
@@ -27,23 +24,17 @@ fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender
         .expect("diagram detected")
 }
 
-fn layout_sequence_from_parsed(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
+fn layout_sequence_from_environment(
+    text: &str,
+    environment: &RenderEnvironment,
 ) -> SequenceDiagramLayout {
-    let RenderSemanticModel::Sequence(model) = parsed.model() else {
-        panic!("expected Sequence render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_sequence_diagram_typed_with_title(
-        model,
-        parsed.metadata().title.as_deref(),
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        session.math_renderer(),
-    )
-    .expect("typed Sequence layout")
+    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let session = environment.begin_session().unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed Sequence layout");
+    let projection = artifact.layout_json().expect("Sequence layout projection");
+    serde_json::from_value(projection["layout"]["SequenceDiagram"].clone())
+        .expect("Sequence layout")
 }
 
 fn extract_self_closing_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
@@ -235,12 +226,9 @@ fn render_sequence_svg_with_theme_variables(
 }
 
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
-    let session = RenderEnvironment::deterministic()
-        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .begin_session()
-        .unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), text);
-    layout_sequence_from_parsed(&parsed, &session)
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    layout_sequence_from_environment(text, &environment)
 }
 
 #[test]
@@ -346,46 +334,66 @@ sequenceDiagram
     loop Retry
         Alice->>Bob: Again
     end
+    alt Accepted
+        Alice->>Bob: Continue
+    else Rejected
+        Bob-->>Alice: Stop
+    end
+    critical Establish connection
+        Alice->>Bob: Connect
+    option Retry later
+        Bob-->>Alice: Retry
+    end
 "#,
     );
     let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
-    let polygon = document
+    let control_structures = document
         .descendants()
-        .find(|node| {
-            node.has_tag_name("polygon")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes.split_whitespace().any(|class| class == "labelBox")
-                })
-        })
-        .expect("control-structure label box");
-    let points = polygon
-        .attribute("points")
-        .expect("label box points")
-        .split_whitespace()
-        .map(|point| {
-            point
-                .split_once(',')
-                .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
-                .unwrap()
+        .filter(|node| {
+            node.has_tag_name("g") && node.attribute("data-et") == Some("control-structure")
         })
         .collect::<Vec<_>>();
-    assert!((points[1].0 - points[0].0 - 96.0).abs() <= f64::EPSILON);
+    assert_eq!(control_structures.len(), 3);
 
-    let label = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("text")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes.split_whitespace().any(|class| class == "labelText")
-                })
-        })
-        .expect("control-structure label text");
-    let label_x = label
-        .attribute("x")
-        .expect("label x")
-        .parse::<f64>()
-        .unwrap();
-    assert!((label_x - (points[0].0 + 48.0).round()).abs() <= f64::EPSILON);
+    for control_structure in control_structures {
+        let polygon = control_structure
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("polygon")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "labelBox")
+                    })
+            })
+            .expect("control-structure label box");
+        let points = polygon
+            .attribute("points")
+            .expect("label box points")
+            .split_whitespace()
+            .map(|point| {
+                point
+                    .split_once(',')
+                    .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert!((points[1].0 - points[0].0 - 96.0).abs() <= f64::EPSILON);
+
+        let label = control_structure
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "labelText")
+                    })
+            })
+            .expect("control-structure label text");
+        let label_x = label
+            .attribute("x")
+            .expect("label x")
+            .parse::<f64>()
+            .unwrap();
+        assert!((label_x - (points[0].0 + 48.0).round()).abs() <= f64::EPSILON);
+    }
 }
 
 #[test]
@@ -459,9 +467,7 @@ fn sequence_actor_lifecycle_adjustment_survives_block_close() {
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(path).expect("fixture");
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    let layout = layout_sequence_from_parsed(&parsed, &session);
+    let layout = layout_sequence_from_environment(&text, &RenderEnvironment::deterministic());
     let actor = |id: &str| {
         layout
             .nodes
@@ -891,15 +897,13 @@ end"##,
 
 #[test]
 fn sequence_note_width_expands_for_literal_br_backslash_t_with_fallback_profile() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
         .join("html_br_variants_and_wrap.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    let layout = layout_sequence_from_parsed(&parsed, &session);
+    let layout = layout_sequence_from_environment(&text, &RenderEnvironment::deterministic());
 
     let note = layout
         .nodes
@@ -1103,7 +1107,6 @@ fn sequence_long_leftof_notes_keep_mermaid_11_16_root_width() {
 
 #[test]
 fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
-    let engine = Engine::new();
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
         "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
@@ -1113,12 +1116,9 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
             .join("sequence")
             .join(fixture);
         let text = std::fs::read_to_string(&path).expect("fixture");
-        let parsed = parse_sequence_for_render(&engine, &text);
-        let session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-            .begin_session()
-            .unwrap();
-        let layout = layout_sequence_from_parsed(&parsed, &session);
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+        let layout = layout_sequence_from_environment(&text, &environment);
         let note = layout
             .nodes
             .iter()
@@ -1133,10 +1133,6 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
 
 #[test]
 fn sequence_frontmatter_title_expands_layout_root_y() {
-    let session = RenderEnvironment::deterministic()
-        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -1156,7 +1152,9 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
         "frontmatter title should stay in parse metadata, not the sequence semantic title"
     );
 
-    let layout = layout_sequence_from_parsed(&parsed, &session);
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    let layout = layout_sequence_from_environment(&text, &environment);
     let bounds = layout.bounds.as_ref().expect("sequence root bounds");
     assert_eq!(bounds.min_y, -50.0);
 }
@@ -1181,10 +1179,6 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
 
 #[test]
 fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
-    let session = RenderEnvironment::deterministic()
-        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -1193,8 +1187,9 @@ fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
         );
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let parsed = parse_sequence_for_render(&Engine::new(), &text);
-    let layout = layout_sequence_from_parsed(&parsed, &session);
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    let layout = layout_sequence_from_environment(&text, &environment);
 
     let actor_center = |id: &str| {
         layout

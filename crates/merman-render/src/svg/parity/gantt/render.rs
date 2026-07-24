@@ -3,18 +3,6 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
 
-fn gantt_section_num(task_type: &str, categories: &[String], number_section_styles: i64) -> i64 {
-    if number_section_styles <= 0 {
-        return 0;
-    }
-    for (idx, c) in categories.iter().enumerate() {
-        if c == task_type {
-            return (idx as i64) % number_section_styles;
-        }
-    }
-    0
-}
-
 fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     if max_ms <= min_ms {
         // D3 scaleTime returns the midpoint of the range for degenerate domains.
@@ -337,7 +325,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let base_class = &t.label.class;
             let mut task_type_class = String::new();
             if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
-                let sec_num = gantt_section_num(
+                let sec_num = crate::gantt::gantt_section_class_suffix(
                     &st.task_type,
                     &layout.categories,
                     layout.number_section_styles,

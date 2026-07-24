@@ -736,7 +736,7 @@ fn layout_inside_boundary(
 }
 
 /// Lays out a typed C4 render model without a compatibility-JSON round trip.
-pub fn layout_c4_diagram_typed(
+pub(crate) fn layout_c4_diagram_typed(
     model: &C4DiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,

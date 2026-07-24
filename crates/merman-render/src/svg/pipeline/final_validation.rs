@@ -693,7 +693,10 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(error.to_string().contains("max_svg_tree_depth"), "{error}");
+        assert!(
+            error.to_string().contains("svg_backend_tree_depth"),
+            "{error}"
+        );
     }
 
     #[test]

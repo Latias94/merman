@@ -93,10 +93,10 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
-    let environment = merman::render::RenderEnvironment::deterministic();
+    let environment = merman::svg::RenderEnvironment::deterministic();
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let renderer = merman::render::HeadlessRenderer::new()
+    let renderer = merman::svg::HeadlessRenderer::new()
         .with_engine(engine)
         .with_parse_options(fact.parse_policy.options())
         .with_layout_options(layout_opts)
@@ -196,7 +196,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                 }
             };
 
-            if prepared.family_kind() != merman::render::RenderFamilyKind::Er {
+            if prepared.family_kind() != merman::svg::RenderFamilyKind::Er {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),

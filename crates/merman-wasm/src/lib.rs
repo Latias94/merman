@@ -5,17 +5,17 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
-use merman_bindings_core::BindingError;
+use merman_bindings_core::{ArtifactCapabilitySurface, BindingError, RuntimeCatalog};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use std::{cell::RefCell, sync::Arc};
 
-#[cfg(feature = "editor-language")]
+#[cfg(feature = "editor")]
 mod editor_language;
 
-#[cfg(feature = "editor-language")]
+#[cfg(feature = "editor")]
 pub use editor_language::{
     WasmEditorSession, editor_code_actions, editor_completions, editor_definition,
     editor_diagnostics, editor_diagram_detection, editor_document_symbols, editor_hover,
@@ -23,12 +23,53 @@ pub use editor_language::{
     editor_semantic_tokens, editor_workspace_symbols,
 };
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use merman_bindings_core::{TextStyle, WrapMode};
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use serde::Deserialize;
 
-include!("generated/abi.rs");
+/// Breaking API version for the wasm-bindgen transport.
+///
+/// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
+/// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
+pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
+
+fn wasm_capability_surface() -> ArtifactCapabilitySurface {
+    #[cfg(all(feature = "svg", target_arch = "wasm32"))]
+    let text_measurement_projection =
+        merman_bindings_core::TextMeasurementProviderProjection::PreserveCompiled;
+    #[cfg(not(all(feature = "svg", target_arch = "wasm32")))]
+    let text_measurement_projection =
+        merman_bindings_core::TextMeasurementProviderProjection::VendoredOnly;
+
+    let projected = merman_bindings_core::compiled_runtime_capability_surface()
+        .project_to_descriptor_target("web", text_measurement_projection)
+        .expect("the Web target is declared by the capability descriptor");
+
+    #[cfg(feature = "editor")]
+    {
+        let capabilities = projected.runtime_capabilities();
+        let mut capability_ids = capabilities.capability_ids;
+        capability_ids.push("editor");
+        capability_ids.sort_unstable();
+        ArtifactCapabilitySurface::new_with_operation_ids(
+            capability_ids,
+            capabilities.output_ids,
+            capabilities.operation_ids,
+            capabilities.system_adapter_ids,
+            capabilities.text_measurement,
+        )
+        .expect("the Web editor transport owns analysis-backed editor APIs")
+    }
+    #[cfg(not(feature = "editor"))]
+    {
+        projected
+    }
+}
+
+fn wasm_runtime_catalog() -> RuntimeCatalog {
+    merman_bindings_core::runtime_catalog_for(WASM_TRANSPORT_API_VERSION, wasm_capability_surface())
+}
 
 #[derive(Debug, Serialize)]
 struct WasmErrorPayload<'a> {
@@ -36,6 +77,8 @@ struct WasmErrorPayload<'a> {
     ok: bool,
     code: i32,
     code_name: &'a str,
+    kind: &'a str,
+    capability_id: Option<&'a str>,
     message: &'a str,
 }
 
@@ -44,9 +87,9 @@ pub fn start() {
     console_error_panic_hook::set_once();
 }
 
-#[wasm_bindgen(js_name = abiVersion)]
-pub fn abi_version() -> u32 {
-    WASM_ABI_VERSION
+#[wasm_bindgen(js_name = transportApiVersion)]
+pub fn transport_api_version() -> u32 {
+    WASM_TRANSPORT_API_VERSION
 }
 
 #[wasm_bindgen(js_name = packageVersion)]
@@ -62,7 +105,7 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
     ))
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 #[wasm_bindgen(js_name = renderSvgWithTextMeasurer)]
 pub fn render_svg_with_text_measurer(
     source: &str,
@@ -78,7 +121,7 @@ pub fn render_svg_with_text_measurer(
     })
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 #[wasm_bindgen(js_name = layoutJsonWithTextMeasurer)]
 pub fn layout_json_with_text_measurer(
     source: &str,
@@ -181,15 +224,9 @@ pub fn supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[wasm_bindgen(js_name = bindingCapabilities)]
-pub fn binding_capabilities() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&merman_bindings_core::binding_capabilities())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
-}
-
-#[wasm_bindgen(js_name = runtimeContract)]
-pub fn runtime_contract() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&merman_bindings_core::runtime_contract(WASM_ABI_VERSION))
+#[wasm_bindgen(js_name = runtimeCatalog)]
+pub fn runtime_catalog() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&wasm_runtime_catalog())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
@@ -266,16 +303,18 @@ fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
         ok: false,
         code: err.status().code(),
         code_name: err.status().code_name(),
+        kind: err.kind().id(),
+        capability_id: err.capability_id(),
         message: err.message(),
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 #[derive(Debug, Serialize)]
 struct WasmHostTextMeasureRequest<'a> {
     operation: &'static str,
@@ -295,7 +334,7 @@ struct WasmHostTextMeasureRequest<'a> {
     white_space: &'static str,
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 #[derive(Debug, Deserialize)]
 struct WasmHostTextMeasureResult {
     handled: Option<bool>,
@@ -309,10 +348,10 @@ struct WasmHostTextMeasureResult {
     raw_width: Option<f64>,
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 struct WasmHostTextMeasurer;
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 impl WasmHostTextMeasurer {
     fn call_host(
         &self,
@@ -379,7 +418,7 @@ impl WasmHostTextMeasurer {
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 impl merman_bindings_core::HostTextMeasurer for WasmHostTextMeasurer {
     fn measure(
         &self,
@@ -389,12 +428,12 @@ impl merman_bindings_core::HostTextMeasurer for WasmHostTextMeasurer {
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 struct HostTextMeasureCallbackGuard {
     previous_callback: Option<js_sys::Function>,
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 impl Drop for HostTextMeasureCallbackGuard {
     fn drop(&mut self) {
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
@@ -403,20 +442,20 @@ impl Drop for HostTextMeasureCallbackGuard {
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn with_host_text_measure_callback<R>(callback: js_sys::Function, f: impl FnOnce() -> R) -> R {
     let previous_callback = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
     let _guard = HostTextMeasureCallbackGuard { previous_callback };
     f()
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn js_error_message(err: &JsValue) -> String {
     err.as_string()
         .unwrap_or_else(|| "host text measurer callback failed".to_string())
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> &'static str {
     match phase {
         merman_bindings_core::TextMeasurementPhase::Layout => "layout",
@@ -426,7 +465,7 @@ fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> 
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn wasm_wrap_mode(wrap_mode: WrapMode) -> &'static str {
     match wrap_mode {
         WrapMode::SvgLike => "svg-like",
@@ -435,7 +474,7 @@ fn wasm_wrap_mode(wrap_mode: WrapMode) -> &'static str {
     }
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn wasm_line_height(style: &TextStyle, wrap_mode: WrapMode) -> f64 {
     let factor = match wrap_mode {
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
@@ -444,7 +483,7 @@ fn wasm_line_height(style: &TextStyle, wrap_mode: WrapMode) -> f64 {
     style.font_size.max(1.0) * factor
 }
 
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str {
     match wrap_mode {
         WrapMode::HtmlLike if max_width.is_some() => "break-spaces",
@@ -465,11 +504,12 @@ mod tests {
     }
 
     #[test]
-    fn abi_version_matches_the_host_measurement_protocol() {
-        assert_eq!(abi_version(), 2);
+    fn transport_api_version_is_independent_from_host_measurement_protocol() {
+        assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 3);
     }
 
-    #[cfg(feature = "render")]
+    #[cfg(feature = "svg")]
     #[test]
     fn host_measurement_operations_match_the_exact_wasm_protocol() {
         let operations = merman_bindings_core::TextMeasurementOperation::ALL
@@ -505,7 +545,7 @@ mod tests {
     fn render_svg_impl_returns_svg() {
         let result = merman_bindings_core::render_svg(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        if cfg!(feature = "render") {
+        if cfg!(feature = "svg") {
             let svg = string_result(result).unwrap();
             assert!(svg.contains("<svg"));
             assert!(svg.contains("Hello"));
@@ -513,7 +553,7 @@ mod tests {
             let error = result.unwrap_err();
             assert_eq!(
                 error.status(),
-                merman_bindings_core::BindingStatus::UnsupportedFormat
+                merman_bindings_core::BindingStatus::UnsupportedOperation
             );
         }
     }
@@ -541,7 +581,7 @@ mod tests {
         let err = merman_bindings_core::validate_json(b"flowchart TD\nA", b"").unwrap_err();
         assert_eq!(
             err.status(),
-            merman_bindings_core::BindingStatus::UnsupportedFormat
+            merman_bindings_core::BindingStatus::UnsupportedOperation
         );
         assert!(err.message().contains("analysis feature"));
     }
@@ -755,51 +795,90 @@ mod tests {
 
         assert_eq!(json["version"], 1);
         assert_eq!(json["ok"], false);
-        if cfg!(feature = "render") {
+        if cfg!(feature = "svg") {
             assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
+            assert_eq!(json["kind"], "generic");
+            assert!(json["capability_id"].is_null());
             assert!(json["message"].as_str().unwrap().contains("options_json"));
         } else {
-            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
+            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_OPERATION");
+            assert_eq!(json["kind"], "missing-capability");
+            assert_eq!(json["capability_id"], "svg");
         }
     }
 
     #[test]
-    fn binding_capabilities_follow_features() {
-        let capabilities = merman_bindings_core::binding_capabilities();
+    fn runtime_catalog_follows_features_and_reports_local_relations() {
+        let catalog = wasm_runtime_catalog();
+        let capabilities = catalog.capabilities;
 
-        assert_eq!(capabilities.render, cfg!(feature = "render"));
-        assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
-        assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
+        assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            capabilities.has_capability("analysis"),
+            cfg!(feature = "analysis")
+        );
+        assert_eq!(
+            capabilities.has_capability("ascii"),
+            cfg!(feature = "ascii")
+        );
         assert!(
             capabilities.system_adapter_ids.is_empty(),
             "browser WASM must not claim native system adapters"
         );
-        assert_eq!(capabilities.elk_layout, cfg!(feature = "layout-elk"));
-        assert_eq!(capabilities.ratex_math, cfg!(feature = "math"));
         assert_eq!(
-            capabilities.editor_language,
-            cfg!(feature = "editor-language")
+            capabilities.has_capability("layout-elk"),
+            cfg!(feature = "layout-elk")
+        );
+        assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
+        assert_eq!(
+            capabilities.has_capability("editor"),
+            cfg!(feature = "editor")
+        );
+        #[cfg(feature = "svg")]
+        {
+            let providers = capabilities
+                .text_measurement
+                .as_ref()
+                .expect("SVG surface must report a text-measurement route")
+                .provider_ids
+                .as_slice();
+            assert!(providers.contains(&"vendored"));
+            assert_eq!(
+                providers.contains(&"host-callback"),
+                cfg!(target_arch = "wasm32")
+            );
+        }
+
+        assert!(
+            capabilities
+                .output_ids
+                .iter()
+                .all(|output| capabilities.has_operation(output))
+        );
+        assert!(
+            capabilities
+                .system_adapter_ids
+                .iter()
+                .all(|adapter| capabilities.has_capability(adapter))
         );
     }
 
     #[test]
-    fn runtime_contract_uses_the_generated_wasm_abi_and_resource_catalog() {
-        let contract = merman_bindings_core::runtime_contract(WASM_ABI_VERSION);
+    fn runtime_catalog_uses_the_wasm_transport_api_and_resource_catalog() {
+        let catalog = wasm_runtime_catalog();
         assert_eq!(
-            contract.schema_version,
-            merman_bindings_core::RUNTIME_CONTRACT_SCHEMA_VERSION
+            catalog.schema_version,
+            merman_bindings_core::RUNTIME_CATALOG_SCHEMA_VERSION
         );
-        assert_eq!(contract.abi_version, WASM_ABI_VERSION);
-        assert_eq!(
-            contract.features,
-            merman_bindings_core::binding_capabilities()
-        );
-        if cfg!(feature = "render") {
-            let resources = contract.resources.expect("render resource catalog");
+        assert_eq!(catalog.transport_api_version, WASM_TRANSPORT_API_VERSION);
+        if cfg!(feature = "svg") {
+            let resources = catalog.resources;
             assert_eq!(resources.general_binding_default_profile, "interactive");
             assert_eq!(resources.profiles.len(), 4);
         } else {
-            assert!(contract.resources.is_none());
+            let resources = catalog.resources;
+            assert_eq!(resources.limits.len(), 1);
+            assert_eq!(resources.limits[0].id, "max_source_bytes");
         }
     }
 

@@ -38,12 +38,16 @@ enum XtaskError {
     DefaultConfigProjection(String),
     #[error("failed to project Mermaid theme behavior: {0}")]
     ThemeSnapshotProjection(String),
-    #[error("text-measurement ABI descriptor is invalid: {0}")]
-    TextMeasurementAbi(String),
+    #[error("text-measurement protocol descriptor is invalid: {0}")]
+    TextMeasurementProtocol(String),
+    #[error("native ABI descriptor is invalid: {0}")]
+    NativeAbi(String),
     #[error("capability surface descriptor is invalid: {0}")]
     CapabilitySurface(String),
     #[error("artifact profile descriptor is invalid: {0}")]
     ArtifactProfiles(String),
+    #[error("feature matrix is invalid: {0}")]
+    FeatureMatrix(String),
     #[error("LALRPOP parser generation is invalid: {0}")]
     LalrpopParsers(String),
     #[error("Mermaid reference bundle is invalid:\n{0}")]
@@ -99,6 +103,8 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-editor-token-descriptor");
     println!("  verify-capability-surface");
     println!("  verify-artifact-profiles");
+    println!("  verify-feature-matrix");
+    println!("  verify-typst-profile-constants");
     println!("  verify-playground-example-catalog");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
@@ -140,10 +146,13 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-theme-snapshot");
     println!("  gen-editor-token-descriptor");
     println!("  gen-capability-surface");
+    println!("  gen-typst-profile-constants");
     println!("  gen-lalrpop-parsers");
-    println!("  gen-text-measurement-abi");
+    println!("  gen-text-measurement-protocol");
+    println!("  gen-native-abi");
     println!("  gen-resource-contract");
-    println!("  verify-text-measurement-abi");
+    println!("  verify-text-measurement-protocol");
+    println!("  verify-native-abi");
     println!("  gen-playground-example-catalog");
     println!("  gen-mermaid-reference");
     println!("  gen-web-diagram-catalog");
@@ -197,11 +206,13 @@ fn main() -> Result<(), XtaskError> {
         "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
         "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
         "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
+        "gen-typst-profile-constants" => cmd::gen_typst_profile_constants(args.collect()),
         "gen-lalrpop-parsers" => cmd::gen_lalrpop_parsers(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
-        "gen-text-measurement-abi" => cmd::gen_text_measurement_abi(args.collect()),
+        "gen-text-measurement-protocol" => cmd::gen_text_measurement_protocol(args.collect()),
+        "gen-native-abi" => cmd::gen_native_abi(args.collect()),
         "gen-resource-contract" => cmd::gen_resource_contract(args.collect()),
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
@@ -212,12 +223,15 @@ fn main() -> Result<(), XtaskError> {
         "verify-artifact-profiles" => {
             cmd::verify_artifact_profiles(args.collect()).map_err(XtaskError::ArtifactProfiles)
         }
+        "verify-feature-matrix" => cmd::verify_feature_matrix(args.collect()),
+        "verify-typst-profile-constants" => cmd::verify_typst_profile_constants(args.collect()),
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
         }
         "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
-        "verify-text-measurement-abi" => cmd::verify_text_measurement_abi(args.collect()),
+        "verify-text-measurement-protocol" => cmd::verify_text_measurement_protocol(args.collect()),
+        "verify-native-abi" => cmd::verify_native_abi(args.collect()),
         "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
         "verify-lalrpop-parsers" => cmd::verify_lalrpop_parsers(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),

@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use merman_fuzz::{MAX_RENDER_INPUT_BYTES, assert_resvg_safe_svg, bounded_renderer, bounded_utf8};
 
 thread_local! {

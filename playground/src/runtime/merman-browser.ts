@@ -2,13 +2,15 @@ import {
   asciiCapabilities,
   asciiSupportedDiagrams,
   assertSafeSvgForDom,
-  bindingCapabilities,
+  runtimeCatalog,
   createBrowserTextMeasurementSession,
   editorDiagramDetection,
   initMerman,
   isMermanInitialized,
   layoutJson,
   layoutJsonWithTextMeasurer,
+  loadMermanWasmModule,
+  MERMAN_WASM_URL,
   packageVersion,
   parseJson,
   renderAscii,
@@ -21,7 +23,6 @@ import {
   type HostTextMeasurer,
   type MermanWasmModule,
 } from "@mermanjs/web";
-import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 
 import {
   DEFAULT_MERMAID_CONFIG,
@@ -38,10 +39,11 @@ import type {
 export const mermanBrowserDependencies: MermanRuntimeDependencies = {
   createSession,
   fetchWasm: ({ cache, signal }) =>
-    fetch(new URL(mermanWasmUrl, window.location.href), { cache, signal }),
+    fetch(new URL(MERMAN_WASM_URL, window.location.href), { cache, signal }),
   async initialize({ module, wasm }) {
     await initMerman({
-      loader: async () => module as MermanWasmModule,
+      // The generated shim is rebuilt independently; Web contract checks validate its full shape.
+      loader: async () => module as unknown as MermanWasmModule,
       wasm,
     });
   },
@@ -49,8 +51,7 @@ export const mermanBrowserDependencies: MermanRuntimeDependencies = {
   isRetryableInitializationError: (error) =>
     error instanceof WebAssembly.CompileError ||
     error instanceof WebAssembly.LinkError,
-  loadModule: async () =>
-    (await import("@mermanjs/web/pkg/merman_wasm.js")) as MermanWasmModule,
+  loadModule: loadMermanWasmModule,
 };
 
 function createSession(): MermanSession {
@@ -66,7 +67,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
   return {
     packageVersion: packageVersion(),
 
-    bindingCapabilities,
+    runtimeCatalog,
 
     detectDiagram(
       code,

@@ -22,10 +22,12 @@ Eclipse ELK sources rather than approximating fixture output.
 
 Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This
 source port does not read time or process randomness for that branch. A graph
-must either retain a nonzero source seed or carry an explicit
-`RandomSeedPolicy` before a configurator or pipeline entry point executes.
+must either retain a nonzero source seed or be imported with an `OperationSeed`
+before a configurator or pipeline entry point executes.
 
-`RandomSeedPolicy::DeterministicFallback` derives a Java seed from the owning
-operation key, stable graph path, and configuration invocation without
-rewriting the source option. Low-level callers can instead use
-`RequireExplicit` to reject the sentinel at the execution boundary.
+`import_graph_with_operation_seed` derives a Java seed from the owning operation
+seed, stable graph path, and configuration invocation without rewriting the
+source option. Raw callers use `import_graph`; every public execution entry
+rejects the sentinel at the configuration boundary. Individual translated phase
+helpers are crate-private, so no caller can bypass that boundary with a raw
+graph.

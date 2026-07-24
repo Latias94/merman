@@ -8,7 +8,7 @@ import type {
   LintRuleCatalogEntry,
   MermanWasmLoader,
   MermanWasmModule,
-  RuntimeContract,
+  RuntimeCatalog,
   ThemeName,
 } from "./index.js";
 
@@ -20,7 +20,7 @@ export interface MermanRuntimeState {
   asciiSupportedDiagramsCache: AsciiDiagramType[] | null;
   asciiCapabilitiesCache: AsciiCapability[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
-  runtimeContractCache: RuntimeContract | null;
+  runtimeCatalogCache: RuntimeCatalog | null;
   diagramMetadataBySyntaxIdCache: ReadonlyMap<string, DiagramType | null> | null;
   editorSemanticTokenDescriptorCache: EditorSemanticTokenDescriptor | null;
   lintRuleCatalogCache: LintRuleCatalogEntry[] | null;
@@ -41,7 +41,7 @@ export function createMermanRuntimeState(
     asciiSupportedDiagramsCache: null,
     asciiCapabilitiesCache: null,
     diagramFamilyCapabilitiesCache: null,
-    runtimeContractCache: null,
+    runtimeCatalogCache: null,
     diagramMetadataBySyntaxIdCache: null,
     editorSemanticTokenDescriptorCache: null,
     lintRuleCatalogCache: null,

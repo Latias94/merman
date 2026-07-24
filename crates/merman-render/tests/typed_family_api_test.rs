@@ -1,10 +1,8 @@
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::{
-    LayoutOptions, c4::layout_c4_diagram_typed, xychart::layout_xychart_diagram_typed,
-};
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
     Engine::new()
@@ -18,45 +16,33 @@ fn render_session() -> RenderSession {
 }
 
 #[test]
-fn c4_exposes_its_typed_layout_entry() {
+fn c4_exposes_layout_only_through_the_prepared_family_artifact() {
     let parsed = parse_for_render("C4Context\nSystem(api, \"API\")\n");
-    let RenderSemanticModel::C4(model) = parsed.model() else {
-        panic!("expected C4 render model");
-    };
-    let session = render_session();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+        .expect("prepare C4 artifact");
+    let projection = artifact.layout_json().expect("project C4 layout");
 
-    let layout = layout_c4_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        800.0,
-        600.0,
-    )
-    .expect("typed C4 layout");
-
-    assert_eq!(layout.shapes.len(), 1);
-    assert_eq!(layout.shapes[0].alias, "api");
+    assert_eq!(projection["meta"]["diagram_type"], "c4");
+    assert_eq!(
+        projection["layout"]["C4Diagram"]["shapes"][0]["alias"],
+        "api"
+    );
 }
 
 #[test]
-fn xychart_exposes_its_typed_layout_entry() {
+fn xychart_exposes_layout_only_through_the_prepared_family_artifact() {
     let parsed = parse_for_render("xychart-beta\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [7]\n");
-    let RenderSemanticModel::XyChart(model) = parsed.model() else {
-        panic!("expected XYChart render model");
-    };
-    let session = render_session();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+        .expect("prepare XYChart artifact");
+    let projection = artifact.layout_json().expect("project XYChart layout");
+    let layout = &projection["layout"]["XyChartDiagram"];
 
-    let layout = layout_xychart_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("typed XYChart layout");
-
-    assert!(layout.width > 0.0);
-    assert!(!layout.drawables.is_empty());
+    assert!(layout["width"].as_f64().is_some_and(|width| width > 0.0));
+    assert!(
+        layout["drawables"]
+            .as_array()
+            .is_some_and(|drawables| !drawables.is_empty())
+    );
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -132,6 +118,22 @@ fn elk_flowchart_reports_the_missing_layout_capability() {
     assert_eq!(
         error.to_string(),
         "compiled renderer lacks capability `layout-elk` required by diagram `flowchart-v2`"
+    );
+}
+
+#[cfg(not(feature = "layout-elk"))]
+#[test]
+fn elk_er_reports_the_missing_layout_capability() {
+    let parsed =
+        parse_for_render("---\nconfig:\n  layout: elk\n---\nerDiagram\n  A ||--o{ B : contains\n");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
+        Err(error) => error,
+        Ok(_) => panic!("ELK ER must be rejected without layout-elk"),
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "compiled renderer lacks capability `layout-elk` required by diagram `er`"
     );
 }
 

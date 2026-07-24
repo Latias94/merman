@@ -1,9 +1,9 @@
 use crate::common::{
     BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_resource_policy,
     binding_runtime_policy_from, binding_site_config, css_declaration_value, finite_positive,
-    internal_json_error, no_diagram_error, normalize_option,
+    internal_json_error, no_diagram_error, normalize_option, runtime_policy_error,
 };
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
     HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
     RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
@@ -13,7 +13,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
     renderer: HeadlessRenderer,
-    pipeline: merman::render::SvgPipeline,
+    pipeline: merman::svg::SvgPipeline,
 }
 
 impl RenderRequestPlan {
@@ -42,7 +42,7 @@ impl RenderRequestPlan {
 
     pub(super) fn with_host_text_measurer(
         &self,
-        measurer: Arc<dyn merman::render::HostTextMeasurer>,
+        measurer: Arc<dyn merman::svg::HostTextMeasurer>,
     ) -> Self {
         let identity = TextMeasurementProfileIdentity::new(
             MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
@@ -57,16 +57,6 @@ impl RenderRequestPlan {
         }
     }
 
-    pub(super) fn parse_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        let parsed = self
-            .renderer
-            .parse_diagram_sync(source)
-            .map_err(classify_render_error)?
-            .ok_or_else(no_diagram_error)?;
-
-        serde_json::to_vec(&parsed.model).map_err(internal_json_error)
-    }
-
     pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         let layout_json = self
             .renderer
@@ -76,12 +66,36 @@ impl RenderRequestPlan {
 
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
+
+    #[cfg(feature = "png")]
+    pub(super) fn render_png(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+        self.renderer
+            .render_png_sync(source, &merman::svg::export::RasterOptions::default())
+            .map_err(classify_output_error)?
+            .ok_or_else(no_diagram_error)
+    }
+
+    #[cfg(feature = "jpeg")]
+    pub(super) fn render_jpeg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+        self.renderer
+            .render_jpeg_sync(source, &merman::svg::export::RasterOptions::default())
+            .map_err(classify_output_error)?
+            .ok_or_else(no_diagram_error)
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(super) fn render_pdf(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+        self.renderer
+            .render_pdf_sync(source)
+            .map_err(classify_output_error)?
+            .ok_or_else(no_diagram_error)
+    }
 }
 
 #[cfg(test)]
 pub(super) fn pipeline_for_options(
     options: &BindingOptions,
-) -> Result<merman::render::SvgPipeline, BindingError> {
+) -> Result<merman::svg::SvgPipeline, BindingError> {
     Ok(
         build_renderer(options, merman::runtime::RuntimePolicy::deterministic())?
             .1
@@ -92,9 +106,11 @@ pub(super) fn pipeline_for_options(
 fn build_renderer(
     options: &BindingOptions,
     runtime_policy: merman::runtime::RuntimePolicy,
-) -> Result<(HeadlessRenderer, merman::render::SvgOutputPolicy), BindingError> {
+) -> Result<(HeadlessRenderer, merman::svg::SvgOutputPolicy), BindingError> {
     let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
-    let mut environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
+    let mut environment = RenderEnvironment::deterministic()
+        .without_math_renderer()
+        .with_runtime_policy(runtime_policy);
     environment = environment.with_resource_policy(binding_resource_policy(
         options.analysis.resources.as_ref(),
     )?);
@@ -114,17 +130,19 @@ fn build_renderer(
         }
         if let Some(math_renderer) = environment_json.math_renderer.as_deref() {
             match normalize_option(math_renderer).as_str() {
-                "none" => {}
+                "none" => {
+                    environment = environment.without_math_renderer();
+                }
                 "ratex" => {
                     #[cfg(feature = "math")]
                     {
                         environment = environment
-                            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+                            .with_math_renderer(Arc::new(merman::svg::RatexMathRenderer));
                     }
                     #[cfg(not(feature = "math"))]
                     {
-                        return Err(BindingError::new(
-                            BindingStatus::UnsupportedFormat,
+                        return Err(BindingError::missing_capability(
+                            "math",
                             "environment.math_renderer=ratex requires the math feature",
                         ));
                     }
@@ -151,7 +169,7 @@ fn build_renderer(
         renderer = renderer.with_strict_parsing();
     }
 
-    let mut output = merman::render::SvgOutputPolicy::default();
+    let mut output = merman::svg::SvgOutputPolicy::default();
     if let Some(host_theme) = options.host_theme.as_ref() {
         let compiled = binding_host_theme(host_theme)?;
         output = compiled.output;
@@ -179,9 +197,9 @@ fn build_renderer(
         }
         if let Some(raw_pipeline) = svg.pipeline.as_deref() {
             output.preset = match normalize_option(raw_pipeline).as_str() {
-                "parity" => merman::render::SvgPipelinePreset::Parity,
-                "readable" => merman::render::SvgPipelinePreset::Readable,
-                "resvg-safe" => merman::render::SvgPipelinePreset::ResvgSafe,
+                "parity" => merman::svg::SvgPipelinePreset::Parity,
+                "readable" => merman::svg::SvgPipelinePreset::Readable,
+                "resvg-safe" => merman::svg::SvgPipelinePreset::ResvgSafe,
                 other => {
                     return Err(BindingError::new(
                         BindingStatus::InvalidArgument,
@@ -192,9 +210,9 @@ fn build_renderer(
         }
         if let Some(raw_policy) = svg.css_override_policy.as_deref() {
             output.css_override_policy = match normalize_option(raw_policy).as_str() {
-                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "preserve" => merman::svg::CssOverridePolicy::Preserve,
                 "strip-existing-important" => {
-                    merman::render::CssOverridePolicy::StripExistingImportant
+                    merman::svg::CssOverridePolicy::StripExistingImportant
                 }
                 other => {
                     return Err(BindingError::new(
@@ -223,7 +241,7 @@ fn build_renderer(
 
 fn binding_host_theme(
     host_theme: &HostThemeOptionsJson,
-) -> Result<merman::render::CompiledHostTheme, BindingError> {
+) -> Result<merman::svg::CompiledHostTheme, BindingError> {
     let mut profile = if let Some(preset) = host_theme.preset.as_deref() {
         HostThemeProfile::from_preset(binding_host_theme_preset(preset)?)
     } else {
@@ -292,9 +310,9 @@ fn binding_host_theme(
         }
         if let Some(policy) = output.css_override_policy.as_deref() {
             profile.output.css_override_policy = match normalize_option(policy).as_str() {
-                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "preserve" => merman::svg::CssOverridePolicy::Preserve,
                 "strip-existing-important" => {
-                    merman::render::CssOverridePolicy::StripExistingImportant
+                    merman::svg::CssOverridePolicy::StripExistingImportant
                 }
                 other => {
                     return Err(BindingError::new(
@@ -488,18 +506,38 @@ fn css_role_value(value: Option<&str>, name: &str) -> Result<Option<String>, Bin
         .transpose()
 }
 
-fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
+fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
     match err {
-        merman::render::HeadlessError::Parse(err) => {
+        merman::svg::HeadlessError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
-        merman::render::HeadlessError::Render(
-            merman::render::RenderError::ResourceLimitExceeded(err),
-        ) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
-        merman::render::HeadlessError::Render(err) => {
+        merman::svg::HeadlessError::Render(merman::svg::RenderError::ResourceLimitExceeded(
+            err,
+        )) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
+        merman::svg::HeadlessError::Render(
+            err @ merman::svg::RenderError::MissingCapability { .. },
+        ) => BindingError::missing_capability(
+            err.missing_capability()
+                .expect("matched missing render capability")
+                .id(),
+            err.to_string(),
+        ),
+        merman::svg::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
-        merman::render::HeadlessError::RuntimePolicy(err) => {
+        merman::svg::HeadlessError::RuntimePolicy(err) => runtime_policy_error(err),
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn classify_output_error(err: merman::svg::OutputError) -> BindingError {
+    match err {
+        merman::svg::OutputError::Headless(err) => classify_render_error(err),
+        merman::svg::OutputError::Export(
+            merman::svg::export::ExportError::EmbeddedImageLimit { .. }
+            | merman::svg::export::ExportError::SvgConversionLimit { .. },
+        ) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
+        merman::svg::OutputError::Export(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
     }

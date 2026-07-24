@@ -1,7 +1,7 @@
 use crate::protocol::WorkspaceEditEncoding;
 use merman_editor_core::{PlannedTokenKind, semantic_token_descriptor};
 use std::sync::OnceLock;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     ClientCapabilities, CodeActionKind, DiagnosticTag, MarkupKind, SemanticTokenModifier,
     SemanticTokenType, SemanticTokensClientCapabilities, SemanticTokensFullOptions,
     SemanticTokensLegend, SemanticTokensOptions, TokenFormat,
@@ -273,7 +273,7 @@ impl ClientProtocolProfile {
             diagnostic_refresh: capabilities
                 .workspace
                 .as_ref()
-                .and_then(|workspace| workspace.diagnostic.as_ref())
+                .and_then(|workspace| workspace.diagnostics.as_ref())
                 .and_then(|diagnostic| diagnostic.refresh_support)
                 .unwrap_or(false),
             workspace_edit_encoding: WorkspaceEditEncoding::from_document_changes_support(
@@ -490,7 +490,7 @@ mod tests {
                 }
             },
             "workspace": {
-                "diagnostic": {
+                "diagnostics": {
                     "refreshSupport": true
                 },
                 "semanticTokens": {

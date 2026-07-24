@@ -2,7 +2,7 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -11,6 +11,15 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 fn render_svg(diagram_id: &str, source: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
+    render_svg_with_engine(diagram_id, &engine, source, session)
+}
+
+fn render_svg_with_engine(
+    diagram_id: &str,
+    engine: &Engine,
+    source: &str,
+    session: merman_render::environment::RenderSession,
+) -> String {
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -163,14 +172,21 @@ mindmap
 
 #[test]
 fn sequence_look_matrix_covers_css_theme_consumption() {
-    let svg = render_svg(
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
+        }
+    })));
+    let svg = render_svg_with_engine(
         "look-sequence",
-        r##"%%{init: {"look": "neo", "themeVariables": {"dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"}}}%%
-sequenceDiagram
+        &engine,
+        r#"sequenceDiagram
   participant A
   participant B
   A->>B: Hi
-"##,
+"#,
+        RenderEnvironment::deterministic().begin_session().unwrap(),
     );
 
     assert!(

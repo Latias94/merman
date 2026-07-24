@@ -21,11 +21,11 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     const wasmUrl = validateMermanWasmUrl(resourceUrl);
     mark("engine_import_start");
     const webPromise = import("@mermanjs/web");
-    const shimPromise = import("@mermanjs/web/pkg/merman_wasm.js");
     const enginePromise = runObservedBenchmarkEngineStage(
       "engine-import",
       async () => {
-        const [web, module] = await Promise.all([webPromise, shimPromise]);
+        const web = await webPromise;
+        const module = await web.loadMermanWasmModule();
         return { web, module: module as MermanWasmModule };
       },
       () => mark("engine_import_end")

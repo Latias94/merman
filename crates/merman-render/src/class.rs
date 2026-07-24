@@ -27,6 +27,8 @@ use merman_layout_elk as elk;
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
+type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
+type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
 pub(crate) fn class_member_create_text_input(
     member: &merman_core::models::class_diagram::ClassMember,
@@ -42,7 +44,7 @@ pub(crate) fn class_member_create_text_input(
 enum ClassLayoutEngine {
     Dagre,
     #[cfg(feature = "layout-elk")]
-    Elk(elk::ElkRandomPolicy),
+    Elk(Option<elk::ElkOperationSeed>),
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -119,7 +121,7 @@ type Rect = merman_core::geom::Box2;
 struct PreparedGraphId(usize);
 
 struct PreparedGraph {
-    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
     extracted: BTreeMap<String, PreparedGraphId>,
     injected_cluster_root_id: Option<String>,
 }
@@ -320,7 +322,9 @@ fn class_cluster_candidates(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> 
         .collect()
 }
 
-fn prepare_graph(graph: Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<PreparedGraphArena> {
+fn prepare_graph(
+    graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
+) -> Result<PreparedGraphArena> {
     // Mermaid's default Class renderer uses the shared Dagre rendering-util path. Its
     // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
     // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
@@ -340,7 +344,7 @@ fn prepare_graph(graph: Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<Prepa
     }
 
     struct PrepareFrame {
-        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
         candidates: Vec<String>,
         next_candidate: usize,
         extracted: BTreeMap<String, PreparedGraphId>,
@@ -349,7 +353,7 @@ fn prepare_graph(graph: Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<Prepa
     }
 
     fn frame_for(
-        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
         injected_cluster_root_id: Option<String>,
     ) -> PrepareFrame {
         let candidates = class_cluster_candidates(&graph);
@@ -444,8 +448,8 @@ fn prepare_graph(graph: Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<Prepa
 
 fn extract_cluster_graph(
     cluster_id: &str,
-    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<(Graph<NodeLabel, EdgeLabel, GraphLabel>, HashSet<String>)> {
+    graph: &mut ClassLayoutGraph,
+) -> Result<ExtractedClusterGraph> {
     if graph.children(cluster_id).is_empty() {
         return Err(Error::InvalidModel {
             message: format!("cluster has no children: {cluster_id}"),
@@ -457,11 +461,13 @@ fn extract_cluster_graph(
 
     let moved_set: HashSet<String> = descendants.iter().cloned().collect();
 
-    let mut sub = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
-        directed: true,
-        multigraph: true,
-        compound: true,
-    });
+    let mut sub = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
+        GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        },
+    ));
 
     // Preserve parent graph settings as a base.
     sub.set_graph(graph.graph().clone());
@@ -1775,7 +1781,7 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
     extras.insert(key.to_string(), obj);
 }
 
-pub fn layout_class_diagram_typed_with_config(
+pub(crate) fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
@@ -1790,34 +1796,22 @@ pub fn layout_class_diagram_typed_with_config(
 }
 
 #[cfg(feature = "layout-elk")]
-pub fn layout_class_diagram_elk_typed_with_config(
+/// Lays out a Class diagram through ELK using the render operation's captured seed.
+///
+/// This remains crate-private so direct callers cannot accidentally turn ELK's unseeded
+/// `randomSeed = 0` sentinel into a process-random layout.
+pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramLayout> {
-    layout_class_diagram_elk_typed_with_config_and_random_policy(
-        model,
-        effective_config,
-        measurer,
-        elk::ElkRandomPolicy::require_explicit(),
-    )
-}
-
-#[cfg(feature = "layout-elk")]
-/// Lays out a Class diagram through ELK with explicit authority for ELK's `randomSeed = 0`
-/// sentinel.
-pub fn layout_class_diagram_elk_typed_with_config_and_random_policy(
-    model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    random_policy: elk::ElkRandomPolicy,
+    operation_seed: elk::ElkOperationSeed,
 ) -> Result<ClassDiagramLayout> {
     layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
-        ClassLayoutEngine::Elk(random_policy),
+        ClassLayoutEngine::Elk(Some(operation_seed)),
     )
 }
 
@@ -1828,7 +1822,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     engine: ClassLayoutEngine,
 ) -> Result<ClassDiagramLayout> {
-    validate_class_namespace_parent_cycles(model)?;
+    validate_class_namespace_hierarchy(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let ClassLayoutSettings {
         nodesep,
@@ -1855,11 +1849,13 @@ fn layout_class_diagram_typed_inner(
     let namespace_ids = class_namespace_ids_in_decl_order(model);
     let namespace_child_pairs = class_namespace_child_pairs(model);
 
-    let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
-        directed: true,
-        multigraph: true,
-        compound: true,
-    });
+    let mut g = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
+        GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        },
+    ));
     g.set_graph(GraphLabel {
         rankdir: diagram_dir,
         nodesep,
@@ -2187,11 +2183,11 @@ fn layout_class_diagram_typed_inner(
     }
 
     #[cfg(feature = "layout-elk")]
-    if let ClassLayoutEngine::Elk(random_policy) = engine {
+    if let ClassLayoutEngine::Elk(operation_seed) = engine {
         return layout_class_diagram_elk_from_graph(
             model,
             effective_config,
-            g,
+            *g,
             namespace_ids,
             class_row_metrics_by_id,
             ClassElkLayoutSettings {
@@ -2200,7 +2196,7 @@ fn layout_class_diagram_typed_inner(
                 title_margin_bottom,
                 text_style: &text_style,
                 wrap_mode_label,
-                random_policy,
+                operation_seed,
             },
             measurer,
         );
@@ -2376,20 +2372,76 @@ fn layout_class_diagram_typed_inner(
     })
 }
 
-fn validate_class_namespace_parent_cycles(model: &ClassDiagramModel) -> Result<()> {
-    for id in model.namespaces.keys() {
-        let mut current = Some(id.as_str());
-        let mut seen: HashSet<&str> = HashSet::new();
-        while let Some(ns_id) = current {
-            if !seen.insert(ns_id) {
+fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
+    const UNVISITED: u8 = 0;
+    const VISITING: u8 = 1;
+    const COMPLETE: u8 = 2;
+
+    let ids = model
+        .namespaces
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let index_by_id = ids
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, id)| (id, index))
+        .collect::<FxHashMap<_, _>>();
+    let parents = ids
+        .iter()
+        .map(|id| {
+            model
+                .namespaces
+                .get(*id)
+                .and_then(|namespace| namespace.parent.as_deref())
+                .and_then(|parent| index_by_id.get(parent).copied())
+        })
+        .collect::<Vec<_>>();
+    let mut state = vec![UNVISITED; ids.len()];
+    let mut depth = vec![0_usize; ids.len()];
+
+    for start in 0..ids.len() {
+        if state[start] == COMPLETE {
+            continue;
+        }
+
+        let mut path = Vec::new();
+        let mut current = Some(start);
+        let inherited_depth = loop {
+            let Some(index) = current else {
+                break None;
+            };
+            match state[index] {
+                UNVISITED => {
+                    state[index] = VISITING;
+                    path.push(index);
+                    current = parents[index];
+                }
+                VISITING => {
+                    return Err(Error::InvalidModel {
+                        message: format!("class namespace parent cycle involving {}", ids[index]),
+                    });
+                }
+                COMPLETE => break Some(depth[index].saturating_add(1)),
+                _ => unreachable!("Class namespace traversal state is internal"),
+            }
+        };
+
+        let mut next_depth = inherited_depth.unwrap_or(0);
+        for index in path.into_iter().rev() {
+            if next_depth > merman_core::MAX_DIAGRAM_NESTING_DEPTH {
                 return Err(Error::InvalidModel {
-                    message: format!("class namespace parent cycle involving {ns_id}"),
+                    message: format!(
+                        "class namespace nesting depth exceeds {} at {}",
+                        merman_core::MAX_DIAGRAM_NESTING_DEPTH,
+                        ids[index]
+                    ),
                 });
             }
-            current = model
-                .namespaces
-                .get(ns_id)
-                .and_then(|ns| ns.parent.as_deref());
+            depth[index] = next_depth;
+            state[index] = COMPLETE;
+            next_depth = next_depth.saturating_add(1);
         }
     }
     Ok(())
@@ -2402,7 +2454,7 @@ struct ClassElkLayoutSettings<'a> {
     title_margin_bottom: f64,
     text_style: &'a TextStyle,
     wrap_mode_label: WrapMode,
-    random_policy: elk::ElkRandomPolicy,
+    operation_seed: Option<elk::ElkOperationSeed>,
 }
 
 #[cfg(feature = "layout-elk")]
@@ -2423,12 +2475,13 @@ fn layout_class_diagram_elk_from_graph(
         &settings,
         measurer,
     );
-    let layout =
-        elk::layout_with_random_policy(&elk_graph, settings.random_policy).map_err(|err| {
-            Error::InvalidModel {
-                message: format!("Class ELK layout failed: {err}"),
-            }
-        })?;
+    let layout = match settings.operation_seed {
+        Some(operation_seed) => elk::layout_with_operation_seed(&elk_graph, operation_seed),
+        None => elk::layout(&elk_graph),
+    }
+    .map_err(|err| Error::InvalidModel {
+        message: format!("Class ELK layout failed: {err}"),
+    })?;
     class_layout_from_elk(
         model,
         &graph,
@@ -2955,10 +3008,91 @@ fn compute_bounds(
 mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
+    use merman_core::models::class_diagram::Namespace;
 
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     };
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_keeps_the_source_default_nonzero_seed() {
+        assert_eq!(
+            super::class_elk_layout_options(&serde_json::Value::Null)
+                .layered
+                .random_seed,
+            1
+        );
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
+        use std::num::NonZeroU64;
+
+        let model: super::ClassDiagramModel = serde_json::from_value(serde_json::json!({
+            "type": "classDiagram",
+            "direction": "TB",
+            "classes": {},
+            "constants": {
+                "lineType": { "line": 0, "dottedLine": 1 },
+                "relationType": {
+                    "none": 0,
+                    "aggregation": 1,
+                    "extension": 2,
+                    "composition": 3,
+                    "dependency": 4,
+                    "lollipop": 5
+                }
+            }
+        }))
+        .expect("minimal Class diagram model");
+        let mut class_graph = Graph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        });
+        class_graph.set_graph(GraphLabel::default());
+        class_graph.set_node("A", NodeLabel::default());
+        class_graph.set_node("B", NodeLabel::default());
+        class_graph.set_edge_named(
+            "A",
+            "B",
+            Some("A-B".to_string()),
+            Some(EdgeLabel::default()),
+        );
+
+        let text_style = default_style();
+        let settings = super::ClassElkLayoutSettings {
+            namespace_padding: 8.0,
+            title_margin_top: 0.0,
+            title_margin_bottom: 0.0,
+            text_style: &text_style,
+            wrap_mode_label: WrapMode::default(),
+            operation_seed: None,
+        };
+        let mut graph = super::class_graph_to_elk_graph(
+            &model,
+            &serde_json::Value::Null,
+            &class_graph,
+            &[],
+            &settings,
+            &VendoredFontMetricsTextMeasurer::default(),
+        );
+        graph.options.layered.random_seed = 0;
+
+        assert!(super::elk::layout(&graph).is_err());
+
+        let operation_seed = super::elk::ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x636c_6173_7365_6c6b).expect("nonzero operation seed"),
+        );
+        let first = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("seeded Class layout");
+        let replayed = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("replayed seeded Class layout");
+
+        assert_eq!(first, replayed);
+    }
 
     struct ClassProbeMeasurer;
 
@@ -3003,6 +3137,42 @@ mod tests {
             font_weight: None,
             font_style: None,
         }
+    }
+
+    fn class_model_with_namespace_chain(count: usize) -> super::ClassDiagramModel {
+        let mut model: super::ClassDiagramModel = serde_json::from_value(serde_json::json!({
+            "type": "classDiagram",
+            "direction": "TB",
+            "classes": {},
+            "constants": {
+                "lineType": { "line": 0, "dottedLine": 1 },
+                "relationType": {
+                    "none": 0,
+                    "aggregation": 1,
+                    "extension": 2,
+                    "composition": 3,
+                    "dependency": 4,
+                    "lollipop": 5
+                }
+            }
+        }))
+        .expect("minimal Class diagram model");
+        for index in 0..count {
+            let id = format!("ns{index}");
+            model.namespaces.insert(
+                id.clone(),
+                Namespace {
+                    id,
+                    label: String::new(),
+                    dom_id: format!("classId-namespace-{index}"),
+                    class_ids: Vec::new(),
+                    note_ids: Vec::new(),
+                    parent: index.checked_sub(1).map(|parent| format!("ns{parent}")),
+                    explicit: true,
+                },
+            );
+        }
+        model
     }
 
     fn class_candidate_test_graph(
@@ -3130,6 +3300,42 @@ mod tests {
             candidates.last().map(String::as_str),
             Some(expected_last.as_str())
         );
+    }
+
+    #[test]
+    fn class_namespace_hierarchy_accepts_the_shared_depth_boundary() {
+        let model = class_model_with_namespace_chain(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1);
+
+        super::validate_class_namespace_hierarchy(&model)
+            .expect("the shared maximum namespace nesting depth is valid");
+    }
+
+    #[test]
+    fn class_namespace_hierarchy_rejects_excessive_depth_without_recursion() {
+        let model = class_model_with_namespace_chain(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 2);
+
+        let error = super::validate_class_namespace_hierarchy(&model)
+            .expect_err("namespace nesting beyond the shared limit must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid semantic model: class namespace nesting depth exceeds {} at ns{}",
+                merman_core::MAX_DIAGRAM_NESTING_DEPTH,
+                merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1
+            )
+        );
+    }
+
+    #[test]
+    fn class_namespace_hierarchy_rejects_parent_cycles() {
+        let mut model = class_model_with_namespace_chain(3);
+        model.namespaces["ns0"].parent = Some("ns2".to_string());
+
+        let error = super::validate_class_namespace_hierarchy(&model)
+            .expect_err("namespace parent cycles must be rejected");
+
+        assert!(error.to_string().contains("namespace parent cycle"));
     }
 
     #[test]

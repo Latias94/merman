@@ -2,7 +2,6 @@ import type { EditorSemanticTokenLegend } from "@mermanjs/web";
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
-  MERMAN_ABI_VERSION,
   type EditorDocumentSnapshot,
   type EditorWorkerErrorCode,
   type EditorWorkerQuery,
@@ -41,6 +40,7 @@ export interface MermanLanguageWorkerClient {
 export interface EditorLanguageIdentity {
   readonly legend: EditorSemanticTokenLegend;
   readonly legendDigest: string;
+  readonly transportApiVersion: number;
 }
 
 interface EditorSnapshotIdentity {
@@ -140,9 +140,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
 
     if (response.type === "ready") {
       try {
-        if (response.nativeAbi !== MERMAN_ABI_VERSION) {
+        if (
+          !Number.isSafeInteger(response.transportApiVersion) ||
+          response.transportApiVersion < 1
+        ) {
           throw new EditorWorkerProtocolError(
-            `Merman editor worker ABI ${response.nativeAbi} does not match ${MERMAN_ABI_VERSION}.`
+            "Merman editor worker returned an invalid Web transport API version."
           );
         }
         if (response.editorSchema !== EDITOR_SCHEMA_VERSION) {
@@ -159,6 +162,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
           Object.freeze({
             legend: validateLegend(response.legend),
             legendDigest: response.legendDigest,
+            transportApiVersion: response.transportApiVersion,
           }) satisfies EditorLanguageIdentity
         );
       } catch (error) {
@@ -510,7 +514,9 @@ function parseResponse(value: unknown): EditorWorkerResponse | null {
   if (candidate.type === "ready") {
     const ready = candidate as Record<string, unknown>;
     return (
-      Number.isSafeInteger(ready.nativeAbi) &&
+      typeof ready.transportApiVersion === "number" &&
+      Number.isSafeInteger(ready.transportApiVersion) &&
+      ready.transportApiVersion > 0 &&
       Number.isSafeInteger(ready.editorSchema) &&
       typeof ready.legendDigest === "string" &&
       ready.legendDigest.length > 0 &&

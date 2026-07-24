@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {

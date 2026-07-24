@@ -2,10 +2,10 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::Error;
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderSession, TextMeasurementPhase};
-use merman_render::flowchart::layout_flowchart_typed;
+use merman_render::environment::{RenderEnvironment, RenderSession};
+use merman_render::family;
 use merman_render::model::FlowchartLayout;
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use merman_render::text::{TextMeasurer, WrapMode};
 use std::path::PathBuf;
 
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
@@ -17,41 +17,18 @@ fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
 
 fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
-    _options: &LayoutOptions,
-    session: &RenderSession,
+    options: &LayoutOptions,
+    _session: &RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
-    let model = flowchart_model(parsed);
-    session
-        .resource_policy()
-        .check_flowchart_complexity(model)?;
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let uses_elk = parsed.metadata().diagram_type == "flowchart-elk"
-        || parsed.metadata().effective_config.get_str("layout") == Some("elk");
-
-    if uses_elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            return merman_render::flowchart::elk::layout_flowchart_elk_typed(
-                model,
-                &parsed.metadata().effective_config,
-                &measurer,
-                session.math_renderer(),
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            return Err(Error::UnsupportedDiagram {
-                diagram_type: parsed.metadata().diagram_type.clone(),
-            });
-        }
-    }
-
-    layout_flowchart_typed(
-        model,
-        &parsed.metadata().effective_config,
-        &measurer,
-        session.math_renderer(),
-    )
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .map_err(|error| Error::InvalidModel {
+            message: format!("render session: {error}"),
+        })?;
+    let artifact = family::prepare(parsed.clone(), options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
 }
 
 fn workspace_root() -> PathBuf {
@@ -66,32 +43,6 @@ fn approx_gt(a: f64, b: f64) -> bool {
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-6
-}
-
-const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
-
-struct NonLatticeComputedLengthMeasurer;
-
-impl TextMeasurer for NonLatticeComputedLengthMeasurer {
-    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
-        TextMetrics {
-            width: 40.0,
-            height: 18.0,
-            line_count: 1,
-        }
-    }
-
-    fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
-        NON_LATTICE_COMPUTED_LENGTH_PX
-    }
-}
-
-fn parse_flowchart_render_model(text: &str) -> ParsedDiagramRender {
-    futures::executor::block_on(
-        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
-    )
-    .expect("parse ok")
-    .expect("diagram detected")
 }
 
 fn layout_flowchart(text: &str) -> FlowchartLayout {
@@ -131,50 +82,6 @@ C@{ icon: "fa:bell", form: "circle" }
     let circle_diameter = 48.0 * std::f64::consts::SQRT_2 + 40.0;
     assert!(approx_eq(circle.width, circle_diameter), "{circle:?}");
     assert!(approx_eq(circle.height, circle_diameter), "{circle:?}");
-}
-
-#[test]
-fn flowchart_dagre_preserves_operation_computed_length_precision() {
-    let parsed = parse_flowchart_render_model(
-        "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
-    );
-    let layout = layout_flowchart_typed(
-        flowchart_model(&parsed),
-        &parsed.metadata().effective_config,
-        &NonLatticeComputedLengthMeasurer,
-        None,
-    )
-    .expect("layout ok");
-    let node = layout
-        .nodes
-        .iter()
-        .find(|node| node.id == "A")
-        .expect("node A");
-
-    assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
-}
-
-#[cfg(feature = "layout-elk")]
-#[test]
-fn flowchart_elk_preserves_operation_computed_length_precision() {
-    let parsed = parse_flowchart_render_model(
-        "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
-    );
-    let graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
-        flowchart_model(&parsed),
-        &parsed.metadata().effective_config,
-        &NonLatticeComputedLengthMeasurer,
-        None,
-    )
-    .expect("ELK graph");
-    let label = graph
-        .nodes
-        .iter()
-        .find(|node| node.id == "A")
-        .and_then(|node| node.label)
-        .expect("node A label");
-
-    assert_eq!(label.width, NON_LATTICE_COMPUTED_LENGTH_PX);
 }
 
 fn flowchart_node_center(layout: &FlowchartLayout, id: &str) -> (f64, f64) {
@@ -391,7 +298,6 @@ fn flowchart_layout_respects_lr_direction() {
     )
     .expect("parse ok")
     .expect("diagram detected");
-
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
@@ -424,7 +330,6 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
     )
     .expect("parse ok")
     .expect("diagram detected");
-
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
@@ -866,14 +771,8 @@ fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
     )
     .expect("parse ok")
     .expect("diagram detected");
-
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
-
-    assert!(
-        layout.dom_node_order_by_root.contains_key("A"),
-        "an explicit-direction cluster must be recorded as an extracted recursive root"
-    );
 
     let nodes_by_id = layout
         .nodes
@@ -1918,33 +1817,6 @@ D@{ shape: cloud, label: "same" }
     assert!(
         cloud.0 < process.0 && cloud.1 > process.1,
         "Mermaid's cloud arc path must use its own rendered bbox: {cloud:?}"
-    );
-}
-
-#[test]
-fn flowchart_layout_rejects_unknown_shape_instead_of_using_a_rectangle() {
-    let parsed = parse_flowchart_render_model("flowchart TB\nA[known]\n");
-    let mut model = flowchart_model(&parsed).clone();
-    model.nodes[0].layout_shape = Some("definitely-unknown".to_string());
-    let session = merman_render::environment::RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    let error = layout_flowchart_typed(
-        &model,
-        &parsed.metadata().effective_config,
-        &measurer,
-        session.math_renderer(),
-    )
-    .expect_err("unknown Flowchart shapes must not silently become rectangles");
-
-    let Error::InvalidModel { message } = error else {
-        panic!("expected InvalidModel for unknown Flowchart shape");
-    };
-    assert_eq!(
-        message,
-        "No such shape: definitely-unknown. Please check your syntax."
     );
 }
 

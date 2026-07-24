@@ -3,11 +3,11 @@ use merman_analysis::AnalysisPayload;
 use merman_editor_core::EditorDiagramDetection;
 use std::ops::Deref;
 use std::sync::Arc;
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
-    pub uri: Url,
+    pub uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
     #[cfg(test)]
     detection: Option<EditorDiagramDetection>,
@@ -90,7 +90,7 @@ impl SnapshotContext {
 }
 
 impl DocumentAnalysisContext {
-    pub fn from_editor(context: merman_editor_core::DocumentAnalysisContext, uri: Url) -> Self {
+    pub fn from_editor(context: merman_editor_core::DocumentAnalysisContext, uri: Uri) -> Self {
         #[cfg(test)]
         let detection = context.detection().cloned();
         let (editor, payload) = context.into_parts();
@@ -119,7 +119,7 @@ impl DocumentSnapshot {
     #[cfg(test)]
     pub fn fence_at_position(
         &self,
-        position: tower_lsp::lsp_types::Position,
+        position: tower_lsp_server::ls_types::Position,
     ) -> Option<&merman_editor_core::FenceSnapshot> {
         self.editor.fence_at_position(position_to_editor(position))
     }
@@ -134,18 +134,21 @@ impl Deref for DocumentSnapshot {
 }
 
 #[cfg(test)]
-fn position_to_editor(position: tower_lsp::lsp_types::Position) -> merman_editor_core::Position {
+fn position_to_editor(
+    position: tower_lsp_server::ls_types::Position,
+) -> merman_editor_core::Position {
     merman_editor_core::Position::new(position.line as usize, position.character as usize)
 }
 
 #[cfg(test)]
 mod tests {
-    use tower_lsp::lsp_types::{Position, Url};
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{Position, Uri};
 
     #[test]
     fn fence_lookup_includes_end_position_for_completion() {
         let mut store = crate::document_store::DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "flowchart".to_string());
 
         assert!(snapshot.fence_at_position(Position::new(0, 9)).is_some());
@@ -154,7 +157,7 @@ mod tests {
     #[test]
     fn cached_snapshot_retains_detection_from_the_same_analysis() {
         let mut store = crate::document_store::DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 7, "flowchart TD\nA[unterminated\n".to_string());
 
         assert_eq!(snapshot.version, 7);

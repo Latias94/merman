@@ -960,7 +960,7 @@ fn line_path(points: &[(f64, f64)]) -> Option<String> {
 }
 
 /// Lays out a typed XYChart render model without a compatibility-JSON round trip.
-pub fn layout_xychart_diagram_typed(
+pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,

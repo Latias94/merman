@@ -124,6 +124,7 @@ jobs:
           swift package describe
           swift build
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
       - name: Package XCFramework
         env:

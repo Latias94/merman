@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::prelude::*;
 
 fn semantic_tokens_initialize_params() -> serde_json::Value {
@@ -26,7 +28,7 @@ fn semantic_tokens_initialize_params() -> serde_json::Value {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_range() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(semantic_tokens_initialize_params())
@@ -89,7 +91,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/subset.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/subset.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -184,7 +186,7 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_delta() {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(semantic_tokens_initialize_params())
@@ -325,7 +327,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
 async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_configuration_change()
 {
     let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(semantic_tokens_initialize_params())

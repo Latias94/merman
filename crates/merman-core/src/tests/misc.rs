@@ -176,6 +176,21 @@ graph TD;A-->B;"##;
 }
 
 #[test]
+fn init_directive_theme_variables_follow_mermaid_allowlist() {
+    let engine = Engine::new();
+    let text = r##"%%{init: {"themeVariables": {"primaryColor": "url(javascript:alert(1))", "secondaryColor": "rgb(1, 2, 3)"}}}%%
+graph TD;A-->B;"##;
+
+    let res = block_on(engine.parse_metadata(text)).expect("directive should parse");
+
+    assert_eq!(res.config.get_str("themeVariables.primaryColor"), Some(""));
+    assert_eq!(
+        res.config.get_str("themeVariables.secondaryColor"),
+        Some("rgb(1, 2, 3)")
+    );
+}
+
+#[test]
 fn site_secure_policy_can_opt_into_legacy_theme_variable_init_compatibility() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]

@@ -181,9 +181,12 @@ def _parse_steps(lines: list[str], start: int, end: int, *, owner: str) -> list[
                     10,
                     owner=f"{step_owner}:{key}",
                 )
-            elif key == "run" and raw_value in {"|", ">"}:
+            elif key == "run" and _is_block_scalar(raw_value):
                 block_end = _next_at_most_indent(lines, index + 1, step_end, 8)
-                step[key] = textwrap.dedent("\n".join(lines[index + 1 : block_end]))
+                step[key] = _block_scalar_text(
+                    lines[index + 1 : block_end],
+                    raw_value,
+                )
             elif raw_value:
                 step[key] = _scalar(raw_value)
         has_uses = isinstance(step.get("uses"), str)
@@ -288,7 +291,7 @@ def _flat_mapping(
             raise WorkflowContractError(f"{owner}: duplicate mapping key {key!r}")
         value = value.strip()
         _reject_unmodeled_scalar(value, f"{owner}:{key}")
-        if value in {"|", ">"} and owner.endswith(":permissions"):
+        if _is_block_scalar(value) and owner.endswith(":permissions"):
             raise WorkflowContractError(f"{owner}:{key}: block scalar values are unsupported")
         if not value:
             raise WorkflowContractError(f"{owner}: nested mapping value for {key!r} is unsupported")
@@ -322,5 +325,45 @@ def _reject_unmodeled_scalar(value: str, owner: str) -> None:
     """Reject YAML constructs this narrow structural reader cannot interpret safely."""
     if value.startswith(("&", "*", "!")):
         raise WorkflowContractError(f"{owner}: YAML anchors, aliases, and tags are unsupported")
-    if value.startswith(("|", ">")) and value not in {"|", ">"}:
-        raise WorkflowContractError(f"{owner}: block scalar modifiers are unsupported")
+    if value.startswith(("|", ">")) and not _is_block_scalar(value):
+        raise WorkflowContractError(f"{owner}: unsupported block scalar header {value!r}")
+
+
+def _is_block_scalar(value: str) -> bool:
+    """Accept the ordinary literal/folded headers used by GitHub Actions YAML."""
+    if not value or value[0] not in {"|", ">"}:
+        return False
+    suffix = value[1:]
+    if not suffix:
+        return True
+    if len(suffix) == 1 and suffix in {"+", "-"}:
+        return True
+    if len(suffix) == 1 and suffix.isdigit() and suffix != "0":
+        return True
+    return (
+        len(suffix) == 2
+        and suffix[0] in {"+", "-"}
+        and suffix[1].isdigit()
+        and suffix[1] != "0"
+    ) or (
+        len(suffix) == 2
+        and suffix[0].isdigit()
+        and suffix[0] != "0"
+        and suffix[1] in {"+", "-"}
+    )
+
+
+def _block_scalar_text(lines: list[str], header: str) -> str:
+    content = textwrap.dedent("\n".join(lines))
+    if not header.startswith(">"):
+        return content
+
+    folded: list[str] = []
+    previous_blank = False
+    for line in content.splitlines():
+        blank = not line.strip()
+        if folded:
+            folded.append("\n" if blank or previous_blank else " ")
+        folded.append(line)
+        previous_blank = blank
+    return "".join(folded)

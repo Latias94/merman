@@ -72,16 +72,6 @@ impl BinaryIndexedTree {
         }
         true
     }
-
-    pub fn clear(&mut self) {
-        self.binary_sums.fill(0);
-        self.nums_per_index.fill(0);
-        self.size = 0;
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -106,6 +96,7 @@ impl CrossingsCounter {
         self.count_crossings_on_ports(graph, &ports, &mut index_tree)
     }
 
+    #[cfg(test)]
     pub fn count_all_crossings(&mut self, graph: &LGraph) -> usize {
         let current_order = graph
             .layers

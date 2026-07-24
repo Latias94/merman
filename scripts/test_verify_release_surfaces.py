@@ -21,46 +21,52 @@ SPEC.loader.exec_module(verify_release_surfaces)
 
 
 class ReleaseSurfaceParsingTests(unittest.TestCase):
-    def test_validate_web_descriptor_reads_closed_preset_and_surface_graph(self) -> None:
+    def test_validate_web_descriptor_reads_closed_package_graph(self) -> None:
         descriptor = verify_release_surfaces.validate_web_surface_descriptor(
             minimal_web_descriptor()
         )
 
         self.assertEqual(descriptor["schema_version"], 1)
-        self.assertEqual(descriptor["default_preset"], "browser-full")
+        self.assertEqual(descriptor["default_package"], "full")
         self.assertEqual(
-            {preset["name"] for preset in descriptor["presets"]},
-            set(web_contract()["feature_contract"]["browser_presets"]),
+            {package["name"] for package in descriptor["packages"]},
+            {
+                "@mermanjs/web",
+                "@mermanjs/web-analysis",
+                "@mermanjs/web-ascii",
+                "@mermanjs/web-editor",
+                "@mermanjs/web-render",
+            },
         )
         self.assertEqual(
-            {surface["entry"] for surface in descriptor["public_surfaces"]},
-            {"core", "render", "render-only", "ascii", "editor", "full"},
+            {package["id"] for package in descriptor["packages"] if package["visibility"] == "public"},
+            {"full", "analysis", "ascii", "editor"},
         )
 
-    def test_validate_web_descriptor_rejects_duplicates_and_dangling_references(self) -> None:
+    def test_validate_web_descriptor_rejects_old_schema_and_duplicates(self) -> None:
         duplicate = minimal_web_descriptor()
-        duplicate["presets"].append(dict(duplicate["presets"][0]))
+        duplicate["packages"].append(dict(duplicate["packages"][0]))
         with self.assertRaisesRegex(
             verify_release_surfaces.CheckFailure,
-            "duplicate Web preset name",
+            "duplicate package id",
         ):
             verify_release_surfaces.validate_web_surface_descriptor(duplicate)
 
-        dangling = minimal_web_descriptor()
-        dangling["public_surfaces"][0]["preset"] = "browser-missing"
+        old = minimal_web_descriptor()
+        old["presets"] = []
         with self.assertRaisesRegex(
             verify_release_surfaces.CheckFailure,
-            "references unknown preset browser-missing",
+            "fields must be exact",
         ):
-            verify_release_surfaces.validate_web_surface_descriptor(dangling)
+            verify_release_surfaces.validate_web_surface_descriptor(old)
 
-    def test_validate_web_descriptor_rejects_incomplete_capabilities(self) -> None:
+    def test_validate_web_descriptor_rejects_candidate_default(self) -> None:
         descriptor = minimal_web_descriptor()
-        del descriptor["presets"][0]["capabilities"]["editor_language"]
+        descriptor["default_package"] = "render"
 
         with self.assertRaisesRegex(
             verify_release_surfaces.CheckFailure,
-            "capabilities keys must be exactly",
+            "default_package must be public",
         ):
             verify_release_surfaces.validate_web_surface_descriptor(descriptor)
 
@@ -147,26 +153,6 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
                 "Merman",
             )
 
-    def test_public_entry_point_requires_non_generated_documentation(self) -> None:
-        surface = {
-            "id": "example",
-            "entry_point": "example-package",
-            "docs": ["docs/release/PACKAGE_SURFACES.md", "docs/user-guide.md"],
-        }
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            write(root, "docs/release/PACKAGE_SURFACES.md", "example-package\n")
-            write(root, "docs/user-guide.md", "User guide without an install entry.\n")
-
-            with self.assertRaisesRegex(
-                verify_release_surfaces.CheckFailure,
-                "absent from declared non-generated docs",
-            ):
-                verify_release_surfaces.check_public_surface_entry_point_docs(root, surface)
-
-            write(root, "docs/user-guide.md", "Install `example-package`.\n")
-            verify_release_surfaces.check_public_surface_entry_point_docs(root, surface)
-
     def test_ci_wiring_requires_executable_verifier_commands(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -180,7 +166,8 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
                           python3 scripts/verify-release-surfaces.py
                           python3 -m unittest \\
                             scripts/test_release_status.py \\
-                            scripts/test_verify_release_surfaces.py
+                            scripts/test_verify_release_surfaces.py \\
+                            scripts/test_web_package_group.py
             """
             write(root, ".github/workflows/ci.yml", textwrap.dedent(workflow))
             verify_release_surfaces.check_ci_wiring(root)
@@ -281,6 +268,85 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
             }
 
             verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_allows_private_node_candidate_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            for manifest in sorted(
+                path
+                for path in verify_release_surfaces.OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS
+                if path.startswith("platforms/node/")
+            ):
+                write(root, manifest, json.dumps({"name": manifest, "private": True}))
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_rejects_public_node_candidate_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "playground/tests/package.json",
+                json.dumps({"name": "@merman/playground-browser-tests", "private": True}),
+            )
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            for manifest in sorted(
+                path
+                for path in verify_release_surfaces.OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS
+                if path.startswith("platforms/node/")
+            ):
+                private = manifest != "platforms/node/packages/node/package.json"
+                write(root, manifest, json.dumps({"name": manifest, "private": private}))
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "non-surface package manifest must set private: true",
+            ):
+                verify_release_surfaces.check_package_inventory(root, contract)
 
     def test_package_inventory_allows_internal_generated_web_presets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -467,44 +533,58 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
         ):
             verify_release_surfaces.check_blocked_channel_metadata(contract)
 
-    def test_web_contract_rejects_analysis_subpath_export(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            write_minimal_web_surface(root, extra_exports={"./analysis": "./analysis.js"})
-
-            with self.assertRaisesRegex(
-                verify_release_surfaces.CheckFailure,
-                "unexpected: ./analysis",
-            ):
-                verify_release_surfaces.check_web_contract(root, web_contract())
-
-    def test_web_contract_rejects_wrong_export_target(self) -> None:
+    def test_web_contract_rejects_candidate_package_in_release_group(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_minimal_web_surface(root)
-            package = json.loads((root / "platforms/web/package.json").read_text())
-            package["exports"]["./core"]["import"] = "./dist/surfaces/ascii.js"
-            write(root, "platforms/web/package.json", json.dumps(package))
+            contract = web_contract()
+            candidate = next(
+                package
+                for package in minimal_web_descriptor()["packages"]
+                if package["visibility"] == "candidate"
+            )
+            contract["surfaces"][0]["packages"].append(
+                {
+                    "kind": "npm",
+                    "name": candidate["name"],
+                    "manifest": f"platforms/web/{candidate['package_dir']}/package.json",
+                }
+            )
 
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
-                "wrong targets: ./core",
+                "must exactly match public descriptor packages",
+            ):
+                verify_release_surfaces.check_web_contract(root, contract)
+
+    def test_web_contract_rejects_legacy_raw_wasm_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write_minimal_web_surface(root)
+            package_path = root / "platforms/web/packages/full/package.json"
+            package = json.loads(package_path.read_text())
+            package["exports"]["./pkg/merman_wasm_bg.wasm"] = "./pkg/merman_wasm_bg.wasm"
+            write(root, "platforms/web/packages/full/package.json", json.dumps(package))
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                r"export exactly '\.'",
             ):
                 verify_release_surfaces.check_web_contract(root, web_contract())
 
-    def test_web_contract_rejects_capabilities_that_disagree_with_features(self) -> None:
+    def test_web_contract_rejects_unknown_artifact_profile(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_minimal_web_surface(root)
             descriptor_path = root / verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH
             descriptor = json.loads(descriptor_path.read_text())
-            core = next(preset for preset in descriptor["presets"] if preset["name"] == "browser-core")
-            core["capabilities"]["render"] = True
+            full = next(package for package in descriptor["packages"] if package["id"] == "full")
+            full["artifact_profile"] = "web-unknown"
             write(root, verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH, json.dumps(descriptor))
 
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
-                "capabilities do not match its Cargo feature closure",
+                "references missing artifact profile",
             ):
                 verify_release_surfaces.check_web_contract(root, web_contract())
 
@@ -879,67 +959,50 @@ class WorkflowOperationContractTests(unittest.TestCase):
 
 
 def minimal_web_descriptor() -> dict:
-    preset_features = {
-        "browser-bridge": [],
-        "browser-core": ["analysis"],
-        "browser-render": ["render", "analysis"],
-        "browser-render-only": ["render"],
-        "browser-ascii": ["ascii"],
-        "browser-editor": ["editor-language"],
-        "browser-full": [
-            "analysis",
-            "ascii",
-            "layout-cytoscape",
-            "editor-language",
-            "layout-elk",
-            "render",
-        ],
-        "browser-full-no-elk": [
-            "analysis",
-            "ascii",
-            "layout-cytoscape",
-            "editor-language",
-            "render",
-        ],
-        "browser-math": [
-            "analysis",
-            "ascii",
-            "layout-cytoscape",
-            "editor-language",
-            "layout-elk",
-            "math",
-            "render",
-        ],
-    }
-    public = [
-        ("core", "browser-core"),
-        ("render", "browser-render"),
-        ("render-only", "browser-render-only"),
-        ("ascii", "browser-ascii"),
-        ("editor", "browser-editor"),
-        ("full", "browser-full"),
-    ]
     return {
         "schema_version": 1,
-        "default_preset": "browser-full",
-        "presets": [
+        "default_package": "full",
+        "packages": [
             {
-                "name": name,
-                "surface": "browser",
-                "default_features": False,
-                "features": features,
-                "capabilities": preset_capabilities(features),
-            }
-            for name, features in preset_features.items()
-        ],
-        "public_surfaces": [
+                "id": "full",
+                "name": "@mermanjs/web",
+                "package_dir": "packages/full",
+                "artifact_profile": "web-full",
+                "runtime_profile": "full",
+                "visibility": "public",
+            },
             {
-                "entry": entry,
-                "preset": preset,
-                "pkg_dir_rel": f"pkg/{entry}",
-                "runtime_profile": entry,
-            }
-            for entry, preset in public
+                "id": "analysis",
+                "name": "@mermanjs/web-analysis",
+                "package_dir": "packages/analysis",
+                "artifact_profile": "web-analysis",
+                "runtime_profile": "analysis",
+                "visibility": "public",
+            },
+            {
+                "id": "ascii",
+                "name": "@mermanjs/web-ascii",
+                "package_dir": "packages/ascii",
+                "artifact_profile": "web-ascii",
+                "runtime_profile": "ascii",
+                "visibility": "public",
+            },
+            {
+                "id": "editor",
+                "name": "@mermanjs/web-editor",
+                "package_dir": "packages/editor",
+                "artifact_profile": "web-editor",
+                "runtime_profile": "editor",
+                "visibility": "public",
+            },
+            {
+                "id": "render",
+                "name": "@mermanjs/web-render",
+                "package_dir": "packages/render",
+                "artifact_profile": "web-render",
+                "runtime_profile": "render",
+                "visibility": "candidate",
+            },
         ],
     }
 
@@ -948,26 +1011,22 @@ def web_contract() -> dict:
     return {
         "feature_contract": {
             "web_descriptor": verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
-            "web_default_preset": "browser-full",
-            "browser_presets": [
-                "browser-bridge",
-                "browser-core",
-                "browser-render",
-                "browser-render-only",
-                "browser-ascii",
-                "browser-editor",
-                "browser-full",
-                "browser-full-no-elk",
-                "browser-math",
-            ],
-            "web_auxiliary_exports": {
-                ".": {"import": "./dist/index.js", "types": "./dist/index.d.ts"},
-                "./catalog": {
-                    "import": "./dist/public-catalog.js",
-                    "types": "./dist/public-catalog.d.ts",
-                },
-            },
-        }
+            "web_package_group_surface": "web-package-group",
+        },
+        "surfaces": [
+            {
+                "id": "web-package-group",
+                "packages": [
+                    {
+                        "kind": "npm",
+                        "name": package["name"],
+                        "manifest": f"platforms/web/{package['package_dir']}/package.json",
+                    }
+                    for package in minimal_web_descriptor()["packages"]
+                    if package["visibility"] == "public"
+                ],
+            }
+        ],
     }
 
 
@@ -997,63 +1056,44 @@ def operational_workflow_contract(kind: str, workflow: str) -> dict:
     }
 
 
-def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | None = None) -> None:
-    contract = web_contract()
+def write_minimal_web_surface(root: Path) -> None:
     descriptor = minimal_web_descriptor()
-    exports = verify_release_surfaces.expected_web_package_exports(
-        descriptor,
-        contract["feature_contract"],
-    )
-    exports.update(extra_exports or {})
     write(
         root,
         "platforms/web/package.json",
-        json.dumps({"name": "@mermanjs/web", "version": "0.8.0-alpha.3", "exports": exports}),
+        json.dumps({"name": "@mermanjs/web-workspace", "private": True}),
     )
     write(
         root,
         verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
         json.dumps(descriptor),
     )
-    write(
-        root,
-        "crates/merman-wasm/Cargo.toml",
-        """
-        [package]
-        name = "merman-wasm"
-
-        [features]
-        default = []
-        analysis = []
-        ascii = []
-        render = []
-        layout-cytoscape = []
-        layout-elk = []
-        editor-language = ["analysis"]
-        math = ["render"]
-        """,
-    )
-    for subdir in ["core", "render", "render-only", "ascii", "editor", "full"]:
-        write(root, f"platforms/web/pkg/{subdir}/README.md", "# package\n")
-    docs = "\n".join(
-        f"@mermanjs/web/{surface['entry']}"
-        for surface in minimal_web_descriptor()["public_surfaces"]
-    )
-    write(root, "README.md", docs)
-    write(root, "platforms/web/README.md", docs)
-    write(root, "docs/release/PACKAGE_SURFACES.md", docs)
-
-
-def preset_capabilities(features: list[str]) -> dict[str, bool]:
-    enabled = set(features)
-    if "editor-language" in enabled:
-        enabled.add("analysis")
-    if "math" in enabled:
-        enabled.add("render")
-    return {
-        capability: feature in enabled
-        for capability, feature in verify_release_surfaces.WEB_CAPABILITY_FEATURES.items()
-    }
+    profiles = []
+    for package in descriptor["packages"]:
+        profiles.append({"id": package["artifact_profile"]})
+        manifest = {
+            "name": package["name"],
+            "version": "0.8.0-alpha.4",
+            "files": [
+                "artifacts",
+                "dist",
+                "LICENSE",
+                "README.md",
+                "THIRD_PARTY_LICENSES",
+                "THIRD_PARTY_NOTICES.md",
+            ],
+            "exports": {".": {"import": "./dist/index.js", "types": "./dist/index.d.ts"}},
+        }
+        if package["visibility"] == "candidate":
+            manifest["private"] = True
+        else:
+            manifest["publishConfig"] = {"access": "public"}
+        write(
+            root,
+            f"platforms/web/{package['package_dir']}/package.json",
+            json.dumps(manifest),
+        )
+    write(root, "capabilities/artifact-profiles-v1.json", json.dumps({"profiles": profiles}))
 
 
 def write(root: Path, rel_path: str, text: str) -> None:

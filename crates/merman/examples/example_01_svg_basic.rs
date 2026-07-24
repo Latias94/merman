@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = support::read_mermaid_or_default(

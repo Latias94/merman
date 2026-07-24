@@ -647,7 +647,7 @@ fn build_arrow(
     }
 }
 
-pub fn layout_wardley_diagram_typed(
+pub(crate) fn layout_wardley_diagram_typed(
     model: &WardleyDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
@@ -1211,3 +1211,7 @@ pub fn layout_wardley_diagram_typed(
         deaccelerators,
     })
 }
+
+#[cfg(test)]
+#[path = "wardley_layout_tests.rs"]
+mod wardley_layout_tests;

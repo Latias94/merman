@@ -1,4 +1,4 @@
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 
 const SAFE_INLINE_SVG: unique symbol = Symbol("SafeInlineSvg");
 

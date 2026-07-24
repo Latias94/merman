@@ -1,6 +1,8 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::{HeadlessRenderer, RenderResourceProfile};
+use merman::svg::HeadlessRenderer;
+#[cfg(feature = "png")]
+use merman::svg::RenderResourceProfile;
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -233,12 +235,12 @@ fn zed_deeply_nested_flowchart_renders_past_legacy_depth_limit() {
 }
 
 #[test]
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
     let error = renderer("zed-deep-flowchart-png")
         .with_resource_profile(RenderResourceProfile::TrustedNative)
-        .render_png_sync(&source, &merman::render::raster::RasterOptions::default())
+        .render_png_sync(&source, &merman::svg::export::RasterOptions::default())
         .expect_err("rasterization must reject a tree deeper than the backend capability");
 
     assert!(error.to_string().contains("max_svg_tree_depth"), "{error}");

@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 
@@ -66,6 +66,8 @@ pub enum RuntimePolicyError {
     SystemTimeZone(String),
     #[error("runtime instant {0} is outside the supported calendar range")]
     InstantOutOfRange(i64),
+    #[error("fixed_today local datetime {0}T00:00:00 cannot be resolved in the selected time zone")]
+    FixedLocalMidnightOutOfRange(NaiveDate),
     #[error("system random adapter failed: {0}")]
     SystemRandom(String),
 }
@@ -182,6 +184,25 @@ impl RuntimePolicy {
     pub fn with_fixed_today(mut self, today: Option<NaiveDate>) -> Self {
         self.fixed_today_local = today;
         self
+    }
+
+    /// Freezes both the local calendar day and the operation clock at that day's local midnight.
+    ///
+    /// Use this when a host accepts a date-only configuration value such as `fixed_today`.
+    /// Resolving it through the selected time zone preserves target-date DST behavior and returns
+    /// a typed error when the date cannot be represented instead of overflowing at an offset
+    /// boundary.
+    pub fn try_with_fixed_today_at_local_midnight(
+        mut self,
+        today: NaiveDate,
+    ) -> Result<Self, RuntimePolicyError> {
+        let local = self
+            .local_time_zone
+            .datetime_from_naive_local(today.and_time(NaiveTime::MIN))
+            .ok_or(RuntimePolicyError::FixedLocalMidnightOutOfRange(today))?;
+        self.clock = ClockPolicy::Fixed(local.timestamp_millis());
+        self.fixed_today_local = Some(today);
+        Ok(self)
     }
 
     /// Selects a fixed UTC offset without overloading a sentinel value to mean "system".
@@ -615,6 +636,20 @@ mod tests {
         assert_eq!(context.clock_source(), RuntimeValueSource::Fixed);
         assert_eq!(context.random_source(), RuntimeValueSource::Fixed);
         assert!(context.timing().is_none());
+    }
+
+    #[test]
+    fn fixed_today_local_midnight_rejects_unrepresentable_offset_boundary() {
+        let error = RuntimePolicy::deterministic()
+            .try_with_fixed_local_offset_minutes(1439)
+            .expect("valid fixed offset")
+            .try_with_fixed_today_at_local_midnight(NaiveDate::MIN)
+            .expect_err("minimum date at eastern boundary must be rejected");
+
+        assert_eq!(
+            error,
+            RuntimePolicyError::FixedLocalMidnightOutOfRange(NaiveDate::MIN)
+        );
     }
 
     #[test]

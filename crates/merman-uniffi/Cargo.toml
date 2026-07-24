@@ -14,10 +14,17 @@ keywords = ["mermaid", "diagrams", "uniffi", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[package.metadata.merman]
+artifact-profile-required = true
 
 [[example]]
 name = "generate_python_package"
+required-features = ["bindgen-smoke"]
+
+[[example]]
+name = "generate_swift_bindings"
 required-features = ["bindgen-smoke"]
 
 [features]
@@ -28,18 +35,20 @@ system-random = ["merman-bindings-core/system-random"]
 system-timing = ["merman-bindings-core/system-timing"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
-render = ["merman-bindings-core/render"]
-layout-cytoscape = ["merman-bindings-core/layout-cytoscape"]
-layout-elk = ["render", "merman-bindings-core/layout-elk"]
-math = ["render", "merman-bindings-core/math"]
-raster = ["merman-bindings-core/raster"]
-bindgen-smoke = ["uniffi/bindgen"]
+svg = ["merman-bindings-core/svg"]
+png = ["svg", "merman-bindings-core/png"]
+jpeg = ["svg", "merman-bindings-core/jpeg"]
+pdf = ["svg", "merman-bindings-core/pdf"]
+layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+math = ["svg", "merman-bindings-core/math"]
+bindgen-smoke = ["uniffi/bindgen", "uniffi/cargo-metadata"]
 
 [dependencies]
 merman-bindings-core.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-uniffi.workspace = true
+uniffi = { workspace = true, default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"

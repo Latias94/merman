@@ -42,8 +42,8 @@ use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagn
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities, DiagnosticSeverity,
@@ -61,8 +61,9 @@ use tower_lsp::lsp_types::{
     ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
     UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
+    WorkspaceSymbolResponse,
 };
-use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
+use tower_lsp_server::{Client, ClientSocket, LanguageServer, LspService};
 
 const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 
@@ -75,7 +76,7 @@ pub struct MermanLanguageServer {
 }
 
 impl MermanLanguageServer {
-    /// Creates a language server for hosts that construct the tower-lsp transport themselves.
+    /// Creates a language server for hosts that construct the `tower-lsp-server` transport.
     pub fn new(client: Client) -> Self {
         let refresh_coordinator = RefreshCoordinator::from_tower_client(client.clone());
         Self::with_refresh_coordinator(client, refresh_coordinator)
@@ -95,7 +96,7 @@ impl MermanLanguageServer {
         }
     }
 
-    /// Builds the source-compatible tower-lsp service and client socket.
+    /// Builds the `tower-lsp-server` service and client socket.
     pub fn service() -> (LspService<Self>, ClientSocket) {
         LspService::build(Self::new)
             .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
@@ -208,7 +209,7 @@ impl MermanLanguageServer {
     #[cfg(test)]
     async fn snapshot_for_uri(
         &self,
-        uri: &tower_lsp::lsp_types::Url,
+        uri: &tower_lsp_server::ls_types::Uri,
     ) -> Option<Arc<DocumentSnapshot>> {
         snapshot_context::snapshot_context_for_uri(&self.store, uri, SnapshotContextKind::Structure)
             .await
@@ -219,7 +220,7 @@ impl MermanLanguageServer {
 
     async fn structure_snapshot_result<T>(
         &self,
-        uri: &tower_lsp::lsp_types::Url,
+        uri: &tower_lsp_server::ls_types::Uri,
         compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
     ) -> Result<Option<T>> {
         snapshot_context::snapshot_result(&self.store, uri, SnapshotContextKind::Structure, compute)
@@ -228,7 +229,7 @@ impl MermanLanguageServer {
 
     async fn semantic_snapshot_context_for_uri(
         &self,
-        uri: &tower_lsp::lsp_types::Url,
+        uri: &tower_lsp_server::ls_types::Uri,
     ) -> Result<Option<SnapshotContext>> {
         snapshot_context::snapshot_context_for_uri(
             &self.store,
@@ -298,7 +299,7 @@ impl MermanLanguageServer {
         )
     }
 
-    fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
+    fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
         let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         serialized.hash(&mut hasher);
@@ -306,7 +307,7 @@ impl MermanLanguageServer {
     }
 
     fn document_diagnostic_report(
-        diagnostics: Vec<tower_lsp::lsp_types::Diagnostic>,
+        diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
         result_id: Option<String>,
         previous_result_id: Option<&str>,
     ) -> DocumentDiagnosticReportResult {
@@ -337,7 +338,7 @@ impl MermanLanguageServer {
     async fn diagnostics_for_current_context(
         &self,
         context: &DiagnosticContext,
-    ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
+    ) -> Option<Vec<tower_lsp_server::ls_types::Diagnostic>> {
         let profile = self.client_profile();
         let (diagnostics, analysis_context) =
             match Self::unavailable_document_diagnostics_with_profile(&context.document, profile) {
@@ -371,7 +372,10 @@ impl MermanLanguageServer {
     async fn diagnostics_or_recompute_latest(
         &self,
         mut context: DiagnosticContext,
-    ) -> Result<(DiagnosticContext, Vec<tower_lsp::lsp_types::Diagnostic>)> {
+    ) -> Result<(
+        DiagnosticContext,
+        Vec<tower_lsp_server::ls_types::Diagnostic>,
+    )> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
             if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
                 return Ok((context, diagnostics));
@@ -402,7 +406,7 @@ impl MermanLanguageServer {
         }
     }
 
-    async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
+    async fn publish_for_uri(&self, uri: &tower_lsp_server::ls_types::Uri) {
         if self.client_profile().diagnostic_pull {
             return;
         }
@@ -438,7 +442,7 @@ impl MermanLanguageServer {
     async fn record_semantic_tokens_state(
         &self,
         context: &SnapshotContext,
-        tokens: Vec<tower_lsp::lsp_types::SemanticToken>,
+        tokens: Vec<tower_lsp_server::ls_types::SemanticToken>,
         result_id: Option<String>,
     ) -> Result<()> {
         let mut store = self.store.lock().await;
@@ -501,7 +505,7 @@ impl MermanLanguageServer {
                 if commit.stale_open_documents {
                     return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
                 }
-                // The current tower-lsp handler path exposes no explicit cancel token here.
+                // The current tower-lsp-server handler path exposes no explicit cancel token here.
                 tokio::task::yield_now().await;
             }
         }
@@ -515,7 +519,7 @@ impl MermanLanguageServer {
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
-    ) -> tower_lsp::jsonrpc::Result<()> {
+    ) -> tower_lsp_server::jsonrpc::Result<()> {
         match initialization_options {
             None => {
                 self.replace_analyzer(default_lsp_analysis_options()).await;
@@ -524,7 +528,7 @@ impl MermanLanguageServer {
             Some(value) => {
                 let options = analysis_options_with_lsp_resource_defaults(
                     analysis_options_from_json_value(&value).map_err(|err| {
-                        tower_lsp::jsonrpc::Error::invalid_params(err.to_string())
+                        tower_lsp_server::jsonrpc::Error::invalid_params(err.to_string())
                     })?,
                 );
                 self.replace_analyzer(options).await;
@@ -549,7 +553,6 @@ impl MermanLanguageServer {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let profile = ClientProtocolProfile::negotiate(&params.capabilities);
@@ -558,14 +561,14 @@ impl LanguageServer for MermanLanguageServer {
             .await?;
         self.client_profile
             .set(profile)
-            .map_err(|_| tower_lsp::jsonrpc::Error::invalid_request())?;
+            .map_err(|_| tower_lsp_server::jsonrpc::Error::invalid_request())?;
         Ok(InitializeResult {
             capabilities,
             ..InitializeResult::default()
         })
     }
 
-    async fn initialized(&self, _: tower_lsp::lsp_types::InitializedParams) {
+    async fn initialized(&self, _: tower_lsp_server::ls_types::InitializedParams) {
         self.client
             .log_message(MessageType::INFO, "merman-lsp initialized")
             .await;
@@ -612,7 +615,7 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_change_configuration(
         &self,
-        params: tower_lsp::lsp_types::DidChangeConfigurationParams,
+        params: tower_lsp_server::ls_types::DidChangeConfigurationParams,
     ) {
         let options = if params.settings.is_null() {
             default_lsp_analysis_options()
@@ -902,7 +905,7 @@ impl LanguageServer for MermanLanguageServer {
     async fn references(
         &self,
         params: ReferenceParams,
-    ) -> Result<Option<Vec<tower_lsp::lsp_types::Location>>> {
+    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
@@ -942,7 +945,7 @@ impl LanguageServer for MermanLanguageServer {
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
-    ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
         let contexts = self.workspace_symbol_snapshot_contexts().await?;
 
         let snapshots = contexts
@@ -954,12 +957,12 @@ impl LanguageServer for MermanLanguageServer {
         self.ensure_workspace_symbol_snapshots_current(&contexts)
             .await?;
 
-        Ok(Some(symbols))
+        Ok(Some(symbols.into()))
     }
 }
 
-fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::content_modified();
+fn stale_diagnostic_recompute_error() -> tower_lsp_server::jsonrpc::Error {
+    let mut error = tower_lsp_server::jsonrpc::Error::content_modified();
     error.message = "diagnostic document changed while recomputing".into();
     error
 }
@@ -967,14 +970,14 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
 fn semantic_token_planning_error(
     snapshot: &DocumentSnapshot,
     error: TokenPlanError,
-) -> tower_lsp::jsonrpc::Error {
+) -> tower_lsp_server::jsonrpc::Error {
     tracing::error!(
-        uri = %snapshot.uri,
+        uri = snapshot.uri.as_str(),
         version = snapshot.version,
         %error,
         "semantic token planning failed"
     );
-    let mut response = tower_lsp::jsonrpc::Error::internal_error();
+    let mut response = tower_lsp_server::jsonrpc::Error::internal_error();
     response.message = "semantic token planning failed".into();
     response.data = Some(serde_json::json!({
         "code": "merman.lsp.semantic_token_planning_failed",
@@ -1013,7 +1016,7 @@ fn document_sync_error_diagnostic(
 }
 
 fn source_descriptor_for_document(
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &tower_lsp_server::ls_types::Uri,
     kind: DocumentKind,
 ) -> merman_analysis::SourceDescriptor {
     let source_kind = match kind {
@@ -1026,13 +1029,13 @@ fn source_descriptor_for_document(
 
 fn document_kind_for_language_id(
     language_id: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &tower_lsp_server::ls_types::Uri,
 ) -> DocumentKind {
     match language_id {
         "markdown" => DocumentKind::Markdown,
         "mdx" => DocumentKind::Mdx,
         "mermaid" => DocumentKind::Diagram,
-        _ => DocumentKind::from_path(uri.path()),
+        _ => DocumentKind::from_path(uri.path().as_str()),
     }
 }
 

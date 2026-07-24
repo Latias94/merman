@@ -118,8 +118,8 @@ export async function createBrowserBenchmarkRealmSession(
     engine === "merman" ? await import("./merman-engine-artifact.ts") : null;
   const engineArtifact =
     engine === "mermaid"
-      ? opaqueRealm!.benchmarkMermaidEngineArtifact
-      : mermanRealm!.createMermanBenchmarkEngineArtifact();
+      ? await opaqueRealm!.createBenchmarkMermaidEngineArtifact(signal)
+      : await mermanRealm!.createMermanBenchmarkEngineArtifact(signal);
   const artifactAcquiredAt = performance.now();
   const bootstrapStartedAt = performance.now();
   return createBenchmarkRealmSession(engine, initialViewport, signal, {

@@ -29,6 +29,7 @@ import {
   type CompareRenderPayload,
   type RealmBootIdentity,
   type RealmEngineArtifactIdentity,
+  type RealmEngineArtifactId,
   type RealmIdentity,
 } from "../../runtime/realm/channel-protocol.ts";
 import {
@@ -76,12 +77,20 @@ interface BenchmarkEngineModule {
   readonly benchmarkEngineAdapter: BenchmarkEngineAdapter;
 }
 
-function validateBenchmarkEngineModule(
-  module: Record<string, unknown>
+const ENGINE_MODULE_EXPORTS: Readonly<
+  Record<RealmEngineArtifactId, readonly string[]>
+> = Object.freeze({
+  mermaid: Object.freeze(["benchmarkEngineAdapter", "renderWithMermaid"]),
+  "benchmark-merman": Object.freeze(["benchmarkEngineAdapter"]),
+});
+
+export function validateBenchmarkEngineModule(
+  module: Record<string, unknown>,
+  artifactId: RealmEngineArtifactId
 ): BenchmarkEngineModule {
   const adapter = module.benchmarkEngineAdapter;
   if (
-    Object.keys(module).length !== 1 ||
+    !hasExactExports(module, ENGINE_MODULE_EXPORTS[artifactId]) ||
     typeof adapter !== "object" ||
     adapter === null ||
     typeof (adapter as { initialize?: unknown }).initialize !== "function"
@@ -89,6 +98,17 @@ function validateBenchmarkEngineModule(
     throw new RealmProtocolError("Benchmark engine artifact exports are invalid.");
   }
   return module as unknown as BenchmarkEngineModule;
+}
+
+function hasExactExports(
+  module: Record<string, unknown>,
+  expected: readonly string[]
+): boolean {
+  const exports = Object.keys(module);
+  return (
+    exports.length === expected.length &&
+    expected.every((name) => Object.hasOwn(module, name))
+  );
 }
 
 export async function startBenchmarkRealm(
@@ -116,7 +136,7 @@ export async function startBenchmarkRealm(
       window.removeEventListener("message", onInit);
       const loadModule = await verifyAndCreateRealmEngineModuleLoader(
         init.engineArtifact,
-        validateBenchmarkEngineModule
+        (module) => validateBenchmarkEngineModule(module, expectedArtifact.id)
       );
       const loadAdapter: BenchmarkAdapterLoader = async (engine) => {
         if (engine !== expectedEngine) {

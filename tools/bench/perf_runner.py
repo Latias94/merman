@@ -79,7 +79,7 @@ def cargo_bench_cmd(
     warm_up: int,
     measurement: int,
     package: str = "merman",
-    features: str = "render",
+    features: str = "svg",
 ) -> list[str]:
     cmd = ["cargo", "bench", "--locked"]
     if package:

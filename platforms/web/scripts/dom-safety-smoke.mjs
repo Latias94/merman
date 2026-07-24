@@ -90,6 +90,28 @@ function animatedGif() {
   ]);
 }
 
+function gifWithExtension(extension) {
+  const source = Buffer.from(GIF_1X1, "base64");
+  const imageStart = source.indexOf(0x2c);
+  assert.ok(imageStart >= 0);
+  return Buffer.concat([source.subarray(0, imageStart), extension, source.subarray(imageStart)]);
+}
+
+function gifWithApplicationExtension(identifier) {
+  assert.equal(Buffer.byteLength(identifier, "ascii"), 11);
+  return gifWithExtension(
+    Buffer.concat([
+      Buffer.from([0x21, 0xff, 0x0b]),
+      Buffer.from(identifier, "ascii"),
+      Buffer.from([0x03, 0x01, 0x00, 0x00, 0x00]),
+    ]),
+  );
+}
+
+function gifWithPlainTextExtension() {
+  return gifWithExtension(Buffer.from([0x21, 0x01, 0x0c, ...Buffer.alloc(12), 0x00]));
+}
+
 function webpChunk(type, data) {
   const chunk = Buffer.alloc(8 + data.length + (data.length & 1));
   chunk.write(type, 0, "ascii");
@@ -288,6 +310,59 @@ for (const [format, bytes] of [
   assert.throws(
     () => assertSafeSvgForDom(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
     /animated or multi-frame/,
+  );
+}
+for (const chunkType of ["fcTL", "fdAT"]) {
+  const data = Buffer.alloc(chunkType === "fcTL" ? 26 : 4);
+  assert.throws(
+    () =>
+      assertSafeSvgForDom(
+        svgRaster(
+          rasterDataUrl("png", pngWithMetadata(chunkType, data).toString("base64")),
+        ),
+      ),
+    /animated or multi-frame/,
+  );
+}
+assert.throws(
+  () =>
+    assertSafeSvgForDom(
+      svgRaster(
+        rasterDataUrl("gif", gifWithApplicationExtension("NETSCAPE2.0").toString("base64")),
+      ),
+    ),
+  /animated or multi-frame/,
+);
+for (const gif of [
+  gifWithApplicationExtension("XXXXXXXXXXX"),
+  gifWithPlainTextExtension(),
+]) {
+  assert.throws(
+    () => assertSafeSvgForDom(svgRaster(rasterDataUrl("gif", gif.toString("base64")))),
+    /malformed embedded raster image/,
+  );
+}
+assert.throws(
+  () =>
+    assertSafeSvgForDom(
+      svgRaster(
+        rasterDataUrl("png", pngWithMetadata("vpAg", Buffer.alloc(0)).toString("base64")),
+      ),
+    ),
+  /malformed embedded raster image/,
+);
+const simpleImageChunk = Buffer.from(Buffer.from(WEBP_1X1, "base64").subarray(12));
+for (const webp of [
+  webpFile([webpChunk("JUNK", Buffer.alloc(0)), simpleImageChunk]),
+  webpFile([
+    webpChunk("VP8X", Buffer.alloc(10)),
+    webpChunk("JUNK", Buffer.alloc(0)),
+    simpleImageChunk,
+  ]),
+]) {
+  assert.throws(
+    () => assertSafeSvgForDom(svgRaster(rasterDataUrl("webp", webp.toString("base64")))),
+    /malformed embedded raster image/,
   );
 }
 for (const [type, data] of [

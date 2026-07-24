@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::RandomSeedPolicy;
+use crate::OperationSeed;
 use crate::graph::{
     CompoundEdgeSegment, EdgeLabelPlacement, HierarchyEdge, LGraph, LLabel, LNode, LPort, LSize,
     LayeredEdge, PortRef, PortSide, PortType, create_external_port_dummy,
@@ -17,6 +17,7 @@ use crate::options::{
     LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy, PortConstraints,
     SpacingOptions,
 };
+use crate::random::RandomSeedAuthority;
 
 // `org.eclipse.elk.edge.thickness` defaults to 1 in the pinned elkjs 0.9.3 CoreOptions.
 const ELK_DEFAULT_EDGE_THICKNESS: f64 = 1.0;
@@ -98,27 +99,44 @@ pub type ImportResult<T> = Result<T, ImportError>;
 /// transform nodes into `layerless_nodes`, create nested graphs for hierarchy-enabled compound
 /// nodes, transform edges with synthetic ports, and mark graph properties discovered during import.
 pub fn import_graph(input: &ElkInputGraph) -> ImportResult<LGraph> {
-    import_graph_with_random_policy(input, RandomSeedPolicy::require_explicit())
+    import_graph_with_random_seed_authority(
+        input,
+        RandomSeedAuthority::require_explicit(),
+        &[input.id.as_str()],
+    )
 }
 
-/// Imports an adapter graph with an explicit policy for ELK's `randomSeed = 0` sentinel.
+/// Imports an adapter graph using the seed captured by its owning layout operation.
 ///
-/// The supplied policy is retained by the root and every nested graph using stable graph-id paths.
+/// The operation seed is retained by the root and every nested graph using stable graph-id paths.
 /// Execution resolves the upstream `randomSeed = 0` sentinel at GraphConfigurator boundaries; it
-/// never reads a clock, random device, environment variable, or process-global state.
-pub fn import_graph_with_random_policy(
+/// never reads a clock, random device, environment variable, or process-global state. Raw callers
+/// that do not own an operation must use [`import_graph`], which fails closed for the sentinel.
+pub fn import_graph_with_operation_seed(
     input: &ElkInputGraph,
-    random_policy: RandomSeedPolicy,
+    operation_seed: OperationSeed,
 ) -> ImportResult<LGraph> {
-    import_graph_with_random_policy_at_scope(input, random_policy, &[input.id.as_str()])
+    import_graph_with_operation_seed_at_scope(input, operation_seed, &[input.id.as_str()])
 }
 
-/// Like [`import_graph_with_random_policy`], but anchors the graph at a caller-supplied absolute
+/// Like [`import_graph_with_operation_seed`], but anchors the graph at a caller-supplied absolute
 /// hierarchy path. Recursive layout wrappers use this to keep separately laid-out child graphs
 /// distinct from same-named roots.
-pub fn import_graph_with_random_policy_at_scope(
+pub fn import_graph_with_operation_seed_at_scope(
     input: &ElkInputGraph,
-    random_policy: RandomSeedPolicy,
+    operation_seed: OperationSeed,
+    root_scope: &[&str],
+) -> ImportResult<LGraph> {
+    import_graph_with_random_seed_authority(
+        input,
+        RandomSeedAuthority::operation(operation_seed),
+        root_scope,
+    )
+}
+
+fn import_graph_with_random_seed_authority(
+    input: &ElkInputGraph,
+    random_seed_authority: RandomSeedAuthority,
     root_scope: &[&str],
 ) -> ImportResult<LGraph> {
     let index = InputIndex::new(input)?;
@@ -131,10 +149,10 @@ pub fn import_graph_with_random_policy_at_scope(
         .into_iter()
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    let mut root = LGraph::new_with_random_policy(
+    let mut root = LGraph::new_with_random_seed_authority(
         input.id.clone(),
         input.options.clone(),
-        random_policy,
+        random_seed_authority,
         root_scope.clone(),
     );
     root.options.direction = resolve_direction(root.options.direction);
@@ -144,7 +162,7 @@ pub fn import_graph_with_random_policy_at_scope(
 
     if root.options.hierarchy_handling == HierarchyHandling::IncludeChildren {
         let root_scope = root_scope.iter().map(String::as_str).collect::<Vec<_>>();
-        import_hierarchical_graph(input, &index, &mut root, random_policy, &root_scope)?;
+        import_hierarchical_graph(input, &index, &mut root, random_seed_authority, &root_scope)?;
     } else {
         import_flat_graph(input, &index, &mut root, None)?;
     }
@@ -179,7 +197,7 @@ fn import_hierarchical_graph(
     input: &ElkInputGraph,
     index: &InputIndex<'_>,
     root: &mut LGraph,
-    random_policy: RandomSeedPolicy,
+    random_seed_authority: RandomSeedAuthority,
     root_scope: &[&str],
 ) -> ImportResult<()> {
     let mut queue = VecDeque::new();
@@ -205,10 +223,10 @@ fn import_hierarchical_graph(
                 .into_iter()
                 .map(str::to_owned)
                 .collect::<Vec<_>>();
-            let mut nested_graph = LGraph::new_with_random_policy(
+            let mut nested_graph = LGraph::new_with_random_seed_authority(
                 node.id.clone(),
                 nested_options,
-                random_policy,
+                random_seed_authority,
                 nested_scope,
             );
             nested_graph.parent_node_id = Some(node.id.clone());
@@ -1931,46 +1949,79 @@ mod tests {
     }
 
     #[test]
-    fn deterministic_seed_policy_scopes_nested_graphs_without_ambient_randomness() {
+    fn operation_seed_scopes_nested_graphs_and_configuration_invocations() {
+        use std::num::NonZeroU64;
+
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         let mut child = node("child");
         child.parent = Some("group".to_string());
         let mut input = graph(vec![group, child], vec![]);
         input.options.random_seed = 0;
-        let policy = RandomSeedPolicy::deterministic(0x0ddc_0ffe_e15e_cafe);
+        let operation_seed = OperationSeed::from_operation_seed(
+            NonZeroU64::new(0x0ddc_0ffe_e15e_cafe).expect("nonzero operation seed"),
+        );
 
-        let mut first = import_graph_with_random_policy(&input, policy).expect("import");
-        let mut second = import_graph_with_random_policy(&input, policy).expect("import");
+        let mut first = import_graph_with_operation_seed(&input, operation_seed).expect("import");
+        let mut second = import_graph_with_operation_seed(&input, operation_seed).expect("import");
         crate::configurator::configure_graph_properties(&mut first).expect("resolve first");
-        crate::configurator::configure_graph_properties(&mut second).expect("resolve second");
-        let first_nested = first.layerless_nodes[0]
+        let first_root_first = first.random.clone().next_long();
+        let first_nested_first = first.layerless_nodes[0]
             .nested_graph
             .as_deref()
-            .expect("nested graph");
-        let second_nested = second.layerless_nodes[0]
+            .expect("nested graph")
+            .random
+            .clone()
+            .next_long();
+        crate::configurator::configure_graph_properties(&mut first)
+            .expect("resolve repeated configuration");
+        let first_root_second = first.random.clone().next_long();
+        let first_nested_second = first.layerless_nodes[0]
             .nested_graph
             .as_deref()
-            .expect("nested graph");
+            .expect("nested graph")
+            .random
+            .clone()
+            .next_long();
+
+        crate::configurator::configure_graph_properties(&mut second).expect("resolve replay");
+        let second_root_first = second.random.clone().next_long();
+        let second_nested_first = second.layerless_nodes[0]
+            .nested_graph
+            .as_deref()
+            .expect("nested graph")
+            .random
+            .clone()
+            .next_long();
+        crate::configurator::configure_graph_properties(&mut second)
+            .expect("resolve replayed configuration");
+        let second_root_second = second.random.clone().next_long();
+        let second_nested_second = second.layerless_nodes[0]
+            .nested_graph
+            .as_deref()
+            .expect("nested graph")
+            .random
+            .clone()
+            .next_long();
 
         assert_eq!(first.options.random_seed, 0);
-        assert_eq!(first_nested.options.random_seed, 0);
-        assert_ne!(
-            first.random.clone().next_long(),
-            first_nested.random.clone().next_long()
+        assert_eq!(
+            first.layerless_nodes[0]
+                .nested_graph
+                .as_deref()
+                .expect("nested graph")
+                .options
+                .random_seed,
+            0
         );
+        assert_ne!(first_root_first, first_nested_first);
+        assert_ne!(first_root_second, first_nested_second);
+        assert_ne!(first_root_first, first_root_second);
+        assert_ne!(first_nested_first, first_nested_second);
         assert_eq!(first.options.random_seed, second.options.random_seed);
-        assert_eq!(
-            first_nested.options.random_seed,
-            second_nested.options.random_seed
-        );
-        assert_eq!(
-            first.random.clone().next_long(),
-            second.random.clone().next_long()
-        );
-        assert_eq!(
-            first_nested.random.clone().next_long(),
-            second_nested.random.clone().next_long()
-        );
+        assert_eq!(first_root_first, second_root_first);
+        assert_eq!(first_nested_first, second_nested_first);
+        assert_eq!(first_root_second, second_root_second);
+        assert_eq!(first_nested_second, second_nested_second);
     }
 }

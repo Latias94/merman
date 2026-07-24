@@ -59,7 +59,7 @@ pub struct LayoutOptions {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     /// ELK's source `randomSeed` option. `0` retains the upstream unseeded sentinel and must be
-    /// resolved by an explicit layout policy before processor execution.
+    /// resolved by an operation-owned seed before processor execution.
     pub random_seed: i32,
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,

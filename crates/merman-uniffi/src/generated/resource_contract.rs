@@ -9,7 +9,6 @@ pub enum MermanResourceProfile {
     UnboundedForTrustedInput,
 }
 
-#[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
 impl MermanResourceProfile {
     fn id(self) -> &'static str { match self {
         Self::Interactive => "interactive",
@@ -22,42 +21,23 @@ impl MermanResourceProfile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanResourceLimitId {
     MaxSourceBytes,
+    MaxModelItems,
+    MaxModelTextBytes,
+    MaxModelNestingDepth,
+    MaxLayoutWorkUnits,
     MaxSvgBytes,
     MaxSvgElements,
-    MaxSvgTreeDepth,
-    MaxFlowchartNodes,
-    MaxFlowchartEdges,
-    MaxFlowchartSubgraphs,
-    MaxClassNodes,
-    MaxClassEdges,
-    MaxClassNamespaces,
-    MaxZenumlParticipants,
-    MaxZenumlStatements,
-    MaxZenumlFragments,
-    MaxVennAreas,
-    MaxSwimlaneLineHopSegmentPairs,
-    MaxLabelBytes,
 }
 
-#[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
 impl MermanResourceLimitId {
     fn id(self) -> &'static str { match self {
         Self::MaxSourceBytes => "max_source_bytes",
+        Self::MaxModelItems => "max_model_items",
+        Self::MaxModelTextBytes => "max_model_text_bytes",
+        Self::MaxModelNestingDepth => "max_model_nesting_depth",
+        Self::MaxLayoutWorkUnits => "max_layout_work_units",
         Self::MaxSvgBytes => "max_svg_bytes",
         Self::MaxSvgElements => "max_svg_elements",
-        Self::MaxSvgTreeDepth => "max_svg_tree_depth",
-        Self::MaxFlowchartNodes => "max_flowchart_nodes",
-        Self::MaxFlowchartEdges => "max_flowchart_edges",
-        Self::MaxFlowchartSubgraphs => "max_flowchart_subgraphs",
-        Self::MaxClassNodes => "max_class_nodes",
-        Self::MaxClassEdges => "max_class_edges",
-        Self::MaxClassNamespaces => "max_class_namespaces",
-        Self::MaxZenumlParticipants => "max_zenuml_participants",
-        Self::MaxZenumlStatements => "max_zenuml_statements",
-        Self::MaxZenumlFragments => "max_zenuml_fragments",
-        Self::MaxVennAreas => "max_venn_areas",
-        Self::MaxSwimlaneLineHopSegmentPairs => "max_swimlane_line_hop_segment_pairs",
-        Self::MaxLabelBytes => "max_label_bytes",
     } }
 }
 
@@ -72,25 +52,15 @@ pub fn resource_options_json(
     profile: MermanResourceProfile,
     overrides: Vec<MermanResourceLimitOverride>,
 ) -> Result<String, MermanError> {
-    #[cfg(any(feature = "render", feature = "analysis", feature = "ascii"))]
-    {
-        let pairs = overrides
-            .iter()
-            .map(|override_| {
-                usize::try_from(override_.value)
-                    .map(|value| (override_.id.id(), value))
-                    .map_err(|_| MermanError::internal("resource override exceeds host usize"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)
-            .map_err(MermanError::from_binding)?;
-        String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))
-    }
-    #[cfg(not(any(feature = "render", feature = "analysis", feature = "ascii")))]
-    {
-        let _ = (profile, overrides);
-        Err(MermanError::from_binding(
-            merman_bindings_core::render_resource_options_unavailable(),
-        ))
-    }
+    let pairs = overrides
+        .iter()
+        .map(|override_| {
+            usize::try_from(override_.value)
+                .map(|value| (override_.id.id(), value))
+                .map_err(|_| MermanError::internal("resource override exceeds host usize"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let bytes = merman_bindings_core::resource_options_json(profile.id(), &pairs)
+        .map_err(MermanError::from_binding)?;
+    String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))
 }

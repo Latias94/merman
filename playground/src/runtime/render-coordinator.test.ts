@@ -18,7 +18,7 @@ const VIEWPORT = { width: 800, height: 600 };
 
 test("projects binding and cyclic object failures without object coercion", () => {
   const binding = projectError({
-    version: 2,
+    version: 1,
     ok: false,
     code: 5,
     code_name: "MERMAN_PARSE_ERROR",
@@ -88,7 +88,7 @@ test("projects binding and cyclic object failures without object coercion", () =
   assert.doesNotMatch(crossRealmProjection.detail ?? "", /\[object Object\]/);
 
   const oversizedBinding = projectError({
-    version: 2,
+    version: 1,
     ok: false,
     code: 5,
     code_name: "MERMAN_PARSE_ERROR",
@@ -434,7 +434,7 @@ function bindingFailureFacade(): MermanDomainFacade {
     ...facade(),
     render() {
       throw {
-        version: 2,
+        version: 1,
         ok: false,
         code: 5,
         code_name: "MERMAN_PARSE_ERROR",

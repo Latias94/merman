@@ -26,7 +26,7 @@ fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
     r0 + t * (r1 - r0)
 }
 
-pub fn layout_quadrantchart_diagram_typed(
+pub(crate) fn layout_quadrantchart_diagram_typed(
     model: &QuadrantChartRenderModel,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,

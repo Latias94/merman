@@ -1,6 +1,7 @@
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
-use merman_render::er::layout_er_diagram_typed;
+use merman_core::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
 use merman_render::model::ErDiagramLayout;
 use std::path::PathBuf;
 
@@ -11,21 +12,14 @@ fn workspace_root() -> PathBuf {
 }
 
 fn layout_er(text: &str) -> ErDiagramLayout {
-    let parsed: ParsedDiagramRender = Engine::new()
+    let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::Er(model) = parsed.model() else {
-        panic!("expected ER render model");
-    };
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_er_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("ER layout")
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("ER layout");
+    let projection = artifact.layout_json().expect("serialize ER layout");
+    serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
 
 #[test]

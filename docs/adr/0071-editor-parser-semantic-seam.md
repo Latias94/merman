@@ -83,10 +83,10 @@ or whole-document degraded fallback. Serialized facts keep `source_mapped_spans`
 compatibility: it is true for parser-backed facts and false for `Unavailable`. `Unavailable`
 produces no body completion, hover, symbols, navigation, rename, or semantic tokens.
 
-### Analysis facts v2 is the sole parser-only wire contract
+### Analysis facts v1 is the sole parser-only wire contract
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independently
-versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `2` is the sole
+versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `1` is the sole
 parser-only semantic contract produced after this migration:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
@@ -94,10 +94,9 @@ parser-only semantic contract produced after this migration:
 - parser-backed, recovered, and source-mapped-span flags retain their explicit meanings; and
 - no TextScan-shape decoder, legacy executor, deprecated alias, or dual projection path remains.
 
-Merman `0.8.0-alpha.3` exposed a TextScan-capable alpha shape with the same numeric discriminator.
-This decision deliberately resets the contract before the first stable release: consumers of that
-alpha shape must update to the current v2 schema, and facts version `1` is rejected before its body
-is decoded.
+The TextScan-capable prerelease shape is deleted. This decision deliberately resets the contract during
+the coordinated refactor: consumers must regenerate against the current package, and every discriminator
+other than version `1` is rejected before its body is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
 analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`, `DocumentSnapshot`,
@@ -176,11 +175,11 @@ Rejected. They invent semantics, weaken locality, and are unsafe for navigation 
 
 Rejected. It duplicates successful grammar behavior and splits the public meaning of a document.
 
-### Number the replacement facts shape as version 2
+### Reset the replacement facts shape as version 1
 
-Adopted by amendment. The facts API is explicitly alpha, but the previous v1 discriminator also
-identified an incompatible TextScan-capable shape. Facts v2 makes the wire boundary unambiguous and
-rejects v1 before nested fields are decoded.
+Adopted by amendment. The TextScan-capable shape and its decoder are deleted. The final parser-only
+facts contract begins at version 1, and every other discriminator is rejected before nested fields
+are decoded.
 
 ## Related Decisions
 

@@ -74,7 +74,8 @@ impl RailroadRenderNode {
     }
 }
 
-pub fn layout_railroad_diagram_typed(
+#[cfg(test)]
+pub(crate) fn layout_railroad_diagram_typed(
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -82,7 +83,7 @@ pub fn layout_railroad_diagram_typed(
     layout_railroad_diagram_typed_for_type(model, "railroad", effective_config, measurer)
 }
 
-pub fn layout_railroad_diagram_typed_for_type(
+pub(crate) fn layout_railroad_diagram_typed_for_type(
     model: &RailroadDiagramRenderModel,
     diagram_type: &str,
     effective_config: &serde_json::Value,

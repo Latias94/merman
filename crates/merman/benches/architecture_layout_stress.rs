@@ -1,7 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{RenderEnvironment, TextMeasurementPhase};
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
-use merman_render::architecture::layout_architecture_diagram_typed;
+use merman::svg::RenderEnvironment;
+use merman_core::{Engine, ParseOptions};
+use merman_render::{LayoutOptions, family};
 use std::hint::black_box;
 
 const ARCH_REASONABLE_HEIGHT: &str =
@@ -10,41 +10,27 @@ const ARCH_REASONABLE_HEIGHT: &str =
 fn bench_architecture_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
+    let environment = RenderEnvironment::deterministic();
 
     let parsed = engine
         .parse_diagram_for_render_model_sync(ARCH_REASONABLE_HEIGHT, parse_opts)
         .expect("parse")
         .expect("supported diagram");
-    let RenderSemanticModel::Architecture(model) = parsed.model() else {
-        panic!("expected architecture render model");
-    };
-    let effective_config = parsed.metadata().effective_config.as_value();
-    let ambient_seed = session.render_seed().get();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout_options = LayoutOptions::headless_svg_defaults();
 
     let mut group = c.benchmark_group("layout_stress");
     group.sample_size(50);
 
-    // Architecture layout is fast (µs–ms scale depending on fixture), so we batch to get stable
-    // signals from fixed-cost + allocation changes inside the FCoSE/manatee pipeline.
-    group.bench_function("architecture_reasonable_height_layout_x50", move |b| {
+    // Benchmark the canonical operation-owned preparation seam. The parsed model clone is part of
+    // the public API cost because raw family layout entry points are intentionally crate-private.
+    group.bench_function("architecture_reasonable_height_prepare_x50", move |b| {
         b.iter(|| {
-            let mut acc: usize = 0;
             for _ in 0..50usize {
-                let layouted = layout_architecture_diagram_typed(
-                    black_box(model),
-                    effective_config,
-                    &measurer,
-                    ambient_seed,
-                )
-                .expect("layout");
-                acc ^= layouted.nodes.len();
-                acc ^= layouted.edges.len();
+                let session = environment.begin_session().expect("render session");
+                let artifact = family::prepare(black_box(parsed.clone()), &layout_options, session)
+                    .expect("prepare");
+                black_box(artifact.family_kind());
             }
-            black_box(acc);
         });
     });
 

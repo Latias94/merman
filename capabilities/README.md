@@ -2,8 +2,8 @@
 
 Merman has two repository-wide machine authorities in this directory:
 
-- `feature-surface-v1.json` owns public capability and output IDs, implications, additive presets,
-  expected runtime reports, and target legality.
+- `feature-surface-v1.json` owns public capability and output IDs, operations, implications, and
+  target legality. It is not a product-preset or release-profile catalog.
 - `artifact-profiles-v1.json` owns exact Cargo build recipes for capability-bearing artifacts. A
   recipe names the package, target, profile, `default-features` choice, explicit features, build
   target, and expected capability/output set.
@@ -23,8 +23,8 @@ cargo run -p xtask -- verify-artifact-profiles
 ```
 
 The generator writes byte-stable Rust, TypeScript, C, and Markdown projections under
-`capabilities/generated/`. Verification checks schema, implications, preset closure, target
-legality, generated-file freshness, Cargo package/target existence, Cargo feature names, and exact
+`capabilities/generated/`. Verification checks schema, implication closure, target legality,
+generated-file freshness, Cargo package/target existence, Cargo feature names, and exact
 profile-to-capability mappings.
 
 Fixture validation can use an alternate descriptor without generating files:
@@ -39,10 +39,11 @@ units, release status, and documentation paths deliberately do not live in eithe
 
 ## Contract Boundaries
 
-A preset says which capabilities are requested. Cargo features are additive, so a preset cannot
-prove that an omitted feature or dependency is absent. An artifact profile can make that claim only
-when it records `default_features: false` and the corresponding build or dependency-closure probe
-passes. There is no hand-maintained `observed` status: executable evidence is the successful probe.
+An artifact profile says which capabilities are requested for one concrete product build. Cargo
+features are additive, so a feature list cannot prove that an omitted feature or dependency is
+absent. An artifact profile can make that claim only when it records `default_features: false` and
+the corresponding build or dependency-closure probe passes. There is no hand-maintained `observed`
+status: executable evidence is the successful probe.
 
 Artifact profiles describe compiled components, not every package that redistributes one. Wheels,
 AARs, XCFrameworks, npm packages, and other release bundles keep their package manifests and
@@ -60,7 +61,8 @@ environment adapter, or compiled tool command. It must have:
 
 - a callable public behavior and typed missing-capability result when omitted;
 - a material dependency, target, license, security, resource, build-time, or artifact-size boundary;
-- at least one applicable preset that includes it and one that omits it;
+- at least one applicable leaf build or exact artifact profile that exercises it and one valid
+  build/profile that omits it;
 - an executable API, artifact, dependency, or target probe owned by the affected surface.
 
 Diagram-specific, negative, and incidental dependency-named public features are rejected. Layout

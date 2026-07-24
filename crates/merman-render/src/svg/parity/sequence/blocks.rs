@@ -4,8 +4,8 @@ use super::block_geometry::{
     frame_x_from_message_ids, message_ids_y_range, section_message_y_range, section_separator_ys,
 };
 use super::block_text::{
-    LoopTextRenderContext, display_block_label, wrap_svg_text_lines, write_loop_text_lines,
-    write_section_title_lines,
+    LoopTextPlacement, LoopTextRenderContext, display_block_label, wrap_svg_text_lines,
+    write_loop_text_lines, write_section_title_lines,
 };
 use crate::sequence::{sequence_block_label_wrap_width, sequence_text_line_step_px};
 use rustc_hash::FxHashMap;
@@ -24,11 +24,18 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
 impl<'a> SequenceBlockRenderContext<'a> {
     fn loop_text_context(&self) -> LoopTextRenderContext<'_> {
-        LoopTextRenderContext::new(self.measurer, self.loop_text_style)
+        LoopTextRenderContext::new(
+            self.measurer,
+            self.loop_text_style,
+            self.sanitize_config,
+            self.math_renderer,
+        )
     }
 
     fn label_wrap_width(&self, label_id: &str, fallback: Option<f64>) -> Option<f64> {
@@ -165,7 +172,18 @@ pub(super) fn render_simple_sequence_block(
     let label = display_block_label(raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let max_w = ctx.label_wrap_width(label_id, Some((frame_x2 - label_box_right).max(0.0)));
     let loop_text_ctx = ctx.loop_text_context();
-    write_loop_text_lines(out, &loop_text_ctx, text_x, text_y, max_w, &label, true);
+    write_loop_text_lines(
+        out,
+        &loop_text_ctx,
+        LoopTextPlacement {
+            x: text_x,
+            y0: text_y,
+            block_start_y: frame_y1,
+            max_width: max_w,
+            use_tspan: true,
+        },
+        &label,
+    );
     out.push_str("</g>");
 }
 
@@ -251,11 +269,14 @@ pub(super) fn render_sectioned_sequence_block(
             write_loop_text_lines(
                 out,
                 &loop_text_ctx,
-                main_text_x,
-                y,
-                max_w,
+                LoopTextPlacement {
+                    x: main_text_x,
+                    y0: y,
+                    block_start_y: frame_y1,
+                    max_width: max_w,
+                    use_tspan: true,
+                },
                 &label_text,
-                true,
             );
             continue;
         }
@@ -266,6 +287,7 @@ pub(super) fn render_sectioned_sequence_block(
             &loop_text_ctx,
             center_text_x,
             y,
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
         );
@@ -321,7 +343,7 @@ pub(super) fn render_critical_sequence_block(
         // section label wraps to multiple lines. This affects the frame's top y.
         let label_text = display_block_label(sections[0].raw_label, true)
             .unwrap_or_else(|| "\u{200B}".to_string());
-        let label_box_right = frame_x1 + 50.0;
+        let label_box_right = frame_x1 + ctx.label_box_width;
         let max_w = ctx.label_wrap_width(
             sections[0].label_id,
             Some((frame_x2 - label_box_right).max(0.0)),
@@ -380,11 +402,14 @@ pub(super) fn render_critical_sequence_block(
             write_loop_text_lines(
                 out,
                 &loop_text_ctx,
-                main_text_x,
-                y,
-                max_w,
+                LoopTextPlacement {
+                    x: main_text_x,
+                    y0: y,
+                    block_start_y: frame_y1,
+                    max_width: max_w,
+                    use_tspan: true,
+                },
                 &label_text,
-                true,
             );
             continue;
         }
@@ -395,6 +420,7 @@ pub(super) fn render_critical_sequence_block(
             &loop_text_ctx,
             center_text_x,
             y,
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
         );
@@ -421,7 +447,7 @@ fn section_header_offset(
     }
 
     let base = 79.0;
-    let label_box_right = frame_x1 + 50.0;
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let max_w = ctx.label_wrap_width(
         sections[0].label_id,
         Some((frame_x2 - label_box_right).max(0.0)),

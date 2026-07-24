@@ -69,13 +69,42 @@ pub const fn layout_elk_available() -> bool {
     cfg!(feature = "layout-elk")
 }
 
+/// Reports whether the built-in math renderer is present in this compiled renderer.
+pub const fn math_available() -> bool {
+    cfg!(feature = "math")
+}
+
+/// Optional renderer capabilities that a typed diagram operation may require.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RenderCapability {
+    LayoutCytoscape,
+    LayoutElk,
+    Math,
+}
+
+impl RenderCapability {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::LayoutCytoscape => "layout-cytoscape",
+            Self::LayoutElk => "layout-elk",
+            Self::Math => "math",
+        }
+    }
+}
+
+impl std::fmt::Display for RenderCapability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.id())
+    }
+}
+
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
-    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RESOURCE_CONTRACT_SCHEMA_VERSION,
+    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RESOURCE_CONTRACT_SCHEMA_VERSION,
     RenderResourceLimitId, RenderResourcePolicy, RenderResourceProfile,
     RenderResourceProfileDescriptor, ResourceLimitDescriptor, ResourceLimitExceeded,
     ResourceLimitId, ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
@@ -90,7 +119,7 @@ pub enum Error {
         "compiled renderer lacks capability `{capability}` required by diagram `{diagram_type}`"
     )]
     MissingCapability {
-        capability: &'static str,
+        capability: RenderCapability,
         diagram_type: String,
     },
     #[error("invalid semantic model: {message}")]
@@ -122,6 +151,13 @@ impl Error {
         Self::SvgPostprocess {
             pass: pass.into(),
             message: message.into(),
+        }
+    }
+
+    pub const fn missing_capability(&self) -> Option<RenderCapability> {
+        match self {
+            Self::MissingCapability { capability, .. } => Some(*capability),
+            _ => None,
         }
     }
 }
@@ -187,17 +223,17 @@ impl<'a> LayoutExecution<'a> {
         self.session.local_time_zone()
     }
 
-    #[cfg(any(feature = "layout-cytoscape", feature = "layout-elk"))]
+    #[cfg(feature = "layout-cytoscape")]
     pub(crate) fn operation_seed(&self) -> u64 {
         self.session.render_seed().get()
     }
 
     #[cfg(feature = "layout-elk")]
-    pub(crate) fn elk_random_policy(&self) -> merman_layout_elk::ElkRandomPolicy {
+    pub(crate) fn elk_operation_seed(&self) -> merman_layout_elk::ElkOperationSeed {
         // The ELK source port applies its own stable ELK-specific domain and graph-path
-        // derivation. This root key merely keeps every layout backend tied to one immutable
+        // derivation. This token merely keeps every ELK random boundary tied to one immutable
         // render operation.
-        merman_layout_elk::ElkRandomPolicy::deterministic(self.operation_seed())
+        merman_layout_elk::ElkOperationSeed::from_operation_seed(self.session.render_seed())
     }
 }
 
@@ -235,11 +271,11 @@ fn layout_class_elk_typed_by_feature(
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
-    class::layout_class_diagram_elk_typed_with_config_and_random_policy(
+    class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
-        options.elk_random_policy(),
+        options.elk_operation_seed(),
     )
 }
 
@@ -251,7 +287,7 @@ fn layout_class_elk_typed_by_feature(
     _options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     Err(Error::MissingCapability {
-        capability: "layout-elk",
+        capability: RenderCapability::LayoutElk,
         diagram_type: diagram_type.to_string(),
     })
 }
@@ -271,6 +307,9 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         );
     }
 
+    options
+        .resource_policy()
+        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
     flowchart::layout_flowchart_typed(
         model,
         effective_config,
@@ -286,12 +325,15 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    flowchart::elk::layout_flowchart_elk_typed_with_random_policy(
+    options
+        .resource_policy()
+        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
+    flowchart::elk::layout_flowchart_elk_typed_with_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
-        options.elk_random_policy(),
+        options.elk_operation_seed(),
     )
 }
 
@@ -303,7 +345,7 @@ fn layout_flowchart_elk_typed_by_feature(
     _options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
     Err(Error::MissingCapability {
-        capability: "layout-elk",
+        capability: RenderCapability::LayoutElk,
         diagram_type: diagram_type.to_string(),
     })
 }
@@ -311,9 +353,33 @@ fn layout_flowchart_elk_typed_by_feature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{Engine, ParseOptions};
     #[cfg(feature = "layout-elk")]
-    use merman_core::{ParsedDiagramRender, RenderSemanticModel};
+    use merman_core::ParsedDiagramRender;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn render_capability_ids_and_error_accessor_are_stable() {
+        for (capability, stable_id) in [
+            (RenderCapability::LayoutCytoscape, "layout-cytoscape"),
+            (RenderCapability::LayoutElk, "layout-elk"),
+            (RenderCapability::Math, "math"),
+        ] {
+            assert_eq!(capability.id(), stable_id);
+            assert_eq!(capability.to_string(), stable_id);
+
+            let error = Error::MissingCapability {
+                capability,
+                diagram_type: "contract-test".to_string(),
+            };
+            assert_eq!(error.missing_capability(), Some(capability));
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "compiled renderer lacks capability `{stable_id}` required by diagram `contract-test`"
+                )
+            );
+        }
+    }
 
     #[cfg(feature = "layout-elk")]
     fn flowchart_layout(
@@ -373,27 +439,19 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     #[test]
-    fn elk_random_policy_is_operation_owned_and_replayable() {
-        fn resolve(seed: u64, graph_path: &[&str], invocation: u64) -> i64 {
+    fn elk_operation_seed_is_captured_once_per_render_operation() {
+        fn capture(seed: u64) -> merman_layout_elk::ElkOperationSeed {
             let session = crate::environment::RenderEnvironment::deterministic()
                 .with_runtime_policy(
                     merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
                 )
                 .begin_session()
                 .expect("render session");
-            LayoutExecution::new(&LayoutOptions::default(), &session)
-                .elk_random_policy()
-                .resolve(0, graph_path, invocation)
-                .expect("operation-owned policy")
+            LayoutExecution::new(&LayoutOptions::default(), &session).elk_operation_seed()
         }
 
-        assert_eq!(resolve(17, &["root"], 0), resolve(17, &["root"], 0));
-        assert_ne!(resolve(17, &["root"], 0), resolve(18, &["root"], 0));
-        assert_ne!(
-            resolve(17, &["root"], 0),
-            resolve(17, &["root", "group"], 0)
-        );
-        assert_ne!(resolve(17, &["root"], 0), resolve(17, &["root"], 1));
+        assert_eq!(capture(17), capture(17));
+        assert_ne!(capture(17), capture(18));
     }
 
     #[cfg(feature = "layout-elk")]
@@ -461,7 +519,7 @@ A-->B
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxFlowchartNodes, 1)
+                    .with_limit(ResourceLimitId::MaxModelItems, 1)
                     .unwrap(),
             )
             .begin_session()
@@ -476,7 +534,43 @@ A-->B
             panic!("expected resource limit error");
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(limit.limit, "max_flowchart_nodes");
+        assert_eq!(limit.limit, "max_model_items");
+    }
+
+    #[test]
+    fn render_model_dispatch_rejects_flowchart_cluster_work_before_layout() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected flowchart render model");
+        };
+        let work = flowchart::flowchart_layout_work_units(model);
+        assert!(work > 1);
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work - 1)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+
+        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected flowchart layout work resource limit"),
+        };
+
+        let Error::ResourceLimitExceeded(limit) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert_eq!(limit.actual, work);
     }
 
     #[cfg(feature = "layout-elk")]
@@ -530,7 +624,7 @@ Animal <|-- Duck
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxClassNodes, 1)
+                    .with_limit(ResourceLimitId::MaxModelItems, 1)
                     .unwrap(),
             )
             .begin_session()
@@ -545,7 +639,7 @@ Animal <|-- Duck
             panic!("expected resource limit error");
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(limit.limit, "max_class_nodes");
+        assert_eq!(limit.limit, "max_model_items");
     }
 
     #[cfg(feature = "layout-elk")]
@@ -562,7 +656,7 @@ Animal <|-- Duck
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxFlowchartEdges, 2)
+                    .with_limit(ResourceLimitId::MaxModelItems, 2)
                     .unwrap(),
             )
             .begin_session()
@@ -577,7 +671,7 @@ Animal <|-- Duck
             panic!("expected resource limit error");
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(limit.limit, "max_flowchart_edges");
+        assert_eq!(limit.limit, "max_model_items");
     }
 
     #[cfg(feature = "layout-elk")]
@@ -594,7 +688,7 @@ Animal <|-- Duck
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxClassEdges, 1)
+                    .with_limit(ResourceLimitId::MaxModelItems, 1)
                     .unwrap(),
             )
             .begin_session()
@@ -609,7 +703,7 @@ Animal <|-- Duck
             panic!("expected resource limit error");
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
-        assert_eq!(limit.limit, "max_class_edges");
+        assert_eq!(limit.limit, "max_model_items");
     }
 
     #[cfg(feature = "layout-elk")]
@@ -799,7 +893,10 @@ id1(Start)-->id2(Stop)
         };
         assert!(matches!(
             err,
-            Error::MissingCapability { capability: "layout-elk", diagram_type }
+            Error::MissingCapability {
+                capability: RenderCapability::LayoutElk,
+                diagram_type,
+            }
                 if diagram_type == "flowchart-elk"
         ));
     }
@@ -830,7 +927,10 @@ Animal <|-- Duck
         };
         assert!(matches!(
             err,
-            Error::MissingCapability { capability: "layout-elk", diagram_type }
+            Error::MissingCapability {
+                capability: RenderCapability::LayoutElk,
+                diagram_type,
+            }
                 if diagram_type == "class"
         ));
     }

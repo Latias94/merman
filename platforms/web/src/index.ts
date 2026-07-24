@@ -9,6 +9,9 @@ import {
   validatePackedSemanticTokens,
   validateSemanticTokenDescriptor,
 } from "./editor-semantic-tokens.js";
+import {
+  MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+} from "./generated/text-measurement-abi.js";
 
 import {
   isAsciiDiagramType,
@@ -21,13 +24,12 @@ import type {
   AsciiCapabilityEvidence,
   AsciiDiagramType,
   AsciiSupportLevel,
-  BindingCapabilities,
   DiagramFamilyCapability,
   DiagramType,
   HostThemePresetName,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
-  SystemAdapterId,
+  RuntimeCapabilities,
   TextMeasurementCapabilities,
   ThemeName,
 } from "./public-catalog.js";
@@ -56,7 +58,7 @@ import type {
   HostTextMeasurer,
   MermanInitInput,
   MermanWasmModule,
-  RuntimeContract,
+  RuntimeCatalog,
   ResourceOptions,
   SvgBindingOptions,
   UnavailableDiagramDetectionFacts,
@@ -65,14 +67,13 @@ import type {
 } from "./public-types.js";
 
 export {
-  ASCII_BINDING_CAPABILITIES,
   BINDING_STATUS_CODE_NAMES,
-  CORE_BINDING_CAPABILITIES,
-  DEFAULT_BINDING_CAPABILITIES,
-  EDITOR_BINDING_CAPABILITIES,
-  FULL_BINDING_CAPABILITIES,
-  RENDER_BINDING_CAPABILITIES,
-  RENDER_ONLY_BINDING_CAPABILITIES,
+  SYSTEM_ADAPTER_IDS,
+  TEXT_MEASUREMENT_PROVIDER_IDS,
+  WEB_CAPABILITIES,
+  WEB_CAPABILITY_IDS,
+  WEB_OUTPUT_IDS,
+  WEB_OUTPUTS,
   SUPPORTED_ASCII_DIAGRAMS,
   SUPPORTED_DIAGRAMS,
   SUPPORTED_HOST_THEME_PRESETS,
@@ -88,7 +89,9 @@ export {
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";
-export { MERMAN_ABI_VERSION } from "./generated/text-measurement-abi.js";
+export {
+  MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+} from "./generated/text-measurement-abi.js";
 export {
   RESOURCE_LIMIT_IDS,
   RESOURCE_PROFILES,
@@ -152,7 +155,9 @@ async function doInit(
 }
 
 async function defaultLoader(): Promise<MermanWasmModule> {
-  return (await import("../pkg/merman_wasm.js")) as unknown as MermanWasmModule;
+  throw new Error(
+    "The shared @mermanjs/web implementation has no WASM artifact. Import one browser package entry such as @mermanjs/web, @mermanjs/web-analysis, @mermanjs/web-editor, or @mermanjs/web-ascii."
+  );
 }
 
 export function getMerman(): MermanWasmModule {
@@ -917,7 +922,7 @@ export function detectDiagramFacts(
     const facts: unknown = analysisFacts(source, options);
     if (
       !isRecord(facts) ||
-      facts.version !== 2 ||
+      facts.version !== 1 ||
       typeof facts.valid !== "boolean"
     ) {
       return UNAVAILABLE_DIAGRAM_DETECTION;
@@ -1273,15 +1278,10 @@ export function editorSemanticTokens(
   return validatePackedSemanticTokens(tokens(source, uri, encodeOptions(options)));
 }
 
-export function bindingCapabilities(): BindingCapabilities {
-  const merman = getMerman();
-  return normalizeBindingCapabilities(merman.bindingCapabilities());
-}
-
-export function runtimeContract(): RuntimeContract {
+export function runtimeCatalog(): RuntimeCatalog {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  state.runtimeContractCache ??= normalizeRuntimeContract(getMerman().runtimeContract());
-  return structuredCloneValue(state.runtimeContractCache);
+  state.runtimeCatalogCache ??= normalizeRuntimeCatalog(getMerman().runtimeCatalog());
+  return structuredCloneValue(state.runtimeCatalogCache);
 }
 
 export function supportedDiagrams(): DiagramType[] {
@@ -1367,8 +1367,12 @@ export function supportedHostThemePresets(): HostThemePresetName[] {
   return [...state.supportedHostThemePresetsCache];
 }
 
-export function abiVersion(): number {
-  return getMerman().abiVersion();
+export function transportApiVersion(): number {
+  return assertSafeIntegerField(
+    getMerman().transportApiVersion(),
+    "Web transport API version",
+    1
+  );
 }
 
 export function packageVersion(): string {
@@ -1387,8 +1391,22 @@ export function encodeOptions(
 export function withResourceOptions<T extends CommonBindingOptions>(
   options: T,
   resources: ResourceOptions,
-): T & { resources: ResourceOptions } {
-  return { ...options, resources };
+): T {
+  const result: CommonBindingOptions = { ...options };
+  let hasWrapper = false;
+  for (const key of ["analysis", "merman"] as const) {
+    if (Object.prototype.hasOwnProperty.call(options, key)) {
+      hasWrapper = true;
+      const wrapper = options[key];
+      if (wrapper !== undefined && isRecord(wrapper)) {
+        result[key] = { ...wrapper, resources };
+      }
+    }
+  }
+  if (!hasWrapper) {
+    result.resources = resources;
+  }
+  return result as T;
 }
 
 function assertDiagramType(diagram: string): DiagramType {
@@ -1399,7 +1417,11 @@ function assertDiagramType(diagram: string): DiagramType {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function assertAsciiDiagramType(diagram: string): AsciiDiagramType {
@@ -1619,62 +1641,222 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
   throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }
 
-function normalizeBindingCapabilities(capabilities: BindingCapabilities): BindingCapabilities {
-  if ("core_host" in (capabilities as unknown as Record<string, unknown>)) {
-    throw new Error("Merman WASM returned the removed core_host capability.");
+function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
+  if (!isRecord(value) || value.schema_version !== 1) {
+    throw new Error("Merman WASM returned an unsupported runtime catalog schema.");
+  }
+  assertExactRecordKeys(
+    value,
+    [
+      "capabilities",
+      "package_version",
+      "registry",
+      "resources",
+      "schema_version",
+      "transport_api_version",
+    ],
+    "Merman WASM runtime catalog"
+  );
+  const catalogTransportApiVersion = assertSafeIntegerField(
+    value.transport_api_version,
+    "runtime transport API version",
+    1
+  );
+  if (catalogTransportApiVersion !== transportApiVersion()) {
+    throw new Error(
+      "Merman WASM runtime catalog transport API does not match the loaded module."
+    );
+  }
+  if (
+    typeof value.package_version !== "string" ||
+    value.package_version.length === 0 ||
+    value.package_version !== packageVersion()
+  ) {
+    throw new Error("Merman WASM runtime catalog package version does not match the loaded module.");
+  }
+  if (!isRecord(value.registry)) {
+    throw new Error("Merman WASM returned an invalid runtime registry catalog.");
+  }
+  assertExactRecordKeys(
+    value.registry,
+    ["diagram_family_count"],
+    "Merman WASM runtime registry catalog"
+  );
+  const diagramFamilyCount = assertSafeIntegerField(
+    value.registry.diagram_family_count,
+    "runtime registry diagram family count",
+    0
+  );
+  if (!isRecord(value.resources)) {
+    throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
   return {
-    render: Boolean(capabilities.render),
-    analysis: Boolean(capabilities.analysis),
-    ascii: Boolean(capabilities.ascii),
-    system_adapter_ids: normalizeBrowserSystemAdapterIds(capabilities.system_adapter_ids),
-    cytoscape_layout: Boolean(capabilities.cytoscape_layout),
-    elk_layout: Boolean(capabilities.elk_layout),
-    ratex_math: Boolean(capabilities.ratex_math),
-    editor_language: Boolean(capabilities.editor_language),
-    text_measurement: normalizeTextMeasurementCapabilities(
-      capabilities.text_measurement,
-      Boolean(capabilities.render)
-    ),
+    schema_version: 1,
+    transport_api_version: catalogTransportApiVersion,
+    package_version: value.package_version,
+    capabilities: normalizeRuntimeCapabilities(value.capabilities),
+    registry: { diagram_family_count: diagramFamilyCount },
+    resources: normalizeRuntimeResourceContract(value.resources),
   };
 }
 
-function normalizeBrowserSystemAdapterIds(value: unknown): SystemAdapterId[] {
-  if (!Array.isArray(value) || !value.every((id) => typeof id === "string")) {
-    throw new Error("Merman WASM returned invalid system adapter IDs.");
+function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
+  if (!isRecord(value)) {
+    throw new Error("Merman WASM returned an invalid runtime capability report.");
   }
-  if (value.length > 0) {
+  assertExactRecordKeys(value, [
+    "capability_ids",
+    "output_ids",
+    "operation_ids",
+    "system_adapter_ids",
+    "text_measurement",
+  ], "Merman WASM runtime capability report");
+
+  const capabilityIds = normalizeSortedIdentifierIds(value.capability_ids, "runtime capability IDs");
+  const capabilitySet = new Set(capabilityIds);
+  const operationIds = normalizeSortedIdentifierIds(
+    value.operation_ids,
+    "runtime binding operation IDs"
+  );
+  const operationSet = new Set(operationIds);
+  const outputIds = normalizeSortedIdentifierIds(value.output_ids, "runtime output IDs");
+  for (const outputId of outputIds) {
+    if (!operationSet.has(outputId)) {
+      throw new Error(
+        `Merman WASM runtime output ${outputId} is absent from runtime binding operation IDs.`
+      );
+    }
+  }
+
+  const systemAdapterIds = normalizeSortedIdentifierIds(
+    value.system_adapter_ids,
+    "system adapter IDs"
+  );
+  for (const adapterId of systemAdapterIds) {
+    if (!capabilitySet.has(adapterId)) {
+      throw new Error(
+        `Merman WASM system adapter ${adapterId} is absent from runtime capability IDs.`
+      );
+    }
+  }
+  if (systemAdapterIds.length !== 0) {
     throw new Error("Merman browser WASM must not expose native system adapters.");
   }
-  return [];
+
+  const textMeasurement = normalizeTextMeasurementCapabilities(value.text_measurement);
+  const svgAvailable = capabilitySet.has("svg");
+  if (svgAvailable !== (textMeasurement !== null)) {
+    throw new Error(
+      "Merman WASM text measurement must be present exactly when SVG is available."
+    );
+  }
+
+  return {
+    capability_ids: capabilityIds,
+    output_ids: outputIds,
+    operation_ids: operationIds,
+    system_adapter_ids: systemAdapterIds,
+    text_measurement: textMeasurement,
+  };
 }
 
-function normalizeRuntimeContract(contract: RuntimeContract): RuntimeContract {
-  if (!contract || typeof contract !== "object" || contract.schema_version !== 4) {
-    throw new Error("Merman WASM returned an unsupported runtime contract schema.");
+function normalizeRuntimeResourceContract(
+  value: Record<string, unknown>
+): RuntimeCatalog["resources"] {
+  assertExactRecordKeys(
+    value,
+    [
+      "schema_version",
+      "general_binding_default_profile",
+      "cli_default_profile",
+      "limits",
+      "profiles",
+    ],
+    "Merman WASM runtime resource contract"
+  );
+  const resourceSchemaVersion = assertSafeIntegerField(
+    value.schema_version,
+    "runtime resource schema version",
+    1
+  );
+  if (
+    typeof value.general_binding_default_profile !== "string" ||
+    value.general_binding_default_profile.length === 0 ||
+    typeof value.cli_default_profile !== "string" ||
+    value.cli_default_profile.length === 0 ||
+    !Array.isArray(value.limits) ||
+    !Array.isArray(value.profiles)
+  ) {
+    throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
-  if (contract.options_schema_version !== 1) {
-    throw new Error("Merman WASM returned an unsupported options schema.");
-  }
-  if (contract.abi_version !== getMerman().abiVersion()) {
-    throw new Error("Merman WASM runtime contract ABI does not match the loaded module.");
-  }
+  const limits = value.limits.map((limit) => {
+    if (!isRecord(limit)) {
+      throw new Error("Merman WASM returned an invalid runtime resource limit.");
+    }
+    assertExactRecordKeys(
+      limit,
+      ["id", "phase", "description", "overridable", "hard_cap"],
+      "Merman WASM runtime resource limit"
+    );
+    if (
+      typeof limit.id !== "string" ||
+      typeof limit.phase !== "string" ||
+      typeof limit.description !== "string" ||
+      typeof limit.overridable !== "boolean" ||
+      typeof limit.hard_cap !== "boolean"
+    ) {
+      throw new Error("Merman WASM returned an invalid runtime resource limit.");
+    }
+    return {
+      id: limit.id,
+      phase: limit.phase,
+      description: limit.description,
+      overridable: limit.overridable,
+      hard_cap: limit.hard_cap,
+    };
+  });
+  const profiles = value.profiles.map((profile) => {
+    if (!isRecord(profile)) {
+      throw new Error("Merman WASM returned an invalid runtime resource profile.");
+    }
+    assertExactRecordKeys(
+      profile,
+      ["id", "purpose", "trust_assumption", "recommended_binding_default", "limits"],
+      "Merman WASM runtime resource profile"
+    );
+    if (
+      typeof profile.id !== "string" ||
+      typeof profile.purpose !== "string" ||
+      typeof profile.trust_assumption !== "string" ||
+      typeof profile.recommended_binding_default !== "boolean" ||
+      !(isRecord(profile.limits) || profile.limits instanceof Map)
+    ) {
+      throw new Error("Merman WASM returned an invalid runtime resource profile.");
+    }
+    const profileLimits: Record<string, number | null> = {};
+    for (const [id, limit] of normalizeStringMapEntries(
+      profile.limits,
+      `resource profile ${profile.id} limits`
+    )) {
+      profileLimits[id] =
+        limit === null || limit === undefined
+          ? null
+          : assertSafeIntegerField(limit, `resource profile limit ${id}`, 0);
+    }
+    return {
+      id: profile.id,
+      purpose: profile.purpose,
+      trust_assumption: profile.trust_assumption,
+      recommended_binding_default: profile.recommended_binding_default,
+      limits: profileLimits,
+    };
+  });
   return {
-    ...contract,
-    payload_schemas: { ...contract.payload_schemas },
-    features: normalizeBindingCapabilities(contract.features),
-    registry: { ...contract.registry },
-    resources:
-      contract.resources == null
-        ? null
-        : {
-            ...contract.resources,
-            limits: contract.resources.limits.map((limit) => ({ ...limit })),
-            profiles: contract.resources.profiles.map((profile) => ({
-              ...profile,
-              limits: { ...profile.limits },
-            })),
-          },
+    schema_version: resourceSchemaVersion,
+    general_binding_default_profile: value.general_binding_default_profile,
+    cli_default_profile: value.cli_default_profile,
+    limits,
+    profiles,
   };
 }
 
@@ -1682,29 +1864,105 @@ function structuredCloneValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function normalizeTextMeasurementCapabilities(
-  capabilities: Partial<TextMeasurementCapabilities> | undefined,
-  renderEnabled: boolean
-): TextMeasurementCapabilities {
+function normalizeTextMeasurementCapabilities(value: unknown): TextMeasurementCapabilities | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Merman WASM returned invalid text measurement capabilities.");
+  }
+  assertExactRecordKeys(
+    value,
+    ["protocol_version", "provider_ids"],
+    "Merman WASM text measurement capabilities"
+  );
+  if (
+    !Number.isSafeInteger(value.protocol_version) ||
+    value.protocol_version !== MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION
+  ) {
+    throw new Error("Merman WASM returned an unsupported text measurement protocol.");
+  }
+  const providerIds = normalizeSortedIdentifierIds(
+    value.provider_ids,
+    "text measurement provider IDs"
+  );
+  if (!providerIds.includes("vendored")) {
+    throw new Error("Merman WASM text measurement must include vendored support.");
+  }
   return {
-    vendored:
-      capabilities?.vendored === undefined
-        ? renderEnabled
-        : Boolean(capabilities.vendored),
-    deterministic:
-      capabilities?.deterministic === undefined
-        ? renderEnabled
-        : Boolean(capabilities.deterministic),
-    host_callback: Boolean(capabilities?.host_callback),
-    font_assets: Boolean(capabilities?.font_assets),
+    protocol_version: value.protocol_version,
+    provider_ids: providerIds,
   };
+}
+
+function normalizeStringMapEntries(
+  value: unknown,
+  label: string
+): [string, unknown][] {
+  const entries = value instanceof Map
+    ? [...value.entries()]
+    : isRecord(value)
+      ? Object.entries(value)
+      : null;
+  if (entries === null || entries.some(([key]) => typeof key !== "string" || key.length === 0)) {
+    throw new Error(`Merman WASM returned invalid ${label}.`);
+  }
+  return entries as [string, unknown][];
+}
+
+function normalizeSortedIdentifierIds(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid ${label}.`);
+  }
+  const identifiers = value.map((entry) => assertRuntimeIdentifier(entry, label));
+  for (let index = 1; index < identifiers.length; index += 1) {
+    if (identifiers[index - 1] >= identifiers[index]) {
+      throw new Error(`Merman WASM ${label} must be sorted and unique.`);
+    }
+  }
+  return identifiers;
+}
+
+function assertRuntimeIdentifier(value: unknown, label: string): string {
+  if (
+    typeof value === "string" &&
+    /^[a-z0-9][a-z0-9-]*$/.test(value)
+  ) {
+    return value;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
+function assertSafeIntegerField(value: unknown, label: string, minimum: number): number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= minimum) {
+    return value;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
+function assertExactRecordKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  label: string
+): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (
+    actual.length !== wanted.length ||
+    actual.some((key, index) => key !== wanted[index])
+  ) {
+    throw new Error(`${label} has an unsupported shape.`);
+  }
 }
 
 function requireEditorLanguage<T>(
   apiName: string,
   binding: T | undefined
 ): T {
-  if (!bindingCapabilities().editor_language || binding === undefined) {
+  if (
+    !runtimeCatalog().capabilities.capability_ids.includes("editor") ||
+    binding === undefined
+  ) {
     throw new Error(`Merman ${apiName}() is not available in this artifact.`);
   }
   return binding;

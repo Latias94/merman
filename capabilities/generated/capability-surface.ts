@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8e1c5c6f69b7d1b2eae26eba0147ce7b737efe20dada50aae26672feb03fa043" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748" as const;
 
 export const TARGETS = [
   {
@@ -16,17 +16,6 @@ export const TARGETS = [
   {
     "id": "web",
     "description": "Browser wasm-bindgen artifacts."
-  }
-] as const;
-
-export const RUNTIME_CAPABILITIES = [
-  {
-    "id": "typst-transport",
-    "kind": "transport",
-    "description": "Typst wasm-minimal-protocol transport.",
-    "targets": [
-      "typst"
-    ]
   }
 ] as const;
 
@@ -262,298 +251,136 @@ export const OUTPUTS = [
   }
 ] as const;
 
-export const CAPABILITY_PRESETS = [
+export const BINDING_OPERATIONS = [
   {
-    "id": "preset-all",
-    "description": "Exhaustive non-tool Rust build and test workflow.",
+    "id": "analysis-facts-json",
+    "capability": "analysis",
+    "description": "Analyze Mermaid input and return semantic facts JSON.",
+    "media_type": "application/json",
+    "requires_uri": false,
     "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "analysis",
-      "ascii",
-      "editor",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "pdf",
-      "png",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "ascii",
-      "editor",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "pdf",
-      "png",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
+      "native",
+      "web"
     ]
   },
   {
-    "id": "preset-ci-lint",
-    "description": "Lean CLI lint workflow.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "analysis"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis"
-    ]
-  },
-  {
-    "id": "preset-editor",
-    "description": "Editor library and LSP library workflow.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "analysis",
-      "editor"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "editor"
-    ]
-  },
-  {
-    "id": "preset-mmdc",
-    "description": "Default complete CLI workflow.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "analysis",
-      "ascii",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "network-icons",
-      "parallel-markdown",
-      "pdf",
-      "png",
-      "shell-completions",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "ascii",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "network-icons",
-      "parallel-markdown",
-      "pdf",
-      "png",
-      "shell-completions",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ]
-  },
-  {
-    "id": "preset-native-sdk",
-    "description": "Native SDK and binding artifact workflow.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "analysis",
-      "ascii",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "pdf",
-      "png",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "ascii",
-      "jpeg",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "pdf",
-      "png",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ]
-  },
-  {
-    "id": "preset-native-svg",
-    "description": "Default native Rust SVG workflow.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ],
-    "expected_runtime_capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg",
-      "system-clock",
-      "system-random",
-      "system-timezone",
-      "system-timing"
-    ]
-  },
-  {
-    "id": "preset-static-svg",
-    "description": "Static-site SVG workflow with no system adapters.",
-    "targets": [
-      "native"
-    ],
-    "capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ]
-  },
-  {
-    "id": "preset-svg-basic",
-    "description": "SVG workflow without optional layout or math engines.",
+    "id": "analysis-json",
+    "capability": "analysis",
+    "description": "Analyze Mermaid input and return diagnostics JSON.",
+    "media_type": "application/json",
+    "requires_uri": false,
     "targets": [
       "native",
       "typst",
       "web"
-    ],
-    "capabilities": [
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "svg"
     ]
   },
   {
-    "id": "preset-web-analysis",
-    "description": "Browser analysis artifact.",
+    "id": "ascii",
+    "capability": "ascii",
+    "description": "Render Mermaid input as terminal text.",
+    "media_type": "text/plain; charset=utf-8",
+    "requires_uri": false,
     "targets": [
+      "native",
       "web"
-    ],
-    "capabilities": [
-      "analysis"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis"
     ]
   },
   {
-    "id": "preset-web-ascii",
-    "description": "Browser ASCII artifact.",
+    "id": "document-analysis-facts-json",
+    "capability": "analysis",
+    "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+    "media_type": "application/json",
+    "requires_uri": true,
     "targets": [
+      "native",
       "web"
-    ],
-    "capabilities": [
-      "ascii"
-    ],
-    "expected_runtime_capabilities": [
-      "ascii"
     ]
   },
   {
-    "id": "preset-web-editor",
-    "description": "Browser editor intelligence artifact.",
+    "id": "document-analysis-json",
+    "capability": "analysis",
+    "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+    "media_type": "application/json",
+    "requires_uri": true,
     "targets": [
+      "native",
       "web"
-    ],
-    "capabilities": [
-      "analysis",
-      "editor"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "editor"
     ]
   },
   {
-    "id": "preset-web-full",
-    "description": "Fused browser artifact containing all retained Web workflows.",
+    "id": "jpeg",
+    "capability": "jpeg",
+    "description": "Render Mermaid input as JPEG.",
+    "media_type": "image/jpeg",
+    "requires_uri": false,
     "targets": [
-      "web"
-    ],
-    "capabilities": [
-      "analysis",
-      "ascii",
-      "editor",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "analysis",
-      "ascii",
-      "editor",
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
+      "native"
     ]
   },
   {
-    "id": "preset-web-render",
-    "description": "Browser SVG render artifact.",
+    "id": "layout-json",
+    "capability": "svg",
+    "description": "Render Mermaid input into layout model JSON.",
+    "media_type": "application/json",
+    "requires_uri": false,
     "targets": [
+      "native",
       "web"
-    ],
-    "capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
-    ],
-    "expected_runtime_capabilities": [
-      "layout-cytoscape",
-      "layout-elk",
-      "math",
-      "svg"
+    ]
+  },
+  {
+    "id": "pdf",
+    "capability": "pdf",
+    "description": "Render Mermaid input as PDF.",
+    "media_type": "application/pdf",
+    "requires_uri": false,
+    "targets": [
+      "native"
+    ]
+  },
+  {
+    "id": "png",
+    "capability": "png",
+    "description": "Render Mermaid input as PNG.",
+    "media_type": "image/png",
+    "requires_uri": false,
+    "targets": [
+      "native"
+    ]
+  },
+  {
+    "id": "semantic-json",
+    "capability": null,
+    "description": "Parse Mermaid input into canonical semantic JSON.",
+    "media_type": "application/json",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "id": "svg",
+    "capability": "svg",
+    "description": "Render Mermaid input as SVG.",
+    "media_type": "image/svg+xml",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "typst",
+      "web"
+    ]
+  },
+  {
+    "id": "validation-json",
+    "capability": "analysis",
+    "description": "Validate Mermaid input and return validation JSON.",
+    "media_type": "application/json",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "web"
     ]
   }
 ] as const;
@@ -565,12 +392,6 @@ export const TARGET_IDS = [
 ] as const;
 
 export type TargetId = (typeof TARGET_IDS)[number];
-
-export const RUNTIME_CAPABILITY_IDS = [
-  "typst-transport"
-] as const;
-
-export type RuntimeCapabilityId = (typeof RUNTIME_CAPABILITY_IDS)[number];
 
 export const CAPABILITY_IDS = [
   "analysis",
@@ -604,20 +425,19 @@ export const OUTPUT_IDS = [
 
 export type OutputId = (typeof OUTPUT_IDS)[number];
 
-export const PRESET_IDS = [
-  "preset-all",
-  "preset-ci-lint",
-  "preset-editor",
-  "preset-mmdc",
-  "preset-native-sdk",
-  "preset-native-svg",
-  "preset-static-svg",
-  "preset-svg-basic",
-  "preset-web-analysis",
-  "preset-web-ascii",
-  "preset-web-editor",
-  "preset-web-full",
-  "preset-web-render"
+export const BINDING_OPERATION_IDS = [
+  "analysis-facts-json",
+  "analysis-json",
+  "ascii",
+  "document-analysis-facts-json",
+  "document-analysis-json",
+  "jpeg",
+  "layout-json",
+  "pdf",
+  "png",
+  "semantic-json",
+  "svg",
+  "validation-json"
 ] as const;
 
-export type CapabilityPresetId = (typeof PRESET_IDS)[number];
+export type BindingOperationId = (typeof BINDING_OPERATION_IDS)[number];

@@ -11,21 +11,12 @@ export type ResourceProfile = (typeof RESOURCE_PROFILES)[number];
 
 export const RESOURCE_LIMIT_IDS = [
   "max_source_bytes",
+  "max_model_items",
+  "max_model_text_bytes",
+  "max_model_nesting_depth",
+  "max_layout_work_units",
   "max_svg_bytes",
   "max_svg_elements",
-  "max_svg_tree_depth",
-  "max_flowchart_nodes",
-  "max_flowchart_edges",
-  "max_flowchart_subgraphs",
-  "max_class_nodes",
-  "max_class_edges",
-  "max_class_namespaces",
-  "max_zenuml_participants",
-  "max_zenuml_statements",
-  "max_zenuml_fragments",
-  "max_venn_areas",
-  "max_swimlane_line_hop_segment_pairs",
-  "max_label_bytes",
 ] as const;
 export type ResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];
 
@@ -43,20 +34,12 @@ export interface RawResourceOptions {
 
 const OVERRIDABLE_LIMITS = new Set<ResourceLimitId>([
   "max_source_bytes",
+  "max_model_items",
+  "max_model_text_bytes",
+  "max_model_nesting_depth",
+  "max_layout_work_units",
   "max_svg_bytes",
   "max_svg_elements",
-  "max_flowchart_nodes",
-  "max_flowchart_edges",
-  "max_flowchart_subgraphs",
-  "max_class_nodes",
-  "max_class_edges",
-  "max_class_namespaces",
-  "max_zenuml_participants",
-  "max_zenuml_statements",
-  "max_zenuml_fragments",
-  "max_venn_areas",
-  "max_swimlane_line_hop_segment_pairs",
-  "max_label_bytes",
 ]);
 
 export function resourceOptions(

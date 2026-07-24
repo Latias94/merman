@@ -1,9 +1,8 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::architecture::layout_architecture_diagram_typed;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 
@@ -18,18 +17,10 @@ fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureD
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::Architecture(model) = parsed.model() else {
-        panic!("expected architecture render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    layout_architecture_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        session.render_seed().get(),
-    )
-    .expect("layout ok")
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize layout");
+    serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
+        .expect("architecture layout projection")
 }
 
 fn node_center(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {
@@ -185,18 +176,10 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let RenderSemanticModel::Architecture(model) = parsed.model() else {
-        panic!("expected architecture render model");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("contradictory row constraints must fail at layout"),
+        Err(error) => error,
     };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-
-    let error = layout_architecture_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-        session.render_seed().get(),
-    )
-    .expect_err("contradictory row constraints must fail at layout");
 
     assert!(
         error

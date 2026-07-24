@@ -1,9 +1,14 @@
+#[cfg(all(feature = "ascii", not(feature = "svg")))]
+mod ascii_render;
+mod capabilities;
 mod cli;
 mod commands;
 mod config;
 mod error;
 mod io;
+#[cfg(all(feature = "svg", feature = "analysis"))]
 mod markdown;
+#[cfg(feature = "svg")]
 mod render;
 
 use clap::Parser;

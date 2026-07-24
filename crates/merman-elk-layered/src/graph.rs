@@ -10,7 +10,7 @@ use super::options::{
     Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
     PortConstraints,
 };
-use crate::random::{JavaRandom, RandomSeedError, RandomSeedPolicy};
+use crate::random::{JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {
@@ -37,7 +37,7 @@ pub struct LGraph {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GraphRandomSeedContext {
-    policy: RandomSeedPolicy,
+    authority: RandomSeedAuthority,
     graph_path: Vec<String>,
     configuration_invocations: u64,
 }
@@ -45,18 +45,18 @@ struct GraphRandomSeedContext {
 impl LGraph {
     pub fn new(id: impl Into<String>, options: LayeredOptions) -> Self {
         let id = id.into();
-        Self::new_with_random_policy(
+        Self::new_with_random_seed_authority(
             id.clone(),
             options,
-            RandomSeedPolicy::require_explicit(),
+            RandomSeedAuthority::require_explicit(),
             vec![id],
         )
     }
 
-    pub(crate) fn new_with_random_policy(
+    pub(crate) fn new_with_random_seed_authority(
         id: impl Into<String>,
         options: LayeredOptions,
-        random_seed_policy: RandomSeedPolicy,
+        random_seed_authority: RandomSeedAuthority,
         graph_path: Vec<String>,
     ) -> Self {
         let id = id.into();
@@ -83,34 +83,11 @@ impl LGraph {
             self_loop_holders: Vec::new(),
             in_layer_successor_constraints_between_non_dummies: false,
             random_seed_context: GraphRandomSeedContext {
-                policy: random_seed_policy,
+                authority: random_seed_authority,
                 graph_path,
                 configuration_invocations: 0,
             },
         }
-    }
-
-    /// Supplies the authority used if this graph retains ELK's `randomSeed = 0` sentinel.
-    ///
-    /// A graph created with [`LGraph::new`] rejects that sentinel until a deterministic fallback
-    /// is supplied. Nonzero configured seeds are unaffected by this policy.
-    pub fn with_random_seed_policy(mut self, policy: RandomSeedPolicy) -> Self {
-        self.set_random_seed_policy(policy);
-        self
-    }
-
-    /// Updates the authority used if this graph retains ELK's `randomSeed = 0` sentinel.
-    pub fn set_random_seed_policy(&mut self, policy: RandomSeedPolicy) {
-        self.random_seed_context.policy = policy;
-        for node in &mut self.layerless_nodes {
-            if let Some(nested_graph) = node.nested_graph.as_mut() {
-                nested_graph.set_random_seed_policy(policy);
-            }
-        }
-    }
-
-    pub fn random_seed_policy(&self) -> RandomSeedPolicy {
-        self.random_seed_context.policy
     }
 
     pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
@@ -121,9 +98,10 @@ impl LGraph {
             .map(String::as_str)
             .collect::<Vec<_>>();
         let invocation = self.random_seed_context.configuration_invocations;
-        let seed = self.random_seed_context.policy.resolve(
+        let seed = self.random_seed_context.authority.resolve(
             self.options.random_seed,
             &graph_path,
+            RandomSeedPhase::GraphConfigurator,
             invocation,
         )?;
         self.random_seed_context.configuration_invocations = self

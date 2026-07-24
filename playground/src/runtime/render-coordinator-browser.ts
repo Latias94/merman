@@ -1,4 +1,4 @@
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 
 import { compareMermaidRealmController } from "./mermaid-realm.ts";
 import { createRenderCoordinator } from "./render-coordinator.ts";

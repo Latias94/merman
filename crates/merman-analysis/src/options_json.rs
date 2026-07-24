@@ -151,19 +151,20 @@ impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         let today = self.fixed_today()?;
         let offset_minutes = self.fixed_local_offset_minutes()?;
-        validate_local_time_combination(today, offset_minutes)?;
         let mut analysis =
             AnalysisOptions::default().with_max_source_bytes(self.max_source_bytes()?);
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
         }
-        if let Some(today) = today {
-            analysis = analysis.with_fixed_today(Some(today));
-        }
         if let Some(offset_minutes) = offset_minutes {
             analysis = analysis
                 .try_with_fixed_local_offset_minutes(offset_minutes)
+                .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
+        }
+        if let Some(today) = today {
+            analysis = analysis
+                .try_with_fixed_today_at_local_midnight(today)
                 .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
         }
 
@@ -279,29 +280,6 @@ impl AnalysisOptionsJson {
     }
 }
 
-fn validate_local_time_combination(
-    today: Option<NaiveDate>,
-    offset_minutes: Option<i32>,
-) -> Result<(), AnalysisOptionsJsonError> {
-    let Some(today) = today else {
-        return Ok(());
-    };
-    let time_zone = match offset_minutes {
-        Some(offset_minutes) => merman_core::time::LocalTimeZone::fixed(offset_minutes)
-            .map_err(|err| AnalysisOptionsJsonError::new(err.to_string()))?,
-        None => merman_core::time::LocalTimeZone::utc(),
-    };
-    let midnight = today
-        .and_hms_opt(0, 0, 0)
-        .expect("every valid date has a valid midnight");
-    if time_zone.datetime_from_naive_local(midnight).is_none() {
-        return Err(AnalysisOptionsJsonError::new(format!(
-            "fixed_today is outside the supported range of the selected local timezone: {today}"
-        )));
-    }
-    Ok(())
-}
-
 fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "core" => Ok(AnalysisRuleProfile::Core),
@@ -361,6 +339,20 @@ mod tests {
             context.clock_source(),
             merman_core::runtime::RuntimeValueSource::Fixed
         );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_unrepresentable_fixed_local_midnight() {
+        let options = AnalysisOptionsJson {
+            fixed_today: Some("-262143-01-01".to_string()),
+            fixed_local_offset_minutes: Some(1439),
+            ..Default::default()
+        };
+
+        let error = options
+            .to_analysis_options()
+            .expect_err("boundary local midnight must return an error");
+        assert!(error.to_string().contains("fixed_today local datetime"));
     }
 
     #[test]

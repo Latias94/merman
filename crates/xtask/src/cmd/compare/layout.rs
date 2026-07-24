@@ -31,8 +31,8 @@ pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
     merman_render::LayoutOptions::default()
 }
 
-pub(crate) fn svg_compare_environment() -> merman::render::RenderEnvironment {
-    merman::render::RenderEnvironment::deterministic()
+pub(crate) fn svg_compare_environment() -> merman::svg::RenderEnvironment {
+    merman::svg::RenderEnvironment::deterministic()
 }
 
 #[cfg(test)]

@@ -195,7 +195,7 @@ fn wardley_svg_uses_family_theme_roles_without_a_css_postpass() {
 }
 
 #[test]
-fn wardley_svg_projects_upstream_annotation_computed_styles_into_attributes() {
+fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
     let svg = render_wardley(
         concat!(
             "wardley-beta\n",
@@ -207,6 +207,7 @@ fn wardley_svg_projects_upstream_annotation_computed_styles_into_attributes() {
                 "wardley": {
                     "axisColor": "#010203",
                     "axisTextColor": "#111213",
+                    // These style-level roles must not override Wardley's direct SVG attributes.
                     "annotationStroke": "#212223",
                     "annotationTextColor": "#313233",
                     "annotationFill": "#414243"
@@ -223,21 +224,21 @@ fn wardley_svg_projects_upstream_annotation_computed_styles_into_attributes() {
             .children()
             .find(|node| node.has_tag_name("circle"))
             .and_then(|node| node.attribute("fill")),
-        Some("#414243")
+        Some("white")
     );
     assert_eq!(
         annotation_group
             .children()
             .find(|node| node.has_tag_name("circle"))
             .and_then(|node| node.attribute("stroke")),
-        Some("#212223")
+        Some("#010203")
     );
     assert_eq!(
         annotation_group
             .children()
             .find(|node| node.has_tag_name("text"))
             .and_then(|node| node.attribute("fill")),
-        Some("#313233")
+        Some("#111213")
     );
     let box_group = element_with_class(&document, "g", "wardley-annotations-box");
     assert_eq!(
@@ -245,21 +246,21 @@ fn wardley_svg_projects_upstream_annotation_computed_styles_into_attributes() {
             .children()
             .find(|node| node.has_tag_name("rect"))
             .and_then(|node| node.attribute("fill")),
-        Some("#414243")
+        Some("white")
     );
     assert_eq!(
         box_group
             .children()
             .find(|node| node.has_tag_name("rect"))
             .and_then(|node| node.attribute("stroke")),
-        Some("#212223")
+        Some("#010203")
     );
     assert_eq!(
         box_group
             .children()
             .find(|node| node.has_tag_name("text"))
             .and_then(|node| node.attribute("fill")),
-        Some("#313233")
+        Some("#111213")
     );
 }
 

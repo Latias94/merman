@@ -75,6 +75,8 @@ pub(super) fn render_sequence_interaction_overlays(
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
+        sanitize_config: ctx.sanitize_config,
+        math_renderer: ctx.math_renderer,
     };
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,

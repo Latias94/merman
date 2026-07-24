@@ -1,16 +1,20 @@
-use super::typst_profiles::{
-    TypstProfileCapabilities, TypstProfileCatalog, TypstWasmProfile, load_typst_profiles,
+use super::{
+    artifact_profiles::{WasmArtifactProfile, load_wasm_size_artifact_profiles},
+    typst_profiles::{
+        TypstPackageProfile, TypstProfileCatalog, load_typst_profiles,
+        validate_typst_artifact_profiles,
+    },
+    wasm_module_surface::{LoadedWasmModule, WasmModuleLoadError, WasmSurfaceProfile},
 };
-use super::wasm_module_surface::{LoadedWasmModule, WasmModuleLoadError, WasmSurfaceProfile};
 use crate::XtaskError;
-use serde_json::{Map as JsonMap, Value as JsonValue, json};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::path::{Path, PathBuf};
 use wasmi::{Caller, Linker, Store, Val, ValType};
 
 const DEFAULT_SOURCE: &[u8] = b"flowchart TD\nA[Hello] --> B[World]";
 const DEFAULT_OPTIONS_JSON: &[u8] =
     br#"{"fixed_today":"2026-06-10","fixed_local_offset_minutes":480}"#;
-const PAYLOAD_SCHEMA_VERSION: u64 = 1;
+const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u64 = 1;
 
 #[derive(Debug)]
 struct TypstPluginSmokeOptions {
@@ -159,7 +163,7 @@ fn print_usage() {
 pub(crate) fn validate_typst_plugin(
     wasm_file: &Path,
     catalog: &TypstProfileCatalog,
-    profile: &TypstWasmProfile,
+    profile: &TypstPackageProfile,
 ) -> Result<TypstPluginValidationReport, XtaskError> {
     validate_typst_plugin_with_input(
         wasm_file,
@@ -173,11 +177,11 @@ pub(crate) fn validate_typst_plugin(
 pub(crate) fn validate_typst_plugin_with_input(
     wasm_file: &Path,
     catalog: &TypstProfileCatalog,
-    profile: &TypstWasmProfile,
+    profile: &TypstPackageProfile,
     source: &[u8],
     options_json: &[u8],
 ) -> Result<TypstPluginValidationReport, XtaskError> {
-    validate_requested_profile(catalog, profile)?;
+    let artifact_profile = validate_requested_profile(catalog, profile)?;
     let mut instance = PluginInstance::new(wasm_file)?;
 
     let expected_abi_version = merman_typst_plugin::abi_version();
@@ -201,13 +205,7 @@ pub(crate) fn validate_typst_plugin_with_input(
     }
 
     let capabilities = call_json(&mut instance, "capabilities_json", Vec::new())?;
-    let expected_capabilities = expected_capabilities_json(profile.capabilities());
-    if capabilities != expected_capabilities {
-        return Err(smoke_error(format!(
-            "capabilities_json does not match profile `{}`: expected {expected_capabilities}, found {capabilities}",
-            profile.name()
-        )));
-    }
+    assert_capability_catalog(&capabilities, &artifact_profile)?;
 
     let render_output = instance.call(
         "render_svg_json",
@@ -226,6 +224,52 @@ pub(crate) fn validate_typst_plugin_with_input(
     let diagnostic_payload = parse_json("analyze_json diagnostic probe", &diagnostic_probe)?;
     assert_analysis_payload(&diagnostic_payload, true)?;
 
+    let render_error_output =
+        instance.call("render_svg_json", vec![source.to_vec(), b"{".to_vec()])?;
+    let render_error_payload = parse_json("render_svg_json error probe", &render_error_output)?;
+    assert_error_payload(
+        &render_error_payload,
+        "render-svg",
+        "MERMAN_OPTIONS_JSON_ERROR",
+    )?;
+
+    let analysis_error_output =
+        instance.call("analyze_json", vec![source.to_vec(), b"{".to_vec()])?;
+    let analysis_error_payload = parse_json("analyze_json error probe", &analysis_error_output)?;
+    assert_error_payload(
+        &analysis_error_payload,
+        "analyze",
+        "MERMAN_OPTIONS_JSON_ERROR",
+    )?;
+
+    for (function, operation, label, malicious_options) in [
+        (
+            "render_svg_json",
+            "render-svg",
+            "null merman wrapper",
+            br#"{"merman":null,"resources":{"profile":"trusted-native"}}"#.as_slice(),
+        ),
+        (
+            "analyze_json",
+            "analyze",
+            "array analysis wrapper",
+            br#"{"analysis":[]}"#.as_slice(),
+        ),
+    ] {
+        let output = instance.call(function, vec![source.to_vec(), malicious_options.to_vec()])?;
+        let payload = parse_json(&format!("{function} {label} probe"), &output)?;
+        assert_error_payload(&payload, operation, "MERMAN_OPTIONS_JSON_ERROR")?;
+        if !payload
+            .get("message")
+            .and_then(JsonValue::as_str)
+            .is_some_and(|message| message.contains("wrapper must be an object"))
+        {
+            return Err(smoke_error(format!(
+                "{function} did not reject the {label} before resource policy selection: {payload}"
+            )));
+        }
+    }
+
     Ok(TypstPluginValidationReport {
         render_output_bytes: render_output.len(),
         svg_bytes,
@@ -235,33 +279,67 @@ pub(crate) fn validate_typst_plugin_with_input(
 
 fn validate_requested_profile(
     catalog: &TypstProfileCatalog,
-    profile: &TypstWasmProfile,
-) -> Result<(), XtaskError> {
+    profile: &TypstPackageProfile,
+) -> Result<WasmArtifactProfile, XtaskError> {
     let crate_abi_version = merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION;
     if catalog.plugin_abi_version() != crate_abi_version {
         return Err(smoke_error(format!(
-            "Typst profile descriptor declares ABI {}; plugin declares ABI {crate_abi_version}",
+            "Typst package descriptor declares ABI {}; plugin declares ABI {crate_abi_version}",
             catalog.plugin_abi_version(),
         )));
     }
-    let is_public = catalog.public_profile_names().into_iter().any(|alias| {
-        catalog
-            .resolve_package(Some(alias))
-            .is_ok_and(|candidate| candidate.name() == profile.name())
-    });
-    if !is_public {
+    if catalog.package_profile() != profile {
         return Err(smoke_error(format!(
-            "profile `{}` is not a public Typst package profile",
+            "profile `{}` is not the canonical Typst package profile",
             profile.name()
         )));
     }
-    if !profile.capabilities().render || !profile.capabilities().analysis {
+    let artifact = canonical_typst_artifact_profile(catalog)?;
+    if !artifact
+        .capabilities
+        .iter()
+        .any(|capability| capability == "svg")
+        || !artifact
+            .capabilities
+            .iter()
+            .any(|capability| capability == "analysis")
+    {
         return Err(smoke_error(format!(
-            "public Typst package profile `{}` must support both render and analysis",
-            profile.name()
+            "canonical Typst artifact `{}` must support both render and analysis",
+            artifact.id
         )));
     }
-    Ok(())
+    Ok(artifact)
+}
+
+fn canonical_typst_artifact_profile(
+    catalog: &TypstProfileCatalog,
+) -> Result<WasmArtifactProfile, XtaskError> {
+    let profiles = load_wasm_size_artifact_profiles().map_err(|error| {
+        smoke_error(format!(
+            "failed to load canonical Typst artifact recipe `{}`: {error}",
+            catalog.artifact_profile_id()
+        ))
+    })?;
+    validate_typst_artifact_profiles(catalog, &profiles)?;
+    let matching = profiles
+        .iter()
+        .filter(|profile| profile.id == catalog.artifact_profile_id())
+        .collect::<Vec<_>>();
+    let [artifact] = matching.as_slice() else {
+        return Err(smoke_error(format!(
+            "expected exactly one canonical Typst artifact recipe `{}`, found {}",
+            catalog.artifact_profile_id(),
+            matching.len()
+        )));
+    };
+    if artifact.semantic_target != "typst" {
+        return Err(smoke_error(format!(
+            "artifact recipe `{}` is not owned by the Typst target",
+            artifact.id
+        )));
+    }
+    Ok((*artifact).clone())
 }
 
 fn call_json(
@@ -278,45 +356,265 @@ fn parse_json(name: &str, output: &[u8]) -> Result<JsonValue, XtaskError> {
         .map_err(|source| smoke_error(format!("{name} returned non-JSON bytes: {source}")))
 }
 
-fn expected_capabilities_json(capabilities: &TypstProfileCapabilities) -> JsonValue {
-    json!({
-        "render": capabilities.render,
-        "analysis": capabilities.analysis,
-        "ascii": capabilities.ascii,
-        "system_adapter_ids": [],
-        "cytoscape_layout": capabilities.cytoscape_layout,
-        "elk_layout": capabilities.elk_layout,
-        "ratex_math": capabilities.ratex_math,
-        "editor_language": capabilities.editor_language,
-        "text_measurement": {
-            "vendored": capabilities.text_measurement.vendored,
-            "deterministic": capabilities.text_measurement.deterministic,
-            "host_callback": capabilities.text_measurement.host_callback,
-            "font_assets": capabilities.text_measurement.font_assets,
-        }
-    })
+fn assert_capability_catalog(
+    payload: &JsonValue,
+    artifact: &WasmArtifactProfile,
+) -> Result<(), XtaskError> {
+    let catalog = exact_object(
+        payload,
+        &[
+            "capabilities",
+            "package_version",
+            "registry",
+            "resources",
+            "schema_version",
+            "transport_api_version",
+        ],
+        "Typst capability catalog",
+    )?;
+    if catalog.get("schema_version").and_then(JsonValue::as_u64)
+        != Some(merman_typst_plugin::TYPST_RUNTIME_CATALOG_SCHEMA_VERSION as u64)
+        || catalog
+            .get("transport_api_version")
+            .and_then(JsonValue::as_u64)
+            != Some(merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION as u64)
+        || catalog.get("package_version").and_then(JsonValue::as_str)
+            != std::str::from_utf8(&merman_typst_plugin::package_version()).ok()
+    {
+        return Err(smoke_error(format!(
+            "capabilities_json returned an invalid Typst catalog header: {payload}"
+        )));
+    }
+
+    let runtime_capabilities = catalog
+        .get("capabilities")
+        .ok_or_else(|| smoke_error("Typst runtime catalog is missing capabilities"))?;
+    let runtime_capabilities = exact_object(
+        runtime_capabilities,
+        &[
+            "capability_ids",
+            "output_ids",
+            "operation_ids",
+            "system_adapter_ids",
+            "text_measurement",
+        ],
+        "Typst runtime capabilities",
+    )?;
+    let capability_ids = string_array(
+        runtime_capabilities
+            .get("capability_ids")
+            .expect("closed runtime capabilities object"),
+        "Typst runtime capability IDs",
+    )?;
+    if capability_ids != artifact.capabilities {
+        return Err(smoke_error(format!(
+            "Typst runtime capability IDs do not match canonical artifact `{}`: expected [{}], found [{}]",
+            artifact.id,
+            artifact.capabilities.join(","),
+            capability_ids.join(",")
+        )));
+    }
+    let output_ids = string_array(
+        runtime_capabilities
+            .get("output_ids")
+            .expect("closed runtime capabilities object"),
+        "Typst runtime output IDs",
+    )?;
+    if output_ids != artifact.outputs {
+        return Err(smoke_error(format!(
+            "Typst runtime output IDs do not match canonical artifact `{}`: expected [{}], found [{}]",
+            artifact.id,
+            artifact.outputs.join(","),
+            output_ids.join(",")
+        )));
+    }
+    let operation_ids = string_array(
+        runtime_capabilities
+            .get("operation_ids")
+            .expect("closed runtime capabilities object"),
+        "Typst runtime operation IDs",
+    )?;
+    let expected_operation_ids = merman_typst_plugin::TYPST_BINDING_OPERATION_IDS
+        .iter()
+        .map(|id| (*id).to_string())
+        .collect::<Vec<_>>();
+    if operation_ids != expected_operation_ids {
+        return Err(smoke_error(format!(
+            "Typst runtime operation IDs do not match the closed plugin transport: expected [{}], found [{}]",
+            expected_operation_ids.join(","),
+            operation_ids.join(",")
+        )));
+    }
+    let system_adapter_ids = string_array(
+        runtime_capabilities
+            .get("system_adapter_ids")
+            .expect("closed runtime capabilities object"),
+        "Typst runtime system adapter IDs",
+    )?;
+    if !system_adapter_ids.is_empty() {
+        return Err(smoke_error(
+            "Typst runtime capabilities must not advertise system adapter IDs",
+        ));
+    }
+    if !output_ids
+        .iter()
+        .all(|output| operation_ids.binary_search(output).is_ok())
+    {
+        return Err(smoke_error(
+            "Typst runtime outputs must also be callable operation IDs",
+        ));
+    }
+    if !system_adapter_ids
+        .iter()
+        .all(|adapter| capability_ids.binary_search(adapter).is_ok())
+    {
+        return Err(smoke_error(
+            "Typst runtime system adapters must also be capability IDs",
+        ));
+    }
+    let text_measurement = runtime_capabilities
+        .get("text_measurement")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| {
+            smoke_error("Typst SVG runtime capabilities must expose text measurement metadata")
+        })?;
+    let text_measurement_provider_ids = string_array(
+        text_measurement.get("provider_ids").ok_or_else(|| {
+            smoke_error("Typst text measurement metadata is missing provider IDs")
+        })?,
+        "Typst text measurement provider IDs",
+    )?;
+    if text_measurement
+        .get("protocol_version")
+        .and_then(JsonValue::as_u64)
+        .is_none_or(|version| version == 0)
+        || text_measurement_provider_ids != vec!["vendored".to_string()]
+    {
+        return Err(smoke_error(format!(
+            "Typst text measurement metadata must expose only the vendored provider: {}",
+            JsonValue::Object(text_measurement.clone())
+        )));
+    }
+
+    let mut runtime_ids = capability_ids.clone();
+    runtime_ids.sort();
+    runtime_ids.dedup();
+    if runtime_ids != artifact.runtime_ids {
+        return Err(smoke_error(format!(
+            "Typst runtime IDs do not match canonical artifact `{}`: expected [{}], found [{}]",
+            artifact.id,
+            artifact.runtime_ids.join(","),
+            runtime_ids.join(",")
+        )));
+    }
+
+    let registry = exact_object(
+        catalog
+            .get("registry")
+            .expect("closed Typst capability catalog"),
+        &["diagram_family_count"],
+        "Typst registry catalog",
+    )?;
+    if registry
+        .get("diagram_family_count")
+        .and_then(JsonValue::as_u64)
+        .is_none_or(|count| count == 0)
+    {
+        return Err(smoke_error(
+            "Typst registry catalog must report a positive diagram family count",
+        ));
+    }
+
+    let resources = catalog
+        .get("resources")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| smoke_error("Typst runtime catalog must expose the resource catalog"))?;
+    if resources
+        .get("schema_version")
+        .and_then(JsonValue::as_u64)
+        .is_none_or(|version| version == 0)
+        || !resources
+            .get("profiles")
+            .and_then(JsonValue::as_array)
+            .is_some_and(|profiles| {
+                profiles.iter().any(|profile| {
+                    profile.get("id").and_then(JsonValue::as_str) == Some("constrained")
+                })
+            })
+    {
+        return Err(smoke_error(
+            "Typst runtime resource catalog must publish the constrained resource profile",
+        ));
+    }
+
+    Ok(())
+}
+
+fn string_array(value: &JsonValue, context: &str) -> Result<Vec<String>, XtaskError> {
+    let array = value
+        .as_array()
+        .ok_or_else(|| smoke_error(format!("{context} must be an array")))?;
+    let values = array
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| smoke_error(format!("{context} must contain only strings")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut sorted = values.clone();
+    sorted.sort();
+    sorted.dedup();
+    if values != sorted {
+        return Err(smoke_error(format!(
+            "{context} must be sorted and unique: [{}]",
+            values.join(",")
+        )));
+    }
+    Ok(values)
 }
 
 fn assert_render_payload(payload: &JsonValue) -> Result<usize, XtaskError> {
     let object = exact_object(
         payload,
-        &["version", "ok", "code", "code_name", "message", "svg"],
+        &[
+            "version",
+            "operation",
+            "ok",
+            "code",
+            "code_name",
+            "kind",
+            "capability_id",
+            "message",
+            "data",
+        ],
         "render payload",
     )?;
-    if object.get("version").and_then(JsonValue::as_u64) != Some(PAYLOAD_SCHEMA_VERSION)
+    if object.get("version").and_then(JsonValue::as_u64)
+        != Some(TYPST_RESULT_PAYLOAD_SCHEMA_VERSION)
+        || object.get("operation").and_then(JsonValue::as_str) != Some("render-svg")
         || object.get("ok").and_then(JsonValue::as_bool) != Some(true)
         || object.get("code").and_then(JsonValue::as_i64) != Some(0)
         || object.get("code_name").and_then(JsonValue::as_str) != Some("MERMAN_OK")
+        || !object.get("kind").is_some_and(JsonValue::is_null)
+        || !object.get("capability_id").is_some_and(JsonValue::is_null)
         || !object.get("message").is_some_and(JsonValue::is_null)
     {
         return Err(smoke_error(format!(
             "render_svg_json returned an invalid success payload: {payload}"
         )));
     }
-    let svg = object
+    let data = object
+        .get("data")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| smoke_error("render payload `data` must be an object"))?;
+    let data_value = JsonValue::Object(data.clone());
+    let data = exact_object(&data_value, &["svg"], "render payload data")?;
+    let svg = data
         .get("svg")
         .and_then(JsonValue::as_str)
-        .ok_or_else(|| smoke_error("render payload `svg` must be a string"))?;
+        .ok_or_else(|| smoke_error("render payload data `svg` must be a string"))?;
     let document = roxmltree::Document::parse(svg)
         .map_err(|source| smoke_error(format!("render payload contains invalid SVG: {source}")))?;
     if document.root_element().tag_name().name() != "svg" {
@@ -331,7 +629,45 @@ fn assert_analysis_payload(
     payload: &JsonValue,
     require_diagnostic: bool,
 ) -> Result<(), XtaskError> {
-    let canonical: merman_analysis::AnalysisPayload = serde_json::from_value(payload.clone())
+    let object = exact_object(
+        payload,
+        &[
+            "version",
+            "operation",
+            "ok",
+            "code",
+            "code_name",
+            "kind",
+            "capability_id",
+            "message",
+            "data",
+        ],
+        "analysis payload envelope",
+    )?;
+    if object.get("version").and_then(JsonValue::as_u64)
+        != Some(TYPST_RESULT_PAYLOAD_SCHEMA_VERSION)
+        || object.get("operation").and_then(JsonValue::as_str) != Some("analyze")
+        || object.get("ok").and_then(JsonValue::as_bool) != Some(true)
+        || object.get("code").and_then(JsonValue::as_i64) != Some(0)
+        || object.get("code_name").and_then(JsonValue::as_str) != Some("MERMAN_OK")
+        || !object.get("kind").is_some_and(JsonValue::is_null)
+        || !object.get("capability_id").is_some_and(JsonValue::is_null)
+        || !object.get("message").is_some_and(JsonValue::is_null)
+    {
+        return Err(smoke_error(format!(
+            "analyze_json returned an invalid success envelope: {payload}"
+        )));
+    }
+    let data = object
+        .get("data")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| smoke_error("analysis payload envelope `data` must be an object"))?;
+    let data_value = JsonValue::Object(data.clone());
+    let data = exact_object(&data_value, &["analysis"], "analysis payload envelope data")?;
+    let analysis = data
+        .get("analysis")
+        .ok_or_else(|| smoke_error("analysis payload envelope data is missing analysis"))?;
+    let canonical: merman_analysis::AnalysisPayload = serde_json::from_value(analysis.clone())
         .map_err(|source| {
             smoke_error(format!(
                 "analyze_json does not match canonical analysis schema {}: {source}",
@@ -343,9 +679,9 @@ fn assert_analysis_payload(
             "failed to serialize the canonical analysis payload: {source}"
         ))
     })?;
-    if canonical_json != *payload {
+    if canonical_json != *analysis {
         return Err(smoke_error(format!(
-            "analyze_json payload is not closed under canonical analysis schema {}: expected {canonical_json}, found {payload}",
+            "analyze_json analysis data is not closed under canonical analysis schema {}: expected {canonical_json}, found {analysis}",
             merman_analysis::ANALYSIS_PAYLOAD_VERSION
         )));
     }
@@ -377,6 +713,43 @@ fn assert_analysis_payload(
         return Err(smoke_error(
             "analysis payload `valid` does not match its error count",
         ));
+    }
+    Ok(())
+}
+
+fn assert_error_payload(
+    payload: &JsonValue,
+    operation: &str,
+    code_name: &str,
+) -> Result<(), XtaskError> {
+    let object = exact_object(
+        payload,
+        &[
+            "version",
+            "operation",
+            "ok",
+            "code",
+            "code_name",
+            "kind",
+            "capability_id",
+            "message",
+            "data",
+        ],
+        "Typst operation error payload",
+    )?;
+    if object.get("version").and_then(JsonValue::as_u64)
+        != Some(TYPST_RESULT_PAYLOAD_SCHEMA_VERSION)
+        || object.get("operation").and_then(JsonValue::as_str) != Some(operation)
+        || object.get("ok").and_then(JsonValue::as_bool) != Some(false)
+        || object.get("code").and_then(JsonValue::as_i64) == Some(0)
+        || object.get("code_name").and_then(JsonValue::as_str) != Some(code_name)
+        || !object.get("kind").is_some_and(JsonValue::is_string)
+        || !object.get("message").is_some_and(JsonValue::is_string)
+        || !object.get("data").is_some_and(JsonValue::is_null)
+    {
+        return Err(smoke_error(format!(
+            "Typst operation returned an invalid structured error payload: {payload}"
+        )));
     }
     Ok(())
 }
@@ -628,12 +1001,13 @@ fn wasm_minimal_protocol_send_result_to_host(mut caller: Caller<CallData>, ptr: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn cli_defaults_to_publish_and_accepts_only_public_profile_aliases() {
         let options = parse_options(vec!["--wasm".to_string(), "plugin.wasm".to_string()])
             .expect("default smoke options");
-        let catalog = load_typst_profiles().expect("Typst profile descriptor");
+        let catalog = load_typst_profiles().expect("Typst package descriptor");
 
         assert!(options.profile.is_none());
         assert_eq!(
@@ -641,10 +1015,10 @@ mod tests {
                 .resolve_package(options.profile.as_deref())
                 .expect("default publish profile")
                 .name(),
-            "typst-full-elk"
+            "publish"
         );
 
-        for alias in ["publish", "minimal"] {
+        for alias in ["publish"] {
             let options = parse_options(vec![
                 "--wasm".to_string(),
                 "plugin.wasm".to_string(),
@@ -654,48 +1028,45 @@ mod tests {
             .expect("named smoke profile");
             assert!(catalog.resolve_package(options.profile.as_deref()).is_ok());
         }
-        for private_name in ["typst-full-elk", "typst-bridge", "typst-render-only-no-elk"] {
+        for private_name in [
+            "minimal",
+            "typst-full-elk",
+            "typst-bridge",
+            "typst-render-only-no-elk",
+        ] {
             assert!(catalog.resolve_package(Some(private_name)).is_err());
         }
     }
 
     #[test]
-    fn publish_capabilities_are_exactly_descriptor_owned() {
-        let catalog = load_typst_profiles().expect("Typst profile descriptor");
-        let publish = catalog
-            .resolve_package(Some("publish"))
-            .expect("publish profile");
+    fn canonical_artifact_recipe_owns_publish_capabilities() {
+        let catalog = load_typst_profiles().expect("Typst package descriptor");
+        let artifact = canonical_typst_artifact_profile(&catalog).expect("Typst artifact recipe");
 
         assert_eq!(
-            expected_capabilities_json(publish.capabilities()),
-            json!({
-                "render": true,
-                "analysis": true,
-                "ascii": false,
-                "system_adapter_ids": [],
-                "cytoscape_layout": true,
-                "elk_layout": true,
-                "ratex_math": false,
-                "editor_language": false,
-                "text_measurement": {
-                    "vendored": true,
-                    "deterministic": true,
-                    "host_callback": false,
-                    "font_assets": false,
-                }
-            })
+            artifact.id,
+            catalog.artifact_profile_id(),
+            "the package profile must refer to the one canonical artifact recipe"
         );
+        assert!(artifact.capabilities.contains(&"svg".to_string()));
+        assert!(artifact.capabilities.contains(&"analysis".to_string()));
+        assert_eq!(artifact.runtime_ids, artifact.capabilities);
     }
 
     #[test]
-    fn render_payload_requires_the_closed_schema_one_shape() {
+    fn render_payload_requires_the_closed_envelope_shape() {
         let payload = json!({
             "version": 1,
+            "operation": "render-svg",
             "ok": true,
             "code": 0,
             "code_name": "MERMAN_OK",
+            "kind": null,
+            "capability_id": null,
             "message": null,
-            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            "data": {
+                "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            },
         });
         assert!(assert_render_payload(&payload).is_ok());
 
@@ -710,12 +1081,12 @@ mod tests {
     }
 
     #[test]
-    fn analysis_payload_requires_closed_schema_one_objects() {
-        let payload = valid_analysis_payload();
+    fn analysis_payload_requires_a_closed_envelope_and_closed_canonical_data() {
+        let payload = analysis_envelope(valid_analysis_payload());
         assert!(assert_analysis_payload(&payload, false).is_ok());
 
         let mut extra = payload.clone();
-        extra["source"]["legacy"] = JsonValue::Bool(true);
+        extra["data"]["analysis"]["source"]["legacy"] = JsonValue::Bool(true);
         assert!(
             assert_analysis_payload(&extra, false)
                 .unwrap_err()
@@ -723,7 +1094,7 @@ mod tests {
                 .contains("not closed")
         );
 
-        let diagnostic_payload = json!({
+        let diagnostic_payload = analysis_envelope(json!({
             "version": 1,
             "valid": false,
             "summary": { "errors": 1, "warnings": 0, "infos": 0, "hints": 0 },
@@ -745,8 +1116,22 @@ mod tests {
                 "related": [],
                 "help": null,
             }],
-        });
+        }));
         assert!(assert_analysis_payload(&diagnostic_payload, true).is_ok());
+    }
+
+    fn analysis_envelope(analysis: JsonValue) -> JsonValue {
+        json!({
+            "version": 1,
+            "operation": "analyze",
+            "ok": true,
+            "code": 0,
+            "code_name": "MERMAN_OK",
+            "kind": null,
+            "capability_id": null,
+            "message": null,
+            "data": { "analysis": analysis },
+        })
     }
 
     fn valid_analysis_payload() -> JsonValue {

@@ -4,8 +4,8 @@ use crate::snapshot::SnapshotContext;
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SnapshotContextKind {
@@ -21,8 +21,8 @@ impl SnapshotContextKind {
         matches!(self, Self::CodeActions | Self::Diagnostics)
     }
 
-    pub(crate) fn stale_error(self) -> tower_lsp::jsonrpc::Error {
-        let mut error = tower_lsp::jsonrpc::Error::content_modified();
+    pub(crate) fn stale_error(self) -> tower_lsp_server::jsonrpc::Error {
+        let mut error = tower_lsp_server::jsonrpc::Error::content_modified();
         error.message = match self {
             Self::CodeActions => "code action document changed while computing",
             Self::Diagnostics => "diagnostic document changed while computing",
@@ -37,7 +37,7 @@ impl SnapshotContextKind {
 
 pub(crate) async fn snapshot_context_for_uri(
     store: &Arc<Mutex<DocumentStore>>,
-    uri: &Url,
+    uri: &Uri,
     kind: SnapshotContextKind,
 ) -> Result<Option<SnapshotContext>> {
     let (request, executor) = {
@@ -65,11 +65,11 @@ pub(crate) async fn snapshot_context_for_uri(
 
 pub(crate) fn analysis_execution_error(
     error: crate::analysis_executor::AnalysisExecutionError,
-) -> tower_lsp::jsonrpc::Error {
+) -> tower_lsp_server::jsonrpc::Error {
     let mut response = if error.is_stale() {
-        tower_lsp::jsonrpc::Error::content_modified()
+        tower_lsp_server::jsonrpc::Error::content_modified()
     } else {
-        tower_lsp::jsonrpc::Error::internal_error()
+        tower_lsp_server::jsonrpc::Error::internal_error()
     };
     response.message = error.to_string().into();
     response
@@ -91,7 +91,7 @@ pub(crate) async fn commit_snapshot_context(
 
 pub(crate) async fn snapshot_result<T>(
     store: &Arc<Mutex<DocumentStore>>,
-    uri: &Url,
+    uri: &Uri,
     kind: SnapshotContextKind,
     compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
 ) -> Result<Option<T>> {

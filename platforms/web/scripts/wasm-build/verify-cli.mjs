@@ -13,18 +13,14 @@ import {
   currentWasmBuildToolVersions,
   verifyWasmInputManifest,
 } from "./input-manifest.mjs";
-import { publicSurfaceDirectoryNames } from "./package-ownership.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
 import {
-  defaultWebPresetName,
-  publicWebSurfaceDescriptors,
-  webPresetDescriptors,
+  defaultWebPackage,
+  webPackageDescriptors,
 } from "./web-surface-descriptor.mjs";
+import { wasmArtifactProfile } from "./build.mjs";
 
-const presets = new Map(webPresetDescriptors.map((preset) => [preset.name, preset]));
-const publicSurfaces = new Map(
-  publicWebSurfaceDescriptors.map((surface) => [surface.entry, surface]),
-);
+const packagesById = new Map(webPackageDescriptors.map((item) => [item.id, item]));
 
 export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
@@ -42,19 +38,19 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
     return;
   }
 
-  const metadataByPreset = new Map();
+  const metadataByProfile = new Map();
   let toolVersions;
   const failures = [];
   for (const target of targets) {
     const checked = verifyTarget(target, {
-      getMetadata(preset) {
-        if (!metadataByPreset.has(preset.name)) {
-          metadataByPreset.set(
-            preset.name,
-            cargoMetadataForPreset({ preset, repoRoot: repositoryRoot }),
+      getMetadata(profile) {
+        if (!metadataByProfile.has(profile.name)) {
+          metadataByProfile.set(
+            profile.name,
+            cargoMetadataForPreset({ preset: profile, repoRoot: repositoryRoot }),
           );
         }
-        return metadataByPreset.get(preset.name);
+        return metadataByProfile.get(profile.name);
       },
       getToolVersions() {
         toolVersions ??= currentWasmBuildToolVersions(repositoryRoot);
@@ -63,7 +59,7 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
     });
     if (checked.ok) {
       console.log(
-        `[merman-web] WASM inputs verified (${target.presetName}, ${target.outputDir.relative}, ${checked.digest.slice(0, 12)}).`,
+        `[merman-web] WASM inputs verified (${target.descriptor.id}, ${checked.digest.slice(0, 12)}).`,
       );
     } else {
       failures.push({ target, reasons: checked.reasons });
@@ -73,113 +69,42 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
   if (failures.length === 0) return;
   console.error("[merman-web] WASM artifact is stale or unverifiable.");
   for (const failure of failures) {
-    console.error(
-      `  ${failure.target.presetName} (${normalizePath(failure.target.outputDir.relative)}):`,
-    );
+    console.error(`  ${failure.target.descriptor.id}:`);
     for (const reason of failure.reasons) console.error(`    - ${reason}`);
   }
-  console.error("  Run from the repository root:");
-  console.error(`    ${rebuildCommandForTargets(targets)}`);
+  console.error("  Run `npm --prefix platforms/web run build:wasm` from the repository root.");
   process.exitCode = 1;
 }
 
 export function parseVerificationTargets(args) {
   assertKnownArgs(args, {
-    valueArgs: ["--preset", "--out-dir-rel", "--surfaces"],
-    booleanArgs: ["--all-surfaces", "--help", "-h"],
+    valueArgs: ["--package"],
+    booleanArgs: ["--all-packages", "--help", "-h"],
   });
-  const allSurfaces = args.includes("--all-surfaces");
-  const selectedSurfaces = parseArgValue(args, "--surfaces");
-  const manualPreset = parseArgValue(args, "--preset");
-  const manualOutput = parseArgValue(args, "--out-dir-rel");
-  const modeCount = Number(allSurfaces) + Number(selectedSurfaces !== null);
-  if (modeCount > 1) {
-    throw new Error("--all-surfaces and --surfaces are mutually exclusive.");
+  const allPackages = args.includes("--all-packages");
+  const id = parseArgValue(args, "--package");
+  if (allPackages && id !== null) {
+    throw new Error("--all-packages and --package are mutually exclusive.");
   }
-  if ((allSurfaces || selectedSurfaces !== null) && (manualPreset || manualOutput)) {
-    throw new Error(
-      "Surface selection cannot be combined with --preset or --out-dir-rel.",
-    );
+  const descriptors = allPackages
+    ? webPackageDescriptors
+    : [packagesById.get(id ?? defaultWebPackage.id)].filter(Boolean);
+  if (descriptors.length === 0) {
+    throw new Error(`Unknown browser package ${id}.`);
   }
-
-  if (allSurfaces) return descriptorTargets(["root", ...publicSurfaces.keys()]);
-  if (selectedSurfaces !== null) {
-    const names = selectedSurfaces.split(",").map((name) => name.trim());
-    if (names.length === 0 || names.some((name) => name.length === 0)) {
-      throw new Error("--surfaces requires a comma-separated list of surface names.");
-    }
-    if (new Set(names).size !== names.length) {
-      throw new Error("--surfaces must not contain duplicate names.");
-    }
-    return descriptorTargets(names);
-  }
-
-  return [
-    {
-      presetName:
-        manualPreset ?? process.env.MERMAN_WEB_PRESET ?? defaultWebPresetName,
-      outputDir: resolvePackageSubdir(
-        webPackageRoot,
-        manualOutput ?? "pkg",
-        "--out-dir-rel",
-      ),
-    },
-  ];
-}
-
-export function rebuildCommandForTargets(targets) {
-  if (targets.length !== 1) {
-    return "npm --prefix platforms/web run build";
-  }
-  const [{ presetName, outputDir }] = targets;
-  const relative = normalizePath(outputDir.relative);
-  if (presetName === defaultWebPresetName && relative === "pkg") {
-    return "npm --prefix platforms/web run build:wasm";
-  }
-  return [
-    "npm --prefix platforms/web run build:wasm --",
-    `--preset ${presetName}`,
-    `--out-dir-rel ${relative}`,
-  ].join(" ");
-}
-
-function descriptorTargets(names) {
-  return names.map((name) => {
-    if (name === "root") {
-      return {
-        presetName: defaultWebPresetName,
-        outputDir: resolvePackageSubdir(webPackageRoot, "pkg", "root surface"),
-      };
-    }
-    const surface = publicSurfaces.get(name);
-    if (!surface) {
-      throw new Error(
-        `Unknown Web surface '${name}'; expected root or one of: ${[...publicSurfaces.keys()].join(", ")}.`,
-      );
-    }
-    return {
-      presetName: surface.preset,
-      outputDir: resolvePackageSubdir(
-        webPackageRoot,
-        surface.pkg_dir_rel,
-        `surface ${name}`,
-      ),
-    };
-  });
+  return descriptors.map((descriptor) => ({
+    descriptor,
+    profile: wasmArtifactProfile(descriptor),
+    outputDir: resolvePackageSubdir(
+      webPackageRoot,
+      `pkg/${descriptor.id}`,
+      `package ${descriptor.id} output`,
+    ),
+  }));
 }
 
 function verifyTarget(target, { getMetadata, getToolVersions }) {
-  const preset = presets.get(target.presetName);
-  if (!preset) {
-    return {
-      ok: false,
-      reasons: [`Unknown @mermanjs/web WASM preset: ${target.presetName}`],
-    };
-  }
-  const manifestPath = path.join(
-    target.outputDir.absolute,
-    WASM_INPUT_MANIFEST_NAME,
-  );
+  const manifestPath = path.join(target.outputDir.absolute, WASM_INPUT_MANIFEST_NAME);
   let manifest = null;
   if (existsSync(manifestPath)) {
     try {
@@ -187,30 +112,21 @@ function verifyTarget(target, { getMetadata, getToolVersions }) {
     } catch (error) {
       return {
         ok: false,
-        reasons: [
-          `WASM input manifest is corrupt: ${error instanceof Error ? error.message : String(error)}`,
-        ],
+        reasons: [`WASM input manifest is corrupt: ${error instanceof Error ? error.message : String(error)}`],
       };
     }
   }
 
   try {
     const result = verifyWasmInputManifest({
-      allowedArtifactDirectories:
-        normalizePath(target.outputDir.relative) === "pkg"
-          ? publicSurfaceDirectoryNames()
-          : [],
       manifest,
-      metadata: manifest ? getMetadata(preset) : null,
+      metadata: manifest ? getMetadata(target.profile) : null,
       outputRoot: target.outputDir.absolute,
-      preset,
+      preset: target.profile,
       repoRoot: repositoryRoot,
       toolVersions: getToolVersions(),
     });
-    return {
-      ...result,
-      digest: result.ok ? manifest.input_digest : null,
-    };
+    return { ...result, digest: result.ok ? manifest.input_digest : null };
   } catch (error) {
     return {
       ok: false,
@@ -220,11 +136,5 @@ function verifyTarget(target, { getMetadata, getToolVersions }) {
 }
 
 function printUsage() {
-  console.log(
-    "usage: node scripts/verify-wasm-inputs.mjs [--preset <name>] [--out-dir-rel <dir>] [--surfaces <root,editor,...> | --all-surfaces]",
-  );
-}
-
-function normalizePath(value) {
-  return value.split(path.sep).join("/");
+  console.log("usage: node scripts/verify-wasm-inputs.mjs [--package <id> | --all-packages]");
 }

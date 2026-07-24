@@ -1,4 +1,4 @@
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 #[test]
 fn mindmap_br_variants_031_matches_upstream_node_geometry() {
     const DIAGRAM_ID: &str = "stress_mindmap_br_variants_031";
@@ -11,14 +11,14 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
         suppress_errors: false,
     };
 
-    let layout = merman::render::LayoutOptions::headless_svg_defaults();
+    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
 
-    let svg_opts = merman::render::SvgRenderOptions {
+    let svg_opts = merman::svg::SvgRenderOptions {
         diagram_id: Some(DIAGRAM_ID.to_string()),
         ..Default::default()
     };
 
-    let svg = merman::render::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
+    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
         .expect("render svg")
         .expect("diagram detected");
     assert!(

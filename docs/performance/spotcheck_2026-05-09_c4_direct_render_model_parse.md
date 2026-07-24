@@ -10,11 +10,11 @@ deserializing it into `C4DiagramRenderModel`.
 - Git state: working tree after the C4 direct render-model parse cleanup
 - Code path: `crates/merman-core/src/diagrams/c4.rs`
 - Bench command:
-  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 c4_medium`
+  `cargo bench -p merman --features svg --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 c4_medium`
 - Verification commands:
   - `cargo nextest run -p merman-core c4`
-  - `cargo nextest run -p merman --features render c4`
-  - `cargo nextest run -p merman --features render pipeline_bench_fixtures_are_benchmarkable`
+  - `cargo nextest run -p merman --features svg c4`
+  - `cargo nextest run -p merman --features svg pipeline_bench_fixtures_are_benchmarkable`
   - `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Results

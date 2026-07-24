@@ -34,8 +34,8 @@ language behavior.
   handles request lifecycle.
 - The document store consumes typed editor snapshots backed by `FenceTextIndex`; LSP language
   requests do not serialize or deserialize `AnalysisFactsPayload`.
-- The separately exposed analysis-facts binding wire is the current version 2 contract. Facts v1
-  is rejected at the version boundary; its superseded TextScan-capable alpha path is deleted.
+- The separately exposed analysis-facts binding wire uses schema version 1. Other versions are
+  rejected at the version boundary, and the superseded TextScan-capable path is deleted.
   Unsupported body text yields no guessed language items, while legal source-start header
   completion remains catalog-backed.
 - Facts schema versions are unrelated to LSP `textDocument.version` revisions and Mermaid's own

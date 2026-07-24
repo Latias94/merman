@@ -97,7 +97,11 @@ impl PreprocessedSource {
         if edits.is_empty() {
             return;
         }
-        edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
+        if edits.windows(2).any(|pair| {
+            (pair[0].range.start, pair[0].range.end) > (pair[1].range.start, pair[1].range.end)
+        }) {
+            edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
+        }
         assert_valid_edits(&self.text, &edits);
 
         let old_text = std::mem::take(&mut self.text);
@@ -152,6 +156,8 @@ struct SourceEditMap {
     output_len: usize,
     segments: Vec<EditMapSegment>,
     gaps: Vec<EditMapGap>,
+    #[cfg(test)]
+    scan_stats: EditMapScanStats,
 }
 
 impl SourceEditMap {
@@ -169,6 +175,8 @@ impl SourceEditMap {
             output_len: source_len,
             segments,
             gaps: Vec::new(),
+            #[cfg(test)]
+            scan_stats: EditMapScanStats::default(),
         }
     }
 
@@ -271,42 +279,6 @@ impl SourceEditMap {
         })
     }
 
-    fn original_anchor(&self, offset: usize) -> usize {
-        if let Some(gap) = self.gap_at(offset) {
-            return gap.original_right;
-        }
-        if offset == self.output_len {
-            return self.original_len;
-        }
-        self.segment_to_right(offset)
-            .map_or(self.original_len, |segment| segment.original.start)
-    }
-
-    fn is_exact_bytes_span(&self, range: Range<usize>) -> bool {
-        if range.start > range.end || range.end > self.output_len {
-            return false;
-        }
-        if range.start == range.end {
-            return self.original_at_start(range.start).is_some();
-        }
-        if self.has_gap_inside(range.start, range.end) {
-            return false;
-        }
-
-        let mut cursor = range.start;
-        while cursor < range.end {
-            let Some(segment) = self.segment_to_right(cursor) else {
-                return false;
-            };
-            if segment.mapping != SegmentMapping::ExactBytes {
-                return false;
-            }
-            cursor = segment.output.end.min(range.end);
-        }
-        self.try_map_span(SourceSpan::new(range.start, range.end))
-            .is_some_and(|mapped| mapped.end - mapped.start == range.end - range.start)
-    }
-
     fn is_well_formed(&self) -> bool {
         self.segments.windows(2).all(|pair| {
             pair[0].output.end <= pair[1].output.start
@@ -366,11 +338,219 @@ struct EditMapGap {
     original_right: usize,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct EditMapScanStats {
+    copy_ranges: usize,
+    copy_segment_steps: usize,
+    copy_gap_steps: usize,
+    lookup_segment_advances: usize,
+    lookup_gap_advances: usize,
+    exact_segment_steps: usize,
+    exact_gap_steps: usize,
+}
+
+/// Monotonic read positions into the map consumed by one sorted edit batch.
+///
+/// Copying, endpoint lookup, and exactness checks advance independently because replacements read
+/// the same range for all three purposes. Every index only increases; copying can revisit at most
+/// the one segment or gap that straddles the next range boundary.
+#[derive(Default)]
+struct EditMapCursor {
+    copy_segment_index: usize,
+    copy_gap_index: usize,
+    lookup_segment_index: usize,
+    lookup_gap_index: usize,
+    exact_segment_index: usize,
+    exact_gap_index: usize,
+    #[cfg(debug_assertions)]
+    last_copy_end: usize,
+    #[cfg(debug_assertions)]
+    last_lookup_offset: usize,
+    #[cfg(debug_assertions)]
+    last_exact_end: usize,
+    #[cfg(test)]
+    scan_stats: EditMapScanStats,
+}
+
+impl EditMapCursor {
+    fn advance_lookup_to(&mut self, old: &SourceEditMap, offset: usize) {
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(self.last_lookup_offset <= offset);
+            self.last_lookup_offset = offset;
+        }
+
+        while old
+            .segments
+            .get(self.lookup_segment_index)
+            .is_some_and(|segment| segment.output.end <= offset)
+        {
+            self.lookup_segment_index += 1;
+            #[cfg(test)]
+            {
+                self.scan_stats.lookup_segment_advances += 1;
+            }
+        }
+        while old
+            .gaps
+            .get(self.lookup_gap_index)
+            .is_some_and(|gap| gap.output_offset < offset)
+        {
+            self.lookup_gap_index += 1;
+            #[cfg(test)]
+            {
+                self.scan_stats.lookup_gap_advances += 1;
+            }
+        }
+    }
+
+    fn gap_at_lookup_offset<'a>(
+        &self,
+        old: &'a SourceEditMap,
+        offset: usize,
+    ) -> Option<&'a EditMapGap> {
+        old.gaps
+            .get(self.lookup_gap_index)
+            .filter(|gap| gap.output_offset == offset)
+    }
+
+    fn original_at_start(&mut self, old: &SourceEditMap, offset: usize) -> Option<usize> {
+        if offset > old.output_len {
+            return None;
+        }
+        self.advance_lookup_to(old, offset);
+        if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
+            return Some(gap.original_right);
+        }
+        if offset == old.output_len {
+            return match old.segments.last() {
+                Some(segment) => segment.original_at_end(offset),
+                None => Some(old.original_len),
+            };
+        }
+        old.segments
+            .get(self.lookup_segment_index)
+            .filter(|segment| segment.output.start <= offset && offset < segment.output.end)?
+            .original_at_start(offset)
+    }
+
+    fn original_at_end(&mut self, old: &SourceEditMap, offset: usize) -> Option<usize> {
+        if offset > old.output_len {
+            return None;
+        }
+        self.advance_lookup_to(old, offset);
+        if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
+            return Some(gap.original_left);
+        }
+        if offset == 0 {
+            return match old.segments.first() {
+                Some(segment) => segment.original_at_start(offset),
+                None => Some(0),
+            };
+        }
+        if let Some(segment) = old.segments.get(self.lookup_segment_index)
+            && segment.output.start < offset
+            && offset < segment.output.end
+        {
+            return segment.original_at_end(offset);
+        }
+        self.lookup_segment_index
+            .checked_sub(1)
+            .and_then(|index| old.segments.get(index))
+            .filter(|segment| segment.output.start < offset && offset <= segment.output.end)?
+            .original_at_end(offset)
+    }
+
+    fn original_anchor(&mut self, old: &SourceEditMap, offset: usize) -> usize {
+        self.advance_lookup_to(old, offset);
+        if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
+            return gap.original_right;
+        }
+        if offset == old.output_len {
+            return old.original_len;
+        }
+        old.segments
+            .get(self.lookup_segment_index)
+            .filter(|segment| segment.output.start <= offset && offset < segment.output.end)
+            .map_or(old.original_len, |segment| segment.original.start)
+    }
+
+    fn range_is_exact_bytes(&mut self, old: &SourceEditMap, range: &Range<usize>) -> bool {
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(self.last_exact_end <= range.start);
+            self.last_exact_end = range.end;
+        }
+        if range.start > range.end || range.end > old.output_len {
+            return false;
+        }
+        if range.start == range.end {
+            return true;
+        }
+
+        while old
+            .segments
+            .get(self.exact_segment_index)
+            .is_some_and(|segment| segment.output.end <= range.start)
+        {
+            self.exact_segment_index += 1;
+            #[cfg(test)]
+            {
+                self.scan_stats.exact_segment_steps += 1;
+            }
+        }
+        while old
+            .gaps
+            .get(self.exact_gap_index)
+            .is_some_and(|gap| gap.output_offset <= range.start)
+        {
+            self.exact_gap_index += 1;
+            #[cfg(test)]
+            {
+                self.scan_stats.exact_gap_steps += 1;
+            }
+        }
+        if old
+            .gaps
+            .get(self.exact_gap_index)
+            .is_some_and(|gap| gap.output_offset < range.end)
+        {
+            #[cfg(test)]
+            {
+                self.scan_stats.exact_gap_steps += 1;
+            }
+            return false;
+        }
+
+        let mut output_offset = range.start;
+        while output_offset < range.end {
+            let Some(segment) = old.segments.get(self.exact_segment_index) else {
+                return false;
+            };
+            #[cfg(test)]
+            {
+                self.scan_stats.exact_segment_steps += 1;
+            }
+            if segment.output.start > output_offset || segment.mapping != SegmentMapping::ExactBytes
+            {
+                return false;
+            }
+            output_offset = segment.output.end.min(range.end);
+            if segment.output.end <= range.end {
+                self.exact_segment_index += 1;
+            }
+        }
+        true
+    }
+}
+
 struct EditMapBuilder {
     original_len: usize,
     output_len: usize,
     segments: Vec<EditMapSegment>,
     gaps: Vec<EditMapGap>,
+    cursor: EditMapCursor,
 }
 
 impl EditMapBuilder {
@@ -380,6 +560,7 @@ impl EditMapBuilder {
             output_len: 0,
             segments: Vec::new(),
             gaps: Vec::new(),
+            cursor: EditMapCursor::default(),
         }
     }
 
@@ -387,13 +568,39 @@ impl EditMapBuilder {
         if range.start >= range.end {
             return;
         }
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(self.cursor.last_copy_end <= range.start);
+            self.cursor.last_copy_end = range.end;
+        }
+        #[cfg(test)]
+        {
+            self.cursor.scan_stats.copy_ranges += 1;
+        }
         let output_base = self.output_len;
-        for segment in &old.segments {
+
+        while old
+            .segments
+            .get(self.cursor.copy_segment_index)
+            .is_some_and(|segment| segment.output.end <= range.start)
+        {
+            #[cfg(test)]
+            {
+                self.cursor.scan_stats.copy_segment_steps += 1;
+            }
+            self.cursor.copy_segment_index += 1;
+        }
+        while let Some(segment) = old.segments.get(self.cursor.copy_segment_index) {
+            if segment.output.start >= range.end {
+                break;
+            }
+            #[cfg(test)]
+            {
+                self.cursor.scan_stats.copy_segment_steps += 1;
+            }
             let start = segment.output.start.max(range.start);
             let end = segment.output.end.min(range.end);
-            if start >= end {
-                continue;
-            }
+            debug_assert!(start < end);
 
             let (original, mapping) = match segment.mapping {
                 SegmentMapping::ExactBytes => {
@@ -418,28 +625,54 @@ impl EditMapBuilder {
                 original,
                 mapping,
             });
+            if segment.output.end <= range.end {
+                self.cursor.copy_segment_index += 1;
+            } else {
+                break;
+            }
         }
-        for gap in old
+
+        while old
             .gaps
-            .iter()
-            .filter(|gap| range.start <= gap.output_offset && gap.output_offset <= range.end)
+            .get(self.cursor.copy_gap_index)
+            .is_some_and(|gap| gap.output_offset < range.start)
         {
+            #[cfg(test)]
+            {
+                self.cursor.scan_stats.copy_gap_steps += 1;
+            }
+            self.cursor.copy_gap_index += 1;
+        }
+        while let Some(gap) = old.gaps.get(self.cursor.copy_gap_index) {
+            if gap.output_offset > range.end {
+                break;
+            }
+            #[cfg(test)]
+            {
+                self.cursor.scan_stats.copy_gap_steps += 1;
+            }
             self.push_gap(EditMapGap {
                 output_offset: output_base + (gap.output_offset - range.start),
                 original_left: gap.original_left,
                 original_right: gap.original_right,
             });
+            if gap.output_offset == range.end {
+                break;
+            }
+            self.cursor.copy_gap_index += 1;
         }
         self.output_len += range.end - range.start;
     }
 
     fn delete_from(&mut self, old: &SourceEditMap, range: Range<usize>) {
-        let left = old
-            .original_at_end(range.start)
-            .unwrap_or_else(|| old.original_anchor(range.start));
-        let right = old
-            .original_at_start(range.end)
-            .unwrap_or_else(|| old.original_anchor(range.end));
+        let left = match self.cursor.original_at_end(old, range.start) {
+            Some(offset) => offset,
+            None => self.cursor.original_anchor(old, range.start),
+        };
+        let right = match self.cursor.original_at_start(old, range.end) {
+            Some(offset) => offset,
+            None => self.cursor.original_anchor(old, range.end),
+        };
         self.push_gap(EditMapGap {
             output_offset: self.output_len,
             original_left: left,
@@ -454,15 +687,19 @@ impl EditMapBuilder {
         replacement_len: usize,
         mapping: ReplacementMapping,
     ) {
-        let original_start = old.original_at_start(range.start);
-        let original_end = old.original_at_end(range.end);
-        let endpoints_are_mappable = original_start.is_some() && original_end.is_some();
-        let original_start = original_start.unwrap_or_else(|| old.original_anchor(range.start));
+        let original_start = self.cursor.original_at_start(old, range.start);
+        let start_is_mappable = original_start.is_some();
+        let original_start = match original_start {
+            Some(offset) => offset,
+            None => self.cursor.original_anchor(old, range.start),
+        };
+        let original_end = self.cursor.original_at_end(old, range.end);
+        let endpoints_are_mappable = start_is_mappable && original_end.is_some();
         let original_end = original_end.unwrap_or(original_start);
         let exact = mapping == ReplacementMapping::ExactBytes
             && endpoints_are_mappable
             && replacement_len == range.end - range.start
-            && old.is_exact_bytes_span(range.clone())
+            && self.cursor.range_is_exact_bytes(old, &range)
             && original_end.checked_sub(original_start) == Some(replacement_len);
         self.push_segment(EditMapSegment {
             output: self.output_len..self.output_len + replacement_len,
@@ -493,35 +730,29 @@ impl EditMapBuilder {
     }
 
     fn push_gap(&mut self, gap: EditMapGap) {
-        if let Some(last) = self.gaps.last_mut()
-            && last.output_offset == gap.output_offset
-        {
-            last.original_left = last.original_left.min(gap.original_left);
-            last.original_right = last.original_right.max(gap.original_right);
-            return;
+        if let Some(last) = self.gaps.last_mut() {
+            assert!(
+                last.output_offset <= gap.output_offset,
+                "source edit map gaps must be emitted in output order"
+            );
+            if last.output_offset == gap.output_offset {
+                last.original_left = last.original_left.min(gap.original_left);
+                last.original_right = last.original_right.max(gap.original_right);
+                return;
+            }
         }
         self.gaps.push(gap);
     }
 
-    fn finish(mut self, output_len: usize) -> SourceEditMap {
+    fn finish(self, output_len: usize) -> SourceEditMap {
         debug_assert_eq!(self.output_len, output_len);
-        self.gaps.sort_by_key(|gap| gap.output_offset);
-        let mut gaps: Vec<EditMapGap> = Vec::with_capacity(self.gaps.len());
-        for gap in self.gaps {
-            if let Some(last) = gaps.last_mut()
-                && last.output_offset == gap.output_offset
-            {
-                last.original_left = last.original_left.min(gap.original_left);
-                last.original_right = last.original_right.max(gap.original_right);
-            } else {
-                gaps.push(gap);
-            }
-        }
         SourceEditMap {
             original_len: self.original_len,
             output_len,
             segments: self.segments,
-            gaps,
+            gaps: self.gaps,
+            #[cfg(test)]
+            scan_stats: self.cursor.scan_stats,
         }
     }
 }
@@ -541,6 +772,7 @@ fn assert_valid_edits(source: &str, edits: &[SourceEdit]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
 
     #[test]
     fn composes_deletions_replacements_and_unicode_without_global_degradation() {
@@ -589,9 +821,10 @@ mod tests {
     fn boundary_replacements_only_reject_locally_ambiguous_offsets() {
         let mut source = PreprocessedSource::new("A#x;B");
         source.apply_edits(vec![
-            SourceEdit::replace(1..2, "ﬂ°", ReplacementMapping::Boundaries),
             SourceEdit::replace(3..4, "¶ß", ReplacementMapping::Boundaries),
+            SourceEdit::replace(1..2, "ﬂ°", ReplacementMapping::Boundaries),
         ]);
+        assert_eq!(source.text(), "Aﬂ°x¶ßB");
 
         let b = source.text().find('B').unwrap();
         assert_eq!(
@@ -605,6 +838,30 @@ mod tests {
     }
 
     #[test]
+    fn same_offset_insertions_and_adjacent_deletions_coalesce_gaps_in_order() {
+        let mut source = PreprocessedSource::new("aXbYc");
+        source.apply_edits(vec![SourceEdit::delete(1..2)]);
+
+        source.apply_edits(vec![
+            SourceEdit::replace(1..1, "<", ReplacementMapping::Boundaries),
+            SourceEdit::replace(1..1, ">", ReplacementMapping::Boundaries),
+            SourceEdit::delete(1..2),
+            SourceEdit::delete(2..3),
+        ]);
+
+        assert_eq!(source.text(), "a<>c");
+        assert!(source.edit_map.is_well_formed());
+        assert_eq!(source.edit_map.gaps.len(), 2);
+
+        let c = source.text().find('c').unwrap();
+        assert_eq!(
+            source.try_map_span(SourceSpan::new(c, c + 1)),
+            Some(SourceSpan::new(4, 5))
+        );
+        assert_eq!(source.try_map_span(SourceSpan::new(0, c + 1)), None);
+    }
+
+    #[test]
     fn composing_an_edit_inside_generated_text_marks_only_that_region_unmappable() {
         let mut source = PreprocessedSource::new("A#x;B");
         source.apply_edits(vec![SourceEdit::replace(
@@ -613,7 +870,11 @@ mod tests {
             ReplacementMapping::Boundaries,
         )]);
         let degree = source.text().find('°').unwrap();
-        source.apply_edits(vec![SourceEdit::delete(degree..degree + '°'.len_utf8())]);
+        source.apply_edits(vec![SourceEdit::replace(
+            degree..degree + '°'.len_utf8(),
+            "!",
+            ReplacementMapping::ExactBytes,
+        )]);
 
         let generated = source.text().find('ﬂ').unwrap();
         assert_eq!(
@@ -624,6 +885,85 @@ mod tests {
         assert_eq!(
             source.try_map_span(SourceSpan::new(b, b + 1)),
             Some(SourceSpan::new(4, 5))
+        );
+    }
+
+    #[test]
+    fn crlf_comment_batches_scan_old_map_once_and_preserve_offsets() {
+        const MIN_INPUT_BYTES: usize = 1024 * 1024;
+
+        let mut original = String::with_capacity(MIN_INPUT_BYTES + 256);
+        let mut pair_count = 0usize;
+        while original.len() < MIN_INPUT_BYTES {
+            let group = if pair_count.is_multiple_of(2) {
+                "even"
+            } else {
+                "odd"
+            };
+            write!(
+                original,
+                "KEEP-{pair_count:05} payload\r\n%% {group}-comment-{pair_count:05} payload\r\n"
+            )
+            .unwrap();
+            pair_count += 1;
+        }
+        original.push_str("TAIL\r\n");
+        assert!(original.len() >= MIN_INPUT_BYTES);
+
+        let mut source = PreprocessedSource::new(&original);
+        source.apply_edits(crlf_normalization_edits(source.text()));
+        assert!(!source.text().contains('\r'));
+
+        let even_comments = comment_line_deletions(source.text(), "%% even-comment-");
+        source.apply_edits(even_comments);
+
+        let old_segment_count = source.edit_map.segments.len();
+        let old_gap_count = source.edit_map.gaps.len();
+        let odd_comments = comment_line_deletions(source.text(), "%% odd-comment-");
+        let odd_comment_count = odd_comments.len();
+        assert!(odd_comment_count > 8_000);
+        assert!(old_gap_count > 8_000);
+
+        source.apply_edits(odd_comments);
+
+        let scans = source.edit_map.scan_stats;
+        assert_eq!(scans.copy_ranges, odd_comment_count + 1);
+        assert!(
+            scans.copy_segment_steps <= old_segment_count + scans.copy_ranges,
+            "copying revisited old segments: {scans:?} for {old_segment_count} segments"
+        );
+        assert!(
+            scans.copy_gap_steps <= old_gap_count + scans.copy_ranges,
+            "copying revisited old gaps: {scans:?} for {old_gap_count} gaps"
+        );
+        assert!(
+            scans.lookup_segment_advances <= old_segment_count,
+            "endpoint lookup revisited old segments: {scans:?}"
+        );
+        assert!(
+            scans.lookup_gap_advances <= old_gap_count,
+            "endpoint lookup revisited old gaps: {scans:?}"
+        );
+
+        assert!(!source.text().contains("%%"));
+        for pair_index in [0, pair_count / 2, pair_count - 1] {
+            let literal = format!("KEEP-{pair_index:05}");
+            assert_literal_mapping(&source, &original, &literal, &literal);
+        }
+
+        let first_keep = "KEEP-00000 payload";
+        let output_newline = source.text().find(first_keep).unwrap() + first_keep.len();
+        let original_newline = original.find(first_keep).unwrap() + first_keep.len();
+        assert_eq!(
+            source.try_map_span(SourceSpan::new(output_newline, output_newline + 1)),
+            Some(SourceSpan::new(original_newline, original_newline + 2))
+        );
+
+        let second_keep = source.text().find("KEEP-00001").unwrap();
+        assert_eq!(
+            source.try_map_span(SourceSpan::new(output_newline, second_keep + 1)),
+            None,
+            "a span crossing a removed comment must remain unmappable"
         );
     }
 
@@ -780,6 +1120,25 @@ mod tests {
             replacement,
             mapping,
         )]);
+    }
+
+    fn crlf_normalization_edits(text: &str) -> Vec<SourceEdit> {
+        text.match_indices("\r\n")
+            .map(|(start, _)| {
+                SourceEdit::replace(start..start + 2, "\n", ReplacementMapping::Boundaries)
+            })
+            .collect()
+    }
+
+    fn comment_line_deletions(text: &str, prefix: &str) -> Vec<SourceEdit> {
+        let mut line_start = 0usize;
+        text.split_inclusive('\n')
+            .filter_map(|line| {
+                let range = line_start..line_start + line.len();
+                line_start = range.end;
+                line.starts_with(prefix).then(|| SourceEdit::delete(range))
+            })
+            .collect()
     }
 
     fn assert_literal_mapping(

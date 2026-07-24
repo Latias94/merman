@@ -4,6 +4,7 @@ use crate::io::OutputTarget;
 use crate::io::write_file;
 use crate::markdown::{self, MarkdownImage};
 use crate::render::plan::RenderPlan;
+#[cfg(feature = "parallel-markdown")]
 use rayon::prelude::*;
 use std::path::Path;
 
@@ -63,7 +64,7 @@ impl<'a> RenderRequest<'a> {
         output_path: &Path,
         charts: &[markdown::MarkdownChart],
     ) -> Result<Vec<MarkdownImage>, CliError> {
-        if charts.len() <= 1 || self.plan.jobs == 1 {
+        if charts.len() <= 1 || self.plan.markdown_jobs() == 1 {
             return charts
                 .iter()
                 .enumerate()
@@ -71,20 +72,34 @@ impl<'a> RenderRequest<'a> {
                 .collect();
         }
 
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.plan.jobs)
-            .build()
-            .map_err(|err| {
-                CliError::InvalidInput(format!("failed to configure Markdown render jobs: {err}"))
-            })?;
+        #[cfg(feature = "parallel-markdown")]
+        {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(self.plan.markdown_jobs())
+                .build()
+                .map_err(|err| {
+                    CliError::InvalidInput(format!(
+                        "failed to configure Markdown render jobs: {err}"
+                    ))
+                })?;
 
-        pool.install(|| {
+            pool.install(|| {
+                charts
+                    .par_iter()
+                    .enumerate()
+                    .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                    .collect()
+            })
+        }
+
+        #[cfg(not(feature = "parallel-markdown"))]
+        {
             charts
-                .par_iter()
+                .iter()
                 .enumerate()
                 .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
                 .collect()
-        })
+        }
     }
 
     fn render_markdown_chart(

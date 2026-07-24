@@ -16,6 +16,9 @@ categories = ["external-ffi-bindings", "visualization"]
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
 default = []
 system-clock = ["merman-bindings-core/system-clock"]
@@ -24,14 +27,17 @@ system-random = ["merman-bindings-core/system-random"]
 system-timing = ["merman-bindings-core/system-timing"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
-render = ["merman-bindings-core/render"]
-layout-cytoscape = ["merman-bindings-core/layout-cytoscape"]
-layout-elk = ["merman-bindings-core/layout-elk"]
-math = ["render", "merman-bindings-core/math"]
-raster = ["merman-bindings-core/raster"]
-
+svg = ["merman-bindings-core/svg"]
+png = ["svg", "merman-bindings-core/png"]
+jpeg = ["svg", "merman-bindings-core/jpeg"]
+pdf = ["svg", "merman-bindings-core/pdf"]
+layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+math = ["svg", "merman-bindings-core/math"]
 [dependencies]
 merman-bindings-core.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.22.4", default-features = false }
@@ -39,4 +45,3 @@ jni = { version = "0.22.4", default-features = false }
 [dev-dependencies]
 cc = "1.2.64"
 libloading = "0.9.0"
-serde_json.workspace = true

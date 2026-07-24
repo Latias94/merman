@@ -18,12 +18,18 @@ try:
 except ModuleNotFoundError:
     from release_version import ReleaseVersion, parse_release_version
 
+try:
+    from scripts import web_package_group
+except ModuleNotFoundError:
+    import web_package_group
+
 
 ROOT_MANIFEST = Path("Cargo.toml")
 ROOT_LOCK = Path("Cargo.lock")
 FUZZ_MANIFEST = Path("fuzz/Cargo.toml")
 FUZZ_LOCK = Path("fuzz/Cargo.lock")
-WEB_PACKAGE = Path("platforms/web/package.json")
+WEB_WORKSPACE_PACKAGE = Path("platforms/web/package.json")
+WEB_DESCRIPTOR = Path("platforms/web/web-surface-descriptor.json")
 WEB_LOCK = Path("platforms/web/package-lock.json")
 PLAYGROUND_PACKAGE = Path("playground/package.json")
 PLAYGROUND_LOCK = Path("playground/package-lock.json")
@@ -495,6 +501,56 @@ def _collect_fuzz_lock_versions(
     )
 
 
+def _web_package_entries(view: RepositoryView) -> list[tuple[dict[str, Any], Path]]:
+    try:
+        descriptor = web_package_group.validate_descriptor(view.json(WEB_DESCRIPTOR))
+    except web_package_group.PackageGroupError as exc:
+        raise ReleaseProjectionError(f"{WEB_DESCRIPTOR}: {exc}") from exc
+    entries: list[tuple[dict[str, Any], Path]] = []
+    for entry in descriptor["packages"]:
+        entries.append(
+            (
+                entry,
+                WEB_DESCRIPTOR.parent / web_package_group.descriptor_package_path(entry),
+            )
+        )
+    return entries
+
+
+def _playground_web_dependencies(
+    view: RepositoryView,
+    entries: list[tuple[dict[str, Any], Path]],
+) -> list[tuple[dict[str, Any], Path]]:
+    playground = view.json(PLAYGROUND_PACKAGE)
+    dependencies = _mapping(playground.get("dependencies"), "Playground dependencies")
+    by_name = {entry["name"]: (entry, package_dir) for entry, package_dir in entries}
+    default_entry = next(entry for entry, _package_dir in entries if entry["id"] == view.json(WEB_DESCRIPTOR)["default_package"])
+    if default_entry["name"] not in dependencies:
+        raise ReleaseProjectionError(
+            f"playground must consume the default Web package {default_entry['name']}"
+        )
+
+    selected: list[tuple[dict[str, Any], Path]] = []
+    for name, dependency in dependencies.items():
+        if not isinstance(name, str) or not name.startswith("@mermanjs/web"):
+            continue
+        item = by_name.get(name)
+        if item is None:
+            raise ReleaseProjectionError(f"playground depends on undeclared Web package {name}")
+        entry, package_dir = item
+        if entry["visibility"] != "public":
+            raise ReleaseProjectionError(f"playground must not consume candidate Web package {name}")
+        expected = f"file:../{package_dir.as_posix()}"
+        if dependency != expected:
+            raise ReleaseProjectionError(
+                f"playground must consume {name} from {expected}, found {dependency!r}"
+            )
+        selected.append(item)
+    if not selected:
+        raise ReleaseProjectionError("playground must consume at least one public Web package")
+    return selected
+
+
 def _collect_platform_versions(
     view: RepositoryView,
     release: ReleaseVersion,
@@ -504,43 +560,54 @@ def _collect_platform_versions(
     pep440 = release.to_pep440()
     base = release.base
 
-    web = view.json(WEB_PACKAGE)
-    _observe(observations, "Web package", WEB_PACKAGE, canonical, web.get("version"))
-    web_lock = view.json(WEB_LOCK)
-    _observe(observations, "Web lock root", WEB_LOCK, canonical, web_lock.get("version"))
-    web_lock_packages = _mapping(web_lock.get("packages"), "Web lock packages")
-    web_lock_root = _mapping(web_lock_packages.get(""), "Web lock packages['']")
-    _observe(
-        observations,
-        "Web lock workspace package",
-        WEB_LOCK,
-        canonical,
-        web_lock_root.get("version"),
-    )
-
-    playground = view.json(PLAYGROUND_PACKAGE)
-    playground_dependencies = _mapping(
-        playground.get("dependencies"), "Playground dependencies"
-    )
-    if playground_dependencies.get("@mermanjs/web") != "file:../platforms/web":
-        raise ReleaseProjectionError(
-            "playground must consume @mermanjs/web from file:../platforms/web"
+    web_workspace = view.json(WEB_WORKSPACE_PACKAGE)
+    if web_workspace.get("private") is not True:
+        raise ReleaseProjectionError("platforms/web/package.json must be a private workspace owner")
+    web_entries = _web_package_entries(view)
+    for entry, package_dir in web_entries:
+        manifest_path = package_dir / "package.json"
+        manifest = view.json(manifest_path)
+        _observe(
+            observations,
+            f"Web package {entry['name']}",
+            manifest_path,
+            canonical,
+            manifest.get("version"),
         )
+    web_lock = view.json(WEB_LOCK)
+    web_lock_packages = _mapping(web_lock.get("packages"), "Web lock packages")
+    for entry, package_dir in web_entries:
+        lock_key = package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix()
+        local_package = _mapping(
+            web_lock_packages.get(lock_key),
+            f"Web lock package {lock_key}",
+        )
+        _observe(
+            observations,
+            f"Web lock package {entry['name']}",
+            WEB_LOCK,
+            canonical,
+            local_package.get("version"),
+        )
+
+    playground_web_packages = _playground_web_dependencies(view, web_entries)
     playground_lock = view.json(PLAYGROUND_LOCK)
     playground_packages = _mapping(
         playground_lock.get("packages"), "Playground lock packages"
     )
-    local_web = _mapping(
-        playground_packages.get("../platforms/web"),
-        "Playground lock local @mermanjs/web package",
-    )
-    _observe(
-        observations,
-        "Playground local Web lock",
-        PLAYGROUND_LOCK,
-        canonical,
-        local_web.get("version"),
-    )
+    for entry, package_dir in playground_web_packages:
+        lock_key = f"../{package_dir.as_posix()}"
+        local_package = _mapping(
+            playground_packages.get(lock_key),
+            f"Playground lock local {entry['name']} package",
+        )
+        _observe(
+            observations,
+            f"Playground local Web lock {entry['name']}",
+            PLAYGROUND_LOCK,
+            canonical,
+            local_package.get("version"),
+        )
     license_report = view.text(PLAYGROUND_LICENSE_REPORT)
     lock_digest = hashlib.sha256(view.text(PLAYGROUND_LOCK).encode("utf-8")).hexdigest()
     _observe_text_match(
@@ -551,15 +618,6 @@ def _collect_platform_versions(
         r"^package-lock\.json SHA-256: ([0-9a-f]{64})$",
         lock_digest,
     )
-    _observe_text_match(
-        observations,
-        "Playground license local Web version",
-        PLAYGROUND_LICENSE_REPORT,
-        license_report,
-        r"^ - @mermanjs/web@([^\s]+)$",
-        canonical,
-    )
-
     python = view.toml(PYTHON_MANIFEST)
     python_project = _mapping(python.get("project"), "Python [project]")
     _observe(
@@ -740,19 +798,27 @@ def _plan_version_update(
         view.text(FUZZ_LOCK), fuzz_lock_packages, release.canonical
     )
 
-    updates[WEB_PACKAGE] = _replace_json_paths(
-        view.text(WEB_PACKAGE), {("version",): release.canonical}
-    )
+    web_entries = _web_package_entries(view)
+    for _entry, package_dir in web_entries:
+        manifest_path = package_dir / "package.json"
+        updates[manifest_path] = _replace_json_paths(
+            view.text(manifest_path), {("version",): release.canonical}
+        )
+    web_lock_updates = {
+        ("packages", package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix(), "version"): release.canonical
+        for _entry, package_dir in web_entries
+    }
     updates[WEB_LOCK] = _replace_json_paths(
         view.text(WEB_LOCK),
-        {
-            ("version",): release.canonical,
-            ("packages", "", "version"): release.canonical,
-        },
+        web_lock_updates,
     )
+    playground_web_packages = _playground_web_dependencies(view, web_entries)
     playground_lock = _replace_json_paths(
         view.text(PLAYGROUND_LOCK),
-        {("packages", "../platforms/web", "version"): release.canonical},
+        {
+            ("packages", f"../{package_dir.as_posix()}", "version"): release.canonical
+            for _entry, package_dir in playground_web_packages
+        },
     )
     updates[PLAYGROUND_LOCK] = playground_lock
     playground_license_report = _replace_one(
@@ -762,13 +828,7 @@ def _plan_version_update(
         PLAYGROUND_LICENSE_REPORT,
         "package-lock.json digest",
     )
-    updates[PLAYGROUND_LICENSE_REPORT] = _replace_one(
-        playground_license_report,
-        r"^( - @mermanjs/web@)[^\s]+$",
-        rf"\g<1>{release.canonical}",
-        PLAYGROUND_LICENSE_REPORT,
-        "local @mermanjs/web version",
-    )
+    updates[PLAYGROUND_LICENSE_REPORT] = playground_license_report
     updates[PYTHON_MANIFEST] = _replace_toml_section_string(
         view.text(PYTHON_MANIFEST), "project", "version", release.to_pep440()
     )

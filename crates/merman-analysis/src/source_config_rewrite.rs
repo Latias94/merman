@@ -242,7 +242,7 @@ fn frontmatter_document(fields: Map<String, Value>, indent: &str, newline: &str)
 }
 
 fn frontmatter_body(fields: Map<String, Value>) -> Option<String> {
-    let mut body = serde_yaml::to_string(&Value::Object(fields)).ok()?;
+    let mut body = serde_saphyr::to_string(&Value::Object(fields)).ok()?;
     if let Some(stripped) = body.strip_prefix("---\n") {
         body = stripped.to_string();
     }
@@ -380,6 +380,69 @@ mod tests {
         assert!(edited.contains("theme: dark\n"));
         assert!(!edited.contains("%%{ init"));
         assert_eq!(fix.edits.len(), 2);
+    }
+
+    #[test]
+    fn serde_saphyr_rewrite_preserves_yaml_values_order_and_document_shape() {
+        let source = "flowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = serde_json::json!({
+            "quoted_true": "true",
+            "quoted_null": "null",
+            "quoted_number": "001",
+            "null_value": null,
+            "multiline": "first line\nsecond line",
+            "ordered_first": "first",
+            "ordered_second": "second"
+        });
+
+        let fix = frontmatter_config_fix(
+            source,
+            &source_map,
+            config.clone(),
+            Vec::new(),
+            "Add frontmatter config",
+        )
+        .expect("frontmatter fix");
+        let edited = apply_fix(source, &fix);
+        let frontmatter = split_frontmatter_block(&edited).expect("generated frontmatter");
+        let document = &edited[frontmatter.full.start..frontmatter.full.end];
+        let body = frontmatter.dedented_body.as_ref();
+        let fields = parse_frontmatter_yaml_fields(body).expect("parse generated frontmatter");
+
+        assert_eq!(fields.get("config"), Some(&config));
+        assert!(document.starts_with("---\n"));
+        assert!(document.ends_with("---\n"));
+        assert!(!document.ends_with("---\n\n"));
+        assert_eq!(document.matches("---").count(), 2);
+
+        for key in ["quoted_true", "quoted_null", "quoted_number"] {
+            let line = body
+                .lines()
+                .find(|line| line.trim_start().starts_with(&format!("{key}:")))
+                .expect("serialized string field");
+            let value = line
+                .split_once(':')
+                .map(|(_, value)| value.trim())
+                .expect("serialized scalar value");
+            assert!(
+                (value.starts_with('\'') && value.ends_with('\''))
+                    || (value.starts_with('"') && value.ends_with('"')),
+                "ambiguous YAML string must remain quoted: {line}"
+            );
+        }
+
+        let ordered_keys = [
+            "quoted_true:",
+            "quoted_null:",
+            "quoted_number:",
+            "null_value:",
+            "multiline:",
+            "ordered_first:",
+            "ordered_second:",
+        ];
+        let positions = ordered_keys.map(|key| body.find(key).expect("serialized key position"));
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]

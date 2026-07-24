@@ -1,14 +1,48 @@
 use super::super::*;
-use crate::sequence::{bracketize_sequence_block_label, sequence_text_line_step_px};
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
+use crate::sequence::{
+    SequenceMathHeightMode, bracketize_sequence_block_label, sequence_text_line_step_px,
+};
 
 pub(super) struct LoopTextRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
+    config: &'a merman_core::MermaidConfig,
+    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+}
+
+pub(super) struct LoopTextPlacement {
+    pub(super) x: f64,
+    pub(super) y0: f64,
+    pub(super) block_start_y: f64,
+    pub(super) max_width: Option<f64>,
+    pub(super) use_tspan: bool,
 }
 
 impl<'a> LoopTextRenderContext<'a> {
-    pub(super) fn new(measurer: &'a dyn TextMeasurer, style: &'a TextStyle) -> Self {
-        Self { measurer, style }
+    pub(super) fn new(
+        measurer: &'a dyn TextMeasurer,
+        style: &'a TextStyle,
+        config: &'a merman_core::MermaidConfig,
+        math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    ) -> Self {
+        Self {
+            measurer,
+            style,
+            config,
+            math_renderer,
+        }
+    }
+
+    fn katex_label(&self, text: &str) -> Option<super::math_label::SequenceKatexLabel> {
+        sequence_katex_label(
+            text,
+            self.measurer,
+            self.style,
+            self.config,
+            self.math_renderer,
+            SequenceMathHeightMode::Draw,
+        )
     }
 }
 
@@ -54,21 +88,24 @@ pub(super) fn wrap_svg_text_lines(
 pub(super) fn write_loop_text_lines(
     out: &mut String,
     ctx: &LoopTextRenderContext<'_>,
-    x: f64,
-    y0: f64,
-    max_width: Option<f64>,
+    placement: LoopTextPlacement,
     text: &str,
-    use_tspan: bool,
 ) {
+    if let Some(katex) = ctx.katex_label(text) {
+        let x = (placement.x - katex.width / 2.0).round();
+        write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
+        return;
+    }
+
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
-    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
+    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, placement.max_width);
     for (i, line) in lines.into_iter().enumerate() {
-        let y = y0 + (i as f64) * line_step;
-        if use_tspan {
+        let y = placement.y0 + (i as f64) * line_step;
+        if placement.use_tspan {
             let _ = write!(
                 out,
                 r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
-                x = fmt(x),
+                x = fmt(placement.x),
                 y = fmt(y),
                 fs = fmt(ctx.style.font_size),
                 text = escape_xml(&line)
@@ -77,7 +114,7 @@ pub(super) fn write_loop_text_lines(
             let _ = write!(
                 out,
                 r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
-                x = fmt(x),
+                x = fmt(placement.x),
                 y = fmt(y),
                 fs = fmt(ctx.style.font_size),
                 text = escape_xml(&line)
@@ -91,9 +128,17 @@ pub(super) fn write_section_title_lines(
     ctx: &LoopTextRenderContext<'_>,
     x: f64,
     y0: f64,
+    section_start_y: f64,
     max_width: Option<f64>,
     text: &str,
 ) {
+    if let Some(katex) = ctx.katex_label(text) {
+        let x = (x - katex.width / 2.0).round();
+        let y = (section_start_y - katex.height).round();
+        write_sequence_katex_foreign_object(out, &katex, x, y);
+        return;
+    }
+
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
     let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
     for (i, line) in lines.into_iter().enumerate() {

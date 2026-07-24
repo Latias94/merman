@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::document_store::{
     DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource, DocumentResourceLimit, DocumentStore,
     DocumentSyncError, SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
@@ -7,12 +9,14 @@ use merman_analysis::{
     FenceTextIndexSource,
 };
 use merman_editor_core::DocumentKind;
-use tower_lsp::lsp_types::{Position, Range, SemanticToken, TextDocumentContentChangeEvent, Url};
+use tower_lsp_server::ls_types::{
+    Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
+};
 
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -49,7 +53,7 @@ fn new_store_uses_lsp_default_source_limit() {
 #[test]
 fn markdown_documents_create_fences_for_markdown_extensions() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.markdown").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.markdown").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -70,7 +74,7 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
 #[test]
 fn markdown_documents_create_multiple_mermaid_fences() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.markdown").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.markdown").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -123,7 +127,7 @@ fn markdown_documents_create_multiple_mermaid_fences() {
 #[test]
 fn newer_versions_replace_the_stored_snapshot() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let first = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
     let second = store.upsert(
@@ -149,7 +153,7 @@ fn newer_versions_replace_the_stored_snapshot() {
 #[test]
 fn upsert_text_defers_snapshot_until_requested() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let document = store.upsert_text(
         uri.clone(),
@@ -176,7 +180,7 @@ fn upsert_text_defers_snapshot_until_requested() {
 #[test]
 fn upsert_text_limits_oversized_documents_without_retaining_source() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
@@ -202,7 +206,7 @@ fn upsert_text_limits_oversized_documents_without_retaining_source() {
 #[test]
 fn full_replacement_recovers_from_resource_limited_document() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     store.open_text(
@@ -233,7 +237,7 @@ fn full_replacement_recovers_from_resource_limited_document() {
 #[test]
 fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
@@ -267,7 +271,7 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
 #[test]
 fn resource_limited_documents_update_limit_when_configuration_still_excludes_them() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
@@ -289,7 +293,7 @@ fn resource_limited_documents_update_limit_when_configuration_still_excludes_the
 #[test]
 fn resource_limited_documents_become_discarded_when_configuration_would_allow_them() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
@@ -328,7 +332,7 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
 #[test]
 fn upsert_text_invalidates_cached_snapshot() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -360,7 +364,7 @@ fn upsert_text_invalidates_cached_snapshot() {
 #[test]
 fn apply_text_change_rejects_missing_documents() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/missing.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/missing.mmd").unwrap();
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -380,7 +384,7 @@ fn apply_text_change_rejects_missing_documents() {
 #[test]
 fn apply_text_change_rejects_stale_versions_without_invalidating_current_state() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -420,7 +424,7 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
 #[test]
 fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -455,7 +459,7 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
 #[test]
 fn apply_text_changes_updates_line_index_between_batched_edits() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -497,7 +501,7 @@ fn apply_text_changes_updates_line_index_between_batched_edits() {
 #[test]
 fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -525,7 +529,7 @@ fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
 #[test]
 fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -545,7 +549,7 @@ fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
 #[test]
 fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -573,7 +577,7 @@ fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
 #[test]
 fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -613,7 +617,7 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
 #[test]
 fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -644,7 +648,7 @@ fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
 #[test]
 fn apply_text_changes_clamps_utf16_positions_past_line_end() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -676,7 +680,7 @@ fn apply_text_changes_clamps_utf16_positions_past_line_end() {
 #[test]
 fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -718,7 +722,7 @@ fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
 #[test]
 fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -763,7 +767,7 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
 #[test]
 fn full_replacement_later_in_unsynced_batch_recovers_document() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -812,7 +816,7 @@ fn full_replacement_later_in_unsynced_batch_recovers_document() {
 #[test]
 fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
         uri.clone(),
@@ -848,7 +852,7 @@ fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
 #[test]
 fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -884,8 +888,8 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
 #[test]
 fn snapshot_build_requests_reuse_current_cached_snapshots() {
     let mut store = DocumentStore::new();
-    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
-    let missing_uri = Url::parse("file:///tmp/missing.mmd").unwrap();
+    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
+    let missing_uri = Uri::from_str("file:///tmp/missing.mmd").unwrap();
 
     store.upsert_text(
         cached_uri.clone(),
@@ -925,7 +929,7 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
 fn workspace_symbol_build_plan_batches_all_missing_snapshots() {
     let mut store = DocumentStore::new();
     for index in 0..40 {
-        let uri = Url::parse(&format!("file:///tmp/workspace-{index}.mmd")).unwrap();
+        let uri = Uri::from_str(&format!("file:///tmp/workspace-{index}.mmd")).unwrap();
         store.upsert_text(
             uri,
             1,
@@ -945,14 +949,14 @@ fn workspace_symbol_build_plan_batches_all_missing_snapshots() {
 #[test]
 fn workspace_symbol_build_plan_keeps_cached_contexts_with_all_missing_snapshots() {
     let mut store = DocumentStore::new();
-    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
     let cached_snapshot = store.upsert(
         cached_uri.clone(),
         1,
         "flowchart TD\nCached-->B\n".to_string(),
     );
     for index in 0..5 {
-        let uri = Url::parse(&format!("file:///tmp/missing-{index}.mmd")).unwrap();
+        let uri = Uri::from_str(&format!("file:///tmp/missing-{index}.mmd")).unwrap();
         store.upsert_text(
             uri,
             1,
@@ -979,7 +983,7 @@ fn workspace_symbol_build_plan_keeps_cached_contexts_with_all_missing_snapshots(
 #[test]
 fn workspace_symbol_contexts_current_requires_complete_document_set() {
     let mut store = DocumentStore::new();
-    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
     store.upsert(cached_uri, 1, "flowchart TD\nCached-->B\n".to_string());
 
     let plan = store.workspace_symbol_snapshot_build_plan(8);
@@ -988,7 +992,7 @@ fn workspace_symbol_contexts_current_requires_complete_document_set() {
     assert!(store.workspace_symbol_snapshot_contexts_current(&plan.contexts));
 
     store.upsert_text(
-        Url::parse("file:///tmp/added.mmd").unwrap(),
+        Uri::from_str("file:///tmp/added.mmd").unwrap(),
         1,
         "flowchart TD\nAdded-->B\n".to_string(),
         DocumentKind::Diagram,
@@ -1000,7 +1004,7 @@ fn workspace_symbol_contexts_current_requires_complete_document_set() {
 #[test]
 fn cached_snapshot_build_context_stales_after_text_replacement() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1031,7 +1035,7 @@ fn cached_snapshot_build_context_stales_after_text_replacement() {
 #[test]
 fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1069,7 +1073,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 #[test]
 fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1111,7 +1115,7 @@ fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis(
 #[test]
 fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1151,7 +1155,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
 #[test]
 fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_state() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1183,7 +1187,7 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
 #[test]
 fn remove_stales_existing_contexts_and_clears_document_state() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1214,7 +1218,7 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
 #[test]
 fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacement() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1243,7 +1247,7 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
 #[test]
 fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_config_change() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1297,7 +1301,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
 #[test]
 fn diagnostic_only_analyzer_update_reuses_snapshot_and_rebuilds_analysis_payload() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1364,7 +1368,7 @@ fn diagnostic_only_analyzer_update_reuses_snapshot_and_rebuilds_analysis_payload
 #[test]
 fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
         uri.clone(),
@@ -1402,7 +1406,7 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
 #[test]
 fn incomplete_flowchart_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1424,7 +1428,7 @@ fn incomplete_flowchart_documents_use_recovered_parser_facts() {
 #[test]
 fn sequence_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1440,7 +1444,7 @@ fn sequence_documents_use_parser_facts() {
 #[test]
 fn sequence_payload_facts_do_not_pollute_completion_ids() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1536,7 +1540,7 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
 #[test]
 fn architecture_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1579,7 +1583,7 @@ fn architecture_documents_use_parser_facts() {
 #[test]
 fn radar_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1611,7 +1615,7 @@ fn radar_documents_use_parser_facts() {
 #[test]
 fn treemap_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1649,7 +1653,7 @@ fn treemap_documents_use_parser_facts() {
 #[test]
 fn block_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1693,7 +1697,7 @@ fn block_documents_use_parser_facts() {
 #[test]
 fn c4_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1750,7 +1754,7 @@ fn c4_documents_use_parser_facts() {
 #[test]
 fn zenuml_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1883,7 +1887,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
         ),
     ] {
         let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, case.1.to_string());
         let index = &snapshot.fences[0].text_index;
 
@@ -1908,7 +1912,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
 #[test]
 fn incomplete_sequence_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -1924,7 +1928,7 @@ fn incomplete_sequence_documents_use_recovered_parser_facts() {
 #[test]
 fn state_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2012,7 +2016,7 @@ fn state_documents_use_parser_facts() {
 #[test]
 fn incomplete_state_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2028,7 +2032,7 @@ fn incomplete_state_documents_use_recovered_parser_facts() {
 #[test]
 fn class_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2044,7 +2048,7 @@ fn class_documents_use_parser_facts() {
 #[test]
 fn incomplete_class_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "classDiagram\nclass User\nUser <|--".to_string());
     let index = &snapshot.fences[0].text_index;
 
@@ -2055,7 +2059,7 @@ fn incomplete_class_documents_use_recovered_parser_facts() {
 #[test]
 fn class_member_outline_facts_do_not_pollute_completion_ids() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2205,7 +2209,7 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
 #[test]
 fn er_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2221,7 +2225,7 @@ fn er_documents_use_parser_facts() {
 #[test]
 fn incomplete_er_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "erDiagram\nCUSTOMER ||--o{ ORDER :".to_string());
     let index = &snapshot.fences[0].text_index;
 
@@ -2233,7 +2237,7 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
 #[test]
 fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2265,7 +2269,7 @@ fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
 #[test]
 fn gantt_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2365,7 +2369,7 @@ fn gantt_documents_use_parser_facts() {
 #[test]
 fn incomplete_gantt_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2381,7 +2385,7 @@ fn incomplete_gantt_documents_use_recovered_parser_facts() {
 #[test]
 fn mindmap_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
         1,
@@ -2410,7 +2414,7 @@ fn mindmap_documents_use_parser_facts() {
 #[test]
 fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
     let index = &snapshot.fences[0].text_index;
 

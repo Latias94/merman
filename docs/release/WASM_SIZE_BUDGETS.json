@@ -1,93 +1,44 @@
 {
-  "schema_version": 1,
-  "updated": "2026-07-22",
+  "schema_version": 2,
+  "updated": "2026-07-23",
   "compression_source": "stripped",
-  "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
-  "web_package": {
-    "browser-full": {
-      "max_raw_bytes": 10750000,
-      "max_gzip_bytes": 4050000,
-      "max_brotli_bytes": 2850000
-    }
-  },
-  "presets": {
-    "browser-bridge": {
-      "max_raw_bytes": 3300000,
-      "max_stripped_bytes": 2350000,
-      "max_gzip_bytes": 720000,
-      "max_brotli_bytes": 550000
+  "notes": "Budgets are regression guards for every exact WASM artifact profile. Gzip and Brotli are measured from the stripped artifact produced by wasm-tools strip --all. A future Web math artifact must add its exact recipe, package ownership, and size budget atomically.",
+  "artifact_profiles": {
+    "typst-wasm": {
+      "max_raw_bytes": 12050000,
+      "max_stripped_bytes": 9450000,
+      "max_gzip_bytes": 3075000,
+      "max_brotli_bytes": 2090000
     },
-    "browser-core": {
+    "web-analysis": {
       "max_raw_bytes": 4300000,
       "max_stripped_bytes": 3110000,
       "max_gzip_bytes": 935000,
       "max_brotli_bytes": 700000
     },
-    "browser-render": {
-      "max_raw_bytes": 10550000,
-      "max_stripped_bytes": 8100000,
-      "max_gzip_bytes": 2515000,
-      "max_brotli_bytes": 1680000
-    },
-    "browser-render-only": {
-      "max_raw_bytes": 10075000,
-      "max_stripped_bytes": 7775000,
-      "max_gzip_bytes": 2405000,
-      "max_brotli_bytes": 1615000
-    },
-    "browser-ascii": {
+    "web-ascii": {
       "max_raw_bytes": 4500000,
       "max_stripped_bytes": 3260000,
       "max_gzip_bytes": 980000,
       "max_brotli_bytes": 745000
     },
-    "browser-editor": {
+    "web-editor": {
       "max_raw_bytes": 5600000,
       "max_stripped_bytes": 4100000,
       "max_gzip_bytes": 1340000,
       "max_brotli_bytes": 1000000
     },
-    "browser-full": {
+    "web-full": {
       "max_raw_bytes": 16150000,
       "max_stripped_bytes": 12600000,
       "max_gzip_bytes": 4015000,
       "max_brotli_bytes": 2755000
     },
-    "browser-full-no-elk": {
-      "max_raw_bytes": 13350000,
-      "max_stripped_bytes": 10200000,
-      "max_gzip_bytes": 3280000,
-      "max_brotli_bytes": 2220000
-    },
-    "browser-ratex-math": {
-      "max_raw_bytes": 17700000,
-      "max_stripped_bytes": 13750000,
-      "max_gzip_bytes": 4470000,
-      "max_brotli_bytes": 3080000
-    },
-    "typst-bridge": {
-      "max_raw_bytes": 66000,
-      "max_stripped_bytes": 49000,
-      "max_gzip_bytes": 21000,
-      "max_brotli_bytes": 18000
-    },
-    "typst-render-only-no-elk": {
-      "max_raw_bytes": 9250000,
-      "max_stripped_bytes": 7375000,
-      "max_gzip_bytes": 2330000,
-      "max_brotli_bytes": 1560000
-    },
-    "typst-render-analysis-no-elk": {
-      "max_raw_bytes": 9650000,
-      "max_stripped_bytes": 7650000,
-      "max_gzip_bytes": 2420000,
-      "max_brotli_bytes": 1620000
-    },
-    "typst-full-elk": {
-      "max_raw_bytes": 12050000,
-      "max_stripped_bytes": 9450000,
-      "max_gzip_bytes": 3075000,
-      "max_brotli_bytes": 2090000
+    "web-render": {
+      "max_raw_bytes": 10550000,
+      "max_stripped_bytes": 8100000,
+      "max_gzip_bytes": 2515000,
+      "max_brotli_bytes": 1680000
     }
   }
 }

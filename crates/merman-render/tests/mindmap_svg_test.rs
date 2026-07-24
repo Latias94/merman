@@ -1,11 +1,11 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
-use merman_render::mindmap::layout_mindmap_diagram_typed;
 use merman_render::model::MindmapDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
@@ -34,18 +34,13 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
 
 fn layout_mindmap_typed(
     parsed: &ParsedDiagramRender,
-    session: &RenderSession,
+    session: RenderSession,
 ) -> MindmapDiagramLayout {
-    let RenderSemanticModel::Mindmap(model) = parsed.model() else {
-        panic!("expected mindmap render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_mindmap_diagram_typed(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .expect("layout ok")
+    let artifact =
+        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize Mindmap layout");
+    serde_json::from_value(projection["layout"]["MindmapDiagram"].clone())
+        .expect("Mindmap layout projection")
 }
 
 fn deep_mindmap_chain(depth: usize) -> String {
@@ -108,7 +103,10 @@ fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
 
 #[test]
 fn mindmap_typed_layout_handles_deep_chain() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 1200;
     let source = deep_mindmap_chain(DEPTH);
 
@@ -118,7 +116,10 @@ fn mindmap_typed_layout_handles_deep_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout = layout_mindmap_typed(&parsed, &session);
+    // Exercise the public JSON projection as well as its ordinary destruction. The semantic
+    // projection contains the same deeply nested rootNode tree even though the typed model and
+    // layout are flat.
+    let layout = layout_mindmap_typed(&parsed, session);
 
     assert_eq!(layout.nodes.len(), DEPTH);
     assert_eq!(layout.edges.len(), DEPTH - 1);
@@ -212,7 +213,7 @@ mindmap
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout = layout_mindmap_typed(&parsed, &session);
+    let layout = layout_mindmap_typed(&parsed, session);
     let node = |id: &str| {
         layout
             .nodes

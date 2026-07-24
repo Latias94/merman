@@ -21,35 +21,33 @@ use super::{
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
 };
 
-pub fn layout_flowchart_elk_typed(
+#[cfg(test)]
+pub(crate) fn layout_flowchart_elk_typed(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartLayout> {
-    layout_flowchart_elk_typed_with_random_policy(
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        elk::ElkRandomPolicy::require_explicit(),
-    )
-}
-
-/// Lays out a Flowchart through ELK with explicit authority for ELK's `randomSeed = 0` sentinel.
-///
-/// Direct callers normally use [`layout_flowchart_elk_typed`], which rejects an unseeded graph.
-/// The renderer operation path supplies a deterministic policy derived from its captured runtime
-/// context so replay never reads process randomness.
-pub fn layout_flowchart_elk_typed_with_random_policy(
-    model: &FlowchartModel,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    random_policy: elk::ElkRandomPolicy,
 ) -> Result<FlowchartLayout> {
     let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
-    let layout = elk::layout_with_random_policy(&graph, random_policy).map_err(|err| {
+    let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
+        message: format!("ELK layout failed: {err}"),
+    })?;
+    flowchart_layout_from_elk(model, effective_config, &graph, layout)
+}
+
+/// Lays out a Flowchart through ELK using the render operation's captured seed.
+///
+/// This is intentionally crate-private. The public typed function above is a raw diagnostic API
+/// and fails closed when source configuration uses ELK's `randomSeed = 0` sentinel.
+pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
+    model: &FlowchartModel,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    operation_seed: elk::ElkOperationSeed,
+) -> Result<FlowchartLayout> {
+    let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
+    let layout = elk::layout_with_operation_seed(&graph, operation_seed).map_err(|err| {
         Error::InvalidModel {
             message: format!("ELK layout failed: {err}"),
         }
@@ -982,7 +980,55 @@ fn subgraph_to_elk_node(
 mod tests {
     use super::*;
     use indexmap::IndexMap;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use serde_json::json;
+
+    const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
+
+    struct NonLatticeComputedLengthMeasurer;
+
+    impl TextMeasurer for NonLatticeComputedLengthMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMetrics {
+                width: 40.0,
+                height: 18.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            NON_LATTICE_COMPUTED_LENGTH_PX
+        }
+    }
+
+    #[test]
+    fn elk_preserves_operation_computed_length_precision() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let graph = build_flowchart_elk_graph(
+            model,
+            &parsed.metadata().effective_config,
+            &NonLatticeComputedLengthMeasurer,
+            None,
+        )
+        .expect("ELK graph");
+        let label = graph
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .and_then(|node| node.label)
+            .expect("node A label");
+
+        assert_eq!(label.width, NON_LATTICE_COMPUTED_LENGTH_PX);
+    }
 
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {
         FlowNode {
@@ -1326,6 +1372,49 @@ mod tests {
             graph.options.layered.self_loop_ordering,
             elk::SelfLoopOrderingStrategy::Sequenced
         );
+    }
+
+    #[test]
+    fn flowchart_elk_keeps_the_source_default_nonzero_seed() {
+        assert_eq!(
+            elk_layout_options(&serde_json::Value::Null)
+                .layered
+                .random_seed,
+            1
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
+        use std::num::NonZeroU64;
+
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+            ],
+            vec![edge("L-A-B", "A", "B", Some("go"))],
+        );
+        let mut graph = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+        graph.options.layered.random_seed = 0;
+
+        assert!(elk::layout(&graph).is_err());
+
+        let operation_seed = elk::ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x666c_6f77_6368_6172).expect("nonzero operation seed"),
+        );
+        let first = elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("seeded Flowchart layout");
+        let replayed = elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("replayed seeded Flowchart layout");
+
+        assert_eq!(first, replayed);
     }
 
     #[test]

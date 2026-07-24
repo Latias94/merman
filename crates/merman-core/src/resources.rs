@@ -2,15 +2,27 @@
 
 use crate::diagram::RenderSemanticModel;
 use crate::diagrams::flowchart::FlowchartModel;
+use crate::diagrams::ishikawa::IshikawaDiagramRenderModel;
+use crate::diagrams::kanban::KanbanDiagramRenderModel;
+use crate::diagrams::mindmap::MindmapDiagramRenderModel;
+use crate::diagrams::radar::RadarDiagramRenderModel;
+use crate::diagrams::requirement::RequirementDiagramRenderModel;
+use crate::diagrams::sequence::SequenceDiagramRenderModel;
+use crate::diagrams::treemap::TreemapDiagramRenderModel;
 use crate::diagrams::zenuml::{ZenumlDiagramRenderModel, ZenumlStatementKind};
 use crate::models::class_diagram::ClassDiagram;
+use serde::Serialize;
+use serde::ser::{
+    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
+    SerializeTupleStruct, SerializeTupleVariant,
+};
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
 pub const INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const RESOURCE_PROFILE_COUNT: usize = 4;
-pub const INPUT_RESOURCE_LIMIT_COUNT: usize = 11;
+pub const INPUT_RESOURCE_LIMIT_COUNT: usize = 4;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -134,31 +146,17 @@ impl std::fmt::Display for InputResourceLimitPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputResourceLimitId {
     MaxSourceBytes,
-    MaxFlowchartNodes,
-    MaxFlowchartEdges,
-    MaxFlowchartSubgraphs,
-    MaxClassNodes,
-    MaxClassEdges,
-    MaxClassNamespaces,
-    MaxZenumlParticipants,
-    MaxZenumlStatements,
-    MaxZenumlFragments,
-    MaxLabelBytes,
+    MaxModelItems,
+    MaxModelTextBytes,
+    MaxModelNestingDepth,
 }
 
 impl InputResourceLimitId {
     pub const ALL: [Self; INPUT_RESOURCE_LIMIT_COUNT] = [
         Self::MaxSourceBytes,
-        Self::MaxFlowchartNodes,
-        Self::MaxFlowchartEdges,
-        Self::MaxFlowchartSubgraphs,
-        Self::MaxClassNodes,
-        Self::MaxClassEdges,
-        Self::MaxClassNamespaces,
-        Self::MaxZenumlParticipants,
-        Self::MaxZenumlStatements,
-        Self::MaxZenumlFragments,
-        Self::MaxLabelBytes,
+        Self::MaxModelItems,
+        Self::MaxModelTextBytes,
+        Self::MaxModelNestingDepth,
     ];
 
     pub const fn index(self) -> usize {
@@ -207,30 +205,18 @@ macro_rules! input_limit_descriptors {
 
 input_limit_descriptors! {
     MaxSourceBytes => ("max_source_bytes", Source, "Maximum UTF-8 Mermaid source bytes"),
-    MaxFlowchartNodes => ("max_flowchart_nodes", Model, "Maximum Flowchart nodes including subgraphs"),
-    MaxFlowchartEdges => ("max_flowchart_edges", Model, "Maximum Flowchart edges"),
-    MaxFlowchartSubgraphs => ("max_flowchart_subgraphs", Model, "Maximum Flowchart subgraphs"),
-    MaxClassNodes => ("max_class_nodes", Model, "Maximum Class diagram nodes"),
-    MaxClassEdges => ("max_class_edges", Model, "Maximum Class diagram edges"),
-    MaxClassNamespaces => ("max_class_namespaces", Model, "Maximum Class diagram namespaces"),
-    MaxZenumlParticipants => ("max_zenuml_participants", Model, "Maximum ZenUML participants"),
-    MaxZenumlStatements => ("max_zenuml_statements", Model, "Maximum ZenUML statements"),
-    MaxZenumlFragments => ("max_zenuml_fragments", Model, "Maximum ZenUML fragments and groups"),
-    MaxLabelBytes => ("max_label_bytes", Model, "Maximum aggregate label bytes in Flowchart, Class, and ZenUML semantic models"),
+    MaxModelItems => ("max_model_items", Model, "Maximum semantic model entities and relationships across all diagram families"),
+    MaxModelTextBytes => ("max_model_text_bytes", Model, "Maximum aggregate UTF-8 text retained by a semantic model"),
+    MaxModelNestingDepth => ("max_model_nesting_depth", Model, "Maximum semantic nesting depth accepted before layout"),
 }
 
 const PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT]; INPUT_RESOURCE_LIMIT_COUNT] = [
     [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
-    [Some(8_000), Some(4_000), Some(50_000), None],
-    [Some(16_000), Some(8_000), Some(100_000), None],
-    [Some(2_000), Some(1_000), Some(10_000), None],
-    [Some(8_000), Some(4_000), Some(50_000), None],
-    [Some(16_000), Some(8_000), Some(100_000), None],
-    [Some(2_000), Some(1_000), Some(10_000), None],
-    [Some(8_000), Some(4_000), Some(50_000), None],
-    [Some(16_000), Some(8_000), Some(100_000), None],
-    [Some(2_000), Some(1_000), Some(10_000), None],
+    // Policy defaults, not Mermaid syntax limits. They deliberately preserve the
+    // aggregate headroom of the previous per-family cardinality budgets.
+    [Some(32_000), Some(16_000), Some(200_000), None],
     [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
+    [Some(256), Some(128), Some(1_024), None],
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,14 +340,28 @@ impl InputResourcePolicy {
         &self,
         model: &RenderSemanticModel,
     ) -> Result<(), InputResourceLimitExceeded> {
-        match model {
-            RenderSemanticModel::Flowchart(model) => {
-                self.check_flowchart_complexity(model).map(drop)
-            }
-            RenderSemanticModel::Class(model) => self.check_class_complexity(model).map(drop),
-            RenderSemanticModel::Zenuml(model) => self.check_zenuml_complexity(model).map(drop),
-            _ => Ok(()),
-        }
+        self.check_model_complexity(ModelComplexity::from_render_model(model))
+    }
+
+    pub fn check_model_complexity(
+        &self,
+        complexity: ModelComplexity,
+    ) -> Result<(), InputResourceLimitExceeded> {
+        self.check_limit(
+            InputResourceLimitPhase::Model,
+            InputResourceLimitId::MaxModelItems,
+            complexity.items,
+        )?;
+        self.check_limit(
+            InputResourceLimitPhase::Model,
+            InputResourceLimitId::MaxModelTextBytes,
+            complexity.text_bytes,
+        )?;
+        self.check_limit(
+            InputResourceLimitPhase::Model,
+            InputResourceLimitId::MaxModelNestingDepth,
+            complexity.nesting_depth,
+        )
     }
 
     pub fn check_flowchart_complexity(
@@ -369,26 +369,7 @@ impl InputResourcePolicy {
         model: &FlowchartModel,
     ) -> Result<FlowchartComplexity, InputResourceLimitExceeded> {
         let complexity = FlowchartComplexity::from_model(model);
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxFlowchartNodes,
-            complexity.nodes,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxFlowchartEdges,
-            complexity.edges,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxFlowchartSubgraphs,
-            complexity.subgraphs,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxLabelBytes,
-            complexity.label_bytes,
-        )?;
+        self.check_model_complexity(complexity.as_model_complexity())?;
         Ok(complexity)
     }
 
@@ -397,26 +378,16 @@ impl InputResourcePolicy {
         model: &ClassDiagram,
     ) -> Result<ClassComplexity, InputResourceLimitExceeded> {
         let complexity = ClassComplexity::from_model(model);
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxClassNodes,
-            complexity.nodes,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxClassEdges,
-            complexity.edges,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxClassNamespaces,
-            complexity.namespaces,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxLabelBytes,
-            complexity.label_bytes,
-        )?;
+        self.check_model_complexity(complexity.as_model_complexity())?;
+        Ok(complexity)
+    }
+
+    pub fn check_mindmap_complexity(
+        &self,
+        model: &MindmapDiagramRenderModel,
+    ) -> Result<MindmapComplexity, InputResourceLimitExceeded> {
+        let complexity = MindmapComplexity::from_model(model);
+        self.check_model_complexity(complexity.as_model_complexity())?;
         Ok(complexity)
     }
 
@@ -425,26 +396,16 @@ impl InputResourcePolicy {
         model: &ZenumlDiagramRenderModel,
     ) -> Result<ZenumlComplexity, InputResourceLimitExceeded> {
         let complexity = ZenumlComplexity::from_model(model);
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxZenumlParticipants,
-            complexity.participants,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxZenumlStatements,
-            complexity.statements,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxZenumlFragments,
-            complexity.fragments,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxLabelBytes,
-            complexity.label_bytes,
-        )?;
+        self.check_model_complexity(complexity.as_model_complexity())?;
+        Ok(complexity)
+    }
+
+    pub fn check_sequence_complexity(
+        &self,
+        model: &SequenceDiagramRenderModel,
+    ) -> Result<SequenceComplexity, InputResourceLimitExceeded> {
+        let complexity = SequenceComplexity::from_model(model);
+        self.check_model_complexity(complexity.as_model_complexity())?;
         Ok(complexity)
     }
 }
@@ -474,47 +435,754 @@ pub struct InputResourceLimitOverride {
     pub value: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModelComplexity {
+    pub items: usize,
+    pub text_bytes: usize,
+    pub nesting_depth: usize,
+}
+
+impl ModelComplexity {
+    pub const fn new(items: usize, text_bytes: usize, nesting_depth: usize) -> Self {
+        Self {
+            items,
+            text_bytes,
+            nesting_depth,
+        }
+    }
+
+    pub fn from_render_model(model: &RenderSemanticModel) -> Self {
+        match model {
+            RenderSemanticModel::Error(model) => Self::from_serializable(model),
+            RenderSemanticModel::CustomJson(model) => {
+                let mut complexity = Self::from_serializable(model.value());
+                complexity.text_bytes = complexity
+                    .text_bytes
+                    .saturating_add(model.model_name().len());
+                complexity
+            }
+            RenderSemanticModel::Mindmap(model) => {
+                MindmapComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::State(model) => Self::from_serializable(model),
+            RenderSemanticModel::Sequence(model) => {
+                SequenceComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::Zenuml(model) => {
+                ZenumlComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::Flowchart(model) => {
+                FlowchartComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::Architecture(model) => Self::from_serializable(model),
+            RenderSemanticModel::Class(model) => {
+                ClassComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::C4(model) => Self::from_serializable(model),
+            RenderSemanticModel::Cynefin(model) => Self::from_serializable(model),
+            RenderSemanticModel::Railroad(model) => Self::from_serializable(model),
+            RenderSemanticModel::Kanban(model) => Self::from_kanban(model),
+            RenderSemanticModel::Gantt(model) => Self::from_serializable(model),
+            RenderSemanticModel::Pie(model) => Self::from_serializable(model),
+            RenderSemanticModel::Packet(model) => Self::from_serializable(model),
+            RenderSemanticModel::Timeline(model) => Self::from_serializable(model),
+            RenderSemanticModel::Journey(model) => Self::from_serializable(model),
+            RenderSemanticModel::Requirement(model) => Self::from_requirement(model),
+            RenderSemanticModel::Sankey(model) => Self::from_serializable(model),
+            RenderSemanticModel::Radar(model) => Self::from_radar(model),
+            RenderSemanticModel::Info(model) => Self::from_serializable(model),
+            RenderSemanticModel::Treemap(model) => {
+                TreemapComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::Block(model) => Self::from_serializable(model),
+            RenderSemanticModel::Er(model) => Self::from_serializable(model),
+            RenderSemanticModel::QuadrantChart(model) => Self::from_serializable(model),
+            RenderSemanticModel::XyChart(model) => Self::from_serializable(model),
+            RenderSemanticModel::GitGraph(model) => Self::from_serializable(model),
+            RenderSemanticModel::TreeView(model) => Self::from_serializable(model),
+            RenderSemanticModel::Ishikawa(model) => {
+                IshikawaComplexity::from_model(model).as_model_complexity()
+            }
+            RenderSemanticModel::EventModeling(model) => Self::from_serializable(model),
+            RenderSemanticModel::Venn(model) => Self::from_serializable(model),
+            RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
+        }
+    }
+
+    fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
+        let mut counter = ModelComplexitySerializer::default();
+        model
+            .serialize(&mut counter)
+            .expect("model complexity serialization is infallible");
+        counter.finish()
+    }
+
+    pub fn from_kanban(model: &KanbanDiagramRenderModel) -> Self {
+        let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
+            [
+                Some(node.id.as_str()),
+                Some(node.label.as_str()),
+                node.parent_id.as_deref(),
+                node.ticket.as_deref(),
+                node.priority.as_deref(),
+                node.assigned.as_deref(),
+                node.icon.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            })
+        });
+        let nesting_depth = kanban_nesting_depth(model);
+        Self::new(model.nodes.len(), text_bytes, nesting_depth)
+    }
+
+    pub fn from_radar(model: &RadarDiagramRenderModel) -> Self {
+        let common_text_bytes = [
+            model.title.as_deref(),
+            model.acc_title.as_deref(),
+            model.acc_descr.as_deref(),
+            Some(model.options.graticule.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let axis_text_bytes = model.axes.iter().fold(0usize, |total, axis| {
+            total
+                .saturating_add(axis.name.len())
+                .saturating_add(axis.label.len())
+        });
+        let (curve_items, curve_text_bytes) =
+            model
+                .curves
+                .iter()
+                .fold((0usize, 0usize), |(items, text_bytes), curve| {
+                    (
+                        items.saturating_add(curve.entries.len()),
+                        text_bytes
+                            .saturating_add(curve.name.len())
+                            .saturating_add(curve.label.len()),
+                    )
+                });
+        Self::new(
+            model
+                .axes
+                .len()
+                .saturating_add(model.curves.len())
+                .saturating_add(curve_items),
+            common_text_bytes
+                .saturating_add(axis_text_bytes)
+                .saturating_add(curve_text_bytes),
+            0,
+        )
+    }
+
+    pub fn from_requirement(model: &RequirementDiagramRenderModel) -> Self {
+        let common_text_bytes = [
+            model.acc_title.as_deref(),
+            model.acc_descr.as_deref(),
+            Some(model.direction.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let requirement_text_bytes = model.requirements.iter().fold(0usize, |total, node| {
+            let total = [
+                node.name.as_str(),
+                node.node_type.as_str(),
+                node.requirement_id.as_str(),
+                node.text.as_str(),
+                node.risk.as_str(),
+                node.verify_method.as_str(),
+            ]
+            .into_iter()
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+            node.css_styles
+                .iter()
+                .chain(&node.classes)
+                .fold(total, |subtotal, value| {
+                    subtotal.saturating_add(value.len())
+                })
+        });
+        let element_text_bytes = model.elements.iter().fold(0usize, |total, node| {
+            let total = [
+                node.name.as_str(),
+                node.element_type.as_str(),
+                node.doc_ref.as_str(),
+            ]
+            .into_iter()
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+            node.css_styles
+                .iter()
+                .chain(&node.classes)
+                .fold(total, |subtotal, value| {
+                    subtotal.saturating_add(value.len())
+                })
+        });
+        let relationship_text_bytes =
+            model
+                .relationships
+                .iter()
+                .fold(0usize, |total, relationship| {
+                    [
+                        relationship.rel_type.as_str(),
+                        relationship.src.as_str(),
+                        relationship.dst.as_str(),
+                    ]
+                    .into_iter()
+                    .fold(total, |subtotal, value| {
+                        subtotal.saturating_add(value.len())
+                    })
+                });
+        let class_text_bytes = model.classes.iter().fold(0usize, |total, (key, class)| {
+            class.styles.iter().chain(&class.text_styles).fold(
+                total
+                    .saturating_add(key.len())
+                    .saturating_add(class.id.len()),
+                |subtotal, value| subtotal.saturating_add(value.len()),
+            )
+        });
+        Self::new(
+            model
+                .requirements
+                .len()
+                .saturating_add(model.elements.len())
+                .saturating_add(model.relationships.len())
+                .saturating_add(model.classes.len()),
+            common_text_bytes
+                .saturating_add(requirement_text_bytes)
+                .saturating_add(element_text_bytes)
+                .saturating_add(relationship_text_bytes)
+                .saturating_add(class_text_bytes),
+            0,
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+struct ModelComplexitySerializer {
+    items: usize,
+    text_bytes: usize,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl ModelComplexitySerializer {
+    fn enter(&mut self) {
+        self.current_depth = self.current_depth.saturating_add(1);
+        self.max_depth = self.max_depth.max(self.current_depth);
+    }
+
+    fn leave(&mut self) {
+        self.current_depth = self.current_depth.saturating_sub(1);
+    }
+
+    fn finish(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.items.max(1),
+            self.text_bytes,
+            self.max_depth.saturating_sub(1),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct ModelComplexitySerializationError;
+
+impl std::fmt::Display for ModelComplexitySerializationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("model complexity serialization failed")
+    }
+}
+
+impl std::error::Error for ModelComplexitySerializationError {}
+
+impl serde::ser::Error for ModelComplexitySerializationError {
+    fn custom<T: std::fmt::Display>(_message: T) -> Self {
+        Self
+    }
+}
+
+struct ModelCompound<'a> {
+    counter: &'a mut ModelComplexitySerializer,
+    count_items: bool,
+}
+
+impl<'a> ModelCompound<'a> {
+    fn new(counter: &'a mut ModelComplexitySerializer, count_items: bool) -> Self {
+        counter.enter();
+        Self {
+            counter,
+            count_items,
+        }
+    }
+
+    fn serialize_value<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), ModelComplexitySerializationError> {
+        if self.count_items {
+            self.counter.items = self.counter.items.saturating_add(1);
+        }
+        value.serialize(&mut *self.counter)
+    }
+}
+
+impl Drop for ModelCompound<'_> {
+    fn drop(&mut self) {
+        self.counter.leave();
+    }
+}
+
+impl SerializeSeq for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_element<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        self.serialize_value(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeTuple for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_element<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        self.serialize_value(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeTupleStruct for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_field<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        self.serialize_value(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeTupleVariant for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_field<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        self.serialize_value(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeMap for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<Self::Ok, Self::Error> {
+        self.serialize_value(key)
+    }
+
+    fn serialize_value<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        value.serialize(&mut *self.counter)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeStruct for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_field<T: Serialize + ?Sized>(
+        &mut self,
+        _key: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        value.serialize(&mut *self.counter)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl SerializeStructVariant for ModelCompound<'_> {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+
+    fn serialize_field<T: Serialize + ?Sized>(
+        &mut self,
+        _key: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        value.serialize(&mut *self.counter)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl<'a> serde::Serializer for &'a mut ModelComplexitySerializer {
+    type Ok = ();
+    type Error = ModelComplexitySerializationError;
+    type SerializeSeq = ModelCompound<'a>;
+    type SerializeTuple = ModelCompound<'a>;
+    type SerializeTupleStruct = ModelCompound<'a>;
+    type SerializeTupleVariant = ModelCompound<'a>;
+    type SerializeMap = ModelCompound<'a>;
+    type SerializeStruct = ModelCompound<'a>;
+    type SerializeStructVariant = ModelCompound<'a>;
+
+    fn serialize_bool(self, _value: bool) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_i8(self, _value: i8) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_i16(self, _value: i16) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_i32(self, _value: i32) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_i64(self, _value: i64) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_i128(self, _value: i128) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_u8(self, _value: u8) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_u16(self, _value: u16) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_u32(self, _value: u32) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_u64(self, _value: u64) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_u128(self, _value: u128) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_f32(self, _value: f32) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_f64(self, _value: f64) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_char(self, value: char) -> Result<Self::Ok, Self::Error> {
+        self.text_bytes = self.text_bytes.saturating_add(value.len_utf8());
+        Ok(())
+    }
+
+    fn serialize_str(self, value: &str) -> Result<Self::Ok, Self::Error> {
+        self.text_bytes = self.text_bytes.saturating_add(value.len());
+        Ok(())
+    }
+
+    fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok, Self::Error> {
+        self.items = self.items.saturating_add(value.len());
+        Ok(())
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
+        value.serialize(self)
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_unit_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+    ) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(
+        self,
+        _name: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        value.serialize(self)
+    }
+
+    fn serialize_newtype_variant<T: Serialize + ?Sized>(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        value.serialize(self)
+    }
+
+    fn serialize_seq(self, _length: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Ok(ModelCompound::new(self, true))
+    }
+
+    fn serialize_tuple(self, _length: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Ok(ModelCompound::new(self, true))
+    }
+
+    fn serialize_tuple_struct(
+        self,
+        _name: &'static str,
+        _length: usize,
+    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Ok(ModelCompound::new(self, true))
+    }
+
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _length: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        Ok(ModelCompound::new(self, true))
+    }
+
+    fn serialize_map(self, _length: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Ok(ModelCompound::new(self, true))
+    }
+
+    fn serialize_struct(
+        self,
+        _name: &'static str,
+        _length: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        Ok(ModelCompound::new(self, false))
+    }
+
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _length: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        Ok(ModelCompound::new(self, false))
+    }
+
+    fn collect_str<T: std::fmt::Display + ?Sized>(
+        self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
+        self.text_bytes = self.text_bytes.saturating_add(value.to_string().len());
+        Ok(())
+    }
+
+    fn is_human_readable(&self) -> bool {
+        true
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlowchartComplexity {
     pub nodes: usize,
     pub edges: usize,
     pub subgraphs: usize,
     pub label_bytes: usize,
+    pub subgraph_depth: usize,
 }
 
 impl FlowchartComplexity {
     pub fn from_model(model: &FlowchartModel) -> Self {
-        let node_label_bytes = model
-            .nodes
-            .iter()
-            .map(|node| optional_str_len(node.label.as_deref()) + node.id.len())
-            .sum::<usize>();
-        let edge_label_bytes = model
-            .edges
-            .iter()
-            .map(|edge| {
-                optional_str_len(edge.label.as_deref())
-                    + edge.id.len()
-                    + edge.from.len()
-                    + edge.to.len()
-            })
-            .sum::<usize>();
-        let subgraph_label_bytes = model
-            .subgraphs
-            .iter()
-            .map(|subgraph| subgraph.id.len() + subgraph.title.len())
-            .sum::<usize>();
-        let tooltip_bytes = model.tooltips.values().map(String::len).sum::<usize>();
-
         Self {
             nodes: model.nodes.len().saturating_add(model.subgraphs.len()),
             edges: model.edges.len(),
             subgraphs: model.subgraphs.len(),
-            label_bytes: node_label_bytes
-                .saturating_add(edge_label_bytes)
-                .saturating_add(subgraph_label_bytes)
-                .saturating_add(tooltip_bytes),
+            label_bytes: flowchart_text_bytes(model),
+            subgraph_depth: flowchart_subgraph_depth(model),
         }
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.nodes.saturating_add(self.edges),
+            self.label_bytes,
+            self.subgraph_depth,
+        )
+    }
+}
+
+/// Computes Treemap model complexity iteratively without serializing a user-controlled node tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TreemapComplexity {
+    pub nodes: usize,
+    pub classes: usize,
+    pub label_bytes: usize,
+    pub nesting_depth: usize,
+}
+
+impl TreemapComplexity {
+    pub fn from_model(model: &TreemapDiagramRenderModel) -> Self {
+        let mut nodes = 0usize;
+        let mut classes = 0usize;
+        let mut label_bytes = [
+            model.acc_title.as_deref(),
+            model.acc_descr.as_deref(),
+            model.title.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let mut nesting_depth = 0usize;
+
+        let mut pending = vec![(&model.root, 0usize)];
+        while let Some((node, depth)) = pending.pop() {
+            nodes = nodes.saturating_add(1);
+            nesting_depth = nesting_depth.max(depth);
+            label_bytes = label_bytes
+                .saturating_add(node.name.len())
+                .saturating_add(node.class_selector.as_deref().map_or(0, str::len))
+                .saturating_add(
+                    node.css_compiled_styles
+                        .as_deref()
+                        .unwrap_or(&[])
+                        .iter()
+                        .map(String::len)
+                        .sum::<usize>(),
+                );
+            if let Some(value) = node.value.as_ref() {
+                label_bytes = label_bytes.saturating_add(json_text_bytes(value));
+                nodes = nodes.saturating_add(json_item_count(value));
+            }
+            if let Some(children) = node.children.as_ref() {
+                for child in children.iter().rev() {
+                    pending.push((child, depth.saturating_add(1)));
+                }
+            }
+        }
+
+        for (class_name, class_def) in &model.classes {
+            classes = classes.saturating_add(1);
+            label_bytes = label_bytes
+                .saturating_add(class_name.len())
+                .saturating_add(class_def.id.len())
+                .saturating_add(class_def.styles.iter().map(String::len).sum::<usize>())
+                .saturating_add(class_def.text_styles.iter().map(String::len).sum::<usize>());
+        }
+
+        Self {
+            nodes,
+            classes,
+            label_bytes,
+            nesting_depth,
+        }
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.nodes.saturating_add(self.classes),
+            self.label_bytes,
+            self.nesting_depth,
+        )
+    }
+}
+
+/// Computes Ishikawa model complexity iteratively without growing the stack with cause depth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IshikawaComplexity {
+    pub nodes: usize,
+    pub label_bytes: usize,
+    pub nesting_depth: usize,
+}
+
+impl IshikawaComplexity {
+    pub fn from_model(model: &IshikawaDiagramRenderModel) -> Self {
+        let mut complexity = Self {
+            nodes: 0,
+            label_bytes: [
+                model.acc_title.as_deref(),
+                model.acc_descr.as_deref(),
+                model.title.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .fold(0usize, |total, value| total.saturating_add(value.len())),
+            nesting_depth: 0,
+        };
+        let Some(root) = model.root.as_ref() else {
+            return complexity;
+        };
+
+        let mut pending = vec![(root, 0usize)];
+        while let Some((node, depth)) = pending.pop() {
+            complexity.nodes = complexity.nodes.saturating_add(1);
+            complexity.label_bytes = complexity.label_bytes.saturating_add(node.text.len());
+            complexity.nesting_depth = complexity.nesting_depth.max(depth);
+            for child in node.children.iter().rev() {
+                pending.push((child, depth.saturating_add(1)));
+            }
+        }
+        complexity
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(self.nodes, self.label_bytes, self.nesting_depth)
     }
 }
 
@@ -524,6 +1192,75 @@ pub struct ClassComplexity {
     pub edges: usize,
     pub namespaces: usize,
     pub label_bytes: usize,
+    pub namespace_depth: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MindmapComplexity {
+    pub nodes: usize,
+    pub edges: usize,
+    pub label_bytes: usize,
+    pub nesting_depth: usize,
+}
+
+impl MindmapComplexity {
+    pub fn from_model(model: &MindmapDiagramRenderModel) -> Self {
+        let node_label_bytes = model.nodes.iter().fold(0usize, |total, node| {
+            let strings = [
+                node.id.as_str(),
+                node.dom_id.as_str(),
+                node.label.as_str(),
+                node.label_type.as_str(),
+                node.shape.as_str(),
+                node.css_classes.as_str(),
+                node.look.as_str(),
+                node.node_id.as_str(),
+            ];
+            let total = strings.into_iter().fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+            let total = node.css_styles.iter().fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+            total.saturating_add(node.icon.as_deref().map_or(0, str::len))
+        });
+        let edge_label_bytes = model.edges.iter().fold(0usize, |total, edge| {
+            [
+                edge.id.as_str(),
+                edge.start.as_str(),
+                edge.end.as_str(),
+                edge.edge_type.as_str(),
+                edge.curve.as_str(),
+                edge.thickness.as_str(),
+                edge.look.as_str(),
+                edge.classes.as_str(),
+            ]
+            .into_iter()
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            })
+        });
+
+        Self {
+            nodes: model.nodes.len(),
+            edges: model.edges.len(),
+            label_bytes: node_label_bytes.saturating_add(edge_label_bytes),
+            nesting_depth: model
+                .nodes
+                .iter()
+                .filter_map(|node| usize::try_from(node.level).ok())
+                .max()
+                .unwrap_or(0),
+        }
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.nodes.saturating_add(self.edges),
+            self.label_bytes,
+            self.nesting_depth,
+        )
+    }
 }
 
 impl ClassComplexity {
@@ -624,16 +1361,121 @@ impl ClassComplexity {
                 .saturating_add(note_label_bytes)
                 .saturating_add(interface_label_bytes)
                 .saturating_add(namespace_label_bytes),
+            namespace_depth: class_namespace_depth(model),
         }
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.nodes.saturating_add(self.edges),
+            self.label_bytes,
+            self.namespace_depth,
+        )
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ZenumlComplexity {
     pub participants: usize,
+    pub groups: usize,
     pub statements: usize,
     pub fragments: usize,
     pub label_bytes: usize,
+    pub nesting_depth: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SequenceComplexity {
+    pub messages: usize,
+    pub block_depth: usize,
+    pub items: usize,
+    pub text_bytes: usize,
+}
+
+impl SequenceComplexity {
+    pub fn from_model(model: &SequenceDiagramRenderModel) -> Self {
+        let mut depth = 0usize;
+        let mut block_depth = 0usize;
+        for message in &model.messages {
+            match message.message_type {
+                10 | 12 | 15 | 19 | 22 | 27 | 30 | 32 => {
+                    depth = depth.saturating_add(1);
+                    block_depth = block_depth.max(depth);
+                }
+                11 | 14 | 16 | 21 | 23 | 29 | 31 => {
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+        let common_text_bytes = [
+            model.acc_title.as_deref(),
+            model.acc_descr.as_deref(),
+            model.title.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let actor_order_text_bytes = model
+            .actor_order
+            .iter()
+            .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let actor_text_bytes = model.actors.iter().fold(0usize, |total, (key, actor)| {
+            total
+                .saturating_add(key.len())
+                .saturating_add(actor.name.len())
+                .saturating_add(actor.description.len())
+                .saturating_add(actor.actor_type.len())
+                .saturating_add(json_map_text_bytes(&actor.links))
+                .saturating_add(json_map_text_bytes(&actor.properties))
+        });
+        let box_text_bytes = model.boxes.iter().fold(0usize, |total, sequence_box| {
+            sequence_box.actor_keys.iter().fold(
+                total
+                    .saturating_add(sequence_box.fill.len())
+                    .saturating_add(sequence_box.name.as_deref().map_or(0, str::len)),
+                |subtotal, actor| subtotal.saturating_add(actor.len()),
+            )
+        });
+        let message_text_bytes = model.messages.iter().fold(0usize, |total, message| {
+            total
+                .saturating_add(message.id.len())
+                .saturating_add(message.from.as_deref().map_or(0, str::len))
+                .saturating_add(message.to.as_deref().map_or(0, str::len))
+                .saturating_add(message.message_text().len())
+        });
+        let note_text_bytes = model.notes.iter().fold(0usize, |total, note| {
+            total
+                .saturating_add(json_text_bytes(&note.actor))
+                .saturating_add(note.message.len())
+        });
+        let lifecycle_text_bytes = model
+            .created_actors
+            .keys()
+            .chain(model.destroyed_actors.keys())
+            .fold(0usize, |total, value| total.saturating_add(value.len()));
+        Self {
+            messages: model.messages.len(),
+            block_depth,
+            items: model
+                .actors
+                .len()
+                .saturating_add(model.boxes.len())
+                .saturating_add(model.messages.len())
+                .saturating_add(model.notes.len()),
+            text_bytes: common_text_bytes
+                .saturating_add(actor_order_text_bytes)
+                .saturating_add(actor_text_bytes)
+                .saturating_add(box_text_bytes)
+                .saturating_add(message_text_bytes)
+                .saturating_add(note_text_bytes)
+                .saturating_add(lifecycle_text_bytes),
+        }
+    }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(self.items, self.text_bytes, self.block_depth)
+    }
 }
 
 impl ZenumlComplexity {
@@ -676,14 +1518,17 @@ impl ZenumlComplexity {
         });
         let mut complexity = Self {
             participants: model.participants.len(),
+            groups: model.groups.len(),
             statements: 0,
             fragments: 0,
             label_bytes: common_label_bytes
                 .saturating_add(participant_label_bytes)
                 .saturating_add(group_label_bytes),
+            nesting_depth: 0,
         };
-        let mut pending = vec![model.statements.as_slice()];
-        while let Some(statements) = pending.pop() {
+        let mut pending = vec![(model.statements.as_slice(), 0usize)];
+        while let Some((statements, nesting_depth)) = pending.pop() {
+            complexity.nesting_depth = complexity.nesting_depth.max(nesting_depth);
             for statement in statements {
                 complexity.statements = complexity.statements.saturating_add(1);
                 complexity.label_bytes = complexity
@@ -706,7 +1551,7 @@ impl ZenumlComplexity {
                             .saturating_add(resolved_to.as_deref().map_or(0, str::len))
                             .saturating_add(label.len())
                             .saturating_add(assignment.as_deref().map_or(0, str::len));
-                        pending.push(body);
+                        pending.push((body, nesting_depth.saturating_add(1)));
                     }
                     ZenumlStatementKind::Creation {
                         resolved_from,
@@ -726,7 +1571,7 @@ impl ZenumlComplexity {
                             .saturating_add(parameters.len())
                             .saturating_add(assignment.as_deref().map_or(0, str::len))
                             .saturating_add(label.len());
-                        pending.push(body);
+                        pending.push((body, nesting_depth.saturating_add(1)));
                     }
                     ZenumlStatementKind::Return {
                         explicit_from,
@@ -754,7 +1599,7 @@ impl ZenumlComplexity {
                             complexity.label_bytes = complexity
                                 .label_bytes
                                 .saturating_add(section.label.as_deref().map_or(0, str::len));
-                            pending.push(&section.statements);
+                            pending.push((&section.statements, nesting_depth.saturating_add(1)));
                         }
                     }
                     ZenumlStatementKind::Reference {
@@ -774,10 +1619,312 @@ impl ZenumlComplexity {
         }
         complexity
     }
+
+    pub fn as_model_complexity(self) -> ModelComplexity {
+        ModelComplexity::new(
+            self.participants
+                .saturating_add(self.groups)
+                .saturating_add(self.statements),
+            self.label_bytes,
+            self.nesting_depth,
+        )
+    }
 }
 
-fn optional_str_len(value: Option<&str>) -> usize {
-    value.map(str::len).unwrap_or(0)
+fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
+    let mut total = [
+        Some(model.keyword.as_str()),
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+        model.direction.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .fold(0usize, |subtotal, value| {
+        subtotal.saturating_add(value.len())
+    });
+    for (id, styles) in &model.class_defs {
+        total = styles
+            .iter()
+            .fold(total.saturating_add(id.len()), |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+    }
+    total = model.vertex_calls.iter().fold(total, |subtotal, value| {
+        subtotal.saturating_add(value.len())
+    });
+    if let Some(defaults) = &model.edge_defaults {
+        total = total.saturating_add(defaults.interpolate.as_deref().map_or(0, str::len));
+        total = defaults.style.iter().fold(total, |subtotal, value| {
+            subtotal.saturating_add(value.len())
+        });
+    }
+    for node in &model.nodes {
+        for value in [
+            Some(node.id.as_str()),
+            node.label.as_deref(),
+            node.label_type.as_deref(),
+            node.layout_shape.as_deref(),
+            node.shape.as_deref(),
+            node.icon.as_deref(),
+            node.form.as_deref(),
+            node.pos.as_deref(),
+            node.img.as_deref(),
+            node.constraint.as_deref(),
+            node.link.as_deref(),
+            node.link_target.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            total = total.saturating_add(value.len());
+        }
+        total = node
+            .classes
+            .iter()
+            .chain(&node.styles)
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+    }
+    for edge in &model.edges {
+        for value in [
+            Some(edge.id.as_str()),
+            Some(edge.from.as_str()),
+            Some(edge.to.as_str()),
+            edge.label.as_deref(),
+            edge.label_type.as_deref(),
+            edge.edge_type.as_deref(),
+            Some(edge.arrow.as_str()),
+            edge.stroke.as_deref(),
+            edge.interpolate.as_deref(),
+            edge.animation.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            total = total.saturating_add(value.len());
+        }
+        total = edge
+            .classes
+            .iter()
+            .chain(&edge.style)
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+    }
+    for subgraph in &model.subgraphs {
+        for value in [
+            Some(subgraph.id.as_str()),
+            Some(subgraph.title.as_str()),
+            subgraph.dir.as_deref(),
+            subgraph.label_type.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            total = total.saturating_add(value.len());
+        }
+        total = subgraph
+            .classes
+            .iter()
+            .chain(&subgraph.styles)
+            .chain(&subgraph.nodes)
+            .fold(total, |subtotal, value| {
+                subtotal.saturating_add(value.len())
+            });
+    }
+    model.tooltips.iter().fold(total, |subtotal, (id, value)| {
+        subtotal
+            .saturating_add(id.len())
+            .saturating_add(value.len())
+    })
+}
+
+fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
+    if model.subgraphs.is_empty() {
+        return 0;
+    }
+    let indices = model
+        .subgraphs
+        .iter()
+        .enumerate()
+        .map(|(index, subgraph)| (subgraph.id.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut children = vec![Vec::new(); model.subgraphs.len()];
+    let mut incoming = vec![0usize; model.subgraphs.len()];
+    for (parent, subgraph) in model.subgraphs.iter().enumerate() {
+        for member in &subgraph.nodes {
+            let Some(&child) = indices.get(member.as_str()) else {
+                continue;
+            };
+            children[parent].push(child);
+            incoming[child] = incoming[child].saturating_add(1);
+        }
+    }
+    let mut queue = std::collections::VecDeque::new();
+    let mut depths = vec![1usize; model.subgraphs.len()];
+    for (index, incoming) in incoming.iter().enumerate() {
+        if *incoming == 0 {
+            queue.push_back(index);
+        }
+    }
+    while let Some(parent) = queue.pop_front() {
+        for &child in &children[parent] {
+            depths[child] = depths[child].max(depths[parent].saturating_add(1));
+            incoming[child] = incoming[child].saturating_sub(1);
+            if incoming[child] == 0 {
+                queue.push_back(child);
+            }
+        }
+    }
+    depths.into_iter().max().unwrap_or(0)
+}
+
+fn class_namespace_depth(model: &ClassDiagram) -> usize {
+    if model.namespaces.is_empty() {
+        return 0;
+    }
+    let indices = model
+        .namespaces
+        .keys()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let parents = model
+        .namespaces
+        .values()
+        .map(|namespace| {
+            namespace
+                .parent
+                .as_deref()
+                .and_then(|parent| indices.get(parent).copied())
+        })
+        .collect::<Vec<_>>();
+    let mut depths = vec![0usize; parents.len()];
+    let mut completed = vec![false; parents.len()];
+    for start in 0..parents.len() {
+        if completed[start] {
+            continue;
+        }
+        let mut path = Vec::new();
+        let mut positions = std::collections::HashMap::new();
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            if completed[index] || positions.contains_key(&index) {
+                break;
+            }
+            positions.insert(index, path.len());
+            path.push(index);
+            cursor = parents[index];
+        }
+        let mut depth = cursor
+            .filter(|index| completed[*index])
+            .map(|index| depths[index])
+            .unwrap_or(0);
+        for index in path.into_iter().rev() {
+            depth = depth.saturating_add(1);
+            depths[index] = depth;
+            completed[index] = true;
+        }
+    }
+    depths.into_iter().max().unwrap_or(0)
+}
+
+fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
+    let indices = model
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let parents = model
+        .nodes
+        .iter()
+        .map(|node| {
+            node.parent_id
+                .as_deref()
+                .and_then(|parent| indices.get(parent).copied())
+        })
+        .collect::<Vec<_>>();
+    let mut depths = vec![0usize; parents.len()];
+    let mut completed = vec![false; parents.len()];
+    for start in 0..parents.len() {
+        if completed[start] {
+            continue;
+        }
+        let mut path = Vec::new();
+        let mut positions = std::collections::HashMap::new();
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            if completed[index] || positions.contains_key(&index) {
+                break;
+            }
+            positions.insert(index, path.len());
+            path.push(index);
+            cursor = parents[index];
+        }
+        let mut depth = cursor
+            .filter(|index| completed[*index])
+            .map(|index| depths[index])
+            .unwrap_or(0);
+        for index in path.into_iter().rev() {
+            depth = depth.saturating_add(1);
+            depths[index] = depth;
+            completed[index] = true;
+        }
+    }
+    depths.into_iter().max().unwrap_or(0)
+}
+
+fn json_map_text_bytes(map: &serde_json::Map<String, serde_json::Value>) -> usize {
+    map.iter().fold(0usize, |total, (key, value)| {
+        total
+            .saturating_add(key.len())
+            .saturating_add(json_text_bytes(value))
+    })
+}
+
+fn json_text_bytes(value: &serde_json::Value) -> usize {
+    let mut total = 0usize;
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::String(value) => total = total.saturating_add(value.len()),
+            serde_json::Value::Array(values) => pending.extend(values),
+            serde_json::Value::Object(values) => {
+                for (key, value) in values {
+                    total = total.saturating_add(key.len());
+                    pending.push(value);
+                }
+            }
+            serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            }
+        }
+    }
+    total
+}
+
+fn json_item_count(value: &serde_json::Value) -> usize {
+    let mut items = 0usize;
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::Array(values) => {
+                items = items.saturating_add(values.len());
+                pending.extend(values);
+            }
+            serde_json::Value::Object(values) => {
+                items = items.saturating_add(values.len());
+                pending.extend(values.values());
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
+        }
+    }
+    items
 }
 
 #[cfg(test)]
@@ -801,6 +1948,15 @@ mod tests {
                 assert_eq!(policy.base_value(limit), policy.value(limit));
             }
         }
+
+        let interactive = InputResourcePolicy::for_profile(ResourceProfile::Interactive);
+        for (limit, expected) in [
+            (InputResourceLimitId::MaxModelItems, Some(32_000)),
+            (InputResourceLimitId::MaxModelTextBytes, Some(2 * MIB)),
+            (InputResourceLimitId::MaxModelNestingDepth, Some(256)),
+        ] {
+            assert_eq!(interactive.value(limit), expected, "{limit:?}");
+        }
     }
 
     #[test]
@@ -819,10 +1975,190 @@ mod tests {
             .unwrap()
             .unwrap();
         let model_error = InputResourcePolicy::for_profile(ResourceProfile::Constrained)
-            .apply_for_test(InputResourceLimitId::MaxFlowchartNodes, 1)
+            .apply_for_test(InputResourceLimitId::MaxModelItems, 2)
             .check_render_model(parsed.model())
             .unwrap_err();
-        assert_eq!(model_error.limit, "max_flowchart_nodes");
+        assert_eq!(model_error.limit, "max_model_items");
+    }
+
+    #[test]
+    fn sequence_complexity_bounds_messages_and_nested_frames() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nloop outer\nrect rgb(240,240,240)\nA->>B: hi\nend\nend",
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("expected Sequence model");
+        };
+        let complexity = SequenceComplexity::from_model(model);
+        assert_eq!(complexity.block_depth, 2);
+        assert_eq!(complexity.messages, model.messages.len());
+
+        let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(InputResourceLimitId::MaxModelNestingDepth, 1)
+            .unwrap()
+            .check_render_model(parsed.model())
+            .unwrap_err();
+        assert_eq!(error.limit, "max_model_nesting_depth");
+        assert_eq!(error.actual, 2);
+        assert_eq!(error.max, 1);
+    }
+
+    #[test]
+    fn mindmap_model_limits_cover_pre_layout_cardinality_and_labels() {
+        let constrained = InputResourcePolicy::for_profile(ResourceProfile::Constrained);
+        assert_eq!(
+            constrained.value(InputResourceLimitId::MaxModelItems),
+            Some(16_000)
+        );
+
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "mindmap\n  Root\n    First child\n    Second child\n",
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Mindmap(model) = parsed.model() else {
+            panic!("expected Mindmap model");
+        };
+        let complexity = MindmapComplexity::from_model(model);
+        assert_eq!(complexity.nodes, 3);
+        assert_eq!(complexity.edges, 2);
+        assert!(complexity.label_bytes >= "RootFirst childSecond child".len());
+
+        for (id, max, expected_limit) in [
+            (InputResourceLimitId::MaxModelItems, 4, "max_model_items"),
+            (
+                InputResourceLimitId::MaxModelTextBytes,
+                1,
+                "max_model_text_bytes",
+            ),
+        ] {
+            let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(id, max)
+                .unwrap()
+                .check_render_model(parsed.model())
+                .unwrap_err();
+            assert_eq!(error.phase, InputResourceLimitPhase::Model);
+            assert_eq!(error.limit, expected_limit);
+        }
+    }
+
+    #[test]
+    fn generic_model_budget_covers_new_family_models_without_family_knobs() {
+        let models = [
+            RenderSemanticModel::Kanban(KanbanDiagramRenderModel {
+                nodes: vec![crate::diagrams::kanban::KanbanRenderNode::new(
+                    "todo", "Todo",
+                )],
+            }),
+            RenderSemanticModel::Radar({
+                let mut model = RadarDiagramRenderModel::default();
+                model.axes = vec![crate::diagrams::radar::RadarRenderAxis {
+                    name: "speed".to_string(),
+                    label: "Speed".to_string(),
+                }];
+                model
+            }),
+            RenderSemanticModel::Requirement(RequirementDiagramRenderModel {
+                direction: "TB".to_string(),
+                requirements: vec![crate::diagrams::requirement::RequirementRenderNode {
+                    name: "R1".to_string(),
+                    node_type: "requirement".to_string(),
+                    requirement_id: "1".to_string(),
+                    text: "Must render".to_string(),
+                    risk: "Low".to_string(),
+                    verify_method: "Test".to_string(),
+                    css_styles: Vec::new(),
+                    classes: Vec::new(),
+                }],
+                acc_title: None,
+                acc_descr: None,
+                elements: Vec::new(),
+                relationships: Vec::new(),
+                classes: Default::default(),
+            }),
+        ];
+        for model in models {
+            let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(InputResourceLimitId::MaxModelTextBytes, 1)
+                .unwrap()
+                .check_render_model(&model)
+                .unwrap_err();
+            assert_eq!(error.limit, "max_model_text_bytes");
+        }
+    }
+
+    #[test]
+    fn kanban_complexity_accounts_for_parent_chain_depth_without_quadratic_scans() {
+        let mut root = KanbanDiagramRenderModel::default();
+        root.nodes = ["section", "lane", "card"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let mut node =
+                    crate::diagrams::kanban::KanbanRenderNode::new(id, format!("Node {id}"));
+                if index > 0 {
+                    node.parent_id = Some(["section", "lane"][index - 1].to_string());
+                }
+                node
+            })
+            .collect();
+
+        assert_eq!(ModelComplexity::from_kanban(&root).nesting_depth, 3);
+    }
+
+    #[test]
+    fn treemap_complexity_handles_deep_typed_trees_without_serde_recursion() {
+        let mut node = crate::diagrams::treemap::TreemapNodeRenderModel {
+            name: "leaf".to_string(),
+            ..Default::default()
+        };
+        for index in (0..1_500).rev() {
+            node = crate::diagrams::treemap::TreemapNodeRenderModel {
+                name: format!("section{index}"),
+                children: Some(vec![node]),
+                ..Default::default()
+            };
+        }
+        let model = TreemapDiagramRenderModel {
+            root: node,
+            ..Default::default()
+        };
+
+        let complexity = TreemapComplexity::from_model(&model);
+
+        assert_eq!(complexity.nodes, 1_501);
+        assert_eq!(complexity.nesting_depth, 1_500);
+        assert!(complexity.label_bytes >= "leaf".len());
+    }
+
+    #[test]
+    fn ishikawa_complexity_handles_deep_typed_trees_without_serde_recursion() {
+        let mut node = crate::diagrams::ishikawa::IshikawaNodeRenderModel {
+            text: "leaf".to_string(),
+            children: Vec::new(),
+        };
+        for index in (0..1_500).rev() {
+            node = crate::diagrams::ishikawa::IshikawaNodeRenderModel {
+                text: format!("cause{index}"),
+                children: vec![node],
+            };
+        }
+        let model = IshikawaDiagramRenderModel {
+            root: Some(node),
+            ..Default::default()
+        };
+
+        let complexity = IshikawaComplexity::from_model(&model);
+
+        assert_eq!(complexity.nodes, 1_501);
+        assert_eq!(complexity.nesting_depth, 1_500);
+        assert!(complexity.label_bytes >= "leaf".len());
     }
 
     impl InputResourcePolicy {

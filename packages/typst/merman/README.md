@@ -24,10 +24,10 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` | `0.8.0-alpha.3` | `2` | Aligns render environments and analysis output with the shared binding contracts. |
+| `0.2.0` | `0.8.0-alpha.3` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows the shared binding ABI 2 shape, including `layout` for geometry and `environment` for text measurement and math rendering.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `1`, including `layout` for geometry and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
 ## Examples
 
@@ -82,7 +82,7 @@ Check the compiled plugin capability surface with:
 
 ```typst
 #let capabilities = merman-capabilities()
-#capabilities.text_measurement
+#capabilities.capabilities.text_measurement
 ```
 
 ## Profiles
@@ -177,7 +177,7 @@ This refactor intentionally removes compatibility-only context wrappers:
 
 `context` is a Typst keyword, so the public parameter is named `document-context`.
 
-Version `0.2.0` also moves measurement and math selection to the binding ABI 2 render environment:
+Version `0.2.0` also moves measurement and math selection to the binding options schema `1` render environment:
 
 ```typst
 #mermaid(source, text-measurement: "deterministic", math-renderer: "none")
@@ -224,7 +224,7 @@ Advanced renderer parameters:
 - `text-measurement`, `math-renderer`: shorthands for `environment.text_measurement` and `environment.math_renderer`. Direct values override `environment`, which overrides profile environment values.
 - `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: SVG post-processing shorthands.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
-- `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
+- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. The plugin reserves `resources` and replaces it with the constrained Typst policy, so documents cannot loosen the package's resource limits through this field.
 
 ### `mermaid-profile(..)`
 
@@ -257,6 +257,10 @@ Returns a structured render payload:
 }
 ```
 
+The result also includes `operation`, `kind`, and `capability_id`. On failure,
+these fields let callers distinguish a missing compiled capability from invalid
+input or a general render error without parsing `message`.
+
 ### `analyze-mermaid(source, ..)`
 
 Returns the canonical analysis schema 1 payload produced by the Rust bindings:
@@ -275,8 +279,15 @@ Returns the compiled plugin capability payload, including the current text measu
 
 ```typst
 #let capabilities = merman-capabilities()
-#capabilities.text_measurement.vendored
+#capabilities.capabilities.text_measurement.provider_ids
 ```
+
+The flat catalog reports the artifact's current capability, output, operation, registry, and
+resource sets. The plugin independently applies a fixed constrained resource ceiling to every
+render and analysis operation. The `resources` field is transport-owned and is replaced even when
+raw binding options are supplied, so documents cannot loosen or silently change that policy.
+The options root and any `analysis` or `merman` wrapper must be JSON objects; malformed wrapper
+values return a structured options error before rendering or analysis begins.
 
 ### `show-mermaid-blocks(..)`
 
@@ -319,18 +330,16 @@ fixtures preserve their nested output paths, and `tests/compile-fail/` fixtures 
 diagnostic declared by their adjacent `.error.txt` file. Successful runs remove their artifacts by
 default; pass `--keep-artifacts` to retain the run directory for inspection.
 
-The built package contains `merman_typst_plugin.manifest.json`, which is the verified profile-owned
-WASM provenance, and `merman_package.manifest.json`, which binds that artifact to the exact frozen
+The built package contains `merman_typst_plugin.manifest.json`, which is the verified
+artifact-recipe provenance, and `merman_package.manifest.json`, which binds that artifact to the exact frozen
 wrapper and legal-material tree. Packaging stages only snapshot bytes, verifies the complete file
 shape and contents, then rechecks live source identity immediately before atomically replacing the
 version directory.
 
-The `publish` profile enables rendering, analysis, the complete Mermaid language catalog, and ELK
-layout. Build the smaller render-and-analysis artifact without ELK with:
-
-```sh
-cargo run --locked -p xtask -- build-typst-package --profile minimal
-```
+The sole package profile, `publish`, enables SVG rendering, analysis, the complete Mermaid language
+catalog, and the Cytoscape and ELK layout backends. There are no alternate bridge-only or SVG-only
+package profiles. Maintainer experiments use direct Cargo features and do not create another
+package identity or release recipe.
 
 ## Current Limits
 

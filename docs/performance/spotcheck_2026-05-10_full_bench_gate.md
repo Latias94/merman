@@ -5,7 +5,7 @@ This report records a release-gate benchmark run for the current fearless-refact
 Command:
 
 ```bash
-cargo bench -p merman --features render
+cargo bench -p merman --features svg
 ```
 
 ## Result

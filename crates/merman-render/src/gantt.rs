@@ -1029,7 +1029,26 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
     ticks
 }
 
-pub fn layout_gantt_diagram_typed(
+/// Mirrors JavaScript remainder stringification for Mermaid's generated Gantt class names.
+///
+/// In particular, `index % 0` is `NaN` in JavaScript rather than a thrown division error. The
+/// class suffix is observable in Mermaid SVG, so preserve that behavior at the language boundary
+/// instead of relying on Rust's integer remainder operator at every call site.
+pub(crate) fn gantt_section_class_suffix(
+    task_type: &str,
+    categories: &[String],
+    number_section_styles: i64,
+) -> String {
+    let Some(index) = categories.iter().position(|category| category == task_type) else {
+        return "0".to_string();
+    };
+    if number_section_styles == 0 {
+        return "NaN".to_string();
+    }
+    ((index as i64) % number_section_styles).to_string()
+}
+
+pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
@@ -1220,12 +1239,7 @@ pub fn layout_gantt_diagram_typed(
             .map(|t| t.task_type.clone())
             .unwrap_or_default();
 
-        let mut sec_num = 0_i64;
-        for (i, c) in categories.iter().enumerate() {
-            if &ttype == c {
-                sec_num = (i as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(&ttype, &categories, number_section_styles);
 
         let y = *order as f64 * gap + top_padding - 2.0;
         rows.push(GanttRowLayout {
@@ -1285,12 +1299,7 @@ pub fn layout_gantt_diagram_typed(
             bar_height
         };
 
-        let mut sec_num = 0_i64;
-        for (i, c) in categories.iter().enumerate() {
-            if &t.task_type == c {
-                sec_num = (i as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(&t.task_type, &categories, number_section_styles);
 
         let mut task_class = String::new();
         if t.active {
@@ -1317,7 +1326,7 @@ pub fn layout_gantt_diagram_typed(
         if t.vert {
             task_class = format!(" vert{task_class}");
         }
-        task_class.push_str(&format!("{sec_num}"));
+        task_class.push_str(&sec_num.to_string());
         if !t.classes.is_empty() {
             task_class.push(' ');
             task_class.push_str(&t.classes.join(" "));
@@ -1429,12 +1438,7 @@ pub fn layout_gantt_diagram_typed(
         let lines = DeterministicTextMeasurer::normalized_text_lines(sec);
         let dy_em = -((lines.len().saturating_sub(1)) as f64) / 2.0;
 
-        let mut sec_num = 0_i64;
-        for (j, c) in categories.iter().enumerate() {
-            if sec == c {
-                sec_num = (j as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(sec, &categories, number_section_styles);
 
         let y = if idx == 0 {
             (*h as f64 * gap) / 2.0 + top_padding
@@ -1534,4 +1538,62 @@ pub fn layout_gantt_diagram_typed(
         title_x: width / 2.0,
         title_y: title_top_margin,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_gantt_diagram_typed;
+    use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+
+    #[test]
+    fn zero_section_styles_preserves_javascript_nan_class_suffix() {
+        let categories = vec!["first".to_string(), "second".to_string()];
+
+        assert_eq!(
+            super::gantt_section_class_suffix("second", &categories, 0),
+            "NaN"
+        );
+        assert_eq!(
+            super::gantt_section_class_suffix("missing", &categories, 0),
+            "0"
+        );
+    }
+
+    #[test]
+    fn maximum_utc_date_layout_terminates_without_panicking() {
+        let max_midnight = chrono::NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
+        let max_ms =
+            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
+                .timestamp_millis();
+        let mut model = GanttDiagramRenderModel::default();
+        model.date_format = "x".to_string();
+        model.axis_format = "%Y-%m-%d".to_string();
+        model.tick_interval = Some("1day".to_string());
+        model.excludes = vec!["weekends".to_string()];
+        model.weekend = "saturday".to_string();
+        model.tasks.push(GanttRenderTask {
+            id: "boundary".to_string(),
+            task: "Boundary".to_string(),
+            section: "Boundary".to_string(),
+            task_type: "Boundary".to_string(),
+            start_ms: max_ms,
+            end_ms: max_ms,
+            ..GanttRenderTask::default()
+        });
+
+        let utc = merman_core::time::LocalTimeZone::utc();
+        let layout = layout_gantt_diagram_typed(
+            &model,
+            &serde_json::json!({}),
+            &DeterministicTextMeasurer::default(),
+            800.0,
+            &utc,
+        )
+        .expect("maximum-date layout should terminate successfully");
+
+        assert_eq!(layout.tasks.len(), 1);
+        assert_eq!(layout.tasks[0].start_ms, max_ms);
+        assert_eq!(layout.bottom_ticks.len(), 1);
+    }
 }

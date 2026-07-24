@@ -49,7 +49,7 @@ export function StatusBar() {
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
   const runtimeMetadata = useMemo(
     () => ({
-      capabilities: facade?.bindingCapabilities() ?? null,
+      capabilities: facade?.runtimeCatalog().capabilities ?? null,
     }),
     [facade]
   );
@@ -124,7 +124,7 @@ export function StatusBar() {
         {capabilities && (
           <span className="hidden shrink-0 md:inline">
             {t("status.editorLanguage")}:{" "}
-            {capabilities.editor_language
+            {capabilities.capability_ids.includes("editor")
               ? t("status.enabled")
               : t("status.disabled")}
           </span>

@@ -72,7 +72,7 @@
     },
     {
       "id": "web-full",
-      "description": "The published full browser WASM preset with ELK layout and without the separate RaTeX math profile.",
+      "description": "The published full browser WASM artifact profile with ELK layout and without the separate RaTeX math profile.",
       "extends": ["elk-render"],
       "components": []
     },
@@ -177,11 +177,11 @@
     {
       "id": "cytoscape",
       "name": "Cytoscape.js",
-      "version": "3.33.1",
+      "version": "3.34.0",
       "source": {
         "repository": "https://github.com/cytoscape/cytoscape.js.git",
-        "ref": "v3.33.1",
-        "commit": "72af5edb6cd988851f42dc25f9e1092fd2d9e7cf",
+        "ref": "v3.34.0",
+        "commit": "22716bfb75834b56fa6679648b0abb06f4ae691c",
         "path": "."
       },
       "relationships": ["behavior-reference", "translated"],
@@ -190,8 +190,8 @@
       "license_files": [
         {
           "path": "THIRD_PARTY_LICENSES/cytoscape/LICENSE",
-          "sha256": "e4b62495bacaefaf330f38f226e20d1d60d658d444998ba7406a191f96a2e701",
-          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js/72af5edb6cd988851f42dc25f9e1092fd2d9e7cf/LICENSE",
+          "sha256": "eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203",
+          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js/22716bfb75834b56fa6679648b0abb06f4ae691c/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -449,11 +449,11 @@
     {
       "id": "katex-fonts",
       "name": "KaTeX fonts bundled by ratex-katex-fonts",
-      "version": "ratex-katex-fonts@0.1.12",
+      "version": "ratex-katex-fonts@0.1.13",
       "source": {
         "repository": "https://github.com/erweixin/RaTeX.git",
-        "ref": "crates.io:ratex-katex-fonts@0.1.12",
-        "commit": "00315b83897aa44611bb7597fc80cbc54daf9a37",
+        "ref": "crates.io:ratex-katex-fonts@0.1.13",
+        "commit": "d7d1bf2818a74ed227f00566c578ee4502b8c48c",
         "path": "crates/ratex-katex-fonts/fonts"
       },
       "relationships": ["embedded"],
@@ -463,14 +463,14 @@
         {
           "path": "THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt",
           "sha256": "752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e",
-          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.12/download",
+          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.13/download",
           "source_path": "fonts/FONT_NOTICE.txt",
           "role": "notice"
         },
         {
           "path": "THIRD_PARTY_LICENSES/katex-fonts/OFL.txt",
           "sha256": "f19c674290e5dc79f02e8efe16139ab56a06a7128876f5b1579ffd0db5bc897e",
-          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.12/download",
+          "source_url": "https://crates.io/api/v1/crates/ratex-katex-fonts/0.1.13/download",
           "source_path": "fonts/OFL.txt",
           "role": "license"
         }
@@ -480,8 +480,8 @@
           "type": "cargo",
           "path": "Cargo.lock",
           "package": "ratex-katex-fonts",
-          "version": "0.1.12",
-          "checksum": "0bc5367156629534615e31fa89a5f32870f44f9556f314cf37bc31603453925a"
+          "version": "0.1.13",
+          "checksum": "6f62871291478ef51447006b97cbf5543747f4b6a70d0afbc8e11f8f3c4928bd"
         }
       ],
       "notice": "The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license."
@@ -619,11 +619,11 @@
     {
       "id": "ratex",
       "name": "RaTeX",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "source": {
         "repository": "https://github.com/erweixin/RaTeX.git",
-        "ref": "crates.io:ratex-*@0.1.12",
-        "commit": "00315b83897aa44611bb7597fc80cbc54daf9a37",
+        "ref": "crates.io:ratex-*@0.1.13",
+        "commit": "d7d1bf2818a74ed227f00566c578ee4502b8c48c",
         "path": "crates"
       },
       "relationships": ["linked"],
@@ -633,30 +633,30 @@
         {
           "path": "THIRD_PARTY_LICENSES/ratex/LICENSE",
           "sha256": "f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0",
-          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/00315b83897aa44611bb7597fc80cbc54daf9a37/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/d7d1bf2818a74ed227f00566c578ee4502b8c48c/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         },
         {
           "path": "THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt",
           "sha256": "e3cf753ddd8012543a3297b62b4cf5450db1d5a3ae7ddd7afae593db927c2980",
-          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/00315b83897aa44611bb7597fc80cbc54daf9a37/THIRD_PARTY_NOTICES.txt",
+          "source_url": "https://raw.githubusercontent.com/erweixin/RaTeX/d7d1bf2818a74ed227f00566c578ee4502b8c48c/THIRD_PARTY_NOTICES.txt",
           "source_path": "THIRD_PARTY_NOTICES.txt",
           "role": "notice"
         }
       ],
       "locks": [
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font", "version": "0.1.12", "checksum": "03059293a2a4cdeab32f348fbf2eb649e696a6a8c88b8142de7d016ab84f0013"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font-loader", "version": "0.1.12", "checksum": "b30bd5fd1fa354d0d5276a677fdb8fec50a27ecf39b7bd35bb5f3bf034a3e747"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-katex-fonts", "version": "0.1.12", "checksum": "0bc5367156629534615e31fa89a5f32870f44f9556f314cf37bc31603453925a"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-layout", "version": "0.1.12", "checksum": "947076a171664e6cc1a201d5e9d9cefc07c43a53e6cbb3e703422eeaec7b172f"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-lexer", "version": "0.1.12", "checksum": "6af24235c2700f21a80620885bb3de96efe884726ac89937abb8c27e4683ff28"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-parser", "version": "0.1.12", "checksum": "c897f4653b44a87fa257b1602dc1962c3d738fd1fad01aa0ea0f44ef6af1f202"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-svg", "version": "0.1.12", "checksum": "940dc91507873b5f9dc18224df2552ccb1eef3f5047b454710e517da026360f1"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-types", "version": "0.1.12", "checksum": "43de9e079b1056b08fd89143cb905e47bcb459510141c5dd702b290e18447054"},
-        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-unicode-font", "version": "0.1.12", "checksum": "267bdf384926da00f205545a97173e6d817213651e9e6640de3ed5e0a3855397"}
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font", "version": "0.1.13", "checksum": "4488ca88b7c08ba266b30431718330b19b5714a7af5f7eb2ddaab1d801daae2b"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-font-loader", "version": "0.1.13", "checksum": "e3f8a48f6ef2d37d409f5125555d52134f302d0cf75a6856febbe4b859d30096"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-katex-fonts", "version": "0.1.13", "checksum": "6f62871291478ef51447006b97cbf5543747f4b6a70d0afbc8e11f8f3c4928bd"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-layout", "version": "0.1.13", "checksum": "357b26fa792ed80b127a5cec401b6ee99a9d3bf8de51df832f52045ecf761b49"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-lexer", "version": "0.1.13", "checksum": "73da647195c345fe25d1815b67ae365950f0b80640a555f07f65c6b4d79dc509"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-parser", "version": "0.1.13", "checksum": "b632e1438b4a273dd856036765405a4bbc223b6bfc67234285888580545b9fd2"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-svg", "version": "0.1.13", "checksum": "3e0ce3d7caea997265666e4813fc8b710958de54f484489c1437a62a6e3ee19f"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-types", "version": "0.1.13", "checksum": "30f353419bafeab3d0cd9cfbd3d991293df28a3ea1923e717dfb9ff1bcb28f4a"},
+        {"type": "cargo", "path": "Cargo.lock", "package": "ratex-unicode-font", "version": "0.1.13", "checksum": "8144de0e20108ed19827203b38df77037779a5a68aa293fba858d25b240e170d"}
       ],
-      "notice": "Optional math rendering links the RaTeX 0.1.12 crate family; its separately licensed embedded fonts are recorded as their own component."
+      "notice": "Optional math rendering links the RaTeX 0.1.13 crate family; its separately licensed embedded fonts are recorded as their own component."
     },
     {
       "id": "rough-rs",

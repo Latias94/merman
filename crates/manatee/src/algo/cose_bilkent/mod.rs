@@ -1948,7 +1948,7 @@ mod tests {
 
     #[test]
     fn basic_three_node_tree_matches_upstream_positions() {
-        // Oracle: cytoscape-cose-bilkent@4.1.0 + cytoscape@3.33.1 (Mermaid 11.12.3),
+        // Oracle: cytoscape-cose-bilkent@4.1.0 + cytoscape@3.34.0 (Mermaid 11.16.0 compatible),
         // with the same node dimensions.
         //
         // This corresponds to `fixtures/upstream-svgs/mindmap/basic.svg`.

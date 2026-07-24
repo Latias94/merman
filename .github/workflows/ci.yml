@@ -48,7 +48,7 @@ jobs:
         run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_publish.py
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_web_package_group.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_artifact_profile_recipe.py scripts/test_verify_artifact_dependency_closures.py scripts/test_publish.py
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -161,9 +161,13 @@ jobs:
         run: |
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-editor-token-descriptor
-          cargo run --locked -p xtask -- verify-text-measurement-abi
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-artifact-profiles
+          python3 scripts/verify_artifact_dependency_closures.py
+          cargo run --locked -p xtask -- verify-feature-matrix --strict
+          cargo run --locked -p xtask -- verify-typst-profile-constants
           cargo run --locked -p xtask -- verify-web-diagram-catalog
           cargo run --locked -p xtask -- verify-playground-example-catalog
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
@@ -174,7 +178,7 @@ jobs:
       - name: Test architecture compile-fail contracts
         run: |
           cargo test -p merman-render --doc
-          cargo test -p merman --doc --features render
+          cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
@@ -201,11 +205,13 @@ jobs:
 
       - name: Test (nextest, merman render)
         if: matrix.parity
-        run: cargo nextest run -p merman --features render --cargo-quiet
+        run: cargo nextest run -p merman --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing --cargo-quiet
 
-      - name: Test C FFI no-render validation smoke
+      - name: Test C FFI artifact-profile consumer smoke
         if: matrix.parity
-        run: cargo nextest run -p merman-ffi --no-default-features --features analysis --test c_consumer_smoke --cargo-quiet
+        run: |
+          features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
+          cargo nextest run -p merman-ffi --no-default-features --features "$features" --test c_consumer_smoke --cargo-quiet
 
       - name: Check UniFFI no-render feature sets
         if: matrix.parity
@@ -214,7 +220,7 @@ jobs:
           cargo check -p merman-uniffi --no-default-features --features ascii
 
       - name: Build (release)
-        run: cargo build --release --locked -p merman-cli
+        run: cargo build --release --locked -p merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: SVG DOM structure
         if: matrix.parity
@@ -272,14 +278,14 @@ jobs:
       - name: Test Typst plugin crate
         run: cargo test --locked -p merman-typst-plugin
 
-      - name: Build Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
+      - name: Check exact Typst WASM size budget
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
-      - name: Check Typst WASM ABI, imports, and behavior
-        run: |
-          artifact="target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm"
-          cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm "${artifact}"
-          cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm "${artifact}"
+      - name: Check exact Typst dependency closure
+        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+
+      - name: Build and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
 
       - name: Smoke Typst package
         shell: bash
@@ -325,14 +331,11 @@ jobs:
       - name: Check WASM size budgets
         run: cargo run --locked -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
-      - name: Build Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
+      - name: Check exact Typst dependency closure
+        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
 
-      - name: Check Typst WASM ABI, imports, and behavior
-        run: |
-          artifact="target/typst-wasm-artifacts/typst-full-elk/merman_typst_plugin.wasm"
-          cargo run --locked -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm "${artifact}"
-          cargo run --locked -p xtask -- typst-plugin-smoke --profile publish --wasm "${artifact}"
+      - name: Build and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
 
       - name: Download Typst compatibility version
         shell: bash
@@ -559,14 +562,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build merman C ABI library
-        run: cargo build -p merman-ffi --release
+        run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 
       - name: Build and run C example
         run: |
+          profile_dir="$(python3 scripts/artifact_profile_recipe.py c-abi-native --field profile)"
           cc -I crates/merman-ffi/include \
             crates/merman-ffi/examples/render_svg.c \
-            -L target/release -lmerman_ffi \
-            -Wl,-rpath,"$PWD/target/release" \
+            -L "target/$profile_dir" -lmerman_ffi \
+            -Wl,-rpath,"$PWD/target/$profile_dir" \
             -o target/merman-ffi-render-svg
           target/merman-ffi-render-svg | grep -q '<svg'
 
@@ -595,17 +599,21 @@ jobs:
         working-directory: platforms/flutter
         run: |
           flutter pub get
+          dart run ffigen --config ffigen.yaml
+          git diff --exit-code -- lib/src/generated/native_abi.dart
           flutter analyze
-          dart format --set-exit-if-changed lib example
+          dart format --set-exit-if-changed lib example tool
+          dart run tool/abi3_contract_test.dart
 
       - name: Run Dart FFI smoke
         working-directory: platforms/flutter
         run: |
-          cargo build -p merman-ffi
-          dart run example/smoke.dart ../../target/debug/libmerman_ffi.so
+          python3 ../../scripts/artifact_profile_recipe.py c-abi-native --build --locked
+          profile_dir="$(python3 ../../scripts/artifact_profile_recipe.py c-abi-native --field profile)"
+          dart run example/smoke.dart "../../target/$profile_dir/libmerman_ffi.so"
 
-  apple-ffi-smoke:
-    name: apple-ffi-smoke
+  apple-uniffi-smoke:
+    name: apple-uniffi-smoke
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
@@ -630,3 +638,4 @@ jobs:
           swift package describe
           swift build
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
