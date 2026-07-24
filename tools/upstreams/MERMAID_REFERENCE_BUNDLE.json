@@ -354,8 +354,8 @@
   ],
   "playground": {
     "workspace": "playground",
-    "packageJsonSha256": "6cfbedda18250692d33afee2dcc3cf22195e7ef4a4bbebb61dcd4be2d1eccab2",
-    "packageLockSha256": "190e76ea33649e051f76fb03341fd69cf637c8ba5f401fc392b1b4e6da516685"
+    "packageJsonSha256": "0d2b4f73a88b06c8eac3d0ff7a539037d93771e33d3fa517a2b8876ed2806362",
+    "packageLockSha256": "45d6d8cbde8f4893a0b2379463b26dfb72abbb44a2f76ce6d26a1af27d816dbb"
   },
   "referenceCli": {
     "package": {
