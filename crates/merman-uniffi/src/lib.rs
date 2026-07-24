@@ -1237,15 +1237,6 @@ mod tests {
         MermanEngine::new()
     }
 
-    #[cfg(any(
-        not(feature = "analysis"),
-        not(feature = "svg"),
-        not(all(
-            feature = "system-clock",
-            feature = "system-timezone",
-            feature = "system-random"
-        ))
-    ))]
     fn assert_missing_capability(error: &MermanError, expected_capability_id: &str) {
         let MermanError::Binding {
             code,
@@ -1687,50 +1678,30 @@ mod tests {
         assert_eq!(metadata["runtime_policy"], "deterministic");
     }
 
-    #[cfg(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    ))]
     #[test]
-    fn generic_one_shot_operation_accepts_request_runtime_policy() {
-        let result = engine()
-            .execute(MermanOperationRequest {
-                operation_id: "semantic-json".to_string(),
-                source: "flowchart TD\nA --> B".to_string(),
-                uri: None,
-                options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
-            })
-            .unwrap();
-        let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
-
-        assert_eq!(metadata["runtime_policy"], "native");
-    }
-
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
-    #[test]
-    fn generic_one_shot_native_policy_names_the_missing_system_capability() {
-        let error = engine()
-            .execute(MermanOperationRequest {
-                operation_id: "semantic-json".to_string(),
-                source: "flowchart TD\nA --> B".to_string(),
-                uri: None,
-                options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
-            })
-            .unwrap_err();
-        let expected_capability_id = if !cfg!(feature = "system-clock") {
-            "system-clock"
-        } else if !cfg!(feature = "system-timezone") {
-            "system-timezone"
-        } else {
-            "system-random"
+    fn generic_one_shot_native_policy_matches_the_owner_adapter_probe() {
+        let request = MermanOperationRequest {
+            operation_id: "semantic-json".to_string(),
+            source: "flowchart TD\nA --> B".to_string(),
+            uri: None,
+            options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
         };
+        let compiled = merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids;
+        let missing = ["system-clock", "system-timezone", "system-random"]
+            .into_iter()
+            .find(|capability| !compiled.contains(capability));
 
-        assert_missing_capability(&error, expected_capability_id);
+        match missing {
+            Some(expected_capability_id) => {
+                let error = engine().execute(request).unwrap_err();
+                assert_missing_capability(&error, expected_capability_id);
+            }
+            None => {
+                let result = engine().execute(request).unwrap();
+                let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
+                assert_eq!(metadata["runtime_policy"], "native");
+            }
+        }
     }
 
     #[test]

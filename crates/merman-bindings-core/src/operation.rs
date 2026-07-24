@@ -300,63 +300,54 @@ mod tests {
         assert!(!result.data.is_empty());
     }
 
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
     #[test]
-    fn explicit_native_policy_names_the_missing_system_capability() {
-        let error = match BindingEngine::from_options(br#"{"runtime_policy":"native"}"#) {
-            Ok(_) => panic!("native policy requires every system adapter"),
-            Err(error) => error,
-        };
+    fn explicit_native_policy_matches_the_owner_compiled_adapter_probe() {
+        let compiled = merman::runtime::compiled_system_adapter_ids();
+        let missing = ["system-clock", "system-timezone", "system-random"]
+            .into_iter()
+            .find(|capability| !compiled.contains(capability));
 
-        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-        let expected_capability = if !cfg!(feature = "system-clock") {
-            "system-clock"
-        } else if !cfg!(feature = "system-timezone") {
-            "system-timezone"
-        } else {
-            "system-random"
-        };
-        assert_eq!(error.capability_id(), Some(expected_capability));
-        assert!(error.message().contains("runtime capability `system-"));
-        assert!(error.message().contains("not compiled into this artifact"));
+        match missing {
+            Some(expected_capability) => {
+                let error = match BindingEngine::from_options(br#"{"runtime_policy":"native"}"#) {
+                    Ok(_) => panic!("owner probe reported a missing native adapter"),
+                    Err(error) => error,
+                };
+                assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+                assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+                assert_eq!(error.capability_id(), Some(expected_capability));
+                assert!(error.message().contains("runtime capability `system-"));
+                assert!(error.message().contains("not compiled into this artifact"));
 
-        let free_function_error =
-            crate::parse_json(b"flowchart TD\nA --> B", br#"{"runtime_policy":"native"}"#)
-                .expect_err("free functions must honor the selected runtime policy");
-        assert_eq!(
-            free_function_error.kind(),
-            crate::BindingErrorKind::MissingCapability
-        );
-        assert_eq!(
-            free_function_error.capability_id(),
-            Some(expected_capability)
-        );
-    }
+                let free_function_error =
+                    crate::parse_json(b"flowchart TD\nA --> B", br#"{"runtime_policy":"native"}"#)
+                        .expect_err("free functions must honor the selected runtime policy");
+                assert_eq!(
+                    free_function_error.kind(),
+                    crate::BindingErrorKind::MissingCapability
+                );
+                assert_eq!(
+                    free_function_error.capability_id(),
+                    Some(expected_capability)
+                );
+            }
+            None => {
+                let engine =
+                    BindingEngine::from_options(br#"{"runtime_policy":"native"}"#).unwrap();
+                let result = engine
+                    .execute(BindingOperationRequest {
+                        operation_id: "semantic-json",
+                        source: b"flowchart TD\nA --> B",
+                        uri: None,
+                        options_json: b"",
+                    })
+                    .unwrap();
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(&result.metadata_json).unwrap();
 
-    #[cfg(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    ))]
-    #[test]
-    fn explicit_native_policy_is_attested_in_operation_metadata() {
-        let engine = BindingEngine::from_options(br#"{"runtime_policy":"native"}"#).unwrap();
-        let result = engine
-            .execute(BindingOperationRequest {
-                operation_id: "semantic-json",
-                source: b"flowchart TD\nA --> B",
-                uri: None,
-                options_json: b"",
-            })
-            .unwrap();
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
-
-        assert_eq!(metadata["runtime_policy"], "native");
+                assert_eq!(metadata["runtime_policy"], "native");
+            }
+        }
     }
 
     #[cfg(feature = "svg")]

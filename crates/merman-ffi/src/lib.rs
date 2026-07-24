@@ -1913,33 +1913,36 @@ mod tests {
         );
     }
 
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
     #[test]
-    fn native_policy_failure_preserves_the_first_missing_adapter_id() {
+    fn native_policy_engine_creation_matches_the_owner_adapter_probe() {
         let api = api_table();
         let mut config = native_config();
         config.options_json = borrowed_slice(br#"{"runtime_policy":"native"}"#);
         let mut result = native_result();
         let mut token = 0;
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
-        assert_eq!(token, 0);
-        let error = result_json(&result);
-        let expected_capability = if !cfg!(feature = "system-clock") {
-            "system-clock"
-        } else if !cfg!(feature = "system-timezone") {
-            "system-timezone"
-        } else {
-            "system-random"
-        };
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-        assert_eq!(error["capability_id"], expected_capability);
+        let compiled = merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids;
+        let missing = ["system-clock", "system-timezone", "system-random"]
+            .into_iter()
+            .find(|capability| !compiled.contains(capability));
+        let status = unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) };
+
+        match missing {
+            Some(expected_capability) => {
+                assert_eq!(status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
+                assert_eq!(token, 0);
+                let error = result_json(&result);
+                assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+                assert_eq!(error["capability_id"], expected_capability);
+            }
+            None => {
+                assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+                assert_ne!(token, 0);
+                assert_eq!(
+                    unsafe { api.engine_free.unwrap()(token) },
+                    MERMAN_NATIVE_STATUS_OK
+                );
+            }
+        }
         unsafe { api.result_free.unwrap()(&mut result) };
     }
 

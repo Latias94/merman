@@ -18,6 +18,7 @@ const MIB: usize = 1024 * KIB;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const MAX_RESVG_TREE_DEPTH: usize = 256;
+pub const SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID: &str = "svg_backend_tree_depth";
 
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = 64;
@@ -460,7 +461,7 @@ impl RenderResourcePolicy {
         }
         Err(ResourceLimitExceeded {
             phase: ResourceLimitPhase::SvgPostprocess,
-            limit: "svg_backend_tree_depth",
+            limit: SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
             actual: tree_depth,
             max: MAX_RESVG_TREE_DEPTH,
             profile: self.profile(),

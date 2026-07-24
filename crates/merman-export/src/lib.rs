@@ -984,7 +984,7 @@ fn plan_svg_conversion_group(
     while let Some((group, parent_depth, tree_depth)) = stack.pop() {
         plan.max_tree_depth = plan.max_tree_depth.max(tree_depth);
         check_svg_conversion_limit(
-            "max_svg_tree_depth",
+            merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
             plan.max_tree_depth,
             Some(merman_render::resources::MAX_RESVG_TREE_DEPTH),
         )?;
@@ -2303,7 +2303,12 @@ mod tests {
             .err()
             .expect("the expanded usvg tree must retain the backend depth cap");
 
-        assert!(error.to_string().contains("max_svg_tree_depth"), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID),
+            "{error}"
+        );
     }
 
     #[test]
