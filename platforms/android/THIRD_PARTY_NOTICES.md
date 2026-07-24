@@ -61,7 +61,7 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 ### `web-full`
 
-The published full browser WASM preset with ELK layout and without the separate RaTeX math profile.
+The published full browser WASM artifact profile with ELK layout and without the separate RaTeX math profile.
 
 Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
 
