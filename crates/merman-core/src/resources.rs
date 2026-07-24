@@ -2095,19 +2095,20 @@ mod tests {
 
     #[test]
     fn kanban_complexity_accounts_for_parent_chain_depth_without_quadratic_scans() {
-        let mut root = KanbanDiagramRenderModel::default();
-        root.nodes = ["section", "lane", "card"]
-            .into_iter()
-            .enumerate()
-            .map(|(index, id)| {
-                let mut node =
-                    crate::diagrams::kanban::KanbanRenderNode::new(id, format!("Node {id}"));
-                if index > 0 {
-                    node.parent_id = Some(["section", "lane"][index - 1].to_string());
-                }
-                node
-            })
-            .collect();
+        let root = KanbanDiagramRenderModel {
+            nodes: ["section", "lane", "card"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    let mut node =
+                        crate::diagrams::kanban::KanbanRenderNode::new(id, format!("Node {id}"));
+                    if index > 0 {
+                        node.parent_id = Some(["section", "lane"][index - 1].to_string());
+                    }
+                    node
+                })
+                .collect(),
+        };
 
         assert_eq!(ModelComplexity::from_kanban(&root).nesting_depth, 3);
     }

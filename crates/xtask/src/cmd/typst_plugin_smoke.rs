@@ -1018,16 +1018,14 @@ mod tests {
             "publish"
         );
 
-        for alias in ["publish"] {
-            let options = parse_options(vec![
-                "--wasm".to_string(),
-                "plugin.wasm".to_string(),
-                "--profile".to_string(),
-                alias.to_string(),
-            ])
-            .expect("named smoke profile");
-            assert!(catalog.resolve_package(options.profile.as_deref()).is_ok());
-        }
+        let options = parse_options(vec![
+            "--wasm".to_string(),
+            "plugin.wasm".to_string(),
+            "--profile".to_string(),
+            "publish".to_string(),
+        ])
+        .expect("named smoke profile");
+        assert!(catalog.resolve_package(options.profile.as_deref()).is_ok());
         for private_name in [
             "minimal",
             "typst-full-elk",
