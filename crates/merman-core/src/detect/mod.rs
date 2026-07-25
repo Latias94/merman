@@ -50,6 +50,7 @@ impl DetectorRegistry {
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let no_frontmatter = remove_frontmatter(text);
         let no_directives = remove_directives(no_frontmatter.as_ref());
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
@@ -73,6 +74,7 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         for det in self.detectors.iter() {
             if (det.detector)(text, config) {
                 return Ok(det.id);
@@ -110,22 +112,16 @@ fn remove_frontmatter(text: &str) -> Cow<'_, str> {
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {
-    if !text.contains("%%{") {
+    let ranges = crate::preprocess::directive_removal_ranges(text);
+    if ranges.is_empty() {
         return Cow::Borrowed(text);
     }
 
     let mut out = String::with_capacity(text.len());
     let mut pos = 0;
-    while let Some(rel) = text[pos..].find("%%{") {
-        let start = pos + rel;
-        out.push_str(&text[pos..start]);
-        let after_start = start + 3;
-        if let Some(rel_end) = text[after_start..].find("}%%") {
-            let end = after_start + rel_end + 3;
-            pos = end;
-        } else {
-            return Cow::Owned(out);
-        }
+    for range in ranges {
+        out.push_str(&text[pos..range.start]);
+        pos = range.end;
     }
     out.push_str(&text[pos..]);
     Cow::Owned(out)
@@ -402,10 +398,10 @@ mod remove_directives_tests {
     }
 
     #[test]
-    fn unterminated_directive_truncates_at_start() {
+    fn unterminated_directive_does_not_truncate_following_source() {
         let s = "flowchart\n%%{init: {\"theme\": \"dark\"}}\nA-->B;";
         let out = remove_directives(s);
-        assert_eq!(out.as_ref().trim(), "flowchart");
+        assert_eq!(out.as_ref(), "flowchart\n\nA-->B;");
     }
 }
 

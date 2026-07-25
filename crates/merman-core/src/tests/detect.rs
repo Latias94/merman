@@ -280,6 +280,77 @@ fn detector_registry_strips_mermaid_comment_lines_without_regex() {
 }
 
 #[test]
+fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
+    let source = "\u{feff}flowchart TD\nA-->B\n";
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
+    let mut config = MermaidConfig::empty_object();
+
+    let detected = registry
+        .detect_type(source, &mut config)
+        .expect("detector accepts a leading UTF-8 BOM");
+    assert_eq!(detected, "flowchart-v2");
+
+    let preprocessed =
+        preprocess_diagram(source, &registry).expect("preprocessor accepts a leading UTF-8 BOM");
+    assert_eq!(preprocessed.code(), "flowchart TD\nA-->B\n");
+    let mapped = preprocessed
+        .source
+        .try_map_span(SourceSpan::new(0, "flowchart".len()))
+        .expect("diagram header remains exactly mapped");
+    assert_eq!(&source[mapped.start..mapped.end], "flowchart");
+
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect("public parse accepts a leading UTF-8 BOM")
+        .expect("flowchart model");
+    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+
+    let metadata = Engine::new()
+        .parse_metadata_sync("\u{feff}---\ntitle: BOM title\n---\nflowchart TD\nA-->B\n")
+        .expect("BOM is removed before frontmatter extraction");
+    assert_eq!(metadata.title.as_deref(), Some("BOM title"));
+}
+
+#[test]
+fn malformed_directive_json_is_removed_without_rejecting_the_diagram() {
+    let source = "%%{init: {\"theme\": }}%%\nflowchart TD\nA-->B\n";
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
+
+    let preprocessed =
+        preprocess_diagram(source, &registry).expect("invalid directive config is fail-soft");
+    assert_eq!(preprocessed.code(), "flowchart TD\nA-->B\n");
+    assert!(preprocessed.config.is_empty_object());
+
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect("invalid directive config does not reject a valid diagram")
+        .expect("flowchart model");
+    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+}
+
+#[test]
+fn bare_unterminated_directive_marker_does_not_consume_following_diagram() {
+    let source = "%%{\nflowchart TD\nA-->B\n";
+    let registry = DetectorRegistry::pinned_mermaid_baseline();
+    let mut config = MermaidConfig::empty_object();
+
+    let detected = registry
+        .detect_type(source, &mut config)
+        .expect("detector preserves source after an unterminated marker");
+    assert_eq!(detected, "flowchart-v2");
+
+    let preprocessed = preprocess_diagram(source, &registry)
+        .expect("preprocessor recovers an unterminated marker");
+    assert_eq!(preprocessed.code(), "flowchart TD\nA-->B\n");
+
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect("unterminated marker does not reject a valid diagram")
+        .expect("flowchart model");
+    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+}
+
+#[test]
 fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
     let result = preprocess_diagram("flowchart TD\nA-->B\n%% This is a comment", &registry)

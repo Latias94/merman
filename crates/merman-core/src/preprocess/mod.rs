@@ -149,11 +149,18 @@ fn prepare_parser_text(mut source: PreprocessedSource) -> PreprocessedSource {
 }
 
 fn cleanup_text(source: &mut PreprocessedSource) {
+    strip_leading_utf8_bom(source);
     normalize_crlf(source);
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
     if source.text().contains('<') && source.text().contains("=\"") {
         normalize_html_tag_attributes_like_upstream(source);
+    }
+}
+
+fn strip_leading_utf8_bom(source: &mut PreprocessedSource) {
+    if source.text().starts_with('\u{feff}') {
+        source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())]);
     }
 }
 
@@ -618,13 +625,22 @@ fn process_directives(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<ProcessedDirectives> {
-    let directives = detect_directives(input)?;
-    if directives.is_empty() {
+    let blocks = directive_blocks(input);
+    if blocks.is_empty() {
         return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
             removals: Vec::new(),
             editor_prefixes: Vec::new(),
         });
+    }
+    let mut directives = Vec::new();
+    for block in &blocks {
+        let Some(raw) = block.raw else {
+            continue;
+        };
+        if let Some(directive) = parse_directive_like_upstream(raw)? {
+            directives.push(directive);
+        }
     }
     let init = detect_init(&directives, input, registry, diagram_type)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
@@ -644,7 +660,7 @@ fn process_directives(
 
     Ok(ProcessedDirectives {
         config: merged,
-        removals: directive_removal_ranges(input),
+        removals: blocks.into_iter().map(|block| block.range).collect(),
         editor_prefixes,
     })
 }
@@ -711,35 +727,73 @@ struct Directive {
     args: Option<Value>,
 }
 
-fn detect_directives(input: &str) -> Result<Vec<Directive>> {
-    let mut out = Vec::new();
+#[derive(Debug)]
+struct DirectiveBlock<'a> {
+    raw: Option<&'a str>,
+    range: std::ops::Range<usize>,
+}
+
+fn directive_blocks(input: &str) -> Vec<DirectiveBlock<'_>> {
+    let mut blocks = Vec::new();
     let mut pos = 0;
-    let trimmed = input.trim();
-    if !trimmed.contains("%%{") {
-        return Ok(out);
-    }
-
-    // Mermaid's directive parser effectively treats single quotes as double quotes for JSON-like
-    // directive bodies. Keep this behavior, but only pay the allocation when directives exist.
-    let text = trimmed.replace('\'', "\"");
-
-    while let Some(rel) = text[pos..].find("%%{") {
+    while let Some(rel) = input[pos..].find("%%{") {
         let start = pos + rel;
         let content_start = start + 3;
-        let Some(rel_end) = text[content_start..].find("}%%") else {
-            break;
-        };
-        let content_end = content_start + rel_end;
-        let raw = text[content_start..content_end].trim();
+        let close = input[content_start..]
+            .find("}%%")
+            .map(|relative| content_start + relative);
+        let next_open = input[content_start..]
+            .find("%%{")
+            .map(|relative| content_start + relative);
 
-        if let Some(d) = parse_directive(raw)? {
-            out.push(d);
+        if let Some(content_end) = close.filter(|close| next_open.is_none_or(|open| *close < open))
+        {
+            let end = content_end + 3;
+            blocks.push(DirectiveBlock {
+                raw: Some(input[content_start..content_end].trim()),
+                range: start..end,
+            });
+            pos = end;
+            continue;
         }
 
-        pos = content_end + 3;
+        // Mermaid ignores directive parse failures. Bound recovery for an unterminated marker to
+        // its physical line so a malformed prefix cannot delete the remaining diagram.
+        let line_end = input[content_start..]
+            .find(['\r', '\n'])
+            .map_or(input.len(), |relative| content_start + relative);
+        let end = next_open.map_or(line_end, |open| line_end.min(open));
+        blocks.push(DirectiveBlock {
+            raw: None,
+            range: start..end,
+        });
+        pos = end;
     }
 
-    Ok(out)
+    blocks
+}
+
+fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
+    let normalized: Cow<'_, str> = if raw.contains('\'') {
+        Cow::Owned(raw.replace('\'', "\""))
+    } else {
+        Cow::Borrowed(raw)
+    };
+    parse_directive(normalized.as_ref())
+}
+
+#[cfg(test)]
+fn detect_directives(input: &str) -> Result<Vec<Directive>> {
+    let mut directives = Vec::new();
+    for block in directive_blocks(input) {
+        let Some(raw) = block.raw else {
+            continue;
+        };
+        if let Some(directive) = parse_directive_like_upstream(raw)? {
+            directives.push(directive);
+        }
+    }
+    Ok(directives)
 }
 
 #[derive(Clone)]
@@ -1010,22 +1064,11 @@ fn directive_value_at_path_mut<'a>(
     Some(value)
 }
 
-fn directive_removal_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
-    let mut ranges = Vec::new();
-    let mut pos = 0;
-    while let Some(rel) = text[pos..].find("%%{") {
-        let start = pos + rel;
-        let after_start = start + 3;
-        if let Some(rel_end) = text[after_start..].find("}%%") {
-            let end = after_start + rel_end + 3;
-            ranges.push(start..end);
-            pos = end;
-        } else {
-            ranges.push(start..text.len());
-            return ranges;
-        }
-    }
-    ranges
+pub(crate) fn directive_removal_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
+    directive_blocks(text)
+        .into_iter()
+        .map(|block| block.range)
+        .collect()
 }
 
 fn parse_directive(raw: &str) -> Result<Option<Directive>> {
@@ -1067,7 +1110,7 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
                     message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
                 });
             }
-            Some(parse_directive_config_value(rest)?)
+            parse_directive_config_value(rest)
         } else {
             Some(Value::String(rest.to_string()))
         }
@@ -1078,10 +1121,8 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
     Ok(Some(Directive { ty, args }))
 }
 
-fn parse_directive_config_value(input: &str) -> Result<Value> {
-    json5::from_str::<Value>(input).map_err(|e| Error::InvalidDirectiveJson {
-        message: e.to_string(),
-    })
+fn parse_directive_config_value(input: &str) -> Option<Value> {
+    json5::from_str::<Value>(input).ok()
 }
 
 fn config_nesting_exceeds_limit(text: &str) -> bool {
