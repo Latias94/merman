@@ -67,6 +67,16 @@ impl RenderRequestPlan {
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
 
+    pub(super) fn svg_plan_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+        let plan = self
+            .renderer
+            .plan_svg_sync(source)
+            .map_err(classify_render_error)?
+            .ok_or_else(no_diagram_error)?;
+
+        crate::SvgPlanPayload::from_render_plan(&plan)?.to_json_bytes()
+    }
+
     #[cfg(feature = "png")]
     pub(super) fn render_png(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         self.renderer

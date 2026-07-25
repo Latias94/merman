@@ -10,6 +10,7 @@ mod common;
 mod engine;
 mod metadata;
 mod operation;
+mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
 
@@ -45,6 +46,7 @@ pub use operation::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
     BindingOperationResult, compiled_operation_kind_ids,
 };
+pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

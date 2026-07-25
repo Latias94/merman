@@ -242,6 +242,22 @@ impl BindingEngine {
         }
     }
 
+    pub fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "svg")]
+        {
+            self.render.svg_plan_json(source)
+        }
+
+        #[cfg(not(feature = "svg"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error(
+                "SVG capability planning",
+                "svg",
+            ))
+        }
+    }
+
     pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {

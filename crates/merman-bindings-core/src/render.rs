@@ -50,6 +50,11 @@ impl CachedRenderEngine {
         self.plan.layout_json(source)
     }
 
+    pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.svg_plan_json(source)
+    }
+
     #[cfg(feature = "png")]
     pub(crate) fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
