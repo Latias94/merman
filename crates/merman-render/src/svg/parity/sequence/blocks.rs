@@ -1,8 +1,6 @@
 use super::super::*;
 use super::block_collection::AltSection;
-use super::block_geometry::{
-    frame_x_from_message_ids, message_ids_y_range, section_message_y_range, section_separator_ys,
-};
+use super::block_geometry::SequenceBlockGeometry;
 use super::block_text::{
     LoopTextPlacement, LoopTextRenderContext, display_block_label, wrap_svg_text_lines,
     write_loop_text_lines, write_section_title_lines,
@@ -14,10 +12,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) default_frame_x1: f64,
     pub(super) default_frame_x2: f64,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
-    pub(super) msg_endpoints: &'a FxHashMap<&'a str, (&'a str, &'a str)>,
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_height: f64,
     pub(super) label_box_width: f64,
     pub(super) box_text_margin: f64,
@@ -131,27 +126,18 @@ pub(super) fn render_simple_sequence_block(
     label_id: &str,
     block_label: &str,
     raw_label: &str,
-    message_ids: &[&str],
+    geometry: SequenceBlockGeometry<'_>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
-    let Some((min_y, max_y)) = message_ids_y_range(
-        message_ids.iter().copied(),
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    let Some((min_y, max_y)) = geometry.frame_y_range() else {
         return;
     };
 
-    let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        message_ids.iter().copied(),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
+        ctx.default_frame_x1,
+        ctx.default_frame_x2,
+        f64::INFINITY,
+    ));
 
     let header_offset = if block_label == "break" {
         93.0
@@ -187,6 +173,29 @@ pub(super) fn render_simple_sequence_block(
     out.push_str("</g>");
 }
 
+fn section_geometry<'a>(sections: &[AltSection<'a>]) -> SequenceBlockGeometry<'a> {
+    sections
+        .iter()
+        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
+            geometry.merged(section.geometry)
+        })
+}
+
+fn section_separator_ys(sections: &[AltSection<'_>], min_y: f64) -> Vec<f64> {
+    sections
+        .iter()
+        .take(sections.len().saturating_sub(1))
+        .map(|section| {
+            section
+                .geometry
+                .separator_y_range()
+                .map(|(_, max_y)| max_y)
+                .unwrap_or(min_y)
+                + 15.0
+        })
+        .collect()
+}
+
 pub(super) fn render_sectioned_sequence_block(
     out: &mut String,
     control_id: &str,
@@ -199,24 +208,16 @@ pub(super) fn render_sectioned_sequence_block(
         return;
     }
 
-    let Some((min_y, max_y)) = section_message_y_range(
-        sections,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    let geometry = section_geometry(sections);
+    let Some((min_y, max_y)) = geometry.frame_y_range() else {
         return;
     };
 
-    let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
+        ctx.default_frame_x1,
+        ctx.default_frame_x2,
+        f64::INFINITY,
+    ));
 
     let header_offset =
         section_header_offset(sections, frame_x1, frame_x2, adjust_header_for_wrap, ctx);
@@ -233,13 +234,7 @@ pub(super) fn render_sectioned_sequence_block(
     // Mermaid output and avoid sub-pixel gaps at the frame border.
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(
-        sections,
-        min_y,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-    );
+    let sep_ys = section_separator_ys(sections, min_y);
     for y in &sep_ys {
         let _ = write!(
             out,
@@ -306,24 +301,16 @@ pub(super) fn render_critical_sequence_block(
         return;
     }
 
-    let Some((min_y, max_y)) = section_message_y_range(
-        sections,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    let geometry = section_geometry(sections);
+    let Some((min_y, max_y)) = geometry.frame_y_range() else {
         return;
     };
 
-    let (mut frame_x1, frame_x2, min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (mut frame_x1, frame_x2, min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
+        ctx.default_frame_x1,
+        ctx.default_frame_x2,
+        f64::INFINITY,
+    ));
     if sections.len() > 1 && min_left.is_finite() {
         // Mermaid's `critical` w/ `option` sections widens the frame to the left.
         frame_x1 = frame_x1.min(min_left - 9.0);
@@ -366,13 +353,7 @@ pub(super) fn render_critical_sequence_block(
     // separators (dashed)
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(
-        sections,
-        min_y,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-    );
+    let sep_ys = section_separator_ys(sections, min_y);
     for y in &sep_ys {
         let _ = write!(
             out,

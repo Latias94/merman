@@ -1,11 +1,14 @@
+use super::block_geometry::SequenceBlockGeometry;
 use super::model::SequenceSvgModel;
+use crate::model::{LayoutEdge, LayoutNode};
+use merman_core::diagrams::sequence::SequenceMessage;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
 pub(super) struct AltSection<'a> {
     pub(super) label_id: &'a str,
     pub(super) raw_label: &'a str,
-    pub(super) message_ids: Vec<&'a str>,
+    pub(super) geometry: SequenceBlockGeometry<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -18,13 +21,13 @@ pub(super) enum SequenceBlock<'a> {
         control_id: &'a str,
         label_id: &'a str,
         raw_label: &'a str,
-        message_ids: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Break {
         control_id: &'a str,
         label_id: &'a str,
         raw_label: &'a str,
-        message_ids: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Par {
         control_id: &'a str,
@@ -34,7 +37,7 @@ pub(super) enum SequenceBlock<'a> {
         control_id: &'a str,
         label_id: &'a str,
         raw_label: &'a str,
-        message_ids: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Critical {
         control_id: &'a str,
@@ -50,17 +53,17 @@ enum BlockStackEntry<'a> {
     Loop {
         label_id: &'a str,
         raw_label: &'a str,
-        messages: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Opt {
         label_id: &'a str,
         raw_label: &'a str,
-        messages: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Break {
         label_id: &'a str,
         raw_label: &'a str,
-        messages: Vec<&'a str>,
+        geometry: SequenceBlockGeometry<'a>,
     },
     Par {
         sections: Vec<AltSection<'a>>,
@@ -70,235 +73,386 @@ enum BlockStackEntry<'a> {
     },
 }
 
+impl<'a> BlockStackEntry<'a> {
+    fn include_geometry(&mut self, geometry: SequenceBlockGeometry<'a>) {
+        match self {
+            Self::Alt { sections } | Self::Par { sections } | Self::Critical { sections } => {
+                if let Some(section) = sections.last_mut() {
+                    section.geometry.merge(geometry);
+                }
+            }
+            Self::Loop {
+                geometry: current, ..
+            }
+            | Self::Opt {
+                geometry: current, ..
+            }
+            | Self::Break {
+                geometry: current, ..
+            } => current.merge(geometry),
+        }
+    }
+
+    fn geometry(&self) -> SequenceBlockGeometry<'a> {
+        match self {
+            Self::Alt { sections } | Self::Par { sections } | Self::Critical { sections } => {
+                sections
+                    .iter()
+                    .fold(SequenceBlockGeometry::empty(), |geometry, section| {
+                        geometry.merged(section.geometry)
+                    })
+            }
+            Self::Loop { geometry, .. }
+            | Self::Opt { geometry, .. }
+            | Self::Break { geometry, .. } => *geometry,
+        }
+    }
+}
+
 pub(super) fn collect_sequence_blocks<'a>(
     model: &'a SequenceSvgModel,
-) -> (FxHashMap<&'a str, Vec<usize>>, Vec<SequenceBlock<'a>>) {
-    // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
-    // Use layout-derived message y-coordinates for separator placement to avoid visual artifacts
-    // like dashed lines ending in a gap right before the frame border.
-    let mut blocks_by_end_id: FxHashMap<&str, Vec<usize>> =
-        FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
-    let mut blocks: Vec<SequenceBlock> = Vec::new();
-    let mut stack: Vec<BlockStackEntry> = Vec::new();
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    edges_by_id: &FxHashMap<&str, &LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+) -> (Vec<Option<usize>>, Vec<SequenceBlock<'a>>) {
+    collect_sequence_blocks_with(model, |message| {
+        SequenceBlockGeometry::from_message(message, actor_nodes_by_id, edges_by_id, nodes_by_id)
+    })
+}
 
-    for msg in &model.messages {
-        let raw_label = msg.message_text();
-        match msg.message_type {
-            // notes
+fn collect_sequence_blocks_with<'a>(
+    model: &'a SequenceSvgModel,
+    mut message_geometry: impl FnMut(&'a SequenceMessage) -> SequenceBlockGeometry<'a>,
+) -> (Vec<Option<usize>>, Vec<SequenceBlock<'a>>) {
+    let mut blocks_by_end_index = vec![None; model.messages.len()];
+    let mut blocks = Vec::new();
+    let mut stack = Vec::new();
+
+    for (message_index, message) in model.messages.iter().enumerate() {
+        let raw_label = message.message_text();
+        match message.message_type {
             2 => {
-                // Notes inside blocks must contribute to block frame bounds and section separators.
-                // Track them in the active block scopes, similar to message edges.
-                for entry in stack.iter_mut() {
-                    push_item_to_block_stack_entry(entry, &msg.id);
+                if !stack.is_empty() {
+                    include_message_geometry(&mut stack, message_geometry(message));
                 }
-                continue;
             }
-            // loop start/end
             10 => stack.push(BlockStackEntry::Loop {
-                label_id: msg.id.as_str(),
+                label_id: message.id.as_str(),
                 raw_label,
-                messages: Vec::new(),
+                geometry: SequenceBlockGeometry::empty(),
             }),
             11 => {
-                if let Some(BlockStackEntry::Loop {
-                    label_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Loop {
+                        label_id,
+                        raw_label,
+                        geometry,
+                    } = entry
                 {
                     push_block(
-                        &mut blocks_by_end_id,
+                        &mut blocks_by_end_index,
                         &mut blocks,
-                        msg.id.as_str(),
+                        message_index,
                         SequenceBlock::Loop {
-                            control_id: msg.id.as_str(),
+                            control_id: message.id.as_str(),
                             label_id,
                             raw_label,
-                            message_ids: messages,
+                            geometry,
                         },
                     );
                 }
             }
-            // opt start/end
             15 => stack.push(BlockStackEntry::Opt {
-                label_id: msg.id.as_str(),
+                label_id: message.id.as_str(),
                 raw_label,
-                messages: Vec::new(),
+                geometry: SequenceBlockGeometry::empty(),
             }),
             16 => {
-                if let Some(BlockStackEntry::Opt {
-                    label_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Opt {
+                        label_id,
+                        raw_label,
+                        geometry,
+                    } = entry
                 {
                     push_block(
-                        &mut blocks_by_end_id,
+                        &mut blocks_by_end_index,
                         &mut blocks,
-                        msg.id.as_str(),
+                        message_index,
                         SequenceBlock::Opt {
-                            control_id: msg.id.as_str(),
+                            control_id: message.id.as_str(),
                             label_id,
                             raw_label,
-                            message_ids: messages,
+                            geometry,
                         },
                     );
                 }
             }
-            // break start/end
             30 => stack.push(BlockStackEntry::Break {
-                label_id: msg.id.as_str(),
+                label_id: message.id.as_str(),
                 raw_label,
-                messages: Vec::new(),
+                geometry: SequenceBlockGeometry::empty(),
             }),
             31 => {
-                if let Some(BlockStackEntry::Break {
-                    label_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Break {
+                        label_id,
+                        raw_label,
+                        geometry,
+                    } = entry
                 {
                     push_block(
-                        &mut blocks_by_end_id,
+                        &mut blocks_by_end_index,
                         &mut blocks,
-                        msg.id.as_str(),
+                        message_index,
                         SequenceBlock::Break {
-                            control_id: msg.id.as_str(),
+                            control_id: message.id.as_str(),
                             label_id,
                             raw_label,
-                            message_ids: messages,
+                            geometry,
                         },
                     );
                 }
             }
-            // alt start/else/end
             12 => stack.push(BlockStackEntry::Alt {
                 sections: vec![AltSection {
-                    label_id: msg.id.as_str(),
+                    label_id: message.id.as_str(),
                     raw_label,
-                    message_ids: Vec::new(),
+                    geometry: SequenceBlockGeometry::empty(),
                 }],
             }),
             13 => {
                 if let Some(BlockStackEntry::Alt { sections }) = stack.last_mut() {
                     sections.push(AltSection {
-                        label_id: msg.id.as_str(),
+                        label_id: message.id.as_str(),
                         raw_label,
-                        message_ids: Vec::new(),
+                        geometry: SequenceBlockGeometry::empty(),
                     });
                 }
             }
             14 => {
-                if let Some(BlockStackEntry::Alt { sections }) = stack.pop() {
-                    let idx = blocks.len();
-                    blocks.push(SequenceBlock::Alt {
-                        control_id: msg.id.as_str(),
-                        sections,
-                    });
-                    blocks_by_end_id
-                        .entry(msg.id.as_str())
-                        .or_default()
-                        .push(idx);
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Alt { sections } = entry
+                {
+                    push_block(
+                        &mut blocks_by_end_index,
+                        &mut blocks,
+                        message_index,
+                        SequenceBlock::Alt {
+                            control_id: message.id.as_str(),
+                            sections,
+                        },
+                    );
                 }
             }
-            // par start/and/end
             19 | 32 => stack.push(BlockStackEntry::Par {
                 sections: vec![AltSection {
-                    label_id: msg.id.as_str(),
+                    label_id: message.id.as_str(),
                     raw_label,
-                    message_ids: Vec::new(),
+                    geometry: SequenceBlockGeometry::empty(),
                 }],
             }),
             20 => {
                 if let Some(BlockStackEntry::Par { sections }) = stack.last_mut() {
                     sections.push(AltSection {
-                        label_id: msg.id.as_str(),
+                        label_id: message.id.as_str(),
                         raw_label,
-                        message_ids: Vec::new(),
+                        geometry: SequenceBlockGeometry::empty(),
                     });
                 }
             }
             21 => {
-                if let Some(BlockStackEntry::Par { sections }) = stack.pop() {
-                    let idx = blocks.len();
-                    blocks.push(SequenceBlock::Par {
-                        control_id: msg.id.as_str(),
-                        sections,
-                    });
-                    blocks_by_end_id
-                        .entry(msg.id.as_str())
-                        .or_default()
-                        .push(idx);
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Par { sections } = entry
+                {
+                    push_block(
+                        &mut blocks_by_end_index,
+                        &mut blocks,
+                        message_index,
+                        SequenceBlock::Par {
+                            control_id: message.id.as_str(),
+                            sections,
+                        },
+                    );
                 }
             }
-            // critical start/option/end
             27 => stack.push(BlockStackEntry::Critical {
                 sections: vec![AltSection {
-                    label_id: msg.id.as_str(),
+                    label_id: message.id.as_str(),
                     raw_label,
-                    message_ids: Vec::new(),
+                    geometry: SequenceBlockGeometry::empty(),
                 }],
             }),
             28 => {
                 if let Some(BlockStackEntry::Critical { sections }) = stack.last_mut() {
                     sections.push(AltSection {
-                        label_id: msg.id.as_str(),
+                        label_id: message.id.as_str(),
                         raw_label,
-                        message_ids: Vec::new(),
+                        geometry: SequenceBlockGeometry::empty(),
                     });
                 }
             }
             29 => {
-                if let Some(BlockStackEntry::Critical { sections }) = stack.pop() {
-                    let idx = blocks.len();
-                    blocks.push(SequenceBlock::Critical {
-                        control_id: msg.id.as_str(),
-                        sections,
-                    });
-                    blocks_by_end_id
-                        .entry(msg.id.as_str())
-                        .or_default()
-                        .push(idx);
+                if let Some(entry) = pop_and_propagate(&mut stack)
+                    && let BlockStackEntry::Critical { sections } = entry
+                {
+                    push_block(
+                        &mut blocks_by_end_index,
+                        &mut blocks,
+                        message_index,
+                        SequenceBlock::Critical {
+                            control_id: message.id.as_str(),
+                            sections,
+                        },
+                    );
                 }
             }
             _ => {
-                // If this is a "real" message edge, attach it to all active block scopes.
-                if msg.from.is_some() && msg.to.is_some() {
-                    for entry in stack.iter_mut() {
-                        push_item_to_block_stack_entry(entry, &msg.id);
-                    }
+                if !stack.is_empty() && message.from.is_some() && message.to.is_some() {
+                    include_message_geometry(&mut stack, message_geometry(message));
                 }
             }
         }
     }
 
-    (blocks_by_end_id, blocks)
+    (blocks_by_end_index, blocks)
+}
+
+fn include_message_geometry<'a>(
+    stack: &mut [BlockStackEntry<'a>],
+    geometry: SequenceBlockGeometry<'a>,
+) {
+    if let Some(entry) = stack.last_mut() {
+        entry.include_geometry(geometry);
+    }
+}
+
+fn pop_and_propagate<'a>(stack: &mut Vec<BlockStackEntry<'a>>) -> Option<BlockStackEntry<'a>> {
+    let entry = stack.pop()?;
+    if let Some(parent) = stack.last_mut() {
+        parent.include_geometry(entry.geometry());
+    }
+    Some(entry)
 }
 
 fn push_block<'a>(
-    blocks_by_end_id: &mut FxHashMap<&'a str, Vec<usize>>,
+    blocks_by_end_index: &mut [Option<usize>],
     blocks: &mut Vec<SequenceBlock<'a>>,
-    end_id: &'a str,
+    end_index: usize,
     block: SequenceBlock<'a>,
 ) {
-    let idx = blocks.len();
+    let block_index = blocks.len();
     blocks.push(block);
-    blocks_by_end_id.entry(end_id).or_default().push(idx);
+    if let Some(at_end) = blocks_by_end_index.get_mut(end_index) {
+        *at_end = Some(block_index);
+    }
 }
 
-fn push_item_to_block_stack_entry<'a>(entry: &mut BlockStackEntry<'a>, item_id: &'a str) {
-    match entry {
-        BlockStackEntry::Alt { sections, .. }
-        | BlockStackEntry::Par { sections, .. }
-        | BlockStackEntry::Critical { sections, .. } => {
-            if let Some(cur) = sections.last_mut() {
-                cur.message_ids.push(item_id);
-            }
+#[cfg(test)]
+mod tests {
+    use super::{SequenceBlock, collect_sequence_blocks_with};
+    use crate::svg::parity::sequence::block_geometry::SequenceBlockGeometry;
+    use merman_core::diagrams::sequence::{
+        SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
+    };
+    use std::collections::BTreeMap;
+
+    fn message(
+        id: String,
+        message_type: i32,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> SequenceMessage {
+        SequenceMessage {
+            id,
+            from: from.map(str::to_string),
+            to: to.map(str::to_string),
+            message_type,
+            message: SequenceMessagePayload::Text(String::new()),
+            wrap: false,
+            activate: false,
+            placement: None,
+            central_connection: 0,
         }
-        BlockStackEntry::Loop { messages, .. }
-        | BlockStackEntry::Opt { messages, .. }
-        | BlockStackEntry::Break { messages, .. } => {
-            messages.push(item_id);
+    }
+
+    fn model(messages: Vec<SequenceMessage>) -> SequenceDiagramRenderModel {
+        SequenceDiagramRenderModel {
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            actor_order: Vec::new(),
+            actors: BTreeMap::new(),
+            boxes: Vec::new(),
+            messages,
+            notes: Vec::new(),
+            created_actors: BTreeMap::new(),
+            destroyed_actors: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn deeply_nested_blocks_aggregate_each_message_once() {
+        const DEPTH: usize = 2_048;
+        const CONTENT_MESSAGES: usize = 2_048;
+
+        let mut messages = Vec::with_capacity(DEPTH * 2 + CONTENT_MESSAGES);
+        for index in 0..DEPTH {
+            messages.push(message(format!("start-{index}"), 10, None, None));
+        }
+        for index in 0..CONTENT_MESSAGES {
+            messages.push(message(format!("message-{index}"), 5, Some("A"), Some("B")));
+        }
+        for index in 0..DEPTH {
+            messages.push(message(format!("end-{index}"), 11, None, None));
+        }
+        let model = model(messages);
+        let mut y = 0.0;
+
+        let (blocks_by_end_index, blocks) = collect_sequence_blocks_with(&model, |_| {
+            let geometry = SequenceBlockGeometry::test_y_range(y, y + 1.0);
+            y += 1.0;
+            geometry
+        });
+
+        assert_eq!(blocks.len(), DEPTH);
+        assert_eq!(blocks_by_end_index.iter().flatten().count(), DEPTH);
+        for block in blocks {
+            let SequenceBlock::Loop { geometry, .. } = block else {
+                panic!("expected a loop block");
+            };
+            assert_eq!(
+                geometry.frame_y_range(),
+                Some((0.0, CONTENT_MESSAGES as f64))
+            );
+        }
+    }
+
+    #[test]
+    fn nested_block_geometry_stays_in_the_active_parent_section() {
+        let model = model(vec![
+            message("alt".to_string(), 12, None, None),
+            message("first".to_string(), 5, Some("A"), Some("B")),
+            message("loop".to_string(), 10, None, None),
+            message("nested".to_string(), 5, Some("A"), Some("B")),
+            message("loop-end".to_string(), 11, None, None),
+            message("else".to_string(), 13, None, None),
+            message("second".to_string(), 5, Some("A"), Some("B")),
+            message("alt-end".to_string(), 14, None, None),
+        ]);
+        let mut y = 0.0;
+
+        let (_, blocks) = collect_sequence_blocks_with(&model, |_| {
+            let geometry = SequenceBlockGeometry::test_y_range(y, y + 1.0);
+            y += 1.0;
+            geometry
+        });
+
+        let SequenceBlock::Alt { sections, .. } = &blocks[1] else {
+            panic!("expected the outer alt block");
+        };
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].geometry.frame_y_range(), Some((0.0, 2.0)));
+        assert_eq!(sections[1].geometry.frame_y_range(), Some((2.0, 3.0)));
     }
 }

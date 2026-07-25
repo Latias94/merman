@@ -32,39 +32,16 @@ pub(crate) use metrics::{
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
-use block_steps::{
-    BlockStepPlanContext, calculate_sequence_block_widths, is_block_end, is_block_section,
-    is_block_start,
-};
+use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 
 fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> usize {
-    let mut control_depth = 0usize;
-    let mut rect_depth = 0usize;
-    let mut work = 0usize;
-    for message in &model.messages {
-        work = work.saturating_add(1);
-        if is_block_start(message.message_type) {
-            control_depth = control_depth.saturating_add(1);
-        } else if is_block_end(message.message_type) {
-            control_depth = control_depth.saturating_sub(1);
-        } else if message.message_type == 22 {
-            rect_depth = rect_depth.saturating_add(1);
-        } else if message.message_type == 23 {
-            rect_depth = rect_depth.saturating_sub(1);
-        } else if !is_block_section(message.message_type) {
-            // The layout and SVG paths both accumulate block bounds. Layout orchestration also
-            // updates open block/rect bottoms, while the final rect pass updates horizontal
-            // bounds. Account the full deterministic upper bound before any of those scans.
-            work = work
-                .saturating_add(control_depth.saturating_mul(4))
-                .saturating_add(rect_depth.saturating_mul(3));
-        }
-    }
-    work
+    // All frame accumulators are propagated from a closing child to its parent once. Nesting no
+    // longer multiplies per-message layout or SVG collection work.
+    model.messages.len()
 }
 
 pub(crate) fn bracketize_sequence_block_label(value: &str) -> String {
@@ -290,7 +267,7 @@ mod resource_tests {
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     #[test]
-    fn nested_sequence_frames_are_charged_before_layout_scans_open_stacks() {
+    fn nested_sequence_frames_have_linear_layout_work() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nloop outer\nloop inner\nA->>B: hi\nend\nend\n",
@@ -302,6 +279,6 @@ mod resource_tests {
             panic!("expected Sequence model");
         };
 
-        assert_eq!(sequence_layout_work_units(model), 13);
+        assert_eq!(sequence_layout_work_units(model), model.messages.len());
     }
 }

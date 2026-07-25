@@ -119,10 +119,8 @@ fn include_block_stopy(
     inserted_bottom_y: f64,
     box_margin: f64,
 ) {
-    let depth = block_stopy_stack.len();
-    for (index, stopy) in block_stopy_stack.iter_mut().enumerate() {
-        let nested_margin = (depth - index) as f64 * box_margin;
-        let candidate = inserted_bottom_y + nested_margin;
+    if let Some(stopy) = block_stopy_stack.last_mut() {
+        let candidate = inserted_bottom_y + box_margin;
         *stopy = Some(stopy.map_or(candidate, |current| current.max(candidate)));
     }
 }
@@ -132,10 +130,16 @@ fn close_block_cursor(
     cursor_y: f64,
     box_margin: f64,
 ) -> f64 {
-    block_stopy_stack
-        .pop()
-        .flatten()
-        .unwrap_or(cursor_y + box_margin)
+    let closed_stopy = block_stopy_stack.pop().flatten();
+    if let Some(closed_stopy) = closed_stopy {
+        if let Some(parent_stopy) = block_stopy_stack.last_mut() {
+            let candidate = closed_stopy + box_margin;
+            *parent_stopy = Some(parent_stopy.map_or(candidate, |current| current.max(candidate)));
+        }
+        closed_stopy
+    } else {
+        cursor_y + box_margin
+    }
 }
 
 fn handle_sequence_directive<'a>(
@@ -453,7 +457,7 @@ fn include_rect_stack_bounds(
     max_x: f64,
     max_y: f64,
 ) {
-    for open in rect_stack.iter_mut() {
+    if let Some(open) = rect_stack.last_mut() {
         open.include_min_max(min_x, max_x, max_y);
     }
 }
@@ -480,6 +484,14 @@ mod tests {
 
         assert_eq!(close_block_cursor(&mut stack, 130.0, 7.0), 167.0);
         assert_eq!(close_block_cursor(&mut stack, 167.0, 7.0), 174.0);
+    }
+
+    #[test]
+    fn empty_nested_block_does_not_replace_parent_content_bounds() {
+        let mut stack = vec![Some(107.0), None];
+
+        assert_eq!(close_block_cursor(&mut stack, 200.0, 7.0), 207.0);
+        assert_eq!(stack, vec![Some(107.0)]);
     }
 
     #[test]
