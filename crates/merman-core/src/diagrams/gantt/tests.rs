@@ -840,6 +840,29 @@ test1: id1,2013-01-01,1d
 }
 
 #[test]
+fn dayjs_strict_rejects_rather_than_panics_on_multibyte_input() {
+    // Regression test: `parse_int_exact` used to check `s.len() < digits`
+    // (a *byte* length) and then call `s.split_at(digits)` (a *byte* offset)
+    // assuming `digits` ASCII bytes == `digits` characters. With multi-byte
+    // (e.g. Japanese) text, `digits` frequently lands in the middle of a
+    // character and `split_at` panics with "byte index N is not a char
+    // boundary" instead of this function returning `None` as intended.
+    assert!(parse_dayjs_like_strict("YYYY-MM-DD", "日本語のテキスト").is_none());
+    assert!(parse_dayjs_like_strict("MM-DD", "日本-24").is_none());
+    assert!(parse_dayjs_like_strict("YYYY-MMM-DD", "２０１３-Jan-０２").is_none());
+}
+
+#[test]
+fn js_date_fallback_rejects_rather_than_panics_on_multibyte_timezone_suffix() {
+    // Regression test: `parse_timezone_offset_minutes` had the same
+    // byte-length-vs-char-boundary bug as `parse_int_exact` above, reached via
+    // `parse_js_date_fallback`'s timezone-offset tail once a valid date/time
+    // prefix is present.
+    assert!(parse_js_date_fallback("2013-01-01T00:00:00+日本語").is_err());
+    assert!(parse_js_date_fallback("2013-01-01T00:00+タ").is_err());
+}
+
+#[test]
 fn gantt_js_date_fallback_parses_iso_datetime_without_tz_as_local() {
     let model = parse(
         r#"
