@@ -2470,11 +2470,7 @@ impl<'a> Lexer<'a> {
                 self.comments.push(SourceSpan::new(start, self.pos));
                 continue;
             }
-            if self.starts_with("---")
-                && self.at_line_start_after_indent()
-                && let Some(close_rel) = self.remaining()["---".len()..].find("\n---")
-            {
-                self.pos += "---".len() + close_rel + "\n---".len();
+            if self.skip_yaml_fence() {
                 continue;
             }
 
@@ -2574,6 +2570,13 @@ impl<'a> Lexer<'a> {
         while let Some(ch) = self.current_char() {
             let ch_start = self.pos;
             self.advance_char();
+            if self.dialect != RailroadDialect::Abnf && is_railroad_string_line_terminator(ch) {
+                return Err(Error::diagram_parse_exact(
+                    self.diagram_type,
+                    "physical line breaks are not allowed in railroad string literals",
+                    SourceSpan::new(ch_start, self.pos),
+                ));
+            }
             if self.dialect != RailroadDialect::Abnf && escaped {
                 match ch {
                     'n' => value.push('\n'),
@@ -2816,12 +2819,67 @@ impl<'a> Lexer<'a> {
         self.input[line_start..self.pos].trim().is_empty()
     }
 
+    fn skip_yaml_fence(&mut self) -> bool {
+        if !self.starts_with("---") || !self.at_line_start_after_indent() {
+            return false;
+        }
+
+        let mut cursor = self.pos + "---".len();
+        while self.input[cursor..]
+            .chars()
+            .next()
+            .is_some_and(|ch| matches!(ch, ' ' | '\t'))
+        {
+            cursor += self.input[cursor..]
+                .chars()
+                .next()
+                .expect("checked above")
+                .len_utf8();
+        }
+        if self.input[cursor..].starts_with("\r\n") {
+            cursor += 2;
+        } else if self.input[cursor..].starts_with('\n') {
+            cursor += 1;
+        } else {
+            return false;
+        }
+
+        loop {
+            let line_end = self.input[cursor..]
+                .find(['\r', '\n'])
+                .map(|relative| cursor + relative)
+                .unwrap_or(self.input.len());
+            if self.input[cursor..].starts_with("---") {
+                let marker_end = cursor + "---".len();
+                if self.input[marker_end..]
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| ch.is_whitespace())
+                {
+                    self.pos = marker_end;
+                    return true;
+                }
+            }
+            if line_end == self.input.len() {
+                return false;
+            }
+            cursor = line_end
+                + if self.input[line_end..].starts_with("\r\n") {
+                    2
+                } else {
+                    1
+                };
+        }
+    }
+
     fn at_line_start_after_indent(&self) -> bool {
         let line_start = self.input[..self.pos]
             .rfind(['\r', '\n'])
             .map(|idx| idx + 1)
             .unwrap_or(0);
-        self.input[line_start..self.pos].trim().is_empty()
+        self.input[line_start..self.pos]
+            .chars()
+            .all(|ch| matches!(ch, ' ' | '\t'))
     }
 
     fn starts_with(&self, literal: &str) -> bool {
@@ -3061,6 +3119,10 @@ fn decode_wrapped_quoted_title(value: &str, dialect: RailroadDialect) -> Option<
         return Some(value[1..value.len() - 1].to_string());
     }
     decode_escaped_quoted_string(value).map(|text| text.text)
+}
+
+fn is_railroad_string_line_terminator(ch: char) -> bool {
+    matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
 fn decode_escaped_quoted_string(value: &str) -> Option<SpannedText> {
@@ -3496,6 +3558,82 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(value.text, "a\n\t\"b\"");
+    }
+
+    #[test]
+    fn yaml_fences_require_a_valid_opening_line() {
+        let valid = concat!(
+            "railroad-beta\n",
+            "---\n",
+            "title: valid metadata\n",
+            "---\n",
+            "entry = terminal(\"value\") ;\n",
+        );
+        assert!(
+            parse_railroad_semantic_source(valid, &meta(RailroadDialect::Ir), RailroadDialect::Ir)
+                .is_ok()
+        );
+
+        let invalid = concat!(
+            "railroad-beta\n",
+            "---not-yaml\n",
+            "title: should remain source text\n",
+            "---\n",
+            "entry = terminal(\"value\") ;\n",
+        );
+        assert!(
+            parse_railroad_semantic_source(
+                invalid,
+                &meta(RailroadDialect::Ir),
+                RailroadDialect::Ir,
+            )
+            .is_err(),
+            "an invalid opening YAML delimiter must not be hidden"
+        );
+    }
+
+    #[test]
+    fn non_abnf_strings_reject_physical_line_breaks() {
+        let cases = [
+            (
+                RailroadDialect::Ir,
+                "railroad-beta\nentry = terminal(\"left\\\nright\") ;\n",
+            ),
+            (
+                RailroadDialect::Ebnf,
+                "railroad-ebnf-beta\nentry = \"left\\\nright\" ;\n",
+            ),
+            (
+                RailroadDialect::Peg,
+                "railroad-peg-beta\nentry <- \"left\\\nright\" ;\n",
+            ),
+        ];
+        for (dialect, source) in cases {
+            let error = match parse_railroad_semantic_source(source, &meta(dialect), dialect) {
+                Ok(_) => {
+                    panic!("non-ABNF railroad strings must reject a physical line break");
+                }
+                Err(error) => error,
+            };
+            assert!(
+                error
+                    .to_string()
+                    .contains("physical line breaks are not allowed"),
+                "{}: {error}",
+                dialect.diagram_type()
+            );
+        }
+
+        let abnf = "railroad-abnf-beta\nentry = \"left\\\nright\" ;\n";
+        assert!(
+            parse_railroad_semantic_source(
+                abnf,
+                &meta(RailroadDialect::Abnf),
+                RailroadDialect::Abnf,
+            )
+            .is_ok(),
+            "ABNF string terminals intentionally retain physical line breaks"
+        );
     }
 
     #[test]

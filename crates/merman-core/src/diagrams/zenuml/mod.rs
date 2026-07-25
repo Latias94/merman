@@ -101,7 +101,7 @@ fn construct_semantic_source(code: &str) -> ZenumlSemanticSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticCompleteness, MermaidConfig, RenderSemanticModel};
+    use crate::{MermaidConfig, RenderSemanticModel};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -124,41 +124,6 @@ mod tests {
 
         let wrapped = RenderSemanticModel::Zenuml(model);
         assert_eq!(wrapped.kind(), "zenuml");
-    }
-
-    #[test]
-    fn shared_accessibility_terminals_feed_the_owned_model() {
-        let model = parse_zenuml_model_for_render(
-            "zenuml\naccTitle:  Order   service\naccDescr {\n  Creates orders\n  and invoices\n}\nA.call()\n",
-            &meta(),
-        )
-        .unwrap();
-
-        assert_eq!(model.acc_title.as_deref(), Some("Order service"));
-        assert_eq!(
-            model.acc_descr.as_deref(),
-            Some("Creates orders\nand invoices")
-        );
-    }
-
-    #[test]
-    fn unterminated_accessibility_description_is_strictly_rejected() {
-        let error = parse_zenuml_model_for_render("zenuml\naccDescr {\n  incomplete\n", &meta())
-            .unwrap_err();
-        assert!(error.to_string().contains("unterminated accDescr block"));
-
-        let facts = crate::family::test_support::editor_facts(
-            parse_zenuml_json_and_editor_facts,
-            "zenuml\naccDescr {\n  incomplete\n",
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(
-            facts
-                .directive_prefixes
-                .iter()
-                .any(|prefix| prefix == "accDescr")
-        );
     }
 
     #[test]

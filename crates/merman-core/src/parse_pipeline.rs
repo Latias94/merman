@@ -1,4 +1,7 @@
-use crate::preprocess::{PreprocessedSource, preprocess_mermaid_public_parse_pipeline};
+use crate::preprocess::{
+    PreprocessedSource, preprocess_diagram_with_known_type,
+    preprocess_mermaid_public_parse_pipeline,
+};
 use crate::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
     SourceSpan, common_db, diagram, diagrams::error_diagram, family, runtime, sanitize, theme,
@@ -13,6 +16,12 @@ use diagram::{
 pub(crate) enum ParseSource<'a> {
     Detect,
     KnownType(&'a str),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum PreprocessPath {
+    PublicParse,
+    Render,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -147,18 +156,14 @@ impl<'a> ParsePipeline<'a> {
     }
 
     fn metadata_in_context(&self) -> Result<ParseMetadata> {
-        let (_, metadata) = match self.source {
-            ParseSource::Detect => self.preprocess_and_detect_strict()?,
-            ParseSource::KnownType(diagram_type) => {
-                self.preprocess_and_assume_type(diagram_type)?
-            }
-        };
+        let (_, metadata) = self.preprocess_strict(PreprocessPath::PublicParse)?;
         Ok(metadata)
     }
 
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
         self.parse_model(
             timing,
+            PreprocessPath::PublicParse,
             |pipeline, code, meta| {
                 diagram::parse_or_unsupported(
                     &pipeline.engine.diagram_registry,
@@ -288,6 +293,7 @@ impl<'a> ParsePipeline<'a> {
     pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
         self.parse_model(
             ParseTiming::Render,
+            PreprocessPath::Render,
             Self::parse_render_semantic_model,
             RenderSemanticModel::sanitize_common_db_fields,
             error_diagram::suppressed_error_render_diagram,
@@ -328,6 +334,7 @@ impl<'a> ParsePipeline<'a> {
     fn parse_model<T, O>(
         &self,
         timing: ParseTiming,
+        preprocess_path: PreprocessPath,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
         suppressed: impl FnOnce(&ParseMetadata) -> O,
@@ -338,6 +345,7 @@ impl<'a> ParsePipeline<'a> {
         self.with_operation_context(|operation_context| {
             self.parse_model_in_context(
                 timing,
+                preprocess_path,
                 operation_context,
                 parse,
                 sanitize,
@@ -353,6 +361,7 @@ impl<'a> ParsePipeline<'a> {
     fn parse_model_in_context<T, O>(
         &self,
         timing: ParseTiming,
+        preprocess_path: PreprocessPath,
         operation_context: &runtime::OperationContext,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
@@ -365,7 +374,7 @@ impl<'a> ParsePipeline<'a> {
         let total_start = operation_timing.map(runtime::OperationTiming::start);
 
         let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let Some((code, meta)) = self.preprocess()? else {
+        let Some((code, meta)) = self.preprocess_for(preprocess_path)? else {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(&code);
@@ -491,23 +500,36 @@ impl<'a> ParsePipeline<'a> {
     }
 
     fn preprocess(&self) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
-        match self.source {
-            ParseSource::Detect => self.preprocess_and_detect(),
-            ParseSource::KnownType(diagram_type) => {
-                self.preprocess_and_assume_type(diagram_type).map(Some)
-            }
-        }
+        self.preprocess_for(PreprocessPath::PublicParse)
     }
 
-    fn preprocess_and_detect(&self) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
-        match self.preprocess_and_detect_strict() {
+    fn preprocess_for(
+        &self,
+        path: PreprocessPath,
+    ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+        match self.preprocess_strict(path) {
             Err(Error::DetectType(_)) if self.options.suppress_errors => Ok(None),
             result => result.map(Some),
         }
     }
 
-    fn preprocess_and_detect_strict(&self) -> Result<(PreprocessedSource, ParseMetadata)> {
-        let pre = preprocess_mermaid_public_parse_pipeline(self.text, &self.engine.registry, None)?;
+    fn preprocess_strict(
+        &self,
+        path: PreprocessPath,
+    ) -> Result<(PreprocessedSource, ParseMetadata)> {
+        match self.source {
+            ParseSource::Detect => self.preprocess_and_detect_strict(path),
+            ParseSource::KnownType(diagram_type) => {
+                self.preprocess_and_assume_type(diagram_type, path)
+            }
+        }
+    }
+
+    fn preprocess_and_detect_strict(
+        &self,
+        path: PreprocessPath,
+    ) -> Result<(PreprocessedSource, ParseMetadata)> {
+        let pre = self.preprocess_input(path, None)?;
         if pre.code().trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
         }
@@ -553,12 +575,9 @@ impl<'a> ParsePipeline<'a> {
     fn preprocess_and_assume_type(
         &self,
         diagram_type: &str,
+        path: PreprocessPath,
     ) -> Result<(PreprocessedSource, ParseMetadata)> {
-        let pre = preprocess_mermaid_public_parse_pipeline(
-            self.text,
-            &self.engine.registry,
-            Some(diagram_type),
-        )?;
+        let pre = self.preprocess_input(path, Some(diagram_type))?;
         if pre.code().trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
         }
@@ -589,6 +608,23 @@ impl<'a> ParsePipeline<'a> {
                 title,
             },
         ))
+    }
+
+    fn preprocess_input(
+        &self,
+        path: PreprocessPath,
+        diagram_type: Option<&str>,
+    ) -> Result<crate::PreprocessResult> {
+        match path {
+            PreprocessPath::PublicParse => preprocess_mermaid_public_parse_pipeline(
+                self.text,
+                &self.engine.registry,
+                diagram_type,
+            ),
+            PreprocessPath::Render => {
+                preprocess_diagram_with_known_type(self.text, &self.engine.registry, diagram_type)
+            }
+        }
     }
 
     fn with_operation_context<R>(
@@ -707,11 +743,55 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 
 #[cfg(test)]
 mod editor_parse_source_map_tests {
-    use super::EditorParseSourceMap;
+    use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
         EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-        EditorSemanticSymbol, Engine, SourceSpan,
+        EditorSemanticSymbol, Engine, ParseOptions, SourceSpan,
     };
+
+    #[test]
+    fn render_preprocessing_does_not_repeat_frontmatter_extraction() {
+        let input = concat!(
+            "   ---\n",
+            "title: only-visible-after-trimming\n",
+            "---\n",
+            "flowchart TD\n",
+            "A-->B\n",
+        );
+        let engine = Engine::new();
+        let pipeline = ParsePipeline::detect(&engine, input, ParseOptions::strict());
+
+        let render = pipeline
+            .preprocess_input(PreprocessPath::Render, None)
+            .expect("single render preprocess");
+        let public_parse = pipeline
+            .preprocess_input(PreprocessPath::PublicParse, None)
+            .expect("public parse preprocess");
+
+        assert!(render.code().starts_with("---"));
+        assert!(public_parse.code().starts_with("flowchart TD"));
+    }
+
+    #[test]
+    fn render_rejects_a_second_frontmatter_block() {
+        let input = concat!(
+            "---\n",
+            "title: outer\n",
+            "---\n",
+            "---\n",
+            "title: inner\n",
+            "---\n",
+            "flowchart TD\n",
+            "A-->B\n",
+        );
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .expect_err("render preprocessing must leave the second block visible");
+
+        assert!(matches!(error, crate::Error::MalformedFrontMatter));
+    }
 
     #[test]
     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {

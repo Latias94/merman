@@ -1261,7 +1261,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         self.pos += 1;
         let body_start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' || b == b';' || b == b':' {
+            if b == b'\n' || b == b';' {
                 break;
             }
             self.pos += 1;
@@ -1430,5 +1430,26 @@ impl Iterator for Lexer<'_, '_> {
             .unwrap_or('?');
         self.pos += bad.len_utf8().max(1);
         Some(Err(LexError::new(format!("Unexpected character '{bad}'"))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Lexer, Tok};
+    use crate::editor::EditorLexemeJournal;
+
+    #[test]
+    fn state_descriptions_preserve_following_colons() {
+        let input = "stateDiagram-v2\nmyState : status: active\n";
+        let mut journal = EditorLexemeJournal::family_lexer(input);
+        let descriptions: Vec<_> = Lexer::new(input, &mut journal)
+            .map(|event| event.expect("state token").1)
+            .filter_map(|token| match token {
+                Tok::Descr(description) => Some(description),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(descriptions, vec!["status: active"]);
     }
 }

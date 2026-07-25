@@ -6,6 +6,31 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+const HALF_ARROW_TYPES: [(&str, i32); 16] = [
+    ("--|\\", 51),
+    ("--|/", 52),
+    ("--\\\\", 53),
+    ("--//", 54),
+    ("/|--", 55),
+    ("\\|--", 56),
+    ("//--", 57),
+    ("\\\\--", 58),
+    ("-|\\", 41),
+    ("-|/", 42),
+    ("-\\\\", 43),
+    ("-//", 44),
+    ("/|-", 45),
+    ("\\|-", 46),
+    ("//-", 47),
+    ("\\\\-", 48),
+];
+
+fn half_arrow_type(rest: &str) -> Option<(usize, i32)> {
+    HALF_ARROW_TYPES
+        .iter()
+        .find_map(|(arrow, ty)| rest.starts_with(arrow).then_some((arrow.len(), *ty)))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
     Newline,
@@ -626,7 +651,9 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
         let rest = &self.input[self.pos..];
 
-        let (len, ty) = if rest.starts_with("<<-->>") {
+        let (len, ty) = if let Some(half_arrow) = half_arrow_type(rest) {
+            half_arrow
+        } else if rest.starts_with("<<-->>") {
             (6, 34)
         } else if rest.starts_with("<<->>") {
             (5, 33)
@@ -863,7 +890,8 @@ impl<'input> Lexer<'input> {
 
     fn peek_signal_type_at(&self, pos: usize) -> bool {
         let rest = &self.input[pos..];
-        rest.starts_with("<<-->>")
+        half_arrow_type(rest).is_some()
+            || rest.starts_with("<<-->>")
             || rest.starts_with("<<->>")
             || rest.starts_with("-->>")
             || rest.starts_with("->>")
@@ -1142,5 +1170,21 @@ mod tests {
             boundary_after_accessibility(eof),
             (eof.len(), "newline", eof.len())
         );
+    }
+
+    #[test]
+    fn lexes_all_upstream_half_arrow_variants() {
+        for (arrow, expected_type) in super::HALF_ARROW_TYPES {
+            let input = format!("A {arrow} B: message");
+            let signal_types: Vec<_> = Lexer::new(&input)
+                .map(|event| event.expect("sequence token").1)
+                .filter_map(|token| match token {
+                    Tok::SignalType(signal_type) => Some(signal_type),
+                    _ => None,
+                })
+                .collect();
+
+            assert_eq!(signal_types, vec![expected_type], "{arrow}");
+        }
     }
 }

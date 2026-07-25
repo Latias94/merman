@@ -7,6 +7,8 @@ use super::{
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, Result};
 
+const MINDMAP_SECTION_COUNT: usize = 11;
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct MindmapParseConfig {
     padding: i64,
@@ -280,7 +282,7 @@ impl MindmapDb {
             let children = node.children.clone();
             for (index, child_id) in children.into_iter().enumerate().rev() {
                 let child_section = if node_level == 0 {
-                    Some(index as i32)
+                    Some((index % MINDMAP_SECTION_COUNT) as i32)
                 } else {
                     section
                 };
@@ -360,5 +362,71 @@ impl MindmapDb {
             });
         }
         edges
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_child_sections_wrap_after_eleven_slots() {
+        let config = MermaidConfig::empty_object();
+        let parse_config = MindmapParseConfig::from_config(&config);
+        let mut db = MindmapDb::default();
+        db.add_node(
+            MindmapNodeInput {
+                indent_level: 0,
+                id_raw: "root",
+                descr_raw: "root",
+                descr_is_markdown: false,
+                ty: NODE_TYPE_DEFAULT,
+                diagram_type: "mindmap",
+            },
+            &config,
+            parse_config,
+        )
+        .expect("root node");
+
+        for index in 0..15 {
+            let id = format!("child-{index}");
+            db.add_node(
+                MindmapNodeInput {
+                    indent_level: 1,
+                    id_raw: &id,
+                    descr_raw: &id,
+                    descr_is_markdown: false,
+                    ty: NODE_TYPE_DEFAULT,
+                    diagram_type: "mindmap",
+                },
+                &config,
+                parse_config,
+            )
+            .expect("root child");
+        }
+
+        db.assign_sections(0, None);
+        let sections: Vec<_> = db.nodes.iter().skip(1).map(|node| node.section).collect();
+
+        assert_eq!(
+            sections,
+            vec![
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                Some(7),
+                Some(8),
+                Some(9),
+                Some(10),
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+            ]
+        );
     }
 }

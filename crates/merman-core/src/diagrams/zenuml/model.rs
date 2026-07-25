@@ -6,8 +6,6 @@ use serde_json::{Map, Value};
 #[serde(rename_all = "camelCase")]
 pub struct ZenumlDiagramRenderModel {
     pub title: Option<String>,
-    pub acc_title: Option<String>,
-    pub acc_descr: Option<String>,
     pub starter: Option<String>,
     pub participants: Vec<ZenumlParticipant>,
     pub groups: Vec<ZenumlGroup>,

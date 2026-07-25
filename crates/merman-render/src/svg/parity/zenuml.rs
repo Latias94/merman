@@ -30,16 +30,6 @@ pub(super) fn render_zenuml_diagram_svg_model(
     let root_spec = root_svg::RootViewportSpec::mermaid(bounds, use_max_width);
     let mut out = String::new();
     let mut chrome = root_svg::RootChrome::new(diagram_id, "zenuml");
-    let aria_labelledby = model
-        .acc_title
-        .as_ref()
-        .map(|_| format!("chart-title-{diagram_id}"));
-    let aria_describedby = model
-        .acc_descr
-        .as_ref()
-        .map(|_| format!("chart-desc-{diagram_id}"));
-    chrome.aria_labelledby = aria_labelledby.as_deref();
-    chrome.aria_describedby = aria_describedby.as_deref();
     chrome.dom.trailing_newline = false;
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Zenuml, diagram_id)
@@ -48,22 +38,6 @@ pub(super) fn render_zenuml_diagram_svg_model(
     out.push_str("<defs><style>");
     out.push_str(zenuml_css());
     out.push_str("</style></defs>");
-    if let Some(title) = &model.acc_title {
-        let _ = write!(
-            &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            escape_attr(diagram_id),
-            escape_xml(title),
-        );
-    }
-    if let Some(description) = &model.acc_descr {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            escape_attr(diagram_id),
-            escape_xml(description),
-        );
-    }
     let _ = write!(
         &mut out,
         r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,

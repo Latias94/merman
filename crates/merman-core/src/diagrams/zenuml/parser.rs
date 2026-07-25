@@ -1,6 +1,5 @@
 use super::ast::*;
 use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
-use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
 use crate::{MAX_DIAGRAM_NESTING_DEPTH, SourceSpan};
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
@@ -37,7 +36,14 @@ impl<'a> Parser<'a> {
 
     fn parse(mut self) -> ParsedSyntax {
         match self.take_name() {
-            Some(header) if header.value.eq_ignore_ascii_case("zenuml") => {}
+            Some(header)
+                if header
+                    .value
+                    .get(.."zenuml".len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zenuml")) =>
+            {
+                self.restore_header_suffix(header);
+            }
             Some(header) => self.error("expected `zenuml` header", header.span),
             None => self.error("expected `zenuml` header", self.insertion_span()),
         }
@@ -48,26 +54,6 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-
-        let mut acc_title = None;
-        let mut acc_descr = None;
-        loop {
-            let offset = self.peek().span.start;
-            let Some(common) = parse_langium_common(self.source, offset) else {
-                break;
-            };
-            let value = SpannedText::new(common.fact.value, common.fact.value_span);
-            match common.fact.field {
-                LangiumCommonField::AccTitle => acc_title = Some(value),
-                LangiumCommonField::AccDescr => acc_descr = Some(value),
-                LangiumCommonField::Title => break,
-            }
-            let end = offset + common.consumed;
-            self.advance_to_offset(end);
-            if let Some(diagnostic) = common.diagnostic {
-                self.error(diagnostic.message, diagnostic.span);
-            }
-        }
 
         let mut head = Vec::new();
         let mut starter = None;
@@ -101,8 +87,6 @@ impl<'a> Parser<'a> {
         let statements = self.parse_block(0, false, pending_comment, None).statements;
         let document = SyntaxDocument {
             title,
-            acc_title,
-            acc_descr,
             head,
             starter,
             statements,
@@ -111,6 +95,33 @@ impl<'a> Parser<'a> {
             document,
             diagnostics: self.diagnostics,
         }
+    }
+
+    fn restore_header_suffix(&mut self, header: SpannedText) {
+        let Some(suffix) = header.value.get("zenuml".len()..) else {
+            return;
+        };
+        if suffix.is_empty() {
+            return;
+        }
+
+        let suffix_start = header.span.start + "zenuml".len();
+        let suffix_tokens = lexer::parser_tokens(&lexer::lex(suffix))
+            .into_iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Eof))
+            .map(|mut token| {
+                token.span = SourceSpan::new(
+                    suffix_start + token.span.start,
+                    suffix_start + token.span.end,
+                );
+                token
+            })
+            .collect::<Vec<_>>();
+        self.comments.splice(
+            self.cursor..self.cursor,
+            std::iter::repeat_n(None, suffix_tokens.len()),
+        );
+        self.tokens.splice(self.cursor..self.cursor, suffix_tokens);
     }
 
     fn parse_title(&mut self) -> SpannedText {
@@ -826,13 +837,6 @@ impl<'a> Parser<'a> {
             format!("ZenUML expression nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"),
             span,
         );
-    }
-
-    fn advance_to_offset(&mut self, offset: usize) {
-        while !self.at_eof() && self.peek().span.start < offset {
-            self.discard_current_comment();
-            self.bump();
-        }
     }
 
     fn take_name(&mut self) -> Option<SpannedText> {
@@ -2720,6 +2724,42 @@ mod tests {
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(head_participants(&parsed.document).len(), 1);
         assert_eq!(parsed.document.statements.len(), 1);
+    }
+
+    #[test]
+    fn header_prefix_matches_the_mermaid_adapter_replacement() {
+        let parsed = parse_source("zenumlA.m()");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.document.statements.len(), 1);
+        assert!(matches!(
+            &parsed.document.statements[0].kind,
+            StatementKindSyntax::Message(message)
+                if message.to.as_ref().map(|name| name.value.as_str()) == Some("A")
+                    && message.signature.value == "m()"
+        ));
+
+        let upper_case = parse_source("ZenUMLA.m()");
+        assert!(
+            upper_case.diagnostics.is_empty(),
+            "{:?}",
+            upper_case.diagnostics
+        );
+    }
+
+    #[test]
+    fn mermaid_adapter_leaves_acc_title_to_zenuml_core() {
+        let source = "zenuml\naccTitle: Accessible\n";
+        let parsed = parse_source(source);
+
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(parsed.document.head.is_empty());
+        assert!(matches!(
+            &parsed.document.statements[0].kind,
+            StatementKindSyntax::Message(message)
+                if message.style == MessageStyleSyntax::Asynchronous
+                    && message.to.as_ref().map(|name| name.value.as_str()) == Some("accTitle")
+                    && message.signature.value == "Accessible"
+        ));
     }
 
     #[test]

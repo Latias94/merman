@@ -18,8 +18,6 @@ impl SpannedText {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SyntaxDocument {
     pub(super) title: Option<SpannedText>,
-    pub(super) acc_title: Option<SpannedText>,
-    pub(super) acc_descr: Option<SpannedText>,
     pub(super) head: Vec<HeadItemSyntax>,
     pub(super) starter: Option<StarterSyntax>,
     pub(super) statements: Vec<StatementSyntax>,

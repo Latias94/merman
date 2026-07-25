@@ -205,7 +205,7 @@ fn railroad_css_scope(diagram_id: &str) -> String {
 fn railroad_css(style: &crate::railroad::RailroadStyle, diagram_id: &str) -> String {
     let scope = railroad_css_scope(diagram_id);
     format!(
-        "{scope}.railroad-diagram{{font-family:{};font-size:{}px;}}\
+        "{scope} .railroad-diagram{{font-family:{};font-size:{}px;}}\
 {scope} .railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
 {scope} .railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
 {scope} .railroad-nonterminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
@@ -251,4 +251,18 @@ fn railroad_css(style: &crate::railroad::RailroadStyle, diagram_id: &str) -> Str
         style.font_family,
         fmt(style.font_size)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_font_rule_matches_mermaid_namespacing() {
+        let style = crate::railroad::railroad_style(&serde_json::json!({}));
+        let css = railroad_css(&style, "railroad.fixture");
+
+        assert!(css.starts_with("#railroad\\.fixture .railroad-diagram{"));
+        assert!(!css.starts_with("#railroad\\.fixture.railroad-diagram{"));
+    }
 }

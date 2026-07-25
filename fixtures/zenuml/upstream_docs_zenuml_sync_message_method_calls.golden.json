@@ -2,8 +2,6 @@
   "diagramType": "zenuml",
   "model": {
     "title": "Sync message",
-    "accTitle": null,
-    "accDescr": null,
     "starter": null,
     "participants": [
       {

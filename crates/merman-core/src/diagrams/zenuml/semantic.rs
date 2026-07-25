@@ -57,22 +57,6 @@ impl SemanticBuilder {
         if let Some(title) = self.syntax.title.clone() {
             self.push_payload(&title, "zenuml title", EditorSemanticKind::String);
         }
-        self.facts.push_directive_prefix("accTitle");
-        self.facts.push_directive_prefix("accDescr");
-        if let Some(title) = self.syntax.acc_title.clone() {
-            self.push_payload(
-                &title,
-                "zenuml accessibility title",
-                EditorSemanticKind::String,
-            );
-        }
-        if let Some(description) = self.syntax.acc_descr.clone() {
-            self.push_payload(
-                &description,
-                "zenuml accessibility description",
-                EditorSemanticKind::String,
-            );
-        }
 
         for item in self.syntax.head.clone() {
             match item {
@@ -154,16 +138,6 @@ impl SemanticBuilder {
 
         let model = ZenumlDiagramRenderModel {
             title: self.syntax.title.as_ref().map(|title| title.value.clone()),
-            acc_title: self
-                .syntax
-                .acc_title
-                .as_ref()
-                .map(|title| title.value.clone()),
-            acc_descr: self
-                .syntax
-                .acc_descr
-                .as_ref()
-                .map(|description| description.value.clone()),
             starter: has_explicit_starter.then_some(starter.value),
             participants: self
                 .participants
@@ -492,19 +466,20 @@ impl SemanticBuilder {
                 }
             }
             StatementKindSyntax::Reference(reference) => {
-                for participant in &reference.participants {
-                    self.reference_participant(participant, false, "zenuml participant reference");
-                }
                 let label = reference
                     .participants
-                    .iter()
-                    .map(|participant| participant.value.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                    .first()
+                    .map(|name| name.value.clone())
+                    .unwrap_or_default();
+                let participants = reference.participants.iter().skip(1);
+                for participant in participants {
+                    self.reference_participant(participant, false, "zenuml participant reference");
+                }
                 ZenumlStatementKind::Reference {
                     participants: reference
                         .participants
                         .iter()
+                        .skip(1)
                         .map(|participant| participant.value.clone())
                         .collect(),
                     label,
@@ -687,5 +662,51 @@ mod tests {
             (resolved_from.as_deref(), resolved_to.as_deref()),
             (Some("A"), Some("B"))
         );
+    }
+
+    #[test]
+    fn reference_uses_its_first_name_as_the_label() {
+        let source = "zenuml\nref(Order, A, B)";
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
+        let built = build(parsed);
+
+        let ZenumlStatementKind::Reference {
+            label,
+            participants,
+        } = &built.model.statements[0].kind
+        else {
+            panic!("expected reference");
+        };
+        assert_eq!(label, "Order");
+        assert_eq!(
+            participants.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["A", "B"]
+        );
+        assert!(built.model.participant("Order").is_none());
+        assert!(built.model.participant("A").is_some());
+        assert!(built.model.participant("B").is_some());
+    }
+
+    #[test]
+    fn accessibility_like_async_messages_remain_zenuml_messages() {
+        let source = "zenuml\naccTitle: Accessible";
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
+        let built = build(parsed);
+
+        let ZenumlStatementKind::Message {
+            resolved_to,
+            label,
+            style,
+            ..
+        } = &built.model.statements[0].kind
+        else {
+            panic!("expected async message");
+        };
+        assert_eq!(resolved_to.as_deref(), Some("accTitle"));
+        assert_eq!(label, "Accessible");
+        assert_eq!(*style, ZenumlMessageStyle::Asynchronous);
+        assert!(built.model.participant("accTitle").is_some());
     }
 }

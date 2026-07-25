@@ -1479,15 +1479,10 @@ impl SequenceComplexity {
 
 impl ZenumlComplexity {
     pub fn from_model(model: &ZenumlDiagramRenderModel) -> Self {
-        let common_label_bytes = [
-            model.title.as_deref(),
-            model.acc_title.as_deref(),
-            model.acc_descr.as_deref(),
-            model.starter.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let common_label_bytes = [model.title.as_deref(), model.starter.as_deref()]
+            .into_iter()
+            .flatten()
+            .fold(0usize, |total, value| total.saturating_add(value.len()));
         let participant_label_bytes =
             model
                 .participants

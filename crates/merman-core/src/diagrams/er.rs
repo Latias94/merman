@@ -1404,8 +1404,9 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             let id_start = self.pos;
             let mut id_end = self.pos;
             for (rel, ch) in self.input[self.pos..].char_indices() {
-                let ok =
-                    !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*');
+                let ok = !ch.is_ascii()
+                    || ch.is_ascii_alphanumeric()
+                    || matches!(ch, '_' | '-' | '*' | '.');
                 if !ok {
                     break;
                 }
@@ -1786,7 +1787,8 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
 
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
-            let ok = !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*');
+            let ok =
+                !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*' | '.');
             if !ok {
                 break;
             }
@@ -1917,5 +1919,15 @@ mod tests {
             projection["constants"]["cardinality"]["onlyOne"],
             json!("ONLY_ONE")
         );
+    }
+
+    #[test]
+    fn er_accepts_decimal_and_dotted_entity_names() {
+        let model = parse_er("erDiagram\n1.5 ||--|| Sales.Order : owns\n", &meta())
+            .expect("ER entities with dots and decimal names should parse");
+
+        assert!(model["entities"].get("1.5").is_some());
+        assert!(model["entities"].get("Sales.Order").is_some());
+        assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
     }
 }
