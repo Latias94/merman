@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 use crate::resources::{ModelComplexity, RenderResourcePolicy};
-use crate::text::{TextMeasurer, WrapMode};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::HashMap;
 
@@ -10,6 +10,42 @@ pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
 pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
+
+pub(crate) struct KanbanMarkdown {
+    sanitize_config: merman_core::MermaidConfig,
+    auto_wrap: bool,
+}
+
+impl KanbanMarkdown {
+    pub(crate) fn new(effective_config: &serde_json::Value) -> Self {
+        Self {
+            sanitize_config: merman_core::MermaidConfig::from_value(effective_config.clone()),
+            auto_wrap: crate::config::config_bool(effective_config, &["markdownAutoWrap"])
+                .unwrap_or(true),
+        }
+    }
+
+    pub(crate) fn render(&self, raw: &str) -> String {
+        let sanitized = merman_core::sanitize::sanitize_text(raw, &self.sanitize_config);
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
+    }
+
+    pub(crate) fn measure_html(
+        &self,
+        measurer: &dyn TextMeasurer,
+        html: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+    ) -> TextMetrics {
+        crate::text::measure_xhtml_label_fragment(
+            measurer,
+            html,
+            style,
+            max_width,
+            WrapMode::HtmlLike,
+        )
+    }
+}
 
 mod config;
 
@@ -65,6 +101,7 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
     let label_foreign_object_height = KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * font_scale;
     let item_one_row_height = KANBAN_ITEM_ONE_ROW_HEIGHT_PX * font_scale;
     let item_two_row_height = KANBAN_ITEM_TWO_ROW_HEIGHT_PX * font_scale;
+    let markdown = KanbanMarkdown::new(effective_config);
 
     let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::new();
@@ -82,12 +119,13 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
         let center_y = 0.0;
 
-        let label_metrics = measurer.measure_wrapped(
-            &section.label,
-            &legend_style,
-            Some(section_width),
-            WrapMode::HtmlLike,
-        );
+        let label_html = markdown.render(&section.label);
+        let raw_label_metrics = markdown.measure_html(measurer, &label_html, &legend_style, None);
+        let label_metrics = if section_width > 0.0 && raw_label_metrics.width > section_width {
+            markdown.measure_html(measurer, &label_html, &legend_style, Some(section_width))
+        } else {
+            raw_label_metrics
+        };
         let label_height = label_metrics.height.max(label_foreign_object_height);
         max_label_height = max_label_height.max(label_height);
 
@@ -123,15 +161,11 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
             // that behavior so item heights match the upstream bbox-based layout.
             let item_label_style = legend_style.clone();
+            let title_html = markdown.render(&item.label);
             let raw_title_metrics =
-                measurer.measure_wrapped(&item.label, &item_label_style, None, WrapMode::HtmlLike);
+                markdown.measure_html(measurer, &title_html, &item_label_style, None);
             let title_metrics = if inner_max_w > 0.0 && raw_title_metrics.width > inner_max_w {
-                measurer.measure_wrapped(
-                    &item.label,
-                    &item_label_style,
-                    Some(inner_max_w),
-                    WrapMode::HtmlLike,
-                )
+                markdown.measure_html(measurer, &title_html, &item_label_style, Some(inner_max_w))
             } else {
                 raw_title_metrics
             };
@@ -273,6 +307,49 @@ mod tests {
             layout.items[0].width,
             layout.section_width - 1.5 * super::KANBAN_SECTION_PADDING_PX
         );
+    }
+
+    #[test]
+    fn kanban_layout_measures_rendered_markdown_instead_of_source_markers() {
+        let markdown_model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item("task-1", "*aaaa aaaa aaaaaaa*", "todo"),
+                item("task-2", "Next", "todo"),
+            ],
+        };
+        let plain_model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item("task-1", "aaaa aaaa aaaaaaa", "todo"),
+                item("task-2", "Next", "todo"),
+            ],
+        };
+        let measurer = DeterministicTextMeasurer::default();
+
+        let markdown_layout =
+            layout_kanban_diagram_typed(&markdown_model, &json!({}), &measurer).unwrap();
+        let plain_layout =
+            layout_kanban_diagram_typed(&plain_model, &json!({}), &measurer).unwrap();
+
+        assert_eq!(
+            markdown_layout.items[0].height,
+            plain_layout.items[0].height
+        );
+        assert_eq!(
+            markdown_layout.items[1].center_y,
+            plain_layout.items[1].center_y
+        );
+        assert_eq!(
+            markdown_layout.sections[0].rect_height,
+            plain_layout.sections[0].rect_height
+        );
+        let markdown_bounds = markdown_layout.bounds.as_ref().unwrap();
+        let plain_bounds = plain_layout.bounds.as_ref().unwrap();
+        assert_eq!(markdown_bounds.min_x, plain_bounds.min_x);
+        assert_eq!(markdown_bounds.min_y, plain_bounds.min_y);
+        assert_eq!(markdown_bounds.max_x, plain_bounds.max_x);
+        assert_eq!(markdown_bounds.max_y, plain_bounds.max_y);
     }
 
     #[test]

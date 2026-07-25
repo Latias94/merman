@@ -4,6 +4,82 @@ use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
+fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
+    (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
+}
+
+fn requirement_theme_color_limit(effective_config: &serde_json::Value) -> usize {
+    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
+        .filter(|value| value.is_finite())
+        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
+        .unwrap_or(12)
+}
+
+fn requirement_color_indices(
+    model: &RequirementDiagramRenderModel,
+) -> std::collections::HashMap<String, usize> {
+    let mut indices = std::collections::HashMap::new();
+    let mut index = 0usize;
+    for node in &model.requirements {
+        indices.insert(node.name.clone(), index);
+        index += 1;
+    }
+    for node in &model.elements {
+        indices.insert(node.name.clone(), index);
+        index += 1;
+    }
+    indices
+}
+
+fn requirement_color_css(
+    diagram_id: &str,
+    data_look: &str,
+    border_colors: &[String],
+    background_colors: &[String],
+    theme_color_limit: usize,
+) -> String {
+    let mut out = String::new();
+    for index in 0..theme_color_limit {
+        let Some(border_color) = border_colors.get(index) else {
+            continue;
+        };
+        let fill = background_colors
+            .get(index)
+            .map(|color| format!("fill:{color};"))
+            .unwrap_or_default();
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
+            escape_xml(diagram_id),
+            escape_xml(data_look),
+            index,
+            border_color,
+            fill,
+            escape_xml(diagram_id),
+            escape_xml(data_look),
+            index,
+            border_color,
+            fill,
+        );
+    }
+    out
+}
+
+fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &str) {
+    if color_css.is_empty() {
+        return;
+    }
+
+    let escaped_id = escape_xml(diagram_id);
+    let family_rule = format!("#{escaped_id} marker");
+    let root_rule = format!("#{escaped_id} :root");
+    let insertion_point = css
+        .find(&family_rule)
+        .or_else(|| css.find(&root_rule))
+        .unwrap_or(css.len());
+    css.insert_str(insertion_point, color_css);
+}
+
 pub(crate) fn render_requirement_diagram_svg_model(
     layout: &RequirementDiagramLayout,
     model: &RequirementDiagramRenderModel,
@@ -251,6 +327,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
+    let theme = SvgTheme::new(effective_config);
+    let border_colors = theme.string_array("borderColorArray");
+    let background_colors = theme.string_array("bkgColorArray");
+    let theme_color_limit = requirement_theme_color_limit(effective_config);
+    let color_indices = requirement_color_indices(model);
     let node_id_prefix = if diagram_id.is_empty() {
         String::new()
     } else {
@@ -271,7 +352,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     let font_family = Some(render_settings.font_family);
     let font_size = render_settings.font_size;
-    let theme = SvgTheme::new(effective_config);
     let default_fill_color = theme.color("requirementBackground", "#ECECFF");
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
     let hand_drawn_seed = options.rough_randomness(
@@ -443,11 +523,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(&a11y_nodes);
 
-    let _ = write!(
-        &mut out,
-        r#"<style>{}</style>"#,
-        requirement_css(diagram_id, effective_config)
+    let mut css = requirement_css(diagram_id, effective_config);
+    let color_css = requirement_color_css(
+        diagram_id,
+        look,
+        &border_colors,
+        &background_colors,
+        theme_color_limit,
     );
+    insert_requirement_color_css(&mut css, diagram_id, &color_css);
+    let _ = write!(&mut out, r#"<style>{css}</style>"#);
 
     out.push_str("<g>");
 
@@ -874,13 +959,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 escape_xml(&n.id)
             )
         };
+        let color_id_attr = color_indices
+            .get(n.id.as_str())
+            .and_then(|index| requirement_color_id(&border_colors, *index))
+            .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
+            .unwrap_or_default();
 
         let _ = write!(
             &mut out,
-            r#"<g class="{class}"{id_attr}{look_attr} transform="translate({cx}, {cy})">"#,
+            r#"<g class="{class}"{id_attr}{look_attr}{color_id_attr} transform="translate({cx}, {cy})">"#,
             class = escape_xml(&classes_str),
             id_attr = id_attr,
             look_attr = look_attr.as_str(),
+            color_id_attr = color_id_attr,
             cx = fmt(cx),
             cy = fmt(cy),
         );
@@ -1100,7 +1191,7 @@ mod tests {
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::TextMeasurer;
     use merman_core::diagrams::requirement::{
-        RequirementDiagramRenderModel, RequirementRenderNode,
+        RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
     };
     use std::collections::BTreeMap;
 
@@ -1114,6 +1205,164 @@ mod tests {
             relationships: Vec::new(),
             classes: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn requirement_redux_colors_follow_requirement_then_element_order() {
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![
+                RequirementRenderNode {
+                    name: "requirement-a".to_string(),
+                    node_type: "Requirement".to_string(),
+                    requirement_id: String::new(),
+                    text: String::new(),
+                    risk: String::new(),
+                    verify_method: String::new(),
+                    css_styles: Vec::new(),
+                    classes: Vec::new(),
+                },
+                RequirementRenderNode {
+                    name: "requirement-b".to_string(),
+                    node_type: "Requirement".to_string(),
+                    requirement_id: String::new(),
+                    text: String::new(),
+                    risk: String::new(),
+                    verify_method: String::new(),
+                    css_styles: Vec::new(),
+                    classes: Vec::new(),
+                },
+            ],
+            elements: vec![RequirementRenderElement {
+                name: "element-c".to_string(),
+                element_type: "Element".to_string(),
+                doc_ref: String::new(),
+                css_styles: Vec::new(),
+                classes: Vec::new(),
+            }],
+            ..empty_requirement_model()
+        };
+        let indices = super::requirement_color_indices(&model);
+        let borders = vec![
+            "#e879f9".to_string(),
+            "#2dd4bf".to_string(),
+            "#fb923c".to_string(),
+        ];
+        let backgrounds = vec![
+            "#fdf4ff".to_string(),
+            "#f0fdfa".to_string(),
+            "#fff7ed".to_string(),
+        ];
+
+        assert_eq!(indices.get("requirement-a"), Some(&0));
+        assert_eq!(indices.get("requirement-b"), Some(&1));
+        assert_eq!(indices.get("element-c"), Some(&2));
+        assert_eq!(
+            super::requirement_color_id(&borders, *indices.get("element-c").unwrap()).as_deref(),
+            Some("color-2")
+        );
+
+        let css = super::requirement_color_css("requirement", "classic", &borders, &backgrounds, 3);
+        assert!(css.contains(
+            r##"#requirement [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
+        ));
+        assert!(css.contains(
+            r##"#requirement [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
+        ));
+
+        let dark_css = super::requirement_color_css("requirement", "classic", &borders, &[], 3);
+        assert!(dark_css.contains(
+            r##"#requirement [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
+        ));
+        assert!(!dark_css.contains("fill:"), "{dark_css}");
+
+        let config = serde_json::json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "borderColorArray": borders,
+                "bkgColorArray": backgrounds,
+                "THEME_COLOR_LIMIT": 3
+            }
+        });
+        assert_eq!(super::requirement_theme_color_limit(&config), 3);
+
+        let mut merged = super::requirement_css("requirement-colors", &config);
+        let generated = super::requirement_color_css(
+            "requirement-colors",
+            "classic",
+            &super::SvgTheme::new(&config).string_array("borderColorArray"),
+            &super::SvgTheme::new(&config).string_array("bkgColorArray"),
+            3,
+        );
+        super::insert_requirement_color_css(&mut merged, "requirement-colors", &generated);
+        let colors = merged.find("[data-color-id=").unwrap();
+        let family = merged.find("#requirement-colors marker").unwrap();
+        let root = merged.find("#requirement-colors :root").unwrap();
+        assert!(colors < family && family < root, "{merged}");
+
+        let layout = RequirementDiagramLayout {
+            nodes: vec![
+                LayoutNode {
+                    id: "element-c".to_string(),
+                    x: 320.0,
+                    y: 80.0,
+                    width: 180.0,
+                    height: 160.0,
+                    is_cluster: false,
+                    label_width: None,
+                    label_height: None,
+                },
+                LayoutNode {
+                    id: "requirement-b".to_string(),
+                    x: 170.0,
+                    y: 80.0,
+                    width: 180.0,
+                    height: 220.0,
+                    is_cluster: false,
+                    label_width: None,
+                    label_height: None,
+                },
+                LayoutNode {
+                    id: "requirement-a".to_string(),
+                    x: 20.0,
+                    y: 80.0,
+                    width: 180.0,
+                    height: 220.0,
+                    is_cluster: false,
+                    label_width: None,
+                    label_height: None,
+                },
+            ],
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: -80.0,
+                min_y: -40.0,
+                max_x: 420.0,
+                max_y: 240.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("requirement-colors".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let svg = render_requirement_for_test(
+            &layout,
+            &model,
+            &config,
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &options,
+        )
+        .unwrap();
+
+        assert!(svg.contains(
+            r#"id="requirement-colors-requirement-a" data-look="classic" data-color-id="color-0""#
+        ));
+        assert!(svg.contains(
+            r#"id="requirement-colors-requirement-b" data-look="classic" data-color-id="color-1""#
+        ));
+        assert!(svg.contains(
+            r#"id="requirement-colors-element-c" data-look="classic" data-color-id="color-2""#
+        ));
     }
 
     fn root_view_box(svg: &str) -> Vec<f64> {

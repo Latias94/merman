@@ -63,7 +63,13 @@ pub(crate) struct CynefinTheme {
 pub(crate) fn cynefin_layout_settings(
     effective_config: &serde_json::Value,
 ) -> CynefinLayoutSettings {
-    let seed = config_f64(effective_config, &["cynefin", "seed"])
+    // Mermaid only accepts a JavaScript `number` here. Do not reuse the general
+    // config-number helper: it intentionally accepts YAML string numbers, while
+    // upstream `resolveSeed` ignores strings based on `typeof configuredSeed`.
+    let seed = effective_config
+        .get("cynefin")
+        .and_then(|config| config.get("seed"))
+        .and_then(serde_json::Value::as_f64)
         .filter(|value| value.is_finite() && *value != 0.0);
     CynefinLayoutSettings {
         width: config_f64(effective_config, &["cynefin", "width"])
@@ -622,6 +628,28 @@ mod tests {
         assert_eq!(javascript_to_uint32(-1.0), u32::MAX);
         assert_eq!(javascript_to_uint32(-1.5), u32::MAX);
         assert_eq!(javascript_to_uint32(f64::INFINITY), 0);
+    }
+
+    #[test]
+    fn cynefin_seed_requires_a_json_number_like_mermaid() {
+        let string_seed = cynefin_layout_settings(&serde_json::json!({
+            "cynefin": {"seed": "4294967297"}
+        }));
+        assert_eq!(string_seed.seed, None);
+        assert_eq!(
+            resolve_seed(string_seed.seed, "cynefin-string-seed"),
+            f64::from(hash_string("cynefin-string-seed")),
+            "a string seed must fall back to Mermaid's diagram-id hash"
+        );
+
+        let numeric_seed = cynefin_layout_settings(&serde_json::json!({
+            "cynefin": {"seed": 4294967297_u64}
+        }));
+        assert_eq!(numeric_seed.seed, Some(4_294_967_297.0));
+        assert_eq!(
+            seeded_random(numeric_seed.seed.unwrap()),
+            seeded_random(1.0)
+        );
     }
 
     #[test]

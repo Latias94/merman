@@ -2,6 +2,92 @@ use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
 
+fn is_er_redux_color_theme(effective_config: &serde_json::Value) -> bool {
+    matches!(
+        SvgTheme::new(effective_config).theme_name().as_str(),
+        "redux-color" | "redux-dark-color"
+    )
+}
+
+fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
+    (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
+}
+
+fn er_color_indices(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+) -> std::collections::HashMap<String, usize> {
+    fn insertion_index(id: &str) -> Option<usize> {
+        id.rsplit_once('-')?.1.parse().ok()
+    }
+
+    let mut entities: Vec<_> = model.entities.values().collect();
+    entities.sort_by(|left, right| {
+        (insertion_index(&left.id), left.id.as_str())
+            .cmp(&(insertion_index(&right.id), right.id.as_str()))
+    });
+    entities
+        .into_iter()
+        .enumerate()
+        .map(|(index, entity)| (entity.id.clone(), index))
+        .collect()
+}
+
+fn er_theme_color_limit(effective_config: &serde_json::Value) -> usize {
+    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
+        .filter(|value| value.is_finite())
+        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
+        .unwrap_or(12)
+}
+
+fn er_redux_color_css(
+    diagram_id: &str,
+    data_look: &str,
+    border_colors: &[String],
+    background_colors: &[String],
+    theme_color_limit: usize,
+) -> String {
+    let mut out = String::new();
+    for index in 0..theme_color_limit {
+        let Some(border_color) = border_colors.get(index) else {
+            continue;
+        };
+        let fill = background_colors
+            .get(index)
+            .map(|color| format!("fill:{color};"))
+            .unwrap_or_default();
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
+            escape_xml(diagram_id),
+            escape_xml(data_look),
+            index,
+            border_color,
+            fill,
+            escape_xml(diagram_id),
+            escape_xml(data_look),
+            index,
+            border_color,
+            fill,
+        );
+    }
+    out
+}
+
+fn insert_er_redux_color_css(css: &mut String, diagram_id: &str, color_css: &str) {
+    if color_css.is_empty() {
+        return;
+    }
+
+    let escaped_id = escape_xml(diagram_id);
+    let family_rule = format!("#{escaped_id} .entityBox");
+    let root_rule = format!("#{escaped_id} :root");
+    let insertion_point = css
+        .find(&family_rule)
+        .or_else(|| css.find(&root_rule))
+        .unwrap_or(css.len());
+    css.insert_str(insertion_point, color_css);
+}
+
 fn compile_er_entity_styles(
     entity: &crate::er::ErEntity,
     classes: &std::collections::BTreeMap<String, crate::er::ErClassDef>,
@@ -269,6 +355,16 @@ pub(crate) fn render_er_diagram_svg_model(
     let er_render_settings = crate::er::ErConfigView::new(effective_config).render_settings();
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
+    let redux_color_theme = is_er_redux_color_theme(effective_config);
+    let svg_theme = SvgTheme::new(effective_config);
+    let redux_border_colors = redux_color_theme
+        .then(|| svg_theme.string_array("borderColorArray"))
+        .unwrap_or_default();
+    let redux_background_colors = redux_color_theme
+        .then(|| svg_theme.string_array("bkgColorArray"))
+        .unwrap_or_default();
+    let theme_color_limit = er_theme_color_limit(effective_config);
+    let color_indices = er_color_indices(model);
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
@@ -456,7 +552,15 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str("</desc>");
     }
 
-    let css = er_css(diagram_id, effective_config)?;
+    let mut css = er_css(diagram_id, effective_config)?;
+    let redux_color_css = er_redux_color_css(
+        diagram_id,
+        data_look,
+        &redux_border_colors,
+        &redux_background_colors,
+        theme_color_limit,
+    );
+    insert_er_redux_color_css(&mut css, diagram_id, &redux_color_css);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
@@ -829,13 +933,19 @@ pub(crate) fn render_er_diagram_svg_model(
         } else {
             format!("node {}", entity.css_classes.trim())
         };
+        let color_id_attr = color_indices
+            .get(entity.id.as_str())
+            .and_then(|index| er_redux_color_id(&redux_border_colors, *index))
+            .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
+            .unwrap_or_default();
         let _ = write!(
             &mut out,
-            r#"<g id="{}-{}" class="{}" data-look="{}" transform="translate({}, {})">"#,
+            r#"<g id="{}-{}" class="{}" data-look="{}"{} transform="translate({}, {})">"#,
             escape_xml(diagram_id),
             escape_xml(&entity.id),
             escape_xml(&group_class),
             escape_xml(data_look),
+            color_id_attr,
             fmt(cx),
             fmt(cy)
         );
@@ -1496,7 +1606,161 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
 
 #[cfg(test)]
 mod tests {
+    use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
+    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn er_redux_color_theme_emits_per_entity_color_rules() {
+        let config = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "borderColorArray": ["#e879f9", "#2dd4bf"],
+                "bkgColorArray": ["#fdf4ff", "#f0fdfa"],
+                "THEME_COLOR_LIMIT": 2
+            }
+        });
+        let theme = super::SvgTheme::new(&config);
+        let borders = theme.string_array("borderColorArray");
+        let backgrounds = theme.string_array("bkgColorArray");
+
+        assert!(super::is_er_redux_color_theme(&config));
+        assert_eq!(
+            super::er_redux_color_id(&borders, 0).as_deref(),
+            Some("color-0")
+        );
+        assert_eq!(
+            super::er_redux_color_id(&borders, 3).as_deref(),
+            Some("color-1")
+        );
+        assert_eq!(
+            super::er_redux_color_id(&[], 0),
+            None,
+            "an empty color palette must not produce a modulo-by-zero color id"
+        );
+
+        assert_eq!(super::er_theme_color_limit(&config), 2);
+        let css = super::er_redux_color_css("er", "classic", &borders, &backgrounds, 2);
+        assert!(css.contains(
+            r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
+        ));
+        assert!(css.contains(
+            r##"#er [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
+        ));
+
+        let dark_css = super::er_redux_color_css("er", "classic", &borders, &[], 2);
+        assert!(dark_css.contains(
+            r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
+        ));
+        assert!(!dark_css.contains("fill:"), "{dark_css}");
+
+        let mut merged = super::er_css("er", &config).unwrap();
+        super::insert_er_redux_color_css(&mut merged, "er", &css);
+        let colors = merged.find("[data-color-id=").unwrap();
+        let family = merged.find("#er .entityBox").unwrap();
+        let root = merged.find("#er :root").unwrap();
+        assert!(colors < family && family < root, "{merged}");
+    }
+
+    #[test]
+    fn er_redux_colors_follow_entity_insertion_ids() {
+        let config = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "borderColorArray": ["#e879f9", "#2dd4bf"],
+                "bkgColorArray": ["#fdf4ff", "#f0fdfa"],
+                "THEME_COLOR_LIMIT": 2
+            }
+        });
+        let zeta = ErEntityRenderModel {
+            id: "entity-ZETA-0".to_string(),
+            label: "ZETA".to_string(),
+            shape: "erBox".to_string(),
+            css_classes: "default".to_string(),
+            ..ErEntityRenderModel::default()
+        };
+        let alpha = ErEntityRenderModel {
+            id: "entity-ALPHA-1".to_string(),
+            label: "ALPHA".to_string(),
+            shape: "erBox".to_string(),
+            css_classes: "default".to_string(),
+            ..ErEntityRenderModel::default()
+        };
+        let model = ErDiagramRenderModel {
+            direction: "TB".to_string(),
+            entities: BTreeMap::from([
+                ("ALPHA".to_string(), alpha.clone()),
+                ("ZETA".to_string(), zeta.clone()),
+            ]),
+            ..ErDiagramRenderModel::default()
+        };
+        let color_indices = super::er_color_indices(&model);
+        assert_eq!(color_indices.get(&zeta.id), Some(&0));
+        assert_eq!(color_indices.get(&alpha.id), Some(&1));
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let settings = crate::er::ErConfigView::new(&config).render_settings();
+        let measure = |entity: &ErEntityRenderModel| {
+            crate::er::measure_entity_box(
+                entity,
+                &measurer,
+                &settings.label_style,
+                &settings.attr_style,
+                settings.entity_measurement,
+            )
+        };
+        let zeta_measure = measure(&zeta);
+        let alpha_measure = measure(&alpha);
+        let layout = ErDiagramLayout {
+            // Deliberately reverse the layout vector. Mermaid colorIndex belongs to the entity,
+            // not to whichever order the layout backend returns nodes in.
+            nodes: vec![
+                LayoutNode {
+                    id: alpha.id.clone(),
+                    x: 220.0,
+                    y: 80.0,
+                    width: alpha_measure.width,
+                    height: alpha_measure.height,
+                    is_cluster: false,
+                    label_width: None,
+                    label_height: None,
+                },
+                LayoutNode {
+                    id: zeta.id.clone(),
+                    x: 80.0,
+                    y: 80.0,
+                    width: zeta_measure.width,
+                    height: zeta_measure.height,
+                    is_cluster: false,
+                    label_width: None,
+                    label_height: None,
+                },
+            ],
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 300.0,
+                max_y: 160.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("er-colors".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let svg = with_test_svg_execution(&options, |options| {
+            super::render_er_diagram_svg_model(&layout, &model, &config, None, &measurer, options)
+        })
+        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Er))
+        .unwrap();
+
+        let zeta_dom = r#"<g id="er-colors-entity-ZETA-0" class="node default" data-look="classic" data-color-id="color-0""#;
+        let alpha_dom = r#"<g id="er-colors-entity-ALPHA-1" class="node default" data-look="classic" data-color-id="color-1""#;
+        assert!(svg.contains(zeta_dom), "{svg}");
+        assert!(svg.contains(alpha_dom), "{svg}");
+        assert!(svg.find(zeta_dom).unwrap() < svg.find(alpha_dom).unwrap());
+    }
 
     #[test]
     fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {

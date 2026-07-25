@@ -1,5 +1,7 @@
 use super::super::*;
-use crate::kanban::{KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX};
+use crate::kanban::{
+    KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanMarkdown,
+};
 
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let id = escape_xml(diagram_id);
@@ -91,6 +93,34 @@ fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
     }
 }
 
+fn measure_kanban_plain_label(
+    text_measurer: &dyn crate::text::TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+    max_width: Option<f64>,
+) -> crate::text::TextMetrics {
+    text_measurer.measure_wrapped(text, style, max_width, crate::text::WrapMode::HtmlLike)
+}
+
+fn measure_kanban_label_content(
+    text_measurer: &dyn crate::text::TextMeasurer,
+    text: &str,
+    html: Option<&str>,
+    style: &crate::text::TextStyle,
+    max_width: Option<f64>,
+) -> crate::text::TextMetrics {
+    match html {
+        Some(html) => crate::text::measure_xhtml_label_fragment(
+            text_measurer,
+            html,
+            style,
+            max_width,
+            crate::text::WrapMode::HtmlLike,
+        ),
+        None => measure_kanban_plain_label(text_measurer, text, style, max_width),
+    }
+}
+
 pub(crate) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
     effective_config: &serde_json::Value,
@@ -130,9 +160,14 @@ pub(crate) fn render_kanban_diagram_svg(
 
     let css = kanban_css(diagram_id, effective_config)?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    let render_settings = crate::kanban::KanbanConfigView::new(effective_config).render_settings();
+    let config_view = crate::kanban::KanbanConfigView::new(effective_config);
+    let label_style = config_view.layout_settings().text_style;
+    let label_min_height =
+        KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * (label_style.font_size / 16.0).max(f64::EPSILON);
+    let render_settings = config_view.render_settings();
     let data_look = render_settings.look;
     let data_look_attr = escape_attr(data_look.as_str());
+    let markdown = KanbanMarkdown::new(effective_config);
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
@@ -140,11 +175,36 @@ pub(crate) fn render_kanban_diagram_svg(
     out.push_str(r#"<g class="sections">"#);
     for s in &layout.sections {
         let left = s.center_x - s.width / 2.0;
-        let label_x = left + (s.width - s.label_width.max(0.0)) / 2.0;
+        let label = markdown.render(&s.label);
+        let raw_metrics = markdown.measure_html(text_measurer, &label, &label_style, None);
+        let needs_wrap = s.width > 0.0 && raw_metrics.width > s.width;
+        let label_metrics = if needs_wrap {
+            markdown.measure_html(text_measurer, &label, &label_style, Some(s.width))
+        } else {
+            raw_metrics
+        };
+        let label_width = if needs_wrap {
+            s.width.max(0.0)
+        } else {
+            label_metrics.width.max(0.0)
+        };
+        let label_height = label_metrics.height.max(label_min_height);
+        let label_x = left + (s.width - label_width) / 2.0;
+        let section_div_style = if needs_wrap {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;",
+                width = fmt(s.width.max(0.0)),
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt(s.width.max(1.0)),
+            )
+        };
 
         let _ = write!(
             &mut out,
-            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_w}px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
+            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="{div_style}"><span class="nodeLabel">{label}</span></div></foreignObject></g></g>"##,
             idx = s.index,
             id = escape_attr(&kanban_dom_id(diagram_id, &s.id)),
             look = data_look_attr,
@@ -156,25 +216,16 @@ pub(crate) fn render_kanban_diagram_svg(
             h = fmt(s.rect_height),
             lx = fmt(label_x),
             ly = fmt(s.rect_y),
-            lw = fmt(s.label_width.max(0.0)),
-            fo_h = fmt(s.label_height.max(KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX)),
-            max_w = fmt(s.width.max(1.0)),
-            label = escape_xml(&s.label),
+            lw = fmt(label_width),
+            fo_h = fmt(label_height),
+            div_style = escape_attr(&section_div_style),
+            label = label,
         );
     }
     out.push_str("</g>");
 
     out.push_str(r#"<g class="items">"#);
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
-
-    fn measure_text_metrics_html(
-        text_measurer: &dyn crate::text::TextMeasurer,
-        text: &str,
-        max_width: Option<f64>,
-    ) -> crate::text::TextMetrics {
-        let style = crate::text::TextStyle::default();
-        text_measurer.measure_wrapped(text, &style, max_width, crate::text::WrapMode::HtmlLike)
-    }
 
     fn kanban_ticket_url(ticket_base_url: Option<&str>, ticket: &str) -> Option<String> {
         Some(ticket_base_url?.replace("#TICKET#", ticket))
@@ -195,14 +246,15 @@ pub(crate) fn render_kanban_diagram_svg(
         let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
+        let title_html = markdown.render(&n.label);
 
         // The upstream kanban item shape (`kanbanItem.ts`) positions labels relative to the title
         // bbox and the "details row" bbox (ticket/assigned). Recompute the same anchor points here
         // so wrapped titles match exactly.
-        let title_raw = measure_text_metrics_html(text_measurer, &n.label, None);
+        let title_raw = markdown.measure_html(text_measurer, &title_html, &label_style, None);
         let title_needs_wrap = max_w > 0.0 && title_raw.width > max_w;
         let title_metrics = if title_needs_wrap {
-            measure_text_metrics_html(text_measurer, &n.label, Some(max_w))
+            markdown.measure_html(text_measurer, &title_html, &label_style, Some(max_w))
         } else {
             title_raw
         };
@@ -211,13 +263,13 @@ pub(crate) fn render_kanban_diagram_svg(
             .ticket
             .as_deref()
             .filter(|t| !t.is_empty())
-            .map(|t| measure_text_metrics_html(text_measurer, t, None).height)
+            .map(|t| measure_kanban_plain_label(text_measurer, t, &label_style, None).height)
             .unwrap_or(0.0);
         let assigned_metrics = n
             .assigned
             .as_deref()
             .filter(|t| !t.is_empty())
-            .map(|t| measure_text_metrics_html(text_measurer, t, None))
+            .map(|t| measure_kanban_plain_label(text_measurer, t, &label_style, None))
             .unwrap_or(crate::text::TextMetrics {
                 width: 0.0,
                 height: 0.0,
@@ -258,22 +310,32 @@ pub(crate) fn render_kanban_diagram_svg(
             position: (f64, f64),
             max_w: f64,
             text: Option<&str>,
+            html: Option<&str>,
             div_class: Option<&str>,
             wrap_title: bool,
             text_measurer: &dyn crate::text::TextMeasurer,
+            label_style: &crate::text::TextStyle,
+            label_min_height: f64,
         ) {
             let (x, y) = position;
             let (fo_w, fo_h, div_style_overrides) = match text {
                 Some(t) if !t.is_empty() => {
                     if wrap_title && max_w > 0.0 {
-                        let raw = measure_text_metrics_html(text_measurer, t, None);
+                        let raw =
+                            measure_kanban_label_content(text_measurer, t, html, label_style, None);
                         // Keep the title clip region at card content width. A narrow deterministic
                         // glyph estimate can otherwise crop the browser-rendered HTML label.
                         if raw.width > max_w {
-                            let wrapped = measure_text_metrics_html(text_measurer, t, Some(max_w));
+                            let wrapped = measure_kanban_label_content(
+                                text_measurer,
+                                t,
+                                html,
+                                label_style,
+                                Some(max_w),
+                            );
                             (
                                 max_w,
-                                wrapped.height,
+                                wrapped.height.max(label_min_height),
                                 Some(format!(
                                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; width: {mw}px;",
                                     mw = fmt(max_w),
@@ -281,8 +343,8 @@ pub(crate) fn render_kanban_diagram_svg(
                             )
                         } else {
                             (
-                                max_w,
-                                KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+                                raw.width,
+                                raw.height.max(label_min_height),
                                 Some(format!(
                                     "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                     mw = fmt(max_w),
@@ -290,10 +352,11 @@ pub(crate) fn render_kanban_diagram_svg(
                             )
                         }
                     } else {
-                        let raw = measure_text_metrics_html(text_measurer, t, None);
+                        let raw =
+                            measure_kanban_label_content(text_measurer, t, html, label_style, None);
                         (
                             raw.width,
-                            KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+                            raw.height.max(label_min_height),
                             Some(format!(
                                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                 mw = fmt(max_w),
@@ -330,7 +393,9 @@ pub(crate) fn render_kanban_diagram_svg(
                 class_attr = class_attr,
                 span_class = span_class,
             );
-            if let Some(t) = text.filter(|t| !t.is_empty()) {
+            if let Some(html) = html.filter(|_| text.is_some_and(|t| !t.is_empty())) {
+                out.push_str(html);
+            } else if let Some(t) = text.filter(|t| !t.is_empty()) {
                 let _ = write!(out, r#"<p>{}</p>"#, escape_xml(t));
             }
             out.push_str("</span></div></foreignObject></g>");
@@ -342,9 +407,12 @@ pub(crate) fn render_kanban_diagram_svg(
             (left_x, title_y),
             max_w,
             Some(n.label.as_str()),
+            Some(title_html.as_str()),
             n.icon.as_deref().map(|_| "labelBkg"),
             true,
             text_measurer,
+            &label_style,
+            label_min_height,
         );
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
@@ -362,8 +430,11 @@ pub(crate) fn render_kanban_diagram_svg(
                     max_w,
                     Some(t),
                     None,
+                    None,
                     false,
                     text_measurer,
+                    &label_style,
+                    label_min_height,
                 );
                 out.push_str("</a>");
             } else {
@@ -373,8 +444,11 @@ pub(crate) fn render_kanban_diagram_svg(
                     max_w,
                     Some(t),
                     None,
+                    None,
                     false,
                     text_measurer,
+                    &label_style,
+                    label_min_height,
                 );
             }
         } else {
@@ -384,8 +458,11 @@ pub(crate) fn render_kanban_diagram_svg(
                 max_w,
                 None,
                 None,
+                None,
                 false,
                 text_measurer,
+                &label_style,
+                label_min_height,
             );
         }
 
@@ -396,8 +473,11 @@ pub(crate) fn render_kanban_diagram_svg(
             max_w,
             n.assigned.as_deref(),
             None,
+            None,
             false,
             text_measurer,
+            &label_style,
+            label_min_height,
         );
 
         if let Some(p) = n.priority.as_deref() {
@@ -593,6 +673,97 @@ mod tests {
     }
 
     #[test]
+    fn kanban_section_and_item_labels_use_mermaid_markdown() {
+        let layout = KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -300.0,
+                max_x: 220.0,
+                max_y: 80.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            use_max_width: true,
+            sections: vec![KanbanSectionLayout {
+                id: "ready".to_string(),
+                label: "*Ready*".to_string(),
+                index: 1,
+                center_x: 100.0,
+                center_y: 0.0,
+                width: 200.0,
+                rect_y: -300.0,
+                rect_height: 120.0,
+                rx: 5.0,
+                ry: 5.0,
+                label_width: 40.0,
+                label_height: KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+            }],
+            items: vec![KanbanItemLayout {
+                id: "ship".to_string(),
+                label: "**Ship it**".to_string(),
+                parent_id: "ready".to_string(),
+                center_x: 100.0,
+                center_y: -240.0,
+                width: 185.0,
+                height: 44.0,
+                rx: 5.0,
+                ry: 5.0,
+                ticket: None,
+                assigned: None,
+                priority: None,
+                icon: None,
+            }],
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("kb".to_string()),
+            ..Default::default()
+        };
+
+        let config = serde_json::json!({"securityLevel": "strict"});
+        let svg = render_test_kanban(&layout, &config, &options).unwrap();
+
+        assert!(svg.contains(r#"<span class="nodeLabel"><p><em>Ready</em></p></span>"#));
+        assert!(svg.contains(
+            r#"<span style="text-align:left !important" class="nodeLabel markdown-node-label"><p><strong>Ship it</strong></p></span>"#
+        ));
+        assert!(!svg.contains("*Ready*"), "{svg}");
+        assert!(!svg.contains("**Ship it**"), "{svg}");
+
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = crate::kanban::KanbanConfigView::new(&config)
+            .layout_settings()
+            .text_style;
+        let markdown = crate::kanban::KanbanMarkdown::new(&config);
+        let section_html = markdown.render("*Ready*");
+        let section_metrics = markdown.measure_html(&measurer, &section_html, &style, None);
+        let source_metrics = markdown.measure_html(&measurer, "*Ready*", &style, None);
+        let section_fo = foreign_object_before_text(&svg, "<p><em>Ready</em></p>");
+        assert_eq!(attr_f64(section_fo, "width"), section_metrics.width);
+        assert_ne!(
+            attr_f64(section_fo, "width"),
+            source_metrics.width,
+            "renderer must not reuse dimensions measured from Markdown source markers"
+        );
+    }
+
+    #[test]
+    fn kanban_markdown_labels_are_sanitized_before_dom_insertion() {
+        let config = serde_json::json!({
+            "securityLevel": "strict"
+        });
+        let html = crate::kanban::KanbanMarkdown::new(&config)
+            .render("*Ready* <b onclick=\"alert(1)\">safe</b><script>alert(2)</script>");
+
+        assert!(html.contains("<em>Ready</em>"), "{html}");
+        assert!(html.contains("<b>safe</b>"), "{html}");
+        assert!(!html.contains("onclick"), "{html}");
+        assert!(!html.contains("script"), "{html}");
+        assert!(!html.contains("alert(2)"), "{html}");
+    }
+
+    #[test]
     fn kanban_sections_use_configured_look_in_dom_attributes() {
         let layout = KanbanDiagramLayout {
             bounds: Some(Bounds {
@@ -692,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn kanban_item_title_foreign_object_uses_card_content_width() {
+    fn kanban_item_title_foreign_object_uses_rendered_content_width() {
         let layout = KanbanDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
@@ -740,13 +911,22 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = render_test_kanban(&layout, &serde_json::json!({}), &options).unwrap();
+        let config = serde_json::json!({});
+        let svg = render_test_kanban(&layout, &config, &options).unwrap();
 
         let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = crate::kanban::KanbanConfigView::new(&config)
+            .layout_settings()
+            .text_style;
+        let markdown = crate::kanban::KanbanMarkdown::new(&config);
+        let title_html = markdown.render("Implement renderer");
+        let title_metrics = markdown.measure_html(&measurer, &title_html, &style, None);
         let item = &layout.items[0];
-        assert_eq!(
-            attr_f64(title_fo, "width"),
-            item.width - KANBAN_SECTION_PADDING_PX
+        assert_eq!(attr_f64(title_fo, "width"), title_metrics.width);
+        assert!(
+            attr_f64(title_fo, "width") < item.width - KANBAN_SECTION_PADDING_PX,
+            "an unwrapped upstream HTML label uses its content bbox: {title_fo}"
         );
         assert!(
             attr_f64(title_fo, "height") >= KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,

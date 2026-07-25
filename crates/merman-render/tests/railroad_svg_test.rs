@@ -71,7 +71,7 @@ fn railroad_svg_escapes_css_significant_characters_in_the_root_id_selector() {
     let (svg, _) = render_railroad_with_id(json!({}), "railroad.theme:one");
     let style = railroad_style(&svg);
 
-    assert!(style.contains(r#"#railroad\.theme\:one.railroad-diagram{"#));
+    assert!(style.contains(r#"#railroad\.theme\:one .railroad-diagram{"#));
     assert!(style.contains(r#"#railroad\.theme\:one .railroad-terminal rect{"#));
 }
 

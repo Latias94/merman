@@ -680,10 +680,10 @@ mod tests {
     }
 
     #[test]
-    fn zenuml_complexity_includes_common_and_inline_decorations() {
+    fn zenuml_complexity_includes_inline_decorations() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "zenuml\naccTitle: Access title\naccDescr: Access description\nA->[rocket]B.call()\n",
+                "zenuml\nA->[rocket]B.call()\n",
                 ParseOptions::strict(),
             )
             .unwrap()
@@ -695,7 +695,7 @@ mod tests {
 
         assert_eq!(complexity.participants, 2);
         assert_eq!(complexity.statements, 1);
-        let required = ["Access title", "Access description", "rocket", "call()"]
+        let required = ["rocket", "call()"]
             .into_iter()
             .map(str::len)
             .sum::<usize>();

@@ -1366,26 +1366,21 @@ fn class_box_dimensions(
     });
 
     let title_has_styled_runs = title_markdown_analysis.has_styled_runs;
+    let bold_title_style = TextStyle {
+        font_family: text_style.font_family.clone(),
+        font_size: text_style.font_size,
+        font_weight: Some("bolder".to_string()),
+        font_style: text_style.font_style.clone(),
+    };
     let mut title_metrics = if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_styled_runs {
-        let title_md = title_lines
-            .iter()
-            .map(|l| format!("**{l}**"))
-            .collect::<Vec<_>>()
-            .join("\n");
         crate::text::measure_markdown_with_inline_styles(
             measurer,
-            &title_md,
-            text_style,
+            &wrapped_title_text,
+            &bold_title_style,
             title_max_width,
             wrap_mode,
         )
     } else {
-        let bold_title_style = TextStyle {
-            font_family: text_style.font_family.clone(),
-            font_size: text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: text_style.font_style.clone(),
-        };
         measurer.measure_wrapped(&wrapped_title_text, &bold_title_style, None, wrap_mode)
     };
 

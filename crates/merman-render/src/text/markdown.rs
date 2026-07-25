@@ -206,6 +206,167 @@ pub(crate) fn mermaid_markdown_to_lines(
         .unwrap_or(markdown);
 
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
+
+    fn needs_full_delimiter_resolution(markdown: &str) -> bool {
+        let chars: Vec<char> = markdown.chars().collect();
+        if chars
+            .windows(2)
+            .any(|pair| (pair[0] == '*' && pair[1] == '_') || (pair[0] == '_' && pair[1] == '*'))
+        {
+            return true;
+        }
+
+        ['*', '_'].into_iter().any(|delimiter| {
+            let mut has_single = false;
+            let mut has_double = false;
+            let mut index = 0;
+            while index < chars.len() {
+                if chars[index] != delimiter {
+                    index += 1;
+                    continue;
+                }
+                let run_len = chars[index..]
+                    .iter()
+                    .take_while(|candidate| **candidate == delimiter)
+                    .count();
+                match run_len {
+                    1 => has_single = true,
+                    2 => has_double = true,
+                    _ => return true,
+                }
+                if has_single && has_double {
+                    return true;
+                }
+                index += run_len;
+            }
+            false
+        })
+    }
+
+    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+        fn line_mut(
+            out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+            line_idx: usize,
+        ) -> &mut Vec<(String, MermaidMarkdownWordType)> {
+            if out.len() <= line_idx {
+                out.resize_with(line_idx + 1, Vec::new);
+            }
+            &mut out[line_idx]
+        }
+
+        fn append_text(
+            out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+            line_idx: &mut usize,
+            text: &str,
+            word_type: MermaidMarkdownWordType,
+            join_first_word: bool,
+        ) {
+            for (part_index, part) in text.split('\n').enumerate() {
+                if part_index != 0 {
+                    *line_idx += 1;
+                    out.push(Vec::new());
+                }
+                for (word_index, word) in part.split(' ').enumerate() {
+                    if word.is_empty() {
+                        continue;
+                    }
+                    let word = word.replace("&#39;", "'");
+                    let can_join = join_first_word && part_index == 0 && word_index == 0;
+                    let line = line_mut(out, *line_idx);
+                    if can_join
+                        && let Some((previous, previous_type)) = line.last_mut()
+                        && *previous_type == word_type
+                    {
+                        previous.push_str(&word);
+                    } else {
+                        line.push((word, word_type));
+                    }
+                }
+            }
+        }
+
+        let parser = pulldown_cmark::Parser::new_ext(
+            markdown,
+            pulldown_cmark::Options::ENABLE_TABLES
+                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                | pulldown_cmark::Options::ENABLE_TASKLISTS,
+        )
+        .into_offset_iter();
+        let mut out = vec![Vec::new()];
+        let mut line_idx = 0;
+        let mut style_stack = Vec::new();
+        let mut previous_text_end = None;
+
+        for (event, range) in parser {
+            match event {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                    style_stack.push(MermaidMarkdownWordType::Strong);
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                    style_stack.push(MermaidMarkdownWordType::Em);
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong)
+                | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                    let _ = style_stack.pop();
+                }
+                pulldown_cmark::Event::Text(text) => {
+                    let word_type = style_stack
+                        .last()
+                        .copied()
+                        .unwrap_or(MermaidMarkdownWordType::Normal);
+                    let join_first_word = previous_text_end == Some(range.start);
+                    let raw = markdown.get(range.clone()).unwrap_or(text.as_ref());
+                    append_text(&mut out, &mut line_idx, raw, word_type, join_first_word);
+                    previous_text_end = Some(range.end);
+                }
+                pulldown_cmark::Event::Code(code) => {
+                    let raw = markdown.get(range).unwrap_or(code.as_ref());
+                    append_text(
+                        &mut out,
+                        &mut line_idx,
+                        raw,
+                        MermaidMarkdownWordType::Normal,
+                        false,
+                    );
+                    previous_text_end = None;
+                }
+                pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html) => {
+                    let raw = markdown.get(range).unwrap_or(html.as_ref());
+                    line_mut(&mut out, line_idx)
+                        .push((raw.to_string(), MermaidMarkdownWordType::Normal));
+                    previous_text_end = None;
+                }
+                pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                    line_idx += 1;
+                    out.push(Vec::new());
+                    previous_text_end = None;
+                }
+                pulldown_cmark::Event::Rule => {
+                    if let Some(raw) = markdown.get(range) {
+                        append_text(
+                            &mut out,
+                            &mut line_idx,
+                            raw,
+                            MermaidMarkdownWordType::Normal,
+                            false,
+                        );
+                    }
+                    previous_text_end = None;
+                }
+                _ => {}
+            }
+        }
+
+        while out.last().is_some_and(|line| line.is_empty()) && out.len() > 1 {
+            out.pop();
+        }
+        out
+    }
+
+    if needs_full_delimiter_resolution(&pre) {
+        return resolve_full_delimiter_runs(&pre);
+    }
+
     let chars: Vec<char> = pre.chars().collect();
 
     let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = vec![Vec::new()];
@@ -303,6 +464,8 @@ pub(crate) fn mermaid_markdown_to_lines(
                 i += 1;
                 continue;
             }
+
+            let prev = i.checked_sub(1).map(|index| chars[index]);
             let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
                 2
             } else {
@@ -313,12 +476,7 @@ pub(crate) fn mermaid_markdown_to_lines(
             } else {
                 DelimKind::Em
             };
-            let prev = if i > 0 { Some(chars[i - 1]) } else { None };
-            let next = if i + run_len < chars.len() {
-                Some(chars[i + run_len])
-            } else {
-                None
-            };
+            let next = chars.get(i + run_len).copied();
             let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
 
             let want_ty = match kind {
@@ -363,6 +521,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     }
 
     flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+
     if out.is_empty() {
         out.push(Vec::new());
     }
@@ -410,6 +569,75 @@ mod tests {
         assert_eq!(
             mermaid_markdown_to_lines("`__a__`", true),
             vec![vec![("a".to_string(), Strong)]]
+        );
+        // Marked 16.3 tokenizes this as three nested `em` nodes. Mermaid passes
+        // the innermost parent type to the text token, so the effective word is `Em`.
+        assert_eq!(
+            mermaid_markdown_to_lines("`*_*word*_*`", true),
+            vec![vec![("word".to_string(), Em)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`***word***`", true),
+            vec![vec![("word".to_string(), Strong)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`___word___`", true),
+            vec![vec![("word".to_string(), Strong)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**_word_**`", true),
+            vec![vec![("word".to_string(), Em)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`_*word*_`", true),
+            vec![vec![("word".to_string(), Em)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`***foo* bar**`", true),
+            vec![vec![("foo".to_string(), Em), ("bar".to_string(), Strong),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`***foo** bar*`", true),
+            vec![vec![("foo".to_string(), Strong), ("bar".to_string(), Em),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**foo***`", true),
+            vec![vec![("foo".to_string(), Strong), ("*".to_string(), Normal),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`___foo_ bar__`", true),
+            vec![vec![("foo".to_string(), Em), ("bar".to_string(), Strong),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**foo*`", true),
+            vec![vec![("*".to_string(), Normal), ("foo".to_string(), Em),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`*foo**`", true),
+            vec![vec![("foo".to_string(), Em), ("*".to_string(), Normal),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`__foo_`", true),
+            vec![vec![("_".to_string(), Normal), ("foo".to_string(), Em),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`_foo__`", true),
+            vec![vec![("foo".to_string(), Em), ("_".to_string(), Normal),]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**CoreResult<T>**`", true),
+            vec![vec![
+                ("CoreResult".to_string(), Strong),
+                ("<T>".to_string(), Normal),
+            ]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**CoreResult&lt;T&gt;**`", true),
+            vec![vec![("CoreResult&lt;T&gt;".to_string(), Strong)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`**CoreResult~T~**`", true),
+            vec![vec![("CoreResult~T~".to_string(), Strong)]]
         );
     }
 
