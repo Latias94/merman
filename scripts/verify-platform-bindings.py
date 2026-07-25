@@ -74,6 +74,9 @@ ANDROID_MAVEN_SCM = (
     "https://github.com/Latias94/merman",
 )
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
+FLUTTER_GENERATED_ABI = (
+    FLUTTER_ROOT / "lib" / "src" / "generated" / "native_abi.dart"
+)
 
 
 def validate_c_abi_native_recipe(
@@ -148,6 +151,19 @@ def step(name: str) -> None:
 def run(args: list[str], *, cwd: Path = REPO_ROOT) -> None:
     print("+", " ".join(args))
     subprocess.run(args, cwd=cwd, check=True)
+
+
+def verify_tracked_generated_file(path: Path) -> None:
+    try:
+        relative = path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError as exc:
+        raise RuntimeError(
+            f"generated file must be inside the repository: {path}"
+        ) from exc
+    if not path.is_file():
+        raise RuntimeError(f"generated file does not exist: {relative}")
+    run(["git", "ls-files", "--error-unmatch", "--", relative])
+    run(["git", "diff", "--exit-code", "--", relative])
 
 
 def require_command(name: str) -> str:
@@ -735,16 +751,7 @@ def main() -> int:
         dart = require_command("dart")
         run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
         run([dart, "run", "ffigen", "--config", "ffigen.yaml"], cwd=FLUTTER_ROOT)
-        run(
-            [
-                "git",
-                "diff",
-                "--exit-code",
-                "--",
-                "platforms/flutter/lib/src/generated/native_abi.dart",
-            ],
-            cwd=REPO_ROOT,
-        )
+        verify_tracked_generated_file(FLUTTER_GENERATED_ABI)
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
         run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
         run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)

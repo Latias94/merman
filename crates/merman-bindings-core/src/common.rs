@@ -214,11 +214,11 @@ pub(crate) struct ParseOptionsJson {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ResourceOptionsJson {
     pub(crate) profile: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) limits: BTreeMap<String, usize>,
 }
 
@@ -1032,6 +1032,188 @@ pub fn resource_options_json(
     .map_err(internal_json_error)
 }
 
+/// Applies a transport-owned resource ceiling while preserving stricter caller limits.
+///
+/// The caller options may use direct analysis fields or exactly one `analysis`/`merman` wrapper.
+/// A caller-selected profile is accepted only when its effective limits are no looser than the
+/// transport ceiling. The returned JSON always names the ceiling profile and materializes any
+/// stricter effective limits as explicit overrides.
+pub fn apply_resource_ceiling_json(
+    options_json: &[u8],
+    ceiling_profile_id: &str,
+    ceiling_overrides: &[(&str, usize)],
+) -> Result<Vec<u8>, BindingError> {
+    let ceiling_json = resource_options_json(ceiling_profile_id, ceiling_overrides)?;
+    let ceiling = parse_options(&ceiling_json)?
+        .analysis
+        .resources
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                "generated resource ceiling omitted resources",
+            )
+        })?;
+    let mut value = options_json_value(options_json)?;
+    let root = value.as_object_mut().ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "invalid options_json: options root must be an object",
+        )
+    })?;
+
+    let wrappers = ["analysis", "merman"]
+        .into_iter()
+        .filter(|key| root.contains_key(*key))
+        .collect::<Vec<_>>();
+    for key in &wrappers {
+        if !root.get(*key).is_some_and(Value::is_object) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("invalid options_json: `{key}` wrapper must be an object"),
+            ));
+        }
+    }
+    if wrappers.len() > 1 {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "options JSON must not contain both `analysis` and `merman` wrappers",
+        ));
+    }
+    if !wrappers.is_empty() && root.contains_key("resources") {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "options JSON must not mix top-level resources with an `analysis` or `merman` wrapper",
+        ));
+    }
+
+    let target = match wrappers.first() {
+        Some(key) => root
+            .get_mut(*key)
+            .and_then(Value::as_object_mut)
+            .expect("wrapper shape was validated"),
+        None => root,
+    };
+    let requested = target
+        .get("resources")
+        .cloned()
+        .map(|resources| {
+            serde_json::from_value::<ResourceOptionsJson>(resources).map_err(|error| {
+                BindingError::new(
+                    BindingStatus::OptionsJsonError,
+                    format!("invalid options_json resources: {error}"),
+                )
+            })
+        })
+        .transpose()?;
+    let resources = requested
+        .as_ref()
+        .map(|requested| tighten_resource_options(&ceiling, requested))
+        .transpose()?
+        .unwrap_or(ceiling);
+    target.insert(
+        "resources".to_string(),
+        serde_json::to_value(resources).map_err(internal_json_error)?,
+    );
+
+    let serialized = serde_json::to_vec(&value).map_err(internal_json_error)?;
+    parse_options(&serialized)?;
+    Ok(serialized)
+}
+
+fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
+    if options_json.is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let text = std::str::from_utf8(options_json).map_err(|error| {
+        BindingError::new(
+            BindingStatus::Utf8Error,
+            format!("invalid options_json UTF-8: {error}"),
+        )
+    })?;
+    serde_json::from_str(text).map_err(|error| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {error}"),
+        )
+    })
+}
+
+fn tighten_resource_options(
+    ceiling: &ResourceOptionsJson,
+    requested: &ResourceOptionsJson,
+) -> Result<ResourceOptionsJson, BindingError> {
+    let mut candidate = if requested.profile.is_none() {
+        ceiling.clone()
+    } else {
+        ResourceOptionsJson {
+            profile: requested.profile.clone(),
+            limits: BTreeMap::new(),
+        }
+    };
+    candidate.limits.extend(requested.limits.clone());
+
+    let ceiling_values = effective_resource_limits(ceiling)?;
+    let candidate_values = effective_resource_limits(&candidate)?;
+    let mut tightened = ceiling.clone();
+    for (id, ceiling_value) in ceiling_values {
+        let candidate_value = candidate_values
+            .get(id)
+            .copied()
+            .expect("resource policy projections use the same stable IDs");
+        match (ceiling_value, candidate_value) {
+            (Some(maximum), Some(requested)) if requested <= maximum => {
+                if requested < maximum {
+                    tightened.limits.insert(id.to_string(), requested);
+                }
+            }
+            (None, Some(requested)) => {
+                tightened.limits.insert(id.to_string(), requested);
+            }
+            (None, None) => {}
+            (Some(maximum), Some(requested)) => {
+                return Err(resource_ceiling_error(id, requested.to_string(), maximum));
+            }
+            (Some(maximum), None) => {
+                return Err(resource_ceiling_error(id, "unbounded".to_string(), maximum));
+            }
+        }
+    }
+    Ok(tightened)
+}
+
+fn resource_ceiling_error(id: &str, requested: String, maximum: usize) -> BindingError {
+    BindingError::new(
+        BindingStatus::OptionsJsonError,
+        format!(
+            "resources would loosen the transport ceiling for `{id}`: requested {requested}, maximum {maximum}"
+        ),
+    )
+}
+
+#[cfg(feature = "svg")]
+fn effective_resource_limits(
+    resources: &ResourceOptionsJson,
+) -> Result<BTreeMap<&'static str, Option<usize>>, BindingError> {
+    let policy = binding_resource_policy(Some(resources))?;
+    Ok(merman::svg::ResourceLimitId::ALL
+        .into_iter()
+        .map(|id| (id.as_str(), policy.value(id)))
+        .collect())
+}
+
+#[cfg(not(feature = "svg"))]
+fn effective_resource_limits(
+    resources: &ResourceOptionsJson,
+) -> Result<BTreeMap<&'static str, Option<usize>>, BindingError> {
+    let policy =
+        binding_input_resource_policy(Some(resources), InputResourceOperation::ArtifactUnion)?;
+    Ok(merman::resources::InputResourceLimitId::ALL
+        .into_iter()
+        .filter(|id| input_resource_limit_available_for_build(*id))
+        .map(|id| (id.as_str(), policy.value(id)))
+        .collect())
+}
+
 pub fn render_resource_options_unavailable() -> BindingError {
     BindingError::new(
         BindingStatus::UnsupportedOperation,
@@ -1303,6 +1485,57 @@ mod tests {
         let flat = parse_options(br#"{ "resources": { "max_source_bytes": 4 } }"#).unwrap_err();
         assert_eq!(flat.status(), BindingStatus::OptionsJsonError);
         assert!(flat.message().contains("unknown field `max_source_bytes`"));
+    }
+
+    #[test]
+    fn resource_ceiling_preserves_stricter_limits_and_wrapper_shape() {
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            let input = match wrapper {
+                Some(wrapper) => format!(
+                    r#"{{"{wrapper}":{{"site_config":{{"theme":"dark"}},"resources":{{"limits":{{"max_source_bytes":4096}}}}}}}}"#
+                ),
+                None => {
+                    r#"{"parse":{"suppress_errors":true},"resources":{"limits":{"max_source_bytes":4096}}}"#
+                        .to_string()
+                }
+            };
+            let constrained =
+                apply_resource_ceiling_json(input.as_bytes(), "constrained", &[]).unwrap();
+            let value: Value = serde_json::from_slice(&constrained).unwrap();
+            let resources = wrapper
+                .map(|wrapper| &value[wrapper]["resources"])
+                .unwrap_or(&value["resources"]);
+
+            assert_eq!(resources["profile"], "constrained");
+            assert_eq!(resources["limits"]["max_source_bytes"], 4096);
+            assert!(value.get("resources").is_some() == wrapper.is_none());
+            parse_options(&constrained).unwrap();
+        }
+    }
+
+    #[test]
+    fn resource_ceiling_rejects_looser_profiles_and_overrides() {
+        for input in [
+            br#"{"resources":{"profile":"trusted-native"}}"#.as_slice(),
+            br#"{"resources":{"limits":{"max_source_bytes":2097152}}}"#.as_slice(),
+        ] {
+            let error = apply_resource_ceiling_json(input, "constrained", &[]).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains("loosen the transport ceiling"));
+        }
+    }
+
+    #[test]
+    fn resource_ceiling_rejects_ambiguous_or_malformed_wrappers() {
+        for input in [
+            br#"{"analysis":{},"merman":{}}"#.as_slice(),
+            br#"{"analysis":[]}"#.as_slice(),
+            br#"{"merman":null}"#.as_slice(),
+            br#"{"resources":{"profile":"constrained"},"analysis":{}}"#.as_slice(),
+        ] {
+            let error = apply_resource_ceiling_json(input, "constrained", &[]).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        }
     }
 
     #[cfg(feature = "svg")]

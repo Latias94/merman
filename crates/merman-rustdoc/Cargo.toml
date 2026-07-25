@@ -21,9 +21,6 @@ artifact-profile-required = true
 
 [features]
 default = []
-# This product has one intentional rendering closure. Keeping the public
-# capability named `svg` on this crate makes the artifact recipe inspectable
-# instead of hiding it in a transitive dependency declaration.
 svg = [
     "dep:merman",
     "dep:proc-macro2",
@@ -32,10 +29,10 @@ svg = [
     "dep:serde_json",
     "dep:syn",
     "merman/svg",
-    "merman/layout-cytoscape",
-    "merman/layout-elk",
-    "merman/math",
 ]
+layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-elk = ["svg", "merman/layout-elk"]
+math = ["svg", "merman/math"]
 
 [dependencies]
 merman = { workspace = true, default-features = false, optional = true }
@@ -48,6 +45,10 @@ syn = { workspace = true, optional = true }
 [[test]]
 name = "attribute_macro"
 required-features = ["svg"]
+
+[[test]]
+name = "complete_svg_e2e"
+required-features = ["layout-cytoscape", "layout-elk", "math", "svg"]
 
 [[test]]
 name = "rustdoc_e2e"

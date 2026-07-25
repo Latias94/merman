@@ -332,8 +332,7 @@ fn analyzer_for(args: &AnalysisCliArgs, source: SourceDescriptor) -> Result<Anal
     let parse = ParseCliArgs {
         config_file: args.config_file.clone(),
         theme: None,
-        fixed_today: args.fixed_today,
-        fixed_local_offset_minutes: args.fixed_local_offset_minutes,
+        runtime: args.runtime.clone(),
         ..Default::default()
     };
     let runtime_policy = runtime_policy_for(&parse)?;

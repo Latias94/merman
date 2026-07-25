@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 import importlib.util
 import json
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -37,6 +39,32 @@ WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
+    def test_python_wheel_smoke_uses_exact_profile_capabilities_and_outputs(self) -> None:
+        script = wheel_builder.python_wheel_smoke_script("python-uniffi-native")
+
+        expected = json.loads(
+            (artifact_profile_recipe.DEFAULT_DESCRIPTOR).read_text(encoding="utf-8")
+        )
+        profile = next(
+            item for item in expected["profiles"] if item["id"] == "python-uniffi-native"
+        )
+        self.assertIn(
+            f"EXPECTED_CAPABILITY_IDS = {profile['expected']['capabilities']!r}",
+            script,
+        )
+        self.assertIn(
+            f"EXPECTED_OUTPUT_IDS = {profile['expected']['outputs']!r}",
+            script,
+        )
+        self.assertIn(
+            "EXPECTED_OPERATION_IDS = ['analysis-facts-json', 'analysis-json', "
+            "'ascii', 'document-analysis-facts-json', 'document-analysis-json', "
+            "'jpeg', 'layout-json', 'pdf', 'png', 'semantic-json', 'svg', "
+            "'validation-json']",
+            script,
+        )
+        self.assertNotIn("required_capabilities", script)
+
     def test_native_sdk_profile_owns_the_release_optimization_policy(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:
@@ -264,6 +292,141 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
 
         wheel_builder.validate_python_native_recipe(recipe)
+
+    def test_python_builder_requires_generated_support_files_to_be_tracked(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            package_dir = repo_root / "platforms" / "python" / "merman"
+            for relative in wheel_builder.PYTHON_GENERATED_SUPPORT_FILES:
+                generated = package_dir / relative
+                generated.parent.mkdir(parents=True, exist_ok=True)
+                generated.write_text("generated\n", encoding="utf-8")
+            with (
+                mock.patch.object(wheel_builder, "REPO_ROOT", repo_root),
+                mock.patch.object(wheel_builder, "run") as run,
+            ):
+                wheel_builder.require_tracked_python_support_files(package_dir)
+
+        self.assertEqual(
+            [call.args[0] for call in run.call_args_list],
+            [
+                [
+                    "git",
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    f"platforms/python/merman/{relative}",
+                ]
+                for relative in wheel_builder.PYTHON_GENERATED_SUPPORT_FILES
+            ],
+        )
+
+    def test_python_builder_rejects_stale_generated_support_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            staged = root / "staged"
+            for relative in wheel_builder.PYTHON_GENERATED_SUPPORT_FILES:
+                source_file = source / relative
+                staged_file = staged / relative
+                source_file.parent.mkdir(parents=True, exist_ok=True)
+                staged_file.parent.mkdir(parents=True, exist_ok=True)
+                source_file.write_text("current\n", encoding="utf-8")
+                staged_file.write_text("current\n", encoding="utf-8")
+
+            (staged / wheel_builder.PYTHON_GENERATED_SUPPORT_FILES[0]).write_text(
+                "regenerated\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "stale generated Python support file"):
+                wheel_builder.verify_staged_python_support_files(source, staged)
+
+    def test_python_builder_generates_and_packages_only_from_staging(self) -> None:
+        recipe = load_artifact_profile("python-uniffi-native")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source-package"
+            staged = root / "staged-package"
+            wheel_dir = root / "wheels"
+            cdylib = root / "libmerman_uniffi.so"
+            wheel = wheel_dir / "merman-0.0.0-py3-none-linux_x86_64.whl"
+            source.mkdir()
+            example = source / "examples" / "smoke.py"
+            example.parent.mkdir()
+            example.write_text("print('smoke')\n", encoding="utf-8")
+            staged.mkdir()
+            cdylib.write_bytes(b"native")
+            venv_python = root / "venv" / "python"
+            args = SimpleNamespace(
+                package_dir=str(source),
+                wheel_dir=str(wheel_dir),
+                python=sys.executable,
+                run_smoke=True,
+            )
+
+            with (
+                mock.patch.object(wheel_builder, "REPO_ROOT", root),
+                mock.patch.object(wheel_builder, "parse_args", return_value=args),
+                mock.patch.object(
+                    wheel_builder,
+                    "load_artifact_profile",
+                    return_value=recipe,
+                ),
+                mock.patch.object(wheel_builder, "validate_python_native_recipe"),
+                mock.patch.object(wheel_builder, "production_cdylib_path", return_value=cdylib),
+                mock.patch.object(
+                    wheel_builder,
+                    "staged_python_package",
+                    return_value=nullcontext(staged),
+                ),
+                mock.patch.object(
+                    wheel_builder,
+                    "require_tracked_python_support_files",
+                ),
+                mock.patch.object(
+                    wheel_builder,
+                    "verify_staged_python_support_files",
+                ),
+                mock.patch.object(wheel_builder, "newest_wheel", return_value=wheel),
+                mock.patch.object(wheel_builder, "require_platform_wheel"),
+                mock.patch.object(wheel_builder, "require_native_platlib_layout"),
+                mock.patch.object(
+                    wheel_builder,
+                    "venv_python",
+                    return_value=venv_python,
+                ),
+                mock.patch.object(wheel_builder, "run") as run,
+            ):
+                self.assertEqual(wheel_builder.main(), 0)
+
+        generator_command = run.call_args_list[1].args[0]
+        wheel_command = run.call_args_list[2].args[0]
+        self.assertIn(str(staged), generator_command)
+        self.assertNotIn(str(source), generator_command)
+        self.assertIn(str(staged), wheel_command)
+        self.assertNotIn(str(source), wheel_command)
+        self.assertEqual(
+            run.call_args_list[-1].args[0],
+            [str(venv_python), str(example.resolve())],
+        )
+
+    def test_python_ci_and_release_do_not_depend_on_generated_source_bindings(
+        self,
+    ) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        for relative in (
+            ".github/workflows/ci.yml",
+            ".github/workflows/release-python.yml",
+        ):
+            with self.subTest(workflow=relative):
+                workflow = (repo_root / relative).read_text(encoding="utf-8")
+                self.assertNotIn(
+                    "PYTHONPATH=platforms/python/merman/src",
+                    workflow,
+                )
 
     def test_zigbuild_uses_the_same_exact_recipe_projection(self) -> None:
         recipe = load_artifact_profile("flutter-desktop-native")

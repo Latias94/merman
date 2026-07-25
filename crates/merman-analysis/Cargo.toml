@@ -15,6 +15,7 @@ categories = ["parser-implementations", "development-tools"]
 
 [package.metadata.merman]
 artifact-profile-required = true
+fixed-capabilities = ["analysis"]
 
 [features]
 default = []

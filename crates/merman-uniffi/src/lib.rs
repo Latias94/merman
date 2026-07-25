@@ -96,6 +96,12 @@ include!("generated/resource_contract.rs");
 #[derive(Debug, Default, uniffi::Object)]
 pub struct MermanEngine;
 
+/// A reusable engine with an engine-local host-callback safety boundary.
+///
+/// While one of this engine's host text-measurement callbacks is active, new operations and
+/// text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
+/// The boundary applies across threads because generated foreign bindings do not carry callback
+/// causality when a host dispatches work to another thread.
 #[derive(uniffi::Object)]
 pub struct MermanReusableEngine {
     #[cfg(feature = "svg")]
@@ -111,13 +117,18 @@ struct ReusableEngineLifecycle {
     // This Arc is the reusable engine's opaque identity. The callback adapter holds the same
     // lifecycle until it returns, so dropping a foreign object cannot invalidate its callback
     // boundary or leak that boundary into another engine instance.
+    //
+    // The callback boundary is deliberately engine-wide rather than thread-local. UniFFI cannot
+    // distinguish an unrelated call from a foreign thread that a callback spawned and is waiting
+    // for. Rejecting both while a callback is active is the only no-new-ABI policy that guarantees
+    // the callback-derived call fails instead of deadlocking.
     state: Mutex<ReusableEngineLifecycleState>,
 }
 
 #[cfg(feature = "svg")]
 #[derive(Debug, Default)]
 struct ReusableEngineLifecycleState {
-    active_renders: usize,
+    active_operations: usize,
     active_callbacks: usize,
     active_mutations: usize,
 }
@@ -136,7 +147,7 @@ impl ReusableEngineLifecycle {
 }
 
 #[cfg(feature = "svg")]
-struct ReusableRenderGuard {
+struct ReusableOperationGuard {
     lifecycle: Arc<ReusableEngineLifecycle>,
 }
 
@@ -151,14 +162,14 @@ struct ReusableCallbackGuard {
 }
 
 #[cfg(feature = "svg")]
-impl Drop for ReusableRenderGuard {
+impl Drop for ReusableOperationGuard {
     fn drop(&mut self) {
         let mut state = self.lifecycle.lock_state();
         debug_assert!(
-            state.active_renders > 0,
-            "render guard must have an active render"
+            state.active_operations > 0,
+            "operation guard must have an active operation"
         );
-        state.active_renders = state.active_renders.saturating_sub(1);
+        state.active_operations = state.active_operations.saturating_sub(1);
     }
 }
 
@@ -187,16 +198,18 @@ impl Drop for ReusableCallbackGuard {
 }
 
 #[cfg(feature = "svg")]
-impl ReusableRenderGuard {
+impl ReusableOperationGuard {
     fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
         let mut state = lifecycle.lock_state();
+        // This is an admission fence, not a claim that every rejected caller is causally
+        // reentrant. Calls already admitted before a callback starts may continue concurrently.
         if state.active_callbacks > 0 || state.active_mutations > 0 {
-            return Err(reentrant_render_error());
+            return Err(reusable_engine_reentry_error());
         }
-        state.active_renders = state
-            .active_renders
+        state.active_operations = state
+            .active_operations
             .checked_add(1)
-            .ok_or_else(|| MermanError::internal("reusable engine render count overflow"))?;
+            .ok_or_else(|| MermanError::internal("reusable engine operation count overflow"))?;
         Ok(Self {
             lifecycle: Arc::clone(lifecycle),
         })
@@ -207,8 +220,8 @@ impl ReusableRenderGuard {
 impl ReusableMutationGuard {
     fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
         let mut state = lifecycle.lock_state();
-        if state.active_renders > 0 || state.active_callbacks > 0 || state.active_mutations > 0 {
-            return Err(reentrant_render_error());
+        if state.active_operations > 0 || state.active_callbacks > 0 || state.active_mutations > 0 {
+            return Err(reusable_engine_reentry_error());
         }
         state.active_mutations = state
             .active_mutations
@@ -760,6 +773,7 @@ impl MermanEngine {
         #[cfg(feature = "analysis")]
         {
             Ok(merman_bindings_core::lint_rule_catalog()
+                .map_err(MermanError::from_binding)?
                 .into_iter()
                 .map(uniffi_lint_rule)
                 .collect())
@@ -779,6 +793,7 @@ impl MermanEngine {
         #[cfg(feature = "analysis")]
         {
             Ok(merman_bindings_core::configurable_lint_rule_catalog()
+                .map_err(MermanError::from_binding)?
                 .into_iter()
                 .map(uniffi_lint_rule)
                 .collect())
@@ -849,10 +864,9 @@ impl MermanReusableEngine {
     ) -> Result<MermanOperationResult, MermanError> {
         #[cfg(feature = "svg")]
         {
-            // Every operation on a host-measurer-enabled reusable engine shares this gate. It
-            // prevents a callback from observing a concurrent mutation regardless of whether the
-            // selected output is vector, binary, layout JSON, or a non-rendering operation.
-            self.with_render_call_host(|inner| {
+            // Every operation shares the same lifecycle admission fence, regardless of whether
+            // the selected output is vector, binary, layout JSON, or non-rendering.
+            self.with_reusable_operation(|inner| {
                 execute_operation(
                     &inner,
                     &request,
@@ -1057,18 +1071,18 @@ impl MermanReusableEngine {
     }
 
     #[cfg(feature = "svg")]
-    fn with_render_call_host<T>(
+    fn with_reusable_operation<T>(
         &self,
         run: impl FnOnce(BindingEngine) -> Result<T, MermanError>,
     ) -> Result<T, MermanError> {
-        let _reentry_guard = self.enter_render_call()?;
+        let _operation_guard = self.enter_operation()?;
         let inner = self.current_inner()?;
         run(inner)
     }
 
     #[cfg(feature = "svg")]
-    fn enter_render_call(&self) -> Result<ReusableRenderGuard, MermanError> {
-        ReusableRenderGuard::enter(&self.lifecycle)
+    fn enter_operation(&self) -> Result<ReusableOperationGuard, MermanError> {
+        ReusableOperationGuard::enter(&self.lifecycle)
     }
 
     #[cfg(feature = "svg")]
@@ -1078,9 +1092,9 @@ impl MermanReusableEngine {
 }
 
 #[cfg(feature = "svg")]
-fn reentrant_render_error() -> MermanError {
+fn reusable_engine_reentry_error() -> MermanError {
     MermanError::from_binding(BindingError::reentrant_call(
-        "reentrant reusable engine call",
+        "reusable engine call rejected by the re-entry safety boundary",
     ))
 }
 
@@ -1269,7 +1283,7 @@ mod tests {
             BindingStatus::InvalidArgument.code_name()
         );
         assert_eq!(*kind, MermanErrorKind::ReentrantCall);
-        assert!(message.contains("reentrant reusable engine call"));
+        assert!(message.contains("re-entry safety boundary"));
     }
 
     #[cfg(feature = "svg")]
@@ -2267,7 +2281,7 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_allows_concurrent_render_calls_without_callback_reentry() {
+    fn reusable_engine_allows_concurrent_render_calls_when_no_callback_is_active() {
         let reusable = MermanReusableEngine::new(None).unwrap();
         let barrier = Arc::new(Barrier::new(8));
         let nodes = (0..128)
@@ -2348,7 +2362,7 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_rejects_text_measurer_replacement_during_inflight_render() {
+    fn reusable_engine_rejects_text_measurer_replacement_during_active_callback() {
         let failing_measurer = BlockingFailingTextMeasurer::new();
         let reusable =
             MermanReusableEngine::with_text_measurer(None, failing_measurer.clone()).unwrap();
@@ -2372,11 +2386,8 @@ mod tests {
         });
 
         let set_result = set_done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        let (kind, message) = match set_result.unwrap_err() {
-            MermanError::Binding { kind, message, .. } => (kind, message),
-        };
-        assert_eq!(kind, MermanErrorKind::ReentrantCall);
-        assert!(message.contains("reentrant reusable engine call"));
+        let error = set_result.expect_err("callback-active mutation must be rejected");
+        assert_reentrant_error(&error);
         set_handle.join().unwrap();
 
         failing_measurer.release();
@@ -2437,6 +2448,45 @@ mod tests {
         first
             .clear_text_measurer()
             .expect("callback completion must release the first engine lifecycle");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engine_conservatively_rejects_independent_call_during_active_callback() {
+        let blocking_measurer = BlockingFailingTextMeasurer::new();
+        let reusable =
+            MermanReusableEngine::with_text_measurer(None, blocking_measurer.clone()).unwrap();
+        let first_render = reusable.clone();
+        let first_handle = thread::spawn(move || {
+            first_render.render_svg(
+                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
+                None,
+            )
+        });
+
+        blocking_measurer.wait_until_entered();
+
+        let independent_call = reusable.clone();
+        let (done_tx, done_rx) = mpsc::channel();
+        let independent_handle = thread::spawn(move || {
+            done_tx
+                .send(independent_call.render_svg(
+                    "flowchart TD\nC[Independent] --> D[Same engine]".to_string(),
+                    None,
+                ))
+                .unwrap();
+        });
+        let independent_result = done_rx.recv_timeout(Duration::from_secs(1));
+
+        blocking_measurer.release();
+
+        let first_svg = first_handle.join().unwrap().unwrap();
+        independent_handle.join().unwrap();
+        let error = independent_result
+            .expect("same-engine call must fail instead of waiting for the active callback")
+            .expect_err("same-engine call must be conservatively rejected");
+        assert_reentrant_error(&error);
+        assert!(first_svg.contains("<svg"));
     }
 
     #[cfg(feature = "svg")]

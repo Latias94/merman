@@ -31,7 +31,6 @@ const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = merman_core::MAX_DIAGRAM_NESTING_D
 #[cfg(target_arch = "wasm32")]
 const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
 
-pub const RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
 const RENDER_RESOURCE_LIMIT_COUNT: usize = 3;
 pub const RESOURCE_LIMIT_COUNT: usize =
@@ -571,7 +570,6 @@ mod tests {
 
     #[test]
     fn resource_contract_is_complete_unique_and_drives_every_profile() {
-        assert_eq!(RESOURCE_CONTRACT_SCHEMA_VERSION, 1);
         assert_eq!(
             RESOURCE_PROFILE_DESCRIPTORS.len(),
             RenderResourceProfile::ALL.len()

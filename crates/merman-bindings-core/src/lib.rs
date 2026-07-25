@@ -20,9 +20,9 @@ mod render;
 
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
-    BindingRuntimePolicy, BindingStatus, binding_error_payload_json_bytes,
-    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
-    resource_options_json,
+    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
+    binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
+    render_resource_options_unavailable, resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use metadata::{

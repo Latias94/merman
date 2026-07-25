@@ -181,6 +181,7 @@ fn cli_help_groups_top_level_surfaces() {
         "Merman resource controls:",
         "Mermaid configuration:",
         "Merman renderer controls:",
+        "Runtime policy:",
         "Accepted browser compatibility flags:",
     ] {
         assert!(
@@ -205,12 +206,18 @@ fn cli_help_groups_top_level_surfaces() {
         "--encoding-parallel-budget-mib",
         "--iconPacks",
         "--iconPacksNamesAndUrls",
+        "--runtime",
+        "--system-timing",
     ] {
         assert!(
             stdout.contains(flag),
             "top-level help should include {flag}:\n{stdout}"
         );
     }
+    assert!(
+        stdout.contains("deterministic, native"),
+        "runtime help should enumerate the explicit policies:\n{stdout}"
+    );
 }
 
 #[test]
@@ -243,6 +250,8 @@ fn render_help_excludes_top_level_only_options() {
         "--cssFile",
         "--raster-max-width",
         "--iconPacks",
+        "--runtime",
+        "--system-timing",
         "--sequence-mirror-actors",
     ] {
         assert!(
@@ -375,6 +384,140 @@ fn cli_rejects_invalid_fixed_time_options() {
             "unexpected stderr for {flag} {value}:\n{stderr}"
         );
     }
+}
+
+#[test]
+fn cli_default_runtime_remains_deterministic_when_system_adapters_are_compiled() {
+    let output = run_with_stdin(
+        &["parse", "-"],
+        r#"gantt
+dateFormat YYYY-MM-DD
+section Demo
+Missing ref: id1,after missing,1d
+"#,
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let model: Value = serde_json::from_slice(&output.stdout).expect("parse stdout should be JSON");
+    assert_eq!(
+        task_by_id(&model, "id1")["startTime"].as_i64(),
+        Some(0),
+        "compiling system adapters must not change the deterministic CLI default"
+    );
+}
+
+#[cfg(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+))]
+#[test]
+fn cli_accepts_an_explicit_native_runtime() {
+    let output = run_with_stdin(
+        &["parse", "--runtime", "native", "-"],
+        "flowchart TD\nA --> B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert!(
+        output.stderr.is_empty(),
+        "native selection should not emit diagnostics unless timing is requested: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[cfg(not(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+)))]
+#[test]
+fn cli_reports_an_unavailable_native_runtime_as_invalid_configuration() {
+    let output = run_with_stdin(
+        &["parse", "--runtime", "native", "-"],
+        "flowchart TD\nA --> B\n",
+    );
+
+    assert_eq!(exit_code(output.status), 2);
+    assert!(output.stdout.is_empty(), "failure must not write a payload");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--runtime native is unavailable")
+            && stderr.contains("runtime capability `system-")
+            && stderr.contains("is not compiled into this artifact"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[cfg(feature = "system-timing")]
+#[test]
+fn cli_system_timing_is_explicit_and_reaches_each_runtime_configuration_path() {
+    let source = "flowchart TD\nA --> B\n";
+    let parse = run_with_stdin(
+        &[
+            "parse",
+            "--runtime",
+            "deterministic",
+            "--system-timing",
+            "-",
+        ],
+        source,
+    );
+    assert!(parse.status.success(), "stderr: {:?}", parse.stderr);
+    assert!(
+        String::from_utf8_lossy(&parse.stderr).contains("[parse-timing]"),
+        "parse timing diagnostics were not emitted: {}",
+        String::from_utf8_lossy(&parse.stderr)
+    );
+
+    let render = run_with_stdin(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--runtime",
+            "deterministic",
+            "--system-timing",
+        ],
+        source,
+    );
+    assert!(render.status.success(), "stderr: {:?}", render.stderr);
+    assert!(
+        String::from_utf8_lossy(&render.stderr).contains("[parse-render-timing]"),
+        "top-level render did not carry timing through ExportArgs: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let lint = run_with_stdin(
+        &["lint", "--runtime", "deterministic", "--system-timing", "-"],
+        source,
+    );
+    assert!(lint.status.success(), "stderr: {:?}", lint.stderr);
+    assert!(
+        String::from_utf8_lossy(&lint.stderr).contains("[parse-timing]"),
+        "lint did not carry timing through AnalysisCliArgs: {}",
+        String::from_utf8_lossy(&lint.stderr)
+    );
+}
+
+#[cfg(not(feature = "system-timing"))]
+#[test]
+fn cli_reports_unavailable_system_timing_as_invalid_configuration() {
+    let output = run_with_stdin(
+        &["parse", "--system-timing", "-"],
+        "flowchart TD\nA --> B\n",
+    );
+
+    assert_eq!(exit_code(output.status), 2);
+    assert!(output.stdout.is_empty(), "failure must not write a payload");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--system-timing is unavailable")
+            && stderr.contains("runtime capability `system-timing`")
+            && stderr.contains("is not compiled into this artifact"),
+        "unexpected stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -1052,7 +1195,11 @@ fn completion_subcommand_generates_bash_script() {
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("merman-cli") && stdout.contains("--input") && stdout.contains("render"),
+        stdout.contains("merman-cli")
+            && stdout.contains("--input")
+            && stdout.contains("--runtime")
+            && stdout.contains("--system-timing")
+            && stdout.contains("render"),
         "unexpected completion output:\n{stdout}"
     );
 }

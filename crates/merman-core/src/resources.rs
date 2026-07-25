@@ -20,7 +20,6 @@ use serde::ser::{
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
-pub const INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const RESOURCE_PROFILE_COUNT: usize = 4;
 pub const INPUT_RESOURCE_LIMIT_COUNT: usize = 4;
 
@@ -1933,7 +1932,6 @@ mod tests {
 
     #[test]
     fn profile_values_are_single_source_for_input_limits() {
-        assert_eq!(INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION, 1);
         assert_eq!(
             RESOURCE_PROFILE_DESCRIPTORS.len(),
             ResourceProfile::ALL.len()

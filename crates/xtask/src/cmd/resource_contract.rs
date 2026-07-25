@@ -6,7 +6,8 @@
 
 use crate::XtaskError;
 use merman_render::{
-    RenderResourceProfile, resource_limit_descriptors, resource_profile_descriptors,
+    RenderResourcePolicy, RenderResourceProfile, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 use std::fmt::Write as _;
 use std::fs;
@@ -78,7 +79,6 @@ fn render_c_rust() -> String {
     let profiles = resource_profile_descriptors();
     let limits = resource_limit_descriptors();
     let mut out = generated_preamble("//");
-    writeln!(out, "pub const RESOURCE_CONTRACT_SCHEMA_VERSION: u32 = 1;").unwrap();
     writeln!(
         out,
         "pub const RESOURCE_PROFILE_COUNT: usize = {};",
@@ -109,7 +109,7 @@ fn render_c_header() -> String {
     let profiles = resource_profile_descriptors();
     let limits = resource_limit_descriptors();
     let mut out = generated_preamble("//");
-    out.push_str("#ifndef MERMAN_RESOURCE_CONTRACT_H\n#define MERMAN_RESOURCE_CONTRACT_H\n\n#include <stddef.h>\n#include <stdint.h>\n\n#define MERMAN_RESOURCE_CONTRACT_SCHEMA_VERSION 1\n\ntypedef int32_t MermanResourceProfile;\nenum {\n");
+    out.push_str("#ifndef MERMAN_RESOURCE_CONTRACT_H\n#define MERMAN_RESOURCE_CONTRACT_H\n\n#include <stddef.h>\n#include <stdint.h>\n\ntypedef int32_t MermanResourceProfile;\nenum {\n");
     for (index, profile) in profiles.iter().enumerate() {
         writeln!(
             out,
@@ -147,13 +147,29 @@ fn render_typescript() -> String {
     for limit in limits {
         writeln!(out, "  {:?},", limit.stable_id).unwrap();
     }
-    out.push_str("] as const;\nexport type ResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];\n\nexport type ResourceLimitOverrides = Partial<Record<ResourceLimitId, number>>;\n\nexport interface ResourceOptions {\n  profile?: ResourceProfile;\n  limits?: ResourceLimitOverrides;\n}\n\nexport interface RawResourceOptions {\n  profile?: string;\n  limits?: Record<string, number>;\n}\n\nconst OVERRIDABLE_LIMITS = new Set<ResourceLimitId>([\n");
+    out.push_str("] as const;\nexport type ResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];\n\nexport type ResourceLimitOverrides = Partial<Record<ResourceLimitId, number>>;\n\nexport interface ResourceOptions {\n  profile?: ResourceProfile;\n  limits?: ResourceLimitOverrides;\n}\n\nexport interface RawResourceOptions {\n  profile?: string;\n  limits?: Record<string, number>;\n}\n\ntype ResourceLimitValues = Record<ResourceLimitId, number | null>;\n\nconst RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {\n");
+    for profile in profiles {
+        let policy = RenderResourcePolicy::for_profile(profile.profile);
+        writeln!(out, "  {:?}: {{", profile.id).unwrap();
+        for limit in limits {
+            match policy.value(limit.id) {
+                Some(value) => writeln!(out, "    {:?}: {value},", limit.stable_id).unwrap(),
+                None => writeln!(out, "    {:?}: null,", limit.stable_id).unwrap(),
+            }
+        }
+        out.push_str("  },\n");
+    }
+    out.push_str("};\n\nconst OVERRIDABLE_LIMITS = new Set<ResourceLimitId>([\n");
     for limit in limits.iter().filter(|limit| limit.overridable) {
         writeln!(out, "  {:?},", limit.stable_id).unwrap();
     }
     out.push_str("]);\n\nexport function resourceOptions(\n  profile: ResourceProfile = ");
     write!(out, "{:?}", profile_default()).unwrap();
-    out.push_str(",\n  limits: ResourceLimitOverrides = {},\n): ResourceOptions {\n  if (!(RESOURCE_PROFILES as readonly string[]).includes(profile)) {\n    throw new RangeError(`unsupported resource profile: ${profile}`);\n  }\n  const normalized: ResourceLimitOverrides = {};\n  for (const [id, value] of Object.entries(limits) as [ResourceLimitId, number][]) {\n    if (!(RESOURCE_LIMIT_IDS as readonly string[]).includes(id)) {\n      throw new RangeError(`unknown resource limit: ${id}`);\n    }\n    if (!OVERRIDABLE_LIMITS.has(id)) {\n      throw new RangeError(`resource limit is not overridable: ${id}`);\n    }\n    if (!Number.isSafeInteger(value) || value <= 0) {\n      throw new RangeError(`resource limit must be a positive safe integer: ${id}`);\n    }\n    normalized[id] = value;\n  }\n  return Object.keys(normalized).length === 0\n    ? { profile }\n    : { profile, limits: normalized };\n}\n\nexport function resourceOptionsJson(\n  profile: ResourceProfile = ");
+    out.push_str(",\n  limits: ResourceLimitOverrides = {},\n): ResourceOptions {\n  if (!(RESOURCE_PROFILES as readonly string[]).includes(profile)) {\n    throw new RangeError(`unsupported resource profile: ${profile}`);\n  }\n  const normalized: ResourceLimitOverrides = {};\n  for (const [id, value] of Object.entries(limits) as [ResourceLimitId, number][]) {\n    if (!(RESOURCE_LIMIT_IDS as readonly string[]).includes(id)) {\n      throw new RangeError(`unknown resource limit: ${id}`);\n    }\n    if (!OVERRIDABLE_LIMITS.has(id)) {\n      throw new RangeError(`resource limit is not overridable: ${id}`);\n    }\n    if (!Number.isSafeInteger(value) || value <= 0) {\n      throw new RangeError(`resource limit must be a positive safe integer: ${id}`);\n    }\n    normalized[id] = value;\n  }\n  return Object.keys(normalized).length === 0\n    ? { profile }\n    : { profile, limits: normalized };\n}\n\nexport function tightenResourceOptions(\n  ceiling: ResourceOptions,\n  requested?: ResourceOptions,\n): ResourceOptions {\n  assertResourceOptions(ceiling, \"resource ceiling\");\n  const ceilingProfile = ceiling.profile ?? ");
+    write!(out, "{:?}", profile_default()).unwrap();
+    out.push_str(";\n  const normalizedCeiling = resourceOptions(ceilingProfile, ceiling.limits);\n  if (requested === undefined) {\n    return normalizedCeiling;\n  }\n\n  assertResourceOptions(requested, \"requested resources\");\n  const candidate = requested.profile === undefined\n    ? resourceOptions(ceilingProfile, {\n        ...normalizedCeiling.limits,\n        ...(requested.limits ?? {}),\n      })\n    : resourceOptions(requested.profile, requested.limits);\n  const ceilingValues = effectiveResourceLimits(normalizedCeiling);\n  const requestedValues = effectiveResourceLimits(candidate);\n  const tightened: ResourceLimitOverrides = { ...normalizedCeiling.limits };\n  for (const id of RESOURCE_LIMIT_IDS) {\n    const maximum = ceilingValues[id];\n    const value = requestedValues[id];\n    if (maximum !== null && (value === null || value > maximum)) {\n      throw new RangeError(\n        `resources would loosen the transport ceiling for ${id}: requested ${value ?? \"unbounded\"}, maximum ${maximum}`,\n      );\n    }\n    if (value !== null && (maximum === null || value < maximum)) {\n      tightened[id] = value;\n    }\n  }\n  return Object.keys(tightened).length === 0\n    ? { profile: ceilingProfile }\n    : { profile: ceilingProfile, limits: tightened };\n}\n\nfunction effectiveResourceLimits(options: ResourceOptions): ResourceLimitValues {\n  const profile = options.profile ?? ");
+    write!(out, "{:?}", profile_default()).unwrap();
+    out.push_str(";\n  const values = { ...RESOURCE_PROFILE_LIMITS[profile] };\n  for (const [id, value] of Object.entries(options.limits ?? {}) as [ResourceLimitId, number][]) {\n    values[id] = value;\n  }\n  return values;\n}\n\nfunction assertResourceOptions(value: unknown, label: string): asserts value is ResourceOptions {\n  if (value === null || typeof value !== \"object\" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  const limits = (value as ResourceOptions).limits;\n  if (limits !== undefined && (limits === null || typeof limits !== \"object\" || Array.isArray(limits))) {\n    throw new TypeError(`${label}.limits must be an object`);\n  }\n}\n\nexport function resourceOptionsJson(\n  profile: ResourceProfile = ");
     write!(out, "{:?}", profile_default()).unwrap();
     out.push_str(",\n  limits: ResourceLimitOverrides = {},\n): string {\n  return JSON.stringify({ version: 1, resources: resourceOptions(profile, limits) });\n}\n\nexport function rawResourceOptionsJson(options: RawResourceOptions): string {\n  return JSON.stringify({ version: 1, resources: options });\n}\n");
     out

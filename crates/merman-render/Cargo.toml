@@ -20,6 +20,7 @@ exclude = [
 
 [package.metadata.merman]
 artifact-profile-required = true
+fixed-capabilities = ["svg"]
 
 [features]
 default = []

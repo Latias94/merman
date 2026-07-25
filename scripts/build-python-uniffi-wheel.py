@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from email.parser import Parser
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 
 from artifact_profile_recipe import (
+    DEFAULT_DESCRIPTOR,
     CargoArtifactRecipe,
     cargo_build_args,
     cargo_run_example_args,
@@ -21,6 +26,23 @@ from artifact_profile_recipe import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CAPABILITY_DESCRIPTOR = REPO_ROOT / "capabilities" / "feature-surface-v1.json"
+PYTHON_GENERATED_SUPPORT_FILES = (
+    "src/merman/__init__.py",
+    "src/merman/_resource_options.py",
+    "src/merman/_runtime_catalog.py",
+    "src/merman/_text_measurement_protocol.py",
+)
+PYTHON_STAGING_IGNORE = shutil.ignore_patterns(
+    "build",
+    "dist",
+    "*.egg-info",
+    "__pycache__",
+    "merman_uniffi.py",
+    "*.dll",
+    "*.dylib",
+    "*.so",
+)
 
 
 def production_cdylib_path(recipe: CargoArtifactRecipe) -> Path:
@@ -226,23 +248,10 @@ assert capabilities["output_ids"] == sorted(capabilities["output_ids"])
 assert capabilities["operation_ids"] == sorted(capabilities["operation_ids"])
 assert not hasattr(merman, "get_runtime_contract")
 assert not hasattr(merman, "get_runtime_capability_vocabulary")
-required_capabilities = {
-    "analysis",
-    "ascii",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "pdf",
-    "png",
-    "svg",
-}
-assert required_capabilities.issubset(
-    set(capabilities["capability_ids"])
-)
-assert {"ascii", "jpeg", "pdf", "png", "svg"}.issubset(
-    set(capabilities["output_ids"])
-)
+assert capabilities["capability_ids"] == EXPECTED_CAPABILITY_IDS
+assert capabilities["capability_ids"] == EXPECTED_RUNTIME_IDS
+assert capabilities["output_ids"] == EXPECTED_OUTPUT_IDS
+assert capabilities["operation_ids"] == EXPECTED_OPERATION_IDS
 assert set(capabilities["output_ids"]).issubset(capabilities["operation_ids"])
 source = "flowchart TD\\nA[Hello] --> B[World]"
 try:
@@ -347,6 +356,50 @@ print("python wheel smoke passed")
 """
 
 
+def python_wheel_smoke_script(profile_id: str) -> str:
+    descriptor = json.loads(DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
+    matches = [
+        profile for profile in descriptor.get("profiles", []) if profile.get("id") == profile_id
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"artifact profile {profile_id!r} must occur exactly once; found {len(matches)}"
+        )
+    expected = matches[0].get("expected")
+    if not isinstance(expected, dict):
+        raise RuntimeError(f"artifact profile {profile_id!r} has no expected contract")
+    values: dict[str, list[str]] = {}
+    for field in ("capabilities", "runtime_ids", "outputs"):
+        value = expected.get(field)
+        if (
+            not isinstance(value, list)
+            or any(not isinstance(item, str) or not item for item in value)
+            or value != sorted(set(value))
+        ):
+            raise RuntimeError(
+                f"artifact profile {profile_id!r} expected.{field} must be sorted unique strings"
+            )
+        values[field] = value
+    capability_descriptor = json.loads(CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8"))
+    expected_capabilities = set(values["capabilities"])
+    expected_operations = sorted(
+        operation["id"]
+        for operation in capability_descriptor.get("binding_operations", [])
+        if "native" in operation.get("targets", [])
+        and (
+            operation.get("capability") is None
+            or operation.get("capability") in expected_capabilities
+        )
+    )
+    return (
+        f"EXPECTED_CAPABILITY_IDS = {values['capabilities']!r}\n"
+        f"EXPECTED_RUNTIME_IDS = {values['runtime_ids']!r}\n"
+        f"EXPECTED_OUTPUT_IDS = {values['outputs']!r}\n"
+        f"EXPECTED_OPERATION_IDS = {expected_operations!r}\n"
+        + WHEEL_SMOKE
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -380,6 +433,43 @@ def run(
 ) -> None:
     print("+", " ".join(args))
     subprocess.run(args, cwd=cwd, env=env, check=True)
+
+
+def require_tracked_python_support_files(package_dir: Path) -> None:
+    for relative in PYTHON_GENERATED_SUPPORT_FILES:
+        source = package_dir / relative
+        if not source.is_file():
+            raise RuntimeError(f"generated Python support file is missing: {source}")
+        try:
+            repository_path = source.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Python package source must be inside the repository: {package_dir}"
+            ) from exc
+        run(["git", "ls-files", "--error-unmatch", "--", repository_path])
+
+
+@contextmanager
+def staged_python_package(package_dir: Path) -> Iterator[Path]:
+    with tempfile.TemporaryDirectory(prefix="merman-python-wheel-") as temp_dir:
+        staged = Path(temp_dir) / package_dir.name
+        shutil.copytree(package_dir, staged, ignore=PYTHON_STAGING_IGNORE)
+        yield staged
+
+
+def verify_staged_python_support_files(package_dir: Path, staged: Path) -> None:
+    for relative in PYTHON_GENERATED_SUPPORT_FILES:
+        source = package_dir / relative
+        generated = staged / relative
+        if not generated.is_file():
+            raise RuntimeError(
+                f"Python generator did not produce required support file: {relative}"
+            )
+        if source.read_bytes() != generated.read_bytes():
+            raise RuntimeError(
+                "stale generated Python support file: "
+                f"{relative}; regenerate and commit the source projection"
+            )
 
 
 def venv_python(venv_dir: Path) -> Path:
@@ -455,38 +545,41 @@ def require_native_platlib_layout(wheel: Path) -> None:
 
 def main() -> int:
     args = parse_args()
-    package_dir = Path(args.package_dir).expanduser().resolve()
+    package_source = Path(args.package_dir).expanduser().resolve()
     wheel_dir = Path(args.wheel_dir).expanduser().resolve()
 
     recipe = load_artifact_profile("python-uniffi-native")
     validate_python_native_recipe(recipe)
+    require_tracked_python_support_files(package_source)
     run(cargo_build_args(recipe, locked=True))
     cdylib = production_cdylib_path(recipe)
     if not cdylib.is_file():
         raise RuntimeError(f"expected production UniFFI library not found: {cdylib}")
-    run(
-        python_generator_args(recipe, cdylib, package_dir),
-        env=python_generator_environment(),
-    )
+    with staged_python_package(package_source) as package_dir:
+        run(
+            python_generator_args(recipe, cdylib, package_dir),
+            env=python_generator_environment(),
+        )
+        verify_staged_python_support_files(package_source, package_dir)
 
-    remove_stale_package_build(package_dir)
-    wheel_dir.mkdir(parents=True, exist_ok=True)
-    remove_stale_wheels(wheel_dir)
-    run(
-        [
-            args.python,
-            "-m",
-            "pip",
-            "wheel",
-            str(package_dir),
-            "--no-deps",
-            "--wheel-dir",
-            str(wheel_dir),
-        ]
-    )
-    wheel = newest_wheel(wheel_dir)
-    require_platform_wheel(wheel)
-    require_native_platlib_layout(wheel)
+        remove_stale_package_build(package_dir)
+        wheel_dir.mkdir(parents=True, exist_ok=True)
+        remove_stale_wheels(wheel_dir)
+        run(
+            [
+                args.python,
+                "-m",
+                "pip",
+                "wheel",
+                str(package_dir),
+                "--no-deps",
+                "--wheel-dir",
+                str(wheel_dir),
+            ]
+        )
+        wheel = newest_wheel(wheel_dir)
+        require_platform_wheel(wheel)
+        require_native_platlib_layout(wheel)
 
     if args.run_smoke:
         venv_dir = REPO_ROOT / "target" / "python-wheel-smoke"
@@ -499,9 +592,13 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                WHEEL_SMOKE,
+                python_wheel_smoke_script(recipe.profile_id),
             ]
         )
+        example = package_source / "examples" / "smoke.py"
+        if not example.is_file():
+            raise RuntimeError(f"Python wheel smoke example is missing: {example}")
+        run([str(python), str(example)])
 
     return 0
 

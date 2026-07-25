@@ -32,6 +32,47 @@ export interface RawResourceOptions {
   limits?: Record<string, number>;
 }
 
+type ResourceLimitValues = Record<ResourceLimitId, number | null>;
+
+const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
+  "interactive": {
+    "max_source_bytes": 2097152,
+    "max_model_items": 32000,
+    "max_model_text_bytes": 2097152,
+    "max_model_nesting_depth": 256,
+    "max_layout_work_units": 250000,
+    "max_svg_bytes": 25165824,
+    "max_svg_elements": 250000,
+  },
+  "constrained": {
+    "max_source_bytes": 1048576,
+    "max_model_items": 16000,
+    "max_model_text_bytes": 1048576,
+    "max_model_nesting_depth": 128,
+    "max_layout_work_units": 125000,
+    "max_svg_bytes": 12582912,
+    "max_svg_elements": 125000,
+  },
+  "trusted-native": {
+    "max_source_bytes": 16777216,
+    "max_model_items": 200000,
+    "max_model_text_bytes": 16777216,
+    "max_model_nesting_depth": 1024,
+    "max_layout_work_units": 1000000,
+    "max_svg_bytes": 134217728,
+    "max_svg_elements": 1000000,
+  },
+  "unbounded-for-trusted-input": {
+    "max_source_bytes": null,
+    "max_model_items": null,
+    "max_model_text_bytes": null,
+    "max_model_nesting_depth": null,
+    "max_layout_work_units": null,
+    "max_svg_bytes": null,
+    "max_svg_elements": null,
+  },
+};
+
 const OVERRIDABLE_LIMITS = new Set<ResourceLimitId>([
   "max_source_bytes",
   "max_model_items",
@@ -65,6 +106,63 @@ export function resourceOptions(
   return Object.keys(normalized).length === 0
     ? { profile }
     : { profile, limits: normalized };
+}
+
+export function tightenResourceOptions(
+  ceiling: ResourceOptions,
+  requested?: ResourceOptions,
+): ResourceOptions {
+  assertResourceOptions(ceiling, "resource ceiling");
+  const ceilingProfile = ceiling.profile ?? "interactive";
+  const normalizedCeiling = resourceOptions(ceilingProfile, ceiling.limits);
+  if (requested === undefined) {
+    return normalizedCeiling;
+  }
+
+  assertResourceOptions(requested, "requested resources");
+  const candidate = requested.profile === undefined
+    ? resourceOptions(ceilingProfile, {
+        ...normalizedCeiling.limits,
+        ...(requested.limits ?? {}),
+      })
+    : resourceOptions(requested.profile, requested.limits);
+  const ceilingValues = effectiveResourceLimits(normalizedCeiling);
+  const requestedValues = effectiveResourceLimits(candidate);
+  const tightened: ResourceLimitOverrides = { ...normalizedCeiling.limits };
+  for (const id of RESOURCE_LIMIT_IDS) {
+    const maximum = ceilingValues[id];
+    const value = requestedValues[id];
+    if (maximum !== null && (value === null || value > maximum)) {
+      throw new RangeError(
+        `resources would loosen the transport ceiling for ${id}: requested ${value ?? "unbounded"}, maximum ${maximum}`,
+      );
+    }
+    if (value !== null && (maximum === null || value < maximum)) {
+      tightened[id] = value;
+    }
+  }
+  return Object.keys(tightened).length === 0
+    ? { profile: ceilingProfile }
+    : { profile: ceilingProfile, limits: tightened };
+}
+
+function effectiveResourceLimits(options: ResourceOptions): ResourceLimitValues {
+  const profile = options.profile ?? "interactive";
+  const values = { ...RESOURCE_PROFILE_LIMITS[profile] };
+  for (const [id, value] of Object.entries(options.limits ?? {}) as [ResourceLimitId, number][]) {
+    values[id] = value;
+  }
+  return values;
+}
+
+function assertResourceOptions(value: unknown, label: string): asserts value is ResourceOptions {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  const limits = (value as ResourceOptions).limits;
+  if (limits !== undefined && (limits === null || typeof limits !== "object" || Array.isArray(limits))) {
+    throw new TypeError(`${label}.limits must be an object`);
+  }
 }
 
 export function resourceOptionsJson(

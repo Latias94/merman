@@ -55,6 +55,60 @@ void main(List<String> args) {
   try {
     const source = 'flowchart TD\nA[Hello] --> B[World]';
     final catalog = merman.runtimeCatalog;
+    const expectedCapabilities = {
+      'analysis',
+      'ascii',
+      'jpeg',
+      'layout-cytoscape',
+      'layout-elk',
+      'math',
+      'pdf',
+      'png',
+      'svg',
+      'system-clock',
+      'system-random',
+      'system-timezone',
+    };
+    const expectedOutputs = {'ascii', 'jpeg', 'pdf', 'png', 'svg'};
+    const expectedOperations = {
+      'analysis-facts-json',
+      'analysis-json',
+      'ascii',
+      'document-analysis-facts-json',
+      'document-analysis-json',
+      'jpeg',
+      'layout-json',
+      'pdf',
+      'png',
+      'semantic-json',
+      'svg',
+      'validation-json',
+    };
+    const expectedSystemAdapters = {
+      'system-clock',
+      'system-random',
+      'system-timezone',
+    };
+    _expect(
+      catalog.capabilityIds.toSet().containsAll(expectedCapabilities) &&
+          expectedCapabilities.containsAll(catalog.capabilityIds),
+      'native SDK capability catalog drifted',
+    );
+    _expect(
+      catalog.outputIds.toSet().containsAll(expectedOutputs) &&
+          expectedOutputs.containsAll(catalog.outputIds),
+      'native SDK output catalog drifted',
+    );
+    _expect(
+      catalog.operationIds.toSet().containsAll(expectedOperations) &&
+          expectedOperations.containsAll(catalog.operationIds),
+      'native SDK operation catalog drifted',
+    );
+    _expect(
+      catalog.systemAdapterIds.toSet().containsAll(expectedSystemAdapters) &&
+          expectedSystemAdapters.containsAll(catalog.systemAdapterIds),
+      'native SDK system adapter catalog drifted',
+    );
     _expect(catalog.supportsCapability('svg'), 'native SDK must expose SVG');
     _expect(catalog.supportsOutput('svg'), 'native SDK must expose SVG output');
     _expect(

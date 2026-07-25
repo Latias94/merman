@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748"
+    "digest": "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9"
   },
   "profiles": [
     {
@@ -430,17 +430,15 @@
       }
     },
     {
-      "id": "rust-ascii-native",
-      "description": "Native ASCII renderer build with explicit system adapters.",
+      "id": "rust-ascii",
+      "description": "Deterministic ASCII renderer library build.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ascii",
         "manifest": "crates/merman-ascii/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": [
-          "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
+        "features": [],
         "target": {
           "name": "merman_ascii",
           "kinds": ["lib"],
@@ -450,12 +448,8 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": [
-          "ascii", "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
-        "runtime_ids": [
-          "ascii", "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
+        "capabilities": ["ascii"],
+        "runtime_ids": ["ascii"],
         "outputs": ["ascii"]
       }
     },
@@ -470,7 +464,7 @@
         "default_features": false,
         "features": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
           "name": "merman_bindings_core",
@@ -483,11 +477,11 @@
       "expected": {
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
@@ -565,6 +559,30 @@
       }
     },
     {
+      "id": "rust-export-jpeg",
+      "description": "JPEG-only export backend build used to prove PDF dependencies stay excluded.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-export",
+        "manifest": "crates/merman-export/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["jpeg"],
+        "target": {
+          "name": "merman_export",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "capabilities": ["jpeg"],
+        "runtime_ids": ["jpeg"],
+        "outputs": ["jpeg"]
+      }
+    },
+    {
       "id": "rust-export-native-sdk",
       "description": "Native raster and PDF export library build.",
       "semantic_target": "native",
@@ -583,8 +601,8 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": ["jpeg", "pdf", "png", "svg"],
-        "runtime_ids": ["jpeg", "pdf", "png", "svg"],
+        "capabilities": ["jpeg", "pdf", "png"],
+        "runtime_ids": ["jpeg", "pdf", "png"],
         "outputs": ["jpeg", "pdf", "png"]
       }
     },
@@ -607,8 +625,8 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": ["pdf", "svg"],
-        "runtime_ids": ["pdf", "svg"],
+        "capabilities": ["pdf"],
+        "runtime_ids": ["pdf"],
         "outputs": ["pdf"]
       }
     },
@@ -631,8 +649,8 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "capabilities": ["png", "svg"],
-        "runtime_ids": ["png", "svg"],
+        "capabilities": ["png"],
+        "runtime_ids": ["png"],
         "outputs": ["png"]
       }
     },
@@ -647,7 +665,7 @@
         "default_features": false,
         "features": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
           "name": "merman",
@@ -660,11 +678,11 @@
       "expected": {
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
@@ -792,7 +810,7 @@
         "manifest": "crates/merman-rustdoc/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["svg"],
+        "features": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_rustdoc",
           "kinds": ["proc-macro"],
@@ -834,39 +852,6 @@
           "analysis", "layout-cytoscape", "layout-elk", "svg"
         ],
         "outputs": ["svg"]
-      }
-    },
-    {
-      "id": "uniffi-native",
-      "description": "Current host UniFFI runtime library build.",
-      "semantic_target": "native",
-      "cargo": {
-        "package": "merman-uniffi",
-        "manifest": "crates/merman-uniffi/Cargo.toml",
-        "profile": "release",
-        "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
-        "target": {
-          "name": "merman_uniffi",
-          "kinds": ["cdylib", "rlib", "staticlib"],
-          "crate_types": ["cdylib", "rlib", "staticlib"],
-          "required_features": []
-        },
-        "build_target": { "kind": "host" }
-      },
-      "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
     {

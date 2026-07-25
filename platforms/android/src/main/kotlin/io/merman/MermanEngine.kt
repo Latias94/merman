@@ -15,7 +15,7 @@ object MermanEngine {
     private const val RUNTIME_CONTRACT_SCHEMA_VERSION: Int = 1
 
     private val runtimeCatalogJsonCache: String by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        validateRuntimeCatalog(nativeRuntimeCatalogJson())
+        validateRuntimeCatalogPayload(nativeRuntimeCatalogJson())
     }
 
     init {
@@ -138,10 +138,10 @@ object MermanEngine {
 
     private fun metadataJson(id: String): String = nativeMetadataJson(id)
 
-    private fun validateRuntimeCatalog(json: String): String {
+    internal fun validateRuntimeCatalogPayload(json: String): String {
         try {
             val root = JSONObject(json)
-            requireExactKeys(
+            requireRequiredKeys(
                 root,
                 setOf(
                     "schema_version",
@@ -153,19 +153,25 @@ object MermanEngine {
                 ),
                 "runtime catalog",
             )
-            if (root.optInt("schema_version", -1) != RUNTIME_CONTRACT_SCHEMA_VERSION) {
+            if (
+                requiredJsonInt(root, "schema_version", "runtime catalog") !=
+                RUNTIME_CONTRACT_SCHEMA_VERSION
+            ) {
                 throw MermanException("Unsupported Merman runtime contract schema")
             }
-            if (root.optInt("transport_api_version", -1) != TRANSPORT_API_VERSION) {
+            if (
+                requiredJsonInt(root, "transport_api_version", "runtime catalog") !=
+                TRANSPORT_API_VERSION
+            ) {
                 throw MermanException("Merman Android transport API version mismatch")
             }
-            if (root.optString("package_version").isEmpty()) {
+            if (requiredJsonString(root, "package_version", "runtime catalog").isEmpty()) {
                 throw MermanException("Merman runtime catalog is missing package_version")
             }
 
             val capabilities = root.optJSONObject("capabilities")
                 ?: throw MermanException("Merman runtime contract is missing capabilities")
-            requireExactKeys(
+            requireRequiredKeys(
                 capabilities,
                 setOf(
                     "capability_ids",
@@ -206,17 +212,16 @@ object MermanEngine {
 
             val registry = root.optJSONObject("registry")
                 ?: throw MermanException("Merman runtime catalog is missing registry")
-            requireExactKeys(registry, setOf("diagram_family_count"), "runtime registry")
-            if (registry.optInt("diagram_family_count", -1) < 0) {
+            requireRequiredKeys(registry, setOf("diagram_family_count"), "runtime registry")
+            if (requiredJsonInt(registry, "diagram_family_count", "runtime registry") < 0) {
                 throw MermanException("Merman diagram family count is invalid")
             }
 
             val resources = root.optJSONObject("resources")
                 ?: throw MermanException("Merman runtime catalog is missing resources")
-            requireExactKeys(
+            requireRequiredKeys(
                 resources,
                 setOf(
-                    "schema_version",
                     "general_binding_default_profile",
                     "cli_default_profile",
                     "limits",
@@ -225,9 +230,16 @@ object MermanEngine {
                 "runtime resources",
             )
             if (
-                resources.optInt("schema_version", -1) < 1 ||
-                resources.optString("general_binding_default_profile").isEmpty() ||
-                resources.optString("cli_default_profile").isEmpty() ||
+                requiredJsonString(
+                    resources,
+                    "general_binding_default_profile",
+                    "runtime resources",
+                ).isEmpty() ||
+                requiredJsonString(
+                    resources,
+                    "cli_default_profile",
+                    "runtime resources",
+                ).isEmpty() ||
                 resources.optJSONArray("limits") == null ||
                 resources.optJSONArray("profiles") == null
             ) {
@@ -259,16 +271,35 @@ object MermanEngine {
         return result
     }
 
-    private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
+    private fun requireRequiredKeys(value: JSONObject, expected: Set<String>, label: String) {
         val actual = value.keys().asSequence().toSet()
         val missing = expected - actual
-        val extra = actual - expected
         if (missing.isNotEmpty()) {
             throw MermanException("Merman $label is missing fields: ${missing.sorted()}")
         }
-        if (extra.isNotEmpty()) {
-            throw MermanException("Merman $label contains unknown fields: ${extra.sorted()}")
+    }
+
+    private fun requiredJsonInt(value: JSONObject, key: String, label: String): Int {
+        val raw = value.opt(key)
+        val integer = when (raw) {
+            is Int -> raw.toLong()
+            is Long -> raw
+            else -> throw MermanException("Merman $label field `$key` must be a JSON integer")
         }
+        if (integer !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+            throw MermanException(
+                "Merman $label field `$key` is outside the supported integer range",
+            )
+        }
+        return integer.toInt()
+    }
+
+    private fun requiredJsonString(value: JSONObject, key: String, label: String): String {
+        val raw = value.opt(key)
+        if (raw !is String) {
+            throw MermanException("Merman $label field `$key` must be a string")
+        }
+        return raw
     }
 
     private fun validateTextMeasurement(
@@ -284,13 +315,17 @@ object MermanEngine {
         if (!hasSvg || value !is JSONObject) {
             throw MermanException("Merman text measurement requires the SVG capability")
         }
-        requireExactKeys(
+        requireRequiredKeys(
             value,
             setOf("protocol_version", "provider_ids"),
             "text measurement contract",
         )
         if (
-            value.optInt("protocol_version", -1) !=
+            requiredJsonInt(
+                value,
+                "protocol_version",
+                "text measurement contract",
+            ) !=
             MermanTextMeasurementOperation.PROTOCOL_VERSION
         ) {
             throw MermanException("Merman text measurement protocol version mismatch")
@@ -299,8 +334,10 @@ object MermanEngine {
             value.optJSONArray("provider_ids"),
             "runtime text measurement providers",
         )
-        if (providerIds.isEmpty()) {
-            throw MermanException("Merman runtime has no text measurement provider")
+        if ("vendored" !in providerIds) {
+            throw MermanException(
+                "Merman runtime text measurement providers must include `vendored`",
+            )
         }
     }
 

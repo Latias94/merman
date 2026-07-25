@@ -11,32 +11,47 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
     }
 
     /** Executes any operation ID advertised by [MermanEngine.runtimeCatalogJson]. */
-    fun executeBytes(operationId: String, source: String, uri: String? = null): ByteArray =
-        withLiveHandle { nativeExecute(it, operationId, source, uri) }
+    fun executeBytes(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): ByteArray = withLiveHandle {
+        nativeExecute(it, operationId, source, optionsJson, uri)
+    }
 
-    fun renderSvg(source: String): String = executeText("svg", source)
+    fun renderSvg(source: String, optionsJson: String? = null): String =
+        executeText("svg", source, optionsJson)
 
-    fun renderAscii(source: String): String = executeText("ascii", source)
+    fun renderAscii(source: String, optionsJson: String? = null): String =
+        executeText("ascii", source, optionsJson)
 
-    fun renderPng(source: String): ByteArray = executeBytes("png", source)
+    fun renderPng(source: String, optionsJson: String? = null): ByteArray =
+        executeBytes("png", source, optionsJson)
 
-    fun renderJpeg(source: String): ByteArray = executeBytes("jpeg", source)
+    fun renderJpeg(source: String, optionsJson: String? = null): ByteArray =
+        executeBytes("jpeg", source, optionsJson)
 
-    fun renderPdf(source: String): ByteArray = executeBytes("pdf", source)
+    fun renderPdf(source: String, optionsJson: String? = null): ByteArray =
+        executeBytes("pdf", source, optionsJson)
 
-    fun parseJson(source: String): String = executeText("semantic-json", source)
+    fun parseJson(source: String, optionsJson: String? = null): String =
+        executeText("semantic-json", source, optionsJson)
 
-    fun layoutJson(source: String): String = executeText("layout-json", source)
+    fun layoutJson(source: String, optionsJson: String? = null): String =
+        executeText("layout-json", source, optionsJson)
 
-    fun analyzeJson(source: String): String = executeText("analysis-json", source)
+    fun analyzeJson(source: String, optionsJson: String? = null): String =
+        executeText("analysis-json", source, optionsJson)
 
-    fun analyzeDocumentJson(source: String, uri: String): String =
-        executeText("document-analysis-json", source, uri)
+    fun analyzeDocumentJson(source: String, uri: String, optionsJson: String? = null): String =
+        executeText("document-analysis-json", source, optionsJson, uri)
 
-    fun analyzeDocumentFactsJson(source: String, uri: String): String =
-        executeText("document-analysis-facts-json", source, uri)
+    fun analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String? = null): String =
+        executeText("document-analysis-facts-json", source, optionsJson, uri)
 
-    fun validateJson(source: String): String = executeText("validation-json", source)
+    fun validateJson(source: String, optionsJson: String? = null): String =
+        executeText("validation-json", source, optionsJson)
 
     override fun close() {
         synchronized(lifecycleLock) {
@@ -46,8 +61,12 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
         }
     }
 
-    private fun executeText(operationId: String, source: String, uri: String? = null): String =
-        executeBytes(operationId, source, uri).toString(Charsets.UTF_8)
+    private fun executeText(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): String = executeBytes(operationId, source, optionsJson, uri).toString(Charsets.UTF_8)
 
     private inline fun <T> withLiveHandle(call: (Long) -> T): T {
         val current = synchronized(lifecycleLock) {
@@ -76,6 +95,7 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
             handle: Long,
             operationId: String,
             source: String,
+            optionsJson: String?,
             uri: String?,
         ): ByteArray
     }

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 import re
 import subprocess
@@ -21,7 +22,11 @@ from artifact_profile_recipe import (
 
 PACKAGE_MARKER = "__MERMAN_CLOSURE_PACKAGE__"
 FEATURE_MARKER = "__MERMAN_CLOSURE_FEATURES__"
-PACKAGE_NAME_RE = re.compile(r"^(?P<name>[A-Za-z0-9_-]+)(?:\s+v[^\s]+)?(?:\s|$)")
+PACKAGE_ID_RE = re.compile(
+    r"^(?P<name>[A-Za-z0-9_-]+)\s+v(?P<version>[^\s]+)(?:\s|$)"
+)
+FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+FINGERPRINT_DOMAIN = b"merman-artifact-dependency-closure-v1\0"
 
 
 @dataclass(frozen=True)
@@ -39,12 +44,14 @@ class ClosureClaim:
     forbidden_packages: tuple[str, ...]
     forbidden_features: tuple[PackageFeatureExclusion, ...] = ()
     observed_residual_packages: tuple[str, ...] = ()
+    approved_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
 class DependencyClosure:
     packages: frozenset[str]
     features_by_package: Mapping[str, frozenset[str]]
+    features_by_package_version: Mapping[tuple[str, str], frozenset[str]]
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,7 @@ class ClosureObservation:
     profile_id: str
     package_count: int
     observed_residual_packages: tuple[str, ...]
+    fingerprint: str
 
 
 class ClosureVerificationError(RuntimeError):
@@ -110,6 +118,7 @@ CLAIMS = (
                 ),
             ),
         ),
+        approved_fingerprint="sha256:4a7f123f9ac8aec6d2cf62eab5d8ca7f7b4b9f8f0795230ecf7b62d845d67f7b",
     ),
     ClosureClaim(
         claim_id="cli-analysis-is-render-and-tool-free",
@@ -143,6 +152,26 @@ CLAIMS = (
                 ),
             ),
         ),
+        approved_fingerprint="sha256:895c1a296555ba15e4fa44dc6efd459f3a565f50574a2cc15a1d8ce7da46ce65",
+    ),
+    ClosureClaim(
+        claim_id="jpeg-excludes-pdf-backend",
+        profile_id="rust-export-jpeg",
+        target=None,
+        required_packages=(
+            "image",
+            "merman-export",
+            "merman-render",
+            "resvg",
+            "tiny-skia",
+            "usvg",
+        ),
+        forbidden_packages=("krilla", "krilla-svg"),
+        forbidden_features=(
+            PackageFeatureExclusion("merman-export", ("pdf", "png")),
+        ),
+        observed_residual_packages=("png",),
+        approved_fingerprint="sha256:7a8352f7d4360b9b5f5219fab4202d2b31d35f5c3d9171bf2e45b55bc35d91dc",
     ),
     ClosureClaim(
         claim_id="png-excludes-pdf-backend",
@@ -159,6 +188,7 @@ CLAIMS = (
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "pdf")),
         ),
+        approved_fingerprint="sha256:5d49015397f4280dbbc62bfd0689c60035f3e8ac7e556596e00b2ad0e38a788e",
     ),
     ClosureClaim(
         claim_id="pdf-records-krilla-svg-residual",
@@ -183,6 +213,7 @@ CLAIMS = (
             "usvg",
             "zune-jpeg",
         ),
+        approved_fingerprint="sha256:dd5a68e9b018e9f09e3ad9029e46b9b713263c07c195add230bdafcb6086b65d",
     ),
 )
 
@@ -242,6 +273,7 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
     """Parse the marker-delimited Cargo tree format emitted by this verifier."""
     packages: set[str] = set()
     features: dict[str, set[str]] = {}
+    versioned_features: dict[tuple[str, str], set[str]] = {}
     malformed: list[str] = []
 
     for line_number, line in enumerate(output.splitlines(), start=1):
@@ -257,18 +289,21 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
             malformed.append(f"line {line_number} lacks the feature marker")
             continue
         package_display, raw_features = package_and_features
-        match = PACKAGE_NAME_RE.match(package_display)
+        match = PACKAGE_ID_RE.match(package_display)
         if match is None:
             malformed.append(f"line {line_number} has an invalid Cargo package display")
             continue
         package = match.group("name")
+        version = match.group("version")
         packages.add(package)
-        package_features = features.setdefault(package, set())
-        package_features.update(
+        parsed_features = {
             feature.strip()
             for feature in raw_features.split(",")
             if feature.strip()
-        )
+        }
+        package_features = features.setdefault(package, set())
+        package_features.update(parsed_features)
+        versioned_features.setdefault((package, version), set()).update(parsed_features)
 
     if malformed:
         raise ClosureVerificationError("; ".join(malformed))
@@ -281,12 +316,34 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
             package: frozenset(package_features)
             for package, package_features in sorted(features.items())
         },
+        features_by_package_version={
+            package_id: frozenset(package_features)
+            for package_id, package_features in sorted(versioned_features.items())
+        },
     )
+
+
+def closure_fingerprint(closure: DependencyClosure) -> str:
+    """Hash the exact versioned normal-dependency and Cargo-feature closure."""
+    digest = hashlib.sha256()
+    digest.update(FINGERPRINT_DOMAIN)
+    for (package, version), features in sorted(
+        closure.features_by_package_version.items()
+    ):
+        digest.update(package.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(version.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(",".join(sorted(features)).encode("utf-8"))
+        digest.update(b"\n")
+    return f"sha256:{digest.hexdigest()}"
 
 
 def check_claim(
     claim: ClosureClaim,
     closure: DependencyClosure,
+    *,
+    enforce_fingerprint: bool = True,
 ) -> tuple[list[str], ClosureObservation]:
     """Compare one observed dependency closure with its surface-owned claim."""
     failures: list[str] = []
@@ -325,6 +382,19 @@ def check_claim(
                 + ", ".join(enabled)
             )
 
+    fingerprint = closure_fingerprint(closure)
+    if enforce_fingerprint:
+        if not FINGERPRINT_RE.fullmatch(claim.approved_fingerprint):
+            failures.append(
+                "claim has no valid approved dependency closure fingerprint"
+            )
+        elif fingerprint != claim.approved_fingerprint:
+            failures.append(
+                "dependency closure fingerprint drift: "
+                f"approved={claim.approved_fingerprint} observed={fingerprint}; "
+                "review `cargo tree` output before updating the claim"
+            )
+
     observation = ClosureObservation(
         claim_id=claim.claim_id,
         profile_id=claim.profile_id,
@@ -332,6 +402,7 @@ def check_claim(
         observed_residual_packages=tuple(
             sorted(residual & closure.packages)
         ),
+        fingerprint=fingerprint,
     )
     return failures, observation
 
@@ -352,6 +423,7 @@ def verify_claims(
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
     runner: CommandRunner = _default_runner,
     recipe_loader: RecipeLoader = load_artifact_profile,
+    enforce_fingerprints: bool = True,
 ) -> tuple[ClosureObservation, ...]:
     """Run and aggregate every selected exact-profile closure check."""
     failures: list[str] = []
@@ -370,7 +442,11 @@ def verify_claims(
             if not isinstance(completed.stdout, str):
                 raise ClosureVerificationError("cargo tree stdout was not text")
             closure = parse_cargo_tree(completed.stdout)
-            claim_failures, observation = check_claim(claim, closure)
+            claim_failures, observation = check_claim(
+                claim,
+                closure,
+                enforce_fingerprint=enforce_fingerprints,
+            )
             observations.append(observation)
             failures.extend(
                 f"{claim.claim_id} ({claim.profile_id}): {failure}"
@@ -414,11 +490,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="Verify only this artifact profile; may be repeated.",
     )
+    parser.add_argument(
+        "--print-fingerprints",
+        action="store_true",
+        help=(
+            "Validate semantic closure claims and print observed fingerprints "
+            "without accepting fingerprint drift."
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
         claims = _select_claims(args.profile)
-        observations = verify_claims(claims, descriptor_path=args.descriptor)
+        observations = verify_claims(
+            claims,
+            descriptor_path=args.descriptor,
+            enforce_fingerprints=not args.print_fingerprints,
+        )
     except ClosureVerificationError as error:
         print(error, file=sys.stderr)
         return 1
@@ -429,6 +517,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "artifact-closure OK "
             f"profile={observation.profile_id} "
             f"packages={observation.package_count} "
+            f"fingerprint={observation.fingerprint} "
             f"observed-residual={residual}"
         )
     return 0

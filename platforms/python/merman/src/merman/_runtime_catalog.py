@@ -38,7 +38,6 @@ class MermanRuntimeRegistry(TypedDict):
 
 
 class MermanRuntimeResources(TypedDict):
-    schema_version: int
     general_binding_default_profile: str
     cli_default_profile: str
     limits: List[Dict[str, Any]]
@@ -76,7 +75,7 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
         ) from error
 
     catalog = _expect_object(decoded, "runtime catalog")
-    _require_exact_keys(
+    _require_required_keys(
         catalog,
         {
             "schema_version",
@@ -117,7 +116,7 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
 
 def _validate_capabilities(value: Any) -> None:
     capabilities = _expect_object(value, "runtime catalog capabilities")
-    _require_exact_keys(
+    _require_required_keys(
         capabilities,
         {
             "capability_ids",
@@ -161,7 +160,7 @@ def _validate_capabilities(value: Any) -> None:
             "runtime text measurement metadata requires the SVG capability"
         )
     measurement = _expect_object(text_measurement, "runtime text measurement")
-    _require_exact_keys(
+    _require_required_keys(
         measurement,
         {"protocol_version", "provider_ids"},
         "runtime text measurement",
@@ -187,7 +186,7 @@ def _validate_capabilities(value: Any) -> None:
 
 def _validate_registry(value: Any) -> None:
     registry = _expect_object(value, "runtime registry")
-    _require_exact_keys(registry, {"diagram_family_count"}, "runtime registry")
+    _require_required_keys(registry, {"diagram_family_count"}, "runtime registry")
     count = registry["diagram_family_count"]
     if not _is_integer(count) or count < 0:
         raise MermanRuntimeCatalogError(
@@ -197,10 +196,9 @@ def _validate_registry(value: Any) -> None:
 
 def _validate_resources(value: Any) -> None:
     resources = _expect_object(value, "runtime resources")
-    _require_exact_keys(
+    _require_required_keys(
         resources,
         {
-            "schema_version",
             "general_binding_default_profile",
             "cli_default_profile",
             "limits",
@@ -208,7 +206,6 @@ def _validate_resources(value: Any) -> None:
         },
         "runtime resources",
     )
-    _expect_positive_integer(resources["schema_version"], "runtime resources schema_version")
     for field in ["general_binding_default_profile", "cli_default_profile"]:
         if not isinstance(resources[field], str) or not resources[field]:
             raise MermanRuntimeCatalogError(
@@ -218,7 +215,7 @@ def _validate_resources(value: Any) -> None:
         raise MermanRuntimeCatalogError("runtime resources limits must be an array")
     for limit in resources["limits"]:
         item = _expect_object(limit, "runtime resource limit")
-        _require_exact_keys(
+        _require_required_keys(
             item,
             {"id", "phase", "description", "overridable", "hard_cap"},
             "runtime resource limit",
@@ -238,7 +235,7 @@ def _validate_resources(value: Any) -> None:
         raise MermanRuntimeCatalogError("runtime resources profiles must be an array")
     for profile in resources["profiles"]:
         item = _expect_object(profile, "runtime resource profile")
-        _require_exact_keys(
+        _require_required_keys(
             item,
             {
                 "id",
@@ -296,16 +293,11 @@ def _expect_object(value: Any, label: str) -> Dict[str, Any]:
     return value
 
 
-def _require_exact_keys(value: Dict[str, Any], keys: set, label: str) -> None:
+def _require_required_keys(value: Dict[str, Any], keys: set, label: str) -> None:
     missing = keys - value.keys()
-    unexpected = value.keys() - keys
     if missing:
         raise MermanRuntimeCatalogError(
             f"{label} is missing required fields: {', '.join(sorted(missing))}"
-        )
-    if unexpected:
-        raise MermanRuntimeCatalogError(
-            f"{label} contains unknown fields: {', '.join(sorted(unexpected))}"
         )
 
 

@@ -43,7 +43,7 @@
       "kind": "api",
       "description": "Expose parser-backed editor intelligence APIs.",
       "targets": ["native", "web"],
-      "implications": ["analysis"],
+      "implications": [],
       "absence": {
         "error_id": "missing-capability",
         "contract": "Editor requests return a typed missing-capability error when editor support is not compiled."
@@ -65,7 +65,7 @@
       "kind": "output",
       "description": "Export rendered diagrams as PNG.",
       "targets": ["native"],
-      "implications": ["svg"],
+      "implications": [],
       "absence": {
         "error_id": "missing-capability",
         "contract": "PNG requests return a typed missing-capability error when PNG is not compiled."
@@ -76,7 +76,7 @@
       "kind": "output",
       "description": "Export rendered diagrams as JPEG.",
       "targets": ["native"],
-      "implications": ["svg"],
+      "implications": [],
       "absence": {
         "error_id": "missing-capability",
         "contract": "JPEG requests return a typed missing-capability error when JPEG is not compiled."
@@ -87,7 +87,7 @@
       "kind": "output",
       "description": "Export rendered diagrams as PDF.",
       "targets": ["native"],
-      "implications": ["svg"],
+      "implications": [],
       "absence": {
         "error_id": "missing-capability",
         "contract": "PDF requests return a typed missing-capability error when PDF is not compiled."

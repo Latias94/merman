@@ -6,10 +6,13 @@ import 'package:merman/merman.dart';
 void main() {
   acceptsAFlatAbi3Catalog();
   acceptsInvariantOnlyCatalog();
+  acceptsAdditiveRuntimeCatalogFields();
   rejectsDuplicateCapabilityIds();
   rejectsUncallableOutputIds();
   rejectsInconsistentAdapters();
+  rejectsCoercedRuntimeCatalogVersionFields();
   rejectsInconsistentTextMeasurement();
+  rejectsTextMeasurementWithoutVendoredProvider();
   rejectsMalformedResources();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
@@ -33,6 +36,30 @@ void acceptsAFlatAbi3Catalog() {
         catalog.generalBindingDefaultProfile == 'interactive' &&
         catalog.cliDefaultProfile == 'trusted-native',
     'flat registry/resource facts should be preserved',
+  );
+}
+
+void acceptsAdditiveRuntimeCatalogFields() {
+  final catalog = _catalog();
+  catalog['future_root'] = true;
+  _runtimeCapabilities(catalog)['future_capability_metadata'] =
+      <String, Object?>{};
+  catalog['registry'] = <String, Object?>{
+    ...catalog['registry'] as Map,
+    'future_registry_metadata': true,
+  };
+  catalog['resources'] = <String, Object?>{
+    ...catalog['resources'] as Map,
+    'future_resource_metadata': true,
+  };
+  final textMeasurement =
+      _runtimeCapabilities(catalog)['text_measurement'] as Map<String, Object?>;
+  textMeasurement['future_text_measurement_metadata'] = true;
+
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    validated.supportsCapability('svg'),
+    'schema 1 consumers must tolerate additive catalog fields',
   );
 }
 
@@ -75,10 +102,43 @@ void rejectsInconsistentAdapters() {
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
 }
 
+void rejectsCoercedRuntimeCatalogVersionFields() {
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) => catalog['schema_version'] = '1',
+    (catalog) => catalog['schema_version'] = 1.0,
+    (catalog) => catalog['transport_api_version'] = '3',
+    (catalog) => catalog['transport_api_version'] = 3.0,
+    (catalog) => catalog['package_version'] = 1,
+    (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
+            as Map<String, Object?>)['protocol_version'] =
+        '1',
+    (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
+            as Map<String, Object?>)['protocol_version'] =
+        1.0,
+  ]) {
+    final catalog = _catalog();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+}
+
 void rejectsInconsistentTextMeasurement() {
   final catalog = _catalog();
   _runtimeCapabilities(catalog)['text_measurement'] = null;
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+}
+
+void rejectsTextMeasurementWithoutVendoredProvider() {
+  for (final providers in <List<String>>[
+    <String>[],
+    <String>['host-callback'],
+  ]) {
+    final catalog = _catalog();
+    final textMeasurement =
+        _runtimeCapabilities(catalog)['text_measurement'] as Map<String, Object?>;
+    textMeasurement['provider_ids'] = providers;
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
 }
 
 void rejectsMalformedResources() {
@@ -195,7 +255,6 @@ Map<String, Object?> _catalog({
     },
     'registry': {'diagram_family_count': 35},
     'resources': {
-      'schema_version': 1,
       'general_binding_default_profile': 'interactive',
       'cli_default_profile': 'trusted-native',
       'limits': <Object?>[],

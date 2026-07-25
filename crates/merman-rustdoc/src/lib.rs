@@ -20,6 +20,9 @@
 //! `cfg_attr(doc, ...)`. The macro only expands during rustdoc builds, but Cargo will still compile
 //! the dependency during ordinary builds.
 //!
+//! `svg` enables the basic renderer. Add `layout-cytoscape`, `layout-elk`, or `math` only when the
+//! documented diagrams require those engines. Each engine feature includes `svg`.
+//!
 //! If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
 //! documentation feature:
 //!

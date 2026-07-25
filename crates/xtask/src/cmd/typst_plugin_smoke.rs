@@ -360,7 +360,7 @@ fn assert_capability_catalog(
     payload: &JsonValue,
     artifact: &WasmArtifactProfile,
 ) -> Result<(), XtaskError> {
-    let catalog = exact_object(
+    let catalog = required_object(
         payload,
         &[
             "capabilities",
@@ -389,7 +389,7 @@ fn assert_capability_catalog(
     let runtime_capabilities = catalog
         .get("capabilities")
         .ok_or_else(|| smoke_error("Typst runtime catalog is missing capabilities"))?;
-    let runtime_capabilities = exact_object(
+    let runtime_capabilities = required_object(
         runtime_capabilities,
         &[
             "capability_ids",
@@ -474,10 +474,14 @@ fn assert_capability_catalog(
     }
     let text_measurement = runtime_capabilities
         .get("text_measurement")
-        .and_then(JsonValue::as_object)
         .ok_or_else(|| {
             smoke_error("Typst SVG runtime capabilities must expose text measurement metadata")
         })?;
+    let text_measurement = required_object(
+        text_measurement,
+        &["protocol_version", "provider_ids"],
+        "Typst text measurement metadata",
+    )?;
     let text_measurement_provider_ids = string_array(
         text_measurement.get("provider_ids").ok_or_else(|| {
             smoke_error("Typst text measurement metadata is missing provider IDs")
@@ -508,10 +512,10 @@ fn assert_capability_catalog(
         )));
     }
 
-    let registry = exact_object(
+    let registry = required_object(
         catalog
             .get("registry")
-            .expect("closed Typst capability catalog"),
+            .expect("validated Typst capability catalog"),
         &["diagram_family_count"],
         "Typst registry catalog",
     )?;
@@ -525,14 +529,27 @@ fn assert_capability_catalog(
         ));
     }
 
-    let resources = catalog
-        .get("resources")
-        .and_then(JsonValue::as_object)
-        .ok_or_else(|| smoke_error("Typst runtime catalog must expose the resource catalog"))?;
+    let resources = required_object(
+        catalog
+            .get("resources")
+            .expect("validated Typst capability catalog"),
+        &[
+            "general_binding_default_profile",
+            "cli_default_profile",
+            "limits",
+            "profiles",
+        ],
+        "Typst runtime resource catalog",
+    )?;
     if resources
-        .get("schema_version")
-        .and_then(JsonValue::as_u64)
-        .is_none_or(|version| version == 0)
+        .get("general_binding_default_profile")
+        .and_then(JsonValue::as_str)
+        .is_none_or(str::is_empty)
+        || resources
+            .get("cli_default_profile")
+            .and_then(JsonValue::as_str)
+            .is_none_or(str::is_empty)
+        || !resources.get("limits").is_some_and(JsonValue::is_array)
         || !resources
             .get("profiles")
             .and_then(JsonValue::as_array)
@@ -548,6 +565,28 @@ fn assert_capability_catalog(
     }
 
     Ok(())
+}
+
+fn required_object<'a>(
+    value: &'a JsonValue,
+    required: &[&str],
+    context: &str,
+) -> Result<&'a JsonMap<String, JsonValue>, XtaskError> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| smoke_error(format!("{context} must be a JSON object")))?;
+    let missing = required
+        .iter()
+        .copied()
+        .filter(|key| !object.contains_key(*key))
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(smoke_error(format!(
+            "{context} is missing required fields: [{}]",
+            missing.join(", ")
+        )));
+    }
+    Ok(object)
 }
 
 fn string_array(value: &JsonValue, context: &str) -> Result<Vec<String>, XtaskError> {
@@ -1049,6 +1088,55 @@ mod tests {
         assert!(artifact.capabilities.contains(&"svg".to_string()));
         assert!(artifact.capabilities.contains(&"analysis".to_string()));
         assert_eq!(artifact.runtime_ids, artifact.capabilities);
+    }
+
+    #[test]
+    fn capability_catalog_allows_additive_fields_within_the_current_schema() {
+        let profiles = load_typst_profiles().expect("Typst package descriptor");
+        let artifact = canonical_typst_artifact_profile(&profiles).expect("Typst artifact recipe");
+        let mut payload = json!({
+            "schema_version": merman_typst_plugin::TYPST_RUNTIME_CATALOG_SCHEMA_VERSION,
+            "transport_api_version": merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION,
+            "package_version": String::from_utf8(merman_typst_plugin::package_version())
+                .expect("UTF-8 package version"),
+            "capabilities": {
+                "capability_ids": artifact.capabilities,
+                "output_ids": artifact.outputs,
+                "operation_ids": merman_typst_plugin::TYPST_BINDING_OPERATION_IDS,
+                "system_adapter_ids": [],
+                "text_measurement": {
+                    "protocol_version": 1,
+                    "provider_ids": ["vendored"],
+                    "future_measurement_metadata": true,
+                },
+                "future_capability_metadata": {},
+            },
+            "registry": {
+                "diagram_family_count": 35,
+                "future_registry_metadata": true,
+            },
+            "resources": {
+                "general_binding_default_profile": "interactive",
+                "cli_default_profile": "trusted-native",
+                "limits": [],
+                "profiles": [{ "id": "constrained" }],
+                "future_resource_metadata": true,
+            },
+            "future_catalog_metadata": {},
+        });
+
+        assert!(assert_capability_catalog(&payload, &artifact).is_ok());
+
+        payload["resources"]
+            .as_object_mut()
+            .expect("resource catalog")
+            .remove("profiles");
+        assert!(
+            assert_capability_catalog(&payload, &artifact)
+                .unwrap_err()
+                .to_string()
+                .contains("missing required fields: [profiles]")
+        );
     }
 
     #[test]

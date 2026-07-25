@@ -116,6 +116,45 @@ class NativeSdkRecipeTests(unittest.TestCase):
         run.assert_not_called()
 
 
+class GeneratedBindingFreshnessTests(unittest.TestCase):
+    def test_flutter_binding_must_be_tracked_before_freshness_comparison(
+        self,
+    ) -> None:
+        generated = (
+            MODULE_PATH.parents[1]
+            / "platforms"
+            / "flutter"
+            / "lib"
+            / "src"
+            / "generated"
+            / "native_abi.dart"
+        )
+        with mock.patch.object(verify_platform_bindings, "run") as run:
+            verify_platform_bindings.verify_tracked_generated_file(generated)
+
+        relative = "platforms/flutter/lib/src/generated/native_abi.dart"
+        self.assertEqual(
+            [call.args[0] for call in run.call_args_list],
+            [
+                ["git", "ls-files", "--error-unmatch", "--", relative],
+                ["git", "diff", "--exit-code", "--", relative],
+            ],
+        )
+
+    def test_flutter_ci_uses_the_fail_closed_generated_binding_gate(self) -> None:
+        workflow = (MODULE_PATH.parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "git ls-files --error-unmatch -- lib/src/generated/native_abi.dart",
+            workflow,
+        )
+        self.assertIn(
+            "git diff --exit-code -- lib/src/generated/native_abi.dart",
+            workflow,
+        )
+
+
 class AndroidAarVerificationTests(unittest.TestCase):
     def test_android_compile_sources_follow_the_complete_main_source_set(self) -> None:
         sources = verify_platform_bindings.android_kotlin_compile_sources()

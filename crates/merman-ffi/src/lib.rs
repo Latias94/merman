@@ -635,6 +635,12 @@ unsafe fn native_slice_bytes<'a>(
             format!("{name}.data must not be null when len is non-zero"),
         ));
     }
+    if slice.len > isize::MAX as usize {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name}.len must not exceed isize::MAX"),
+        ));
+    }
     Ok(unsafe { std::slice::from_raw_parts(slice.data, slice.len) })
 }
 
@@ -1575,6 +1581,23 @@ mod tests {
     }
 
     #[test]
+    fn native_slices_reject_lengths_larger_than_isize_max() {
+        let slice = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::NonNull::<u8>::dangling().as_ptr(),
+            len: (isize::MAX as usize).saturating_add(1),
+        };
+
+        let failure = unsafe { native_slice_bytes(slice, "request.source") }
+            .expect_err("oversized native slices must fail before constructing a Rust slice");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_eq!(
+            failure.message,
+            "request.source.len must not exceed isize::MAX"
+        );
+    }
+
+    #[test]
     fn runtime_catalog_is_the_flat_artifact_owned_contract() {
         let api = api_table();
         let mut result = native_result();
@@ -1634,7 +1657,7 @@ mod tests {
                 .as_u64()
                 .is_some_and(|count| count > 0)
         );
-        assert_eq!(catalog["resources"]["schema_version"], 1);
+        assert!(catalog["resources"].get("schema_version").is_none());
 
         let expected_digest = format!(
             "sha256:{:x}",

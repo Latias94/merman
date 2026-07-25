@@ -21,7 +21,6 @@ def valid_catalog():
         },
         "registry": {"diagram_family_count": 35},
         "resources": {
-            "schema_version": 1,
             "general_binding_default_profile": "interactive",
             "cli_default_profile": "trusted-native",
             "limits": [
@@ -73,9 +72,13 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
 
-    def test_accepts_unknown_future_ids(self):
+    def test_accepts_unknown_future_ids_and_additive_fields(self):
         catalog = valid_catalog()
+        catalog["future_root_metadata"] = {}
+        catalog["registry"]["future_registry_metadata"] = True
+        catalog["resources"]["future_resource_metadata"] = True
         capabilities = catalog["capabilities"]
+        capabilities["future_capability_metadata"] = {}
         capabilities["capability_ids"] = [
             "analysis",
             "ascii",
@@ -97,6 +100,9 @@ class RuntimeCatalogTest(unittest.TestCase):
             "host-callback",
             "vendored",
         ]
+        capabilities["text_measurement"]["future_measurement_metadata"] = True
+        catalog["resources"]["limits"][0]["future_limit_metadata"] = True
+        catalog["resources"]["profiles"][0]["future_profile_metadata"] = True
 
         self.assertEqual(merman.get_runtime_catalog(FakeEngine(catalog)), catalog)
 
@@ -130,15 +136,11 @@ class RuntimeCatalogTest(unittest.TestCase):
             },
         )
 
-    def test_rejects_missing_extra_or_wrong_catalog_identity(self):
+    def test_rejects_missing_or_wrong_catalog_identity(self):
         cases = []
         missing = valid_catalog()
         del missing["resources"]
         cases.append(missing)
-
-        extra = valid_catalog()
-        extra["legacy_runtime_contract"] = {}
-        cases.append(extra)
 
         wrong_schema = valid_catalog()
         wrong_schema["schema_version"] = 2

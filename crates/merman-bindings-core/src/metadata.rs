@@ -418,7 +418,6 @@ pub struct RuntimeRegistryContract {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuntimeResourceContract {
-    pub schema_version: u32,
     pub general_binding_default_profile: &'static str,
     pub cli_default_profile: &'static str,
     pub limits: Vec<RuntimeResourceLimit>,
@@ -622,7 +621,6 @@ fn svg_runtime_resource_contract() -> RuntimeResourceContract {
         })
         .collect();
     RuntimeResourceContract {
-        schema_version: merman::svg::RESOURCE_CONTRACT_SCHEMA_VERSION,
         general_binding_default_profile: merman::svg::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
         cli_default_profile: merman::svg::CLI_DEFAULT_RESOURCE_PROFILE.id(),
         limits,
@@ -664,7 +662,6 @@ fn input_runtime_resource_contract(capabilities: &RuntimeCapabilities) -> Runtim
         })
         .collect();
     RuntimeResourceContract {
-        schema_version: merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION,
         general_binding_default_profile:
             merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
         cli_default_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
@@ -799,31 +796,37 @@ pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
     )
 }
 
-pub fn lint_rule_catalog() -> Vec<RuleCatalogEntry> {
+pub fn lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
     #[cfg(feature = "analysis")]
     {
-        merman_analysis::rule_catalog()
+        Ok(merman_analysis::rule_catalog()
             .into_iter()
             .map(rule_catalog_entry)
-            .collect()
+            .collect())
     }
     #[cfg(not(feature = "analysis"))]
     {
-        Vec::new()
+        Err(crate::common::feature_required_error(
+            "lint rule catalog",
+            "analysis",
+        ))
     }
 }
 
-pub fn configurable_lint_rule_catalog() -> Vec<RuleCatalogEntry> {
+pub fn configurable_lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
     #[cfg(feature = "analysis")]
     {
-        merman_analysis::configurable_rule_catalog()
+        Ok(merman_analysis::configurable_rule_catalog()
             .into_iter()
             .map(rule_catalog_entry)
-            .collect()
+            .collect())
     }
     #[cfg(not(feature = "analysis"))]
     {
-        Vec::new()
+        Err(crate::common::feature_required_error(
+            "configurable lint rule catalog",
+            "analysis",
+        ))
     }
 }
 
@@ -1093,10 +1096,6 @@ mod tests {
         #[cfg(feature = "svg")]
         {
             let resources = &catalog.resources;
-            assert_eq!(
-                resources.schema_version,
-                merman::svg::RESOURCE_CONTRACT_SCHEMA_VERSION
-            );
             assert_eq!(resources.profiles.len(), 4);
             assert_eq!(resources.limits.len(), 7);
             assert_eq!(resources.general_binding_default_profile, "interactive");
@@ -1113,10 +1112,6 @@ mod tests {
         #[cfg(all(not(feature = "svg"), not(feature = "ascii")))]
         {
             let resources = &catalog.resources;
-            assert_eq!(
-                resources.schema_version,
-                merman::resources::INPUT_RESOURCE_CONTRACT_SCHEMA_VERSION
-            );
             assert_eq!(resources.profiles.len(), 4);
             assert_eq!(resources.limits.len(), 1);
             assert_eq!(resources.limits[0].id, "max_source_bytes");
@@ -1508,6 +1503,23 @@ mod tests {
                     .all(|rule| rule["category"] != "internal")
             );
         } else {
+            let lint_error = lint_rule_catalog().unwrap_err();
+            assert_eq!(lint_error.status(), BindingStatus::UnsupportedOperation);
+            assert_eq!(
+                lint_error.kind(),
+                crate::BindingErrorKind::MissingCapability
+            );
+            assert_eq!(lint_error.capability_id(), Some("analysis"));
+            let configurable_error = configurable_lint_rule_catalog().unwrap_err();
+            assert_eq!(
+                configurable_error.status(),
+                BindingStatus::UnsupportedOperation
+            );
+            assert_eq!(
+                configurable_error.kind(),
+                crate::BindingErrorKind::MissingCapability
+            );
+            assert_eq!(configurable_error.capability_id(), Some("analysis"));
             assert_eq!(
                 lint_rule_catalog_json().unwrap_err().status(),
                 BindingStatus::UnsupportedOperation

@@ -1049,6 +1049,14 @@ public func FfiConverterTypeMermanEngine_lower(_ value: MermanEngine) -> UInt64 
 
 
 
+/**
+ * A reusable engine with an engine-local host-callback safety boundary.
+ *
+ * While one of this engine's host text-measurement callbacks is active, new operations and
+ * text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
+ * The boundary applies across threads because generated foreign bindings do not carry callback
+ * causality when a host dispatches work to another thread.
+ */
 public protocol MermanReusableEngineProtocol: AnyObject, Sendable {
 
     func analyzeDocumentFactsJson(source: String, optionsJson: String?, uri: String) throws  -> String
@@ -1083,6 +1091,14 @@ public protocol MermanReusableEngineProtocol: AnyObject, Sendable {
     func validate(source: String, optionsJson: String?) throws  -> MermanValidationResult
 
 }
+/**
+ * A reusable engine with an engine-local host-callback safety boundary.
+ *
+ * While one of this engine's host text-measurement callbacks is active, new operations and
+ * text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
+ * The boundary applies across threads because generated foreign bindings do not carry callback
+ * causality when a host dispatches work to another thread.
+ */
 open class MermanReusableEngine: MermanReusableEngineProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 

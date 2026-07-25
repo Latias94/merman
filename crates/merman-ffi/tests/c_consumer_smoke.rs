@@ -63,7 +63,7 @@ fn has_native_sdk_operation_features() -> bool {
 }
 
 fn matches_native_sdk_artifact_profile() -> bool {
-    has_native_sdk_operation_features() && !cfg!(feature = "system-timing")
+    has_native_sdk_operation_features()
 }
 
 fn hash_size_t(mut hash: u64, value: usize) -> u64 {
@@ -231,6 +231,11 @@ fn assert_c_abi_native_runtime_catalog() {
         "/../../capabilities/artifact-profiles-v1.json"
     )))
     .expect("artifact profile descriptor must be valid JSON");
+    let capability_surface: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../capabilities/feature-surface-v1.json"
+    )))
+    .expect("capability descriptor must be valid JSON");
     let profiles = profiles["profiles"]
         .as_array()
         .expect("artifact profiles must be an array");
@@ -262,7 +267,37 @@ fn assert_c_abi_native_runtime_catalog() {
             string_ids(&expected["outputs"]),
             "the real C ABI output report drifted from {profile_id}"
         );
+        assert_eq!(
+            string_ids(&catalog["capabilities"]["operation_ids"]),
+            expected_native_operation_ids(&capability_surface, expected),
+            "the real C ABI operation report drifted from {profile_id}"
+        );
     }
+}
+
+fn expected_native_operation_ids<'a>(
+    capability_surface: &'a Value,
+    expected: &'a Value,
+) -> Vec<&'a str> {
+    let capabilities = string_ids(&expected["capabilities"]);
+    let mut operations = capability_surface["binding_operations"]
+        .as_array()
+        .expect("binding operations must be an array")
+        .iter()
+        .filter(|operation| {
+            string_ids(&operation["targets"]).contains(&"native")
+                && operation["capability"]
+                    .as_str()
+                    .is_none_or(|capability| capabilities.contains(&capability))
+        })
+        .map(|operation| {
+            operation["id"]
+                .as_str()
+                .expect("operation ID must be a string")
+        })
+        .collect::<Vec<_>>();
+    operations.sort_unstable();
+    operations
 }
 
 fn string_ids(value: &Value) -> Vec<&str> {

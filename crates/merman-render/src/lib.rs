@@ -104,11 +104,11 @@ use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
-    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RESOURCE_CONTRACT_SCHEMA_VERSION,
-    RenderResourceLimitId, RenderResourcePolicy, RenderResourceProfile,
-    RenderResourceProfileDescriptor, ResourceLimitDescriptor, ResourceLimitExceeded,
-    ResourceLimitId, ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    ZenumlComplexity, resource_limit_descriptors, resource_profile_descriptors,
+    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
+    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]

@@ -15,13 +15,10 @@ categories = ["visualization", "command-line-utilities"]
 
 [package.metadata.merman]
 artifact-profile-required = true
+fixed-capabilities = ["ascii"]
 
 [features]
 default = []
-system-clock = ["merman-core/system-clock"]
-system-timezone = ["merman-core/system-timezone"]
-system-random = ["merman-core/system-random"]
-system-timing = ["merman-core/system-timing"]
 
 [dependencies]
 chrono.workspace = true

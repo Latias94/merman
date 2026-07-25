@@ -53,7 +53,6 @@ export interface RuntimeCatalog {
 }
 
 export interface RuntimeResourceContract {
-  schema_version: number;
   general_binding_default_profile: string;
   cli_default_profile: string;
   limits: RuntimeResourceLimit[];
@@ -138,13 +137,13 @@ export interface AnalysisBindingOptions {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
   site_config?: MermaidSiteConfig;
-  parse?: ParseOptions;
   resources?: ResourceOptions;
   lint?: LintBindingOptions;
 }
 
 export interface CommonBindingOptions extends AnalysisBindingOptions {
   version?: 1;
+  parse?: ParseOptions;
   analysis?: AnalysisBindingOptions;
   merman?: AnalysisBindingOptions;
 }

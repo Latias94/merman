@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9" as const;
 
 export const TARGETS = [
   {
@@ -49,9 +49,7 @@ export const CAPABILITIES = [
       "native",
       "web"
     ],
-    "implications": [
-      "analysis"
-    ]
+    "implications": []
   },
   {
     "id": "jpeg",
@@ -60,9 +58,7 @@ export const CAPABILITIES = [
     "targets": [
       "native"
     ],
-    "implications": [
-      "svg"
-    ]
+    "implications": []
   },
   {
     "id": "layout-cytoscape",
@@ -127,9 +123,7 @@ export const CAPABILITIES = [
     "targets": [
       "native"
     ],
-    "implications": [
-      "svg"
-    ]
+    "implications": []
   },
   {
     "id": "png",
@@ -138,9 +132,7 @@ export const CAPABILITIES = [
     "targets": [
       "native"
     ],
-    "implications": [
-      "svg"
-    ]
+    "implications": []
   },
   {
     "id": "shell-completions",

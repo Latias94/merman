@@ -1,8 +1,6 @@
-#[cfg(any(feature = "analysis", feature = "ascii", feature = "svg"))]
-use clap::ValueEnum;
 #[cfg(any(feature = "ascii", feature = "svg"))]
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
-use clap::{Args as ClapArgs, Parser, Subcommand, ValueHint};
+use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 
@@ -200,21 +198,8 @@ pub(crate) struct AnalysisCliArgs {
     )]
     pub(crate) config_file: Option<String>,
 
-    /// Override the local "today" date for time-dependent diagrams.
-    #[arg(
-        long = "fixed-today",
-        value_parser = parse_naive_date,
-        help_heading = "Deterministic rendering"
-    )]
-    pub(crate) fixed_today: Option<chrono::NaiveDate>,
-
-    /// Override the local timezone offset in minutes for time-dependent diagrams.
-    #[arg(
-        long = "fixed-local-offset-minutes",
-        value_parser = parse_fixed_local_offset_minutes,
-        help_heading = "Deterministic rendering"
-    )]
-    pub(crate) fixed_local_offset_minutes: Option<i32>,
+    #[command(flatten)]
+    pub(crate) runtime: RuntimeCliArgs,
 
     /// Maximum source bytes accepted by the analyzer.
     #[arg(
@@ -336,11 +321,30 @@ pub(crate) struct ParseCliArgs {
     #[arg(short = 't', long, help_heading = "Mermaid configuration")]
     pub(crate) theme: Option<String>,
 
+    #[command(flatten)]
+    pub(crate) runtime: RuntimeCliArgs,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct RuntimeCliArgs {
+    /// Runtime source for clock, local timezone, and operation randomness.
+    #[arg(
+        long = "runtime",
+        value_enum,
+        default_value_t = RuntimePolicyKind::Deterministic,
+        help_heading = "Runtime policy"
+    )]
+    pub(crate) policy: RuntimePolicyKind,
+
+    /// Enable operation timing diagnostics through the compiled system timing adapter.
+    #[arg(long = "system-timing", help_heading = "Runtime policy")]
+    pub(crate) system_timing: bool,
+
     /// Override the local "today" date for time-dependent diagrams.
     #[arg(
         long = "fixed-today",
         value_parser = parse_naive_date,
-        help_heading = "Deterministic rendering"
+        help_heading = "Runtime policy"
     )]
     pub(crate) fixed_today: Option<chrono::NaiveDate>,
 
@@ -348,9 +352,16 @@ pub(crate) struct ParseCliArgs {
     #[arg(
         long = "fixed-local-offset-minutes",
         value_parser = parse_fixed_local_offset_minutes,
-        help_heading = "Deterministic rendering"
+        help_heading = "Runtime policy"
     )]
     pub(crate) fixed_local_offset_minutes: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum RuntimePolicyKind {
+    #[default]
+    Deterministic,
+    Native,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]

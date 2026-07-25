@@ -532,7 +532,7 @@ class MermanRuntimeCatalog {
   });
 
   factory MermanRuntimeCatalog.fromJson(Map<String, Object?> catalog) {
-    _requireExactKeys(
+    _requireRequiredKeys(
       catalog,
       const {
         'schema_version',
@@ -565,7 +565,7 @@ class MermanRuntimeCatalog {
     }
 
     final runtimeCapabilities = _requiredObject(catalog, 'capabilities');
-    _requireExactKeys(
+    _requireRequiredKeys(
       runtimeCapabilities,
       const {
         'capability_ids',
@@ -624,7 +624,7 @@ class MermanRuntimeCatalog {
     final providers = <String>[];
     if (textMeasurement is Map) {
       final textMeasurementMap = _asObject(textMeasurement, 'text_measurement');
-      _requireExactKeys(
+      _requireRequiredKeys(
         textMeasurementMap,
         const {'protocol_version', 'provider_ids'},
         'runtime text measurement',
@@ -640,15 +640,15 @@ class MermanRuntimeCatalog {
         'provider_ids',
         'runtime text measurement providers',
       ));
-      if (providers.isEmpty) {
+      if (!providers.contains('vendored')) {
         throw MermanException.contract(
-          'SVG runtime contract must expose at least one text measurement provider',
+          'SVG runtime contract must expose the vendored text measurement provider',
         );
       }
     }
 
     final registry = _requiredObject(catalog, 'registry');
-    _requireExactKeys(
+    _requireRequiredKeys(
       registry,
       const {'diagram_family_count'},
       'runtime registry',
@@ -661,10 +661,9 @@ class MermanRuntimeCatalog {
     }
 
     final resources = _requiredObject(catalog, 'resources');
-    _requireExactKeys(
+    _requireRequiredKeys(
       resources,
       const {
-        'schema_version',
         'general_binding_default_profile',
         'cli_default_profile',
         'limits',
@@ -672,11 +671,6 @@ class MermanRuntimeCatalog {
       },
       'runtime resources',
     );
-    if (_requiredInt(resources, 'schema_version') < 1) {
-      throw MermanException.contract(
-        'runtime resource schema version must be positive',
-      );
-    }
     final generalBindingDefaultProfile =
         resources['general_binding_default_profile'];
     final cliDefaultProfile = resources['cli_default_profile'];
@@ -1460,22 +1454,16 @@ Map<String, Object?> _requiredObject(Map<String, Object?> source, String key) {
   return _asObject(source[key], key);
 }
 
-void _requireExactKeys(
+void _requireRequiredKeys(
   Map<String, Object?> source,
   Set<String> expected,
   String label,
 ) {
   final actual = source.keys.toSet();
   final missing = expected.difference(actual);
-  final extra = actual.difference(expected);
   if (missing.isNotEmpty) {
     throw MermanException.contract(
       '$label is missing required fields: ${missing.toList()..sort()}',
-    );
-  }
-  if (extra.isNotEmpty) {
-    throw MermanException.contract(
-      '$label contains unknown fields: ${extra.toList()..sort()}',
     );
   }
 }

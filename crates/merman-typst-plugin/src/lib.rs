@@ -6,9 +6,6 @@
 
 use serde_json::{json, Value};
 
-#[cfg(all(feature = "analysis", not(feature = "svg")))]
-const TYPST_ANALYSIS_MAX_SOURCE_BYTES: usize = 1024 * 1024;
-
 const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u32 = 1;
 pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
     merman_bindings_core::RUNTIME_CATALOG_SCHEMA_VERSION;
@@ -164,70 +161,15 @@ fn typst_result_payload(
 }
 
 fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    let Some(resources) = typst_fixed_resource_options() else {
+    if typst_fixed_resource_options().is_none() {
         return Ok(options_json.to_vec());
-    };
-
-    let mut value = if options_json.is_empty() {
-        json!({})
-    } else {
-        let text = std::str::from_utf8(options_json).map_err(|error| {
-            merman_bindings_core::BindingError::new(
-                merman_bindings_core::BindingStatus::Utf8Error,
-                format!("invalid options_json UTF-8: {error}"),
-            )
-        })?;
-        serde_json::from_str::<Value>(text).map_err(|error| {
-            merman_bindings_core::BindingError::new(
-                merman_bindings_core::BindingStatus::OptionsJsonError,
-                format!("invalid options_json: {error}"),
-            )
-        })?
-    };
-
-    let root = value.as_object_mut().ok_or_else(|| {
-        merman_bindings_core::BindingError::new(
-            merman_bindings_core::BindingStatus::OptionsJsonError,
-            "invalid options_json: the Typst options root must be an object",
-        )
-    })?;
-
-    let mut has_wrapper = false;
-    for key in ["analysis", "merman"] {
-        let Some(wrapper) = root.get_mut(key) else {
-            continue;
-        };
-        has_wrapper = true;
-        let wrapper = wrapper.as_object_mut().ok_or_else(|| {
-            merman_bindings_core::BindingError::new(
-                merman_bindings_core::BindingStatus::OptionsJsonError,
-                format!("invalid options_json: `{key}` wrapper must be an object"),
-            )
-        })?;
-        wrapper.insert("resources".to_string(), resources.clone());
     }
-    if !has_wrapper {
-        root.insert("resources".to_string(), resources);
-    }
-
-    serde_json::to_vec(&value).map_err(|error| {
-        merman_bindings_core::BindingError::new(
-            merman_bindings_core::BindingStatus::InternalError,
-            format!("failed to serialize Typst options_json: {error}"),
-        )
-    })
+    merman_bindings_core::apply_resource_ceiling_json(options_json, "constrained", &[])
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "svg", feature = "analysis"))]
 fn typst_fixed_resource_options() -> Option<Value> {
     Some(json!({ "profile": "constrained" }))
-}
-
-#[cfg(all(not(feature = "svg"), feature = "analysis"))]
-fn typst_fixed_resource_options() -> Option<Value> {
-    Some(json!({
-        "limits": { "max_source_bytes": TYPST_ANALYSIS_MAX_SOURCE_BYTES }
-    }))
 }
 
 #[cfg(not(any(feature = "svg", feature = "analysis")))]
@@ -322,14 +264,15 @@ mod tests {
 
     #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
-    fn typst_resource_policy_replaces_caller_resource_options() {
+    fn typst_resource_policy_preserves_stricter_caller_limits() {
         let options = typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#)
             .expect("valid options");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
+        assert_eq!(payload["resources"]["profile"], "constrained");
         assert_eq!(
-            payload["resources"],
-            typst_fixed_resource_options().expect("fixed resource policy")
+            payload["resources"]["limits"]["max_source_bytes"],
+            Value::from(4096)
         );
     }
 
@@ -351,15 +294,14 @@ mod tests {
 
     #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
-    fn explicit_resource_profile_cannot_bypass_typst_limits() {
-        let options = typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#)
-            .expect("valid options");
-        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
-
+    fn explicit_looser_resource_profile_is_rejected() {
+        let error =
+            typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#).unwrap_err();
         assert_eq!(
-            payload["resources"],
-            typst_fixed_resource_options().expect("fixed resource policy")
+            error.status(),
+            merman_bindings_core::BindingStatus::OptionsJsonError
         );
+        assert!(error.message().contains("loosen the transport ceiling"));
     }
 
     #[cfg(any(feature = "svg", feature = "analysis"))]
@@ -371,9 +313,10 @@ mod tests {
         .expect("valid options");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
+        assert_eq!(payload["resources"]["profile"], "constrained");
         assert_eq!(
-            payload["resources"],
-            typst_fixed_resource_options().expect("fixed resource policy")
+            payload["resources"]["limits"]["max_source_bytes"],
+            Value::from(4096)
         );
     }
 
@@ -391,6 +334,13 @@ mod tests {
             );
             assert!(error.message().contains("wrapper must be an object"));
         }
+
+        let error = typst_options_json(br#"{"analysis":{},"merman":{}}"#).unwrap_err();
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::OptionsJsonError
+        );
+        assert!(error.message().contains("must not contain both"));
     }
 
     #[cfg(feature = "svg")]

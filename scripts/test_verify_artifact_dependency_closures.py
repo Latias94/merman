@@ -6,6 +6,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -31,6 +32,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     _select_claims,
     cargo_tree_command,
     check_claim,
+    closure_fingerprint,
     parse_cargo_tree,
     verify_claims,
 )
@@ -71,6 +73,7 @@ class DescriptorTests(unittest.TestCase):
     def test_maintenance_profiles_are_exact_default_empty_recipes(self) -> None:
         expected = {
             "cli-analysis": ("merman-cli", ("analysis",)),
+            "rust-export-jpeg": ("merman-export", ("jpeg",)),
             "rust-export-pdf": ("merman-export", ("pdf",)),
             "rust-export-png": ("merman-export", ("png",)),
         }
@@ -106,6 +109,38 @@ class DescriptorTests(unittest.TestCase):
                     "python3 scripts/verify_artifact_dependency_closures.py",
                     step["run"],
                 )
+
+    def test_ci_runs_owner_local_tests_from_exact_artifact_recipes(self) -> None:
+        repository_root = SCRIPT_DIR.parent
+        workflow = load_workflow_contract(repository_root / ".github/workflows/ci.yml")
+        step = workflow_step(
+            workflow_job(workflow, "build-test"),
+            name="Test exact artifact owner APIs",
+        )
+        run = step["run"]
+
+        self.assertIn(
+            'artifact_profile_recipe.py "$profile" --field package',
+            run,
+        )
+        self.assertIn(
+            'artifact_profile_recipe.py "$profile"',
+            run,
+        )
+        for profile_id in (
+            "cli-analysis",
+            "rust-analysis",
+            "rust-ascii",
+            "rust-bindings-core-native-sdk",
+            "rust-editor-core",
+            "rust-editor-facade",
+            "rust-export-jpeg",
+            "rust-export-pdf",
+            "rust-export-png",
+            "rust-svg-basic",
+        ):
+            with self.subTest(profile_id=profile_id):
+                self.assertIn(f"run_owner_test {profile_id} ", run)
 
     def test_every_claim_has_a_unique_exact_profile(self) -> None:
         profile_ids = [claim.profile_id for claim in CLAIMS]
@@ -178,6 +213,10 @@ class CargoTreeParserTests(unittest.TestCase):
         self.assertEqual(
             closure.features_by_package["shared"], frozenset(("serde", "std"))
         )
+        self.assertEqual(
+            set(closure.features_by_package_version),
+            {("root", "1.2.3"), ("shared", "1.2.3"), ("shared", "2.0.0")},
+        )
 
     def test_parser_rejects_unmarked_or_empty_output(self) -> None:
         with self.assertRaisesRegex(ClosureVerificationError, "package marker"):
@@ -208,7 +247,11 @@ class ClaimTests(unittest.TestCase):
             )
         )
 
-        failures, observation = check_claim(claim, closure)
+        failures, observation = check_claim(
+            claim,
+            closure,
+            enforce_fingerprint=False,
+        )
 
         self.assertTrue(any("required, residual" in failure for failure in failures))
         self.assertTrue(any("forbidden packages present" in failure for failure in failures))
@@ -226,10 +269,57 @@ class ClaimTests(unittest.TestCase):
         )
 
         failures, _ = check_claim(
-            claim, parse_cargo_tree(tree_line("merman-export", ("pdf",)))
+            claim,
+            parse_cargo_tree(tree_line("merman-export", ("pdf",))),
+            enforce_fingerprint=False,
         )
 
         self.assertEqual(failures, ["required packages missing: krilla-svg"])
+
+    def test_exact_fingerprint_rejects_an_unknown_dependency(self) -> None:
+        approved = parse_cargo_tree(tree_line("root", ("svg",)))
+        claim = ClosureClaim(
+            claim_id="exact",
+            profile_id="exact",
+            target=None,
+            required_packages=("root",),
+            forbidden_packages=(),
+            approved_fingerprint=closure_fingerprint(approved),
+        )
+        observed = parse_cargo_tree(
+            "\n".join(
+                (
+                    tree_line("root", ("svg",)),
+                    tree_line("new-heavy-backend"),
+                )
+            )
+        )
+
+        failures, observation = check_claim(claim, observed)
+
+        self.assertEqual(observation.package_count, 2)
+        self.assertTrue(
+            any("dependency closure fingerprint drift" in failure for failure in failures)
+        )
+
+    def test_exact_fingerprint_includes_versions_and_features(self) -> None:
+        baseline = parse_cargo_tree(tree_line("root", ("svg",)))
+        baseline_fingerprint = closure_fingerprint(baseline)
+
+        version_changed = parse_cargo_tree(
+            "__MERMAN_CLOSURE_PACKAGE__root v1.2.4 "
+            "(/workspace/root)\t__MERMAN_CLOSURE_FEATURES__svg"
+        )
+        feature_changed = parse_cargo_tree(tree_line("root", ("math", "svg")))
+
+        self.assertNotEqual(
+            baseline_fingerprint,
+            closure_fingerprint(version_changed),
+        )
+        self.assertNotEqual(
+            baseline_fingerprint,
+            closure_fingerprint(feature_changed),
+        )
 
 
 class VerificationTests(unittest.TestCase):
@@ -251,6 +341,11 @@ class VerificationTests(unittest.TestCase):
                 "rust-export-png",
                 package="merman-export",
                 features=("png",),
+            ),
+            "rust-export-jpeg": recipe(
+                "rust-export-jpeg",
+                package="merman-export",
+                features=("jpeg",),
             ),
             "rust-export-pdf": recipe(
                 "rust-export-pdf",
@@ -281,6 +376,17 @@ class VerificationTests(unittest.TestCase):
                 (
                     tree_line("merman-export", ("png",)),
                     tree_line("merman-render"),
+                    tree_line("resvg"),
+                    tree_line("tiny-skia"),
+                    tree_line("usvg"),
+                )
+            ),
+            ("merman-export", "jpeg"): "\n".join(
+                (
+                    tree_line("merman-export", ("jpeg",)),
+                    tree_line("image"),
+                    tree_line("merman-render"),
+                    tree_line("png"),
                     tree_line("resvg"),
                     tree_line("tiny-skia"),
                     tree_line("usvg"),
@@ -322,7 +428,27 @@ class VerificationTests(unittest.TestCase):
                 stderr="",
             )
 
-        observations = verify_claims(CLAIMS, runner=runner, recipe_loader=loader)
+        fixture_claims = tuple(
+            replace(
+                claim,
+                approved_fingerprint=closure_fingerprint(
+                    parse_cargo_tree(
+                        outputs[
+                            (
+                                recipes[claim.profile_id].package,
+                                recipes[claim.profile_id].feature_argument,
+                            )
+                        ]
+                    )
+                ),
+            )
+            for claim in CLAIMS
+        )
+        observations = verify_claims(
+            fixture_claims,
+            runner=runner,
+            recipe_loader=loader,
+        )
 
         self.assertEqual(len(commands), len(CLAIMS))
         self.assertEqual(len(observations), len(CLAIMS))
@@ -368,7 +494,12 @@ class VerificationTests(unittest.TestCase):
             )
 
         with self.assertRaises(ClosureVerificationError) as raised:
-            verify_claims(claims, runner=runner, recipe_loader=loader)
+            verify_claims(
+                claims,
+                runner=runner,
+                recipe_loader=loader,
+                enforce_fingerprints=False,
+            )
 
         message = str(raised.exception)
         self.assertIn("one (one)", message)
@@ -390,7 +521,12 @@ class VerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(
             ClosureVerificationError, "dependency resolution failed"
         ):
-            verify_claims((claim,), runner=runner, recipe_loader=loader)
+            verify_claims(
+                (claim,),
+                runner=runner,
+                recipe_loader=loader,
+                enforce_fingerprints=False,
+            )
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
         with self.assertRaisesRegex(ClosureVerificationError, "no dependency-closure claim"):

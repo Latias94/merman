@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -95,16 +95,8 @@ static const char *const MERMAN_CAPABILITY_EDITOR_TARGETS[] = {
     "web",
 };
 
-static const char *const MERMAN_CAPABILITY_EDITOR_IMPLICATIONS[] = {
-    "analysis",
-};
-
 static const char *const MERMAN_CAPABILITY_JPEG_TARGETS[] = {
     "native",
-};
-
-static const char *const MERMAN_CAPABILITY_JPEG_IMPLICATIONS[] = {
-    "svg",
 };
 
 static const char *const MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS[] = {
@@ -148,16 +140,8 @@ static const char *const MERMAN_CAPABILITY_PDF_TARGETS[] = {
     "native",
 };
 
-static const char *const MERMAN_CAPABILITY_PDF_IMPLICATIONS[] = {
-    "svg",
-};
-
 static const char *const MERMAN_CAPABILITY_PNG_TARGETS[] = {
     "native",
-};
-
-static const char *const MERMAN_CAPABILITY_PNG_IMPLICATIONS[] = {
-    "svg",
 };
 
 static const char *const MERMAN_CAPABILITY_SHELL_COMPLETIONS_TARGETS[] = {
@@ -189,15 +173,15 @@ static const char *const MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS[] = {
 static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "analysis", "api", "Expose diagnostics and semantic analysis APIs.", MERMAN_CAPABILITY_ANALYSIS_TARGETS, 3, NULL, 0 },
     { "ascii", "output", "Render supported Mermaid semantics as terminal text.", MERMAN_CAPABILITY_ASCII_TARGETS, 2, NULL, 0 },
-    { "editor", "api", "Expose parser-backed editor intelligence APIs.", MERMAN_CAPABILITY_EDITOR_TARGETS, 2, MERMAN_CAPABILITY_EDITOR_IMPLICATIONS, 1 },
-    { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, MERMAN_CAPABILITY_JPEG_IMPLICATIONS, 1 },
+    { "editor", "api", "Expose parser-backed editor intelligence APIs.", MERMAN_CAPABILITY_EDITOR_TARGETS, 2, NULL, 0 },
+    { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
     { "network-icons", "tool", "Compile CLI network icon loading commands.", MERMAN_CAPABILITY_NETWORK_ICONS_TARGETS, 1, NULL, 0 },
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
-    { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, MERMAN_CAPABILITY_PDF_IMPLICATIONS, 1 },
-    { "png", "output", "Export rendered diagrams as PNG.", MERMAN_CAPABILITY_PNG_TARGETS, 1, MERMAN_CAPABILITY_PNG_IMPLICATIONS, 1 },
+    { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, NULL, 0 },
+    { "png", "output", "Export rendered diagrams as PNG.", MERMAN_CAPABILITY_PNG_TARGETS, 1, NULL, 0 },
     { "shell-completions", "tool", "Compile CLI shell completion generation.", MERMAN_CAPABILITY_SHELL_COMPLETIONS_TARGETS, 1, NULL, 0 },
     { "svg", "output", "Render Mermaid input as SVG.", MERMAN_CAPABILITY_SVG_TARGETS, 3, NULL, 0 },
     { "system-clock", "adapter", "Compile the native system clock adapter.", MERMAN_CAPABILITY_SYSTEM_CLOCK_TARGETS, 1, NULL, 0 },

@@ -1551,6 +1551,35 @@ mod tests {
     }
 
     #[test]
+    fn committed_descriptor_only_implies_svg_for_renderer_engines() {
+        let descriptor = committed_descriptor();
+        let implications = descriptor
+            .capabilities
+            .iter()
+            .filter(|capability| !capability.implications.is_empty())
+            .map(|capability| {
+                (
+                    capability.id.as_str(),
+                    capability
+                        .implications
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<BTreeSet<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(
+            implications,
+            BTreeMap::from([
+                ("layout-cytoscape", BTreeSet::from(["svg"])),
+                ("layout-elk", BTreeSet::from(["svg"])),
+                ("math", BTreeSet::from(["svg"])),
+            ])
+        );
+    }
+
+    #[test]
     fn generated_projections_are_complete_for_rust_typescript_and_native_consumers() {
         let descriptor = committed_descriptor();
         let rust = render_rust(&descriptor).unwrap();

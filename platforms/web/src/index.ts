@@ -12,6 +12,7 @@ import {
 import {
   MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "./generated/text-measurement-abi.js";
+import { tightenResourceOptions } from "./generated/resource-contract.js";
 
 import {
   isAsciiDiagramType,
@@ -1393,18 +1394,38 @@ export function withResourceOptions<T extends CommonBindingOptions>(
   resources: ResourceOptions,
 ): T {
   const result: CommonBindingOptions = { ...options };
-  let hasWrapper = false;
-  for (const key of ["analysis", "merman"] as const) {
-    if (Object.prototype.hasOwnProperty.call(options, key)) {
-      hasWrapper = true;
-      const wrapper = options[key];
-      if (wrapper !== undefined && isRecord(wrapper)) {
-        result[key] = { ...wrapper, resources };
-      }
-    }
+  const wrappers = (["analysis", "merman"] as const).filter((key) =>
+    Object.prototype.hasOwnProperty.call(options, key)
+  );
+  if (wrappers.length > 1) {
+    throw new TypeError(
+      "Merman options must not contain both analysis and merman wrappers."
+    );
   }
-  if (!hasWrapper) {
-    result.resources = resources;
+  if (
+    wrappers.length !== 0 &&
+    Object.prototype.hasOwnProperty.call(options, "resources")
+  ) {
+    throw new TypeError(
+      "Merman options must not mix top-level resources with an analysis or merman wrapper."
+    );
+  }
+
+  const wrapperKey = wrappers[0];
+  if (wrapperKey !== undefined) {
+    const wrapper = options[wrapperKey];
+    if (!isRecord(wrapper)) {
+      throw new TypeError(`Merman ${wrapperKey} wrapper must be an object.`);
+    }
+    result[wrapperKey] = {
+      ...wrapper,
+      resources: tightenResourceOptions(
+        resources,
+        wrapper.resources as ResourceOptions | undefined,
+      ),
+    };
+  } else {
+    result.resources = tightenResourceOptions(resources, options.resources);
   }
   return result as T;
 }
@@ -1645,7 +1666,7 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
   if (!isRecord(value) || value.schema_version !== 1) {
     throw new Error("Merman WASM returned an unsupported runtime catalog schema.");
   }
-  assertExactRecordKeys(
+  assertRequiredRecordKeys(
     value,
     [
       "capabilities",
@@ -1677,7 +1698,7 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
   if (!isRecord(value.registry)) {
     throw new Error("Merman WASM returned an invalid runtime registry catalog.");
   }
-  assertExactRecordKeys(
+  assertRequiredRecordKeys(
     value.registry,
     ["diagram_family_count"],
     "Merman WASM runtime registry catalog"
@@ -1704,7 +1725,7 @@ function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
   if (!isRecord(value)) {
     throw new Error("Merman WASM returned an invalid runtime capability report.");
   }
-  assertExactRecordKeys(value, [
+  assertRequiredRecordKeys(value, [
     "capability_ids",
     "output_ids",
     "operation_ids",
@@ -1763,21 +1784,15 @@ function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
 function normalizeRuntimeResourceContract(
   value: Record<string, unknown>
 ): RuntimeCatalog["resources"] {
-  assertExactRecordKeys(
+  assertRequiredRecordKeys(
     value,
     [
-      "schema_version",
       "general_binding_default_profile",
       "cli_default_profile",
       "limits",
       "profiles",
     ],
     "Merman WASM runtime resource contract"
-  );
-  const resourceSchemaVersion = assertSafeIntegerField(
-    value.schema_version,
-    "runtime resource schema version",
-    1
   );
   if (
     typeof value.general_binding_default_profile !== "string" ||
@@ -1793,7 +1808,7 @@ function normalizeRuntimeResourceContract(
     if (!isRecord(limit)) {
       throw new Error("Merman WASM returned an invalid runtime resource limit.");
     }
-    assertExactRecordKeys(
+    assertRequiredRecordKeys(
       limit,
       ["id", "phase", "description", "overridable", "hard_cap"],
       "Merman WASM runtime resource limit"
@@ -1819,7 +1834,7 @@ function normalizeRuntimeResourceContract(
     if (!isRecord(profile)) {
       throw new Error("Merman WASM returned an invalid runtime resource profile.");
     }
-    assertExactRecordKeys(
+    assertRequiredRecordKeys(
       profile,
       ["id", "purpose", "trust_assumption", "recommended_binding_default", "limits"],
       "Merman WASM runtime resource profile"
@@ -1852,7 +1867,6 @@ function normalizeRuntimeResourceContract(
     };
   });
   return {
-    schema_version: resourceSchemaVersion,
     general_binding_default_profile: value.general_binding_default_profile,
     cli_default_profile: value.cli_default_profile,
     limits,
@@ -1871,7 +1885,7 @@ function normalizeTextMeasurementCapabilities(value: unknown): TextMeasurementCa
   if (!isRecord(value)) {
     throw new Error("Merman WASM returned invalid text measurement capabilities.");
   }
-  assertExactRecordKeys(
+  assertRequiredRecordKeys(
     value,
     ["protocol_version", "provider_ids"],
     "Merman WASM text measurement capabilities"
@@ -1940,18 +1954,16 @@ function assertSafeIntegerField(value: unknown, label: string, minimum: number):
   throw new Error(`Merman WASM returned an invalid ${label}.`);
 }
 
-function assertExactRecordKeys(
+function assertRequiredRecordKeys(
   value: Record<string, unknown>,
-  expected: readonly string[],
+  required: readonly string[],
   label: string
 ): void {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  if (
-    actual.length !== wanted.length ||
-    actual.some((key, index) => key !== wanted[index])
-  ) {
-    throw new Error(`${label} has an unsupported shape.`);
+  const missing = required.filter(
+    (key) => !Object.prototype.hasOwnProperty.call(value, key)
+  );
+  if (missing.length !== 0) {
+    throw new Error(`${label} is missing required fields: ${missing.join(", ")}.`);
   }
 }
 

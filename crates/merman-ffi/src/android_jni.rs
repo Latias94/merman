@@ -477,7 +477,7 @@ fn register_native_methods(env: &mut Env<'_>) -> JniResult<()> {
         ),
         native_method!(
             "nativeExecute",
-            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B",
+            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B",
             native_engine_execute
         ),
     ];
@@ -519,7 +519,13 @@ pub extern "system" fn native_execute(
         };
         let result =
             super::binding_engine_for_transport(options_json.as_bytes()).and_then(|engine| {
-                execute_operation(&engine, &operation_id, source.as_bytes(), uri.as_deref())
+                execute_operation(
+                    &engine,
+                    &operation_id,
+                    source.as_bytes(),
+                    b"",
+                    uri.as_deref(),
+                )
             });
         Ok(result_to_java_bytes(env, result))
     })
@@ -662,6 +668,7 @@ pub extern "system" fn native_engine_execute(
     handle: jlong,
     operation_id: JString<'_>,
     source: JString<'_>,
+    options_json: JObject<'_>,
     uri: JObject<'_>,
 ) -> jbyteArray {
     with_env_resolved(&mut unowned_env, |env| {
@@ -672,6 +679,9 @@ pub extern "system" fn native_engine_execute(
             return Ok(ptr::null_mut());
         };
         let Some(source) = required_java_string(env, source, "source") else {
+            return Ok(ptr::null_mut());
+        };
+        let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
             return Ok(ptr::null_mut());
         };
         let Some(uri) = nullable_java_string(env, uri, "uri") else {
@@ -686,7 +696,13 @@ pub extern "system" fn native_engine_execute(
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone();
-            execute_operation(&engine, &operation_id, source.as_bytes(), uri.as_deref())
+            execute_operation(
+                &engine,
+                &operation_id,
+                source.as_bytes(),
+                options_json.as_bytes(),
+                uri.as_deref(),
+            )
         });
         Ok(result_to_java_bytes(env, result))
     })
@@ -719,6 +735,7 @@ fn execute_operation(
     engine: &BindingEngine,
     operation_id: &str,
     source: &[u8],
+    options_json: &[u8],
     uri: Option<&str>,
 ) -> Result<Vec<u8>, BindingError> {
     engine
@@ -726,7 +743,7 @@ fn execute_operation(
             operation_id,
             source,
             uri: uri.map(str::as_bytes),
-            options_json: b"",
+            options_json,
         })
         .map(|result| result.data)
 }

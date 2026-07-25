@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -94,14 +94,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "api",
         description: "Expose parser-backed editor intelligence APIs.",
         targets: &["native", "web"],
-        implications: &["analysis"],
+        implications: &[],
     },
     CapabilityDescriptor {
         id: "jpeg",
         kind: "output",
         description: "Export rendered diagrams as JPEG.",
         targets: &["native"],
-        implications: &["svg"],
+        implications: &[],
     },
     CapabilityDescriptor {
         id: "layout-cytoscape",
@@ -143,14 +143,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "output",
         description: "Export rendered diagrams as PDF.",
         targets: &["native"],
-        implications: &["svg"],
+        implications: &[],
     },
     CapabilityDescriptor {
         id: "png",
         kind: "output",
         description: "Export rendered diagrams as PNG.",
         targets: &["native"],
-        implications: &["svg"],
+        implications: &[],
     },
     CapabilityDescriptor {
         id: "shell-completions",

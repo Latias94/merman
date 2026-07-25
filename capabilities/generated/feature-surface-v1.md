@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f8c922c748`
+Semantic digest: `sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9`
 
 ## Public Leaves
 
@@ -10,15 +10,15 @@ Semantic digest: `sha256:762a327acc6a84402a15578b956796fdde2d62a0907e5f5c554123f
 | --- | --- | --- | --- | --- |
 | `analysis` | `Api` | `native`, `web`, `typst` | none | Expose diagnostics and semantic analysis APIs. |
 | `ascii` | `Output` | `native`, `web` | none | Render supported Mermaid semantics as terminal text. |
-| `editor` | `Api` | `native`, `web` | `analysis` | Expose parser-backed editor intelligence APIs. |
-| `jpeg` | `Output` | `native` | `svg` | Export rendered diagrams as JPEG. |
+| `editor` | `Api` | `native`, `web` | none | Expose parser-backed editor intelligence APIs. |
+| `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
 | `network-icons` | `Tool` | `native` | none | Compile CLI network icon loading commands. |
 | `parallel-markdown` | `Tool` | `native` | none | Compile parallel CLI Markdown batch processing. |
-| `pdf` | `Output` | `native` | `svg` | Export rendered diagrams as PDF. |
-| `png` | `Output` | `native` | `svg` | Export rendered diagrams as PNG. |
+| `pdf` | `Output` | `native` | none | Export rendered diagrams as PDF. |
+| `png` | `Output` | `native` | none | Export rendered diagrams as PNG. |
 | `shell-completions` | `Tool` | `native` | none | Compile CLI shell completion generation. |
 | `svg` | `Output` | `native`, `web`, `typst` | none | Render Mermaid input as SVG. |
 | `system-clock` | `Adapter` | `native` | none | Compile the native system clock adapter. |

@@ -164,9 +164,12 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         "document-analysis-json", "jpeg", "layout-json", "pdf", "png", "semantic-json", "svg",
         "validation-json",
     ]
-    guard expectedCapabilities.isSubset(of: Set(capabilityIDs)),
-          expectedOutputs.isSubset(of: Set(outputIDs)),
-          expectedOperations.isSubset(of: Set(operationIDs)),
+    guard expectedCapabilities == Set(capabilityIDs),
+          expectedOutputs == Set(outputIDs),
+          expectedOperations == Set(operationIDs),
+          Set(systemAdapterIDs) == [
+              "system-clock", "system-random", "system-timezone",
+          ],
           Set(outputIDs).isSubset(of: Set(operationIDs)),
           Set(systemAdapterIDs).isSubset(of: Set(capabilityIDs)) else {
         throw SmokeError.failed("runtime catalog has invalid native capability relations")

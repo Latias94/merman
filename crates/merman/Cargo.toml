@@ -44,10 +44,10 @@ artifact-profile-required = true
 # The facade is the ergonomic Rust entry point. Low-level implementation crates stay
 # default-empty; this product default intentionally provides a complete native SVG path.
 default = ["complete-svg"]
-system-clock = ["merman-core/system-clock", "merman-ascii?/system-clock", "merman-render?/system-clock"]
-system-timezone = ["merman-core/system-timezone", "merman-ascii?/system-timezone", "merman-render?/system-timezone"]
-system-random = ["merman-core/system-random", "merman-ascii?/system-random", "merman-render?/system-random"]
-system-timing = ["merman-core/system-timing", "merman-ascii?/system-timing", "merman-render?/system-timing"]
+system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
+system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
+system-random = ["merman-core/system-random", "merman-render?/system-random"]
+system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
 svg = ["dep:merman-render", "dep:serde_json", "dep:thiserror"]
 analysis = ["dep:merman-analysis"]
 editor = ["analysis", "dep:merman-editor-core"]
@@ -88,6 +88,10 @@ serde_json.workspace = true
 [[test]]
 name = "prepared_render"
 required-features = ["svg"]
+
+[[test]]
+name = "feature_surface_smoke"
+required-features = ["analysis", "editor"]
 
 [[test]]
 name = "runtime_determinism"

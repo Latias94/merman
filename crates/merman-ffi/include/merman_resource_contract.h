@@ -7,8 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MERMAN_RESOURCE_CONTRACT_SCHEMA_VERSION 1
-
 typedef int32_t MermanResourceProfile;
 enum {
     MERMAN_RESOURCE_PROFILE_INTERACTIVE = 0,

@@ -1,4 +1,4 @@
-use crate::cli::ParseCliArgs;
+use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::io::read_named_text_file;
 use merman::runtime::RuntimePolicy;
@@ -16,24 +16,34 @@ use merman::svg::{
 use std::sync::Arc;
 
 pub(crate) fn engine_for(parse: &ParseCliArgs) -> Result<Engine, CliError> {
-    let time = ResolvedCliTimePolicy::new(parse)?;
-    Ok(time.apply_engine(Engine::new().with_site_config(site_config_for(parse)?)))
+    let runtime = ResolvedCliRuntimePolicy::new(&parse.runtime)?;
+    Ok(runtime.apply_engine(Engine::new().with_site_config(site_config_for(parse)?)))
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedCliTimePolicy {
+struct ResolvedCliRuntimePolicy {
     runtime_policy: RuntimePolicy,
 }
 
-impl ResolvedCliTimePolicy {
-    fn new(parse: &ParseCliArgs) -> Result<Self, CliError> {
-        let mut runtime_policy = default_runtime_policy()?;
-        if let Some(offset_minutes) = parse.fixed_local_offset_minutes {
+impl ResolvedCliRuntimePolicy {
+    fn new(args: &RuntimeCliArgs) -> Result<Self, CliError> {
+        let mut runtime_policy = match args.policy {
+            RuntimePolicyKind::Deterministic => RuntimePolicy::deterministic(),
+            RuntimePolicyKind::Native => RuntimePolicy::try_native().map_err(|err| {
+                CliError::InvalidInput(format!("--runtime native is unavailable: {err}"))
+            })?,
+        };
+        if args.system_timing {
+            runtime_policy = runtime_policy.try_with_system_timing().map_err(|err| {
+                CliError::InvalidInput(format!("--system-timing is unavailable: {err}"))
+            })?;
+        }
+        if let Some(offset_minutes) = args.fixed_local_offset_minutes {
             runtime_policy = runtime_policy
                 .try_with_fixed_local_offset_minutes(offset_minutes)
                 .map_err(|err| CliError::InvalidInput(err.to_string()))?;
         }
-        if let Some(today) = parse.fixed_today {
+        if let Some(today) = args.fixed_today {
             runtime_policy = runtime_policy
                 .try_with_fixed_today_at_local_midnight(today)
                 .map_err(|err| CliError::InvalidInput(err.to_string()))?;
@@ -51,30 +61,9 @@ impl ResolvedCliTimePolicy {
     }
 }
 
-#[cfg(all(
-    feature = "system-clock",
-    feature = "system-timezone",
-    feature = "system-random",
-    feature = "system-timing"
-))]
-fn default_runtime_policy() -> Result<RuntimePolicy, CliError> {
-    RuntimePolicy::try_native()
-        .map_err(|err| CliError::InvalidInput(format!("native runtime unavailable: {err}")))
-}
-
-#[cfg(not(all(
-    feature = "system-clock",
-    feature = "system-timezone",
-    feature = "system-random",
-    feature = "system-timing"
-)))]
-fn default_runtime_policy() -> Result<RuntimePolicy, CliError> {
-    Ok(RuntimePolicy::deterministic())
-}
-
 #[cfg(feature = "analysis")]
 pub(crate) fn runtime_policy_for(parse: &ParseCliArgs) -> Result<RuntimePolicy, CliError> {
-    Ok(ResolvedCliTimePolicy::new(parse)?.runtime_policy)
+    Ok(ResolvedCliRuntimePolicy::new(&parse.runtime)?.runtime_policy)
 }
 
 pub(crate) fn site_config_for(parse: &ParseCliArgs) -> Result<MermaidConfig, CliError> {
@@ -115,7 +104,7 @@ pub(crate) fn renderer_for(
     render: &RenderCliArgs,
     icon_registry: Option<Arc<IconRegistry>>,
 ) -> Result<HeadlessRenderer, CliError> {
-    let time = ResolvedCliTimePolicy::new(parse)?;
+    let runtime = ResolvedCliRuntimePolicy::new(&parse.runtime)?;
     let mut environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_policy(merman::svg::RenderResourcePolicy::for_profile(
@@ -128,7 +117,7 @@ pub(crate) fn renderer_for(
     if let Some(registry) = icon_registry {
         environment = environment.with_icon_registry(registry);
     }
-    environment = time.apply_environment(environment);
+    environment = runtime.apply_environment(environment);
 
     let svg = SvgRenderOptions {
         diagram_id: render.svg_id.as_deref().map(merman::svg::sanitize_svg_id),
@@ -140,7 +129,7 @@ pub(crate) fn renderer_for(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let engine = time.apply_engine(Engine::new().with_site_config(site_config));
+    let engine = runtime.apply_engine(Engine::new().with_site_config(site_config));
     Ok(
         HeadlessRenderer::from_engine_and_environment(engine, environment)
             .with_parse_options(parse_options(parse))
@@ -205,54 +194,9 @@ mod tests {
         }
     }
 
-    #[cfg(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random",
-        feature = "system-timing"
-    ))]
     #[test]
-    fn native_profile_preserves_the_system_clock() {
-        let parse = ParseCliArgs {
-            fixed_local_offset_minutes: Some(480),
-            ..Default::default()
-        };
-        let resolved = ResolvedCliTimePolicy::new(&parse).expect("CLI time policy");
-        let context = resolved
-            .runtime_policy
-            .begin_operation()
-            .expect("native operation context");
-
-        assert_eq!(
-            context.clock_source(),
-            merman::runtime::RuntimeValueSource::System
-        );
-        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
-    }
-
-    #[test]
-    fn boundary_fixed_today_returns_invalid_input_instead_of_panicking() {
-        let parse = ParseCliArgs {
-            fixed_today: Some(chrono::NaiveDate::MIN),
-            fixed_local_offset_minutes: Some(1439),
-            ..Default::default()
-        };
-
-        let error =
-            ResolvedCliTimePolicy::new(&parse).expect_err("boundary instant must be rejected");
-        assert!(matches!(error, CliError::InvalidInput(_)));
-        assert!(error.to_string().contains("local datetime"));
-    }
-
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random",
-        feature = "system-timing"
-    )))]
-    #[test]
-    fn lean_profiles_use_the_deterministic_runtime_policy() {
-        let context = ResolvedCliTimePolicy::new(&ParseCliArgs::default())
+    fn default_runtime_policy_is_deterministic_in_every_build() {
+        let context = ResolvedCliRuntimePolicy::new(&RuntimeCliArgs::default())
             .expect("deterministic CLI policy")
             .runtime_policy
             .begin_operation()
@@ -262,5 +206,113 @@ mod tests {
             context.clock_source(),
             merman::runtime::RuntimeValueSource::Fixed
         );
+        assert_eq!(
+            context.random_source(),
+            merman::runtime::RuntimeValueSource::Fixed
+        );
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
+        assert!(context.timing().is_none());
+    }
+
+    #[cfg(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    ))]
+    #[test]
+    fn explicit_native_runtime_uses_system_adapters_without_enabling_timing() {
+        let args = RuntimeCliArgs {
+            policy: RuntimePolicyKind::Native,
+            fixed_local_offset_minutes: Some(480),
+            ..Default::default()
+        };
+        let resolved =
+            ResolvedCliRuntimePolicy::new(&args).expect("explicit native CLI runtime policy");
+        let context = resolved
+            .runtime_policy
+            .begin_operation()
+            .expect("native operation context");
+
+        assert_eq!(
+            context.clock_source(),
+            merman::runtime::RuntimeValueSource::System
+        );
+        assert_eq!(
+            context.random_source(),
+            merman::runtime::RuntimeValueSource::System
+        );
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
+        assert!(context.timing().is_none());
+    }
+
+    #[cfg(not(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    )))]
+    #[test]
+    fn unavailable_native_runtime_is_an_invalid_cli_configuration() {
+        let args = RuntimeCliArgs {
+            policy: RuntimePolicyKind::Native,
+            ..Default::default()
+        };
+        let error =
+            ResolvedCliRuntimePolicy::new(&args).expect_err("native policy must be unavailable");
+
+        assert!(matches!(error, CliError::InvalidInput(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("--runtime native is unavailable")
+        );
+        assert!(error.to_string().contains("is not compiled"));
+    }
+
+    #[cfg(feature = "system-timing")]
+    #[test]
+    fn system_timing_is_an_independent_explicit_runtime_choice() {
+        let args = RuntimeCliArgs {
+            system_timing: true,
+            ..Default::default()
+        };
+        let context = ResolvedCliRuntimePolicy::new(&args)
+            .expect("compiled timing policy")
+            .runtime_policy
+            .begin_operation()
+            .expect("timed operation context");
+
+        assert_eq!(
+            context.clock_source(),
+            merman::runtime::RuntimeValueSource::Fixed
+        );
+        assert!(context.timing().is_some());
+    }
+
+    #[cfg(not(feature = "system-timing"))]
+    #[test]
+    fn unavailable_system_timing_is_an_invalid_cli_configuration() {
+        let args = RuntimeCliArgs {
+            system_timing: true,
+            ..Default::default()
+        };
+        let error = ResolvedCliRuntimePolicy::new(&args).expect_err("timing must be unavailable");
+
+        assert!(matches!(error, CliError::InvalidInput(_)));
+        assert!(error.to_string().contains("--system-timing is unavailable"));
+        assert!(error.to_string().contains("`system-timing`"));
+    }
+
+    #[test]
+    fn boundary_fixed_today_returns_invalid_input_instead_of_panicking() {
+        let args = RuntimeCliArgs {
+            fixed_today: Some(chrono::NaiveDate::MIN),
+            fixed_local_offset_minutes: Some(1439),
+            ..Default::default()
+        };
+
+        let error =
+            ResolvedCliRuntimePolicy::new(&args).expect_err("boundary instant must be rejected");
+        assert!(matches!(error, CliError::InvalidInput(_)));
+        assert!(error.to_string().contains("local datetime"));
     }
 }

@@ -7,6 +7,43 @@ import io.merman.MermanReusableEngine
 import io.merman.MermanTextMeasureResult
 import io.merman.MermanTextMeasurementOperation
 import io.merman.MermanTextMeasurementResultKind
+import org.json.JSONArray
+import org.json.JSONObject
+
+private val expectedRuntimeCapabilities = setOf(
+    "analysis",
+    "ascii",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "pdf",
+    "png",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+)
+private val expectedRuntimeOutputs = setOf("ascii", "jpeg", "pdf", "png", "svg")
+private val expectedRuntimeOperations = setOf(
+    "analysis-facts-json",
+    "analysis-json",
+    "ascii",
+    "document-analysis-facts-json",
+    "document-analysis-json",
+    "jpeg",
+    "layout-json",
+    "pdf",
+    "png",
+    "semantic-json",
+    "svg",
+    "validation-json",
+)
+private val expectedSystemAdapters = setOf(
+    "system-clock",
+    "system-random",
+    "system-timezone",
+)
 
 private val textMeasurementOperations = intArrayOf(
     MermanTextMeasurementOperation.MEASURE,
@@ -227,15 +264,22 @@ fun runMermanSmoke() {
         "diagram family capabilities smoke failed"
     }
     val runtimeCatalogJson = MermanEngine.runtimeCatalogJson()
+    val runtimeCatalog = JSONObject(runtimeCatalogJson)
+    val runtimeCapabilities = runtimeCatalog.getJSONObject("capabilities")
     check(
-        runtimeCatalogJson.contains("\"schema_version\":1") &&
-            runtimeCatalogJson.contains("\"capabilities\":") &&
-            runtimeCatalogJson.contains("\"registry\":") &&
-            runtimeCatalogJson.contains("\"resources\":") &&
-            runtimeCatalogJson.contains("\"operation_ids\":[") &&
-            runtimeCatalogJson.contains("\"transport_api_version\":1") &&
-            runtimeCatalogJson.contains("\"system_adapter_ids\":[") &&
-            runtimeCatalogJson.contains("\"general_binding_default_profile\":\"interactive\""),
+        runtimeCatalog.getInt("schema_version") == 1 &&
+            runtimeCatalog.getInt("transport_api_version") == 1 &&
+            runtimeCatalog.getJSONObject("registry").getInt("diagram_family_count") > 0 &&
+            runtimeCatalog.getJSONObject("resources")
+                .getString("general_binding_default_profile") == "interactive" &&
+            runtimeCapabilities.getJSONArray("capability_ids").stringSet() ==
+            expectedRuntimeCapabilities &&
+            runtimeCapabilities.getJSONArray("output_ids").stringSet() ==
+            expectedRuntimeOutputs &&
+            runtimeCapabilities.getJSONArray("operation_ids").stringSet() ==
+            expectedRuntimeOperations &&
+            runtimeCapabilities.getJSONArray("system_adapter_ids").stringSet() ==
+            expectedSystemAdapters,
     ) {
         "runtime catalog smoke failed"
     }
@@ -260,6 +304,13 @@ fun runMermanSmoke() {
 
     val engine = MermanReusableEngine()
     try {
+        val perCallOptionsSvg = engine.renderSvg(
+            source,
+            """{"svg":{"diagram_id":"android-reusable-options"}}""",
+        )
+        check(perCallOptionsSvg.contains("""id="android-reusable-options"""")) {
+            "reusable engine did not apply per-call options"
+        }
         var measureCalls = 0
         var sawCondition = false
         var sawNowrap = false
@@ -477,3 +528,10 @@ fun runMermanSmoke() {
         throwingEngine.close()
     }
 }
+
+private fun JSONArray.stringSet(): Set<String> =
+    buildSet {
+        for (index in 0 until length()) {
+            add(getString(index))
+        }
+    }

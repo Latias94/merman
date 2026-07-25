@@ -138,9 +138,22 @@ struct CargoMetadataTarget {
     required_features: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct BindingOperationAuthority {
+    binding_operations: Vec<CanonicalBindingOperation>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CanonicalBindingOperation {
+    id: String,
+    capability: Option<String>,
+    targets: Vec<String>,
+}
+
 struct ValidationContext {
     root: PathBuf,
     capability: CapabilityContractCatalog,
+    binding_operations: Vec<CanonicalBindingOperation>,
     packages: BTreeMap<(String, String), CargoPackage>,
     cargo_profiles: BTreeSet<String>,
     rust_targets: BTreeSet<String>,
@@ -243,6 +256,12 @@ impl ValidationContext {
         })?;
         let capability = super::capability_surface::load_capability_contract_catalog(&root)
             .map_err(|error| format!("capability authority: {error}"))?;
+        let capability_source = fs::read_to_string(root.join(CAPABILITY_DESCRIPTOR_PATH))
+            .map_err(|error| format!("cannot read capability authority: {error}"))?;
+        let binding_operations =
+            serde_json::from_str::<BindingOperationAuthority>(&capability_source)
+                .map_err(|error| format!("cannot decode capability operations: {error}"))?
+                .binding_operations;
         let output = Command::new("cargo")
             .args(["metadata", "--no-deps", "--format-version", "1"])
             .current_dir(&root)
@@ -293,6 +312,7 @@ impl ValidationContext {
         Ok(Self {
             root,
             capability,
+            binding_operations,
             packages,
             cargo_profiles,
             rust_targets,
@@ -328,6 +348,116 @@ fn enabled_local_features(package: &CargoPackage, recipe: &CargoRecipe) -> BTree
         expand_local_feature(feature, &package.features, &mut enabled);
     }
     enabled
+}
+
+fn validate_capability_feature_closure(
+    profile: &ArtifactProfile,
+    package: &CargoPackage,
+    enabled: &BTreeSet<String>,
+    catalog: &CapabilityContractCatalog,
+    path: &str,
+) -> Result<(), String> {
+    let declared = profile
+        .expected
+        .capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let fixed = package
+        .metadata
+        .get("merman")
+        .and_then(|metadata| metadata.get("fixed-capabilities"))
+        .map(|value| {
+            value
+                .as_array()
+                .ok_or_else(|| {
+                    format!(
+                        "{}: package.metadata.merman.fixed-capabilities must be an array",
+                        package.manifest_path.display()
+                    )
+                })?
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    value.as_str().ok_or_else(|| {
+                        format!(
+                            "{}: package.metadata.merman.fixed-capabilities[{index}] must be a string",
+                            package.manifest_path.display()
+                        )
+                    })
+                })
+                .collect::<Result<BTreeSet<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    for capability in &fixed {
+        if !catalog.capability_targets.contains_key(*capability) {
+            return Err(format!(
+                "{}: package.metadata.merman.fixed-capabilities contains unknown capability `{capability}`",
+                package.manifest_path.display()
+            ));
+        }
+    }
+    let enabled_feature_capabilities = package
+        .features
+        .keys()
+        .filter(|feature| catalog.capability_targets.contains_key(*feature))
+        .filter(|feature| enabled.contains(*feature))
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let actual = fixed
+        .union(&enabled_feature_capabilities)
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if actual != declared {
+        let missing = declared.difference(&actual).copied().collect::<Vec<_>>();
+        let undeclared = actual.difference(&declared).copied().collect::<Vec<_>>();
+        return Err(format!(
+            "{path}.expected.capabilities: must equal package fixed capabilities plus enabled same-named Cargo capability features; missing owners {missing:?}, undeclared enabled capabilities {undeclared:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DerivedContractSurface {
+    outputs: BTreeSet<String>,
+    operation_ids: BTreeSet<String>,
+}
+
+fn derive_contract_surface(
+    catalog: &CapabilityContractCatalog,
+    binding_operations: &[CanonicalBindingOperation],
+    target: &str,
+    capabilities: &BTreeSet<String>,
+) -> DerivedContractSurface {
+    let outputs = catalog
+        .output_capabilities
+        .iter()
+        .filter(|(output, capability)| {
+            capabilities.contains(*capability) && catalog.output_targets[*output].contains(target)
+        })
+        .map(|(output, _)| output.clone())
+        .collect();
+    let operation_ids = binding_operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .targets
+                .iter()
+                .any(|candidate| candidate == target)
+                && operation
+                    .capability
+                    .as_ref()
+                    .is_none_or(|capability| capabilities.contains(capability))
+        })
+        .map(|operation| operation.id.clone())
+        .collect();
+
+    DerivedContractSurface {
+        outputs,
+        operation_ids,
+    }
 }
 
 fn validate_cargo_dist_recipe(
@@ -378,6 +508,7 @@ fn validate_cargo_dist_recipe(
 fn validate_expected(
     profile: &ArtifactProfile,
     catalog: &CapabilityContractCatalog,
+    binding_operations: &[CanonicalBindingOperation],
     path: &str,
 ) -> Result<(), String> {
     let target = &profile.semantic_target;
@@ -420,22 +551,39 @@ fn validate_expected(
             "{path}.expected.runtime_ids: runtime report must equal the compiled capability IDs"
         ));
     }
-    for output in outputs {
+    for output in &outputs {
         let output_target = catalog
             .output_targets
-            .get(&output)
+            .get(output)
             .ok_or_else(|| format!("{path}.expected.outputs: unknown output `{output}`"))?;
         if !output_target.contains(target) {
             return Err(format!(
                 "{path}.expected.outputs: `{output}` is unavailable on `{target}`"
             ));
         }
-        let capability = &catalog.output_capabilities[&output];
+        let capability = &catalog.output_capabilities[output];
         if !capabilities.contains(capability) {
             return Err(format!(
                 "{path}.expected.outputs: `{output}` requires capability `{capability}`"
             ));
         }
+    }
+
+    let derived = derive_contract_surface(catalog, binding_operations, target, &capabilities);
+    if outputs != derived.outputs {
+        return Err(format!(
+            "{path}.expected.outputs: must equal outputs derived from the canonical operations for target `{target}` and capabilities {capabilities:?}; expected {:?}, found {outputs:?}",
+            derived.outputs
+        ));
+    }
+    let outputs_without_operations = outputs
+        .difference(&derived.operation_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !outputs_without_operations.is_empty() {
+        return Err(format!(
+            "{path}.expected.outputs: canonical outputs lack matching binding operations: {outputs_without_operations:?}"
+        ));
     }
     Ok(())
 }
@@ -541,6 +689,7 @@ fn validate_profile(
             ));
         }
     }
+    validate_capability_feature_closure(profile, package, &enabled, &context.capability, path)?;
 
     if let BuildTarget::TargetSet { triples } = &profile.cargo.build_target {
         if triples.is_empty() {
@@ -558,7 +707,12 @@ fn validate_profile(
         }
     }
     validate_cargo_dist_recipe(profile, package, path)?;
-    validate_expected(profile, &context.capability, path)
+    validate_expected(
+        profile,
+        &context.capability,
+        &context.binding_operations,
+        path,
+    )
 }
 
 fn package_requires_artifact_profile(
@@ -895,6 +1049,42 @@ mod tests {
     }
 
     #[test]
+    fn export_profiles_report_only_the_outputs_they_expose() {
+        let value = committed_value();
+        for (profile_id, expected) in [
+            ("rust-export-jpeg", json!(["jpeg"])),
+            ("rust-export-native-sdk", json!(["jpeg", "pdf", "png"])),
+            ("rust-export-pdf", json!(["pdf"])),
+            ("rust-export-png", json!(["png"])),
+        ] {
+            let index = profile_index(&value, profile_id);
+            assert_eq!(
+                value["profiles"][index]["expected"]["capabilities"],
+                expected
+            );
+            assert_eq!(
+                value["profiles"][index]["expected"]["runtime_ids"],
+                expected
+            );
+            assert_eq!(value["profiles"][index]["expected"]["outputs"], expected);
+        }
+    }
+
+    #[test]
+    fn rustdoc_profile_selects_renderer_engines_as_direct_leaves() {
+        let value = committed_value();
+        let index = profile_index(&value, "rustdoc-static-svg");
+        assert_eq!(
+            value["profiles"][index]["cargo"]["features"],
+            json!(["layout-cytoscape", "layout-elk", "math", "svg"])
+        );
+        assert_eq!(
+            value["profiles"][index]["expected"]["capabilities"],
+            json!(["layout-cytoscape", "layout-elk", "math", "svg"])
+        );
+    }
+
+    #[test]
     fn rejects_unknown_cargo_feature() {
         let mut value = committed_value();
         let index = profile_index(&value, "typst-wasm");
@@ -939,7 +1129,7 @@ mod tests {
     #[test]
     fn rejects_missing_capability_bearing_package_recipe() {
         let mut value = committed_value();
-        let index = profile_index(&value, "rust-ascii-native");
+        let index = profile_index(&value, "rust-ascii");
         value["profiles"].as_array_mut().unwrap().remove(index);
         let error = validate_fixture(value).unwrap_err();
         assert!(
@@ -986,8 +1176,17 @@ mod tests {
     #[test]
     fn rejects_cargo_dist_feature_drift_from_exact_release_profile() {
         let mut value = committed_value();
-        let index = profile_index(&value, "lsp-stdio-release");
-        value["profiles"][index]["cargo"]["features"] = json!(["stdio", "system-clock"]);
+        let index = profile_index(&value, "cli-release");
+        for field in [
+            &["cargo", "features"][..],
+            &["expected", "capabilities"][..],
+            &["expected", "runtime_ids"][..],
+        ] {
+            value["profiles"][index][field[0]][field[1]]
+                .as_array_mut()
+                .unwrap()
+                .retain(|item| item != "system-timing");
+        }
         let error = validate_fixture(value).unwrap_err();
         assert!(error.contains("package.metadata.dist.features"), "{error}");
     }
@@ -996,6 +1195,10 @@ mod tests {
     fn rejects_output_without_its_capability() {
         let mut value = committed_value();
         let index = profile_index(&value, "web-ascii");
+        value["profiles"][index]["cargo"]["features"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|item| item != "ascii");
         value["profiles"][index]["expected"]["capabilities"]
             .as_array_mut()
             .unwrap()
@@ -1006,6 +1209,77 @@ mod tests {
             .retain(|item| item != "ascii");
         let error = validate_fixture(value).unwrap_err();
         assert!(error.contains("requires capability `ascii`"), "{error}");
+    }
+
+    #[test]
+    fn rejects_declared_capability_removed_from_the_cargo_feature_closure() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-all");
+        value["profiles"][index]["cargo"]["features"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|feature| feature != "editor");
+        let error = validate_fixture(value).unwrap_err();
+        assert!(error.contains("missing owners [\"editor\"]"), "{error}");
+    }
+
+    #[test]
+    fn rejects_enabled_cargo_capability_omitted_from_the_declaration() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-editor-facade");
+        value["profiles"][index]["expected"]["capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "analysis");
+        value["profiles"][index]["expected"]["runtime_ids"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "analysis");
+        let error = validate_fixture(value).unwrap_err();
+        assert!(
+            error.contains("undeclared enabled capabilities [\"analysis\"]"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn rejects_capability_not_owned_by_the_artifact_package() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-core");
+        value["profiles"][index]["expected"]["capabilities"] = json!(["analysis"]);
+        value["profiles"][index]["expected"]["runtime_ids"] = json!(["analysis"]);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(error.contains("missing owners [\"analysis\"]"), "{error}");
+    }
+
+    #[test]
+    fn rejects_output_omitted_from_the_canonical_capability_surface() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "rust-svg-basic");
+        value["profiles"][index]["expected"]["outputs"] = json!([]);
+        let error = validate_fixture(value).unwrap_err();
+        assert!(
+            error.contains("must equal outputs derived from the canonical operations"),
+            "{error}"
+        );
+        assert!(error.contains("\"svg\""), "{error}");
+    }
+
+    #[test]
+    fn derives_invariant_and_capability_gated_operations_from_one_authority() {
+        let catalog = &context().capability;
+        let surface = derive_contract_surface(
+            catalog,
+            &context().binding_operations,
+            "native",
+            &BTreeSet::from(["analysis".to_string(), "svg".to_string()]),
+        );
+
+        assert!(surface.operation_ids.contains("semantic-json"));
+        assert!(surface.operation_ids.contains("svg"));
+        assert!(surface.operation_ids.contains("analysis-json"));
+        assert!(!surface.operation_ids.contains("png"));
+        assert_eq!(surface.outputs, BTreeSet::from(["svg".to_string()]));
     }
 
     #[test]

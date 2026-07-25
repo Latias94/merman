@@ -60,11 +60,11 @@ pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
-    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RESOURCE_CONTRACT_SCHEMA_VERSION,
-    RenderResourceLimitId, RenderResourcePolicy, RenderResourceProfile,
-    RenderResourceProfileDescriptor, ResourceLimitDescriptor, ResourceLimitExceeded,
-    ResourceLimitId, ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    resource_limit_descriptors, resource_profile_descriptors,
+    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
+    RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CompiledHostTheme, CssOverridePolicy, CssOverridePostprocessor,

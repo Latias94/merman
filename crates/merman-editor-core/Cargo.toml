@@ -15,6 +15,7 @@ categories = ["development-tools", "text-editors"]
 
 [package.metadata.merman]
 artifact-profile-required = true
+fixed-capabilities = ["analysis", "editor"]
 
 [features]
 default = []
