@@ -160,6 +160,35 @@ fn deep_treemap_chain(depth: usize) -> String {
 }
 
 #[test]
+fn treemap_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_treemap_svg_from_source(
+        r#"---
+title: Frontmatter treemap
+---
+treemap-beta
+"A": 1
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="treemapTitle" text-anchor="middle" dominant-baseline="middle">Frontmatter treemap</text>"#),
+        "frontmatter title should render when the Treemap body has none: {frontmatter_svg}"
+    );
+    assert!(frontmatter_svg.contains(r#"transform="translate(0, 30)" class="treemapContainer""#));
+
+    let body_svg = render_treemap_svg_from_source(
+        r#"---
+title: Frontmatter treemap
+---
+treemap-beta
+title Body treemap
+"A": 1
+"#,
+    );
+    assert!(body_svg.contains(">Body treemap</text>"));
+    assert!(!body_svg.contains(">Frontmatter treemap</text>"));
+}
+
+#[test]
 fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_basic_spec.mmd");
 

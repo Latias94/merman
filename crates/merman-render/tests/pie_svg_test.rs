@@ -120,6 +120,33 @@ fn pie_chart_content_is_grouped_before_title_and_legend_like_mermaid_11_16() {
 }
 
 #[test]
+fn pie_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_pie_from_text(
+        r#"---
+title: Frontmatter pie
+---
+pie
+  "A" : 1
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="pieTitleText">Frontmatter pie</text>"#),
+        "frontmatter title should render when the Pie body has none: {frontmatter_svg}"
+    );
+
+    let body_svg = render_pie_from_text(
+        r#"---
+title: Frontmatter pie
+---
+pie title Body pie
+  "A" : 1
+"#,
+    );
+    assert!(body_svg.contains(r#"class="pieTitleText">Body pie</text>"#));
+    assert!(!body_svg.contains(">Frontmatter pie</text>"));
+}
+
+#[test]
 fn pie_hidden_slices_still_reserve_color_domain_slots() {
     let layout = layout_pie_from_text(
         r#"pie

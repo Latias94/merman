@@ -28,13 +28,24 @@ fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
 
 pub(crate) fn layout_quadrantchart_diagram_typed(
     model: &QuadrantChartRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
     let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
     let theme = default_quadrant_theme(effective_config);
 
-    let title_text = model.title.as_deref().unwrap_or("").trim();
+    let title_text = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+        .unwrap_or("");
     let show_title = !title_text.is_empty();
 
     let show_x_axis = !model.axes.x_axis_left_text.trim().is_empty()

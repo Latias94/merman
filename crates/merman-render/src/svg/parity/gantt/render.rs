@@ -455,7 +455,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         out.push_str("/></g>");
     }
 
-    let title = model.title.as_deref().unwrap_or_default();
+    let title = layout.title.as_deref().unwrap_or_default();
     let _ = write!(
         &mut out,
         r#"<text x="{x}" y="{y}" class="titleText">{txt}</text>"#,

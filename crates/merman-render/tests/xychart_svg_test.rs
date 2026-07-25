@@ -59,6 +59,52 @@ fn svg_segment<'a>(svg: &'a str, start_needle: &str, end_needle: &str) -> &'a st
 }
 
 #[test]
+fn xychart_frontmatter_title_and_accessibility_metadata_match_mermaid() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+title: Frontmatter XY
+---
+xychart
+  accTitle: Accessible XY
+  accDescr: XY description
+  x-axis [A]
+  y-axis 0 --> 1
+  bar [1]
+"#,
+    );
+
+    assert_contains(&svg, ">Frontmatter XY</text>");
+    assert_contains(&svg, r#"aria-labelledby="chart-title-xychart""#);
+    assert_contains(&svg, r#"aria-describedby="chart-desc-xychart""#);
+    assert_contains(
+        &svg,
+        r#"<title id="chart-title-xychart">Accessible XY</title>"#,
+    );
+    assert_contains(
+        &svg,
+        r#"<desc id="chart-desc-xychart">XY description</desc>"#,
+    );
+}
+
+#[test]
+fn xychart_body_title_overrides_frontmatter_title() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+title: Frontmatter XY
+---
+xychart
+  title "Body XY"
+  x-axis [A]
+  y-axis 0 --> 1
+  bar [1]
+"#,
+    );
+
+    assert_contains(&svg, ">Body XY</text>");
+    assert!(!svg.contains(">Frontmatter XY</text>"));
+}
+
+#[test]
 fn xychart_layout_carries_data_label_outside_policy() {
     let layout = layout_xychart_from_text(
         r"---

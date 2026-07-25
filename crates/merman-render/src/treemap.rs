@@ -370,16 +370,24 @@ fn position_node(
 
 pub(crate) fn layout_treemap_diagram_typed(
     model: &TreemapDiagramRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
     let cfg = TreemapConfigView::new(effective_config).layout_settings();
+    let title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+        .map(str::to_owned);
 
-    let title_height = if model.title.as_deref().is_some_and(|t| !t.trim().is_empty()) {
-        30.0
-    } else {
-        0.0
-    };
+    let title_height = if title.is_some() { 30.0 } else { 0.0 };
 
     let width = if cfg.node_width > 0.0 {
         cfg.node_width * TREEMAP_SECTION_INNER_PADDING_PX
@@ -467,7 +475,7 @@ pub(crate) fn layout_treemap_diagram_typed(
         value_format: cfg.value_format,
         acc_title: model.acc_title.clone(),
         acc_descr: model.acc_descr.clone(),
-        title: model.title.clone(),
+        title,
         sections,
         leaves,
     })

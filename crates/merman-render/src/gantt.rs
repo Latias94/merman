@@ -1050,12 +1050,24 @@ pub(crate) fn gantt_section_class_suffix(
 
 pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
+    diagram_title: Option<&str>,
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
     let mut m = model.clone();
+    let title = m
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+        .map(str::to_owned);
 
     let gantt_cfg = config.get("gantt").unwrap_or(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);
@@ -1534,7 +1546,7 @@ pub(crate) fn layout_gantt_diagram_typed(
         has_excludes_layer,
         bottom_ticks,
         top_ticks,
-        title: m.title.clone(),
+        title,
         title_x: width / 2.0,
         title_y: title_top_margin,
     })
@@ -1585,6 +1597,7 @@ mod tests {
         let utc = merman_core::time::LocalTimeZone::utc();
         let layout = layout_gantt_diagram_typed(
             &model,
+            None,
             &serde_json::json!({}),
             &DeterministicTextMeasurer::default(),
             800.0,

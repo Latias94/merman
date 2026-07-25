@@ -962,6 +962,7 @@ fn line_path(points: &[(f64, f64)]) -> Option<String> {
 /// Lays out a typed XYChart render model without a compatibility-JSON round trip.
 pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
@@ -980,7 +981,18 @@ pub(crate) fn layout_xychart_diagram_typed(
     let chart_cfg = parse_chart_config(effective_config, model);
     let theme_cfg = PresentationTheme::new(effective_config).xychart();
 
-    let title = model.title.clone().unwrap_or_default();
+    let title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+        .unwrap_or_default()
+        .to_owned();
     let title_height = single_text_height(&title, chart_cfg.title_font_size, text_measurer)
         + 2.0 * chart_cfg.title_padding;
     let show_chart_title =

@@ -1,14 +1,29 @@
 use super::super::theme::EventModelingTheme;
 use super::super::*;
+use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 
 pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
+    model: &EventModelingDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|description| description.trim_end_matches('\n'))
+        .filter(|description| !description.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = PresentationTheme::new(effective_config).eventmodeling();
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -20,12 +35,29 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.total_width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "eventmodeling");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
     let root_document = root_svg::RootViewportContext::new(
         crate::family::RenderFamilyKind::EventModeling,
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
+        );
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(description)
+        );
+    }
 
     let css = eventmodeling_css(&theme);
     let marker_id = format!("em-arrowhead-{diagram_id}");

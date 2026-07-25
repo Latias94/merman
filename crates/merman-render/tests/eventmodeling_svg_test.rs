@@ -67,6 +67,45 @@ data ItemAddedData {
 }
 
 #[test]
+fn eventmodeling_svg_wires_accessibility_metadata_to_the_root() {
+    let input = r#"eventmodeling
+accTitle: Accessible event model
+accDescr {
+  Event model description
+}
+tf 01 event Start
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("parse eventmodeling")
+        .expect("detect eventmodeling");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("eventmodeling-a11y".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render eventmodeling")
+        .svg()
+        .to_owned();
+
+    assert!(svg.contains(r#"aria-labelledby="chart-title-eventmodeling-a11y""#));
+    assert!(svg.contains(r#"aria-describedby="chart-desc-eventmodeling-a11y""#));
+    assert!(
+        svg.contains(
+            r#"<title id="chart-title-eventmodeling-a11y">Accessible event model</title>"#
+        )
+    );
+    assert!(
+        svg.contains(r#"<desc id="chart-desc-eventmodeling-a11y">Event model description</desc>"#)
+    );
+}
+
+#[test]
 fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
     let input =
         include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd");

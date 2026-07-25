@@ -593,6 +593,7 @@ fn render_builtin_family_artifact_raw(
             pair.layout(),
             pair.semantic(),
             effective_config_value,
+            title,
             options,
         ),
         BuiltinFamilyArtifact::Packet(pair) => packet::render_packet_diagram_svg_model(
@@ -635,6 +636,7 @@ fn render_builtin_family_artifact_raw(
             pair.layout(),
             pair.semantic(),
             effective_config_value,
+            title,
             options,
         ),
         BuiltinFamilyArtifact::Info(pair) => {
@@ -667,13 +669,17 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::QuadrantChart(pair) => {
             quadrantchart::render_quadrantchart_diagram_svg(
                 pair.layout(),
+                pair.semantic(),
                 effective_config_value,
                 options,
             )
         }
-        BuiltinFamilyArtifact::XyChart(pair) => {
-            xychart::render_xychart_diagram_svg(pair.layout(), effective_config_value, options)
-        }
+        BuiltinFamilyArtifact::XyChart(pair) => xychart::render_xychart_diagram_svg(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
         BuiltinFamilyArtifact::GitGraph(pair) => gitgraph::render_gitgraph_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
@@ -694,6 +700,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::EventModeling(pair) => {
             eventmodeling::render_eventmodeling_diagram_svg(
                 pair.layout(),
+                pair.semantic(),
                 effective_config_value,
                 options,
             )

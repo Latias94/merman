@@ -170,6 +170,38 @@ fn render_gantt_svg_from_text(text: &str) -> String {
 }
 
 #[test]
+fn gantt_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_gantt_svg_from_text(
+        r#"---
+title: Frontmatter schedule
+---
+gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Task: 2024-01-01, 1d
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="titleText">Frontmatter schedule</text>"#),
+        "frontmatter title should render when the Gantt body has none: {frontmatter_svg}"
+    );
+
+    let body_svg = render_gantt_svg_from_text(
+        r#"---
+title: Frontmatter schedule
+---
+gantt
+title Body schedule
+dateFormat YYYY-MM-DD
+section Delivery
+Task: 2024-01-01, 1d
+"#,
+    );
+    assert!(body_svg.contains(r#"class="titleText">Body schedule</text>"#));
+    assert!(!body_svg.contains(">Frontmatter schedule</text>"));
+}
+
+#[test]
 fn gantt_svg_frontmatter_config_fields_affect_visible_output() {
     let svg = render_gantt_svg_from_text(
         r#"---

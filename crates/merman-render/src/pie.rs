@@ -99,6 +99,7 @@ fn fmt_number(v: f64) -> String {
 
 pub(crate) fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
@@ -117,6 +118,16 @@ pub(crate) fn layout_pie_diagram_typed(
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
     let cfg = PieConfigView::new(effective_config).layout_settings();
+    let title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        });
     let label_radius = radius.max(0.0) * cfg.text_position;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_position = cfg.legend_position;
@@ -246,11 +257,7 @@ pub(crate) fn layout_pie_diagram_typed(
         max_legend_width = max_legend_width.max(w);
     }
 
-    let title_width = model
-        .title
-        .as_deref()
-        .map(str::trim_end)
-        .filter(|title| !title.is_empty())
+    let title_width = title
         .map(|title| measurer.measure_svg_text_bounding_client_rect_width_px(title, &title_style))
         .unwrap_or(0.0);
 
@@ -365,7 +372,7 @@ mod tests {
             value: 1.0,
         }];
         let legend_layout =
-            super::layout_pie_diagram_typed(&legend_model, &serde_json::json!({}), &measurer)
+            super::layout_pie_diagram_typed(&legend_model, None, &serde_json::json!({}), &measurer)
                 .expect("legend layout");
         let legend_max_x = legend_layout.bounds.expect("legend bounds").max_x;
         assert!((legend_max_x - (512.0 + 123.456_789)).abs() < 1e-12);
@@ -374,6 +381,7 @@ mod tests {
         title_model.title = Some("Title".to_string());
         let title_layout = super::layout_pie_diagram_typed(
             &title_model,
+            None,
             &serde_json::json!({"pie": {"legendPosition": "top"}}),
             &measurer,
         )

@@ -1,9 +1,11 @@
 use super::super::*;
+use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 
 // QuadrantChart diagram SVG renderer implementation (split from parity.rs).
 
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
+    model: &QuadrantChartRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -33,6 +35,19 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|description| description.trim_end_matches('\n'))
+        .filter(|description| !description.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let use_max_width = crate::quadrantchart::QuadrantChartConfigView::new(effective_config)
         .render_settings()
         .use_max_width;
@@ -41,6 +56,8 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "quadrantChart");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom = root_svg::RootDomProfile {
         style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
         fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
@@ -60,6 +77,21 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         ),
         root_chrome,
     )?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
+        );
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(description)
+        );
+    }
 
     let _ = write!(
         &mut out,

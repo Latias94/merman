@@ -1153,6 +1153,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Gantt(prepare_pair(model, |model| {
                 crate::gantt::layout_gantt_diagram_typed(
                     model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                     execution.container_width,
@@ -1164,6 +1165,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Pie(prepare_pair(model, |model| {
                 crate::pie::layout_pie_diagram_typed(
                     model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                 )
@@ -1240,6 +1242,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Treemap(prepare_pair(model, |model| {
                 crate::treemap::layout_treemap_diagram_typed(
                     model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                 )
@@ -1279,6 +1282,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::QuadrantChart(prepare_pair(model, |model| {
                 crate::quadrantchart::layout_quadrantchart_diagram_typed(
                     model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                 )
@@ -1288,6 +1292,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::XyChart(prepare_pair(model, |model| {
                 crate::xychart::layout_xychart_diagram_typed(
                     model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                 )
