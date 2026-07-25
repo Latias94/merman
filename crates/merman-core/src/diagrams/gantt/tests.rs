@@ -840,6 +840,23 @@ test1: id1,2013-01-01,1d
 }
 
 #[test]
+fn dayjs_strict_rejects_rather_than_panics_on_multibyte_input() {
+    // `parse_int_exact` used to slice at a byte offset without checking char
+    // boundaries, panicking on multi-byte (e.g. Japanese) input.
+    assert!(parse_dayjs_like_strict("YYYY-MM-DD", "日本語のテキスト").is_none());
+    assert!(parse_dayjs_like_strict("MM-DD", "日本-24").is_none());
+    assert!(parse_dayjs_like_strict("YYYY-MMM-DD", "２０１３-Jan-０２").is_none());
+}
+
+#[test]
+fn js_date_fallback_rejects_rather_than_panics_on_multibyte_timezone_suffix() {
+    // Same byte-boundary bug as above, reached via the timezone-offset tail
+    // of `parse_js_date_fallback`.
+    assert!(parse_js_date_fallback("2013-01-01T00:00:00+日本語").is_err());
+    assert!(parse_js_date_fallback("2013-01-01T00:00+タ").is_err());
+}
+
+#[test]
 fn gantt_js_date_fallback_parses_iso_datetime_without_tz_as_local() {
     let model = parse(
         r#"
