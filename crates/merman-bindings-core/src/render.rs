@@ -191,18 +191,28 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn binding_math_renderer_defaults_to_none() {
-        for options in [
-            b"".as_slice(),
-            br#"{"environment":{"math_renderer":"none"}}"#.as_slice(),
-        ] {
-            let error = render_svg(b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]", options)
-                .expect_err("binding math renderer should be disabled by default");
+    fn binding_math_renderer_follows_the_compiled_default() {
+        let source = b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
+        let default = render_svg(source, b"");
 
-            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-            assert_eq!(error.capability_id(), Some("math"));
+        if cfg!(feature = "math") {
+            assert!(
+                default.is_ok(),
+                "the compiled math capability must be usable by default"
+            );
+        } else {
+            assert_missing_math(default.unwrap_err());
         }
+
+        let disabled = render_svg(source, br#"{"environment":{"math_renderer":"none"}}"#);
+        assert_missing_math(disabled.unwrap_err());
+    }
+
+    #[cfg(feature = "svg")]
+    fn assert_missing_math(error: BindingError) {
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(error.capability_id(), Some("math"));
     }
 
     #[test]

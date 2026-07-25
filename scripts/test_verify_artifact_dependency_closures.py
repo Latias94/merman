@@ -76,6 +76,7 @@ class DescriptorTests(unittest.TestCase):
             "rust-export-jpeg": ("merman-export", ("jpeg",)),
             "rust-export-pdf": ("merman-export", ("pdf",)),
             "rust-export-png": ("merman-export", ("png",)),
+            "rust-svg-basic": ("merman", ("svg",)),
         }
 
         for profile_id, (package, features) in expected.items():
@@ -321,6 +322,51 @@ class ClaimTests(unittest.TestCase):
             closure_fingerprint(feature_changed),
         )
 
+    def test_svg_basic_claim_rejects_optional_engine_and_product_leaks(self) -> None:
+        claim = next(
+            claim
+            for claim in CLAIMS
+            if claim.profile_id == "rust-svg-basic"
+        )
+        closure = parse_cargo_tree(
+            "\n".join(
+                (
+                    tree_line("merman", ("layout-elk", "svg")),
+                    tree_line("merman-core", ("system-timezone",)),
+                    tree_line("merman-render", ("math",)),
+                    tree_line("getrandom"),
+                    tree_line("image"),
+                    tree_line("jiff"),
+                    tree_line("krilla"),
+                    tree_line("manatee"),
+                    tree_line("merman-analysis"),
+                    tree_line("merman-ascii"),
+                    tree_line("merman-editor-core"),
+                    tree_line("merman-layout-elk"),
+                    tree_line("ratex-svg"),
+                    tree_line("resvg"),
+                    tree_line("web-time"),
+                )
+            )
+        )
+
+        failures, _ = check_claim(
+            claim,
+            closure,
+            enforce_fingerprint=False,
+        )
+
+        self.assertTrue(
+            any("forbidden packages present" in failure for failure in failures)
+        )
+        self.assertTrue(
+            any("layout-elk" in failure for failure in failures)
+        )
+        self.assertTrue(
+            any("system-timezone" in failure for failure in failures)
+        )
+        self.assertTrue(any("math" in failure for failure in failures))
+
 
 class VerificationTests(unittest.TestCase):
     def test_fake_runner_proves_all_repository_claims_without_cargo(self) -> None:
@@ -329,6 +375,11 @@ class VerificationTests(unittest.TestCase):
                 "rust-static-svg",
                 package="merman",
                 features=("layout-cytoscape", "layout-elk", "math", "svg"),
+            ),
+            "rust-svg-basic": recipe(
+                "rust-svg-basic",
+                package="merman",
+                features=("svg",),
             ),
             "cli-analysis": recipe(
                 "cli-analysis",
@@ -363,6 +414,13 @@ class VerificationTests(unittest.TestCase):
                     tree_line(
                         "merman-render", ("layout-cytoscape", "layout-elk", "math")
                     ),
+                )
+            ),
+            ("merman", "svg"): "\n".join(
+                (
+                    tree_line("merman", ("svg",)),
+                    tree_line("merman-core"),
+                    tree_line("merman-render"),
                 )
             ),
             ("merman-cli", "analysis"): "\n".join(

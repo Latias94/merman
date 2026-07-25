@@ -75,6 +75,7 @@ pub const fn math_available() -> bool {
 }
 
 /// Optional renderer capabilities that a typed diagram operation may require.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RenderCapability {
     LayoutCytoscape,

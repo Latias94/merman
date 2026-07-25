@@ -113,6 +113,14 @@ impl PreparedSemantic {
         self.parsed.model().kind()
     }
 
+    /// Reports required and missing renderer capabilities without starting layout.
+    pub fn render_plan(&self) -> Result<merman_render::family::RenderCapabilityPlan> {
+        Ok(merman_render::family::plan_render(
+            &self.parsed,
+            &self.session,
+        )?)
+    }
+
     /// Runs layout exactly once and advances to the pre-SVG render stage.
     pub fn continue_layout(self) -> Result<PreparedRender> {
         let Self {
@@ -324,6 +332,13 @@ impl<'a> HeadlessOperation<'a> {
         };
 
         Ok(Some(semantic.continue_layout()?))
+    }
+
+    pub(super) fn plan_render(self) -> Result<Option<merman_render::family::RenderCapabilityPlan>> {
+        let Some(semantic) = self.prepare_semantic()? else {
+            return Ok(None);
+        };
+        Ok(Some(semantic.render_plan()?))
     }
 
     pub(super) fn prepare_semantic(self) -> Result<Option<PreparedSemantic>> {

@@ -13,6 +13,10 @@ pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
         .max(1.0)
 }
 
+pub(crate) fn uses_tidy_tree_layout(effective_config: &Value) -> bool {
+    config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree")
+}
+
 type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
 type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
@@ -259,8 +263,7 @@ fn layout_mindmap_diagram_model(
         edge_indices.push((a, b));
     }
 
-    let use_tidy_tree =
-        config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree");
+    let use_tidy_tree = uses_tidy_tree_layout(effective_config);
     let tidy_tree_edges = if use_tidy_tree {
         Some(tidy_tree::layout(
             &mut nodes,

@@ -82,6 +82,7 @@ fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
     let normalized_svg = svg
         .chars()
@@ -290,6 +291,7 @@ fn host_theme_profile_covers_core_diagram_roles() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
@@ -393,6 +395,7 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn host_theme_profile_covers_additional_current_diagram_surfaces() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (

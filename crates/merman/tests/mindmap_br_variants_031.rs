@@ -1,4 +1,4 @@
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 #[test]
 fn mindmap_br_variants_031_matches_upstream_node_geometry() {
     const DIAGRAM_ID: &str = "stress_mindmap_br_variants_031";

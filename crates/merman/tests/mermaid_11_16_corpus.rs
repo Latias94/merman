@@ -8,6 +8,8 @@ const UPSTREAM_RENDER_REASON: &str =
     "the local corpus gate does not invoke the pinned Mermaid browser renderer";
 const PARITY_ADMISSION_REASON: &str =
     "source-corpus membership does not imply normalized fixture and upstream-SVG admission";
+const MALFORMED_INDENTED_RADAR_SOURCE: &str =
+    "cypress/platform/dev-diagrams/knsv/knsv2-03-radar.mmd";
 
 #[derive(Debug, Deserialize)]
 struct CorpusManifest {
@@ -199,6 +201,31 @@ fn validate_svg(svg: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn is_expected_source_corpus_rejection(report: &CapabilityReport) -> bool {
+    if report.source_path != MALFORMED_INDENTED_RADAR_SOURCE {
+        return false;
+    }
+
+    assert_eq!(report.diagram_type.as_deref(), Some("radar"));
+    assert!(matches!(
+        report.stages[&CapabilityStage::Semantic],
+        StageStatus::Failed(ref reason) if reason.starts_with("Malformed YAML front-matter")
+    ));
+    assert_eq!(
+        report.stages[&CapabilityStage::TypedLayout],
+        StageStatus::Blocked {
+            by: CapabilityStage::Semantic
+        }
+    );
+    assert_eq!(
+        report.stages[&CapabilityStage::LocalSvg],
+        StageStatus::Blocked {
+            by: CapabilityStage::Semantic
+        }
+    );
+    true
+}
+
 fn evaluate_fixture(
     renderer: &HeadlessRenderer,
     source_path: &str,
@@ -313,6 +340,7 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
 
     let renderer = HeadlessRenderer::new().with_strict_parsing();
     let mut failures = Vec::new();
+    let mut saw_expected_source_rejection = false;
     let mut detected_counts = BTreeMap::<String, usize>::new();
     for (index, (source_path, entry)) in manifest.entries.iter().enumerate() {
         let report = evaluate_fixture(
@@ -326,7 +354,11 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
             *detected_counts.entry(diagram_type.clone()).or_default() += 1;
         }
         if !report.local_pipeline_passed() {
-            failures.push(report.describe());
+            if is_expected_source_corpus_rejection(&report) {
+                saw_expected_source_rejection = true;
+            } else {
+                failures.push(report.describe());
+            }
         }
         assert_eq!(
             report.stages[&CapabilityStage::UpstreamRenderable],
@@ -356,8 +388,12 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
         "the 11.16 source corpus family inventory changed"
     );
     assert!(
+        saw_expected_source_rejection,
+        "the malformed indented Radar source unexpectedly passed the one-pass render pipeline"
+    );
+    assert!(
         failures.is_empty(),
-        "Mermaid 11.16 added-MMD local capability failures ({}/122):\n\n{}",
+        "unexpected Mermaid 11.16 added-MMD local capability failures ({}/122):\n\n{}",
         failures.len(),
         failures.join("\n\n")
     );

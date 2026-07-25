@@ -1,4 +1,4 @@
-#![cfg(feature = "svg")]
+#![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 
 use std::fs;
 use std::path::PathBuf;

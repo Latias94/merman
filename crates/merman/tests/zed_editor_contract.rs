@@ -176,6 +176,7 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn zed_like_editor_pipeline_keeps_resvg_safe_themeable_svg_contract() {
     let cases = [
         (

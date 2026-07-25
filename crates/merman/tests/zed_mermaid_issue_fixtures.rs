@@ -1,7 +1,6 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::HeadlessRenderer;
-#[cfg(feature = "png")]
 use merman::svg::RenderResourceProfile;
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};

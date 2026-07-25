@@ -182,7 +182,7 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(DEFAULT_TITLE_TOP_MARGIN)
     }
 
-    fn is_elk_layout(&self) -> bool {
+    pub(crate) fn is_elk_layout(&self) -> bool {
         self.effective_config
             .get("layout")
             .and_then(Value::as_str)

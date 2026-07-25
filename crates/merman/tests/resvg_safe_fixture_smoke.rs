@@ -85,6 +85,7 @@ fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::
         .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn fixture_sample_paths() -> Vec<PathBuf> {
     let fixtures_root = workspace_root().join("fixtures");
     let mut out = Vec::new();
@@ -200,6 +201,7 @@ fn audit_name_filter() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn is_representative_fixture_name(name: &str) -> bool {
     name.starts_with("stress_")
         || name.starts_with("kanban_stress_")
@@ -794,6 +796,7 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
     let themes = [
         ("default", "hsl(240, 100%, 76.2745098039%)"),
@@ -909,6 +912,7 @@ fn host_reported_diagrams_render_headless_resvg_safe() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn representative_fixtures_render_headless_resvg_safe() {
     let fixtures = fixture_sample_paths();
     assert!(

@@ -17,7 +17,7 @@
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
 //! | Parse Mermaid or produce semantic JSON | none | [`Engine`] and [`ParseOptions`] |
-//! | Render Mermaid-like SVG | `svg` | `merman::svg::HeadlessRenderer` |
+//! | Render Mermaid-like SVG | `svg` | [`render_svg`] |
 //! | Prepare SVG for export | `svg` | `HeadlessRenderer::render_resvg_compatible_svg_with_pipeline_sync` |
 //! | Render terminal-friendly text | `ascii` | `merman::ascii::HeadlessAsciiRenderer` |
 //! | Render PNG from Rust | `png` | `HeadlessRenderer::render_png_sync` and `svg::export::RasterOptions` |
@@ -38,7 +38,7 @@
 //! - `math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `svg`.
 //!
-//! The default feature set is [`complete-svg`](#features): it supports normal native SVG
+//! The default feature set is [`complete-svg`](#features): it supports complete deterministic SVG
 //! rendering, both optional layout engines, and math labels without compiling ambient system
 //! adapters. Use `default-features = false` with the direct capability leaves when you need a
 //! measured artifact closure.
@@ -48,12 +48,9 @@
 //! ```no_run
 //! # #[cfg(feature = "svg")]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use merman::svg::HeadlessRenderer;
+//! use merman::render_svg;
 //!
-//! let renderer = HeadlessRenderer::new().with_diagram_id("readme-example");
-//! let svg = renderer
-//!     .render_svg_sync("flowchart TD\nA[Start] --> B[Done]")?
-//!     .expect("diagram detected");
+//! let svg = render_svg("flowchart TD\nA[Start] --> B[Done]")?;
 //!
 //! println!("{svg}");
 //! # Ok(())
@@ -117,6 +114,69 @@
 //! exports.
 
 pub use merman_core::*;
+
+/// Error from the one-shot [`render_svg`] facade.
+///
+/// [`NoDiagram`](Self::NoDiagram) distinguishes ordinary prose or an empty
+/// input from Mermaid parse, layout, render, resource, and missing-capability
+/// failures. Configure a [`svg::HeadlessRenderer`] directly when an operation
+/// needs a custom diagram id, runtime policy, resource policy, or SVG
+/// pipeline.
+#[cfg(feature = "svg")]
+#[derive(Debug, thiserror::Error)]
+pub enum RenderSvgError {
+    #[error("no Mermaid diagram detected")]
+    NoDiagram,
+    #[error(transparent)]
+    Headless(#[from] svg::HeadlessError),
+}
+
+/// Renders one Mermaid source string to a standalone parity-oriented SVG.
+///
+/// This is the shortest Rust entry point for the normal deterministic SVG
+/// workflow. It uses the facade's default engine and render environment, and
+/// returns [`RenderSvgError::NoDiagram`] when `source` does not contain a
+/// Mermaid diagram. Enable the existing `svg` feature to use this API; the
+/// default `complete-svg` feature includes it.
+///
+/// The default SVG id is intended for a standalone output. Use
+/// [`render_svg_with_id`] when multiple rendered diagrams share one document.
+/// For other request-level configuration, reuse, or a non-default output
+/// pipeline, use [`svg::HeadlessRenderer`] instead.
+#[cfg(feature = "svg")]
+pub fn render_svg(source: &str) -> std::result::Result<String, RenderSvgError> {
+    finish_one_shot_svg(svg::HeadlessRenderer::new().render_svg_sync(source))
+}
+
+/// Renders one Mermaid source string with an explicit document-unique SVG id.
+///
+/// Use this entry point when multiple outputs will be embedded in the same DOM.
+/// The id is normalized with the same rules as
+/// [`svg::HeadlessRenderer::with_diagram_id`].
+#[cfg(feature = "svg")]
+pub fn render_svg_with_id(
+    source: &str,
+    diagram_id: &str,
+) -> std::result::Result<String, RenderSvgError> {
+    finish_one_shot_svg(
+        svg::HeadlessRenderer::new()
+            .with_diagram_id(diagram_id)
+            .render_svg_sync(source),
+    )
+}
+
+#[cfg(feature = "svg")]
+fn finish_one_shot_svg(
+    result: std::result::Result<Option<String>, svg::HeadlessError>,
+) -> std::result::Result<String, RenderSvgError> {
+    match result {
+        Ok(Some(svg)) => Ok(svg),
+        Ok(None) | Err(svg::HeadlessError::Parse(merman_core::Error::DetectType(_))) => {
+            Err(RenderSvgError::NoDiagram)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
 
 /// Diagnostics and source-mapping APIs for lint and analysis workflows.
 #[cfg(feature = "analysis")]

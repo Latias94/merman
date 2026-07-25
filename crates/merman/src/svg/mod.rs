@@ -54,7 +54,7 @@ pub use merman_render::environment::{
     TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementResultKind,
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
 };
-pub use merman_render::family::RenderFamilyKind;
+pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -629,6 +629,139 @@ mod svg_pipeline_tests {
         assert!(svg.contains("type=flowchart"));
         assert!(svg.contains("title=Host Pipeline"));
         assert!(svg.contains("id=host-style"));
+    }
+
+    #[test]
+    fn svg_capability_plan_reports_requirements_before_layout() {
+        let renderer = HeadlessRenderer::new();
+        let cases = [
+            (
+                "architecture-beta\n  service api(server)[API]",
+                "architecture",
+                RenderCapability::LayoutCytoscape,
+            ),
+            (
+                "mindmap\n  Root\n    Child",
+                "mindmap",
+                RenderCapability::LayoutCytoscape,
+            ),
+            (
+                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+                "flowchart-v2",
+                RenderCapability::LayoutElk,
+            ),
+            (
+                "---\nconfig:\n  layout: elk\n---\nclassDiagram\nclass Animal",
+                "class",
+                RenderCapability::LayoutElk,
+            ),
+            (
+                "---\nconfig:\n  layout: elk\n---\nerDiagram\nCUSTOMER ||--o{ ORDER : places",
+                "er",
+                RenderCapability::LayoutElk,
+            ),
+            (
+                "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+                "flowchart-v2",
+                RenderCapability::Math,
+            ),
+        ];
+
+        for (source, diagram_type, required_capability) in cases {
+            let plan = renderer
+                .plan_svg_sync(source)
+                .expect("capability planning should parse valid Mermaid")
+                .expect("diagram should be detected");
+            assert_eq!(plan.diagram_type(), diagram_type);
+            assert!(
+                plan.required_capabilities().contains(&required_capability),
+                "{diagram_type} plan did not require {required_capability}"
+            );
+            assert!(
+                plan.required_capability_ids()
+                    .any(|id| id == required_capability.id())
+            );
+
+            let expected_missing = match required_capability {
+                RenderCapability::LayoutCytoscape => !layout_cytoscape_available(),
+                RenderCapability::LayoutElk => !layout_elk_available(),
+                RenderCapability::Math => !math_available(),
+                _ => unreachable!("the test matrix only uses known renderer capabilities"),
+            };
+            assert_eq!(
+                plan.missing_capabilities().contains(&required_capability),
+                expected_missing,
+                "{diagram_type} plan had the wrong availability for {required_capability}"
+            );
+            assert_eq!(plan.is_ready(), !expected_missing);
+
+            if expected_missing {
+                let error = match renderer.prepare_render_sync(source) {
+                    Err(error) => error,
+                    Ok(_) => panic!(
+                        "{diagram_type} layout bypassed its missing {required_capability} plan"
+                    ),
+                };
+                let HeadlessError::Render(RenderError::MissingCapability {
+                    capability,
+                    diagram_type: error_diagram_type,
+                }) = error
+                else {
+                    panic!("{diagram_type} returned a non-capability error after preflight");
+                };
+                assert_eq!(capability, required_capability);
+                assert_eq!(error_diagram_type, diagram_type);
+            }
+        }
+    }
+
+    #[test]
+    fn tidy_tree_mindmap_does_not_require_cytoscape() {
+        let plan = HeadlessRenderer::new()
+            .plan_svg_sync("---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child")
+            .expect("capability planning should parse valid Mermaid")
+            .expect("mindmap should be detected");
+
+        assert!(
+            !plan
+                .required_capabilities()
+                .contains(&RenderCapability::LayoutCytoscape)
+        );
+        assert!(plan.is_ready());
+    }
+
+    #[test]
+    fn svg_capability_plan_uses_the_operation_math_environment() {
+        let source = "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
+        let missing = HeadlessRenderer::from_engine_and_environment(
+            merman_core::Engine::new(),
+            RenderEnvironment::deterministic().without_math_renderer(),
+        )
+        .plan_svg_sync(source)
+        .unwrap()
+        .unwrap();
+        assert_eq!(missing.missing_capabilities(), &[RenderCapability::Math]);
+
+        let provided = HeadlessRenderer::from_engine_and_environment(
+            merman_core::Engine::new(),
+            RenderEnvironment::deterministic()
+                .with_math_renderer(std::sync::Arc::new(NoopMathRenderer)),
+        )
+        .plan_svg_sync(source)
+        .unwrap()
+        .unwrap();
+        assert!(provided.is_ready());
+    }
+
+    #[test]
+    fn svg_capability_plan_preserves_typed_detection_errors() {
+        let error = HeadlessRenderer::new()
+            .plan_svg_sync("ordinary prose")
+            .expect_err("undetectable input must remain a typed parse error");
+        assert!(matches!(
+            error,
+            HeadlessError::Parse(merman_core::Error::DetectType(_))
+        ));
     }
 
     #[cfg(not(feature = "math"))]
@@ -1495,6 +1628,23 @@ impl HeadlessRenderer {
             &self.environment,
         )?
         .prepare_semantic()
+    }
+
+    /// Parses one Mermaid diagram and reports its required and missing SVG capabilities.
+    ///
+    /// This completes preprocessing, config merging, typed parsing, and model resource checks but
+    /// does not start layout. Undetectable input remains a typed
+    /// `HeadlessError::Parse(merman_core::Error::DetectType(_))`; runtime, parse, and resource
+    /// failures are never folded into capability absence.
+    pub fn plan_svg_sync(&self, text: &str) -> Result<Option<RenderCapabilityPlan>> {
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .plan_render()
     }
 
     pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {

@@ -269,6 +269,7 @@ Second: second,after first,2ms
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn prepared_architecture_matches_the_canonical_high_level_operation() {
     let engine = merman::Engine::new();
     let source = r#"architecture-beta

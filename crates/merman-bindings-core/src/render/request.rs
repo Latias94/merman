@@ -108,9 +108,7 @@ fn build_renderer(
     runtime_policy: merman::runtime::RuntimePolicy,
 ) -> Result<(HeadlessRenderer, merman::svg::SvgOutputPolicy), BindingError> {
     let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
-    let mut environment = RenderEnvironment::deterministic()
-        .without_math_renderer()
-        .with_runtime_policy(runtime_policy);
+    let mut environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
     environment = environment.with_resource_policy(binding_resource_policy(
         options.analysis.resources.as_ref(),
     )?);

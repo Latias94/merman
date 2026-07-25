@@ -122,6 +122,7 @@ Rel(customer, system, \"Uses\")\n";
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn mindmap_render_drops_xml_forbidden_control_chars_before_serialization() {
     let source = "mindmap\n  root((Root))\n    Parse\n    \u{1c}Layout\n";
     let renderer = HeadlessRenderer::new().with_diagram_id("security-mindmap-xml-controls");

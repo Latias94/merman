@@ -30,6 +30,7 @@ fn render_svg_with_site_config(name: &str, source: &str, site_config: MermaidCon
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn assert_renderable_theme_signals(
     name: &str,
     svg: &str,
@@ -64,6 +65,7 @@ fn assert_renderable_theme_signals(
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn representative_dark_theme_diagrams_keep_visible_theme_signals() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
@@ -639,6 +641,7 @@ Target,Done,2
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible() {
     let svg = render_svg(
         "mindmap-visible-audit",
@@ -701,6 +704,7 @@ mindmap
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
     let svg = render_svg_with_site_config(
         "mindmap-neo-visible-audit",

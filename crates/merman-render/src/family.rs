@@ -90,6 +90,60 @@ impl RenderFamilyKind {
     }
 }
 
+/// Capabilities required by one parsed typed render operation before layout starts.
+///
+/// Requirements come from the canonically paired semantic model and effective Mermaid config;
+/// availability comes from the compiled layout backends and the operation's render session.
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderCapabilityPlan {
+    diagram_type: String,
+    required: Vec<RenderCapability>,
+    missing: Vec<RenderCapability>,
+}
+
+impl RenderCapabilityPlan {
+    /// Returns the detected Mermaid diagram type used by render dispatch.
+    pub fn diagram_type(&self) -> &str {
+        &self.diagram_type
+    }
+
+    /// Returns every optional capability this operation requires.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required
+    }
+
+    /// Returns the required capabilities unavailable in the planned render session.
+    pub fn missing_capabilities(&self) -> &[RenderCapability] {
+        &self.missing
+    }
+
+    /// Iterates over stable semantic IDs for every required capability.
+    pub fn required_capability_ids(&self) -> impl ExactSizeIterator<Item = &'static str> + '_ {
+        self.required.iter().copied().map(RenderCapability::id)
+    }
+
+    /// Iterates over stable semantic IDs for every missing capability.
+    pub fn missing_capability_ids(&self) -> impl ExactSizeIterator<Item = &'static str> + '_ {
+        self.missing.iter().copied().map(RenderCapability::id)
+    }
+
+    /// Reports whether the planned render session satisfies every requirement.
+    pub fn is_ready(&self) -> bool {
+        self.missing.is_empty()
+    }
+
+    fn ensure_available(&self) -> Result<()> {
+        let Some(capability) = self.missing.first().copied() else {
+            return Ok(());
+        };
+        Err(Error::MissingCapability {
+            capability,
+            diagram_type: self.diagram_type.clone(),
+        })
+    }
+}
+
 impl fmt::Display for RenderFamilyKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
@@ -784,27 +838,47 @@ fn model_requires_math(model: &RenderSemanticModel) -> bool {
     }
 }
 
-#[inline(never)]
-fn prepare_class_family(
-    model: ClassDiagram,
-    meta: &ParseMetadata,
-    diagram_type: &str,
-    execution: &LayoutExecution<'_>,
-) -> Result<BuiltinFamilyArtifact> {
-    Ok(BuiltinFamilyArtifact::Class(prepare_pair(
-        model,
-        |model| {
-            crate::layout_class_typed_by_engine(
-                diagram_type,
-                model,
-                &meta.effective_config,
-                execution,
-            )
-        },
-    )?))
+fn capability_is_available(capability: RenderCapability, session: &RenderSession) -> bool {
+    match capability {
+        RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
+        RenderCapability::LayoutElk => crate::layout_elk_available(),
+        RenderCapability::Math => session.math_renderer().is_some(),
+    }
 }
 
-fn validate_family_model(
+fn required_capabilities(
+    meta: &ParseMetadata,
+    model: &RenderSemanticModel,
+) -> Vec<RenderCapability> {
+    let mut required = Vec::with_capacity(2);
+    let effective_config = &meta.effective_config;
+    match model {
+        RenderSemanticModel::Architecture(_) => {
+            required.push(RenderCapability::LayoutCytoscape);
+        }
+        RenderSemanticModel::Mindmap(_)
+            if !crate::mindmap::uses_tidy_tree_layout(effective_config.as_value()) =>
+        {
+            required.push(RenderCapability::LayoutCytoscape);
+        }
+        RenderSemanticModel::Flowchart(_) | RenderSemanticModel::Class(_)
+            if crate::uses_elk_layout(effective_config) =>
+        {
+            required.push(RenderCapability::LayoutElk);
+        }
+        RenderSemanticModel::Er(_) if crate::er::uses_elk_layout(effective_config.as_value()) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        _ => {}
+    }
+
+    if model_requires_math(model) {
+        required.push(RenderCapability::Math);
+    }
+    required
+}
+
+fn validate_render_input(
     meta: &ParseMetadata,
     model: &RenderSemanticModel,
     session: &RenderSession,
@@ -828,13 +902,49 @@ fn validate_family_model(
     }
 
     session.resource_policy().check_render_model(model)?;
-    if model_requires_math(model) && session.math_renderer().is_none() {
-        return Err(Error::MissingCapability {
-            capability: RenderCapability::Math,
-            diagram_type: diagram_type.to_string(),
-        });
-    }
     Ok(())
+}
+
+/// Plans capability admission for a canonically paired typed render model without running layout.
+pub fn plan_render(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+) -> Result<RenderCapabilityPlan> {
+    let meta = parsed.metadata();
+    let model = parsed.model();
+    validate_render_input(meta, model, session)?;
+    let required = required_capabilities(meta, model);
+    let missing = required
+        .iter()
+        .copied()
+        .filter(|capability| !capability_is_available(*capability, session))
+        .collect();
+
+    Ok(RenderCapabilityPlan {
+        diagram_type: meta.diagram_type.clone(),
+        required,
+        missing,
+    })
+}
+
+#[inline(never)]
+fn prepare_class_family(
+    model: ClassDiagram,
+    meta: &ParseMetadata,
+    diagram_type: &str,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    Ok(BuiltinFamilyArtifact::Class(prepare_pair(
+        model,
+        |model| {
+            crate::layout_class_typed_by_engine(
+                diagram_type,
+                model,
+                &meta.effective_config,
+                execution,
+            )
+        },
+    )?))
 }
 
 #[inline(never)]
@@ -844,7 +954,6 @@ fn prepare_class_render(
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
-    validate_family_model(&meta, &model, &session)?;
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
@@ -882,6 +991,7 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
+    plan_render(&parsed, &session)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
@@ -898,7 +1008,6 @@ fn prepare_non_class_render(
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let diagram_type = meta.diagram_type.as_str();
-    validate_family_model(&meta, &model, &session)?;
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();

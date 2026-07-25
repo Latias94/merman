@@ -19,6 +19,10 @@ pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 
+pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
+    ErConfigView::new(effective_config).is_elk_layout()
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ErBoxLabel {
     markdown_input: String,
