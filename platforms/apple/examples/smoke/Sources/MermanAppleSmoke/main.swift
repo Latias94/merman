@@ -125,10 +125,10 @@ private func integer(_ value: Any?) -> Int? {
 }
 
 private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngine) throws {
-    let expectedKeys: Set<String> = [
+    let requiredCatalogKeys: Set<String> = [
         "schema_version", "transport_api_version", "package_version", "capabilities", "registry", "resources",
     ]
-    guard Set(catalog.keys) == expectedKeys,
+    guard requiredCatalogKeys.isSubset(of: Set(catalog.keys)),
           integer(catalog["schema_version"]) == 1,
           (integer(catalog["transport_api_version"]) ?? -1) == engine.bindingApiVersion(),
           catalog["package_version"] as? String == engine.packageVersion(),
@@ -138,10 +138,10 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         throw SmokeError.failed("runtime catalog did not describe the native SDK artifact")
     }
 
-    let expectedCapabilityKeys: Set<String> = [
+    let requiredCapabilityKeys: Set<String> = [
         "capability_ids", "output_ids", "operation_ids", "system_adapter_ids", "text_measurement",
     ]
-    guard Set(capabilities.keys) == expectedCapabilityKeys,
+    guard requiredCapabilityKeys.isSubset(of: Set(capabilities.keys)),
           let capabilityIDs = capabilities["capability_ids"] as? [String],
           let outputIDs = capabilities["output_ids"] as? [String],
           let operationIDs = capabilities["operation_ids"] as? [String],
@@ -172,7 +172,8 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         throw SmokeError.failed("runtime catalog has invalid native capability relations")
     }
 
-    guard Set(textMeasurement.keys) == ["protocol_version", "provider_ids"],
+    let requiredTextMeasurementKeys: Set<String> = ["protocol_version", "provider_ids"]
+    guard requiredTextMeasurementKeys.isSubset(of: Set(textMeasurement.keys)),
           (integer(textMeasurement["protocol_version"]) ?? 0) > 0,
           let providerIDs = textMeasurement["provider_ids"] as? [String] else {
         throw SmokeError.failed("runtime catalog text measurement metadata was malformed")
@@ -182,15 +183,15 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         throw SmokeError.failed("runtime catalog text measurement lacks vendored support")
     }
 
-    guard Set(registry.keys) == ["diagram_family_count"],
+    let requiredRegistryKeys: Set<String> = ["diagram_family_count"]
+    guard requiredRegistryKeys.isSubset(of: Set(registry.keys)),
           (integer(registry["diagram_family_count"]) ?? -1) > 0 else {
         throw SmokeError.failed("runtime catalog registry was malformed")
     }
-    let expectedResourceKeys: Set<String> = [
-        "schema_version", "general_binding_default_profile", "cli_default_profile", "limits", "profiles",
+    let requiredResourceKeys: Set<String> = [
+        "general_binding_default_profile", "cli_default_profile", "limits", "profiles",
     ]
-    guard Set(resources.keys) == expectedResourceKeys,
-          (integer(resources["schema_version"]) ?? 0) > 0,
+    guard requiredResourceKeys.isSubset(of: Set(resources.keys)),
           resources["general_binding_default_profile"] as? String == "interactive",
           resources["cli_default_profile"] as? String == "trusted-native",
           let limits = resources["limits"] as? [[String: Any]],

@@ -36,16 +36,36 @@ WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
 WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
 ARTIFACT_PROFILE_DESCRIPTOR_JSON = ROOT / "capabilities" / "artifact-profiles-v1.json"
+APPLE_RELEASE_SMOKE = (
+    ROOT
+    / "platforms"
+    / "apple"
+    / "examples"
+    / "smoke"
+    / "Sources"
+    / "MermanAppleSmoke"
+    / "main.swift"
+)
 NPM_CONFIG_PATHS = [
     ROOT / ".npmrc",
     ROOT / "platforms" / "web" / ".npmrc",
 ]
 RELEASE_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml"))
+TAG_BOUND_SOURCE_WORKFLOWS = [
+    WORKFLOW_ROOT / "release-python.yml",
+    WORKFLOW_ROOT / "release-apple.yml",
+    WORKFLOW_ROOT / "release-android.yml",
+    WORKFLOW_ROOT / "release-flutter.yml",
+]
 SOURCE_REF_WORKFLOWS = sorted(
     path
     for path in WORKFLOW_ROOT.glob("*.yml")
-    if "source_ref:" in path.read_text(encoding="utf-8")
+    if path not in TAG_BOUND_SOURCE_WORKFLOWS
+    and "source_ref:" in path.read_text(encoding="utf-8")
 )
+SOURCE_REF_RELEASE_WORKFLOWS = [
+    path for path in RELEASE_WORKFLOWS if path in SOURCE_REF_WORKFLOWS
+]
 
 
 def read_workflow(path: Path) -> str:
@@ -171,7 +191,9 @@ def run_blocks(text: str) -> list[str]:
 def validation_script(path: Path) -> str:
     text = read_workflow(path)
     for block in run_blocks(text):
-        if "DISPATCH_SOURCE_REF" in block and "GITHUB_OUTPUT" in block:
+        if (
+            "DISPATCH_RELEASE_TAG" in block or "DISPATCH_SOURCE_REF" in block
+        ) and "GITHUB_OUTPUT" in block:
             return textwrap.dedent(block)
     raise AssertionError(f"could not find validation script in {path.name}")
 
@@ -182,9 +204,13 @@ def run_workflow_validation(
     release_tag: str = "v1.2.3",
     source_ref: str = "main",
     version: str | None = None,
+    event_name: str = "workflow_dispatch",
+    git_ref: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
     if version is None:
         version = release_tag.removeprefix("v")
+    if git_ref is None:
+        git_ref = f"refs/tags/{release_tag}"
     output_dir = ROOT / "target" / "release-workflow-tests"
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = uuid.uuid4().hex
@@ -192,11 +218,11 @@ def run_workflow_validation(
     script_path = output_dir / f"{path.stem}-validation-{run_id}.sh"
     script = "\n".join(
         [
-            "EVENT_NAME=workflow_dispatch",
+            f"EVENT_NAME={shlex.quote(event_name)}",
             f"DISPATCH_RELEASE_TAG={shlex.quote(release_tag)}",
             f"DISPATCH_VERSION={shlex.quote(version)}",
             f"DISPATCH_SOURCE_REF={shlex.quote(source_ref)}",
-            f"GIT_REF={shlex.quote(f'refs/tags/{release_tag}')}",
+            f"GIT_REF={shlex.quote(git_ref)}",
             f"GIT_REF_NAME={shlex.quote(release_tag)}",
             f"GIT_SHA={shlex.quote('0123456789abcdef0123456789abcdef01234567')}",
             f"GITHUB_OUTPUT={shlex.quote(output_path.relative_to(ROOT).as_posix())}",
@@ -308,6 +334,187 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("scripts/release-version.py canonical", validate_job)
         self.assertIn("scripts/release-version.py npm-dist-tag", validate_job)
         self.assertNotIn("is_release_version()", validate_job)
+
+    def test_native_release_workflows_pin_tag_commit_and_tree_before_building(
+        self,
+    ) -> None:
+        for path in TAG_BOUND_SOURCE_WORKFLOWS:
+            text = read_workflow(path)
+            dispatch = indented_block(text, "workflow_dispatch:")
+            validate_job = indented_block(text, "validate-inputs:")
+            build_job = indented_block(text, "build:")
+
+            with self.subTest(workflow=path.name):
+                self.assertNotIn("source_ref:", dispatch)
+                self.assertIn(
+                    "source_sha: ${{ steps.source.outputs.source_sha }}",
+                    validate_job,
+                )
+                self.assertIn(
+                    "source_tree: ${{ steps.source.outputs.source_tree }}",
+                    validate_job,
+                )
+                self.assertIn(
+                    "ref: ${{ steps.release.outputs.source_ref }}",
+                    validate_job,
+                )
+                self.assertIn(
+                    'git rev-parse "refs/tags/${RELEASE_TAG}^{commit}"',
+                    validate_job,
+                )
+                self.assertIn(
+                    'git rev-parse "refs/tags/${RELEASE_TAG}^{tree}"',
+                    validate_job,
+                )
+                self.assertIn(
+                    "ref: ${{ needs.validate-inputs.outputs.source_sha }}",
+                    build_job,
+                )
+                self.assertIn("Verify pinned release source", build_job)
+                self.assertIn("EXPECTED_SOURCE_SHA", build_job)
+                self.assertIn("EXPECTED_SOURCE_TREE", build_job)
+                self.assertNotIn(
+                    "ref: ${{ needs.validate-inputs.outputs.source_ref }}",
+                    build_job,
+                )
+                for block in checkout_blocks(text):
+                    self.assertIn("persist-credentials: false", block)
+
+    def test_native_release_validation_derives_source_ref_from_release_tag(
+        self,
+    ) -> None:
+        for path in TAG_BOUND_SOURCE_WORKFLOWS:
+            with self.subTest(workflow=path.name):
+                result, outputs = run_workflow_validation(
+                    path,
+                    release_tag="v1.2.3",
+                    source_ref="main",
+                )
+
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertEqual(outputs["source_ref"], "refs/tags/v1.2.3")
+                self.assertEqual(outputs["release_tag"], "v1.2.3")
+                self.assertEqual(outputs["version"], "1.2.3")
+
+    def test_native_release_validation_rejects_invalid_release_tags(self) -> None:
+        for path in TAG_BOUND_SOURCE_WORKFLOWS:
+            with self.subTest(workflow=path.name):
+                result, outputs = run_workflow_validation(
+                    path,
+                    release_tag="v1.2.3;echo-unsafe",
+                )
+
+                self.assertNotEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertNotIn("source_ref", outputs)
+                self.assertNotIn("release_tag", outputs)
+
+    def test_flutter_tag_push_must_match_the_release_tag(self) -> None:
+        workflow = WORKFLOW_ROOT / "release-flutter.yml"
+        result, outputs = run_workflow_validation(
+            workflow,
+            release_tag="v1.2.3",
+            event_name="push",
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        self.assertEqual(outputs["source_ref"], "refs/tags/v1.2.3")
+
+        result, outputs = run_workflow_validation(
+            workflow,
+            release_tag="v1.2.3",
+            event_name="push",
+            git_ref="refs/heads/main",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("source_ref", outputs)
+
+    def test_native_release_workflows_verify_all_version_projections(self) -> None:
+        for path in TAG_BOUND_SOURCE_WORKFLOWS:
+            build_job = indented_block(read_workflow(path), "build:")
+
+            with self.subTest(workflow=path.name):
+                self.assertIn(
+                    'scripts/release-version.py check --version "$VERSION"',
+                    build_job,
+                )
+
+    def test_native_release_workflows_fail_closed_on_generated_projection_drift(
+        self,
+    ) -> None:
+        apple = indented_block(
+            read_workflow(WORKFLOW_ROOT / "release-apple.yml"),
+            "build:",
+        )
+        flutter = indented_block(
+            read_workflow(WORKFLOW_ROOT / "release-flutter.yml"),
+            "build:",
+        )
+        python = indented_block(
+            read_workflow(WORKFLOW_ROOT / "release-python.yml"),
+            "build:",
+        )
+
+        self.assertIn(
+            "git ls-files --error-unmatch -- "
+            "platforms/apple/Sources/Merman/Generated/Merman.swift",
+            apple,
+        )
+        self.assertIn(
+            "git diff --exit-code -- platforms/apple/Sources/Merman/Generated",
+            apple,
+        )
+        self.assertIn(
+            "git ls-files --error-unmatch -- lib/src/generated/native_abi.dart",
+            flutter,
+        )
+        self.assertIn(
+            "git diff --exit-code -- lib/src/generated/native_abi.dart",
+            flutter,
+        )
+        self.assertIn(
+            "python scripts/build-python-uniffi-wheel.py --run-smoke",
+            python,
+        )
+
+    def test_flutter_release_smokes_the_packaged_macos_library(self) -> None:
+        build_job = indented_block(
+            read_workflow(WORKFLOW_ROOT / "release-flutter.yml"),
+            "build:",
+        )
+
+        self.assertIn(
+            'dart run example/smoke.dart "macos/Libraries/libmerman_ffi.dylib"',
+            build_job,
+        )
+
+    def test_apple_release_smoke_accepts_additive_runtime_catalog_fields(self) -> None:
+        smoke = APPLE_RELEASE_SMOKE.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "requiredCatalogKeys.isSubset(of: Set(catalog.keys))",
+            smoke,
+        )
+        self.assertIn(
+            "requiredCapabilityKeys.isSubset(of: Set(capabilities.keys))",
+            smoke,
+        )
+        self.assertIn(
+            "requiredResourceKeys.isSubset(of: Set(resources.keys))",
+            smoke,
+        )
+        self.assertNotIn("Set(catalog.keys) == expectedKeys", smoke)
+        self.assertNotIn('integer(resources["schema_version"])', smoke)
 
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -480,11 +687,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("source_ref", outputs)
 
     def test_release_validation_scripts_reject_mismatched_source_tags(self) -> None:
-        for path in RELEASE_WORKFLOWS:
-            text = read_workflow(path)
-            if "source_ref:" not in text:
-                continue
-
+        for path in SOURCE_REF_RELEASE_WORKFLOWS:
             with self.subTest(workflow=path.name):
                 result, outputs = run_workflow_validation(
                     path,
@@ -513,11 +716,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("40-character SHA", text)
 
     def test_release_validation_jobs_reject_untrusted_ref_and_version_shapes(self) -> None:
-        for path in RELEASE_WORKFLOWS:
+        for path in SOURCE_REF_RELEASE_WORKFLOWS:
             text = read_workflow(path)
-            if "source_ref:" not in text:
-                continue
-
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
                 self.assertTrue(

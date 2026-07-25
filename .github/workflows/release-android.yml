@@ -7,11 +7,6 @@ on:
         description: "Release tag to upload the AAR to, for example v0.8.0-alpha.3"
         required: true
         type: string
-      source_ref:
-        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
-        required: true
-        default: "main"
-        type: string
 
 permissions:
   contents: read
@@ -22,6 +17,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       source_ref: ${{ steps.release.outputs.source_ref }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -30,7 +27,6 @@ jobs:
         shell: bash
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
-          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
 
@@ -42,28 +38,42 @@ jobs:
           }
 
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
-          SOURCE_REF="$DISPATCH_SOURCE_REF"
 
           [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
-          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
-          validated_source_ref="$SOURCE_REF"
-          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
-            :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
-            source_tag="${SOURCE_REF#refs/tags/}"
-            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
-            validated_source_ref="refs/tags/$source_tag"
-          else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
-          fi
+          SOURCE_REF="refs/tags/$RELEASE_TAG"
 
           VERSION="${RELEASE_TAG#v}"
           [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
 
           {
-            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'source_ref=%s\n' "$SOURCE_REF"
             printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          persist-credentials: false
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Resolve immutable release source
+        id: source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse "HEAD^{commit}")"
+          source_tree="$(git rev-parse "HEAD^{tree}")"
+          tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
+          test "$source_sha" = "$tag_sha"
+          test "$source_tree" = "$tag_tree"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -74,8 +84,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Verify pinned release source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "HEAD^{commit}")" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse "HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
 
       - name: Read Android toolchain versions
         id: android-toolchain
@@ -96,15 +116,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
-      - name: Verify Android package version matches tag
+      - name: Verify release version projections match tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          ANDROID_VERSION=$(grep '^version = ' platforms/android/build.gradle.kts | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
-          if [ "$ANDROID_VERSION" != "$VERSION" ]; then
-            echo "::error::Android version '$ANDROID_VERSION' does not match tag $VERSION"
-            exit 1
-          fi
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Verify FFI publish surface
         run: python3 scripts/verify-ffi-publish-surface.py
