@@ -546,9 +546,9 @@ pub(crate) fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String>
 /// tokens (e.g. ordered/unordered lists, headings, fenced code blocks), Mermaid falls back to
 /// emitting the raw Markdown without a surrounding `<p>` wrapper.
 ///
-/// The Rust renderer projects pulldown-cmark's CommonMark/GFM block parser down to only this
-/// top-level paragraph decision. Inline rendering remains the pinned Marked-compatible
-/// interpreter above; pulldown-cmark does not become a second inline Markdown semantics.
+/// This function projects pulldown-cmark's CommonMark/GFM block parser down to only the top-level
+/// paragraph decision. Inline rendering remains owned by the pinned Marked-compatible interpreter;
+/// its ambiguous delimiter-run path may use pulldown-cmark events while preserving source slices.
 pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
     let markdown = markdown.replace("\r\n", "\n");
     mermaid_markdown_top_level_blocks(&markdown)
