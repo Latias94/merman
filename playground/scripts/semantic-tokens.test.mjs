@@ -104,6 +104,8 @@ test("Monaco publishes planner-packed semantic tokens without transport projecti
 test("worker owns one native editor session across document updates and queries", async () => {
   const scope = new FakeWorkerScope();
   const calls = [];
+  let initCalls = 0;
+  let initOptions;
   const session = {
     version: 1,
     uri: "file:///merman/playground.mmd",
@@ -192,7 +194,10 @@ test("worker owns one native editor session across document updates and queries"
         profiles: [],
       },
     }),
-    async initMerman() {},
+    async initMerman(options) {
+      initCalls += 1;
+      initOptions = options;
+    },
     editorSemanticTokenDescriptor: () => ({ digest: TEST_LEGEND_DIGEST }),
     createEditorSession(source, version, uri) {
       calls.push(["create", source, version, uri]);
@@ -212,6 +217,8 @@ test("worker owns one native editor session across document updates and queries"
     type: "initialize",
     requestId: 1,
   });
+  assert.equal(initCalls, 1);
+  assert.equal(initOptions, undefined);
   await scope.request({
     protocol: TEST_WORKER_PROTOCOL,
     type: "didOpen",

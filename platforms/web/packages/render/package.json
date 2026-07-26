@@ -1,8 +1,7 @@
 {
   "name": "@mermanjs/web-render",
-  "version": "0.8.0-alpha.3",
-  "private": true,
-  "description": "Candidate browser-only Merman SVG render package pending independent-workflow admission.",
+  "version": "0.8.0-alpha.4",
+  "description": "Complete browser SVG renderer with Cytoscape, ELK, and math.",
   "type": "module",
   "main": "./dist/package-entries/render.js",
   "types": "./dist/package-entries/render.d.ts",
@@ -17,8 +16,17 @@
     "url": "git+https://github.com/Latias94/merman.git"
   },
   "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web/packages/render#readme",
-  "keywords": ["mermaid", "diagram", "wasm", "svg", "browser"],
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "wasm",
+    "svg",
+    "browser"
+  ],
   "license": "MIT OR Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "artifacts",
     "dist",

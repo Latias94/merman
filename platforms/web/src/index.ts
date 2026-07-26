@@ -62,6 +62,7 @@ import type {
   RuntimeCatalog,
   ResourceOptions,
   SvgBindingOptions,
+  SvgPlanResult,
   UnavailableDiagramDetectionFacts,
   ValidationResult,
   WasmEditorSessionBinding,
@@ -175,6 +176,13 @@ export function isMermanInitialized(): boolean {
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
+}
+
+export function svgPlanJson(
+  source: string,
+  options?: SvgBindingOptions | string
+): SvgPlanResult {
+  return getMerman().svgPlanJson(source, encodeOptions(options));
 }
 
 export function renderSvgWithTextMeasurer(

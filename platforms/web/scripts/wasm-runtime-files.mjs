@@ -52,7 +52,7 @@ export function wasmRuntimeFileRecords(
 export function packageDistFileRecords(
   distRoot,
   packageId,
-  { allowSiblingPackageEntries = false } = {},
+  { allowSiblingPackageEntries = false, allowSharedSourceMaps = false } = {},
 ) {
   if (!existsSync(distRoot) || !lstatSync(distRoot).isDirectory()) {
     throw new Error(`Missing compiled package directory: ${distRoot}.`);
@@ -88,8 +88,20 @@ export function packageDistFileRecords(
     if (entry.name === "package-entries") continue;
     const absolute = path.join(distRoot, entry.name);
     if (entry.isDirectory()) {
-      records.push(...walkDistFiles(absolute, `dist/${entry.name}`));
+      records.push(
+        ...walkDistFiles(absolute, `dist/${entry.name}`, {
+          allowSharedSourceMaps,
+        }),
+      );
     } else if (entry.isFile()) {
+      if (entry.name.endsWith(".map")) {
+        if (!allowSharedSourceMaps) {
+          throw new Error(
+            `Compiled package directory must not contain shared source maps: ${absolute}.`,
+          );
+        }
+        continue;
+      }
       records.push(fileRecord(absolute, `dist/${entry.name}`));
     } else {
       throw new Error(`Compiled package directory must contain regular files only: ${absolute}.`);
@@ -117,14 +129,22 @@ function walkSnippetFiles(root, relativeRoot) {
   return records;
 }
 
-function walkDistFiles(root, relativeRoot) {
+function walkDistFiles(root, relativeRoot, { allowSharedSourceMaps }) {
   const records = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const absolute = path.join(root, entry.name);
     const relative = `${relativeRoot}/${entry.name}`;
     if (entry.isDirectory()) {
-      records.push(...walkDistFiles(absolute, relative));
+      records.push(...walkDistFiles(absolute, relative, { allowSharedSourceMaps }));
     } else if (entry.isFile()) {
+      if (entry.name.endsWith(".map")) {
+        if (!allowSharedSourceMaps) {
+          throw new Error(
+            `Compiled package directory must not contain shared source maps: ${absolute}.`,
+          );
+        }
+        continue;
+      }
       records.push(fileRecord(absolute, relative));
     } else {
       throw new Error(`Compiled package directory must contain regular files only: ${absolute}.`);

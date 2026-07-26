@@ -123,13 +123,15 @@ export function createMermaidRealmController({
 
   const run = async (
     input: MermaidRealmRenderInput,
-    requestId: string
+    requestId: string,
+    operationGeneration: number
   ): Promise<MermaidRealmRenderResult> => {
     if (disposed) {
       return failure("disposed", "Mermaid realm controller is disposed.");
     }
-
-    const operationGeneration = generation;
+    if (generation !== operationGeneration) {
+      return failure("disposed", "Mermaid realm operation was superseded.");
+    }
     if (!session) {
       try {
         const abortController = new AbortController();
@@ -220,7 +222,10 @@ export function createMermaidRealmController({
   ): Promise<MermaidRealmRenderResult> => {
     requestSequence += 1;
     const requestId = `${kind}-${requestSequence}`;
-    return operationQueue.enqueue(() => run(input, requestId));
+    const operationGeneration = generation;
+    return operationQueue.enqueue(() =>
+      run(input, requestId, operationGeneration)
+    );
   };
 
   return { dispose, render, reset };

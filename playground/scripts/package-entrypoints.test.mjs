@@ -10,6 +10,10 @@ const npmrc = await readFile(
   path.resolve(import.meta.dirname, "..", ".npmrc"),
   "utf8"
 );
+const viteConfig = await readFile(
+  path.resolve(import.meta.dirname, "..", "vite.config.ts"),
+  "utf8",
+);
 
 test("dev, build, and test fail closed on the complete browser package", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
@@ -29,9 +33,51 @@ test("dev, build, and test fail closed on the complete browser package", () => {
   assert.match(packageJson.scripts.build, /npm run verify:dist$/u);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /verify-wasm-inputs\.mjs/);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /--package full/);
-  assert.equal(packageJson.dependencies["@mermanjs/web"], "file:../platforms/web/packages/full");
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(packageJson.dependencies).filter(([name]) =>
+        name.startsWith("@mermanjs/web"),
+      ),
+    ),
+    {
+      "@mermanjs/web": "file:../platforms/web/packages/full",
+    },
+  );
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
+  for (const packageName of Object.keys(packageJson.dependencies).filter((name) =>
+    name.startsWith("@mermanjs/web"),
+  )) {
+    assert.match(
+      viteConfig,
+      new RegExp(`exclude:[\\s\\S]*["']${packageName}["']`, "u"),
+      `${packageName} must retain its package-relative WASM URL`,
+    );
+  }
+});
+
+test("Playground consumes every admitted Web capability from one complete SDK", async () => {
+  const [browserRuntime, editorWorker, workerBrowser] = await Promise.all([
+    readFile(
+      path.resolve(import.meta.dirname, "..", "src/runtime/merman-browser.ts"),
+      "utf8",
+    ),
+    readFile(
+      path.resolve(import.meta.dirname, "..", "src/editor/merman-language.worker.ts"),
+      "utf8",
+    ),
+    readFile(
+      path.resolve(import.meta.dirname, "..", "src/editor/worker-browser.ts"),
+      "utf8",
+    ),
+  ]);
+
+  for (const source of [browserRuntime, editorWorker, workerBrowser]) {
+    assert.doesNotMatch(source, /from "@mermanjs\/web-/u);
+  }
+  assert.match(browserRuntime, /from "@mermanjs\/web"/u);
+  assert.match(editorWorker, /from "@mermanjs\/web"/u);
+  assert.match(workerBrowser, /from "@mermanjs\/web"/u);
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {

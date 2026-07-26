@@ -12,8 +12,10 @@ export const REALM_PROTOCOL_VERSION = 2 as const;
 export const REALM_BUDGETS = Object.freeze({
   // Engine artifacts are generated, hash-bound program inputs. They are kept
   // separate from user-controlled protocol messages so a large Mermaid engine
-  // cannot force the source/SVG budgets to grow with it.
-  engineArtifactBytes: 40 * 1024 * 1024,
+  // cannot force the source/SVG budgets to grow with it. Mermaid 11.16 plus
+  // the admitted external modules stays below this raw-source ceiling while
+  // the encoded envelope remains independently bounded by realmInitBytes.
+  engineArtifactBytes: 44 * 1024 * 1024,
   realmInitBytes: 48 * 1024 * 1024,
   sourceBytes: 2 * 1024 * 1024,
   configBytes: 1024 * 1024,

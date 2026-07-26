@@ -11,6 +11,7 @@ import {
   allPackageValueExportNames,
   webPackages,
 } from "./surface-manifest.mjs";
+import { assertRuntimeOwnerEvidence } from "./wasm-build/runtime-evidence.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
@@ -365,7 +366,6 @@ assert.equal(
   runtimeCatalog.registry.diagram_family_count,
   api.diagramFamilyCapabilities().length
 );
-assert.equal(runtimeCatalog.resources.schema_version, 1);
 assert.equal(
   runtimeCatalog.resources.general_binding_default_profile,
   "interactive"
@@ -393,9 +393,17 @@ if (hasCapability("svg")) {
     "max_source_bytes",
   ]);
 } else {
-  assert.deepEqual(resourceLimitIds, ["max_source_bytes"]);
+  assert.deepEqual(resourceLimitIds, [
+    "max_model_items",
+    "max_model_nesting_depth",
+    "max_model_text_bytes",
+    "max_source_bytes",
+  ]);
 }
-assert.deepEqual(capabilities.capability_ids, presetManifest.runtime_capability_ids);
+assertRuntimeOwnerEvidence(capabilities, {
+  runtime_capability_ids: presetManifest.runtime_capability_ids,
+  runtime_output_ids: presetManifest.outputs,
+});
 assert.ok(
   capabilities.output_ids.every((outputId) =>
     capabilities.operation_ids.includes(outputId)
@@ -1320,7 +1328,12 @@ async function runSameProcessPackageSmoke() {
   );
   assert.deepEqual(
     analysis.runtimeCatalog().resources.limits.map((limit) => limit.id),
-    ["max_source_bytes"]
+    [
+      "max_source_bytes",
+      "max_model_items",
+      "max_model_text_bytes",
+      "max_model_nesting_depth",
+    ]
   );
   assert.equal(typeof analysis.renderSvg, "undefined");
 

@@ -2,9 +2,8 @@ import {
   asciiCapabilities,
   asciiSupportedDiagrams,
   assertSafeSvgForDom,
-  runtimeCatalog,
   createBrowserTextMeasurementSession,
-  editorDiagramDetection,
+  detectDiagramFacts,
   initMerman,
   isMermanInitialized,
   layoutJson,
@@ -16,6 +15,7 @@ import {
   renderAscii,
   renderSvg,
   renderSvgWithTextMeasurer,
+  runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
   UNAVAILABLE_DIAGRAM_DETECTION,
@@ -82,10 +82,9 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
           configJson,
           options,
         );
-        return editorDiagramDetection(
+        return detectDiagramFacts(
           input.source,
           input.bindingOptions,
-          "file:///merman/playground.mmd",
         );
       } catch {
         return UNAVAILABLE_DIAGRAM_DETECTION;

@@ -1,7 +1,7 @@
 # @mermanjs/web
 
-The complete browser-only Merman SDK. It includes SVG rendering, semantic analysis, ASCII output,
-and parser-backed editor APIs in one matching WASM artifact.
+The complete browser-only Merman SDK. Its single WASM artifact includes SVG rendering with
+Cytoscape, ELK, and math support, semantic analysis, ASCII output, and parser-backed editor APIs.
 
 ## Install
 

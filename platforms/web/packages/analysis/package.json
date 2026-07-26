@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web-analysis",
-  "version": "0.8.0-alpha.3",
+  "version": "0.8.0-alpha.4",
   "description": "Browser-only Merman WebAssembly SDK for semantic analysis and detection.",
   "type": "module",
   "main": "./dist/package-entries/analysis.js",
@@ -16,7 +16,13 @@
     "url": "git+https://github.com/Latias94/merman.git"
   },
   "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web/packages/analysis#readme",
-  "keywords": ["mermaid", "diagram", "wasm", "analysis", "browser"],
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "wasm",
+    "analysis",
+    "browser"
+  ],
   "license": "MIT OR Apache-2.0",
   "publishConfig": {
     "access": "public"

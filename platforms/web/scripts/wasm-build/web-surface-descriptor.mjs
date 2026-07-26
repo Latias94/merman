@@ -4,21 +4,17 @@ import { fileURLToPath } from "node:url";
 
 import { repositoryRoot } from "./paths.mjs";
 
-export const WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION = 1;
-
-const RUNTIME_PROFILES = new Set([
-  "analysis",
-  "render",
-  "ascii",
-  "editor",
-  "full",
-]);
-const VISIBILITIES = new Set(["candidate", "public"]);
 const descriptorPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
   "web-surface-descriptor.json",
+);
+const descriptorSchemaPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "web-surface-descriptor.schema.json",
 );
 const artifactProfilesPath = path.join(
   repositoryRoot,
@@ -26,40 +22,29 @@ const artifactProfilesPath = path.join(
   "artifact-profiles-v1.json",
 );
 
-export function parseWebSurfaceDescriptor(value) {
+export function loadWebSurfaceDescriptorSchema(file = descriptorSchemaPath) {
+  const schema = readJson(file, "Web package descriptor schema");
+  validateDescriptorSchema(schema);
+  return deepFreeze(schema);
+}
+
+export const webSurfaceDescriptorSchema = loadWebSurfaceDescriptorSchema();
+export const WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION =
+  webSurfaceDescriptorSchema.properties.schema_version.const;
+
+export function parseWebSurfaceDescriptor(
+  value,
+  { schema = webSurfaceDescriptorSchema } = {},
+) {
   const descriptor = expectRecord(value, "Web package descriptor");
-  assertExactKeys(
-    descriptor,
-    ["schema_version", "default_package", "packages"],
-    "Web package descriptor",
-  );
-  if (descriptor.schema_version !== WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION) {
-    throw new Error(
-      `Web package descriptor schema must be ${WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION}.`,
-    );
-  }
-
-  const packages = expectArray(descriptor.packages, "packages").map(parsePackage);
-  const packageIds = assertUnique(packages, (item) => item.id, "package ID");
-  assertUnique(packages, (item) => item.name, "package name");
-  assertUnique(packages, (item) => item.package_dir, "package directory");
-  assertUnique(packages, (item) => item.artifact_profile, "artifact profile");
-
-  const defaultPackage = expectName(descriptor.default_package, "default_package");
-  if (!packageIds.has(defaultPackage)) {
-    throw new Error(`default_package references unknown package ${defaultPackage}.`);
-  }
-  const defaultDescriptor = packages.find((item) => item.id === defaultPackage);
-  if (defaultDescriptor.visibility !== "public") {
-    throw new Error("default_package must reference a public package.");
-  }
-  if (defaultDescriptor.name !== "@mermanjs/web") {
-    throw new Error("default_package must own @mermanjs/web.");
-  }
+  validateDescriptorSchema(schema);
+  validateJsonSchema(descriptor, schema, schema, "Web package descriptor");
+  validateDescriptorInvariants(descriptor, schema["x-merman-invariants"]);
+  const packages = descriptor.packages.map((item) => ({ ...item }));
 
   return deepFreeze({
-    schema_version: WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION,
-    default_package: defaultPackage,
+    schema_version: descriptor.schema_version,
+    default_package: descriptor.default_package,
     packages,
   });
 }
@@ -114,44 +99,265 @@ export const defaultWebPackage = webPackageDescriptors.find(
   (item) => item.id === webSurfaceDescriptor.default_package,
 );
 
-function parsePackage(value, index) {
-  const item = expectRecord(value, `packages[${index}]`);
+function validateDescriptorSchema(schema) {
+  const descriptorSchema = expectRecord(schema, "Web package descriptor schema");
   assertExactKeys(
-    item,
-    ["id", "name", "package_dir", "artifact_profile", "runtime_profile", "visibility"],
-    `packages[${index}]`,
+    descriptorSchema,
+    [
+      "$schema",
+      "$id",
+      "title",
+      "type",
+      "additionalProperties",
+      "required",
+      "properties",
+      "$defs",
+      "x-merman-invariants",
+    ],
+    "Web package descriptor schema",
   );
-  const id = expectName(item.id, `packages[${index}].id`);
-  const name = expectPackageName(item.name, `packages[${index}].name`);
-  const packageDir = expectPackageDir(item.package_dir, `packages[${index}].package_dir`);
-  const artifactProfile = expectName(item.artifact_profile, `packages[${index}].artifact_profile`);
-  const runtimeProfile = expectName(item.runtime_profile, `packages[${index}].runtime_profile`);
-  const visibility = expectName(item.visibility, `packages[${index}].visibility`);
+  if (descriptorSchema.$schema !== "https://json-schema.org/draft/2020-12/schema") {
+    throw new Error("Web package descriptor schema must use JSON Schema draft 2020-12.");
+  }
+  if (descriptorSchema.type !== "object") {
+    throw new Error("Web package descriptor schema root must be an object.");
+  }
+  validateSchemaNode(descriptorSchema, "Web package descriptor schema", { root: true });
 
-  if (packageDir !== `packages/${id}`) {
-    throw new Error(`Web package ${id} package_dir must be packages/${id}.`);
+  const invariants = expectRecord(
+    descriptorSchema["x-merman-invariants"],
+    "Web package descriptor schema invariants",
+  );
+  assertExactKeys(
+    invariants,
+    ["uniqueBy", "derivedFields", "conditionalPackages", "defaultPackage"],
+    "Web package descriptor schema invariants",
+  );
+  if (!Array.isArray(invariants.uniqueBy) || !invariants.uniqueBy.every(isString)) {
+    throw new Error("Web package descriptor schema uniqueBy must be a string array.");
   }
-  if (artifactProfile !== `web-${id}`) {
-    throw new Error(`Web package ${id} artifact_profile must be web-${id}.`);
+  if (
+    !isRecord(invariants.derivedFields) ||
+    !Object.entries(invariants.derivedFields).every(
+      ([field, template]) => isString(field) && isString(template),
+    )
+  ) {
+    throw new Error("Web package descriptor schema derivedFields must be string templates.");
   }
-  if (!RUNTIME_PROFILES.has(runtimeProfile)) {
-    throw new Error(`Web package ${id} has unknown runtime profile ${runtimeProfile}.`);
+  if (!Array.isArray(invariants.conditionalPackages)) {
+    throw new Error("Web package descriptor schema conditionalPackages must be an array.");
   }
-  if (!VISIBILITIES.has(visibility)) {
-    throw new Error(`Web package ${id} has unknown visibility ${visibility}.`);
+  invariants.conditionalPackages.forEach((rule, index) => {
+    const conditionalRule = expectRecord(
+      rule,
+      `Web package descriptor conditionalPackages[${index}]`,
+    );
+    assertExactKeys(
+      conditionalRule,
+      ["when", "allowed"],
+      `Web package descriptor conditionalPackages[${index}]`,
+    );
+    if (!isRecord(conditionalRule.when) || Object.keys(conditionalRule.when).length === 0) {
+      throw new Error(
+        `Web package descriptor conditionalPackages[${index}].when must be an object.`,
+      );
+    }
+    if (
+      !Array.isArray(conditionalRule.allowed) ||
+      !conditionalRule.allowed.every(
+        (candidate) => isRecord(candidate) && Object.keys(candidate).length > 0,
+      )
+    ) {
+      throw new Error(
+        `Web package descriptor conditionalPackages[${index}].allowed must be an object array.`,
+      );
+    }
+  });
+  const defaultRule = expectRecord(
+    invariants.defaultPackage,
+    "Web package descriptor schema defaultPackage",
+  );
+  assertExactKeys(
+    defaultRule,
+    ["referenceField", "targetField", "requiredFields"],
+    "Web package descriptor schema defaultPackage",
+  );
+  if (
+    !isString(defaultRule.referenceField) ||
+    !isString(defaultRule.targetField) ||
+    !isRecord(defaultRule.requiredFields)
+  ) {
+    throw new Error("Web package descriptor schema defaultPackage is invalid.");
   }
-  if (visibility === "candidate" && runtimeProfile !== "render") {
-    throw new Error(`Only the render package may be a candidate Web package.`);
+}
+
+function validateSchemaNode(schema, label, { root = false } = {}) {
+  const supported = new Set([
+    "$ref",
+    "type",
+    "const",
+    "enum",
+    "pattern",
+    "additionalProperties",
+    "required",
+    "properties",
+    "minItems",
+    "items",
+  ]);
+  if (root) {
+    for (const keyword of ["$schema", "$id", "title", "$defs", "x-merman-invariants"]) {
+      supported.add(keyword);
+    }
+  }
+  const unknown = Object.keys(schema).filter((keyword) => !supported.has(keyword));
+  if (unknown.length > 0) {
+    throw new Error(`${label} has unsupported schema keywords: ${unknown.sort().join(", ")}.`);
+  }
+  if (schema.properties !== undefined) {
+    const properties = expectRecord(schema.properties, `${label} properties`);
+    for (const [field, child] of Object.entries(properties)) {
+      validateSchemaNode(
+        expectRecord(child, `${label}.properties.${field}`),
+        `${label}.properties.${field}`,
+      );
+    }
+  }
+  if (schema.items !== undefined) {
+    validateSchemaNode(expectRecord(schema.items, `${label} items`), `${label}.items`);
+  }
+  if (schema.$defs !== undefined) {
+    const definitions = expectRecord(schema.$defs, `${label} $defs`);
+    for (const [name, child] of Object.entries(definitions)) {
+      validateSchemaNode(expectRecord(child, `${label}.$defs.${name}`), `${label}.$defs.${name}`);
+    }
+  }
+}
+
+function validateJsonSchema(value, schema, root, label) {
+  if (schema.$ref !== undefined) {
+    const prefix = "#/$defs/";
+    if (!isString(schema.$ref) || !schema.$ref.startsWith(prefix)) {
+      throw new Error(`${label} has unsupported schema reference ${String(schema.$ref)}.`);
+    }
+    const definition = root.$defs[schema.$ref.slice(prefix.length)];
+    validateJsonSchema(
+      value,
+      expectRecord(definition, `${label} schema reference ${schema.$ref}`),
+      root,
+      label,
+    );
+    return;
   }
 
-  return {
-    id,
-    name,
-    package_dir: packageDir,
-    artifact_profile: artifactProfile,
-    runtime_profile: runtimeProfile,
-    visibility,
-  };
+  if (Object.hasOwn(schema, "const") && !jsonEqual(value, schema.const)) {
+    throw new Error(`${label} must be ${JSON.stringify(schema.const)}.`);
+  }
+  if (schema.enum !== undefined) {
+    if (!Array.isArray(schema.enum) || !schema.enum.some((item) => jsonEqual(value, item))) {
+      throw new Error(`${label} must be one of ${JSON.stringify(schema.enum)}.`);
+    }
+  }
+
+  if (schema.type === "object") {
+    const record = expectRecord(value, label);
+    const properties = schema.properties ?? {};
+    if (!Array.isArray(schema.required) || !schema.required.every(isString)) {
+      throw new Error(`${label} schema required must be a string array.`);
+    }
+    const missing = schema.required.filter((field) => !Object.hasOwn(record, field));
+    const unknown = Object.keys(record).filter((field) => !Object.hasOwn(properties, field));
+    if (missing.length > 0 || (schema.additionalProperties === false && unknown.length > 0)) {
+      const details = [];
+      if (missing.length > 0) details.push(`missing ${missing.sort().join(", ")}`);
+      if (unknown.length > 0) details.push(`unknown ${unknown.sort().join(", ")}`);
+      throw new Error(`${label} keys must be exact (${details.join("; ")}).`);
+    }
+    for (const [field, child] of Object.entries(properties)) {
+      if (Object.hasOwn(record, field)) {
+        validateJsonSchema(record[field], child, root, `${label}.${field}`);
+      }
+    }
+  } else if (schema.type === "array") {
+    if (!Array.isArray(value)) throw new Error(`${label} must be an array.`);
+    const minimum = schema.minItems ?? 0;
+    if (!Number.isSafeInteger(minimum) || value.length < minimum) {
+      throw new Error(`${label} must contain at least ${String(minimum)} items.`);
+    }
+    if (schema.items !== undefined) {
+      value.forEach((item, index) =>
+        validateJsonSchema(item, schema.items, root, `${label}[${index}]`),
+      );
+    }
+  } else if (schema.type === "string") {
+    if (!isString(value)) throw new Error(`${label} must be a string.`);
+    if (schema.pattern !== undefined) {
+      if (!isString(schema.pattern) || !new RegExp(schema.pattern, "u").test(value)) {
+        throw new Error(`${label} does not match ${JSON.stringify(schema.pattern)}.`);
+      }
+    }
+  } else if (schema.type !== undefined) {
+    throw new Error(`${label} has unsupported schema type ${String(schema.type)}.`);
+  }
+}
+
+function validateDescriptorInvariants(descriptor, invariants) {
+  descriptor.packages.forEach((item, index) => {
+    const label = `Web package descriptor packages[${index}]`;
+    for (const [field, template] of Object.entries(invariants.derivedFields)) {
+      const expected = template.replace(/\{([a-zA-Z0-9_]+)\}/gu, (_match, sourceField) => {
+        if (!Object.hasOwn(item, sourceField)) {
+          throw new Error(
+            `Web package descriptor schema derivedFields references unknown field ${sourceField}.`,
+          );
+        }
+        return String(item[sourceField]);
+      });
+      if (item[field] !== expected) {
+        throw new Error(`${label} ${field} must be ${expected}.`);
+      }
+    }
+    for (const rule of invariants.conditionalPackages) {
+      const matches = Object.entries(rule.when).every(
+        ([field, expected]) => item[field] === expected,
+      );
+      const admitted = rule.allowed.some((candidate) =>
+        Object.entries(candidate).every(([field, expected]) => item[field] === expected),
+      );
+      if (matches && !admitted) {
+        throw new Error(`${label} package mapping is not admitted by the schema.`);
+      }
+    }
+  });
+
+  for (const field of invariants.uniqueBy) {
+    assertUnique(descriptor.packages, (item) => item[field], `package ${field}`);
+  }
+
+  const defaultRule = invariants.defaultPackage;
+  const reference = descriptor[defaultRule.referenceField];
+  const defaultPackage = descriptor.packages.find(
+    (item) => item[defaultRule.targetField] === reference,
+  );
+  if (!defaultPackage) {
+    throw new Error(`default_package references unknown package ${reference}.`);
+  }
+  for (const [field, expected] of Object.entries(defaultRule.requiredFields)) {
+    if (defaultPackage[field] !== expected) {
+      throw new Error(`default_package ${field} must be ${JSON.stringify(expected)}.`);
+    }
+  }
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isString(value) {
+  return typeof value === "string";
+}
+
+function jsonEqual(left, right) {
+  return typeof left === typeof right && JSON.stringify(left) === JSON.stringify(right);
 }
 
 function parseWebArtifactProfile(value, index) {
@@ -233,20 +439,6 @@ function expectNameArray(value, label, allowEmpty = false) {
   );
   assertSortedUnique(values, label);
   return values;
-}
-
-function expectPackageDir(value, label) {
-  if (typeof value !== "string" || !/^packages\/[a-z0-9][a-z0-9-]*$/.test(value)) {
-    throw new Error(`${label} must be a package-relative directory.`);
-  }
-  return value;
-}
-
-function expectPackageName(value, label) {
-  if (typeof value !== "string" || !/^@mermanjs\/web(?:-[a-z0-9][a-z0-9-]*)?$/.test(value)) {
-    throw new Error(`${label} must be an @mermanjs/web package name.`);
-  }
-  return value;
 }
 
 function expectName(value, label) {

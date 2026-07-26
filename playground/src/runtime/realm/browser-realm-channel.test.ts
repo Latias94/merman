@@ -184,6 +184,38 @@ test("disposing a realm cancels a stalled viewport frame wait", async () => {
   }
 });
 
+test("an unchanged viewport skips style writes and animation frame waits", async () => {
+  const harness = installBrowserHarness();
+  try {
+    const channel = await createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: () => {},
+    });
+    const initialStyleWrites = harness.frame.styleWrites;
+
+    await channel.setViewport({ width: 800, height: 600 });
+
+    assert.equal(harness.frame.styleWrites, initialStyleWrites);
+    assert.equal(harness.scheduledAnimationFrames, 0);
+
+    await channel.setViewport({ width: 640, height: 480 });
+    const changedStyleWrites = harness.frame.styleWrites;
+    assert.equal(harness.scheduledAnimationFrames, 2);
+    await channel.setViewport({ width: 640, height: 480 });
+    assert.equal(harness.frame.styleWrites, changedStyleWrites);
+    assert.equal(harness.scheduledAnimationFrames, 2);
+    channel.dispose();
+  } finally {
+    harness.restore();
+  }
+});
+
 test("hidden documents use a task boundary instead of waiting for animation frames", async () => {
   const harness = installBrowserHarness({
     autoAnimationFrames: false,
@@ -371,6 +403,9 @@ function installBrowserHarness({
     get pendingAnimationFrames() {
       return animationFrames.size;
     },
+    get scheduledAnimationFrames() {
+      return nextAnimationFrameId;
+    },
     get boot() {
       return boot;
     },
@@ -390,9 +425,10 @@ class FakeIFrame extends EventTarget {
     postMessage(data: unknown, targetOrigin: string, ports: MessagePort[]): void;
   };
   readonly dataset: Record<string, string> = {};
-  readonly style: Record<string, string> = {};
+  readonly style: Record<string, string>;
   isConnected = false;
   removeCount = 0;
+  styleWrites = 0;
   src = "";
   srcdoc = "";
   tabIndex = 0;
@@ -401,6 +437,12 @@ class FakeIFrame extends EventTarget {
   constructor(contentWindow: FakeIFrame["contentWindow"]) {
     super();
     this.contentWindow = contentWindow;
+    this.style = new Proxy<Record<string, string>>({}, {
+      set: (target, property, value: string) => {
+        this.styleWrites += 1;
+        return Reflect.set(target, property, value);
+      },
+    });
   }
 
   remove() {

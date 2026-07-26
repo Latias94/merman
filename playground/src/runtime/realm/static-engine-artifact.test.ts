@@ -107,6 +107,83 @@ test("static engine artifacts enforce the transport budget before reading", asyn
   );
 });
 
+test("static engine artifacts cancel HTTP error response bodies", async () => {
+  let cancelReason: unknown = null;
+  const failed = cancellableResponse(
+    { status: 503 },
+    (reason) => {
+      cancelReason = reason;
+    }
+  );
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => failed)
+    ),
+    /HTTP 503/
+  );
+  assert.match(String(cancelReason), /HTTP 503/);
+});
+
+test("static engine artifacts cancel invalid content-length response bodies", async () => {
+  for (const contentLength of [
+    "invalid",
+    String(REALM_BUDGETS.engineArtifactBytes + 1),
+  ]) {
+    let cancelReason: unknown = null;
+    const invalid = cancellableResponse(
+      { contentLength },
+      (reason) => {
+        cancelReason = reason;
+      }
+    );
+
+    await assert.rejects(
+      createStaticRealmEngineArtifact(
+        {
+          manifest,
+          resourceUrl: null,
+          sourceUrl: "assets/mermaid-engine.js",
+        },
+        environment(() => invalid)
+      ),
+      /exceeds its byte budget/
+    );
+    assert.match(String(cancelReason), /exceeds its byte budget/);
+  }
+});
+
+test("static engine artifacts cancel response bodies after invalid UTF-8", async () => {
+  let cancelReason: unknown = null;
+  const invalid = cancellableResponse(
+    {
+      bytes: Uint8Array.of(0xff),
+      contentLength: "1",
+    },
+    (reason) => {
+      cancelReason = reason;
+    }
+  );
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => invalid)
+    ),
+    /not valid UTF-8/
+  );
+  assert.match(String(cancelReason), /not valid UTF-8/);
+});
+
 test("static engine artifact acquisition obeys caller cancellation", async () => {
   const controller = new AbortController();
   controller.abort(new Error("artifact acquisition cancelled"));
@@ -154,6 +231,53 @@ test("static engine artifact acquisition has a bounded fetch stage", async () =>
   );
 });
 
+test("static engine artifact timeout remains active while the response body stalls", async () => {
+  let cancelReason: unknown = null;
+  const stalled = stalledResponse((reason) => {
+    cancelReason = reason;
+  });
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+        timeoutMs: 5,
+      },
+      environment(() => stalled)
+    ),
+    /request timed out/
+  );
+  assert.match(String(cancelReason), /request timed out/);
+});
+
+test("static engine artifact caller cancellation remains active while the response body stalls", async () => {
+  const controller = new AbortController();
+  const cancellation = new Error("artifact body cancelled");
+  let cancelReason: unknown = null;
+  const stalled = stalledResponse((reason) => {
+    cancelReason = reason;
+  });
+
+  const acquisition = createStaticRealmEngineArtifact(
+    {
+      manifest,
+      resourceUrl: null,
+      signal: controller.signal,
+      sourceUrl: "assets/mermaid-engine.js",
+      timeoutMs: 1_000,
+    },
+    environment(() => {
+      setTimeout(() => controller.abort(cancellation), 0);
+      return stalled;
+    })
+  );
+
+  await assert.rejects(acquisition, cancellation);
+  assert.equal(cancelReason, cancellation);
+});
+
 function environment(
   fetchResponse: (
     url: URL,
@@ -174,6 +298,49 @@ function environment(
 function response(body: string): Response {
   return new Response(body, {
     headers: { "content-length": String(Buffer.byteLength(body)) },
+  });
+}
+
+function stalledResponse(onCancel: (reason: unknown) => void): Response {
+  let fallback: ReturnType<typeof setTimeout> | null = null;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      fallback = setTimeout(
+        () => controller.error(new Error("stalled response test cleanup")),
+        100
+      );
+    },
+    cancel(reason) {
+      if (fallback !== null) clearTimeout(fallback);
+      onCancel(reason);
+    },
+  });
+  return new Response(body, {
+    headers: { "content-length": String(manifest.bytes) },
+  });
+}
+
+function cancellableResponse(
+  options: Readonly<{
+    bytes?: Uint8Array;
+    contentLength?: string;
+    status?: number;
+  }>,
+  onCancel: (reason: unknown) => void
+): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (options.bytes) controller.enqueue(options.bytes);
+    },
+    cancel(reason) {
+      onCancel(reason);
+    },
+  });
+  return new Response(body, {
+    headers: options.contentLength
+      ? { "content-length": options.contentLength }
+      : undefined,
+    status: options.status,
   });
 }
 

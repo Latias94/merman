@@ -1,15 +1,30 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   buildWasmInputManifest,
+  collectWasmInputEntries,
   verifyWasmInputManifest,
 } from "./wasm-input-manifest.mjs";
 
 const roots = [];
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -23,11 +38,32 @@ describe("WASM input manifest", () => {
     const manifest = buildManifest(fixture);
     assert.deepEqual(buildManifest(fixture), manifest);
     assert.deepEqual(verify(fixture, manifest), { ok: true, reasons: [] });
+    assert.deepEqual(manifest.preset.runtime_output_ids, ["svg"]);
+    assert.equal(
+      manifest.inputs.some(
+        (entry) => entry.path === "crates/merman-core/assets/zenuml/actor.svg",
+      ),
+      true,
+    );
+    assert.equal(
+      manifest.inputs.some(
+        (entry) => entry.path === "crates/merman-core/assets/font-profile.bin",
+      ),
+      true,
+    );
 
     write(fixture, "crates/merman-wasm/src/lib.rs", "pub fn changed() {}\n");
     assertInvalid(fixture, manifest, "crates/merman-wasm/src/lib.rs");
 
     write(fixture, "crates/merman-wasm/src/lib.rs", "pub fn render() {}\n");
+    write(fixture, "crates/merman-core/assets/zenuml/actor.svg", "<svg>changed</svg>\n");
+    assertInvalid(fixture, manifest, "crates/merman-core/assets/zenuml/actor.svg");
+    write(fixture, "crates/merman-core/assets/zenuml/actor.svg", "<svg>actor</svg>\n");
+
+    write(fixture, "crates/merman-core/assets/font-profile.bin", "changed bytes");
+    assertInvalid(fixture, manifest, "crates/merman-core/assets/font-profile.bin");
+    write(fixture, "crates/merman-core/assets/font-profile.bin", "font bytes");
+
     write(fixture, "README.md", "documentation only\n");
     assert.deepEqual(verify(fixture, manifest), { ok: true, reasons: [] });
 
@@ -49,6 +85,8 @@ describe("WASM input manifest", () => {
       "abi/text-measurement-v1.json",
       "capabilities/artifact-profiles-v1.json",
       "capabilities/feature-surface-v1.json",
+      "capabilities/generated/capability_surface.rs",
+      "platforms/web/web-surface-descriptor.schema.json",
       "platforms/web/web-surface-descriptor.json",
       "platforms/web/scripts/build-wasm.mjs",
       "platforms/web/scripts/wasm-build/input-manifest.mjs",
@@ -72,6 +110,10 @@ describe("WASM input manifest", () => {
       features: ["editor", "layout-elk"],
     });
     assert.notEqual(changedProfile.input_digest, manifest.input_digest);
+    const changedOutputs = buildManifest(fixture, {
+      runtime_output_ids: ["ascii", "svg"],
+    });
+    assert.notEqual(changedOutputs.input_digest, manifest.input_digest);
     const changedTool = buildManifest(fixture, {}, { rustc: "rustc 1.96.0" });
     assert.notEqual(changedTool.input_digest, manifest.input_digest);
     assertInvalid(
@@ -117,6 +159,85 @@ describe("WASM input manifest", () => {
       /schema/i
     );
   });
+
+  it("fails closed when an embedded Rust input does not use a supported literal", () => {
+    const fixture = createFixture();
+    write(
+      fixture,
+      "crates/merman-core/src/lib.rs",
+      'pub const ACTOR: &str = include_str!(concat!("../assets/", "actor.svg"));\n',
+    );
+
+    assert.throws(
+      () => buildManifest(fixture),
+      /cannot resolve include_str!.*crates\/merman-core\/src\/lib\.rs/i,
+    );
+  });
+
+  it("rejects embedded inputs whose parent symlink escapes the repository", () => {
+    const fixture = createFixture();
+    const external = mkdtempSync(path.join(os.tmpdir(), "merman-wasm-external-"));
+    roots.push(external);
+    writeFileSync(path.join(external, "secret.svg"), "<svg>external</svg>\n");
+    const link = resolve(fixture, "crates/merman-core/assets/external");
+    symlinkSync(external, link, process.platform === "win32" ? "junction" : "dir");
+    write(
+      fixture,
+      "crates/merman-core/src/lib.rs",
+      'pub const SECRET: &str = include_str!("../assets/external/secret.svg");\n',
+    );
+
+    assert.throws(
+      () => buildManifest(fixture),
+      /resolves outside its repository root/i,
+    );
+  });
+
+  it("captures the renderer assets embedded outside its Rust source tree", () => {
+    const manifestPath = path.join(
+      repositoryRoot,
+      "crates",
+      "merman-render",
+      "Cargo.toml",
+    );
+    const metadata = {
+      packages: [
+        {
+          id: "merman-render",
+          manifest_path: manifestPath,
+          source: null,
+          targets: [
+            {
+              kind: ["lib"],
+              src_path: path.join(repositoryRoot, "crates", "merman-render", "src", "lib.rs"),
+            },
+          ],
+        },
+      ],
+      resolve: {
+        root: "merman-render",
+        nodes: [{ id: "merman-render", deps: [] }],
+      },
+    };
+    const paths = new Set(
+      collectWasmInputEntries({ metadata, repoRoot: repositoryRoot }).map(
+        (entry) => entry.path,
+      ),
+    );
+
+    assert.equal(
+      paths.has("crates/merman-render/assets/zenuml/actor.svg"),
+      true,
+    );
+    assert.equal(
+      paths.has("crates/merman-render/assets/zenuml/fragment-loop.svg"),
+      true,
+    );
+    assert.equal(
+      paths.has("crates/merman-render/assets/katex_flowchart_probe.cjs"),
+      false,
+    );
+  });
 });
 
 function buildManifest(fixture, overrides = {}, toolOverrides = {}) {
@@ -159,6 +280,7 @@ function preset(overrides = {}) {
     default_features: false,
     features: ["editor"],
     runtime_capability_ids: ["analysis", "editor", "svg"],
+    runtime_output_ids: ["svg"],
     ...overrides,
   };
 }
@@ -224,13 +346,24 @@ function createFixture() {
     "abi/text-measurement-v1.json": "{\"protocol_version\":1}\n",
     "capabilities/artifact-profiles-v1.json": "{\"schema_version\":1}\n",
     "capabilities/feature-surface-v1.json": "{\"schema_version\":1}\n",
+    "capabilities/generated/capability_surface.rs": "pub const CAPABILITY_IDS: &[&str] = &[];\n",
     "crates/merman-core/Cargo.toml": "[package]\nname = \"merman-core\"\n",
-    "crates/merman-core/src/lib.rs": "pub struct Core;\n",
+    "crates/merman-core/src/lib.rs": [
+      'pub const ACTOR: &str = include_str!("../assets/zenuml/actor.svg");',
+      'pub const FONT_PROFILE: &[u8] = include_bytes![r"../assets/font-profile.bin"];',
+      '// include_str!(NOT_A_REAL_INPUT)',
+      'pub const EXAMPLE: &str = "include_bytes!(NOT_A_REAL_INPUT)";',
+      "pub fn is_different(include_str: usize) -> bool { include_str != 0 }",
+      "",
+    ].join("\n"),
+    "crates/merman-core/assets/zenuml/actor.svg": "<svg>actor</svg>\n",
+    "crates/merman-core/assets/font-profile.bin": "font bytes",
     "crates/merman-wasm/Cargo.toml": "[package]\nname = \"merman-wasm\"\n",
     "crates/merman-wasm/src/lib.rs": "pub fn render() {}\n",
     "crates/test-helper/Cargo.toml": "[package]\nname = \"test-helper\"\n",
     "crates/test-helper/src/lib.rs": "pub fn helper() {}\n",
     "platforms/web/web-surface-descriptor.json": "{\"schema_version\":3}\n",
+    "platforms/web/web-surface-descriptor.schema.json": "{\"type\":\"object\"}\n",
     "platforms/web/scripts/build-wasm.mjs": "// build\n",
     "platforms/web/scripts/wasm-build/input-manifest.mjs": "// manifest\n",
     "platforms/web/scripts/wasm-build/new-owned-module.mjs": "// owned\n",

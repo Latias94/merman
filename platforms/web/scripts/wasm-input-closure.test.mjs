@@ -28,10 +28,12 @@ const expectedCrateDirectories = {
   render: [
     "dugong",
     "dugong-graphlib",
+    "manatee",
     "merman",
-    "merman-analysis",
     "merman-bindings-core",
     "merman-core",
+    "merman-elk-layered",
+    "merman-layout-elk",
     "merman-render",
     "merman-wasm",
     "roughr",
@@ -83,15 +85,16 @@ describe("WASM artifact Cargo closure", () => {
     });
   }
 
-  it("keeps unadmitted math out of all browser artifact recipes", () => {
+  it("admits math only in complete browser renderers", () => {
     for (const descriptor of webPackageDescriptors) {
       const profile = wasmArtifactProfile(descriptor);
-      assert.equal(profile.features.includes("math"), false, descriptor.id);
-      assert.equal(profile.runtime_capability_ids.includes("math"), false, descriptor.id);
+      const expectsMath = descriptor.id === "full" || descriptor.id === "render";
+      assert.equal(profile.features.includes("math"), expectsMath, descriptor.id);
+      assert.equal(profile.runtime_capability_ids.includes("math"), expectsMath, descriptor.id);
     }
   });
 
-  it("owns every renderer asset embedded into the candidate SVG build", () => {
+  it("owns every renderer asset embedded into the complete SVG build", () => {
     const descriptor = webPackageDescriptors.find((item) => item.id === "render");
     const metadata = cargoMetadataForPreset({
       preset: wasmArtifactProfile(descriptor),
@@ -114,6 +117,11 @@ describe("WASM artifact Cargo closure", () => {
       paths.has("crates/merman-render/assets/katex_flowchart_probe.cjs"),
       false,
       "runtime-only Node audit assets must not invalidate browser WASM",
+    );
+    assert.equal(
+      paths.has("capabilities/generated/capability_surface.rs"),
+      true,
+      "the bindings runtime compiles the generated capability projection outside its src tree",
     );
   });
 });

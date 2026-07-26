@@ -142,6 +142,21 @@ export function wasmArtifactProfile(descriptor) {
     default_features: profile.cargo.default_features,
     features: [...profile.cargo.features],
     runtime_capability_ids: [...profile.expected.runtime_ids],
+    runtime_output_ids: [...profile.expected.outputs],
+  };
+}
+
+export function wasmArtifactProfileManifest(descriptor) {
+  const profile = wasmArtifactProfile(descriptor);
+  return {
+    schema_version: 1,
+    package: descriptor.name,
+    package_id: descriptor.id,
+    artifact_profile: profile.name,
+    default_features: profile.default_features,
+    features: profile.features,
+    runtime_capability_ids: profile.runtime_capability_ids,
+    runtime_output_ids: profile.runtime_output_ids,
   };
 }
 
@@ -185,18 +200,9 @@ function wasmPackArgs(profile, outputRoot) {
 
 function writeArtifactProfileManifest(descriptor, outputRoot) {
   mkdirSync(outputRoot, { recursive: true });
-  const profile = wasmArtifactProfile(descriptor);
   writeFileSync(
     path.join(outputRoot, "merman_wasm_artifact_profile.json"),
-    `${JSON.stringify({
-      schema_version: 1,
-      package: descriptor.name,
-      package_id: descriptor.id,
-      artifact_profile: profile.name,
-      default_features: profile.default_features,
-      features: profile.features,
-      runtime_capability_ids: profile.runtime_capability_ids,
-    }, null, 2)}\n`,
+    `${JSON.stringify(wasmArtifactProfileManifest(descriptor), null, 2)}\n`,
   );
 }
 

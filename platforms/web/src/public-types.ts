@@ -548,6 +548,21 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
   diagrams: AnalysisDiagramFacts[];
 }
 
+/**
+ * Capability plan for one SVG render request.
+ *
+ * The plan is emitted by the compiled SVG owner before drawing. `ready` is
+ * false when the selected artifact lacks one or more required capabilities.
+ */
+export interface SvgPlanResult {
+  schema_version: 1;
+  planned_operation_id: "svg";
+  diagram_type: string;
+  required_capability_ids: string[];
+  missing_capability_ids: string[];
+  ready: boolean;
+}
+
 export interface AvailableDiagramDetectionFacts {
   readonly status: "available";
   readonly validity: "valid" | "recoverable-invalid";
@@ -834,12 +849,16 @@ interface WasmBindgenInitEnvelope {
   module_or_path: MermanWasmSource | Promise<MermanWasmSource>;
 }
 
-export interface MermanWasmModule {
+export interface MermanWasmModuleBase {
   default: (input?: WasmBindgenInitEnvelope) => Promise<unknown>;
+}
+
+export interface MermanWasmModule extends MermanWasmModuleBase {
   EditorSession?: WasmEditorSessionConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (
     source: string,
     optionsJson: string | null | undefined,
@@ -953,11 +972,16 @@ export interface MermanWasmModule {
   supportedThemes: () => string[];
 }
 
-export type MermanWasmLoader = () => Promise<MermanWasmModule>;
+export type MermanWasmLoader<Module extends MermanWasmModuleBase = MermanWasmModule> =
+  () => Promise<Module>;
 
-export interface MermanInitOptions {
-  loader?: MermanWasmLoader;
+export interface MermanInitOptions<
+  Module extends MermanWasmModuleBase = MermanWasmModule,
+> {
+  loader?: MermanWasmLoader<Module>;
   wasm?: MermanWasmSource | Promise<MermanWasmSource>;
 }
 
-export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
+export type MermanInitInput<Module extends MermanWasmModuleBase = MermanWasmModule> =
+  | MermanWasmLoader<Module>
+  | MermanInitOptions<Module>;

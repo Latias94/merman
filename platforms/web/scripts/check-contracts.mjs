@@ -45,6 +45,7 @@ const runtimeWrapperOnlyExports = new Set([
   "layoutObject",
   "detectDiagramFacts",
 ]);
+const canonicalOperationFacades = new Set(["svgPlanJson"]);
 const stableWrapperOnlyExports = new Set([
   "createBrowserTextMeasurementSession",
   "encodeOptions",
@@ -83,11 +84,13 @@ const requiredRawWrappers = [...rawWasmExports].filter(
 const requiredPublicWrappers = [
   ...requiredRawWrappers,
   ...runtimeWrapperOnlyExports,
+  ...canonicalOperationFacades,
   ...stableWrapperOnlyExports,
 ];
 const requiredRuntimeBindings = [
   ...requiredRawWrappers,
   ...runtimeWrapperOnlyExports,
+  ...canonicalOperationFacades,
 ];
 
 const requiredTypeProperties = new Map([
@@ -139,7 +142,6 @@ const requiredTypeProperties = new Map([
   [
     "RuntimeResourceContract",
     [
-      "schema_version",
       "general_binding_default_profile",
       "cli_default_profile",
       "limits",
@@ -164,7 +166,7 @@ const requiredTypeProperties = new Map([
     "AsciiRenderOptions",
     ["relation_summary_diagnostics", "relationSummaryDiagnostics"],
   ],
-  ["CommonBindingOptions", ["analysis", "merman"]],
+  ["CommonBindingOptions", ["analysis", "merman", "parse"]],
   ["AnalysisBindingOptions", ["resources"]],
   [
     "AnalysisDiagramSyntaxFacts",
@@ -281,6 +283,13 @@ for (const [interfaceName, requiredProperties] of requiredTypeProperties) {
     requiredProperties.filter((name) => !properties.has(name)),
   );
 }
+
+failed ||= reportPolicyFailure(
+  "check-contracts: analysis wrappers must not expose the top-level parse option",
+  contract
+    .exportedTypePropertyNames(publicEntry, "AnalysisBindingOptions")
+    .has("parse"),
+);
 
 for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
   const literals = contract.exportedStringLiteralMembers(publicEntry, typeName);

@@ -54,6 +54,7 @@ describe("browser package assembly", () => {
       name: "@mermanjs/web-analysis",
       runtimeExportNames: ["initMerman", "analyze"],
       valueExportNames: ["SUPPORTED_DIAGRAMS"],
+      wasmExportNames: ["default", "analyze"],
     });
     assert.match(source, /artifacts\/wasm\/merman_wasm\.js/);
     assert.match(source, /MERMAN_WASM_URL/);
@@ -61,5 +62,10 @@ describe("browser package assembly", () => {
     assert.doesNotMatch(source, /function assertBrowserRuntime/);
     assert.doesNotMatch(source, /pkg\//);
     assert.doesNotMatch(source, /@mermanjs\/web\//);
+    assert.match(
+      source,
+      /export type MermanWasmModule = Required<Pick<SharedMermanWasmModule,[\s\S]*\| "analyze"/,
+    );
+    assert.doesNotMatch(source, /\| "renderSvg"/);
   });
 });

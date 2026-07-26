@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -23,19 +24,22 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 
-DESCRIPTOR_SCHEMA_VERSION = 1
 GROUP_MANIFEST_SCHEMA_VERSION = 2
 PROVENANCE_SCHEMA_VERSION = 2
 DEFAULT_DESCRIPTOR = Path("platforms/web/web-surface-descriptor.json")
+DEFAULT_DESCRIPTOR_SCHEMA = (
+    Path(__file__).resolve().parents[1]
+    / "platforms"
+    / "web"
+    / "web-surface-descriptor.schema.json"
+)
 DEFAULT_MANIFEST_NAME = "web-package-group.json"
-PACKAGE_ID_RE = re.compile(r"[a-z][a-z0-9-]*\Z")
+PACKAGE_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 INTEGRITY_RE = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
 SOURCE_SHA_RE = re.compile(r"[0-9a-f]{7,64}\Z")
-NPM_PACKAGE_RE = re.compile(r"@mermanjs/web(?:-[a-z0-9-]+)?\Z")
 NPM_DIST_TAG_RE = re.compile(r"[a-z][a-z0-9-]*\Z")
 NPMJS_REGISTRY_URL = "https://registry.npmjs.org"
-VISIBILITIES = {"public", "candidate"}
 REQUIRED_TARBALL_FILES = {
     "package/package.json",
     "package/README.md",
@@ -78,6 +82,7 @@ MAX_TARBALL_UNPACKED_BYTES = 128 * 1024 * 1024
 MAX_METADATA_MEMBER_BYTES = 1024 * 1024
 MAX_LEGAL_MEMBER_BYTES = 8 * 1024 * 1024
 FULL_PACKAGE_ID = "full"
+COMPLETE_SVG_PACKAGE_ID = "render"
 MIN_PUBLIC_SLIM_UNPACKED_SIZE_SAVINGS_PERCENT = 15
 
 
@@ -144,74 +149,251 @@ def descriptor_package_path(entry: dict[str, Any]) -> Path:
     return Path(*path.parts)
 
 
-def validate_descriptor(data: dict[str, Any]) -> dict[str, Any]:
-    require_exact_keys(data, {"schema_version", "default_package", "packages"}, "Web package descriptor")
-    if data.get("schema_version") != DESCRIPTOR_SCHEMA_VERSION:
-        raise PackageGroupError(
-            f"Web package descriptor schema_version must be {DESCRIPTOR_SCHEMA_VERSION}"
-        )
-    default_package = require_string(data, "default_package", "Web package descriptor")
-    packages = data.get("packages")
-    if not isinstance(packages, list) or not packages:
-        raise PackageGroupError("Web package descriptor: packages must be a non-empty array")
+def load_descriptor_schema(path: Path = DEFAULT_DESCRIPTOR_SCHEMA) -> dict[str, Any]:
+    schema = load_json(path)
+    _validate_descriptor_schema(schema)
+    return schema
 
-    seen_ids: set[str] = set()
-    seen_names: set[str] = set()
-    seen_dirs: set[Path] = set()
-    seen_profiles: set[str] = set()
+
+@functools.cache
+def descriptor_package_name_pattern() -> re.Pattern[str]:
+    schema = load_descriptor_schema()
+    pattern = schema["$defs"]["package"]["properties"]["name"].get("pattern")
+    if not isinstance(pattern, str):
+        raise PackageGroupError("Web package descriptor schema package name must define a pattern")
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        raise PackageGroupError(f"Web package descriptor schema package name pattern is invalid: {exc}") from exc
+
+
+def validate_descriptor(
+    data: dict[str, Any], *, schema: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    schema = load_descriptor_schema() if schema is None else schema
+    _validate_descriptor_schema(schema)
+    _validate_json_schema(data, schema, schema, "Web package descriptor")
+    _validate_descriptor_invariants(data, schema["x-merman-invariants"])
+    return data
+
+
+def _validate_descriptor_schema(schema: dict[str, Any]) -> None:
+    expected_root = {
+        "$schema",
+        "$id",
+        "title",
+        "type",
+        "additionalProperties",
+        "required",
+        "properties",
+        "$defs",
+        "x-merman-invariants",
+    }
+    require_exact_keys(schema, expected_root, "Web package descriptor schema")
+    if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema":
+        raise PackageGroupError("Web package descriptor schema must use JSON Schema draft 2020-12")
+    if schema["type"] != "object":
+        raise PackageGroupError("Web package descriptor schema root must be an object")
+    _validate_schema_node(schema, "Web package descriptor schema", root=True)
+    invariants = schema["x-merman-invariants"]
+    if not isinstance(invariants, dict):
+        raise PackageGroupError("Web package descriptor schema invariants must be an object")
+    require_exact_keys(
+        invariants,
+        {"uniqueBy", "derivedFields", "conditionalPackages", "defaultPackage"},
+        "Web package descriptor schema invariants",
+    )
+    if not isinstance(invariants["uniqueBy"], list) or not all(
+        isinstance(field, str) for field in invariants["uniqueBy"]
+    ):
+        raise PackageGroupError("Web package descriptor schema uniqueBy must be a string array")
+    if not isinstance(invariants["derivedFields"], dict) or not all(
+        isinstance(field, str) and isinstance(template, str)
+        for field, template in invariants["derivedFields"].items()
+    ):
+        raise PackageGroupError("Web package descriptor schema derivedFields must be string templates")
+    conditional_rules = invariants["conditionalPackages"]
+    if not isinstance(conditional_rules, list):
+        raise PackageGroupError("Web package descriptor schema conditionalPackages must be an array")
+    for index, rule in enumerate(conditional_rules):
+        if not isinstance(rule, dict):
+            raise PackageGroupError(f"Web package descriptor conditionalPackages[{index}] must be an object")
+        require_exact_keys(
+            rule,
+            {"when", "allowed"},
+            f"Web package descriptor conditionalPackages[{index}]",
+        )
+        if not isinstance(rule["when"], dict) or not rule["when"]:
+            raise PackageGroupError(f"Web package descriptor conditionalPackages[{index}].when must be an object")
+        if not isinstance(rule["allowed"], list) or not all(
+            isinstance(candidate, dict) and candidate for candidate in rule["allowed"]
+        ):
+            raise PackageGroupError(
+                f"Web package descriptor conditionalPackages[{index}].allowed "
+                "must be an object array"
+            )
+    default_rule = invariants["defaultPackage"]
+    if not isinstance(default_rule, dict):
+        raise PackageGroupError("Web package descriptor schema defaultPackage must be an object")
+    require_exact_keys(
+        default_rule,
+        {"referenceField", "targetField", "requiredFields"},
+        "Web package descriptor schema defaultPackage",
+    )
+    if (
+        not isinstance(default_rule["referenceField"], str)
+        or not isinstance(default_rule["targetField"], str)
+        or not isinstance(default_rule["requiredFields"], dict)
+    ):
+        raise PackageGroupError("Web package descriptor schema defaultPackage is invalid")
+
+
+def _validate_schema_node(
+    schema: dict[str, Any], owner: str, *, root: bool = False
+) -> None:
+    supported = {
+        "$ref",
+        "type",
+        "const",
+        "enum",
+        "pattern",
+        "additionalProperties",
+        "required",
+        "properties",
+        "minItems",
+        "items",
+    }
+    ignored_root = {"$schema", "$id", "title", "$defs", "x-merman-invariants"}
+    unknown = set(schema) - supported - (ignored_root if root else set())
+    if unknown:
+        raise PackageGroupError(f"{owner}: unsupported schema keywords: {', '.join(sorted(unknown))}")
+    properties = schema.get("properties")
+    if properties is not None:
+        if not isinstance(properties, dict):
+            raise PackageGroupError(f"{owner}: properties must be an object")
+        for field, child in properties.items():
+            if not isinstance(field, str) or not isinstance(child, dict):
+                raise PackageGroupError(f"{owner}: property schemas must be objects")
+            _validate_schema_node(child, f"{owner}.properties.{field}")
+    items = schema.get("items")
+    if items is not None:
+        if not isinstance(items, dict):
+            raise PackageGroupError(f"{owner}: items must be an object")
+        _validate_schema_node(items, f"{owner}.items")
+    definitions = schema.get("$defs", {})
+    if not isinstance(definitions, dict):
+        raise PackageGroupError(f"{owner}: $defs must be an object")
+    for name, child in definitions.items():
+        if not isinstance(child, dict):
+            raise PackageGroupError(f"{owner}: definition {name} must be an object")
+        _validate_schema_node(child, f"{owner}.$defs.{name}")
+
+
+def _validate_json_schema(
+    value: Any, schema: dict[str, Any], root: dict[str, Any], owner: str
+) -> None:
+    reference = schema.get("$ref")
+    if reference is not None:
+        prefix = "#/$defs/"
+        if not isinstance(reference, str) or not reference.startswith(prefix):
+            raise PackageGroupError(f"{owner}: unsupported schema reference {reference!r}")
+        name = reference.removeprefix(prefix)
+        definition = root["$defs"].get(name)
+        if not isinstance(definition, dict):
+            raise PackageGroupError(f"{owner}: unknown schema reference {reference}")
+        _validate_json_schema(value, definition, root, owner)
+        return
+
+    if "const" in schema and not _json_equal(value, schema["const"]):
+        raise PackageGroupError(f"{owner} must be {schema['const']!r}")
+    if "enum" in schema:
+        choices = schema["enum"]
+        if not isinstance(choices, list) or not any(_json_equal(value, item) for item in choices):
+            raise PackageGroupError(f"{owner} must be one of {choices!r}")
+
+    expected_type = schema.get("type")
+    if expected_type == "object":
+        if not isinstance(value, dict):
+            raise PackageGroupError(f"{owner} must be an object")
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+            raise PackageGroupError(f"{owner}: schema required must be a string array")
+        missing = [field for field in required if field not in value]
+        unknown = [field for field in value if field not in properties]
+        if missing or (schema.get("additionalProperties") is False and unknown):
+            details = []
+            if missing:
+                details.append("missing " + ", ".join(sorted(missing)))
+            if unknown:
+                details.append("unknown " + ", ".join(sorted(unknown)))
+            raise PackageGroupError(f"{owner}: fields must be exact ({'; '.join(details)})")
+        for field, child in properties.items():
+            if field in value:
+                _validate_json_schema(value[field], child, root, f"{owner}.{field}")
+    elif expected_type == "array":
+        if not isinstance(value, list):
+            raise PackageGroupError(f"{owner} must be an array")
+        minimum = schema.get("minItems", 0)
+        if not isinstance(minimum, int) or len(value) < minimum:
+            raise PackageGroupError(f"{owner} must contain at least {minimum} items")
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                _validate_json_schema(item, item_schema, root, f"{owner}[{index}]")
+    elif expected_type == "string":
+        if not isinstance(value, str):
+            raise PackageGroupError(f"{owner} must be a string")
+        pattern = schema.get("pattern")
+        if pattern is not None and (not isinstance(pattern, str) or re.search(pattern, value) is None):
+            raise PackageGroupError(f"{owner} does not match {pattern!r}")
+    elif expected_type is not None:
+        raise PackageGroupError(f"{owner}: unsupported schema type {expected_type!r}")
+
+
+def _validate_descriptor_invariants(
+    data: dict[str, Any], invariants: dict[str, Any]
+) -> None:
+    packages = data["packages"]
     for index, entry in enumerate(packages):
         owner = f"Web package descriptor packages[{index}]"
-        if not isinstance(entry, dict):
-            raise PackageGroupError(f"{owner}: expected an object")
-        require_exact_keys(
-            entry,
-            {"id", "name", "package_dir", "artifact_profile", "runtime_profile", "visibility"},
-            owner,
-        )
-        package_id = require_string(entry, "id", owner)
-        if not PACKAGE_ID_RE.fullmatch(package_id):
-            raise PackageGroupError(f"{owner}: id must be a kebab identifier")
-        if package_id in seen_ids:
-            raise PackageGroupError(f"Web package descriptor: duplicate package id {package_id!r}")
-        seen_ids.add(package_id)
+        for field, template in invariants["derivedFields"].items():
+            try:
+                expected = template.format_map(entry)
+            except KeyError as exc:
+                raise PackageGroupError(
+                    f"Web package descriptor schema derivedFields references unknown field {exc.args[0]!r}"
+                ) from exc
+            if entry[field] != expected:
+                raise PackageGroupError(f"{owner}: {field} must be {expected}")
+        for rule in invariants["conditionalPackages"]:
+            if all(entry.get(field) == value for field, value in rule["when"].items()) and not any(
+                all(entry.get(field) == value for field, value in candidate.items())
+                for candidate in rule["allowed"]
+            ):
+                raise PackageGroupError(f"{owner}: package mapping is not admitted by the schema")
 
-        name = require_string(entry, "name", owner)
-        if not NPM_PACKAGE_RE.fullmatch(name):
-            raise PackageGroupError(f"{owner}: name must be an @mermanjs/web package")
-        if name in seen_names:
-            raise PackageGroupError(f"Web package descriptor: duplicate package name {name!r}")
-        seen_names.add(name)
+    for field in invariants["uniqueBy"]:
+        seen: set[Any] = set()
+        for entry in packages:
+            value = entry[field]
+            if value in seen:
+                raise PackageGroupError(f"Duplicate package {field}: {value!r}")
+            seen.add(value)
 
-        package_dir = descriptor_package_path(entry)
-        if package_dir.name != package_id:
-            raise PackageGroupError(f"{owner}: package_dir must end with its id")
-        if package_dir in seen_dirs:
-            raise PackageGroupError(f"Web package descriptor: duplicate package_dir {package_dir}")
-        seen_dirs.add(package_dir)
+    default_rule = invariants["defaultPackage"]
+    reference = data[default_rule["referenceField"]]
+    target_field = default_rule["targetField"]
+    default_entry = next((entry for entry in packages if entry[target_field] == reference), None)
+    if default_entry is None:
+        raise PackageGroupError(f"default_package references unknown package {reference}")
+    for field, expected in default_rule["requiredFields"].items():
+        if default_entry[field] != expected:
+            raise PackageGroupError(f"Web package descriptor: default package {field} must be {expected!r}")
 
-        artifact_profile = require_string(entry, "artifact_profile", owner)
-        if not PACKAGE_ID_RE.fullmatch(artifact_profile):
-            raise PackageGroupError(f"{owner}: artifact_profile must be a kebab identifier")
-        if artifact_profile in seen_profiles:
-            raise PackageGroupError(
-                f"Web package descriptor: artifact_profile {artifact_profile!r} is reused"
-            )
-        seen_profiles.add(artifact_profile)
 
-        if not PACKAGE_ID_RE.fullmatch(require_string(entry, "runtime_profile", owner)):
-            raise PackageGroupError(f"{owner}: runtime_profile must be a kebab identifier")
-        visibility = require_string(entry, "visibility", owner)
-        if visibility not in VISIBILITIES:
-            raise PackageGroupError(f"{owner}: visibility must be public or candidate")
-
-    if default_package not in seen_ids:
-        raise PackageGroupError(
-            f"Web package descriptor: default_package {default_package!r} is not declared"
-        )
-    default_entry = next(entry for entry in packages if entry["id"] == default_package)
-    if default_entry["visibility"] != "public":
-        raise PackageGroupError("Web package descriptor: default_package must be public")
-    return data
+def _json_equal(left: Any, right: Any) -> bool:
+    return type(left) is type(right) and left == right
 
 
 def load_descriptor(path: Path) -> dict[str, Any]:
@@ -398,7 +580,7 @@ def validate_provenance_summary(value: Any, owner: str) -> dict[str, Any]:
     if not PACKAGE_ID_RE.fullmatch(package_id):
         raise PackageGroupError(f"{owner}: provenance package id must be a kebab identifier")
     package_name = require_string(value, "name", owner)
-    if not NPM_PACKAGE_RE.fullmatch(package_name):
+    if descriptor_package_name_pattern().search(package_name) is None:
         raise PackageGroupError(f"{owner}: provenance package name is invalid")
     package_version = require_string(value, "version", owner)
     artifact_profile = require_string(value, "artifact_profile", owner)
@@ -681,7 +863,7 @@ def inspect_tarball(path: Path) -> dict[str, Any]:
 
     name = manifest.get("name")
     version = manifest.get("version")
-    if not isinstance(name, str) or not NPM_PACKAGE_RE.fullmatch(name):
+    if not isinstance(name, str) or descriptor_package_name_pattern().search(name) is None:
         raise PackageGroupError(f"{path.name}: tarball package name is invalid")
     if not isinstance(version, str) or not version:
         raise PackageGroupError(f"{path.name}: tarball package version is invalid")
@@ -708,7 +890,7 @@ def legal_digest(records: list[dict[str, Any]]) -> str:
 
 
 def validate_public_package_size_admission(packages: list[dict[str, Any]], owner: str) -> None:
-    """Require a measured unpacked-size benefit for every published slim package."""
+    """Require a measured unpacked-size benefit for published slim workflow packages."""
 
     full = next((package for package in packages if package.get("id") == FULL_PACKAGE_ID), None)
     if full is None:
@@ -717,7 +899,7 @@ def validate_public_package_size_admission(packages: list[dict[str, Any]], owner
     if not isinstance(full_bytes, int) or isinstance(full_bytes, bool) or full_bytes <= 0:
         raise PackageGroupError(f"{owner}: full package unpacked_bytes must be a positive integer")
     for package in packages:
-        if package is full:
+        if package is full or package.get("id") == COMPLETE_SVG_PACKAGE_ID:
             continue
         unpacked_bytes = package.get("unpacked_bytes")
         if not isinstance(unpacked_bytes, int) or isinstance(unpacked_bytes, bool) or unpacked_bytes <= 0:
@@ -873,7 +1055,7 @@ def validate_group_manifest(data: dict[str, Any]) -> dict[str, Any]:
             raise PackageGroupError(f"{owner}: id must be a unique kebab identifier")
         seen_ids.add(package_id)
         name = require_string(package, "name", owner)
-        if not NPM_PACKAGE_RE.fullmatch(name) or name in seen_names:
+        if descriptor_package_name_pattern().search(name) is None or name in seen_names:
             raise PackageGroupError(f"{owner}: name must be a unique @mermanjs/web package")
         seen_names.add(name)
         descriptor_package_path(package)
@@ -1272,9 +1454,9 @@ def reconcile_group(manifest: dict[str, Any], artifact_dir: Path, client: NpmCli
             if previous[record["name"]] == version:
                 continue
             # Treat a completed request as potentially visible even if the
-            # subsequent registry read fails. Compensation must cover it.
-            client.add_tag(record["name"], version, target_tag)
+            # client reports an error. Compensation must cover it.
             changed.append(record)
+            client.add_tag(record["name"], version, target_tag)
             observed_tag = client.dist_tag(record["name"], target_tag)
             if observed_tag != version:
                 raise PackageGroupError(

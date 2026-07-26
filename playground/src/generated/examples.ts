@@ -195,7 +195,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001.mmd",
     evidence: {"role":"variant","kind":"workflow","claim":"Fixture demonstrates cynefin five domains."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "cynefin-beta\n        title Incident Response\n\n        complex\n          \"Investigate root cause\"\n          \"Run chaos experiment\"\n\n        complicated\n          \"Analyze performance data\"\n          \"Expert review needed\"\n\n        clear\n          \"Restart service\"\n          \"Apply known fix\"\n\n        chaotic\n          \"Page on-call immediately\"\n\n        confusion\n          \"Unknown failure mode\"\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\ncynefin-beta\n        title Incident Response\n\n        complex\n          \"Investigate root cause\"\n          \"Run chaos experiment\"\n\n        complicated\n          \"Analyze performance data\"\n          \"Expert review needed\"\n\n        clear\n          \"Restart service\"\n          \"Apply known fix\"\n\n        chaotic\n          \"Page on-call immediately\"\n\n        confusion\n          \"Unknown failure mode\"\n",
   },
   {
     id: "entity-relationships",
@@ -611,7 +611,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/railroad/upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003.mmd",
     evidence: {"role":"variant","kind":"syntax","claim":"Optional and repetition operators produce distinct grammar nodes."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "railroad-beta\nsign = choice(terminal(\"+\"), terminal(\"-\")) ;\nnumber = sequence(optional(nonterminal(\"sign\")), oneOrMore(nonterminal(\"digit\"))) ;\nlist = sequence(terminal(\"[\"), optional(sequence(nonterminal(\"number\"), zeroOrMore(sequence(terminal(\",\"), nonterminal(\"number\"))))), terminal(\"]\")) ;\ndigit = choice(terminal(\"0\"), terminal(\"1\"), terminal(\"2\"), terminal(\"3\")) ;\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\nrailroad-beta\nsign = choice(terminal(\"+\"), terminal(\"-\")) ;\nnumber = sequence(optional(nonterminal(\"sign\")), oneOrMore(nonterminal(\"digit\"))) ;\nlist = sequence(terminal(\"[\"), optional(sequence(nonterminal(\"number\"), zeroOrMore(sequence(terminal(\",\"), nonterminal(\"number\"))))), terminal(\"]\")) ;\ndigit = choice(terminal(\"0\"), terminal(\"1\"), terminal(\"2\"), terminal(\"3\")) ;\n",
   },
   {
     id: "abnf-grammar",
@@ -637,7 +637,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/railroadAbnf/upstream_cypress_railroad_spec_renders_alternation_and_repetition_008.mmd",
     evidence: {"role":"variant","kind":"syntax","claim":"ABNF alternation and repetition remain separate production branches."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "railroad-abnf-beta\nscheme = ALPHA *( ALPHA / DIGIT / \"+\" / \"-\" / \".\" ) ;\ndigit = \"0\" / \"1\" / \"2\" / \"3\" ;\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\nrailroad-abnf-beta\nscheme = ALPHA *( ALPHA / DIGIT / \"+\" / \"-\" / \".\" ) ;\ndigit = \"0\" / \"1\" / \"2\" / \"3\" ;\n",
   },
   {
     id: "ebnf-grammar",
@@ -663,7 +663,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/railroadEbnf/upstream_cypress_railroad_spec_renders_iso_14977_notation_007.mmd",
     evidence: {"role":"variant","kind":"syntax","claim":"ISO 14977 EBNF notation is parsed and rendered as authored."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "railroad-ebnf-beta\nidentifier = letter , { letter | digit | \"_\" } ;\nletter = \"a\" | \"b\" | \"c\" ;\ndigit = \"0\" | \"1\" | \"2\" ;\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\nrailroad-ebnf-beta\nidentifier = letter , { letter | digit | \"_\" } ;\nletter = \"a\" | \"b\" | \"c\" ;\ndigit = \"0\" | \"1\" | \"2\" ;\n",
   },
   {
     id: "peg-grammar",
@@ -689,7 +689,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/railroadPeg/upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009.mmd",
     evidence: {"role":"variant","kind":"syntax","claim":"PEG ordered choice and suffix operators retain their precedence."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "railroad-peg-beta\nExpression <- Term ((\"+\" / \"-\") Term)* ;\nTerm <- Factor ((\"*\" / \"/\") Factor)* ;\nFactor <- Number / \"(\" Expression \")\" ;\nNumber <- Digit+ ;\nDigit <- \"0\" / \"1\" / \"2\" / \"3\" ;\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\nrailroad-peg-beta\nExpression <- Term ((\"+\" / \"-\") Term)* ;\nTerm <- Factor ((\"*\" / \"/\") Factor)* ;\nFactor <- Number / \"(\" Expression \")\" ;\nNumber <- Digit+ ;\nDigit <- \"0\" / \"1\" / \"2\" / \"3\" ;\n",
   },
   {
     id: "requirement-trace",
@@ -910,7 +910,7 @@ export const GENERATED_EXAMPLES = [
     fixture: "fixtures/treeView/upstream_cypress_treeview_spec_should_render_combined_annotations_015.mmd",
     evidence: {"role":"variant","kind":"behavior","claim":"Fixture demonstrates project tree annotations."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-    source: "treeView-beta\n            my-project/\n                src/\n                    App.tsx :::highlight icon(fa:bell) ## main component\n                    index.js ## entry point\n                    styles.css\n                .env ## environment variables\n                Dockerfile\n                package.json\n",
+    source: "---\nconfig:\n  fontFamily: courier\n  fontSize: 16px\n  sequence:\n    actorFontFamily: courier\n    noteFontFamily: courier\n    messageFontFamily: courier\n  handDrawnSeed: 1\n  architecture:\n    seed: 1\n  cynefin:\n    seed: 1\n---\ntreeView-beta\n            my-project/\n                src/\n                    App.tsx :::highlight icon(fa:bell) ## main component\n                    index.js ## entry point\n                    styles.css\n                .env ## environment variables\n                Dockerfile\n                package.json\n",
   },
   {
     id: "treemap-hierarchy",

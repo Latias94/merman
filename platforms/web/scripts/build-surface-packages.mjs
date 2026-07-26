@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
 import {
@@ -25,8 +26,6 @@ const sourceRoot = path.join(webRoot, "src");
 const entriesRoot = path.join(sourceRoot, "package-entries");
 const packageBuildRoot = path.join(webRoot, "pkg");
 const distRoot = path.join(webRoot, "dist");
-const canonicalLegalRoot = path.join(webRoot, "..", "..", "THIRD_PARTY_LICENSES");
-const canonicalNotices = path.join(webRoot, "..", "..", "THIRD_PARTY_NOTICES.md");
 
 if (isMainModule()) {
   const phase = process.argv[2];
@@ -64,10 +63,26 @@ export function assemblePackageArtifacts() {
 }
 
 export function packageEntrySource(descriptor) {
+  const surfaceRuntimeKeys = [
+    "initMerman",
+    ...descriptor.runtimeExportNames.filter((name) => name !== "initMerman"),
+  ];
   return [
-    'import { assertBrowserRuntime, bindSurfaceRuntime } from "../surface-runtime.js";',
-    'import type { MermanInitInput, MermanWasmModule } from "../index.js";',
+    'import { assertBrowserRuntime, bindSurfaceRuntime, type SurfaceRuntime } from "../surface-runtime.js";',
+    "import type {",
+    "  MermanInitInput as SharedMermanInitInput,",
+    "  MermanInitOptions as SharedMermanInitOptions,",
+    "  MermanWasmLoader as SharedMermanWasmLoader,",
+    "  MermanWasmModule as SharedMermanWasmModule,",
+    '} from "../index.js";',
     'export type * from "../index.js";',
+    "",
+    "export type MermanWasmModule = Required<Pick<SharedMermanWasmModule,",
+    ...descriptor.wasmExportNames.map((name) => `  | ${JSON.stringify(name)}`),
+    ">>;",
+    "export type MermanWasmLoader = SharedMermanWasmLoader<MermanWasmModule>;",
+    "export type MermanInitOptions = SharedMermanInitOptions<MermanWasmModule>;",
+    "export type MermanInitInput = SharedMermanInitInput<MermanWasmModule>;",
     "export {",
     ...descriptor.valueExportNames.map((name) => `  ${name},`),
     '} from "../index.js";',
@@ -80,18 +95,21 @@ export function packageEntrySource(descriptor) {
     '  return import("../../artifacts/wasm/merman_wasm.js");',
     "}",
     "",
-    "const runtime = bindSurfaceRuntime(loadMermanWasmModule);",
+    "const runtime: Pick<SurfaceRuntime<MermanWasmModule>,",
+    ...surfaceRuntimeKeys.map((name) => `  | ${JSON.stringify(name)}`),
+    "> = bindSurfaceRuntime(loadMermanWasmModule);",
     "",
     "export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {",
     "  assertBrowserRuntime();",
     "  return runtime.initMerman(init);",
     "}",
     "",
-    "export const {",
     ...descriptor.runtimeExportNames
       .filter((name) => name !== "initMerman")
-      .map((name) => `  ${name},`),
-    "} = runtime;",
+      .map(
+        (name) =>
+          `export const ${name}: SurfaceRuntime<MermanWasmModule>[${JSON.stringify(name)}] = runtime.${name};`,
+      ),
     "",
   ].join("\n");
 }
@@ -127,7 +145,7 @@ function assemblePackageArtifact(descriptor) {
     rmSync(stage, { recursive: true, force: true });
   }
 
-  projectLegalMaterial(packageRoot);
+  projectLegalMaterial(descriptor, packageRoot);
 }
 
 function projectPackageDist(descriptor, packageRoot) {
@@ -140,6 +158,7 @@ function projectPackageDist(descriptor, packageRoot) {
     for (const entry of readdirSync(distRoot, { withFileTypes: true })) {
       if (entry.name === "package-entries") continue;
       cpSync(path.join(distRoot, entry.name), path.join(stage, entry.name), {
+        filter: (source) => !source.endsWith(".map"),
         recursive: entry.isDirectory(),
       });
     }
@@ -191,13 +210,13 @@ function buildProvenance(descriptor, packageJson, wasmSource, copiedWasmRoot, en
   };
 }
 
-function projectLegalMaterial(packageRoot) {
+function projectLegalMaterial(descriptor, packageRoot) {
+  const legal = legalProjectionForArtifactProfile(descriptor.artifact_profile.id);
   copyProjection(path.join(webRoot, "LICENSE"), path.join(packageRoot, "LICENSE"));
-  copyProjection(canonicalNotices, path.join(packageRoot, "THIRD_PARTY_NOTICES.md"));
-  replaceProjectedDirectory({
-    source: canonicalLegalRoot,
+  writeFileSync(path.join(packageRoot, "THIRD_PARTY_NOTICES.md"), legal.notice);
+  replaceScopedLegalDirectory({
+    files: legal.files,
     target: path.join(packageRoot, "THIRD_PARTY_LICENSES"),
-    label: "third-party license material",
   });
 }
 
@@ -207,15 +226,18 @@ function copyProjection(source, target) {
   cpSync(source, target, { force: true });
 }
 
-function replaceProjectedDirectory({ source, target, label }) {
-  if (!existsSync(source) || !statSync(source).isDirectory()) {
-    throw new Error(`Missing ${label}: ${source}.`);
+function replaceScopedLegalDirectory({ files, target }) {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("Third-party legal projection must contain at least one file.");
   }
   const stage = siblingStage(target, "projection");
   const backup = siblingStage(target, "projection-backup");
   rmSync(stage, { recursive: true, force: true });
   try {
-    cpSync(source, stage, { recursive: true });
+    mkdirSync(stage, { recursive: true });
+    for (const file of files) {
+      copyProjection(file.source, path.join(stage, ...file.relative.split("/")));
+    }
     replaceDirectory({ target, stage, backup });
   } finally {
     rmSync(stage, { recursive: true, force: true });

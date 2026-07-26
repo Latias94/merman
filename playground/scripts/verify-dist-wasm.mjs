@@ -285,16 +285,15 @@ if (wasmAssetOwners.length !== 1) {
     `  Merman engine-artifact module must own exactly one WASM resource URL, found ${wasmAssetOwners.length}.`,
   ]);
 }
-const artifactOutput = readFileSync(
-  path.join(DIST, manifest[mermanArtifactRoot].file),
-  "utf8",
-);
-if (!artifactOutput.includes("__mermanEngineArtifact")) {
-  fail(["  Merman engine-artifact output does not embed the verified engine source."]);
-}
 const artifactClosureSource = [...mermanArtifactClosure]
   .map((key) => readFileSync(path.join(DIST, manifest[key].file), "utf8"))
   .join("\n");
+if (artifactClosureSource.includes("__mermanEngineArtifact")) {
+  fail(["  Merman engine-artifact output must not inline the verified engine source."]);
+}
+if (!artifactClosureSource.includes("opaque-realm/benchmark-merman-engine.js")) {
+  fail(["  Merman engine-artifact output does not retain its verified source URL."]);
+}
 if (!artifactClosureSource.includes(benchmarkMermanEngine.sha256)) {
   fail(["  Merman engine-artifact output does not retain its generated SHA-256 identity."]);
 }
@@ -388,6 +387,9 @@ function verifyOpaqueEngineAssets() {
       identity?.sha256 !== digest
     ) {
       fail([`  Published opaque realm source drifted from ${name} identity.`]);
+    }
+    if (!published.includes("__mermanEngineArtifact")) {
+      fail([`  Published opaque realm source does not expose its engine contract: ${name}`]);
     }
   }
 }

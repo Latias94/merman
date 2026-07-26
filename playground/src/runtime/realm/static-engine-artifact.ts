@@ -115,32 +115,34 @@ async function fetchEngineArtifactSource(
       ),
     timeoutMs
   );
-  let response: Response;
   try {
-    response = await environment.fetch(url, {
+    const response = await environment.fetch(url, {
       cache: "default",
       signal: controller.signal,
     });
+    if (!response.ok) {
+      const error = new RealmProtocolError(
+        `Realm engine artifact request failed with HTTP ${response.status}.`
+      );
+      await cancelEngineResponseBody(response, error);
+      throw error;
+    }
+    return await readBoundedEngineSource(response, controller.signal);
   } catch (error) {
     if (controller.signal.aborted) {
-      throw controller.signal.reason instanceof Error
-        ? controller.signal.reason
-        : new RealmProtocolError("Realm engine artifact request was aborted.");
+      throw engineArtifactAbortError(controller.signal);
     }
     throw error;
   } finally {
     clearTimeout(timeout);
     request.signal?.removeEventListener("abort", abortFromCaller);
   }
-  if (!response.ok) {
-    throw new RealmProtocolError(
-      `Realm engine artifact request failed with HTTP ${response.status}.`
-    );
-  }
-  return readBoundedEngineSource(response);
 }
 
-async function readBoundedEngineSource(response: Response): Promise<string> {
+async function readBoundedEngineSource(
+  response: Response,
+  signal: AbortSignal
+): Promise<string> {
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null) {
     const declared = Number(contentLength);
@@ -149,7 +151,11 @@ async function readBoundedEngineSource(response: Response): Promise<string> {
       declared <= 0 ||
       declared > REALM_BUDGETS.engineArtifactBytes
     ) {
-      throw new RealmProtocolError("Realm engine artifact exceeds its byte budget.");
+      const error = new RealmProtocolError(
+        "Realm engine artifact exceeds its byte budget."
+      );
+      await cancelEngineResponseBody(response, error);
+      throw error;
     }
   }
   const reader = response.body?.getReader();
@@ -161,20 +167,97 @@ async function readBoundedEngineSource(response: Response): Promise<string> {
   let totalBytes = 0;
   try {
     while (true) {
-      const next = await reader.read();
+      const next = await readEngineChunk(reader, signal);
       if (next.done) break;
       totalBytes += next.value.byteLength;
       if (totalBytes > REALM_BUDGETS.engineArtifactBytes) {
-        await reader.cancel();
-        throw new RealmProtocolError("Realm engine artifact exceeds its byte budget.");
+        throw new RealmProtocolError(
+          "Realm engine artifact exceeds its byte budget."
+        );
       }
       chunks.push(decodeEngineChunk(decoder, next.value, true));
     }
     chunks.push(decodeEngineChunk(decoder, undefined, false));
+  } catch (error) {
+    await cancelEngineReader(reader, engineArtifactFailureReason(error));
+    throw error;
   } finally {
-    reader.releaseLock();
+    if (!signal.aborted) {
+      reader.releaseLock();
+    } else {
+      try {
+        reader.releaseLock();
+      } catch {
+        // An aborted read may remain pending until the underlying stream observes cancel().
+      }
+    }
   }
   return chunks.join("");
+}
+
+function readEngineChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal
+): ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> {
+  if (signal.aborted) {
+    const error = engineArtifactAbortError(signal);
+    void cancelEngineReader(reader, error);
+    return Promise.reject(error);
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onAbort = () => {
+      const error = engineArtifactAbortError(signal);
+      void cancelEngineReader(reader, error);
+      settle(() => reject(error));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void reader.read().then(
+      (result) => settle(() => resolve(result)),
+      (error: unknown) => settle(() => reject(error))
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
+async function cancelEngineReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: Error
+): Promise<void> {
+  try {
+    await reader.cancel(reason);
+  } catch {
+    // The stream may already be errored or canceled by the underlying fetch.
+  }
+}
+
+async function cancelEngineResponseBody(
+  response: Response,
+  reason: Error
+): Promise<void> {
+  try {
+    await response.body?.cancel(reason);
+  } catch {
+    // The stream may already be errored or canceled by the underlying fetch.
+  }
+}
+
+function engineArtifactFailureReason(error: unknown): Error {
+  return error instanceof Error
+    ? error
+    : new RealmProtocolError("Realm engine artifact response failed.");
+}
+
+function engineArtifactAbortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new RealmProtocolError("Realm engine artifact request was aborted.");
 }
 
 function decodeEngineChunk(

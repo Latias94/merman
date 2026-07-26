@@ -24,7 +24,7 @@
       "package_dir": "packages/render",
       "artifact_profile": "web-render",
       "runtime_profile": "render",
-      "visibility": "candidate"
+      "visibility": "public"
     },
     {
       "id": "editor",

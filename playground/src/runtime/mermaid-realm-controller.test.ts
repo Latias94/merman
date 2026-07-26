@@ -162,6 +162,50 @@ test("reset interrupts a stalled viewport update before rendering", async () => 
   assert.equal(renderCalls, 0);
 });
 
+test("reset invalidates operations that were already queued", async () => {
+  const stuck = deferred<MermaidRealmExecutionResult>();
+  const firstCalls: string[] = [];
+  const first = fakeSession(async (_input, requestId) => {
+    firstCalls.push(requestId);
+    return stuck.promise;
+  });
+  const secondCalls: string[] = [];
+  const second = fakeSession(async (_input, requestId) => {
+    secondCalls.push(requestId);
+    return success("recovered");
+  });
+  const sessions = [first, second];
+  let createCalls = 0;
+  const controller = createMermaidRealmController({
+    kind: "compare",
+    createSession: async () => {
+      createCalls += 1;
+      return sessions.shift()!;
+    },
+  });
+
+  const active = controller.render(INPUT);
+  const queued = controller.render(INPUT);
+  await waitFor(() => firstCalls.length === 1);
+  controller.reset();
+
+  assert.deepEqual(
+    await active,
+    failure("disposed", "Mermaid realm operation was reset."),
+  );
+  assert.deepEqual(
+    await queued,
+    failure("disposed", "Mermaid realm operation was superseded."),
+  );
+  assert.deepEqual(firstCalls, ["compare-1"]);
+  assert.equal(first.disposeCalls, 1);
+  assert.equal(createCalls, 1);
+
+  assert.equal((await controller.render(INPUT)).status, "success");
+  assert.deepEqual(secondCalls, ["compare-3"]);
+  assert.equal(createCalls, 2);
+});
+
 test("timeout remains classified when disposing rejects the active render", async () => {
   const stuck = deferred<MermaidRealmExecutionResult>();
   const session = fakeSession(

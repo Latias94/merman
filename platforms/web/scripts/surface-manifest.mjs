@@ -6,11 +6,22 @@ const lifecycleRuntimeExportNames = [
   "isMermanInitialized",
 ];
 
+const lifecycleWasmExportNames = ["default"];
+
 const analysisRuntimeExportNames = [
   "analyze",
   "analyzeJson",
   "analysisFacts",
   "detectDiagramFacts",
+  "analyzeDocument",
+  "analyzeDocumentFacts",
+  "validate",
+];
+
+const analysisWasmExportNames = [
+  "analyze",
+  "analyzeJson",
+  "analysisFacts",
   "analyzeDocument",
   "analyzeDocumentFacts",
   "validate",
@@ -25,10 +36,21 @@ const metadataRuntimeExportNames = [
   "packageVersion",
 ];
 
+const metadataWasmExportNames = [
+  "runtimeCatalog",
+  "supportedDiagrams",
+  "diagramFamilyCapabilities",
+  "supportedThemes",
+  "transportApiVersion",
+  "packageVersion",
+];
+
 const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
+const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
   "renderSvg",
+  "svgPlanJson",
   "renderSvgWithTextMeasurer",
   "layoutJsonWithTextMeasurer",
   "renderSvgElement",
@@ -40,7 +62,23 @@ const renderRuntimeExportNames = [
   "supportedHostThemePresets",
 ];
 
+const renderWasmExportNames = [
+  "renderSvg",
+  "svgPlanJson",
+  "renderSvgWithTextMeasurer",
+  "layoutJsonWithTextMeasurer",
+  "parseJson",
+  "layoutJson",
+  "supportedHostThemePresets",
+];
+
 const asciiRuntimeExportNames = [
+  "renderAscii",
+  "asciiSupportedDiagrams",
+  "asciiCapabilities",
+];
+
+const asciiWasmExportNames = [
   "renderAscii",
   "asciiSupportedDiagrams",
   "asciiCapabilities",
@@ -48,6 +86,23 @@ const asciiRuntimeExportNames = [
 
 const editorRuntimeExportNames = [
   "createEditorSession",
+  "editorDiagnostics",
+  "editorDiagramDetection",
+  "editorCodeActions",
+  "editorCompletions",
+  "editorHover",
+  "editorDocumentSymbols",
+  "editorWorkspaceSymbols",
+  "editorDefinition",
+  "editorReferences",
+  "editorPrepareRename",
+  "editorRename",
+  "editorSemanticTokenDescriptor",
+  "editorSemanticTokens",
+];
+
+const editorWasmExportNames = [
+  "EditorSession",
   "editorDiagnostics",
   "editorDiagramDetection",
   "editorCodeActions",
@@ -105,20 +160,34 @@ const analysisProfile = {
     ...analysisMetadataRuntimeExportNames,
   ],
   valueExportNames: packageStableValueExportNames,
+  wasmExportNames: [
+    ...lifecycleWasmExportNames,
+    ...analysisWasmExportNames,
+    ...metadataWasmExportNames,
+    ...analysisMetadataWasmExportNames,
+  ],
+};
+
+const renderProfile = {
+  runtimeExportNames: [
+    ...lifecycleRuntimeExportNames,
+    ...metadataRuntimeExportNames,
+    ...renderRuntimeExportNames,
+  ],
+  valueExportNames: [
+    ...packageStableValueExportNames,
+    ...packageRenderValueExportNames,
+  ],
+  wasmExportNames: [
+    ...lifecycleWasmExportNames,
+    ...metadataWasmExportNames,
+    ...renderWasmExportNames,
+  ],
 };
 
 const runtimeProfiles = Object.freeze({
   analysis: analysisProfile,
-  render: {
-    runtimeExportNames: [
-      ...analysisProfile.runtimeExportNames,
-      ...renderRuntimeExportNames,
-    ],
-    valueExportNames: [
-      ...packageStableValueExportNames,
-      ...packageRenderValueExportNames,
-    ],
-  },
+  render: renderProfile,
   ascii: {
     runtimeExportNames: [
       ...lifecycleRuntimeExportNames,
@@ -126,6 +195,11 @@ const runtimeProfiles = Object.freeze({
       ...asciiRuntimeExportNames,
     ],
     valueExportNames: packageStableValueExportNames,
+    wasmExportNames: [
+      ...lifecycleWasmExportNames,
+      ...metadataWasmExportNames,
+      ...asciiWasmExportNames,
+    ],
   },
   editor: {
     runtimeExportNames: [
@@ -135,6 +209,10 @@ const runtimeProfiles = Object.freeze({
     valueExportNames: [
       ...packageStableValueExportNames,
       ...editorDescriptorValueExportNames,
+    ],
+    wasmExportNames: [
+      ...analysisProfile.wasmExportNames,
+      ...editorWasmExportNames,
     ],
   },
   full: {
@@ -149,6 +227,12 @@ const runtimeProfiles = Object.freeze({
       ...packageRenderValueExportNames,
       ...editorDescriptorValueExportNames,
     ],
+    wasmExportNames: [
+      ...analysisProfile.wasmExportNames,
+      ...renderWasmExportNames,
+      ...asciiWasmExportNames,
+      ...editorWasmExportNames,
+    ],
   },
 });
 
@@ -161,6 +245,7 @@ export const webPackages = webPackageDescriptors.map((descriptor) => {
     ...descriptor,
     runtimeExportNames: profile.runtimeExportNames,
     valueExportNames: profile.valueExportNames,
+    wasmExportNames: unique(profile.wasmExportNames),
   });
 });
 
@@ -174,6 +259,10 @@ export const allPackageRuntimeExportNames = unique(
 
 export const allPackageValueExportNames = unique(
   webPackages.flatMap((item) => item.valueExportNames),
+);
+
+export const allPackageWasmExportNames = unique(
+  webPackages.flatMap((item) => item.wasmExportNames),
 );
 
 function unique(names) {

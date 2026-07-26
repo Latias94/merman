@@ -1,22 +1,29 @@
 import {
   existsSync,
+  mkdtempSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { webPackages } from "./surface-manifest.mjs";
+import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
+import {
+  allPackageWasmExportNames,
+  webPackages,
+} from "./surface-manifest.mjs";
 import {
   packageDistFileRecords,
   wasmRuntimeFileRecords,
 } from "./wasm-runtime-files.mjs";
 
 const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = path.join(webRoot, "..", "..");
-const canonicalLicenseRoot = path.join(repositoryRoot, "THIRD_PARTY_LICENSES");
-const canonicalNotices = path.join(repositoryRoot, "THIRD_PARTY_NOTICES.md");
 const PACKAGE_FILE_ALLOWLIST = Object.freeze([
   "LICENSE",
   "README.md",
@@ -41,6 +48,7 @@ export function verifyPackageGroup({ descriptors = webPackages } = {}) {
   const publicPackages = checked.filter((item) => item.descriptor.visibility === "public");
   assertLockstepVersions(publicPackages);
   assertIndependentSizeEvidence(checked, publicPackages);
+  assertPackageTypeConsumers(checked);
   return checked;
 }
 
@@ -79,7 +87,7 @@ function verifyPackage(descriptor) {
   }
   assertPackageEntryFiles(descriptor, packageRoot);
   assertProvenance(descriptor, manifest, provenance, artifactRoot, packageRoot);
-  assertLegalProjection(packageRoot);
+  assertLegalProjection(descriptor, packageRoot);
   return { descriptor, manifest, wasmBytes: statSync(wasmPath).size, packageBytes: treeSize(packageRoot) };
 }
 
@@ -199,6 +207,7 @@ export function assertArtifactFileEvidence({
   const packageDistRecords = packageDistFileRecords(packageDistRoot, packageId);
   const sourceDistRecords = packageDistFileRecords(sourceDistRoot, packageId, {
     allowSiblingPackageEntries: true,
+    allowSharedSourceMaps: true,
   });
   const expected = [...artifactFiles].sort(compareArtifactRecords);
   assertEqualArtifactRecords(
@@ -291,25 +300,152 @@ function assertLockstepVersions(publicPackages) {
   }
 }
 
-function assertIndependentSizeEvidence(checked, publicPackages) {
+export function assertIndependentSizeEvidence(checked, publicPackages) {
   const full = checked.find((item) => item.descriptor.id === "full");
   if (!full) throw new Error("The Web package group is missing the full package.");
   for (const item of publicPackages) {
-    if (item.descriptor.id === "full") continue;
+    if (item.descriptor.id === "full" || item.descriptor.id === "render") continue;
     const saving = 1 - item.packageBytes / full.packageBytes;
     if (saving < 0.15) {
       throw new Error(
-        `${item.descriptor.name} is only ${(saving * 100).toFixed(1)}% smaller than @mermanjs/web; public slim packages require at least 15% unpacked-size evidence.`,
+        `${item.descriptor.name} is only ${(saving * 100).toFixed(1)}% smaller than @mermanjs/web; public slim workflow packages require at least 15% unpacked-size evidence.`,
       );
     }
   }
 }
 
-function assertLegalProjection(packageRoot) {
-  assertSameFile(path.join(packageRoot, "THIRD_PARTY_NOTICES.md"), canonicalNotices);
-  for (const canonical of walkFiles(canonicalLicenseRoot)) {
-    const projected = path.join(packageRoot, "THIRD_PARTY_LICENSES", path.relative(canonicalLicenseRoot, canonical));
-    assertSameFile(projected, canonical);
+function assertPackageTypeConsumers(checked) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-types-"));
+  try {
+    const tarballs = path.join(root, "tarballs");
+    mkdirSync(tarballs, { recursive: true });
+    writeJson(path.join(root, "package.json"), { private: true, type: "module" });
+
+    const packed = checked.map((item) => {
+      const packageRoot = path.join(webRoot, item.descriptor.package_dir);
+      const result = runNpm(
+        ["pack", "--json", "--pack-destination", tarballs, "--ignore-scripts"],
+        packageRoot,
+      );
+      let metadata;
+      try {
+        metadata = JSON.parse(result.stdout);
+      } catch (error) {
+        throw new Error(
+          `Unable to read npm pack metadata for ${item.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const filename = metadata?.[0]?.filename;
+      if (typeof filename !== "string" || filename.length === 0) {
+        throw new Error(`npm pack did not report a tarball for ${item.descriptor.name}.`);
+      }
+      return path.join(tarballs, filename);
+    });
+    runNpm(
+      [
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--offline",
+        "--package-lock=false",
+        ...packed,
+      ],
+      root,
+    );
+
+    const imports = [];
+    for (const [index, item] of checked.entries()) {
+      const moduleName = `module${index}`;
+      imports.push(
+        `import { initMerman as init${index} } from ${JSON.stringify(item.descriptor.name)};`,
+        `import type { MermanInitInput as Init${index} } from ${JSON.stringify(item.descriptor.name)};`,
+        `const check${index}: (input?: Init${index}) => Promise<unknown> = init${index};`,
+        `async function checkModule${index}(): Promise<void> {`,
+        `  const ${moduleName} = await init${index}();`,
+      );
+      const enabled = new Set(item.descriptor.wasmExportNames);
+      for (const exportName of allPackageWasmExportNames) {
+        if (enabled.has(exportName)) {
+          imports.push(`  void ${moduleName}.${exportName};`);
+        } else {
+          imports.push(
+            `  // @ts-expect-error ${item.descriptor.id} must not expose raw WASM ${exportName}.`,
+            `  void ${moduleName}.${exportName};`,
+          );
+        }
+      }
+      imports.push("}", `void check${index};`, `void checkModule${index};`);
+    }
+    writeJson(path.join(root, "tsconfig.json"), {
+      compilerOptions: {
+        strict: true,
+        target: "ES2020",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        skipLibCheck: false,
+      },
+      include: ["consumer.ts"],
+    });
+    writeFileSync(path.join(root, "consumer.ts"), `${imports.join("\n")}\n`);
+
+    const tsc = path.join(webRoot, "node_modules", "typescript", "bin", "tsc");
+    const result = spawnSync(process.execPath, [tsc, "--noEmit", "--pretty", "false", "-p", "tsconfig.json"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    if (result.error) {
+      throw new Error(`Unable to compile installed package declarations: ${result.error.message}`);
+    }
+    if (result.status !== 0) {
+      throw new Error(
+        `Installed package declaration consumer failed:\n${[result.stdout, result.stderr].filter(Boolean).join("\n")}`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function runNpm(args, cwd) {
+  const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
+    cwd,
+    encoding: "utf8",
+  });
+  if (result.error) {
+    throw new Error(`Unable to run npm ${args[0]}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `npm ${args[0]} failed:\n${[result.stdout, result.stderr].filter(Boolean).join("\n")}`,
+    );
+  }
+  return result;
+}
+
+export function assertLegalProjection(descriptor, packageRoot) {
+  const legal = legalProjectionForArtifactProfile(descriptor.artifact_profile.id);
+  assertFileContents(
+    path.join(packageRoot, "THIRD_PARTY_NOTICES.md"),
+    legal.notice,
+    `${descriptor.name} third-party notice`,
+  );
+
+  const legalRoot = path.join(packageRoot, "THIRD_PARTY_LICENSES");
+  const expectedFiles = legal.files.map((file) => file.relative);
+  const actualFiles = walkFiles(legalRoot).map((file) =>
+    path.relative(legalRoot, file).split(path.sep).join("/"),
+  );
+  assertEqualArray(
+    actualFiles,
+    expectedFiles,
+    `${descriptor.name} third-party legal file projection`,
+  );
+  for (const file of legal.files) {
+    assertSameFile(
+      path.join(legalRoot, ...file.relative.split("/")),
+      file.source,
+    );
   }
 }
 
@@ -318,6 +454,13 @@ function assertSameFile(actual, expected) {
   assertFile(expected);
   if (!readFileSync(actual).equals(readFileSync(expected))) {
     throw new Error(`Legal projection is stale: ${actual}.`);
+  }
+}
+
+function assertFileContents(actual, expected, label) {
+  assertFile(actual);
+  if (readFileSync(actual, "utf8") !== expected) {
+    throw new Error(`${label} is stale.`);
   }
 }
 
@@ -333,6 +476,10 @@ function readJson(file) {
   } catch (error) {
     throw new Error(`Cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function writeJson(file, value) {
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function assertFile(file) {

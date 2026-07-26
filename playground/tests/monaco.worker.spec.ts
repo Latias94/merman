@@ -10,7 +10,10 @@ import {
   SEMANTIC_TOKEN_TYPE_LSP_NAMES,
   SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
 } from "../../platforms/web/src/generated/token-descriptor";
-import { EDITOR_WORKER_PROTOCOL } from "../src/editor/protocol";
+import {
+  EDITOR_SCHEMA_VERSION,
+  EDITOR_WORKER_PROTOCOL,
+} from "../src/editor/protocol";
 import {
   monitorBrowserErrors,
   openPlayground,
@@ -127,6 +130,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
   const result = await page.evaluate(
     async ({
       digest,
+      editorSchema,
       fixtures,
       modifierMask,
       protocol,
@@ -201,7 +205,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       if (
         ready.type !== "ready" ||
         ready.transportApiVersion !== 3 ||
-        ready.editorSchema !== 1 ||
+        ready.editorSchema !== editorSchema ||
         ready.legendDigest !== digest
       ) {
         throw new Error(
@@ -246,6 +250,12 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
         tokenWords: number;
         packedSha256: string;
       }> = [];
+      let emptyDiagnostic:
+        | {
+            code: unknown;
+            codeName: unknown;
+          }
+        | undefined;
       let version = 1;
       try {
         for (const [index, fixture] of fixtures.entries()) {
@@ -396,6 +406,50 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
             "Recovered flowchart facts did not survive the packed transport.",
           );
         }
+
+        const emptyVersion = version + 1;
+        await request("didChange", {
+          document: { uri, version: emptyVersion, source: "" },
+        });
+        const emptyDiagnostics = (await query(
+          emptyVersion,
+          "diagnostics",
+        )) as {
+          version?: unknown;
+          valid?: unknown;
+          diagnostics?: unknown;
+        };
+        const noDiagramDiagnostic = Array.isArray(emptyDiagnostics.diagnostics)
+          ? emptyDiagnostics.diagnostics.find(
+              (diagnostic) =>
+                typeof diagnostic === "object" &&
+                diagnostic !== null &&
+                (diagnostic as { code?: unknown }).code ===
+                  "merman.parse.no_diagram" &&
+                (
+                  diagnostic as {
+                    data?: { codeName?: unknown };
+                  }
+                ).data?.codeName === "MERMAN_NO_DIAGRAM",
+            )
+          : undefined;
+        if (
+          emptyDiagnostics.version !== editorSchema ||
+          emptyDiagnostics.valid !== false ||
+          noDiagramDiagnostic === undefined
+        ) {
+          throw new Error(
+            `Empty editor source did not retain the no-diagram diagnostic: ${JSON.stringify(emptyDiagnostics)}.`,
+          );
+        }
+        emptyDiagnostic = {
+          code: (noDiagramDiagnostic as { code?: unknown }).code,
+          codeName: (
+            noDiagramDiagnostic as {
+              data?: { codeName?: unknown };
+            }
+          ).data?.codeName,
+        };
       } finally {
         worker.postMessage({
           protocol,
@@ -407,10 +461,12 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       return {
         legend: ready.legend,
         summaries,
+        emptyDiagnostic,
       };
     },
     {
       digest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+      editorSchema: EDITOR_SCHEMA_VERSION,
       fixtures: familySemanticFixtures,
       modifierMask: SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
       protocol: EDITOR_WORKER_PROTOCOL,
@@ -432,6 +488,10 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       packedSha256: tokenCase.packed_sha256,
     })),
   );
+  expect(result.emptyDiagnostic).toEqual({
+    code: "merman.parse.no_diagram",
+    codeName: "MERMAN_NO_DIAGRAM",
+  });
 });
 
 test("language worker failure keeps the Monaco model editable and Retry reconnects it", async ({

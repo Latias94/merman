@@ -43,27 +43,36 @@ export function assertBrowserRuntime(): void {
   }
 }
 
-export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
-  const state = createMermanRuntimeState(surfaceLoader);
+export function bindSurfaceRuntime<Module extends root.MermanWasmModuleBase>(
+  surfaceLoader: root.MermanWasmLoader<Module>
+) {
+  // The shared implementation keeps one stable raw ABI. Package entries expose only the
+  // profile-owned subset, so the cast remains inside this private binding boundary.
+  const sharedLoader = surfaceLoader as unknown as root.MermanWasmLoader;
+  const state = createMermanRuntimeState(sharedLoader);
   const withState = <T>(run: () => T): T => withMermanRuntimeState(state, run);
 
   return {
-    initMerman(init?: root.MermanInitInput) {
+    initMerman(init?: root.MermanInitInput<Module>): Promise<Module> {
       if (typeof init === "function") {
-        return withState(() => root.initMerman(init));
+        return withState(() =>
+          root.initMerman(init as unknown as root.MermanInitInput)
+        ) as unknown as Promise<Module>;
       }
-      const options: root.MermanInitOptions = init ?? {};
+      const options: root.MermanInitOptions<Module> = init ?? {};
       return withState(() =>
         root.initMerman({
-          loader: surfaceLoader,
+          loader: sharedLoader,
           ...options,
-        })
-      );
+        } as root.MermanInitOptions)
+      ) as unknown as Promise<Module>;
     },
-    getMerman: () => withState(root.getMerman),
+    getMerman: () => withState(root.getMerman) as unknown as Module,
     isMermanInitialized: () => withState(root.isMermanInitialized),
     renderSvg: (source: string, options?: root.SvgBindingOptions | string) =>
       withState(() => root.renderSvg(source, options)),
+    svgPlanJson: (source: string, options?: root.SvgBindingOptions | string) =>
+      withState(() => root.svgPlanJson(source, options)),
     renderSvgWithTextMeasurer: (
       source: string,
       measurer: root.HostTextMeasurer,
@@ -206,3 +215,6 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
     packageVersion: () => withState(root.packageVersion),
   };
 }
+
+export type SurfaceRuntime<Module extends root.MermanWasmModuleBase = root.MermanWasmModule> =
+  ReturnType<typeof bindSurfaceRuntime<Module>>;

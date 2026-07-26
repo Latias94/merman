@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -26,7 +27,9 @@ const ROOT_FILE_INPUTS = [
   "abi/text-measurement-v1.json",
   "capabilities/artifact-profiles-v1.json",
   "capabilities/feature-surface-v1.json",
+  "capabilities/generated/capability_surface.rs",
   "platforms/web/scripts/build-wasm.mjs",
+  "platforms/web/web-surface-descriptor.schema.json",
   "platforms/web/web-surface-descriptor.json",
 ];
 const OWNED_BUILD_MODULE_ROOT = "platforms/web/scripts/wasm-build";
@@ -197,11 +200,20 @@ export function collectWasmInputEntries({ metadata, repoRoot }) {
     const manifest = path.resolve(packageInfo.manifest_path);
     files.add(manifest);
     const packageRoot = path.dirname(manifest);
+    const rustSources = [];
     const buildScript = path.join(packageRoot, "build.rs");
-    if (existsSync(buildScript)) files.add(buildScript);
+    if (existsSync(buildScript)) {
+      files.add(buildScript);
+      rustSources.push(buildScript);
+    }
     const sourceRoot = path.join(packageRoot, "src");
     assertProductionTargetsAreOwned(packageInfo, packageRoot, sourceRoot, buildScript);
-    if (existsSync(sourceRoot)) addTreeFiles(sourceRoot, files);
+    if (existsSync(sourceRoot)) {
+      addTreeFiles(sourceRoot, files, (absolute) => {
+        if (path.extname(absolute) === ".rs") rustSources.push(absolute);
+      });
+    }
+    addEmbeddedRustInputs({ files, repoRoot, rustSources });
   }
 
   return [...files]
@@ -299,21 +311,281 @@ function assertProductionTargetsAreOwned(packageInfo, packageRoot, sourceRoot, b
   }
 }
 
-function addTreeFiles(root, files) {
+function addTreeFiles(root, files, onFile = () => {}) {
   const stat = lstatSync(root);
   if (stat.isSymbolicLink()) {
     throw new Error(`WASM input tree contains a symbolic link: ${root}`);
   }
   if (stat.isFile()) {
     files.add(root);
+    onFile(root);
     return;
   }
   if (!stat.isDirectory()) return;
   for (const entry of readdirSync(root, { withFileTypes: true }).sort((left, right) =>
     compareNames(left.name, right.name),
   )) {
-    addTreeFiles(path.join(root, entry.name), files);
+    addTreeFiles(path.join(root, entry.name), files, onFile);
   }
+}
+
+function addEmbeddedRustInputs({ files, repoRoot, rustSources }) {
+  for (const sourcePath of rustSources) {
+    const source = readFileSync(sourcePath, "utf8");
+    for (const embedded of embeddedRustInputs(source, sourcePath, repoRoot)) {
+      files.add(embedded);
+    }
+  }
+}
+
+function embeddedRustInputs(source, sourcePath, repoRoot) {
+  const inputs = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (source.startsWith("//", cursor)) {
+      cursor = skipLineComment(source, cursor);
+      continue;
+    }
+    if (source.startsWith("/*", cursor)) {
+      cursor = skipBlockComment(source, cursor);
+      continue;
+    }
+
+    const rawString = parseRawString(source, cursor);
+    if (rawString) {
+      cursor = rawString.end;
+      continue;
+    }
+    if (source[cursor] === '"') {
+      cursor = scanQuotedString(source, cursor);
+      continue;
+    }
+    if (source[cursor] === "'") {
+      cursor = scanCharacterLiteral(source, cursor);
+      continue;
+    }
+    if (!isIdentifierStart(source[cursor])) {
+      cursor += 1;
+      continue;
+    }
+
+    const identifierStart = cursor;
+    cursor = scanIdentifier(source, cursor);
+    const macroName = source.slice(identifierStart, cursor);
+    if (macroName !== "include_str" && macroName !== "include_bytes") {
+      continue;
+    }
+
+    let argument = skipRustTrivia(source, cursor);
+    if (source[argument] !== "!") continue;
+    argument = skipRustTrivia(source, argument + 1);
+    if (source[argument] === "=") continue;
+    const closingDelimiter = {
+      "(": ")",
+      "[": "]",
+      "{": "}",
+    }[source[argument]];
+    if (!closingDelimiter) {
+      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, argument);
+    }
+    argument = skipRustTrivia(source, argument + 1);
+
+    const literal = parseRustStringLiteral(source, argument);
+    if (!literal) {
+      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, argument);
+    }
+    let end = skipRustTrivia(source, literal.end);
+    if (source[end] === ",") end = skipRustTrivia(source, end + 1);
+    if (source[end] !== closingDelimiter) {
+      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, end);
+    }
+
+    const absolute = path.resolve(path.dirname(sourcePath), literal.value);
+    if (!isWithin(path.resolve(repoRoot), absolute)) {
+      throw new Error(
+        `WASM ${macroName}! input escapes the repository: ${normalizePath(path.relative(repoRoot, absolute))}`,
+      );
+    }
+    if (!existsSync(absolute)) {
+      throw new Error(
+        `WASM ${macroName}! input is missing: ${normalizePath(path.relative(repoRoot, absolute))}`,
+      );
+    }
+    inputs.push(absolute);
+    cursor = end + 1;
+  }
+  return inputs;
+}
+
+function parseRustStringLiteral(source, cursor) {
+  const raw = parseRawString(source, cursor, { requireBarePrefix: true });
+  if (raw) return raw;
+  if (source[cursor] !== '"') return null;
+
+  let value = "";
+  let index = cursor + 1;
+  while (index < source.length) {
+    const character = source[index];
+    if (character === '"') return { end: index + 1, value };
+    if (character === "\n" || character === "\r") {
+      throw new Error("Rust string literal contains an unescaped newline.");
+    }
+    if (character !== "\\") {
+      value += character;
+      index += 1;
+      continue;
+    }
+
+    const escaped = decodeRustStringEscape(source, index);
+    value += escaped.value;
+    index = escaped.end;
+  }
+  throw new Error("Rust string literal is unterminated.");
+}
+
+function parseRawString(source, cursor, { requireBarePrefix = false } = {}) {
+  const prefixes = requireBarePrefix ? ["r"] : ["br", "cr", "r"];
+  const prefix = prefixes.find((candidate) => source.startsWith(candidate, cursor));
+  if (!prefix || isIdentifierContinue(source[cursor - 1])) return null;
+
+  let quote = cursor + prefix.length;
+  let hashes = 0;
+  while (source[quote] === "#") {
+    hashes += 1;
+    quote += 1;
+  }
+  if (source[quote] !== '"') return null;
+
+  const closing = `"${"#".repeat(hashes)}`;
+  const endQuote = source.indexOf(closing, quote + 1);
+  if (endQuote === -1) throw new Error("Rust raw string literal is unterminated.");
+  return {
+    end: endQuote + closing.length,
+    value: source.slice(quote + 1, endQuote),
+  };
+}
+
+function decodeRustStringEscape(source, slash) {
+  const escaped = source[slash + 1];
+  const simple = {
+    0: "\0",
+    n: "\n",
+    r: "\r",
+    t: "\t",
+    '"': '"',
+    "'": "'",
+    "\\": "\\",
+  };
+  if (Object.hasOwn(simple, escaped)) {
+    return { end: slash + 2, value: simple[escaped] };
+  }
+  if (escaped === "x") {
+    const digits = source.slice(slash + 2, slash + 4);
+    if (!/^[0-9a-fA-F]{2}$/.test(digits)) {
+      throw new Error("Rust string literal has an invalid hexadecimal escape.");
+    }
+    return { end: slash + 4, value: String.fromCharCode(Number.parseInt(digits, 16)) };
+  }
+  if (escaped === "u" && source[slash + 2] === "{") {
+    const close = source.indexOf("}", slash + 3);
+    const digits = close === -1 ? "" : source.slice(slash + 3, close).replaceAll("_", "");
+    if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) {
+      throw new Error("Rust string literal has an invalid Unicode escape.");
+    }
+    return {
+      end: close + 1,
+      value: String.fromCodePoint(Number.parseInt(digits, 16)),
+    };
+  }
+  if (escaped === "\n" || (escaped === "\r" && source[slash + 2] === "\n")) {
+    let end = slash + (escaped === "\r" ? 3 : 2);
+    while (source[end] === " " || source[end] === "\t" || source[end] === "\n") end += 1;
+    return { end, value: "" };
+  }
+  throw new Error(`Rust string literal has an unsupported escape: \\${escaped ?? ""}`);
+}
+
+function scanQuotedString(source, quote) {
+  let cursor = quote + 1;
+  while (cursor < source.length) {
+    if (source[cursor] === "\\") {
+      cursor += 2;
+    } else if (source[cursor] === '"') {
+      return cursor + 1;
+    } else {
+      cursor += 1;
+    }
+  }
+  return source.length;
+}
+
+function scanCharacterLiteral(source, quote) {
+  let cursor = quote + 1;
+  if (source[cursor] === "\\") {
+    cursor += 2;
+  } else {
+    cursor += 1;
+  }
+  return source[cursor] === "'" ? cursor + 1 : quote + 1;
+}
+
+function skipRustTrivia(source, cursor) {
+  while (cursor < source.length) {
+    if (/\s/.test(source[cursor])) {
+      cursor += 1;
+    } else if (source.startsWith("//", cursor)) {
+      cursor = skipLineComment(source, cursor);
+    } else if (source.startsWith("/*", cursor)) {
+      cursor = skipBlockComment(source, cursor);
+    } else {
+      break;
+    }
+  }
+  return cursor;
+}
+
+function skipLineComment(source, cursor) {
+  const newline = source.indexOf("\n", cursor + 2);
+  return newline === -1 ? source.length : newline + 1;
+}
+
+function skipBlockComment(source, cursor) {
+  let depth = 1;
+  cursor += 2;
+  while (cursor < source.length && depth > 0) {
+    if (source.startsWith("/*", cursor)) {
+      depth += 1;
+      cursor += 2;
+    } else if (source.startsWith("*/", cursor)) {
+      depth -= 1;
+      cursor += 2;
+    } else {
+      cursor += 1;
+    }
+  }
+  return cursor;
+}
+
+function scanIdentifier(source, cursor) {
+  cursor += 1;
+  while (isIdentifierContinue(source[cursor])) cursor += 1;
+  return cursor;
+}
+
+function isIdentifierStart(character) {
+  return Boolean(character && /[A-Za-z_]/.test(character));
+}
+
+function isIdentifierContinue(character) {
+  return Boolean(character && /[A-Za-z0-9_]/.test(character));
+}
+
+function unresolvedRustInput(macroName, source, sourcePath, repoRoot, cursor) {
+  const line = source.slice(0, cursor).split("\n").length;
+  const relative = normalizePath(path.relative(repoRoot, sourcePath));
+  return new Error(
+    `Cannot resolve ${macroName}! input in ${relative}:${line}; use a string literal so the WASM input manifest stays fail-closed.`,
+  );
 }
 
 function fileEntry(root, absolute) {
@@ -325,6 +597,9 @@ function fileEntry(root, absolute) {
   const stat = lstatSync(canonicalFile);
   if (!stat.isFile() || stat.isSymbolicLink()) {
     throw new Error(`WASM input is not a regular file: ${canonicalFile}`);
+  }
+  if (!isWithin(realpathSync(canonicalRoot), realpathSync(canonicalFile))) {
+    throw new Error(`WASM input resolves outside its repository root: ${canonicalFile}`);
   }
   return {
     path: normalizePath(path.relative(canonicalRoot, canonicalFile)),
@@ -342,6 +617,12 @@ function normalizedBuildConfig(preset) {
   ) {
     throw new Error("WASM preset runtime capability IDs are invalid.");
   }
+  if (
+    !Array.isArray(preset.runtime_output_ids) ||
+    !preset.runtime_output_ids.every((item) => typeof item === "string")
+  ) {
+    throw new Error("WASM preset runtime output IDs are invalid.");
+  }
   if (typeof preset.default_features !== "boolean") {
     throw new Error("WASM preset default_features must be boolean.");
   }
@@ -354,6 +635,7 @@ function normalizedBuildConfig(preset) {
     default_features: preset.default_features,
     features: [...preset.features].sort(compareNames),
     runtime_capability_ids: [...preset.runtime_capability_ids].sort(compareNames),
+    runtime_output_ids: [...preset.runtime_output_ids].sort(compareNames),
   };
 }
 

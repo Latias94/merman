@@ -12,13 +12,33 @@ import { test } from "node:test";
 
 import {
   assertArtifactFileEvidence,
+  assertIndependentSizeEvidence,
+  assertLegalProjection,
   assertPackageManifest,
 } from "./prepack-check.mjs";
+import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import {
   WASM_RUNTIME_TOP_LEVEL_FILES,
   packageDistFileRecords,
   wasmRuntimeFileRecords,
 } from "./wasm-runtime-files.mjs";
+
+test("complete SVG renderer is admitted by capability boundary instead of slim-size threshold", () => {
+  const checked = [
+    { descriptor: { id: "full" }, packageBytes: 100 },
+    { descriptor: { id: "render" }, packageBytes: 95 },
+  ];
+
+  assert.doesNotThrow(() => assertIndependentSizeEvidence(checked, checked));
+  assert.throws(
+    () =>
+      assertIndependentSizeEvidence(
+        [...checked, { descriptor: { id: "editor" }, packageBytes: 95 }],
+        [...checked, { descriptor: { id: "editor" }, packageBytes: 95 }],
+      ),
+    /at least 15%/,
+  );
+});
 
 test("package provenance rejects stale copied WASM and entry wrappers", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-provenance-"));
@@ -123,6 +143,60 @@ test("package manifest closes npm files and lifecycle hooks", () => {
     () => assertPackageManifest(descriptor, { ...manifest, bundleDependencies: ["unexpected"] }),
     /must not declare bundled npm dependencies/,
   );
+});
+
+test("package legal material is exactly the artifact-profile closure", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-legal-"));
+  const descriptor = {
+    id: "analysis",
+    name: "@mermanjs/web-analysis",
+    artifact_profile: { id: "web-analysis" },
+  };
+  const packageRoot = path.join(root, "analysis");
+  try {
+    const projection = legalProjectionForArtifactProfile(
+      descriptor.artifact_profile.id,
+    );
+    const legalRoot = path.join(packageRoot, "THIRD_PARTY_LICENSES");
+    mkdirSync(legalRoot, { recursive: true });
+    writeFileSync(
+      path.join(packageRoot, "THIRD_PARTY_NOTICES.md"),
+      projection.notice,
+    );
+    for (const file of projection.files) {
+      const target = path.join(legalRoot, ...file.relative.split("/"));
+      mkdirSync(path.dirname(target), { recursive: true });
+      cpSync(file.source, target);
+    }
+
+    assert.doesNotThrow(() => assertLegalProjection(descriptor, packageRoot));
+
+    writeFileSync(
+      path.join(legalRoot, "rust-cargo-dependencies.json"),
+      "{}\n",
+    );
+    assert.throws(
+      () => assertLegalProjection(descriptor, packageRoot),
+      /Legal projection is stale/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("package provenance rejects shared source maps", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-source-maps-"));
+  try {
+    const packageDistRoot = path.join(root, "packages", "analysis", "dist");
+    writeEntryFiles(packageDistRoot, "analysis");
+    writeFileSync(path.join(packageDistRoot, "index.js.map"), "{}\n");
+    assert.throws(
+      () => packageDistFileRecords(packageDistRoot, "analysis"),
+      /shared source maps/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 function writeRuntime(root) {

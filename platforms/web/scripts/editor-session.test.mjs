@@ -229,7 +229,6 @@ function runtimeCatalogFixture({ capabilities = editorCapabilities() } = {}) {
     capabilities,
     registry: { diagram_family_count: 0 },
     resources: {
-      schema_version: 1,
       general_binding_default_profile: "interactive",
       cli_default_profile: "trusted-native",
       limits: [],
@@ -243,10 +242,18 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
     [
       () => {
         const catalog = runtimeCatalogFixture();
+        catalog.schema_version = 2;
+        return catalog;
+      },
+      /unsupported runtime catalog schema/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
         delete catalog.resources;
         return catalog;
       },
-      /runtime catalog has an unsupported shape/,
+      /runtime catalog is missing required fields: resources/,
     ],
     [
       () =>
@@ -315,28 +322,56 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
 });
 
 test("runtime catalog accepts unknown future IDs", async () => {
+  const futureCatalog = runtimeCatalogFixture({
+    capabilities: {
+      capability_ids: ["analysis", "editor", "future-capability"],
+      output_ids: ["future-output"],
+      operation_ids: [
+        "analysis-json",
+        "future-operation",
+        "future-output",
+        "semantic-json",
+      ],
+      system_adapter_ids: [],
+      text_measurement: null,
+      future_capability_metadata: { version: 1 },
+    },
+  });
+  futureCatalog.future_root_metadata = true;
+  futureCatalog.registry.future_registry_metadata = true;
+  futureCatalog.resources.future_resource_metadata = true;
+  futureCatalog.resources.limits = [
+    {
+      id: "future-limit",
+      phase: "future",
+      description: "future limit",
+      overridable: false,
+      hard_cap: true,
+      future_limit_metadata: true,
+    },
+  ];
+  futureCatalog.resources.profiles = [
+    {
+      id: "future-profile",
+      purpose: "future",
+      trust_assumption: "future",
+      recommended_binding_default: false,
+      limits: {},
+      future_profile_metadata: true,
+    },
+  ];
   const runtime = bindSurfaceRuntime(async () => ({
     default: async () => {},
     packageVersion: () => "0.8.0-alpha.4",
     transportApiVersion: () => 3,
-    runtimeCatalog: () => runtimeCatalogFixture({
-      capabilities: {
-        capability_ids: ["analysis", "editor", "future-capability"],
-        output_ids: ["future-output"],
-        operation_ids: [
-          "analysis-json",
-          "future-operation",
-          "future-output",
-          "semantic-json",
-        ],
-        system_adapter_ids: [],
-        text_measurement: null,
-      },
-    }),
+    runtimeCatalog: () => futureCatalog,
   }));
   await runtime.initMerman();
 
-  assert.equal(runtime.runtimeCatalog().capabilities.capability_ids.at(-1), "future-capability");
+  const catalog = runtime.runtimeCatalog();
+  assert.equal(catalog.capabilities.capability_ids.at(-1), "future-capability");
+  assert.equal(catalog.resources.limits[0].id, "future-limit");
+  assert.equal(catalog.resources.profiles[0].id, "future-profile");
 });
 
 test("runtime catalog preserves wasm-bindgen optional and map projections", async () => {
@@ -377,17 +412,25 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
   });
 });
 
-test("resource options preserve analysis wrapper placement", () => {
+test("resource options preserve wrapper placement and stricter caller limits", () => {
   const resources = { profile: "constrained" };
   assert.deepEqual(
     webApi.withResourceOptions(
-      { analysis: { site_config: { theme: "dark" } } },
+      {
+        analysis: {
+          site_config: { theme: "dark" },
+          resources: { limits: { max_source_bytes: 4096 } },
+        },
+      },
       resources,
     ),
     {
       analysis: {
         site_config: { theme: "dark" },
-        resources,
+        resources: {
+          profile: "constrained",
+          limits: { max_source_bytes: 4096 },
+        },
       },
     },
   );
@@ -397,6 +440,85 @@ test("resource options preserve analysis wrapper placement", () => {
       parse: { suppress_errors: true },
       resources,
     },
+  );
+});
+
+test("resource options retain ceiling overrides while tightening another limit", () => {
+  const resources = {
+    profile: "constrained",
+    limits: { max_source_bytes: 4096 },
+  };
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      {
+        resources: {
+          limits: { max_model_items: 1000 },
+        },
+      },
+      resources,
+    ),
+    {
+      resources: {
+        profile: "constrained",
+        limits: {
+          max_source_bytes: 4096,
+          max_model_items: 1000,
+        },
+      },
+    },
+  );
+  assert.throws(
+    () =>
+      webApi.withResourceOptions(
+        {
+          resources: {
+            limits: { max_source_bytes: 8192 },
+          },
+        },
+        resources,
+      ),
+    /loosen the transport ceiling/,
+  );
+});
+
+test("resource options reject looser policy and ambiguous wrappers", () => {
+  assert.throws(
+    () =>
+      webApi.withResourceOptions(
+        { resources: { profile: "trusted-native" } },
+        { profile: "constrained" },
+      ),
+    /loosen the transport ceiling/,
+  );
+  assert.throws(
+    () =>
+      webApi.withResourceOptions(
+        {
+          analysis: {},
+          merman: {},
+        },
+        { profile: "constrained" },
+      ),
+    /must not contain both analysis and merman wrappers/,
+  );
+  assert.throws(
+    () =>
+      webApi.withResourceOptions(
+        {
+          resources: { profile: "constrained" },
+          analysis: {},
+        },
+        { profile: "constrained" },
+      ),
+    /must not mix top-level resources/,
+  );
+  assert.throws(
+    () =>
+      webApi.withResourceOptions(
+        { analysis: null },
+        { profile: "constrained" },
+      ),
+    /analysis wrapper must be an object/,
   );
 });
 

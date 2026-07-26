@@ -45,7 +45,7 @@ def descriptor() -> dict:
                 "package_dir": "packages/render",
                 "artifact_profile": "web-render",
                 "runtime_profile": "render",
-                "visibility": "candidate",
+                "visibility": "public",
             },
         ],
     }
@@ -230,14 +230,17 @@ class FakeNpm:
         self,
         *,
         fail_tag_for: str | None = None,
+        fail_after_tag_for: str | None = None,
         fail_observe_after_add_for: str | None = None,
     ) -> None:
         self.versions: dict[tuple[str, str], str] = {}
         self.tags: dict[tuple[str, str], str] = {}
         self.published: list[tuple[str, str]] = []
         self.fail_tag_for = fail_tag_for
+        self.fail_after_tag_for = fail_after_tag_for
         self.fail_observe_after_add_for = fail_observe_after_add_for
         self.added_tags: set[tuple[str, str]] = set()
+        self.did_fail_after_tag = False
         self.did_fail_observe = False
 
     def version_integrity(self, package: str, version: str) -> str | None:
@@ -264,12 +267,47 @@ class FakeNpm:
             raise web_package_group.PackageGroupError("simulated tag failure")
         self.tags[(package, tag)] = version
         self.added_tags.add((package, tag))
+        if package == self.fail_after_tag_for and not self.did_fail_after_tag:
+            self.did_fail_after_tag = True
+            raise web_package_group.PackageGroupError("simulated post-request failure")
 
     def remove_tag(self, package: str, tag: str) -> None:
         self.tags.pop((package, tag), None)
 
 
 class WebPackageDescriptorTests(unittest.TestCase):
+    def test_checked_in_schema_is_the_descriptor_rule_authority(self) -> None:
+        schema = web_package_group.load_descriptor_schema()
+        data = descriptor()
+        data["packages"][0]["runtime_profile"] = "experimental"
+
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "runtime_profile"):
+            web_package_group.validate_descriptor(data, schema=schema)
+
+        schema["$defs"]["package"]["properties"]["runtime_profile"]["enum"].append(
+            "experimental"
+        )
+        self.assertEqual(web_package_group.validate_descriptor(data, schema=schema), data)
+
+        candidate = descriptor()
+        candidate["packages"][1]["visibility"] = "candidate"
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "not admitted"):
+            web_package_group.validate_descriptor(candidate, schema=schema)
+        schema["x-merman-invariants"]["conditionalPackages"][0]["allowed"].append(
+            {"id": "editor", "runtime_profile": "editor"}
+        )
+        self.assertEqual(web_package_group.validate_descriptor(candidate, schema=schema), candidate)
+
+        renamed_default = descriptor()
+        renamed_default["packages"][0]["name"] = "@mermanjs/web-full"
+        schema["x-merman-invariants"]["defaultPackage"]["requiredFields"]["name"] = (
+            "@mermanjs/web-full"
+        )
+        self.assertEqual(
+            web_package_group.validate_descriptor(renamed_default, schema=schema),
+            renamed_default,
+        )
+
     def test_schema_is_closed_and_candidates_cannot_be_default(self) -> None:
         data = descriptor()
         self.assertEqual(web_package_group.validate_descriptor(data), data)
@@ -280,16 +318,46 @@ class WebPackageDescriptorTests(unittest.TestCase):
             web_package_group.validate_descriptor(old)
 
         candidate_default = descriptor()
+        candidate_default["packages"][2]["visibility"] = "candidate"
         candidate_default["default_package"] = "render"
-        with self.assertRaisesRegex(web_package_group.PackageGroupError, "must be public"):
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "visibility must be 'public'"):
             web_package_group.validate_descriptor(candidate_default)
+
+    def test_descriptor_rules_match_the_web_builder_contract(self) -> None:
+        mismatched_profile = descriptor()
+        mismatched_profile["packages"][0]["artifact_profile"] = "web-render"
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "must be web-full"):
+            web_package_group.validate_descriptor(mismatched_profile)
+
+        unknown_runtime = descriptor()
+        unknown_runtime["packages"][0]["runtime_profile"] = "unknown"
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "runtime_profile"):
+            web_package_group.validate_descriptor(unknown_runtime)
+
+        non_render_candidate = descriptor()
+        non_render_candidate["packages"][1]["visibility"] = "candidate"
+        non_render_candidate["packages"][1]["runtime_profile"] = "render"
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "not admitted by the schema"):
+            web_package_group.validate_descriptor(non_render_candidate)
+
+        renamed_default = descriptor()
+        renamed_default["packages"][0]["name"] = "@mermanjs/web-full"
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "name must be '@mermanjs/web'"):
+            web_package_group.validate_descriptor(renamed_default)
+
+    def test_descriptor_schema_fails_closed_on_an_unknown_keyword(self) -> None:
+        schema = web_package_group.load_descriptor_schema()
+        schema["$defs"]["package"]["properties"]["runtime_profile"]["maxLength"] = 32
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "unsupported schema keywords"):
+            web_package_group.validate_descriptor(descriptor(), schema=schema)
 
     def test_candidate_manifest_must_be_private(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             data = descriptor()
-            descriptor_path = populate_workspace(root, data)
             render = next(entry for entry in data["packages"] if entry["id"] == "render")
+            render["visibility"] = "candidate"
+            descriptor_path = populate_workspace(root, data)
             write_json(root / "platforms/web" / render["package_dir"] / "package.json", package_manifest(render))
             with self.assertRaisesRegex(web_package_group.PackageGroupError, "candidate packages must be private"):
                 web_package_group.validate_package_manifest(
@@ -332,8 +400,7 @@ class WebPackageArtifactTests(unittest.TestCase):
             expected_version=VERSION,
             descriptor=web_package_group.load_descriptor(self.descriptor_path),
         )
-        self.assertEqual([item["id"] for item in manifest["packages"]], ["full", "editor"])
-        self.assertNotIn("render", {item["id"] for item in manifest["packages"]})
+        self.assertEqual([item["id"] for item in manifest["packages"]], ["full", "editor", "render"])
 
     def test_tarball_rejects_second_wasm_and_legacy_pkg_artifact(self) -> None:
         entry = web_package_group.public_packages(self.data)[0]
@@ -466,6 +533,12 @@ class WebPackageArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(web_package_group.PackageGroupError, "at least 15% smaller"):
             self.create_manifest()
 
+    def test_complete_svg_renderer_does_not_use_the_slim_size_threshold(self) -> None:
+        render = next(entry for entry in web_package_group.public_packages(self.data) if entry["id"] == "render")
+        tarball = self.artifacts / (render["name"].replace("@", "").replace("/", "-") + ".tgz")
+        write_tarball(tarball, render, full_sized_dist=True)
+        self.create_manifest()
+
     def test_group_manifest_requires_the_full_package_for_size_admission(self) -> None:
         path = self.create_manifest()
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -481,8 +554,14 @@ class WebPackageArtifactTests(unittest.TestCase):
         client = FakeNpm()
         client.manifest = manifest
         report = web_package_group.reconcile_group(manifest, self.artifacts, client)
-        self.assertEqual({name for name, _version in client.published}, {"@mermanjs/web", "@mermanjs/web-editor"})
-        self.assertEqual(set(report["promoted"]), {"@mermanjs/web", "@mermanjs/web-editor"})
+        self.assertEqual(
+            {name for name, _version in client.published},
+            {"@mermanjs/web", "@mermanjs/web-editor", "@mermanjs/web-render"},
+        )
+        self.assertEqual(
+            set(report["promoted"]),
+            {"@mermanjs/web", "@mermanjs/web-editor", "@mermanjs/web-render"},
+        )
         for record in manifest["packages"]:
             self.assertEqual(client.tags[(record["name"], "alpha")], VERSION)
 
@@ -496,6 +575,22 @@ class WebPackageArtifactTests(unittest.TestCase):
         client.tags[("@mermanjs/web", "alpha")] = "0.8.0-alpha.3"
         with self.assertRaisesRegex(web_package_group.PackageGroupError, "simulated tag failure"):
             web_package_group.reconcile_group(manifest, self.artifacts, client)
+        self.assertEqual(client.tags[("@mermanjs/web", "alpha")], "0.8.0-alpha.3")
+        self.assertNotIn(("@mermanjs/web-editor", "alpha"), client.tags)
+
+    def test_reconciliation_rolls_back_a_tag_when_its_promotion_request_errors_after_succeeding(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        client = FakeNpm(fail_after_tag_for="@mermanjs/web")
+        client.manifest = manifest
+        for record in manifest["packages"]:
+            client.versions[(record["name"], VERSION)] = record["integrity"]
+        client.tags[("@mermanjs/web", "alpha")] = "0.8.0-alpha.3"
+
+        with self.assertRaisesRegex(web_package_group.ReconciliationError, "post-request failure") as raised:
+            web_package_group.reconcile_group(manifest, self.artifacts, client)
+
+        self.assertEqual(raised.exception.report["rollback_failures"], [])
         self.assertEqual(client.tags[("@mermanjs/web", "alpha")], "0.8.0-alpha.3")
         self.assertNotIn(("@mermanjs/web-editor", "alpha"), client.tags)
 

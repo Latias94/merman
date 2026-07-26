@@ -70,7 +70,7 @@ export async function createAuthenticatedBrowserRealmChannel(
     throw new RealmProtocolError(`${label} handshake timeout is invalid.`);
   }
 
-  const viewport = validateRealmViewport(initialViewport);
+  let viewport = validateRealmViewport(initialViewport);
   const boot: RealmBootIdentity = {
     bootNonce: createRealmToken(),
     kind,
@@ -267,12 +267,14 @@ export async function createAuthenticatedBrowserRealmChannel(
       if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
+      if (viewportsMatch(normalized, viewport)) return;
       applyViewport(iframe, normalized);
       await nextAnimationFrame(viewportAbort.signal, label);
       await nextAnimationFrame(viewportAbort.signal, label);
       if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
+      viewport = normalized;
     },
   };
 }
@@ -319,12 +321,16 @@ function assertMatchingViewport(
   expected: RealmViewport,
   label: string
 ): void {
-  if (
-    Math.round(actual.width) !== Math.round(expected.width) ||
-    Math.round(actual.height) !== Math.round(expected.height)
-  ) {
+  if (!viewportsMatch(actual, expected)) {
     throw new RealmProtocolError(`${label} viewport does not match its host.`);
   }
+}
+
+function viewportsMatch(actual: RealmViewport, expected: RealmViewport): boolean {
+  return (
+    Math.round(actual.width) === Math.round(expected.width) &&
+    Math.round(actual.height) === Math.round(expected.height)
+  );
 }
 
 function asRealmError(error: unknown): Error {
