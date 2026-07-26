@@ -134,12 +134,9 @@ struct DayjsParsedParts {
     unix_ms: Option<i64>,
 }
 
-/// Splits `s` at `byte_idx`, clamping down to the nearest valid char boundary
-/// so this never panics on multi-byte (e.g. non-ASCII task label) input.
-///
-/// Callers that expect an ASCII-digit run at this position still validate the
-/// result afterwards (`is_ascii_digit`/`parse`), so a clamped, shorter-than-
-/// requested `head` is simply rejected by that validation instead of panicking.
+// Clamps `byte_idx` down to the nearest valid char boundary before splitting,
+// so this never panics on multi-byte input; callers already reject a
+// shorter-than-requested `head` via their existing length/digit checks.
 fn split_at_char_boundary(s: &str, byte_idx: usize) -> (&str, &str) {
     let mut idx = byte_idx.min(s.len());
     while idx > 0 && !s.is_char_boundary(idx) {
