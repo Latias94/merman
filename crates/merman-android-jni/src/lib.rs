@@ -1,3 +1,6 @@
+#![cfg(target_os = "android")]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 //! Android's direct bindings-core transport.
 //!
 //! JNI is intentionally not layered over the C ABI. `JNI_OnLoad` registers this module's small,
@@ -28,7 +31,6 @@ use std::{
 };
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
-
 struct JniReusableEngine {
     #[cfg(feature = "svg")]
     base: BindingEngine,
@@ -78,6 +80,7 @@ impl JniExecutionCoordinator {
         }
     }
 
+    #[cfg(feature = "svg")]
     fn enter_callback(&self) -> JniCallbackGuard<'_> {
         let mut state = self
             .state
@@ -134,10 +137,12 @@ impl Drop for JniOperationGuard<'_> {
     }
 }
 
+#[cfg(feature = "svg")]
 struct JniCallbackGuard<'a> {
     coordinator: &'a JniExecutionCoordinator,
 }
 
+#[cfg(feature = "svg")]
 impl Drop for JniCallbackGuard<'_> {
     fn drop(&mut self) {
         let mut state = self
@@ -411,6 +416,11 @@ fn read_callback_field_bool(
     recover_host_callback_result(env, value, callback_failed)
 }
 
+/// Registers Merman's native method table when the JVM loads this library.
+///
+/// # Safety
+///
+/// `vm` must be a valid, live `JavaVM` pointer supplied by the JVM for this load event.
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn JNI_OnLoad(
     vm: *mut jni::sys::JavaVM,
@@ -517,16 +527,15 @@ pub extern "system" fn native_execute(
         let Some(uri) = nullable_java_string(env, uri, "uri") else {
             return Ok(ptr::null_mut());
         };
-        let result =
-            super::binding_engine_for_transport(options_json.as_bytes()).and_then(|engine| {
-                execute_operation(
-                    &engine,
-                    &operation_id,
-                    source.as_bytes(),
-                    b"",
-                    uri.as_deref(),
-                )
-            });
+        let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
+            execute_operation(
+                &engine,
+                &operation_id,
+                source.as_bytes(),
+                b"",
+                uri.as_deref(),
+            )
+        });
         Ok(result_to_java_bytes(env, result))
     })
 }
@@ -553,20 +562,19 @@ pub extern "system" fn native_engine_new(
         let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
             return Ok(0);
         };
-        let result =
-            super::binding_engine_for_transport(options_json.as_bytes()).and_then(|engine| {
-                let coordinator = Arc::new(JniExecutionCoordinator::default());
-                let state = Arc::new(JniReusableEngine {
-                    #[cfg(feature = "svg")]
-                    base: engine.clone(),
-                    inner: Mutex::new(engine),
-                    coordinator,
-                });
-                engine_registry()
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .register(state)
+        let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
+            let coordinator = Arc::new(JniExecutionCoordinator::default());
+            let state = Arc::new(JniReusableEngine {
+                #[cfg(feature = "svg")]
+                base: engine.clone(),
+                inner: Mutex::new(engine),
+                coordinator,
             });
+            engine_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .register(state)
+        });
         match result {
             Ok(handle) => Ok(handle),
             Err(error) => {
@@ -649,7 +657,7 @@ pub extern "system" fn native_engine_set_text_measurer(
 
         #[cfg(not(feature = "svg"))]
         {
-            let _ = (state, measurer);
+            let _ = &measurer;
             throw_merman_exception(
                 env,
                 binding_error_text(BindingError::missing_capability(
@@ -881,6 +889,7 @@ fn new_text_measure_request<'local>(
     env: &mut Env<'local>,
     request: merman_bindings_core::HostTextMeasurementRequest<'_>,
 ) -> JniResult<JObject<'local>> {
+    let transport = merman_bindings_core::host_text_measurement_transport_fields(request);
     let style = request.style;
     let text = env.new_string(request.text)?;
     let font_family = env.new_string(style.font_family.as_deref().unwrap_or_default())?;
@@ -921,50 +930,14 @@ fn new_text_measure_request<'local>(
             JValue::Object(&JObject::from(font_weight)),
             JValue::Object(&JObject::from(font_style)),
             JValue::Object(&max_width_object),
-            JValue::Double(jni_line_height(style, request.wrap_mode)),
+            JValue::Double(transport.line_height),
             JValue::Double(0.0),
             JValue::Double(0.0),
-            JValue::Int(jni_wrap_mode(request.wrap_mode)),
-            JValue::Int(super::MERMAN_TEXT_DIRECTION_AUTO),
-            JValue::Int(jni_white_space(request.max_width, request.wrap_mode)),
-            JValue::Int(super::ffi_measurement_phase(request.phase)),
-            JValue::Int(request.operation.external_code()),
+            JValue::Int(transport.wrap_mode),
+            JValue::Int(transport.direction),
+            JValue::Int(transport.white_space),
+            JValue::Int(transport.phase),
+            JValue::Int(transport.operation),
         ],
     )
-}
-
-#[cfg(feature = "svg")]
-fn jni_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
-    match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike => super::MERMAN_WRAP_MODE_SVG_LIKE,
-        merman_bindings_core::WrapMode::SvgLikeSingleRun => {
-            super::MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN
-        }
-        merman_bindings_core::WrapMode::HtmlLike => super::MERMAN_WRAP_MODE_HTML_LIKE,
-    }
-}
-
-#[cfg(feature = "svg")]
-fn jni_line_height(
-    style: &merman_bindings_core::TextStyle,
-    wrap_mode: merman_bindings_core::WrapMode,
-) -> f64 {
-    let factor = match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
-        merman_bindings_core::WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
-}
-
-#[cfg(feature = "svg")]
-fn jni_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::WrapMode) -> i32 {
-    match wrap_mode {
-        merman_bindings_core::WrapMode::HtmlLike if max_width.is_some() => {
-            super::MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES
-        }
-        merman_bindings_core::WrapMode::HtmlLike => super::MERMAN_TEXT_WHITE_SPACE_NOWRAP,
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => super::MERMAN_TEXT_WHITE_SPACE_NORMAL,
-    }
 }

@@ -80,7 +80,7 @@ flat schema-1 JSON catalog:
     "text_measurement": null
   },
   "registry": { "diagram_family_count": 35 },
-  "resources": { "schema_version": 1, "..." : "..." }
+  "resources": { "general_binding_default_profile": "interactive", "..." : "..." }
 }
 ```
 

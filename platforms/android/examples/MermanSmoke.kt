@@ -37,6 +37,7 @@ private val expectedRuntimeOperations = setOf(
     "png",
     "semantic-json",
     "svg",
+    "svg-plan-json",
     "validation-json",
 )
 private val expectedSystemAdapters = setOf(

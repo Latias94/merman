@@ -50,7 +50,8 @@ enum MermanOperation {
   documentAnalysisJson(native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
   documentAnalysisFactsJson(
     native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
-  );
+  ),
+  svgPlanJson(native.MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON);
 
   const MermanOperation(this.nativeCode);
 
@@ -78,6 +79,8 @@ enum MermanOperation {
           native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON,
         MermanOperation.documentAnalysisFactsJson =>
           native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON,
+        MermanOperation.svgPlanJson =>
+          native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
       };
 
   bool get requiresUri => switch (this) {
@@ -107,6 +110,8 @@ enum MermanOperation {
         MermanOperation.documentAnalysisFactsJson =>
           native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_FACTS_JSON !=
               0,
+        MermanOperation.svgPlanJson =>
+          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON != 0,
       };
 }
 

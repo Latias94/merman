@@ -1,7 +1,68 @@
-use crate::{HostTextMeasurement, TextMetrics};
+use crate::{
+    HostTextMeasurement, HostTextMeasurementRequest, TextMeasurementPhase, TextMetrics, WrapMode,
+};
+
+const HOST_WRAP_MODE_SVG_LIKE: i32 = 0;
+const HOST_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
+const HOST_WRAP_MODE_HTML_LIKE: i32 = 2;
+const HOST_TEXT_DIRECTION_AUTO: i32 = 0;
+const HOST_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
+const HOST_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
+const HOST_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
+const HOST_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
+const HOST_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
+const HOST_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
+const HOST_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
 
 /// Stable result-shape discriminator shared by all host text-measurement transports.
 pub use merman::svg::TextMeasurementResultKind as HostTextMeasurementResultKind;
+
+/// Transport-neutral stable fields derived from one host text-measurement request.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HostTextMeasurementTransportFields {
+    pub line_height: f64,
+    pub wrap_mode: i32,
+    pub direction: i32,
+    pub white_space: i32,
+    pub phase: i32,
+    pub operation: i32,
+}
+
+/// Projects renderer types into the numeric protocol shared by native binding transports.
+#[must_use]
+pub fn host_text_measurement_transport_fields(
+    request: HostTextMeasurementRequest<'_>,
+) -> HostTextMeasurementTransportFields {
+    let wrap_mode = match request.wrap_mode {
+        WrapMode::SvgLike => HOST_WRAP_MODE_SVG_LIKE,
+        WrapMode::SvgLikeSingleRun => HOST_WRAP_MODE_SVG_LIKE_SINGLE_RUN,
+        WrapMode::HtmlLike => HOST_WRAP_MODE_HTML_LIKE,
+    };
+    let line_height_factor = match request.wrap_mode {
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
+        WrapMode::HtmlLike => 1.5,
+    };
+    let white_space = match request.wrap_mode {
+        WrapMode::HtmlLike if request.max_width.is_some() => HOST_TEXT_WHITE_SPACE_BREAK_SPACES,
+        WrapMode::HtmlLike => HOST_TEXT_WHITE_SPACE_NOWRAP,
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => HOST_TEXT_WHITE_SPACE_NORMAL,
+    };
+    let phase = match request.phase {
+        TextMeasurementPhase::Layout => HOST_TEXT_MEASUREMENT_PHASE_LAYOUT,
+        TextMeasurementPhase::Wrap => HOST_TEXT_MEASUREMENT_PHASE_WRAP,
+        TextMeasurementPhase::SvgBBox => HOST_TEXT_MEASUREMENT_PHASE_SVG_BBOX,
+        TextMeasurementPhase::ComputedLength => HOST_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH,
+    };
+
+    HostTextMeasurementTransportFields {
+        line_height: request.style.font_size.max(1.0) * line_height_factor,
+        wrap_mode,
+        direction: HOST_TEXT_DIRECTION_AUTO,
+        white_space,
+        phase,
+        operation: request.operation.external_code(),
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct HostTextMeasurementValues {
@@ -49,7 +110,7 @@ pub fn host_text_measurement_from_values(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TextMeasurementOperation;
+    use crate::{TextMeasurementOperation, TextStyle};
 
     fn values() -> HostTextMeasurementValues {
         HostTextMeasurementValues {
@@ -74,6 +135,74 @@ mod tests {
                 (2, "horizontal-extents"),
                 (3, "wrapped-with-raw-width"),
             ]
+        );
+    }
+
+    #[test]
+    fn native_transports_share_one_stable_request_projection() {
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        let base = HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::Measure,
+            phase: TextMeasurementPhase::Layout,
+            text: "A",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
+
+        assert_eq!(
+            host_text_measurement_transport_fields(base),
+            HostTextMeasurementTransportFields {
+                line_height: 11.0,
+                wrap_mode: 0,
+                direction: 0,
+                white_space: 0,
+                phase: 0,
+                operation: 0,
+            }
+        );
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                phase: TextMeasurementPhase::ComputedLength,
+                max_width: Some(30.0),
+                wrap_mode: WrapMode::HtmlLike,
+                ..base
+            }),
+            HostTextMeasurementTransportFields {
+                line_height: 15.0,
+                wrap_mode: 2,
+                direction: 0,
+                white_space: 2,
+                phase: 3,
+                operation: 0,
+            }
+        );
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                phase: TextMeasurementPhase::SvgBBox,
+                wrap_mode: WrapMode::SvgLikeSingleRun,
+                ..base
+            }),
+            HostTextMeasurementTransportFields {
+                line_height: 11.0,
+                wrap_mode: 1,
+                direction: 0,
+                white_space: 0,
+                phase: 2,
+                operation: 0,
+            }
+        );
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                phase: TextMeasurementPhase::Wrap,
+                wrap_mode: WrapMode::HtmlLike,
+                ..base
+            })
+            .white_space,
+            1
         );
     }
 

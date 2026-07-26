@@ -54,7 +54,8 @@ generated projection and handle artifact capability differences as typed runtime
 
 `merman-uniffi` has no default features. The complete native language SDK artifact lists analysis,
 ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and native
-clock/timezone/random/timing adapters directly. `bindgen-smoke` is only for foreign-language
+clock/timezone/random adapters directly. Timing is not part of the UniFFI artifact contract.
+`bindgen-smoke` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash

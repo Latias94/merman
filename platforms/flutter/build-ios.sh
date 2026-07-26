@@ -180,7 +180,7 @@ make_framework() {
     mkdir -p "$framework_dir"
     cp "$binary" "$framework_dir/$FRAMEWORK_NAME"
     install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/$FRAMEWORK_NAME" "$framework_dir/$FRAMEWORK_NAME"
-    xcrun strip -x "$framework_dir/$FRAMEWORK_NAME" 2>/dev/null || true
+    xcrun strip -x "$framework_dir/$FRAMEWORK_NAME"
     write_framework_metadata "$framework_dir"
 }
 

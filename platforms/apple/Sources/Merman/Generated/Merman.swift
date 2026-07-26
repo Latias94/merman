@@ -1500,14 +1500,27 @@ fileprivate struct UniffiCallbackInterfaceMermanTextMeasurer {
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
     //
-    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
-    // This is safe because the pointee is initialized once during static init
-    // and never mutated by either side of the FFI.  Its fields are C function pointers.
-    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer> = {
-        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>.allocate(capacity: 1)
-        ptr.initialize(to: vtable)
-        return UnsafePointer(ptr)
-    }()
+    // Swift 5.9 does not support `nonisolated(unsafe)`. The storage is initialized
+    // once and never mutated by either side of the FFI, so its pointer can safely
+    // cross concurrency domains.
+    private final class VTableStorage: @unchecked Sendable {
+        let pointer: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>
+
+        init(_ value: UniffiVTableCallbackInterfaceMermanTextMeasurer) {
+            let pointer =
+                UnsafeMutablePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>.allocate(
+                    capacity: 1
+                )
+            pointer.initialize(to: value)
+            self.pointer = UnsafePointer(pointer)
+        }
+    }
+
+    private static let vtableStorage = VTableStorage(vtable)
+
+    static var vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer> {
+        vtableStorage.pointer
+    }
 }
 
 private func uniffiCallbackInitMermanTextMeasurer() {

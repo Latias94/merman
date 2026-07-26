@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from typing import NamedTuple
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,12 +23,57 @@ from artifact_profile_recipe import (
     cargo_build_args as project_cargo_build_args,
     load_artifact_profile,
 )
+from native_symbol_contract import (
+    ANDROID_JNI_SYMBOL_CONTRACT,
+    C_ABI_SYMBOL_CONTRACT,
+    NativeSymbolContract,
+    assert_symbol_contract,
+    read_defined_dynamic_symbols,
+)
 
 
 ANDROID_ROOT = Path(__file__).resolve().parent
-JNI_LIBS = ANDROID_ROOT / "src" / "main" / "jniLibs"
+ANDROID_JNI_LIBS = ANDROID_ROOT / "src" / "main" / "jniLibs"
+FLUTTER_JNI_LIBS = REPO_ROOT / "platforms" / "flutter" / "android" / "src" / "main" / "jniLibs"
 VERSION_CATALOG = ANDROID_ROOT / "gradle" / "libs.versions.toml"
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
+FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
+ANDROID_ARTIFACT_PROFILE_IDS = (
+    ANDROID_NATIVE_RECIPE.profile_id,
+    FLUTTER_ANDROID_NATIVE_RECIPE.profile_id,
+)
+
+
+class AndroidArtifactPackaging(NamedTuple):
+    package: str
+    manifest: str
+    target_name: str
+    target_contract: tuple[str, ...]
+    output_root: Path
+    symbol_contract: NativeSymbolContract
+    obsolete_library_filenames: tuple[str, ...]
+
+
+ANDROID_ARTIFACT_PACKAGING = {
+    ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
+        package="merman-android-jni",
+        manifest="crates/merman-android-jni/Cargo.toml",
+        target_name="merman_android_jni",
+        target_contract=("cdylib",),
+        output_root=ANDROID_JNI_LIBS,
+        symbol_contract=ANDROID_JNI_SYMBOL_CONTRACT,
+        obsolete_library_filenames=("libmerman_ffi.so",),
+    ),
+    FLUTTER_ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
+        package="merman-ffi",
+        manifest="crates/merman-ffi/Cargo.toml",
+        target_name="merman_ffi",
+        target_contract=("cdylib", "rlib", "staticlib"),
+        output_root=FLUTTER_JNI_LIBS,
+        symbol_contract=C_ABI_SYMBOL_CONTRACT,
+        obsolete_library_filenames=("libmerman_android_jni.so",),
+    ),
+}
 TARGET_TO_ABI = {
     "aarch64-linux-android": "arm64-v8a",
     "x86_64-linux-android": "x86_64",
@@ -37,31 +83,61 @@ TARGET_TO_ABI = {
 def validate_android_native_recipe(
     recipe: CargoArtifactRecipe = ANDROID_NATIVE_RECIPE,
 ) -> None:
+    packaging = ANDROID_ARTIFACT_PACKAGING.get(recipe.profile_id)
+    if packaging is None:
+        raise RuntimeError(f"unsupported Android artifact profile: {recipe.profile_id}")
     if (
-        recipe.profile_id != "android-native"
-        or recipe.package != "merman-ffi"
-        or recipe.manifest != "crates/merman-ffi/Cargo.toml"
+        recipe.package != packaging.package
+        or recipe.manifest != packaging.manifest
         or recipe.cargo_profile != "native-sdk"
         or recipe.default_features
-        or recipe.target_name != "merman_ffi"
-        or recipe.target_kinds != ("cdylib", "rlib", "staticlib")
-        or recipe.crate_types != ("cdylib", "rlib", "staticlib")
+        or recipe.target_name != packaging.target_name
+        or recipe.target_kinds != packaging.target_contract
+        or recipe.crate_types != packaging.target_contract
         or recipe.build_target_kind != "target-set"
     ):
         raise RuntimeError(
-            "android-native must remain the exact native-sdk merman-ffi "
-            "complete native cdylib target-set recipe"
+            f"{recipe.profile_id} must remain its exact native-sdk transport recipe"
         )
     if set(recipe.build_targets) != set(TARGET_TO_ABI):
         raise RuntimeError(
-            "android-native target set must exactly match the published Android ABI mapping"
+            f"{recipe.profile_id} target set must exactly match the published Android ABI mapping"
         )
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
-        raise RuntimeError(f"android-native manifest does not exist: {manifest}")
+        raise RuntimeError(f"{recipe.profile_id} manifest does not exist: {manifest}")
 
 
 validate_android_native_recipe()
+validate_android_native_recipe(FLUTTER_ANDROID_NATIVE_RECIPE)
+
+
+def android_native_recipe(profile_id: str) -> CargoArtifactRecipe:
+    if profile_id not in ANDROID_ARTIFACT_PROFILE_IDS:
+        raise RuntimeError(f"unsupported Android artifact profile: {profile_id}")
+    recipe = load_artifact_profile(profile_id)
+    validate_android_native_recipe(recipe)
+    return recipe
+
+
+def native_library_filename(recipe: CargoArtifactRecipe) -> str:
+    validate_android_native_recipe(recipe)
+    return f"lib{recipe.target_name.replace('-', '_')}.so"
+
+
+def native_library_output_root(recipe: CargoArtifactRecipe) -> Path:
+    validate_android_native_recipe(recipe)
+    return ANDROID_ARTIFACT_PACKAGING[recipe.profile_id].output_root
+
+
+def native_symbol_contract(recipe: CargoArtifactRecipe) -> NativeSymbolContract:
+    validate_android_native_recipe(recipe)
+    return ANDROID_ARTIFACT_PACKAGING[recipe.profile_id].symbol_contract
+
+
+def obsolete_native_library_filenames(recipe: CargoArtifactRecipe) -> tuple[str, ...]:
+    validate_android_native_recipe(recipe)
+    return ANDROID_ARTIFACT_PACKAGING[recipe.profile_id].obsolete_library_filenames
 
 
 def android_toolchain_versions(catalog: Path = VERSION_CATALOG) -> dict[str, str]:
@@ -88,9 +164,18 @@ PINNED_JAVA_MAJOR = int(ANDROID_TOOLCHAIN_VERSIONS["java"])
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--artifact-profile",
+        choices=ANDROID_ARTIFACT_PROFILE_IDS,
+        default=ANDROID_NATIVE_RECIPE.profile_id,
+        help=(
+            "Descriptor-owned Android artifact recipe. The default builds the JNI AAR; "
+            "Flutter selects its JNI-free C ABI recipe."
+        ),
+    )
+    parser.add_argument(
         "--targets",
         nargs="+",
-        default=list(ANDROID_NATIVE_RECIPE.build_targets),
+        default=None,
         help="Rust Android targets to build. Defaults to the descriptor-owned target set.",
     )
     parser.add_argument(
@@ -341,6 +426,14 @@ def clang_for_target(target: str, ndk: Path) -> Path:
     return clang
 
 
+def llvm_nm_for_ndk(ndk: Path) -> Path:
+    executable = "llvm-nm.exe" if os.name == "nt" else "llvm-nm"
+    llvm_nm = ndk / "toolchains" / "llvm" / "prebuilt" / ndk_host_tag() / "bin" / executable
+    if not llvm_nm.is_file():
+        raise RuntimeError(f"Android NDK llvm-nm not found: {llvm_nm}")
+    return llvm_nm
+
+
 def cargo_env_with_linker(target: str, clang: Path) -> dict[str, str]:
     env = os.environ.copy()
     env_name = f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"
@@ -348,15 +441,18 @@ def cargo_env_with_linker(target: str, clang: Path) -> dict[str, str]:
     return env
 
 
-def cargo_build_args(target: str) -> list[str]:
+def cargo_build_args(
+    target: str,
+    recipe: CargoArtifactRecipe = ANDROID_NATIVE_RECIPE,
+) -> list[str]:
     return project_cargo_build_args(
-        ANDROID_NATIVE_RECIPE,
+        recipe,
         locked=True,
         target=target,
     )
 
 
-def build_target(target: str, ndk: Path) -> None:
+def build_target(target: str, ndk: Path, recipe: CargoArtifactRecipe) -> None:
     abi = TARGET_TO_ABI.get(target)
     if abi is None:
         raise RuntimeError(f"unsupported Android Rust target: {target}")
@@ -364,18 +460,28 @@ def build_target(target: str, ndk: Path) -> None:
     clang = clang_for_target(target, ndk)
     env = cargo_env_with_linker(target, clang)
 
-    print(f"==> Building merman-ffi for {target} ({abi})")
+    print(f"==> Building {recipe.package} ({recipe.profile_id}) for {target} ({abi})")
     run(["rustup", "target", "add", target])
-    run(cargo_build_args(target), env=env)
+    run(cargo_build_args(target, recipe), env=env)
 
-    profile_dir = ANDROID_NATIVE_RECIPE.cargo_profile
-    artifact = REPO_ROOT / "target" / target / profile_dir / "libmerman_ffi.so"
+    profile_dir = recipe.cargo_profile
+    filename = native_library_filename(recipe)
+    artifact = REPO_ROOT / "target" / target / profile_dir / filename
     if not artifact.exists():
         raise RuntimeError(f"expected Android library not found: {artifact}")
 
-    dest = JNI_LIBS / abi
+    symbols = read_defined_dynamic_symbols(artifact, llvm_nm_for_ndk(ndk))
+    assert_symbol_contract(
+        symbols,
+        native_symbol_contract(recipe),
+        label=f"{recipe.profile_id} {target}",
+    )
+
+    dest = native_library_output_root(recipe) / abi
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(artifact, dest / "libmerman_ffi.so")
+    for obsolete in obsolete_native_library_filenames(recipe):
+        (dest / obsolete).unlink(missing_ok=True)
+    shutil.copy2(artifact, dest / filename)
     print(f"Copied {abi} library to {dest}")
 
 
@@ -385,8 +491,12 @@ def main() -> int:
         print(ANDROID_TOOLCHAIN_VERSIONS[args.print_version])
         return 0
     try:
+        recipe = android_native_recipe(args.artifact_profile)
+        targets = args.targets or list(recipe.build_targets)
         java_home = None
         if args.assemble_aar:
+            if recipe.profile_id != ANDROID_NATIVE_RECIPE.profile_id:
+                raise RuntimeError("--assemble-aar requires the android-native JNI recipe")
             java_home = resolve_pinned_java_home(args.java_home)
             print(f"Using Java {PINNED_JAVA_MAJOR}: {java_home}")
         ndk = default_ndk_home(
@@ -394,8 +504,8 @@ def main() -> int:
             install_missing=args.install_missing_ndk,
         )
         print(f"Using Android NDK: {ndk}")
-        for target in args.targets:
-            build_target(target, ndk)
+        for target in targets:
+            build_target(target, ndk, recipe)
         if args.assemble_aar:
             assert java_home is not None
             run(
@@ -413,6 +523,8 @@ def main() -> int:
                     sys.executable,
                     str(REPO_ROOT / "scripts" / "verify-platform-bindings.py"),
                     "--verify-android-aar",
+                    "--android-ndk-home",
+                    str(ndk),
                 ]
             )
     except Exception as exc:

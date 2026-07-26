@@ -22,6 +22,18 @@ verify_platform_bindings = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(verify_platform_bindings)
 
+FLUTTER_ANDROID_SMOKE_PATH = (
+    MODULE_PATH.parents[1] / "platforms" / "flutter" / "tool" / "android-smoke.py"
+)
+FLUTTER_ANDROID_SMOKE_SPEC = importlib.util.spec_from_file_location(
+    "flutter_android_smoke",
+    FLUTTER_ANDROID_SMOKE_PATH,
+)
+assert FLUTTER_ANDROID_SMOKE_SPEC is not None
+flutter_android_smoke = importlib.util.module_from_spec(FLUTTER_ANDROID_SMOKE_SPEC)
+assert FLUTTER_ANDROID_SMOKE_SPEC.loader is not None
+FLUTTER_ANDROID_SMOKE_SPEC.loader.exec_module(flutter_android_smoke)
+
 EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
     "io/merman/MermanErrorKind.class",
@@ -35,8 +47,8 @@ EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanTextMeasurer.class",
 ]
 EXPECTED_ANDROID_NATIVE_LIBRARIES = [
-    "jni/arm64-v8a/libmerman_ffi.so",
-    "jni/x86_64/libmerman_ffi.so",
+    "jni/arm64-v8a/libmerman_android_jni.so",
+    "jni/x86_64/libmerman_android_jni.so",
 ]
 ANDROID_CONSUMER_RULES = (
     MODULE_PATH.parents[1] / "platforms" / "android" / "consumer-rules.pro"
@@ -44,6 +56,38 @@ ANDROID_CONSUMER_RULES = (
 
 
 class NativeSdkRecipeTests(unittest.TestCase):
+    def test_android_transport_checks_use_each_exact_descriptor_recipe(self) -> None:
+        target = "aarch64-linux-android"
+        for recipe in (
+            verify_platform_bindings.ANDROID_NATIVE_RECIPE,
+            verify_platform_bindings.FLUTTER_ANDROID_NATIVE_RECIPE,
+        ):
+            with self.subTest(profile=recipe.profile_id):
+                args = verify_platform_bindings.cargo_android_check_args(
+                    recipe,
+                    "check",
+                    target,
+                )
+                self.assertEqual(args[:3], ["cargo", "check", "--locked"])
+                self.assertEqual(args[args.index("--package") + 1], recipe.package)
+                self.assertEqual(
+                    args[args.index("--manifest-path") + 1],
+                    str(MODULE_PATH.parents[1] / recipe.manifest),
+                )
+                self.assertEqual(
+                    args[args.index("--features") + 1],
+                    recipe.feature_argument,
+                )
+                self.assertEqual(args[args.index("--target") + 1], target)
+
+    def test_android_transport_checks_reject_non_descriptor_target(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "does not declare Android target"):
+            verify_platform_bindings.cargo_android_check_args(
+                verify_platform_bindings.ANDROID_NATIVE_RECIPE,
+                "check",
+                "armv7-linux-androideabi",
+            )
+
     def test_dart_ffi_smoke_consumes_the_exact_c_abi_recipe(self) -> None:
         recipe = verify_platform_bindings.C_ABI_NATIVE_RECIPE
         with mock.patch.object(verify_platform_bindings, "run") as run:
@@ -115,6 +159,100 @@ class NativeSdkRecipeTests(unittest.TestCase):
 
         run.assert_not_called()
 
+    def test_explicit_ndk_path_is_forwarded_to_android_slice_builds(self) -> None:
+        with (
+            mock.patch.object(
+                verify_platform_bindings,
+                "android_jni_libs_ready",
+                return_value=False,
+            ),
+            mock.patch.object(verify_platform_bindings, "run") as run,
+        ):
+            verify_platform_bindings.ensure_android_native_slices("/opt/android-ndk")
+
+        command = run.call_args.args[0]
+        self.assertEqual(
+            command[command.index("--ndk-home") + 1],
+            str(Path("/opt/android-ndk").resolve()),
+        )
+
+    def test_instrumentation_gate_uses_one_explicit_ndk_for_build_and_symbols(self) -> None:
+        llvm_nm = Path("/opt/android-ndk/bin/llvm-nm")
+        with (
+            mock.patch.object(
+                verify_platform_bindings,
+                "resolve_android_llvm_nm",
+                return_value=llvm_nm,
+            ) as resolve_nm,
+            mock.patch.object(
+                verify_platform_bindings,
+                "ensure_android_native_slices",
+            ) as ensure_slices,
+            mock.patch.object(
+                verify_platform_bindings,
+                "resolve_gradle_command",
+                return_value="gradle",
+            ),
+            mock.patch.object(verify_platform_bindings, "run"),
+            mock.patch.object(
+                verify_platform_bindings,
+                "assert_android_aar_contract",
+            ) as assert_aar,
+            mock.patch.object(
+                verify_platform_bindings,
+                "assert_android_instrumentation_smoke_report",
+            ),
+        ):
+            verify_platform_bindings.run_android_instrumentation_smoke(
+                None,
+                "/opt/android-ndk",
+            )
+
+        resolve_nm.assert_called_once_with("/opt/android-ndk")
+        ensure_slices.assert_called_once_with("/opt/android-ndk")
+        assert_aar.assert_called_once_with(llvm_nm=llvm_nm)
+
+
+class FlutterAndroidSmokeTests(unittest.TestCase):
+    def test_requested_abis_only_require_requested_target_outputs(self) -> None:
+        self.assertEqual(
+            flutter_android_smoke.requested_abis(["aarch64-linux-android"]),
+            ("arm64-v8a",),
+        )
+
+    def test_requested_abis_reject_unknown_targets(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "unsupported Flutter Android Rust targets"):
+            flutter_android_smoke.requested_abis(["armv7-linux-androideabi"])
+
+    def test_clean_output_with_only_the_requested_abi_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            jni_libs = Path(temp_dir)
+            library = jni_libs / "arm64-v8a" / "libmerman_ffi.so"
+            library.parent.mkdir(parents=True)
+            library.touch()
+
+            flutter_android_smoke.verify_requested_native_libraries(
+                ["aarch64-linux-android"],
+                jni_libs,
+            )
+
+    def test_stale_other_abi_cannot_mask_a_missing_requested_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            jni_libs = Path(temp_dir)
+            stale = jni_libs / "x86_64" / "libmerman_ffi.so"
+            stale.parent.mkdir(parents=True)
+            stale.touch()
+
+            with self.assertRaises(RuntimeError) as context:
+                flutter_android_smoke.verify_requested_native_libraries(
+                    ["aarch64-linux-android"],
+                    jni_libs,
+                )
+            self.assertIn(
+                str(Path("arm64-v8a") / "libmerman_ffi.so"),
+                str(context.exception),
+            )
+
 
 class GeneratedBindingFreshnessTests(unittest.TestCase):
     def test_flutter_binding_must_be_tracked_before_freshness_comparison(
@@ -156,6 +294,44 @@ class GeneratedBindingFreshnessTests(unittest.TestCase):
 
 
 class AndroidAarVerificationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        symbol_reader = mock.patch.object(
+            verify_platform_bindings,
+            "android_library_symbols",
+            return_value={"JNI_OnLoad"},
+        )
+        symbol_reader.start()
+        self.addCleanup(symbol_reader.stop)
+
+    def test_ndk_symbol_tool_can_be_resolved_from_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ndk = Path(temp_dir)
+            executable = (
+                "llvm-nm.exe"
+                if verify_platform_bindings.os.name == "nt"
+                else "llvm-nm"
+            )
+            tool = (
+                ndk
+                / "toolchains"
+                / "llvm"
+                / "prebuilt"
+                / "test-host"
+                / "bin"
+                / executable
+            )
+            tool.parent.mkdir(parents=True)
+            tool.touch()
+            with mock.patch.dict(
+                verify_platform_bindings.os.environ,
+                {"ANDROID_NDK_HOME": str(ndk)},
+                clear=True,
+            ):
+                self.assertEqual(
+                    verify_platform_bindings.resolve_android_llvm_nm(),
+                    tool.resolve(),
+                )
+
     def test_android_compile_sources_follow_the_complete_main_source_set(self) -> None:
         sources = verify_platform_bindings.android_kotlin_compile_sources()
         main_sources = sources[:-1]
@@ -272,7 +448,7 @@ class AndroidAarVerificationTests(unittest.TestCase):
             native_libraries = [
                 name
                 for name in EXPECTED_ANDROID_NATIVE_LIBRARIES
-                if name != "jni/x86_64/libmerman_ffi.so"
+                if name != "jni/x86_64/libmerman_android_jni.so"
             ]
             write_aar(
                 aar_path,
@@ -280,7 +456,43 @@ class AndroidAarVerificationTests(unittest.TestCase):
                 native_libraries=native_libraries,
             )
 
-            with self.assertRaisesRegex(RuntimeError, "jni/x86_64/libmerman_ffi.so"):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "jni/x86_64/libmerman_android_jni.so",
+            ):
+                verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+    def test_android_aar_rejects_c_abi_export_in_jni_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            write_aar(aar_path, EXPECTED_ANDROID_WRAPPER_CLASSES)
+
+            with (
+                mock.patch.object(
+                    verify_platform_bindings,
+                    "android_library_symbols",
+                    return_value={"JNI_OnLoad", "merman_get_native_api"},
+                ),
+                self.assertRaisesRegex(RuntimeError, "forbidden.*merman_get_native_api"),
+            ):
+                verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+    def test_android_aar_rejects_an_extra_c_abi_transport_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            write_aar(
+                aar_path,
+                EXPECTED_ANDROID_WRAPPER_CLASSES,
+                native_libraries=[
+                    *EXPECTED_ANDROID_NATIVE_LIBRARIES,
+                    "jni/arm64-v8a/libmerman_ffi.so",
+                ],
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "unexpected Merman native libraries.*libmerman_ffi.so",
+            ):
                 verify_platform_bindings.assert_android_aar_contract(aar_path)
 
 
@@ -330,6 +542,15 @@ class AndroidConsumerRulesTests(unittest.TestCase):
 
 
 class AndroidMavenPublicationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        symbol_reader = mock.patch.object(
+            verify_platform_bindings,
+            "android_library_symbols",
+            return_value={"JNI_OnLoad"},
+        )
+        symbol_reader.start()
+        self.addCleanup(symbol_reader.stop)
+
     def test_android_maven_publication_contains_complete_release_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             module_root = Path(temp_dir) / "merman-android"

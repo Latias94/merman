@@ -404,8 +404,8 @@ candidate scans, then charges those values to the shared model and layout budget
 choose a workload profile instead of maintaining diagram-specific threshold tables.
 
 `interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
-the Typst plugin for every call; caller-provided `resources` values are replaced at that transport
-boundary. `trusted-native` is intended for CLI or
+the Typst plugin for every call; caller-provided `resources.limits` may tighten that transport
+ceiling, while a looser profile or override returns an options error. `trusted-native` is intended for CLI or
 controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
 not a browser or server default.
 

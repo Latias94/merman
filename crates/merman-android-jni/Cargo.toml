@@ -1,5 +1,5 @@
 [package]
-name = "merman-ffi"
+name = "merman-android-jni"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,14 +7,11 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "C ABI bindings for merman headless Mermaid rendering."
-documentation = "https://docs.rs/merman-ffi"
-readme = "README.md"
-keywords = ["mermaid", "diagrams", "ffi", "svg", "headless"]
-categories = ["external-ffi-bindings", "visualization"]
+publish = false
+description = "Internal Android JNI transport for merman."
 
 [lib]
-crate-type = ["cdylib", "staticlib", "rlib"]
+crate-type = ["cdylib"]
 
 [package.metadata.merman]
 artifact-profile-required = true
@@ -33,11 +30,9 @@ pdf = ["svg", "merman-bindings-core/pdf"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
+
 [dependencies]
 merman-bindings-core.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
 
-[dev-dependencies]
-cc = "1.2.64"
-libloading = "0.9.0"
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22.4", default-features = false }

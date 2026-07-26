@@ -162,7 +162,7 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
     let expectedOperations: Set<String> = [
         "analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json",
         "document-analysis-json", "jpeg", "layout-json", "pdf", "png", "semantic-json", "svg",
-        "validation-json",
+        "svg-plan-json", "validation-json",
     ]
     guard expectedCapabilities == Set(capabilityIDs),
           expectedOutputs == Set(outputIDs),

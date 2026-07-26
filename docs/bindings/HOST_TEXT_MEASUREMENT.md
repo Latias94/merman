@@ -216,6 +216,26 @@ host text API needs owned strings.
 - Return `handled=0` when a request cannot be measured faithfully. A bad "handled" value is worse
   than falling back.
 
+### Direct UniFFI Reusable Engines
+
+The direct UniFFI surface applies an engine-local callback safety boundary:
+
+- While any host text-measurement callback is active, every new operation and every
+  `set_text_measurer()` or `clear_text_measurer()` call on that same reusable engine fails
+  immediately with the typed `MermanErrorKind::ReentrantCall` error. The rule is the same on the
+  callback thread and on other threads.
+- This rejection is intentionally conservative. Generated foreign bindings do not propagate a
+  causal token when a callback starts another thread, so Merman cannot distinguish a callback
+  waiting for that thread from an unrelated caller that happens to use the same engine. Allowing
+  the latter would also allow the former to deadlock. Use a separate reusable engine with
+  independently synchronized host state for work that must continue while a callback is active.
+- Other reusable engine instances remain independent at this lifecycle boundary. Calls on one
+  engine do not observe another engine's active callback; callbacks that share host state still
+  remain the host's synchronization responsibility.
+- Concurrent calls are supported when no callback or text-measurer mutation is active at call
+  admission. Calls admitted before a callback begins can still overlap that callback, so the
+  measurer and its shared caches must remain thread-safe.
+
 ## Python UniFFI
 
 Use the `MermanTextMeasurer` protocol with a reusable engine:

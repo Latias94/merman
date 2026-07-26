@@ -131,6 +131,7 @@ impl BindingEngine {
         let engine = request_engine.as_ref().unwrap_or(self);
         let data = match operation.operation_id() {
             "svg" => engine.render_svg(request.source),
+            "svg-plan-json" => engine.svg_plan_json(request.source),
             "png" => engine.render_png(request.source),
             "jpeg" => engine.render_jpeg(request.source),
             "pdf" => engine.render_pdf(request.source),
@@ -192,7 +193,8 @@ impl BindingOperationKind {
     fn is_compiled(self) -> bool {
         let operation_id = self.operation_id();
         operation_id == "semantic-json"
-            || (cfg!(feature = "svg") && matches!(operation_id, "svg" | "layout-json"))
+            || (cfg!(feature = "svg")
+                && matches!(operation_id, "svg" | "layout-json" | "svg-plan-json"))
             || (cfg!(feature = "png") && operation_id == "png")
             || (cfg!(feature = "jpeg") && operation_id == "jpeg")
             || (cfg!(feature = "pdf") && operation_id == "pdf")
@@ -216,7 +218,7 @@ mod tests {
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 12);
+        assert_eq!(operations.len(), 13);
         for operation in operations {
             assert_eq!(
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),
@@ -228,6 +230,15 @@ mod tests {
             );
             assert!(!operation.media_type().is_empty());
         }
+    }
+
+    #[test]
+    fn svg_capability_planning_is_a_descriptor_owned_operation() {
+        let operation = BindingOperationKind::from_id("svg-plan-json").unwrap();
+
+        assert_eq!(operation.required_capability_id(), Some("svg"));
+        assert_eq!(operation.media_type(), "application/json");
+        assert!(!operation.requires_uri());
     }
 
     #[test]
@@ -371,6 +382,27 @@ mod tests {
         assert_eq!(metadata["operation_id"], "svg");
         assert_eq!(metadata["byte_length"], result.data.len());
         assert_eq!(metadata["runtime_policy"], "deterministic");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn generic_svg_plan_operation_reports_required_and_missing_capabilities() {
+        let engine = BindingEngine::new(b"").unwrap();
+        let result = engine
+            .execute(BindingOperationRequest {
+                operation_id: "svg-plan-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"",
+            })
+            .unwrap();
+
+        assert_eq!(result.operation.operation_id(), "svg-plan-json");
+        assert_eq!(result.media_type, "application/json");
+        let plan: serde_json::Value = serde_json::from_slice(&result.data).unwrap();
+        assert_eq!(plan["planned_operation_id"], "svg");
+        assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
+        assert_eq!(plan["ready"], true);
     }
 
     #[cfg(feature = "svg")]

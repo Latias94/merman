@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:merman/merman.dart';
+import 'package:merman/src/generated/native_abi.dart' as native;
 
 void main() {
   acceptsAFlatAbi3Catalog();
+  projectsSvgPlanOperationFromGeneratedAbi();
   acceptsInvariantOnlyCatalog();
   acceptsAdditiveRuntimeCatalogFields();
   rejectsDuplicateCapabilityIds();
@@ -18,6 +20,23 @@ void main() {
   decodesMachineReadableNativeErrors();
   rejectsMismatchedNativeErrorSchema();
   print('ABI 3 Dart contract tests passed');
+}
+
+void projectsSvgPlanOperationFromGeneratedAbi() {
+  final operation = MermanOperation.svgPlanJson;
+  _expect(
+    operation.nativeCode == native.MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
+    'SVG plan operation code must come from the generated ABI projection',
+  );
+  _expect(
+    operation.operationId == native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
+    'SVG plan operation ID must come from the generated ABI projection',
+  );
+  _expect(
+    operation.requiresUri ==
+        (native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON != 0),
+    'SVG plan URI contract must come from the generated ABI projection',
+  );
 }
 
 void acceptsAFlatAbi3Catalog() {
@@ -110,11 +129,9 @@ void rejectsCoercedRuntimeCatalogVersionFields() {
     (catalog) => catalog['transport_api_version'] = 3.0,
     (catalog) => catalog['package_version'] = 1,
     (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
-            as Map<String, Object?>)['protocol_version'] =
-        '1',
+        as Map<String, Object?>)['protocol_version'] = '1',
     (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
-            as Map<String, Object?>)['protocol_version'] =
-        1.0,
+        as Map<String, Object?>)['protocol_version'] = 1.0,
   ]) {
     final catalog = _catalog();
     mutation(catalog);
@@ -134,8 +151,8 @@ void rejectsTextMeasurementWithoutVendoredProvider() {
     <String>['host-callback'],
   ]) {
     final catalog = _catalog();
-    final textMeasurement =
-        _runtimeCapabilities(catalog)['text_measurement'] as Map<String, Object?>;
+    final textMeasurement = _runtimeCapabilities(catalog)['text_measurement']
+        as Map<String, Object?>;
     textMeasurement['provider_ids'] = providers;
     _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
   }

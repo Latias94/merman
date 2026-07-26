@@ -224,7 +224,7 @@ Advanced renderer parameters:
 - `text-measurement`, `math-renderer`: shorthands for `environment.text_measurement` and `environment.math_renderer`. Direct values override `environment`, which overrides profile environment values.
 - `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: SVG post-processing shorthands.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
-- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. The plugin reserves `resources` and replaces it with the constrained Typst policy, so documents cannot loosen the package's resource limits through this field.
+- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. The plugin reserves the constrained `resources` ceiling; documents may provide stricter limits, while looser profiles or overrides return a structured options error.
 
 ### `mermaid-profile(..)`
 
@@ -284,8 +284,8 @@ Returns the compiled plugin capability payload, including the current text measu
 
 The flat catalog reports the artifact's current capability, output, operation, registry, and
 resource sets. The plugin independently applies a fixed constrained resource ceiling to every
-render and analysis operation. The `resources` field is transport-owned and is replaced even when
-raw binding options are supplied, so documents cannot loosen or silently change that policy.
+render and analysis operation. Raw binding options may tighten individual resource limits but
+cannot loosen or silently replace that transport-owned policy.
 The options root and any `analysis` or `merman` wrapper must be JSON objects; malformed wrapper
 values return a structured options error before rendering or analysis begins.
 

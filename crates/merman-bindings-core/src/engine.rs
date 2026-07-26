@@ -427,11 +427,24 @@ impl SemanticOperationEngine {
         })?;
         let parsed = self
             .engine
-            .parse_diagram_sync(source, self.parse_options)
+            .parse_diagram_for_render_model_sync(source, self.parse_options)
             .map_err(classify_semantic_error)?
             .ok_or_else(common::no_diagram_error)?;
 
-        serde_json::to_vec(&parsed.model).map_err(common::internal_json_error)
+        self.resources
+            .check_render_model(parsed.model())
+            .map_err(|error| {
+                BindingError::new(
+                    crate::BindingStatus::ResourceLimitExceeded,
+                    error.to_string(),
+                )
+            })?;
+
+        let model = parsed
+            .model()
+            .compatibility_json(parsed.metadata())
+            .map_err(classify_semantic_error)?;
+        serde_json::to_vec(&model).map_err(common::internal_json_error)
     }
 }
 
@@ -461,6 +474,108 @@ mod tests {
         .expect("semantic model JSON");
 
         assert_eq!(model["type"], "flowchart-v2");
+    }
+
+    #[test]
+    fn semantic_parse_enforces_model_item_budget() {
+        assert_semantic_model_limit("max_model_items", b"flowchart TD\nA --> B");
+    }
+
+    #[test]
+    fn semantic_parse_accepts_exact_semantic_model_item_budget() {
+        let engine = BindingEngine::new(
+            br#"{
+                "resources": {
+                    "profile": "constrained",
+                    "limits": { "max_model_items": 3 }
+                }
+            }"#,
+        )
+        .expect("semantic-json engine with exact model item budget");
+
+        engine
+            .parse_json(b"flowchart TD\nA --> B")
+            .expect("two nodes and one edge consume three semantic model items");
+    }
+
+    #[test]
+    fn semantic_parse_preserves_the_public_compatibility_json_projection() {
+        let source = "flowchart TD\nsubgraph outer\nA[Start] --> B[Done]\nend";
+        let expected = merman::Engine::new()
+            .parse_diagram_sync(source, merman::ParseOptions::strict())
+            .expect("compatibility JSON parse")
+            .expect("flowchart diagram")
+            .model;
+        let actual: Value = serde_json::from_slice(
+            &BindingEngine::new(b"")
+                .expect("semantic bindings engine")
+                .parse_json(source.as_bytes())
+                .expect("binding semantic JSON"),
+        )
+        .expect("binding semantic JSON value");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn semantic_parse_resource_boundaries_match_the_typed_model() {
+        let source = "flowchart TD\nsubgraph outer\nsubgraph inner\nA[Start] --> B[Done]\nend\nend";
+        let parsed = merman::Engine::new()
+            .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
+            .expect("typed model parse")
+            .expect("flowchart diagram");
+        let complexity = merman::resources::ModelComplexity::from_render_model(parsed.model());
+
+        for (limit, exact) in [
+            ("max_model_items", complexity.items),
+            ("max_model_text_bytes", complexity.text_bytes),
+            ("max_model_nesting_depth", complexity.nesting_depth),
+        ] {
+            assert!(exact > 0, "fixture must exercise {limit}");
+            let exact_options = format!(
+                r#"{{"resources":{{"profile":"constrained","limits":{{"{limit}":{exact}}}}}}}"#
+            );
+            BindingEngine::new(exact_options.as_bytes())
+                .expect("exact semantic model limit")
+                .parse_json(source.as_bytes())
+                .unwrap_or_else(|error| panic!("exact {limit} boundary failed: {error:?}"));
+
+            let lower_options = format!(
+                r#"{{"resources":{{"profile":"constrained","limits":{{"{limit}":{}}}}}}}"#,
+                exact - 1
+            );
+            let error = BindingEngine::new(lower_options.as_bytes())
+                .expect("lower semantic model limit")
+                .parse_json(source.as_bytes())
+                .expect_err("one-below semantic model boundary must fail");
+            assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+            assert!(error.message().contains(limit), "{error:?}");
+        }
+    }
+
+    #[test]
+    fn semantic_parse_enforces_model_text_budget() {
+        assert_semantic_model_limit("max_model_text_bytes", b"flowchart TD\nA[Long label]");
+    }
+
+    #[test]
+    fn semantic_parse_enforces_model_nesting_budget() {
+        assert_semantic_model_limit(
+            "max_model_nesting_depth",
+            b"flowchart TD\nsubgraph outer\nsubgraph inner\nA --> B\nend\nend",
+        );
+    }
+
+    fn assert_semantic_model_limit(limit: &str, source: &[u8]) {
+        let options =
+            format!(r#"{{"resources":{{"profile":"constrained","limits":{{"{limit}":1}}}}}}"#);
+        let engine = BindingEngine::new(options.as_bytes())
+            .expect("semantic-json must accept every semantic model resource budget");
+
+        let error = engine.parse_json(source).unwrap_err();
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains(limit), "{error:?}");
     }
 
     #[test]

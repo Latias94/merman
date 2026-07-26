@@ -275,6 +275,30 @@ int merman_c_consumer_smoke(
         }
         api.result_free(&result);
         request.options_json = borrowed_slice(NULL, 0);
+
+        request.operation = MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON;
+        result = empty_result();
+        status = api.execute_collect(engine, &request, &result);
+        if (
+            status != MERMAN_NATIVE_STATUS_OK ||
+            result.status != MERMAN_NATIVE_STATUS_OK ||
+            result.operation != MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON ||
+            !bytes_contain(
+                result.data.data,
+                result.data.len,
+                "\"planned_operation_id\":\"svg\""
+            ) ||
+            !bytes_contain(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+                "\"operation_id\":\"svg-plan-json\""
+            )
+        ) {
+            api.result_free(&result);
+            api.engine_free(engine);
+            return 51;
+        }
+        api.result_free(&result);
     }
 
     request.operation = MERMAN_NATIVE_OPERATION_SEMANTIC_JSON;

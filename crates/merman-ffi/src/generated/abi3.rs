@@ -4,7 +4,7 @@
 
 pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST: &str =
-    "sha256:651a5c169d15c7906d1ea2319afbbbe6df2654498defa7688b351e6c5e337a8b";
+    "sha256:e12a6b40e1a612c1814ede314c89907fbcb844796646164f2112665a2488a61a";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
 pub const MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY: &str = "missing-capability";
@@ -94,6 +94,11 @@ pub const MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON: &str =
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_DOCUMENT_ANALYSIS_FACTS_JSON: &str = "analysis";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_FACTS_JSON: &str =
     "application/json";
+pub const MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON: MermanNativeOperationCode = 13;
+pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON: &str = "svg-plan-json";
+pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON: &str = "svg";
+pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON: &str = "application/json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MermanNativeOperationDescriptor {
@@ -195,6 +200,13 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
         requires_uri: true,
+    },
+    MermanNativeOperationDescriptor {
+        code: MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
+        operation_id: Some("svg-plan-json"),
+        capability_id: Some("svg"),
+        media_type: Some("application/json"),
+        requires_uri: false,
     },
 ];
 

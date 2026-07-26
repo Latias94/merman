@@ -29,7 +29,9 @@ for current Mermaid parity.
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
 builds the release cdylib with the complete direct feature list, then enables `bindgen-smoke` in
-the separate generator process that consumes that production library.
+the separate generator process that consumes that production library. The builder rejects hosts
+outside the profile's published target set and replaces the package scaffold's release-set legal
+report with the checked-in single-target report before building the wheel.
 
 ```bash
 cargo build -p merman-uniffi --release --no-default-features \
@@ -200,28 +202,31 @@ variants, a distinct signed
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
-The script builds `merman-uniffi`, stages generated UniFFI Python files into
-`platforms/python/merman`, builds a platform wheel under `target/python-wheels`, then
-optionally installs it into a temporary venv and exercises SVG, ASCII, parse, layout, validation,
-metadata, PNG, JPEG, and PDF calls. The build script fails if setuptools emits a universal
-`py3-none-any` wheel, because the package carries a native library.
+The script builds `merman-uniffi`, copies the checked-in Python package scaffold into a temporary
+staging directory, generates UniFFI Python files only in that staging directory, and builds a
+platform wheel under `target/python-wheels`. With `--run-smoke`, it installs the wheel into a
+temporary venv and exercises SVG, ASCII, parse, layout, validation, metadata, PNG, JPEG, and PDF
+calls through the installed package. The build fails when generated support files differ from
+their checked-in projections or when setuptools emits a universal `py3-none-any` wheel, because
+the package carries a native library.
 
 ## Release
 
-`release-python.yml` is a manual release workflow that accepts a `v*` release tag and source ref,
-builds and smokes wheels on Linux, macOS, and Windows, repairs the Linux wheel with `auditwheel`,
-checks wheel metadata with `twine`, attaches wheels to the GitHub Release, and publishes to PyPI
-through Trusted Publishing.
+`release-python.yml` is a manual release workflow that accepts a `v*` release tag, resolves and
+verifies the matching immutable tag commit and tree, builds and smokes wheels on Linux, macOS, and
+Windows, repairs the Linux wheel with `auditwheel`, checks wheel metadata with `twine`, attaches
+wheels to the GitHub Release, and publishes to PyPI through Trusted Publishing. Dispatching an
+updated workflow definition from `main` never changes the artifact source.
 
 Configure the PyPI project `merman` with a Trusted Publisher for this repository and
 `.github/workflows/release-python.yml`. No PyPI API token is required for the OIDC path.
 
 ## Example
 
-After generation, run:
+Build and exercise the installed wheel:
 
 ```bash
-PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 ## Not Yet Done

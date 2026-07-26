@@ -5,6 +5,9 @@ Status: experimental Android transport.
 `platforms/android` exposes a Kotlin API backed directly by `merman-bindings-core`. It is not a
 wrapper around the C ABI: `JNI_OnLoad` registers a small, exact native method set with
 `RegisterNatives`, so Android does not depend on Java-name-derived exported symbols.
+The Android AAR builds the internal, non-published `merman-android-jni` crate through the
+`android-native` artifact recipe. The public `merman-ffi` crate remains a C ABI transport and is
+not linked into the Kotlin AAR.
 
 ## Layers
 
@@ -12,7 +15,7 @@ wrapper around the C ABI: `JNI_OnLoad` registers a small, exact native method se
 Kotlin MermanEngine / MermanReusableEngine
                  |
                  v
-JNI_OnLoad + RegisterNatives (libmerman_ffi.so)
+JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
                  |
                  v
 merman-bindings-core BindingEngine::execute
@@ -36,13 +39,16 @@ val bytes = MermanEngine.executeBytes(
 layout JSON, analysis JSON, document analysis, facts, and validation. Binary methods return
 `ByteArray`; JSON/SVG/ASCII methods decode the output as UTF-8.
 
-Use `MermanReusableEngine(optionsJson)` when calls share options. Its `executeBytes` method uses
-the same operation IDs but retains a native engine for its lifetime. The reusable engine is serialized,
-implements `AutoCloseable`, and must not be re-entered from a text-measurement callback.
+Use `MermanReusableEngine(optionsJson)` when calls share base options. Its `executeBytes` method
+accepts per-call `optionsJson` overrides and uses the same operation IDs while retaining a native
+engine for its lifetime. The reusable engine is serialized, implements `AutoCloseable`, and must
+not be re-entered or closed from a text-measurement callback. Those operations return a typed
+`REENTRANT_CALL` error; retry `close()` after the active call returns.
 
 ## Runtime Catalog
 
-During initialization, Kotlin loads `libmerman_ffi.so`, requests the direct catalog, and validates:
+During initialization, Kotlin loads `libmerman_android_jni.so`, requests the direct catalog, and
+validates:
 
 - flat runtime-catalog schema `1`;
 - Android transport API version `1`;
@@ -56,7 +62,7 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
 {
   "schema_version": 1,
   "transport_api_version": 1,
-  "package_version": "0.8.0-alpha.3",
+  "package_version": "0.8.0-alpha.4",
   "capabilities": {
     "capability_ids": ["svg"],
     "operation_ids": ["svg"],
@@ -65,7 +71,7 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
     "text_measurement": { "protocol_version": 1, "provider_ids": ["vendored"] }
   },
   "registry": { "diagram_family_count": 35 },
-  "resources": { "schema_version": 1 }
+  "resources": { "general_binding_default_profile": "interactive" }
 }
 ```
 
@@ -101,10 +107,12 @@ python3 platforms/android/build-android.py --targets aarch64-linux-android x86_6
 python3 scripts/verify-platform-bindings.py --build-android-slices
 ```
 
-The platform verifier compiles the Kotlin declarations against an Android SDK `android.jar`,
-cross-checks the Rust Android target with the complete direct feature set, and exercises the generic C/native
-operation path. A connected device or emulator is still required for runtime JNI registration and
-callback-exception cleanup:
+The platform verifier compiles the Kotlin declarations against an Android SDK `android.jar` and
+cross-checks both Android target recipes with their complete feature sets. The build and AAR gates
+inspect the actual shared objects with the pinned NDK's `llvm-nm`: the Kotlin library must export
+`JNI_OnLoad` and must not export `merman_get_native_api`; Flutter's C ABI library enforces the
+inverse contract. A connected device or emulator is still required for runtime JNI registration
+and callback-exception cleanup:
 
 ```bash
 python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke

@@ -45,7 +45,8 @@
     { "id": "analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON", "code": 9 },
     { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10 },
     { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11 },
-    { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12 }
+    { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12 },
+    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13 }
   ],
   "callbacks": [
     {

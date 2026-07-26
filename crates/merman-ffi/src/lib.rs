@@ -19,36 +19,10 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
-#[cfg(target_os = "android")]
-mod android_jni;
-
 include!("generated/text_measurement_abi.rs");
 include!("generated/abi3.rs");
 
 const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
-
-#[cfg(feature = "svg")]
-const MERMAN_WRAP_MODE_SVG_LIKE: i32 = 0;
-#[cfg(feature = "svg")]
-const MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
-#[cfg(feature = "svg")]
-const MERMAN_WRAP_MODE_HTML_LIKE: i32 = 2;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_DIRECTION_AUTO: i32 = 0;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
-#[cfg(feature = "svg")]
-const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
 
 #[derive(Debug)]
 struct NativeFailure {
@@ -770,9 +744,9 @@ impl NativeHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> HostMeasurementResult {
+        let transport = merman_bindings_core::host_text_measurement_transport_fields(request);
         let style = request.style;
         let max_width = request.max_width;
-        let wrap_mode = request.wrap_mode;
         let font_family = style.font_family.as_deref().unwrap_or_default().as_bytes();
         let font_weight = style
             .font_weight
@@ -793,15 +767,15 @@ impl NativeHostTextMeasurer {
             font_weight: borrowed_slice(font_weight),
             font_style: borrowed_slice(font_style),
             max_width: max_width.unwrap_or(0.0),
-            line_height: ffi_line_height(style, wrap_mode),
+            line_height: transport.line_height,
             letter_spacing: 0.0,
             word_spacing: 0.0,
-            wrap_mode: ffi_wrap_mode(wrap_mode),
-            direction: MERMAN_TEXT_DIRECTION_AUTO,
-            white_space: ffi_white_space(max_width, wrap_mode),
+            wrap_mode: transport.wrap_mode,
+            direction: transport.direction,
+            white_space: transport.white_space,
             has_max_width: u8::from(max_width.is_some()),
-            phase: ffi_measurement_phase(request.phase),
-            operation: request.operation.external_code(),
+            phase: transport.phase,
+            operation: transport.operation,
         };
         let mut native_result = MermanNativeTextMeasureResult {
             struct_size: native_struct_size::<MermanNativeTextMeasureResult>(),
@@ -886,54 +860,6 @@ impl merman_bindings_core::HostTextMeasurer for NativeHostTextMeasurer {
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> HostMeasurementResult {
         self.measure_host(request)
-    }
-}
-
-#[cfg(feature = "svg")]
-fn ffi_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> i32 {
-    match phase {
-        merman_bindings_core::TextMeasurementPhase::Layout => MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT,
-        merman_bindings_core::TextMeasurementPhase::Wrap => MERMAN_TEXT_MEASUREMENT_PHASE_WRAP,
-        merman_bindings_core::TextMeasurementPhase::SvgBBox => {
-            MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX
-        }
-        merman_bindings_core::TextMeasurementPhase::ComputedLength => {
-            MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH
-        }
-    }
-}
-
-#[cfg(feature = "svg")]
-fn ffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
-    match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike => MERMAN_WRAP_MODE_SVG_LIKE,
-        merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN,
-        merman_bindings_core::WrapMode::HtmlLike => MERMAN_WRAP_MODE_HTML_LIKE,
-    }
-}
-
-#[cfg(feature = "svg")]
-fn ffi_line_height(
-    style: &merman_bindings_core::TextStyle,
-    wrap_mode: merman_bindings_core::WrapMode,
-) -> f64 {
-    let factor = match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
-        merman_bindings_core::WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
-}
-
-#[cfg(feature = "svg")]
-fn ffi_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::WrapMode) -> i32 {
-    match wrap_mode {
-        merman_bindings_core::WrapMode::HtmlLike if max_width.is_some() => {
-            MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES
-        }
-        merman_bindings_core::WrapMode::HtmlLike => MERMAN_TEXT_WHITE_SPACE_NOWRAP,
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_TEXT_WHITE_SPACE_NORMAL,
     }
 }
 

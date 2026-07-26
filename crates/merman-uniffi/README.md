@@ -80,7 +80,7 @@ descriptor capability ID.
 
 Generated bindings use Merman's deterministic vendored measurer unless a host installs `MermanTextMeasurer` on a reusable engine. Text-measurement protocol 1 exposes 19 exact operations (`0..18`) and requires a matching tagged result kind for every handled operation. Return `None` for work the host cannot answer synchronously; invalid results and callback errors fall back to the operation's vendored implementation.
 
-GUI and WebView integrations should measure with the font stack that displays the final SVG. Server, CLI, test, and documentation workloads should normally retain Merman's built-in measurer. Do not re-enter or replace the measurer on the same reusable engine while its render callback is active.
+GUI and WebView integrations should measure with the font stack that displays the final SVG. Server, CLI, test, and documentation workloads should normally retain Merman's built-in measurer. While a host measurement callback is active, every new operation or measurer mutation on that same reusable engine fails immediately with typed `MermanErrorKind::ReentrantCall`, on any thread. This deliberately includes otherwise independent callers because UniFFI cannot prove whether a foreign thread was callback-derived; use a separate engine with independently synchronized host state for work that must remain independent.
 
 Python implements the generated `measure(self, request)` callback. One-shot engine methods accept
 `options_json` per call; reusable engine methods merge request-local options over their construction

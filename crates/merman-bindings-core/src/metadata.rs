@@ -671,20 +671,11 @@ fn input_runtime_resource_contract(capabilities: &RuntimeCapabilities) -> Runtim
 }
 
 fn input_resource_limit_available_for_capabilities(
-    capabilities: &RuntimeCapabilities,
-    id: merman::resources::InputResourceLimitId,
+    _capabilities: &RuntimeCapabilities,
+    _id: merman::resources::InputResourceLimitId,
 ) -> bool {
-    if capabilities.has_capability("svg") {
-        return true;
-    }
-    match id {
-        merman::resources::InputResourceLimitId::MaxSourceBytes => true,
-        merman::resources::InputResourceLimitId::MaxModelItems
-        | merman::resources::InputResourceLimitId::MaxModelTextBytes
-        | merman::resources::InputResourceLimitId::MaxModelNestingDepth => {
-            capabilities.has_capability("ascii")
-        }
-    }
+    // semantic-json is capability-independent, so every artifact exposes all input limits.
+    true
 }
 
 pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
@@ -1113,13 +1104,18 @@ mod tests {
         {
             let resources = &catalog.resources;
             assert_eq!(resources.profiles.len(), 4);
-            assert_eq!(resources.limits.len(), 1);
-            assert_eq!(resources.limits[0].id, "max_source_bytes");
+            assert_eq!(resources.limits.len(), 4);
             assert!(
                 resources
                     .profiles
                     .iter()
-                    .all(|profile| profile.limits.len() == 1)
+                    .all(|profile| profile.limits.len() == 4)
+            );
+            assert!(
+                resources
+                    .limits
+                    .iter()
+                    .any(|limit| limit.id == "max_model_items")
             );
             assert_eq!(resources.general_binding_default_profile, "interactive");
             assert_eq!(resources.cli_default_profile, "trusted-native");
@@ -1205,7 +1201,7 @@ mod tests {
 
     #[cfg(all(feature = "svg", feature = "analysis"))]
     #[test]
-    fn transport_owned_projection_hides_feature_unified_svg_resources() {
+    fn transport_owned_projection_hides_svg_resources_but_keeps_semantic_limits() {
         let surface = ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
             .expect("analysis-only artifact surface");
         let capabilities = surface.runtime_capabilities();
@@ -1213,13 +1209,18 @@ mod tests {
 
         assert_eq!(catalog.capabilities, capabilities);
         let resources = catalog.resources;
-        assert_eq!(resources.limits.len(), 1);
-        assert_eq!(resources.limits[0].id, "max_source_bytes");
+        assert_eq!(resources.limits.len(), 4);
+        assert!(
+            resources
+                .limits
+                .iter()
+                .any(|limit| limit.id == "max_model_items")
+        );
         assert!(
             resources
                 .profiles
                 .iter()
-                .all(|profile| profile.limits.len() == 1)
+                .all(|profile| profile.limits.len() == 4)
         );
     }
 

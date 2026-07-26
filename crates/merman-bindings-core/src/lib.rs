@@ -76,7 +76,8 @@ pub use render::render_png;
 pub use render::{layout_json, render_svg};
 #[cfg(feature = "svg")]
 pub use text_measurement::{
-    HostTextMeasurementResultKind, HostTextMeasurementValues, host_text_measurement_from_values,
+    HostTextMeasurementResultKind, HostTextMeasurementTransportFields, HostTextMeasurementValues,
+    host_text_measurement_from_values, host_text_measurement_transport_fields,
 };
 
 #[cfg(not(feature = "ascii"))]

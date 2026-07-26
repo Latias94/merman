@@ -99,16 +99,108 @@ class AndroidToolchainTests(unittest.TestCase):
         with mock.patch.object(build_android.sys, "argv", ["build-android.py"]):
             args = build_android.parse_args()
 
-        self.assertEqual(
-            args.targets,
-            list(build_android.ANDROID_NATIVE_RECIPE.build_targets),
-        )
-        self.assertFalse(hasattr(args, "profile"))
+        self.assertEqual(args.artifact_profile, "android-native")
+        self.assertIsNone(args.targets)
 
     def test_builder_does_not_duplicate_the_profile_capability_tuple(self) -> None:
-        recipe = replace(build_android.ANDROID_NATIVE_RECIPE, features=("svg",))
+        recipe = build_android.ANDROID_NATIVE_RECIPE
 
         build_android.validate_android_native_recipe(recipe)
+        self.assertEqual(recipe.package, "merman-android-jni")
+        self.assertEqual(recipe.target_name, "merman_android_jni")
+        self.assertEqual(recipe.crate_types, ("cdylib",))
+
+    def test_flutter_android_recipe_is_a_jni_free_c_abi_build(self) -> None:
+        recipe = build_android.FLUTTER_ANDROID_NATIVE_RECIPE
+
+        build_android.validate_android_native_recipe(recipe)
+        self.assertEqual(
+            recipe.build_targets,
+            build_android.ANDROID_NATIVE_RECIPE.build_targets,
+        )
+        self.assertEqual(recipe.package, "merman-ffi")
+        self.assertEqual(recipe.target_name, "merman_ffi")
+
+    def test_android_and_flutter_recipes_have_separate_library_destinations(self) -> None:
+        self.assertEqual(
+            build_android.native_library_filename(build_android.ANDROID_NATIVE_RECIPE),
+            "libmerman_android_jni.so",
+        )
+        self.assertEqual(
+            build_android.native_library_filename(
+                build_android.FLUTTER_ANDROID_NATIVE_RECIPE
+            ),
+            "libmerman_ffi.so",
+        )
+        self.assertNotEqual(
+            build_android.native_library_output_root(build_android.ANDROID_NATIVE_RECIPE),
+            build_android.native_library_output_root(
+                build_android.FLUTTER_ANDROID_NATIVE_RECIPE
+            ),
+        )
+
+    def test_transport_symbol_contracts_are_inverse(self) -> None:
+        android = build_android.native_symbol_contract(
+            build_android.ANDROID_NATIVE_RECIPE
+        )
+        flutter = build_android.native_symbol_contract(
+            build_android.FLUTTER_ANDROID_NATIVE_RECIPE
+        )
+
+        self.assertEqual(android.required, frozenset({"JNI_OnLoad"}))
+        self.assertEqual(android.forbidden, frozenset({"merman_get_native_api"}))
+        self.assertEqual(flutter.required, frozenset({"merman_get_native_api"}))
+        self.assertEqual(flutter.forbidden, frozenset({"JNI_OnLoad"}))
+
+    def test_symbol_contract_failure_prevents_packaging(self) -> None:
+        recipe = build_android.ANDROID_NATIVE_RECIPE
+        target = "aarch64-linux-android"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            artifact = (
+                root
+                / "target"
+                / target
+                / recipe.cargo_profile
+                / "libmerman_android_jni.so"
+            )
+            artifact.parent.mkdir(parents=True)
+            artifact.touch()
+            destination = root / "jniLibs"
+            with (
+                mock.patch.object(build_android, "REPO_ROOT", root),
+                mock.patch.object(
+                    build_android,
+                    "validate_android_native_recipe",
+                ),
+                mock.patch.object(
+                    build_android,
+                    "native_library_output_root",
+                    return_value=destination,
+                ),
+                mock.patch.object(
+                    build_android,
+                    "clang_for_target",
+                    return_value=root / "clang",
+                ),
+                mock.patch.object(
+                    build_android,
+                    "llvm_nm_for_ndk",
+                    return_value=root / "llvm-nm",
+                ),
+                mock.patch.object(build_android, "run"),
+                mock.patch.object(
+                    build_android,
+                    "read_defined_dynamic_symbols",
+                    return_value={"JNI_OnLoad", "merman_get_native_api"},
+                ),
+                self.assertRaisesRegex(RuntimeError, "forbidden.*merman_get_native_api"),
+            ):
+                build_android.build_target(target, root / "ndk", recipe)
+
+            self.assertFalse(
+                (destination / "arm64-v8a" / "libmerman_android_jni.so").exists()
+            )
 
     def test_native_sdk_build_arguments_are_fully_recipe_owned(self) -> None:
         target = "aarch64-linux-android"
@@ -137,6 +229,15 @@ class AndroidToolchainTests(unittest.TestCase):
     def test_android_build_rejects_a_target_outside_the_recipe(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not declare target"):
             build_android.cargo_build_args("armv7-linux-androideabi")
+
+    def test_android_build_rejects_a_recipe_with_the_wrong_transport_package(self) -> None:
+        recipe = replace(
+            build_android.FLUTTER_ANDROID_NATIVE_RECIPE,
+            package="merman-android-jni",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "flutter-android-native"):
+            build_android.validate_android_native_recipe(recipe)
 
 
 if __name__ == "__main__":

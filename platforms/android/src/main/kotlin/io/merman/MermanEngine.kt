@@ -19,7 +19,7 @@ object MermanEngine {
     }
 
     init {
-        System.loadLibrary("merman_ffi")
+        System.loadLibrary("merman_android_jni")
         runtimeCatalogJsonCache
     }
 

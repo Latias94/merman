@@ -853,17 +853,10 @@ pub(crate) enum InputResourceOperation {
 }
 
 pub(crate) const fn input_resource_limit_available_for_build(
-    id: merman::resources::InputResourceLimitId,
+    _id: merman::resources::InputResourceLimitId,
 ) -> bool {
-    if cfg!(feature = "svg") {
-        return true;
-    }
-    match id {
-        merman::resources::InputResourceLimitId::MaxSourceBytes => true,
-        merman::resources::InputResourceLimitId::MaxModelItems
-        | merman::resources::InputResourceLimitId::MaxModelTextBytes
-        | merman::resources::InputResourceLimitId::MaxModelNestingDepth => cfg!(feature = "ascii"),
-    }
+    // semantic-json is a base operation in every build and enforces the complete input policy.
+    true
 }
 
 const fn input_resource_limit_available_for_operation(
@@ -1570,26 +1563,28 @@ mod tests {
         not(feature = "ascii")
     ))]
     #[test]
-    fn semantic_only_resource_options_accept_the_source_limit() {
-        let json = resource_options_json("constrained", &[("max_source_bytes", 4096)]).unwrap();
+    fn semantic_only_resource_options_accept_all_semantic_limits() {
+        let json = resource_options_json(
+            "constrained",
+            &[("max_source_bytes", 4096), ("max_model_items", 1)],
+        )
+        .unwrap();
         let value: Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
-
-        let error = resource_options_json("constrained", &[("max_model_items", 1)]).unwrap_err();
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("not available for this build"));
+        assert_eq!(value["resources"]["limits"]["max_model_items"], 1);
     }
 
     #[cfg(all(feature = "analysis", not(feature = "svg"), not(feature = "ascii")))]
     #[test]
-    fn analysis_only_resource_options_accept_only_the_source_limit() {
-        let json = resource_options_json("constrained", &[("max_source_bytes", 4096)]).unwrap();
+    fn analysis_artifact_resource_options_include_semantic_model_limits() {
+        let json = resource_options_json(
+            "constrained",
+            &[("max_source_bytes", 4096), ("max_model_items", 1)],
+        )
+        .unwrap();
         let value: Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
-
-        let error = resource_options_json("constrained", &[("max_model_items", 1)]).unwrap_err();
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("not available for this build"));
+        assert_eq!(value["resources"]["limits"]["max_model_items"], 1);
     }
 
     #[cfg(all(feature = "analysis", feature = "ascii", not(feature = "svg")))]

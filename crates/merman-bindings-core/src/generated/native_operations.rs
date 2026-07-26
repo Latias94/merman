@@ -103,6 +103,13 @@ pub(crate) const NATIVE_OPERATIONS: &[NativeOperationProjection] = &[
         media_type: Some("application/json"),
         requires_uri: true,
     },
+    NativeOperationProjection {
+        code: 13,
+        operation_id: Some("svg-plan-json"),
+        capability_id: Some("svg"),
+        media_type: Some("application/json"),
+        requires_uri: false,
+    },
 ];
 
 pub(crate) fn native_operation_by_code(

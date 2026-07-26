@@ -12,6 +12,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -25,9 +26,16 @@ from artifact_profile_recipe import (
     cargo_build_args as project_cargo_build_args,
     load_artifact_profile,
 )
+from native_symbol_contract import (
+    ANDROID_JNI_SYMBOL_CONTRACT,
+    assert_symbol_contract,
+    read_defined_dynamic_symbols,
+)
 
 
 C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
+ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
+FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
@@ -51,8 +59,8 @@ ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanTextMeasurer.class",
 ]
 ANDROID_NATIVE_LIBRARIES = [
-    "jni/arm64-v8a/libmerman_ffi.so",
-    "jni/x86_64/libmerman_ffi.so",
+    "jni/arm64-v8a/libmerman_android_jni.so",
+    "jni/x86_64/libmerman_android_jni.so",
 ]
 ANDROID_MAVEN_COORDINATES = ("io.merman", "merman-android")
 ANDROID_MAVEN_LICENSES = {
@@ -107,6 +115,41 @@ def validate_c_abi_native_recipe(
 validate_c_abi_native_recipe()
 
 
+def cargo_android_check_args(
+    recipe: CargoArtifactRecipe,
+    subcommand: str,
+    target: str,
+) -> list[str]:
+    if subcommand not in {"check", "clippy"}:
+        raise RuntimeError(
+            f"unsupported Cargo Android verification command: {subcommand}"
+        )
+    if recipe.build_target_kind != "target-set" or target not in recipe.build_targets:
+        raise RuntimeError(
+            f"artifact profile {recipe.profile_id!r} does not declare Android target {target!r}"
+        )
+    args = [
+        "cargo",
+        subcommand,
+        "--locked",
+        "--profile",
+        recipe.cargo_profile,
+        "--package",
+        recipe.package,
+        "--manifest-path",
+        str(REPO_ROOT / recipe.manifest),
+        "--lib",
+    ]
+    if subcommand == "clippy":
+        args.append("--no-deps")
+    if not recipe.default_features:
+        args.append("--no-default-features")
+    if recipe.features:
+        args.extend(["--features", recipe.feature_argument])
+    args.extend(["--target", target])
+    return args
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-android-slices", action="store_true")
@@ -129,6 +172,11 @@ def parse_args() -> argparse.Namespace:
         help="Build missing Android native slices and run only the Android instrumentation smoke.",
     )
     parser.add_argument("--gradle-path", default=os.environ.get("MERMAN_GRADLE"))
+    parser.add_argument(
+        "--android-ndk-home",
+        default=os.environ.get("ANDROID_NDK_HOME") or os.environ.get("ANDROID_NDK_ROOT"),
+        help="Android NDK used for fail-closed AAR dynamic-symbol inspection.",
+    )
     parser.add_argument(
         "--build-apple-xcframework",
         action="store_true",
@@ -219,8 +267,18 @@ def android_jni_libs_ready() -> bool:
     return all(
         path.exists()
         for path in [
-            ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so",
-            ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so",
+            ANDROID_ROOT
+            / "src"
+            / "main"
+            / "jniLibs"
+            / "arm64-v8a"
+            / "libmerman_android_jni.so",
+            ANDROID_ROOT
+            / "src"
+            / "main"
+            / "jniLibs"
+            / "x86_64"
+            / "libmerman_android_jni.so",
         ]
     )
 
@@ -258,7 +316,13 @@ def android_compile_jar() -> Path:
     )
 
 
-def ensure_android_native_slices() -> None:
+def android_ndk_build_args(ndk_home: str | Path | None) -> list[str]:
+    if ndk_home is None:
+        return []
+    return ["--ndk-home", str(Path(ndk_home).expanduser().resolve())]
+
+
+def ensure_android_native_slices(ndk_home: str | Path | None = None) -> None:
     if android_jni_libs_ready():
         return
     step("Android native slices")
@@ -266,6 +330,7 @@ def ensure_android_native_slices() -> None:
         [
             sys.executable,
             str(ANDROID_ROOT / "build-android.py"),
+            *android_ndk_build_args(ndk_home),
             "--targets",
             "aarch64-linux-android",
             "x86_64-linux-android",
@@ -273,11 +338,15 @@ def ensure_android_native_slices() -> None:
     )
 
 
-def run_android_instrumentation_smoke(gradle_path: str | None) -> None:
-    ensure_android_native_slices()
+def run_android_instrumentation_smoke(
+    gradle_path: str | None,
+    ndk_home: str | Path | None = None,
+) -> None:
+    llvm_nm = resolve_android_llvm_nm(ndk_home)
+    ensure_android_native_slices(ndk_home)
     gradle = resolve_gradle_command(gradle_path)
     run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-    assert_android_aar_contract()
+    assert_android_aar_contract(llvm_nm=llvm_nm)
     run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
     assert_android_instrumentation_smoke_report()
 
@@ -293,9 +362,40 @@ def android_expected_resource_entries(android_root: Path = ANDROID_ROOT) -> list
     )
 
 
+def resolve_android_llvm_nm(ndk_home: str | Path | None = None) -> Path:
+    if ndk_home is None:
+        ndk_home = os.environ.get("ANDROID_NDK_HOME") or os.environ.get("ANDROID_NDK_ROOT")
+        if ndk_home is None:
+            raise RuntimeError(
+                "Android NDK is required for native symbol verification; pass "
+                "--android-ndk-home or set ANDROID_NDK_HOME"
+            )
+    ndk = Path(ndk_home).expanduser().resolve()
+    executable = "llvm-nm.exe" if os.name == "nt" else "llvm-nm"
+    candidates = sorted(
+        path
+        for path in (ndk / "toolchains" / "llvm" / "prebuilt").glob(
+            f"*/bin/{executable}"
+        )
+        if path.is_file()
+    )
+    if len(candidates) != 1:
+        rendered = ", ".join(str(path) for path in candidates) or "none"
+        raise RuntimeError(
+            f"expected exactly one Android NDK {executable}, found: {rendered}"
+        )
+    return candidates[0]
+
+
+def android_library_symbols(library: Path, llvm_nm: Path | None = None) -> set[str]:
+    tool = resolve_android_llvm_nm() if llvm_nm is None else llvm_nm
+    return read_defined_dynamic_symbols(library, tool)
+
+
 def assert_android_aar_contract(
     aar_path: Path = ANDROID_RELEASE_AAR,
     android_root: Path = ANDROID_ROOT,
+    llvm_nm: Path | None = None,
 ) -> None:
     if not aar_path.exists():
         raise RuntimeError(f"Android release AAR not found: {aar_path}")
@@ -312,6 +412,34 @@ def assert_android_aar_contract(
         raise RuntimeError(
             "Android release AAR is missing native libraries: " + ", ".join(missing_native)
         )
+
+    expected_native = set(ANDROID_NATIVE_LIBRARIES)
+    actual_merman_native = {
+        name
+        for name in aar_names
+        if name.startswith("jni/")
+        and Path(name).name.startswith("libmerman_")
+        and name.endswith(".so")
+    }
+    unexpected_native = sorted(actual_merman_native - expected_native)
+    if unexpected_native:
+        raise RuntimeError(
+            "Android release AAR contains unexpected Merman native libraries: "
+            + ", ".join(unexpected_native)
+        )
+
+    with tempfile.TemporaryDirectory(prefix="merman-android-symbols-") as temp_dir:
+        temp_root = Path(temp_dir)
+        with zipfile.ZipFile(aar_path) as aar:
+            for entry in ANDROID_NATIVE_LIBRARIES:
+                library = temp_root / entry
+                library.parent.mkdir(parents=True, exist_ok=True)
+                library.write_bytes(aar.read(entry))
+                assert_symbol_contract(
+                    android_library_symbols(library, llvm_nm),
+                    ANDROID_JNI_SYMBOL_CONTRACT,
+                    label=f"Android AAR {entry}",
+                )
 
     with zipfile.ZipFile(io.BytesIO(classes_jar)) as jar:
         names = set(jar.namelist())
@@ -535,6 +663,7 @@ def _assert_android_gradle_module(
 def assert_android_maven_publication(
     module_root: Path = ANDROID_MAVEN_MODULE_ROOT,
     android_root: Path = ANDROID_ROOT,
+    llvm_nm: Path | None = None,
 ) -> Path:
     if not module_root.is_dir():
         raise RuntimeError(f"Android Maven module repository not found: {module_root}")
@@ -558,7 +687,7 @@ def assert_android_maven_publication(
         _assert_sha256(artifact)
 
     _assert_android_maven_pom(artifacts["pom"], version)
-    assert_android_aar_contract(artifacts["aar"], android_root)
+    assert_android_aar_contract(artifacts["aar"], android_root, llvm_nm)
     _assert_android_source_jar(artifacts["sources"], android_root)
     _assert_android_javadoc_jar(artifacts["javadoc"])
     _assert_android_gradle_module(
@@ -657,18 +786,20 @@ def main() -> int:
 
     try:
         if args.verify_android_aar:
-            assert_android_aar_contract()
+            llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
+            assert_android_aar_contract(llvm_nm=llvm_nm)
             print(f"Android AAR contract verified: {ANDROID_RELEASE_AAR}")
             return 0
 
         if args.verify_android_maven:
-            version_dir = assert_android_maven_publication()
+            llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
+            version_dir = assert_android_maven_publication(llvm_nm=llvm_nm)
             print(f"Android Maven publication contract verified: {version_dir}")
             return 0
 
         if args.only_android_instrumentation_smoke:
             step("Android instrumentation smoke")
-            run_android_instrumentation_smoke(args.gradle_path)
+            run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)
             print()
             print("Android instrumentation smoke completed.")
             return 0
@@ -687,38 +818,22 @@ def main() -> int:
             ]
         )
 
-        step("Android Rust target check")
+        step("Android Rust transport target checks")
         run(["rustup", "target", "add", "aarch64-linux-android"])
-        run(
-            [
-                "cargo",
-                "check",
-                "-p",
-                "merman-ffi",
-                "--no-default-features",
-                "--features",
-                C_ABI_NATIVE_RECIPE.feature_argument,
-                "--target",
-                "aarch64-linux-android",
-            ]
-        )
-        run(
-            [
-                "cargo",
-                "clippy",
-                "--no-deps",
-                "-p",
-                "merman-ffi",
-                "--no-default-features",
-                "--features",
-                C_ABI_NATIVE_RECIPE.feature_argument,
-                "--target",
-                "aarch64-linux-android",
-                "--",
-                "-D",
-                "warnings",
-            ]
-        )
+        for recipe in (ANDROID_NATIVE_RECIPE, FLUTTER_ANDROID_NATIVE_RECIPE):
+            run(cargo_android_check_args(recipe, "check", "aarch64-linux-android"))
+            run(
+                [
+                    *cargo_android_check_args(
+                        recipe,
+                        "clippy",
+                        "aarch64-linux-android",
+                    ),
+                    "--",
+                    "-D",
+                    "warnings",
+                ]
+            )
 
         step("Android Kotlin wrapper compile")
         kotlinc = require_command("kotlinc")
@@ -740,6 +855,7 @@ def main() -> int:
                 [
                     sys.executable,
                     str(ANDROID_ROOT / "build-android.py"),
+                    *android_ndk_build_args(args.android_ndk_home),
                     "--targets",
                     "aarch64-linux-android",
                     "x86_64-linux-android",
@@ -803,16 +919,17 @@ def main() -> int:
         run_dart_ffi_native_smoke(dart)
 
         if args.run_android_gradle_build:
-            ensure_android_native_slices()
+            llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
+            ensure_android_native_slices(args.android_ndk_home)
 
             step("Android Gradle library assemble")
             gradle = resolve_gradle_command(args.gradle_path)
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-            assert_android_aar_contract()
+            assert_android_aar_contract(llvm_nm=llvm_nm)
 
         if args.run_android_instrumentation_smoke:
             step("Android instrumentation smoke")
-            run_android_instrumentation_smoke(args.gradle_path)
+            run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)
 
         step("Apple Swift package scaffold checks")
         for path in [

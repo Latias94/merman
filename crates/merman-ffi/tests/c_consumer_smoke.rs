@@ -241,8 +241,8 @@ fn assert_c_abi_native_runtime_catalog() {
         .expect("artifact profiles must be an array");
 
     for profile_id in [
-        "android-native",
         "c-abi-native",
+        "flutter-android-native",
         "flutter-desktop-native",
         "flutter-ios-native",
     ] {

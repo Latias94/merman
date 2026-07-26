@@ -95,6 +95,8 @@ fn generate(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         metadata_no_deps: false,
     })?;
 
+    apply_swift_5_9_compatibility(&args.output_dir.join("Merman.swift"))?;
+
     for output in ["Merman.swift", "MermanFFI.h", "MermanFFI.modulemap"] {
         let path = args.output_dir.join(output);
         if !path.is_file() {
@@ -114,6 +116,60 @@ fn generate(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         library.display()
     );
     Ok(())
+}
+
+fn apply_swift_5_9_compatibility(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(path)?;
+    let compatible = swift_5_9_compatible_source(&source).map_err(|message| {
+        format!(
+            "unable to apply the pinned Swift 5.9 compatibility transform to {}: {message}",
+            path.display()
+        )
+    })?;
+    std::fs::write(path, compatible)?;
+    Ok(())
+}
+
+fn swift_5_9_compatible_source(source: &str) -> Result<String, String> {
+    const GENERATED_BLOCK: &str = r#"    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()"#;
+    const COMPATIBLE_BLOCK: &str = r#"    // Swift 5.9 does not support `nonisolated(unsafe)`. The storage is initialized
+    // once and never mutated by either side of the FFI, so its pointer can safely
+    // cross concurrency domains.
+    private final class VTableStorage: @unchecked Sendable {
+        let pointer: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>
+
+        init(_ value: UniffiVTableCallbackInterfaceMermanTextMeasurer) {
+            let pointer =
+                UnsafeMutablePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>.allocate(
+                    capacity: 1
+                )
+            pointer.initialize(to: value)
+            self.pointer = UnsafePointer(pointer)
+        }
+    }
+
+    private static let vtableStorage = VTableStorage(vtable)
+
+    static var vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer> {
+        vtableStorage.pointer
+    }"#;
+
+    let generated_count = source.matches(GENERATED_BLOCK).count();
+    let compatible_count = source.matches(COMPATIBLE_BLOCK).count();
+    match (generated_count, compatible_count) {
+        (1, 0) => Ok(source.replacen(GENERATED_BLOCK, COMPATIBLE_BLOCK, 1)),
+        (0, 1) => Ok(source.to_string()),
+        _ => Err(format!(
+            "expected exactly one generated or compatible callback vtable block, found generated={generated_count} compatible={compatible_count}"
+        )),
+    }
 }
 
 fn normalize_generated_text(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -141,6 +197,7 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "public var optionsJson: String?",
         "func execute(request: MermanOperationRequest) throws",
         "func renderSvg(source: String, optionsJson: String?) throws",
+        "private final class VTableStorage: @unchecked Sendable",
     ] {
         if !source.contains(required) {
             return Err(format!(
@@ -155,6 +212,7 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "func renderSvg(source: String) throws",
         "public var outputId: String",
         "case unknownOutput",
+        "nonisolated(unsafe) static let vtablePtr",
     ] {
         if source.contains(removed) {
             return Err(format!(
@@ -165,6 +223,41 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::swift_5_9_compatible_source;
+
+    const GENERATED: &str = r#"before
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceMermanTextMeasurer>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+after"#;
+
+    #[test]
+    fn swift_5_9_transform_replaces_the_generated_concurrency_annotation() {
+        let compatible = swift_5_9_compatible_source(GENERATED).unwrap();
+
+        assert!(compatible.contains("private final class VTableStorage: @unchecked Sendable"));
+        assert!(!compatible.contains("nonisolated(unsafe) static let vtablePtr"));
+    }
+
+    #[test]
+    fn swift_5_9_transform_is_idempotent_and_fails_closed_on_generator_drift() {
+        let compatible = swift_5_9_compatible_source(GENERATED).unwrap();
+
+        assert_eq!(
+            swift_5_9_compatible_source(&compatible).unwrap(),
+            compatible
+        );
+        assert!(swift_5_9_compatible_source("unrelated output").is_err());
+    }
 }
 
 fn default_output_dir() -> PathBuf {

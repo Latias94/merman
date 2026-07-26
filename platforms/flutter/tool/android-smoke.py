@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +13,10 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PLUGIN_ROOT.parents[1]
+TARGET_TO_ABI = {
+    "aarch64-linux-android": "arm64-v8a",
+    "x86_64-linux-android": "x86_64",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,6 +38,25 @@ def parse_args() -> argparse.Namespace:
 def run(args: list[str], *, cwd: Path | None = None) -> None:
     print("+", " ".join(args))
     subprocess.run(args, cwd=cwd, check=True)
+
+
+def requested_abis(targets: list[str]) -> tuple[str, ...]:
+    unsupported = sorted(set(targets) - TARGET_TO_ABI.keys())
+    if unsupported:
+        raise RuntimeError(
+            "unsupported Flutter Android Rust targets: " + ", ".join(unsupported)
+        )
+    return tuple(TARGET_TO_ABI[target] for target in targets)
+
+
+def verify_requested_native_libraries(
+    targets: list[str],
+    jni_libs: Path = PLUGIN_ROOT / "android" / "src" / "main" / "jniLibs",
+) -> None:
+    for abi in requested_abis(targets):
+        library = jni_libs / abi / "libmerman_ffi.so"
+        if not library.is_file():
+            raise RuntimeError(f"Flutter Android native library was not built: {library}")
 
 
 def write_smoke_main(path: Path) -> None:
@@ -73,14 +95,14 @@ def main() -> int:
         [
             sys.executable,
             str(REPO_ROOT / "platforms" / "android" / "build-android.py"),
+            "--artifact-profile",
+            "flutter-android-native",
             "--targets",
             *args.targets,
         ],
         cwd=REPO_ROOT,
     )
-    generated_jni_libs = REPO_ROOT / "platforms" / "android" / "src" / "main" / "jniLibs"
-    plugin_jni_libs = PLUGIN_ROOT / "android" / "src" / "main" / "jniLibs"
-    shutil.copytree(generated_jni_libs, plugin_jni_libs, dirs_exist_ok=True)
+    verify_requested_native_libraries(args.targets)
 
     print(f"Creating temporary Flutter app: {temp_root}")
     run(

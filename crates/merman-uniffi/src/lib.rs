@@ -1692,6 +1692,26 @@ mod tests {
         assert_eq!(metadata["runtime_policy"], "deterministic");
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn generic_operation_exposes_the_svg_capability_plan() {
+        let result = engine()
+            .execute(MermanOperationRequest {
+                operation_id: "svg-plan-json".to_string(),
+                source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
+                uri: None,
+                options_json: None,
+            })
+            .unwrap();
+
+        assert_eq!(result.operation_id, "svg-plan-json");
+        assert_eq!(result.media_type, "application/json");
+        let plan: Value = serde_json::from_slice(&result.data).unwrap();
+        assert_eq!(plan["planned_operation_id"], "svg");
+        assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
+        assert_eq!(plan["ready"], true);
+    }
+
     #[test]
     fn generic_one_shot_native_policy_matches_the_owner_adapter_probe() {
         let request = MermanOperationRequest {

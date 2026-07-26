@@ -1515,14 +1515,14 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(descriptor.operation_codes.len(), 13);
+        assert_eq!(descriptor.operation_codes.len(), 14);
         assert_eq!(
             descriptor
                 .operation_codes
                 .iter()
                 .map(|operation| operation.code)
                 .collect::<BTreeSet<_>>(),
-            (0..13).collect()
+            (0..14).collect()
         );
         let root = crate::cmd::workspace_root();
         let operations = resolve_operations(&root, &descriptor).unwrap();

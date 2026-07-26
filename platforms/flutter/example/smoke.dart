@@ -82,6 +82,7 @@ void main(List<String> args) {
       'png',
       'semantic-json',
       'svg',
+      'svg-plan-json',
       'validation-json',
     };
     const expectedSystemAdapters = {

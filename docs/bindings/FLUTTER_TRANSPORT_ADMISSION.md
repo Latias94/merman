@@ -171,12 +171,14 @@ already fails callback, streaming, package, and target-CI requirements.
 
 The baseline release workflow installs the Rust targets, builds and injects
 every artifact, runs Flutter analysis and a dry-run publish, then tests the
-packed package. The Flutter owner now has distinct `flutter-ios-native` and
-`flutter-desktop-native` target-set recipes. The recipe helper projects the
-package, manifest, profile, feature, target, crate-type, and target-triple
-contract; each Flutter build script consumes those values and rejects a target
+packed package. The Flutter owner has distinct `flutter-android-native`,
+`flutter-ios-native`, and `flutter-desktop-native` target-set recipes. The Android recipe remains
+on the `merman-ffi` C ABI transport; the Kotlin AAR's JNI implementation is structurally isolated
+in `merman-android-jni`. The recipe helper projects the package, manifest, profile, feature,
+target, crate-type, and target-triple contract. Each Flutter build script consumes those values and
+rejects a target
 outside its declared set. This closes the prior host-profile ambiguity for the
-admitted iOS, macOS, Linux, and Windows targets. It is not a candidate advantage
+admitted Android, iOS, macOS, Linux, and Windows targets. It is not a candidate advantage
 because FRB supplied no target package or CI fixture at all.
 
 Replacing the incumbent path with FRB would still require a complete
@@ -274,10 +276,10 @@ The generator, builds, and closure reports were run from the repository root:
 cargo install flutter_rust_bridge_codegen --version 2.12.0 --locked --force
 flutter_rust_bridge_codegen --version
 flutter_rust_bridge_codegen generate --config-file platforms/flutter/spikes/frb_2_12_candidate/flutter_rust_bridge.yaml
-cargo build --release --manifest-path platforms/flutter/spikes/frb_2_12_candidate/Cargo.toml --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,system-timing
-cargo build --release -p merman-ffi --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,system-timing
-cargo tree --manifest-path platforms/flutter/spikes/frb_2_12_candidate/Cargo.toml --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,system-timing --edges normal --prefix none
-cargo tree -p merman-ffi --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,system-timing --edges normal --prefix none
+cargo build --release --manifest-path platforms/flutter/spikes/frb_2_12_candidate/Cargo.toml --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+cargo build --release -p merman-ffi --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+cargo tree --manifest-path platforms/flutter/spikes/frb_2_12_candidate/Cargo.toml --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random --edges normal --prefix none
+cargo tree -p merman-ffi --no-default-features --features analysis,ascii,svg,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random --edges normal --prefix none
 python3 platforms/flutter/spikes/frb_2_12_candidate/harness.py --incumbent-library target/release/libmerman_ffi.dylib --candidate-library platforms/flutter/spikes/frb_2_12_candidate/target/release/libmerman_frb_spike.dylib --iterations 20 --warmups 3 --nodes 800
 ```
 

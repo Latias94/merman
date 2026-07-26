@@ -11,8 +11,9 @@ C-compatible host. It does not require a browser or JavaScript runtime.
 
 `merman-ffi` has no default features. Choose an explicit capability set:
 
-The committed `c-abi-native` artifact profile owns the complete release recipe used by C
-consumers and Flutter packaging.
+The committed `c-abi-native` artifact profile owns the complete host C ABI recipe, and Flutter owns
+separate C ABI target-set recipes. The Kotlin Android AAR uses the independent, internal
+`merman-android-jni` crate instead of this crate.
 
 ```sh
 # Canonical native SDK artifact: SVG, analysis, ASCII, PNG, JPEG, PDF, layouts, math, and native adapters.
@@ -116,6 +117,11 @@ The public feature names describe callable capabilities:
 - `png`, `jpeg`, and `pdf` add real binary output operations.
 - `layout-cytoscape`, `layout-elk`, and `math` add their rendering capabilities.
 - `system-clock`, `system-timezone`, and `system-random` install native adapters.
+
+This crate exports only the native C ABI discovery surface. Android JNI transport code lives in
+the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a
+feature combination.
+
 Use the generated runtime catalog to determine what the loaded artifact actually supports. The
 full wire contract, status semantics, callback rules, and C snippets are in
 [the FFI protocol](../../docs/bindings/FFI_PROTOCOL.md).

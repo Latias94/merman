@@ -226,6 +226,7 @@ fn operation_for_selector(selector: u8) -> (MermanNativeOperationCode, bool) {
         9 => (MERMAN_NATIVE_OPERATION_JPEG, false),
         10 => (MERMAN_NATIVE_OPERATION_PDF, false),
         14 => (i32::MAX, false),
+        15 => (MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON, false),
         16 => (MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON, false),
         _ => (MERMAN_NATIVE_OPERATION_SEMANTIC_JSON, false),
     }

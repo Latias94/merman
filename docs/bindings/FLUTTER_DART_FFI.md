@@ -160,15 +160,18 @@ keys and display-surface guidance.
 | Linux | target-specific `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
-All Flutter native helpers resolve the descriptor-owned `c-abi-native` profile and build the
-native SDK with its exact feature recipe:
+Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and
+desktop select their corresponding target-set recipes. These recipes retain the same callable
+native SDK feature closure. JNI transport is structurally absent because it lives in the separate
+internal `merman-android-jni` crate:
 
 ```sh
 cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
 ```
 
-Android slices are assembled by `platforms/android/build-android.py`; iOS and
-desktop helpers are `platforms/flutter/build-ios.sh` and
+Android slices are assembled by
+`platforms/android/build-android.py --artifact-profile flutter-android-native`; iOS and desktop
+helpers are `platforms/flutter/build-ios.sh` and
 `platforms/flutter/build-desktop.sh`. Flutter Web is not supported by this
 package because it uses `dart:ffi`; use `@mermanjs/web` in browsers.
 
