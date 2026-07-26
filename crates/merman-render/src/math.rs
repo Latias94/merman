@@ -127,6 +127,140 @@ pub(crate) fn contains_delimited_math(text: &str) -> bool {
         .any(|line| parse_delimited_math_line(line).is_some())
 }
 
+pub(crate) struct MathLabelMetricsRequest<'a> {
+    pub(crate) measurer: &'a dyn crate::text::TextMeasurer,
+    pub(crate) raw_label: &'a str,
+    pub(crate) style: &'a TextStyle,
+    pub(crate) max_width_px: Option<f64>,
+    pub(crate) wrap_mode: WrapMode,
+    pub(crate) config: &'a MermaidConfig,
+    pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
+fn measure_text_fragment(
+    measurer: &dyn crate::text::TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+) -> TextMetrics {
+    measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+}
+
+fn measure_mixed_math_line(
+    measurer: &dyn crate::text::TextMeasurer,
+    line: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<(f64, f64)> {
+    let start = line.find("$$")?;
+    let content_start = start + 2;
+    let end_start = line[content_start..].rfind("$$")? + content_start;
+    if line[content_start..end_start].contains("$$") {
+        return None;
+    }
+
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    for text in [&line[..start], &line[end_start + 2..]] {
+        if text.is_empty() {
+            continue;
+        }
+        let metrics = measure_text_fragment(measurer, text, style);
+        width += metrics.width.max(0.0);
+        height = height.max(metrics.height.max(0.0));
+    }
+
+    let math_metrics = math_renderer.measure_html_label(
+        &line[start..end_start + 2],
+        config,
+        style,
+        Some(10_000.0),
+        WrapMode::HtmlLike,
+    )?;
+    width += math_metrics.width.max(0.0);
+    height = height.max(math_metrics.height.max(0.0));
+
+    Some((width, height.max(1.0)))
+}
+
+fn measure_mixed_math_label(
+    request: &MathLabelMetricsRequest<'_>,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<TextMetrics> {
+    if !request.raw_label.contains("$$") {
+        return None;
+    }
+    math_renderer.render_html_label(request.raw_label, request.config)?;
+
+    let mut saw_math = false;
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    let mut line_count = 0usize;
+    for line in crate::text::split_html_br_lines(request.raw_label) {
+        line_count += 1;
+        let (line_width, line_height) = if line.contains("$$") {
+            saw_math = true;
+            measure_mixed_math_line(
+                request.measurer,
+                line,
+                request.style,
+                request.config,
+                math_renderer,
+            )?
+        } else {
+            let metrics = request.measurer.measure_wrapped(
+                line,
+                request.style,
+                request.max_width_px,
+                WrapMode::HtmlLike,
+            );
+            (metrics.width.max(0.0), metrics.height.max(0.0))
+        };
+        width = width.max(line_width);
+        height += line_height;
+    }
+
+    saw_math.then_some(TextMetrics {
+        width,
+        height: height.max(1.0),
+        line_count: line_count.max(1),
+    })
+}
+
+/// Measures a Mermaid HTML label after delegating its math fragments to the active backend.
+pub(crate) fn math_label_metrics_for_layout(
+    request: MathLabelMetricsRequest<'_>,
+) -> Option<TextMetrics> {
+    if request.wrap_mode != WrapMode::HtmlLike || !request.raw_label.contains("$$") {
+        return None;
+    }
+    let math_renderer = request.math_renderer?;
+    math_renderer
+        .measure_html_label(
+            request.raw_label,
+            request.config,
+            request.style,
+            request.max_width_px,
+            request.wrap_mode,
+        )
+        .or_else(|| measure_mixed_math_label(&request, math_renderer))
+}
+
+/// Renders, sanitizes, and XML-normalizes a shared Mermaid math label fragment.
+pub(crate) fn render_math_html_label(
+    text: &str,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Option<String> {
+    if !text.contains("$$") {
+        return None;
+    }
+    let rendered = math_renderer?.render_html_label(text, config)?;
+    Some(crate::xml::normalize_html_fragment_for_xhtml(
+        &merman_core::sanitize::sanitize_text(&rendered, config),
+    ))
+}
+
 /// Pure-Rust math renderer backed by RaTeX.
 ///
 /// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a

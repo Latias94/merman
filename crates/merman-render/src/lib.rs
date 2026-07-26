@@ -261,7 +261,15 @@ pub(crate) fn layout_class_typed_by_engine(
     }
 
     options.resource_policy().check_class_complexity(model)?;
-    class::layout_class_diagram_typed_with_config(model, effective_config, options.text_measurer())
+    options
+        .resource_policy()
+        .check_layout_work_units(class::class_layout_work_units(model))?;
+    class::layout_class_diagram_typed_with_config(
+        model,
+        effective_config,
+        options.text_measurer(),
+        options.math_renderer(),
+    )
 }
 
 #[cfg(feature = "layout-elk")]
@@ -272,10 +280,14 @@ fn layout_class_elk_typed_by_feature(
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
+    options
+        .resource_policy()
+        .check_layout_work_units(class::class_layout_work_units(model))?;
     class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
+        options.math_renderer(),
         options.elk_operation_seed(),
     )
 }
@@ -572,6 +584,55 @@ A-->B
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(limit.limit, "max_layout_work_units");
         assert_eq!(limit.actual, work);
+    }
+
+    fn assert_class_layout_work_limit(source: &str) {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("class source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+
+        let error = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("Class layout unexpectedly bypassed the work budget"),
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Class layout work resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert!(limit.actual > 1);
+        assert_eq!(limit.max, 1);
+    }
+
+    #[test]
+    fn dagre_class_layout_honors_the_public_work_budget() {
+        assert_class_layout_work_limit("classDiagram\nA --> B\nA --> C\nA --> D\nB --> C\nC --> D");
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn elk_class_layout_honors_the_public_work_budget() {
+        assert_class_layout_work_limit(
+            r#"---
+config:
+  layout: elk
+---
+classDiagram
+A --> B
+A --> C
+A --> D
+B --> C
+C --> D"#,
+        );
     }
 
     #[cfg(feature = "layout-elk")]

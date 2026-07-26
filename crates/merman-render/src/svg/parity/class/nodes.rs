@@ -9,7 +9,7 @@ use super::interface::{
 };
 use super::label::class_apply_inline_styles;
 use super::namespace::{
-    ClassNamespaceClusterGroupContext, class_namespace_root_offset,
+    ClassNamespaceClusterGroupContext, class_namespace_root_offset, render_class_elk_subgraphs,
     render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
 };
 use super::node::{
@@ -50,6 +50,8 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) effective_config: &'a serde_json::Value,
     pub(super) diagram_id: &'a str,
     pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
@@ -153,6 +155,8 @@ pub(super) fn render_class_render_tree(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
+                            mermaid_config: ctx.mermaid_config,
+                            math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                         },
                         namespace_id,
@@ -182,6 +186,8 @@ pub(super) fn render_class_render_tree(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
+                            mermaid_config: ctx.mermaid_config,
+                            math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                         },
                     );
@@ -255,6 +261,122 @@ pub(super) fn render_class_render_tree(
             }
         }
     }
+    Ok(())
+}
+
+pub(super) fn render_class_elk_adapter_dom(
+    state: ClassNodesRenderState<'_>,
+    ctx: &ClassNodesRenderContext<'_>,
+    edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+) -> Result<()> {
+    let ClassNodesRenderState {
+        out,
+        content_bounds,
+        detail,
+        sanitize_config,
+        borrowed_sanitize_config,
+    } = state;
+    let layout_nodes_by_id = ctx
+        .layout
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<FxHashMap<_, _>>();
+    let clusters_by_id = ctx
+        .layout
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.id.as_str(), cluster))
+        .collect::<HashMap<_, _>>();
+    let edges_by_id = ctx
+        .layout
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect::<HashMap<_, _>>();
+    validate_class_render_tree(ctx, &layout_nodes_by_id, &clusters_by_id, &edges_by_id)?;
+
+    let root = ctx
+        .layout
+        .render_tree
+        .roots
+        .get(ctx.layout.render_tree.top.0)
+        .expect("validated Class ELK render root");
+    if root.namespace_id.is_some()
+        || root
+            .items
+            .iter()
+            .any(|item| matches!(item, ClassRenderItem::Subgraph(_)))
+    {
+        return Err(Error::InvalidModel {
+            message: "Class ELK adapter requires one flat render root".to_string(),
+        });
+    }
+
+    detail.clusters += render_class_elk_subgraphs(
+        out,
+        content_bounds,
+        &ctx.layout.clusters,
+        ClassNamespaceClusterGroupContext {
+            diagram_id: ctx.diagram_id,
+            content_tx: ctx.content_tx,
+            content_ty: ctx.content_ty,
+            bounds_dx: 0.0,
+            bounds_dy: 0.0,
+            look: ctx.settings.look.as_str(),
+            mermaid_config: ctx.mermaid_config,
+            math_renderer: ctx.math_renderer,
+            timing: ctx.timing,
+        },
+    );
+
+    out.push_str(r#"<g class="nodes">"#);
+    for item in &root.items {
+        let ClassRenderItem::Node(id) = item else {
+            unreachable!("Class ELK render root was validated as flat")
+        };
+        render_class_node_id(
+            ClassNodesRenderState {
+                out,
+                content_bounds,
+                detail,
+                sanitize_config,
+                borrowed_sanitize_config,
+            },
+            ctx,
+            &layout_nodes_by_id,
+            id,
+            ClassNodeRootOffsets {
+                namespace_root_dx: 0.0,
+                namespace_root_dy: 0.0,
+                in_namespace_root: false,
+            },
+        );
+    }
+    out.push_str("</g>");
+
+    let edges = root
+        .edge_ids
+        .iter()
+        .map(|id| {
+            edges_by_id
+                .get(id.as_str())
+                .copied()
+                .expect("validated Class ELK render edge")
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    let split = render_class_split_edges_for_namespace(
+        content_bounds,
+        detail,
+        edge_ctx,
+        &edges,
+        0.0,
+        0.0,
+        false,
+    );
+    out.push_str(&split.edge_paths);
+    out.push_str(&split.edge_labels);
     Ok(())
 }
 
@@ -471,9 +593,12 @@ fn render_class_split_edges_for_namespace(
         edge_use_html_labels: edge_ctx.edge_use_html_labels,
         text_measurer: edge_ctx.text_measurer,
         terminal_text_style: edge_ctx.terminal_text_style,
+        mermaid_config: edge_ctx.mermaid_config,
+        math_renderer: edge_ctx.math_renderer,
         look: edge_ctx.look,
         hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
         timing: edge_ctx.timing,
+        edge_paths_class: edge_ctx.edge_paths_class,
     };
     render_class_split_edge_groups(
         ClassSplitEdgeGroupsRenderState {
@@ -543,7 +668,10 @@ fn render_class_node_id(
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
-                use_html_labels: settings.diagram_use_html_labels,
+                use_html_labels: settings.diagram_use_html_labels
+                    || crate::math::contains_delimited_math(&note.text),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
                 hand_drawn_seed: settings.hand_drawn_seed.clone(),
                 timing: ctx.timing,
@@ -570,6 +698,8 @@ fn render_class_node_id(
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
                 look: settings.look.as_str(),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
             },
         );
         return;
@@ -627,7 +757,7 @@ fn render_class_node_id(
     detail.path_bounds += basic_container.stats.path_bounds;
     detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
 
-    if settings.diagram_use_html_labels {
+    if settings.diagram_use_html_labels || crate::class::class_node_requires_math(node) {
         let html_stats = render_class_html_node_body(
             ClassNodeRenderState {
                 out,
@@ -652,6 +782,8 @@ fn render_class_node_id(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },
         );

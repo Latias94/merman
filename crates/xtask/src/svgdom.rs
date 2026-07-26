@@ -540,27 +540,14 @@ fn build_node(
             .flatten()
     }
 
-    fn normalize_vertical_timeline_internal_value(
+    fn normalize_vertical_timeline_broken_node_id(
         n: roxmltree::Node<'_, '_>,
         key: &str,
         val: &str,
     ) -> Option<String> {
         let diagram_id = vertical_timeline_diagram_id(n)?;
-        let scoped_arrowhead = format!("{diagram_id}-arrowhead");
-
-        if n.tag_name().name() == "marker"
-            && key == "id"
-            && (val == "undefined-arrowhead" || val == scoped_arrowhead)
-        {
-            return Some("<timeline-arrowhead>".to_string());
-        }
-        let scoped_arrowhead_ref = format!("url(#{scoped_arrowhead})");
-        if n.tag_name().name() == "line"
-            && key == "marker-end"
-            && (val == "url(#arrowhead)" || val == scoped_arrowhead_ref)
-        {
-            return Some("url(#<timeline-arrowhead>)".to_string());
-        }
+        // Marker definitions and references are rendering semantics; only the unreferenced node
+        // IDs are safe to align with Merman's diagram-scoped spelling.
         let scoped_node_prefix = format!("{diagram_id}-node-");
         if n.tag_name().name() == "path"
             && key == "id"
@@ -902,7 +889,7 @@ fn build_node(
             if matches!(
                 mode,
                 DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
-            ) && let Some(normalized) = normalize_vertical_timeline_internal_value(n, &key, &val)
+            ) && let Some(normalized) = normalize_vertical_timeline_broken_node_id(n, &key, &val)
             {
                 val = normalized;
             }
@@ -2417,12 +2404,12 @@ mod tests {
     }
 
     #[test]
-    fn structure_and_parity_normalize_only_vertical_timeline_broken_upstream_ids() {
+    fn structure_and_parity_fail_closed_on_vertical_timeline_marker_reference_semantics() {
         let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
         let local = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
 
         for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
-            assert_eq!(
+            assert_ne!(
                 dom_signature(upstream, mode, 3).unwrap(),
                 dom_signature(local, mode, 3).unwrap()
             );
@@ -2431,6 +2418,19 @@ mod tests {
             dom_signature(upstream, DomMode::Strict, 3).unwrap(),
             dom_signature(local, DomMode::Strict, 3).unwrap()
         );
+    }
+
+    #[test]
+    fn structure_and_parity_normalize_only_vertical_timeline_broken_node_ids() {
+        let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+        let corrected_node_id = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(corrected_node_id, mode, 3).unwrap()
+            );
+        }
     }
 
     #[test]

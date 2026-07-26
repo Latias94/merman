@@ -398,10 +398,10 @@ mod remove_directives_tests {
     }
 
     #[test]
-    fn unterminated_directive_does_not_truncate_following_source() {
+    fn unterminated_directive_truncates_following_source_like_mermaid() {
         let s = "flowchart\n%%{init: {\"theme\": \"dark\"}}\nA-->B;";
         let out = remove_directives(s);
-        assert_eq!(out.as_ref(), "flowchart\n\nA-->B;");
+        assert_eq!(out.as_ref(), "flowchart\n");
     }
 }
 

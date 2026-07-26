@@ -673,6 +673,9 @@ pub struct ClassDiagramLayout {
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Whether SVG emission follows Mermaid's registered ELK renderer DOM structure.
+    #[serde(skip)]
+    pub uses_elk_adapter_dom: bool,
     #[serde(skip)]
     pub class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
     /// DOM ownership produced by the same recursive Dagre preparation that owns layout.

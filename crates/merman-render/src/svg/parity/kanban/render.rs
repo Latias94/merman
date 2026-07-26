@@ -121,6 +121,127 @@ fn measure_kanban_label_content(
     }
 }
 
+struct KanbanLabelRenderContext<'a> {
+    max_width: f64,
+    text_measurer: &'a dyn crate::text::TextMeasurer,
+    style: &'a crate::text::TextStyle,
+    min_height: f64,
+}
+
+struct KanbanLabelGroup<'a> {
+    position: (f64, f64),
+    text: Option<&'a str>,
+    html: Option<&'a str>,
+    div_class: Option<&'a str>,
+    wrap_title: bool,
+}
+
+fn write_kanban_label_group(
+    out: &mut String,
+    context: &KanbanLabelRenderContext<'_>,
+    group: KanbanLabelGroup<'_>,
+) {
+    let KanbanLabelGroup {
+        position: (x, y),
+        text,
+        html,
+        div_class,
+        wrap_title,
+    } = group;
+    let max_width = context.max_width;
+    let (foreign_object_width, foreign_object_height, div_style_overrides) = match text {
+        Some(text) if !text.is_empty() => {
+            if wrap_title && max_width > 0.0 {
+                let raw = measure_kanban_label_content(
+                    context.text_measurer,
+                    text,
+                    html,
+                    context.style,
+                    None,
+                );
+                // Keep the title clip region at card content width. A narrow deterministic
+                // glyph estimate can otherwise crop the browser-rendered HTML label.
+                if raw.width > max_width {
+                    let wrapped = measure_kanban_label_content(
+                        context.text_measurer,
+                        text,
+                        html,
+                        context.style,
+                        Some(max_width),
+                    );
+                    (
+                        max_width,
+                        wrapped.height.max(context.min_height),
+                        Some(format!(
+                            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; width: {width}px;",
+                            width = fmt(max_width),
+                        )),
+                    )
+                } else {
+                    (
+                        raw.width,
+                        raw.height.max(context.min_height),
+                        Some(format!(
+                            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
+                            width = fmt(max_width),
+                        )),
+                    )
+                }
+            } else {
+                let raw = measure_kanban_label_content(
+                    context.text_measurer,
+                    text,
+                    html,
+                    context.style,
+                    None,
+                );
+                (
+                    raw.width,
+                    raw.height.max(context.min_height),
+                    Some(format!(
+                        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
+                        width = fmt(max_width),
+                    )),
+                )
+            }
+        }
+        _ => (0.0, 0.0, None),
+    };
+    let class_attr = div_class
+        .map(|class| format!(r#" class="{}""#, escape_attr(class)))
+        .unwrap_or_default();
+    let div_style = if let Some(overrides) = div_style_overrides {
+        format!("text-align: center; {overrides}")
+    } else {
+        format!(
+            "text-align: center; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
+            width = fmt(max_width),
+        )
+    };
+    let span_class = if wrap_title {
+        "nodeLabel markdown-node-label"
+    } else {
+        "nodeLabel"
+    };
+    let _ = write!(
+        out,
+        r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
+        x = fmt(x),
+        y = fmt(y),
+        width = fmt(foreign_object_width),
+        height = fmt(foreign_object_height),
+        div_style = escape_attr(&div_style),
+        class_attr = class_attr,
+        span_class = span_class,
+    );
+    if let Some(html) = html.filter(|_| text.is_some_and(|text| !text.is_empty())) {
+        out.push_str(html);
+    } else if let Some(text) = text.filter(|text| !text.is_empty()) {
+        let _ = write!(out, r#"<p>{}</p>"#, escape_xml(text));
+    }
+    out.push_str("</span></div></foreignObject></g>");
+}
+
 pub(crate) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
     effective_config: &serde_json::Value,
@@ -305,114 +426,24 @@ pub(crate) fn render_kanban_diagram_svg(
             h = fmt(n.height),
         );
 
-        fn write_label_group(
-            out: &mut String,
-            position: (f64, f64),
-            max_w: f64,
-            text: Option<&str>,
-            html: Option<&str>,
-            div_class: Option<&str>,
-            wrap_title: bool,
-            text_measurer: &dyn crate::text::TextMeasurer,
-            label_style: &crate::text::TextStyle,
-            label_min_height: f64,
-        ) {
-            let (x, y) = position;
-            let (fo_w, fo_h, div_style_overrides) = match text {
-                Some(t) if !t.is_empty() => {
-                    if wrap_title && max_w > 0.0 {
-                        let raw =
-                            measure_kanban_label_content(text_measurer, t, html, label_style, None);
-                        // Keep the title clip region at card content width. A narrow deterministic
-                        // glyph estimate can otherwise crop the browser-rendered HTML label.
-                        if raw.width > max_w {
-                            let wrapped = measure_kanban_label_content(
-                                text_measurer,
-                                t,
-                                html,
-                                label_style,
-                                Some(max_w),
-                            );
-                            (
-                                max_w,
-                                wrapped.height.max(label_min_height),
-                                Some(format!(
-                                    "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; width: {mw}px;",
-                                    mw = fmt(max_w),
-                                )),
-                            )
-                        } else {
-                            (
-                                raw.width,
-                                raw.height.max(label_min_height),
-                                Some(format!(
-                                    "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
-                                    mw = fmt(max_w),
-                                )),
-                            )
-                        }
-                    } else {
-                        let raw =
-                            measure_kanban_label_content(text_measurer, t, html, label_style, None);
-                        (
-                            raw.width,
-                            raw.height.max(label_min_height),
-                            Some(format!(
-                                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
-                                mw = fmt(max_w),
-                            )),
-                        )
-                    }
-                }
-                _ => (0.0, 0.0, None),
-            };
-            let class_attr = div_class
-                .map(|c| format!(r#" class="{}""#, escape_attr(c)))
-                .unwrap_or_default();
-            let div_style = if let Some(s) = div_style_overrides {
-                format!("text-align: center; {s}")
-            } else {
-                format!(
-                    "text-align: center; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
-                    mw = fmt(max_w),
-                )
-            };
-            let span_class = if wrap_title {
-                "nodeLabel markdown-node-label"
-            } else {
-                "nodeLabel"
-            };
-            let _ = write!(
-                out,
-                r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{w}" height="{h}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
-                x = fmt(x),
-                y = fmt(y),
-                w = fmt(fo_w),
-                h = fmt(fo_h),
-                div_style = escape_attr(&div_style),
-                class_attr = class_attr,
-                span_class = span_class,
-            );
-            if let Some(html) = html.filter(|_| text.is_some_and(|t| !t.is_empty())) {
-                out.push_str(html);
-            } else if let Some(t) = text.filter(|t| !t.is_empty()) {
-                let _ = write!(out, r#"<p>{}</p>"#, escape_xml(t));
-            }
-            out.push_str("</span></div></foreignObject></g>");
-        }
+        let label_context = KanbanLabelRenderContext {
+            max_width: max_w,
+            text_measurer,
+            style: &label_style,
+            min_height: label_min_height,
+        };
 
         // Title label (may wrap).
-        write_label_group(
+        write_kanban_label_group(
             &mut out,
-            (left_x, title_y),
-            max_w,
-            Some(n.label.as_str()),
-            Some(title_html.as_str()),
-            n.icon.as_deref().map(|_| "labelBkg"),
-            true,
-            text_measurer,
-            &label_style,
-            label_min_height,
+            &label_context,
+            KanbanLabelGroup {
+                position: (left_x, title_y),
+                text: Some(n.label.as_str()),
+                html: Some(title_html.as_str()),
+                div_class: n.icon.as_deref().map(|_| "labelBkg"),
+                wrap_title: true,
+            },
         );
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
@@ -424,60 +455,56 @@ pub(crate) fn render_kanban_diagram_svg(
                     r#"<a class="kanban-ticket-link" xlink:href="{}">"#,
                     escape_attr(&url)
                 );
-                write_label_group(
+                write_kanban_label_group(
                     &mut out,
-                    (left_x, details_y),
-                    max_w,
-                    Some(t),
-                    None,
-                    None,
-                    false,
-                    text_measurer,
-                    &label_style,
-                    label_min_height,
+                    &label_context,
+                    KanbanLabelGroup {
+                        position: (left_x, details_y),
+                        text: Some(t),
+                        html: None,
+                        div_class: None,
+                        wrap_title: false,
+                    },
                 );
                 out.push_str("</a>");
             } else {
-                write_label_group(
+                write_kanban_label_group(
                     &mut out,
-                    (left_x, details_y),
-                    max_w,
-                    Some(t),
-                    None,
-                    None,
-                    false,
-                    text_measurer,
-                    &label_style,
-                    label_min_height,
+                    &label_context,
+                    KanbanLabelGroup {
+                        position: (left_x, details_y),
+                        text: Some(t),
+                        html: None,
+                        div_class: None,
+                        wrap_title: false,
+                    },
                 );
             }
         } else {
-            write_label_group(
+            write_kanban_label_group(
                 &mut out,
-                (left_x, details_y),
-                max_w,
-                None,
-                None,
-                None,
-                false,
-                text_measurer,
-                &label_style,
-                label_min_height,
+                &label_context,
+                KanbanLabelGroup {
+                    position: (left_x, details_y),
+                    text: None,
+                    html: None,
+                    div_class: None,
+                    wrap_title: false,
+                },
             );
         }
 
         // Assigned label.
-        write_label_group(
+        write_kanban_label_group(
             &mut out,
-            (right_x, details_y),
-            max_w,
-            n.assigned.as_deref(),
-            None,
-            None,
-            false,
-            text_measurer,
-            &label_style,
-            label_min_height,
+            &label_context,
+            KanbanLabelGroup {
+                position: (right_x, details_y),
+                text: n.assigned.as_deref(),
+                html: None,
+                div_class: None,
+                wrap_title: false,
+            },
         );
 
         if let Some(p) = n.priority.as_deref() {

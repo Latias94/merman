@@ -635,7 +635,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         max_node_width_px: f64,
     }
 
-    fn mk_label(out: &mut String, spec: MindmapLabelSpec<'_>, config: &merman_core::MermaidConfig) {
+    fn mk_label(
+        out: &mut String,
+        spec: MindmapLabelSpec<'_>,
+        config: &merman_core::MermaidConfig,
+        math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    ) -> Result<()> {
         let MindmapLabelSpec {
             text,
             label_bkg,
@@ -705,11 +710,25 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             crate::xml::normalize_html_entities_for_xml(raw).into_owned()
         }
 
-        let html = markdown_to_sanitized_xhtml(text, config);
-        let html = decode_mermaid_entities_for_render_text(&html);
-        out.push_str(&escape_amp_preserving_entities(html.as_ref()));
+        if crate::math::contains_delimited_math(text) {
+            let html = math_renderer
+                .and_then(|renderer| renderer.render_html_label(text, config))
+                .ok_or_else(|| Error::MissingCapability {
+                    capability: crate::RenderCapability::Math,
+                    diagram_type: "mindmap".to_string(),
+                })?;
+            let html = merman_core::sanitize::sanitize_text(&html, config)
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />");
+            out.push_str(&escape_amp_preserving_entities(&html));
+        } else {
+            let html = markdown_to_sanitized_xhtml(text, config);
+            let html = decode_mermaid_entities_for_render_text(&html);
+            out.push_str(&escape_amp_preserving_entities(html.as_ref()));
+        }
 
         out.push_str("</span></div></foreignObject></g>");
+        Ok(())
     }
 
     fn mk_edge_label(out: &mut String, edge_id: &str) {
@@ -724,6 +743,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
+    let math_renderer = options.math_renderer();
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
         std::collections::BTreeMap::new();
@@ -959,7 +979,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "rect" => {
                 // `rect` mindmap nodes use: w = bbox_w + 2*padding, h = bbox_h + padding.
@@ -985,7 +1006,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "rounded" => {
                 let w = w.max(1.0);
@@ -1013,7 +1035,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "mindmapCircle" => {
                 let r = (w.max(h) / 2.0).max(1.0);
@@ -1038,7 +1061,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "cloud" => {
                 let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
@@ -1067,7 +1091,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "hexagon" => {
                 let w = w.max(1.0);
@@ -1106,7 +1131,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "bang" => {
                 let bbox_w = label_w.unwrap_or_else(|| (w - 10.0 * half_padding).max(1.0));
@@ -1142,7 +1168,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             _ => {
                 let _ = write!(
@@ -1165,7 +1192,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
         }
 

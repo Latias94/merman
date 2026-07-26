@@ -11,8 +11,7 @@ use crate::cmd::compare::{
     svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
     write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
 };
-use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -538,19 +537,23 @@ pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(
     let mut admitted_layout_body_keys: BTreeMap<String, String> = BTreeMap::new();
     for stem in admitted {
         let fixture_path = fixture_dir.join(format!("{stem}.mmd"));
-        if let Ok(text) = fs::read_to_string(&fixture_path) {
-            admitted_layout_body_keys
-                .entry(canonical_flowchart_elk_layout_body_key(&text))
-                .or_insert_with(|| (*stem).to_string());
+        let svg_path = upstream_svg_dir.join(format!("{stem}.svg"));
+        if !svg_path.is_file() {
+            continue;
         }
-    }
-
-    for case in &cases {
-        if admitted.contains(&case.stem.as_str()) {
-            admitted_layout_body_keys
-                .entry(case.layout_body_key.clone())
-                .or_insert_with(|| case.stem.clone());
-        }
+        let text = match fs::read_to_string(&fixture_path) {
+            Ok(text) => text,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(XtaskError::ReadFile {
+                    path: fixture_path.display().to_string(),
+                    source,
+                });
+            }
+        };
+        admitted_layout_body_keys
+            .entry(canonical_flowchart_elk_layout_body_key(&text))
+            .or_insert_with(|| (*stem).to_string());
     }
 
     let mut admitted_count = 0usize;
@@ -571,6 +574,7 @@ pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(
         let has_fixture = fixture_path.is_file();
         let has_svg = svg_path.is_file();
         let is_admitted = admitted.contains(&case.stem.as_str());
+        let has_exact_parity_baseline = is_admitted && has_fixture && has_svg;
         let covered_by_layout_body = admitted_layout_body_keys
             .get(&case.layout_body_key)
             .map(String::as_str);
@@ -595,13 +599,13 @@ pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(
         } else {
             no_upstream_svg.push(case);
         }
-        if is_admitted {
+        if has_exact_parity_baseline {
             admitted_count += 1;
-        } else {
+        } else if let Some(representative) = covered_by_layout_body {
+            duplicate_covered.push((case, representative));
+        }
+        if !is_admitted {
             not_admitted.push(case);
-            if let Some(representative) = covered_by_layout_body {
-                duplicate_covered.push((case, representative));
-            }
         }
     }
 
@@ -635,7 +639,10 @@ pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(
     );
     println!(
         "unadmitted exact calls covered by duplicate layout body: {}",
-        duplicate_covered_count
+        duplicate_covered
+            .iter()
+            .filter(|(case, _)| !admitted.contains(&case.stem.as_str()))
+            .count()
     );
     println!("unique layout bodies: {}", unique_layout_body_keys.len());
     println!(
@@ -646,7 +653,7 @@ pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(
 
     if !duplicate_covered.is_empty() {
         println!();
-        println!("Exact calls covered through an admitted duplicate layout body:");
+        println!("Non-canonical calls covered through an admitted duplicate layout body:");
         for (case, representative) in &duplicate_covered {
             println!(
                 "- {} {} [{}{}]",
@@ -758,313 +765,153 @@ struct FlowchartElkSpecCase {
     snapshot: bool,
 }
 
+fn existing_flowchart_elk_source_identities() -> Result<HashMap<String, Vec<String>>, XtaskError> {
+    let fixture_dir = crate::cmd::fixtures_root().join("flowchart");
+    let entries = fs::read_dir(&fixture_dir).map_err(|source| XtaskError::ReadFile {
+        path: fixture_dir.display().to_string(),
+        source,
+    })?;
+    let mut identities = HashMap::<String, Vec<String>>::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|source| XtaskError::ReadFile {
+                path: fixture_dir.display().to_string(),
+                source,
+            })?
+            .path();
+        let Some(stem) = path
+            .extension()
+            .filter(|extension| *extension == "mmd")
+            .and_then(|_| path.file_stem())
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| stem.starts_with("upstream_cypress_flowchart_elk_spec_"))
+            .filter(|stem| crate::cmd::flowchart_elk_svg_parity_admitted(stem))
+        else {
+            continue;
+        };
+        let source = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        identities
+            .entry(canonical_flowchart_elk_source_body_key(&source))
+            .or_default()
+            .push(stem.to_string());
+    }
+    for stems in identities.values_mut() {
+        stems.sort();
+    }
+    Ok(identities)
+}
+
 fn collect_flowchart_elk_spec_snapshot_cases(
     spec: &str,
 ) -> Result<Vec<FlowchartElkSpecCase>, XtaskError> {
     let source_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk("flowchart-elk spec"), 48);
+    let existing_identities = existing_flowchart_elk_source_identities()?;
     let mut cases = Vec::new();
-    let it_positions = collect_flowchart_elk_it_positions(spec);
-    let bytes = spec.as_bytes();
-    let mut idx_in_file = 0usize;
+    let extraction =
+        crate::cmd::javascript_source::extract_cypress_render_cases(spec).map_err(|reason| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to parse the Flowchart ELK source as TypeScript: {reason}"
+            ))
+        })?;
+    if !extraction.unsupported.is_empty() {
+        let diagnostics = extraction
+            .unsupported
+            .iter()
+            .map(|diagnostic| {
+                format!(
+                    "{} at byte {}: {}",
+                    diagnostic.helper.as_str(),
+                    diagnostic.start_byte,
+                    diagnostic.reason
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(XtaskError::SnapshotUpdateFailed(format!(
+            "Flowchart ELK source contains calls that cannot be audited statically: {diagnostics}"
+        )));
+    }
 
-    for (call, needle) in [
-        ("imgSnapshotTest", "imgSnapshotTest"),
-        ("renderGraph", "renderGraph"),
-    ] {
-        let mut search_from = 0usize;
-        while let Some(abs) = find_flowchart_elk_call(spec, needle, search_from) {
-            let current_it = flowchart_elk_test_at(&it_positions, abs);
-            let skipped_it = current_it.is_some_and(|it| it.skipped);
-            if skipped_it {
-                search_from = abs + needle.len();
-                continue;
-            }
-
-            let after_call = abs + needle.len();
-            let mut open_paren = after_call;
-            while bytes
-                .get(open_paren)
-                .is_some_and(|b| is_flowchart_elk_ws_byte(*b))
-            {
-                open_paren += 1;
-            }
-            if bytes.get(open_paren) != Some(&b'(') {
-                search_from = after_call;
-                continue;
-            }
-            let Some(close_paren) = find_flowchart_elk_matching_paren(spec, open_paren) else {
-                search_from = open_paren + 1;
-                continue;
-            };
-
-            let args_slice = &spec[(open_paren + 1)..close_paren];
-            let use_last_template =
-                call == "renderGraph" && args_slice.trim_start().starts_with('[');
-            let extracted = if use_last_template {
-                extract_flowchart_elk_last_template_literal(args_slice, 0)
-            } else {
-                extract_flowchart_elk_first_template_literal(args_slice, 0)
-            };
-
-            if let Some((body, _end_rel)) = extracted {
-                let case_name = current_it
-                    .map(|it| it.name.clone())
-                    .unwrap_or_else(|| "example".to_string());
-                let test_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk(&case_name), 64);
-                let flowchart_elk_source = body.contains("flowchart-elk");
-                let elk_config_source = body.contains("layout: elk")
-                    || body.contains("layout: 'elk'")
-                    || args_slice.contains("layout: 'elk'")
-                    || args_slice.contains("layout: \"elk\"")
-                    || args_slice.contains("defaultRenderer: 'elk'")
-                    || args_slice.contains("defaultRenderer: \"elk\"");
-                if flowchart_elk_source || elk_config_source {
-                    cases.push(FlowchartElkSpecCase {
-                        case_number: idx_in_file + 1,
-                        test_name: case_name,
-                        stem: format!(
-                            "upstream_cypress_{source_slug}_{test_slug}_{case_index:03}",
-                            case_index = idx_in_file + 1
-                        ),
-                        layout_body_key: canonical_flowchart_elk_layout_body_key(&body),
-                        call,
-                        snapshot: call == "imgSnapshotTest",
-                    });
-                }
-                idx_in_file += 1;
-                search_from = close_paren + 1;
-                continue;
-            }
-
-            search_from = close_paren + 1;
+    for (source_index, render_case) in extraction.cases.into_iter().enumerate() {
+        if !flowchart_elk_requested(&render_case.diagram, &render_case.options) {
+            continue;
         }
+        let fixture_source = crate::cmd::import::materialize_cypress_fixture_source(
+            &render_case.diagram,
+            render_case.helper,
+            &render_case.options,
+        )
+        .map_err(|reason| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to materialize a Flowchart ELK source case: {reason}"
+            ))
+        })?;
+        let case_name = render_case
+            .test_name
+            .unwrap_or_else(|| "example".to_string());
+        let test_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk(&case_name), 64);
+        let call = render_case.helper.as_str();
+        let prefix = format!("upstream_cypress_{source_slug}_{test_slug}_");
+        let source_body_key = canonical_flowchart_elk_source_body_key(&fixture_source);
+        let existing_stems = existing_identities
+            .get(&source_body_key)
+            .into_iter()
+            .flatten()
+            .filter(|stem| stem.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        let stem = match existing_stems.as_slice() {
+            [existing] => (*existing).clone(),
+            _ => format!(
+                "{prefix}{}",
+                crate::cmd::import::imported_fixture_content_id(&fixture_source)
+            ),
+        };
+        cases.push(FlowchartElkSpecCase {
+            case_number: source_index + 1,
+            test_name: case_name,
+            stem,
+            layout_body_key: canonical_flowchart_elk_layout_body_key(&fixture_source),
+            call,
+            snapshot: matches!(
+                render_case.helper,
+                crate::cmd::javascript_source::CypressRenderHelper::ImgSnapshotTest
+            ),
+        });
     }
 
     Ok(cases)
 }
 
-#[derive(Debug)]
-struct FlowchartElkItPos {
-    pos: usize,
-    name: String,
-    skipped: bool,
-}
-
-fn collect_flowchart_elk_it_positions(spec: &str) -> Vec<FlowchartElkItPos> {
-    let Ok(re) = Regex::new(r#"\b(it|it\.skip)\s*\(\s*'([^']*)'"#) else {
-        return Vec::new();
-    };
-    re.captures_iter(spec)
-        .filter_map(|caps| {
-            let matched = caps.get(0)?;
-            Some(FlowchartElkItPos {
-                pos: matched.start(),
-                name: caps.get(2)?.as_str().to_string(),
-                skipped: caps.get(1)?.as_str() == "it.skip",
+fn flowchart_elk_requested(body: &str, options: &serde_json::Value) -> bool {
+    value_path_is_elk(options, &["layout"])
+        || value_path_is_elk(options, &["flowchart", "defaultRenderer"])
+        || split_flowchart_elk_yaml_frontmatter(body)
+            .and_then(|(yaml, _)| serde_saphyr::from_str::<serde_json::Value>(yaml).ok())
+            .is_some_and(|frontmatter| {
+                value_path_is_elk(&frontmatter, &["config", "layout"])
+                    || value_path_is_elk(&frontmatter, &["config", "flowchart", "defaultRenderer"])
             })
-        })
-        .collect()
+        || first_flowchart_directive(body).is_some_and(|directive| directive == "flowchart-elk")
 }
 
-fn flowchart_elk_test_at(
-    it_positions: &[FlowchartElkItPos],
-    abs: usize,
-) -> Option<&FlowchartElkItPos> {
-    let mut current = None;
-    for it in it_positions {
-        if it.pos > abs {
-            break;
-        }
-        if it.pos < abs {
-            current = Some(it);
-        }
-    }
-    current
+fn value_path_is_elk(value: &serde_json::Value, path: &[&str]) -> bool {
+    path.iter()
+        .try_fold(value, |value, key| value.get(*key))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|renderer| renderer.eq_ignore_ascii_case("elk"))
 }
 
-fn is_flowchart_elk_ident_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
-}
-
-fn is_flowchart_elk_ws_byte(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | b'\r')
-}
-
-fn find_flowchart_elk_call(text: &str, needle: &str, from: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let needle_bytes = needle.as_bytes();
-    let mut i = from;
-    while i + needle_bytes.len() <= bytes.len() {
-        if &bytes[i..i + needle_bytes.len()] == needle_bytes {
-            let before_ok = i == 0 || !is_flowchart_elk_ident_byte(bytes[i - 1]);
-            let after = i + needle_bytes.len();
-            let after_ok = after >= bytes.len() || !is_flowchart_elk_ident_byte(bytes[after]);
-            if before_ok && after_ok {
-                return Some(i);
-            }
-        }
-        i += 1;
-    }
-    None
-}
-
-fn find_flowchart_elk_matching_paren(text: &str, open_paren: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    if bytes.get(open_paren) != Some(&b'(') {
-        return None;
-    }
-
-    let mut mode = JsScanMode::Normal;
-    let mut depth: i32 = 1;
-    let mut escaped = false;
-    let mut i = open_paren + 1;
-    while i < bytes.len() {
-        let byte = bytes[i];
-        match mode {
-            JsScanMode::Normal => {
-                if byte == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                    mode = JsScanMode::LineComment;
-                    i += 2;
-                    continue;
-                }
-                if byte == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                    mode = JsScanMode::BlockComment;
-                    i += 2;
-                    continue;
-                }
-                if byte == b'\'' {
-                    mode = JsScanMode::SingleQuote;
-                    escaped = false;
-                } else if byte == b'"' {
-                    mode = JsScanMode::DoubleQuote;
-                    escaped = false;
-                } else if byte == b'`' {
-                    mode = JsScanMode::Template;
-                    escaped = false;
-                } else if byte == b'(' {
-                    depth += 1;
-                } else if byte == b')' {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                }
-                i += 1;
-            }
-            JsScanMode::SingleQuote => {
-                update_js_string_mode(byte, b'\'', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::DoubleQuote => {
-                update_js_string_mode(byte, b'"', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::Template => {
-                update_js_string_mode(byte, b'`', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::LineComment => {
-                if byte == b'\n' {
-                    mode = JsScanMode::Normal;
-                }
-                i += 1;
-            }
-            JsScanMode::BlockComment => {
-                if byte == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                    mode = JsScanMode::Normal;
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-        }
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum JsScanMode {
-    Normal,
-    SingleQuote,
-    DoubleQuote,
-    Template,
-    LineComment,
-    BlockComment,
-}
-
-fn update_js_string_mode(byte: u8, quote: u8, mode: &mut JsScanMode, escaped: &mut bool) {
-    if *escaped {
-        *escaped = false;
-    } else if byte == b'\\' {
-        *escaped = true;
-    } else if byte == quote {
-        *mode = JsScanMode::Normal;
-    }
-}
-
-fn extract_flowchart_elk_first_template_literal(
-    input: &str,
-    start: usize,
-) -> Option<(String, usize)> {
-    let bytes = input.as_bytes();
-    let mut i = start;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            return parse_flowchart_elk_template_literal(input, i);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn extract_flowchart_elk_last_template_literal(
-    input: &str,
-    start: usize,
-) -> Option<(String, usize)> {
-    let mut cursor = start;
-    let mut last = None;
-    while let Some((value, end)) = extract_flowchart_elk_first_template_literal(input, cursor) {
-        last = Some((value, end));
-        cursor = end;
-    }
-    last
-}
-
-fn parse_flowchart_elk_template_literal(input: &str, start: usize) -> Option<(String, usize)> {
-    let bytes = input.as_bytes();
-    if bytes.get(start) != Some(&b'`') {
-        return None;
-    }
-    let mut out = String::new();
-    let mut escaped = false;
-    let mut i = start + 1;
-    while i < bytes.len() {
-        let byte = bytes[i];
-        if escaped {
-            match byte {
-                b'n' => out.push('\n'),
-                b'r' => out.push('\r'),
-                b't' => out.push('\t'),
-                b'`' => out.push('`'),
-                b'\\' => out.push('\\'),
-                _ => out.push(byte as char),
-            }
-            escaped = false;
-            i += 1;
-            continue;
-        }
-        if byte == b'\\' {
-            escaped = true;
-            i += 1;
-            continue;
-        }
-        if byte == b'`' {
-            return Some((out, i + 1));
-        }
-        out.push(byte as char);
-        i += 1;
-    }
-    None
+fn first_flowchart_directive(input: &str) -> Option<&str> {
+    let body = split_flowchart_elk_yaml_frontmatter(input)
+        .map(|(_, body)| body)
+        .unwrap_or(input);
+    body.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("%%"))
+        .and_then(|line| line.split_ascii_whitespace().next())
 }
 
 fn slugify_flowchart_elk(input: &str) -> String {
@@ -1108,38 +955,131 @@ fn clamp_flowchart_elk_slug(mut slug: String, max_len: usize) -> String {
 }
 
 fn canonical_flowchart_elk_layout_body_key(input: &str) -> String {
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
-    let body = strip_flowchart_elk_yaml_frontmatter(normalized.trim_start())
-        .trim_matches(|ch: char| ch.is_whitespace())
-        .replace("flowchart-elk", "flowchart");
-
-    body.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    canonical_flowchart_elk_body_key(input, true)
 }
 
-fn strip_flowchart_elk_yaml_frontmatter(input: &str) -> &str {
-    let mut pieces = input.split_inclusive('\n');
-    let Some(first_piece) = pieces.next() else {
-        return input;
+fn canonical_flowchart_elk_source_body_key(input: &str) -> String {
+    canonical_flowchart_elk_body_key(input, false)
+}
+
+fn canonical_flowchart_elk_body_key(input: &str, ignore_renderer_selection: bool) -> String {
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let (frontmatter, body) = split_flowchart_elk_yaml_frontmatter(&normalized)
+        .map(|(yaml, body)| (Some(yaml), body))
+        .unwrap_or((None, normalized.as_str()));
+    let mut value = match frontmatter {
+        Some(yaml) => match serde_saphyr::from_str::<serde_json::Value>(yaml) {
+            Ok(serde_json::Value::Null) => serde_json::Value::Object(serde_json::Map::new()),
+            Ok(value) => value,
+            Err(_) => {
+                return format!(
+                    "frontmatter:raw:{yaml}\nbody:{}",
+                    normalize_flowchart_elk_directive(body).trim_matches('\n')
+                );
+            }
+        },
+        None => serde_json::Value::Object(serde_json::Map::new()),
     };
+    crate::cmd::import::canonicalize_imported_config_value(&mut value);
+    let frontmatter_key = {
+        if ignore_renderer_selection {
+            remove_elk_renderer_path(&mut value, &["config", "layout"]);
+            remove_elk_renderer_path(&mut value, &["config", "flowchart", "defaultRenderer"]);
+        }
+        prune_empty_json_objects(&mut value);
+        if value.as_object().is_some_and(serde_json::Map::is_empty) {
+            String::new()
+        } else {
+            serde_json::to_string(&value).unwrap_or_default()
+        }
+    };
+    let body = normalize_flowchart_elk_directive(body)
+        .trim_matches('\n')
+        .to_string();
+    format!("frontmatter:{frontmatter_key}\nbody:{body}")
+}
+
+fn split_flowchart_elk_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
+    let mut pieces = input.split_inclusive('\n');
+    let first_piece = pieces.next()?;
     let first_line = first_piece.trim_end_matches(['\n', '\r']);
     if first_line.trim() != "---" {
-        return input;
+        return None;
     }
 
     let mut consumed = first_piece.len();
     for piece in pieces {
+        let yaml_end = consumed;
         consumed += piece.len();
         let line = piece.trim_end_matches(['\n', '\r']);
         if line.trim() == "---" {
-            return &input[consumed..];
+            return Some((&input[first_piece.len()..yaml_end], &input[consumed..]));
         }
     }
 
-    input
+    None
+}
+
+fn remove_elk_renderer_path(value: &mut serde_json::Value, path: &[&str]) {
+    let Some((last, parents)) = path.split_last() else {
+        return;
+    };
+    let mut current = value;
+    for key in parents {
+        let Some(next) = current.get_mut(*key) else {
+            return;
+        };
+        current = next;
+    }
+    let should_remove = current
+        .get(*last)
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|renderer| renderer.eq_ignore_ascii_case("elk"));
+    if should_remove && let Some(object) = current.as_object_mut() {
+        object.remove(*last);
+    }
+}
+
+fn prune_empty_json_objects(value: &mut serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(object) => {
+            object.retain(|_, child| !prune_empty_json_objects(child));
+            object.is_empty()
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                prune_empty_json_objects(child);
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn normalize_flowchart_elk_directive(body: &str) -> String {
+    let mut normalized = String::with_capacity(body.len());
+    let mut replaced = false;
+    for line in body.split_inclusive('\n') {
+        if !replaced {
+            let trimmed = line.trim_start();
+            if !trimmed.is_empty() && !trimmed.starts_with("%%") {
+                let indentation = line.len() - trimmed.len();
+                if trimmed
+                    .strip_prefix("flowchart-elk")
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+                {
+                    normalized.push_str(&line[..indentation]);
+                    normalized.push_str("flowchart");
+                    normalized.push_str(&trimmed["flowchart-elk".len()..]);
+                    replaced = true;
+                    continue;
+                }
+                replaced = true;
+            }
+        }
+        normalized.push_str(line);
+    }
+    normalized
 }
 
 #[cfg(test)]
@@ -1253,88 +1193,195 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_coverage_collector_tracks_snapshot_and_render_graph_cases() {
+    fn flowchart_elk_coverage_uses_helper_contracts_and_structured_config() {
         let spec = r#"
-it('first elk snapshot', () => {
-  imgSnapshotTest(cy, `flowchart-elk
+it('directive', () => {
+  imgSnapshotTest(`flowchart-elk LR
     A --> B`);
 });
-
-it.skip('skipped elk snapshot', () => {
-  imgSnapshotTest(cy, `flowchart-elk
-    skipped --> ignored`);
+it.skip('skipped', () => {
+  imgSnapshotTest(`flowchart-elk LR
+    WRONG --> B`);
 });
-
-it('renderGraph elk config', () => {
-  renderGraph([
-    'fixture',
-    `flowchart LR
-      C --> D`
-  ], { layout: 'elk' });
+it('layout option', () => {
+  renderGraph(`flowchart LR
+    C --> D`, { layout: 'elk' });
 });
-
-it('renderGraph defaultRenderer elk config', () => {
-  renderGraph(
-    `flowchart TD
-      E --> F`,
-    { flowchart: { defaultRenderer: 'elk' } }
-  );
+it('renderer option', () => {
+  renderGraph(`flowchart TD
+    E --> F`, { flowchart: { defaultRenderer: 'elk' } });
 });
 "#;
 
         let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
-            .expect("inline flowchart-elk spec should parse");
+            .expect("static Flowchart ELK calls should be auditable");
 
         assert_eq!(cases.len(), 3);
         assert_eq!(cases[0].case_number, 1);
-        assert_eq!(cases[0].test_name, "first elk snapshot");
-        assert_eq!(
-            cases[0].stem,
-            "upstream_cypress_flowchart_elk_spec_first_elk_snapshot_001"
-        );
+        assert_eq!(cases[0].test_name, "directive");
         assert_eq!(cases[0].call, "imgSnapshotTest");
         assert!(cases[0].snapshot);
-        assert_eq!(cases[0].layout_body_key, "flowchart\nA --> B");
-
         assert_eq!(cases[1].case_number, 2);
-        assert_eq!(cases[1].test_name, "renderGraph elk config");
-        assert_eq!(
-            cases[1].stem,
-            "upstream_cypress_flowchart_elk_spec_rendergraph_elk_config_002"
-        );
         assert_eq!(cases[1].call, "renderGraph");
         assert!(!cases[1].snapshot);
-        assert_eq!(cases[1].layout_body_key, "flowchart LR\nC --> D");
-
         assert_eq!(cases[2].case_number, 3);
-        assert_eq!(cases[2].test_name, "renderGraph defaultRenderer elk config");
-        assert_eq!(
-            cases[2].stem,
-            "upstream_cypress_flowchart_elk_spec_rendergraph_defaultrenderer_elk_config_003"
-        );
-        assert_eq!(cases[2].call, "renderGraph");
-        assert!(!cases[2].snapshot);
-        assert_eq!(cases[2].layout_body_key, "flowchart TD\nE --> F");
     }
 
     #[test]
-    fn flowchart_elk_layout_body_key_tracks_equivalent_layout_inputs() {
-        let flowchart_elk = r#"
----
+    fn flowchart_elk_source_identity_ignores_unrelated_helper_insertions() {
+        let original = r#"
+it('stable snapshot', () => {
+  imgSnapshotTest('flowchart-elk LR\nC --> D');
+});
+"#;
+        let with_unrelated_call = r#"
+it('unrelated render', () => {
+  renderGraph('flowchart-elk LR\nA --> B');
+});
+it('stable snapshot', () => {
+  imgSnapshotTest('flowchart-elk LR\nC --> D');
+});
+"#;
+
+        let original = collect_flowchart_elk_spec_snapshot_cases(original)
+            .expect("original source should be auditable");
+        let with_unrelated_call = collect_flowchart_elk_spec_snapshot_cases(with_unrelated_call)
+            .expect("updated source should be auditable");
+        let stable = with_unrelated_call
+            .iter()
+            .find(|case| case.test_name == "stable snapshot")
+            .expect("stable case should remain present");
+
+        assert_eq!(original[0].stem, stable.stem);
+        assert_eq!(original[0].layout_body_key, stable.layout_body_key);
+    }
+
+    #[test]
+    fn flowchart_elk_coverage_rejects_dynamic_or_multi_diagram_calls() {
+        let dynamic = r#"
+it('dynamic', () => {
+  renderGraph(graph, { layout: 'elk' });
+});
+"#;
+        let error = collect_flowchart_elk_spec_snapshot_cases(dynamic)
+            .expect_err("dynamic graph must make the coverage audit incomplete");
+        assert!(error.to_string().contains("cannot be audited statically"));
+
+        let multiple = r#"
+it('multiple', () => {
+  renderGraph(['flowchart LR\nA-->B', 'flowchart LR\nB-->C'], { layout: 'elk' });
+});
+"#;
+        let error = collect_flowchart_elk_spec_snapshot_cases(multiple)
+            .expect_err("multi-diagram rendering has no single-fixture equivalent");
+        assert!(error.to_string().contains("multiple diagrams"));
+    }
+
+    #[test]
+    fn flowchart_elk_detection_does_not_match_labels_or_comments() {
+        let spec = r#"
+it('label', () => {
+  renderGraph(`flowchart LR
+    A["layout: elk"] --> B`, {});
+});
+it('comment', () => {
+  renderGraph(`flowchart LR
+    %% flowchart-elk
+    C --> D`, {});
+});
+"#;
+
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("static non-ELK calls should remain auditable");
+        assert!(cases.is_empty());
+    }
+
+    #[test]
+    fn flowchart_elk_layout_identity_preserves_non_renderer_config() {
+        let renderer_only = r#"---
 config:
-  htmlLabels: true
+  layout: elk
 ---
-flowchart-elk LR
+flowchart LR
   A --> B
 "#;
-        let default_renderer = r#"
+        let directive = "flowchart-elk LR\n  A --> B\n";
+        assert_eq!(
+            canonical_flowchart_elk_layout_body_key(renderer_only),
+            canonical_flowchart_elk_layout_body_key(directive)
+        );
+
+        let html_labels = r#"---
+config:
+  layout: elk
+  htmlLabels: true
+---
+flowchart LR
+  A --> B
+"#;
+        assert_ne!(
+            canonical_flowchart_elk_layout_body_key(html_labels),
+            canonical_flowchart_elk_layout_body_key(directive)
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_layout_identity_applies_static_helper_options() {
+        let spec = r#"
+it('zero margin', () => {
+  imgSnapshotTest(`flowchart LR
+    A --> B`, { layout: 'elk', flowchart: { titleTopMargin: 0 } });
+});
+it('wide margin', () => {
+  imgSnapshotTest(`flowchart LR
+    A --> B`, { layout: 'elk', flowchart: { titleTopMargin: 40 } });
+});
+"#;
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("static helper options should be part of the layout identity");
+        let imported = r#"---
+config:
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+  fontFamily: courier
+  fontSize: 16px
+  handDrawnSeed: 1
+  layout: elk
+  flowchart:
+    titleTopMargin: 0
+  sequence:
+    actorFontFamily: courier
+    messageFontFamily: courier
+    noteFontFamily: courier
+---
 flowchart LR
     A --> B
 "#;
 
+        assert_eq!(cases.len(), 2);
         assert_eq!(
-            canonical_flowchart_elk_layout_body_key(flowchart_elk),
-            canonical_flowchart_elk_layout_body_key(default_renderer)
+            cases[0].layout_body_key,
+            canonical_flowchart_elk_layout_body_key(imported)
         );
+        assert_ne!(cases[0].layout_body_key, cases[1].layout_body_key);
+    }
+
+    #[test]
+    fn flowchart_elk_coverage_preserves_unicode_and_escape_semantics() {
+        let spec = r#"
+it('unicode', () => {
+  imgSnapshotTest(`flowchart-elk LR
+    开始 --> 完成🚀
+    A["\u007D \uD83D\uDE0E"]`);
+});
+"#;
+
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("Unicode literal should be statically auditable");
+        assert_eq!(cases.len(), 1);
+        assert!(cases[0].layout_body_key.contains("开始 --> 完成🚀"));
+        assert!(cases[0].layout_body_key.contains("A[\"} 😎\"]"));
     }
 }

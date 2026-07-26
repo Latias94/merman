@@ -970,7 +970,6 @@ fn parse_pipeline(
         }
     };
     let mut components = Vec::new();
-    let mut saw_component = false;
 
     loop {
         if offset >= code.len() {
@@ -993,15 +992,6 @@ fn parse_pipeline(
         let visible = strip_langium_inline_comment(line);
         let trimmed_line = visible.trim();
         if trimmed_line.is_empty() {
-            if saw_component {
-                remember_wardley_problem(
-                    &mut first_problem,
-                    WardleyParseProblem::new(
-                        "unexpected blank line inside wardley pipeline components",
-                        SourceSpan::new(line_start, line_start + line.len()),
-                    ),
-                );
-            }
             continue;
         }
         let leading = visible.len() - visible.trim_start().len();
@@ -1062,7 +1052,6 @@ fn parse_pipeline(
             }
             Err(problem) => remember_wardley_problem(&mut first_problem, problem),
         }
-        saw_component = true;
     }
 }
 
@@ -1491,8 +1480,8 @@ fn parse_optional_strategy(
         return Ok(None);
     }
     let start = cursor.absolute();
-    cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
     let Some(close) = cursor.remaining().find(')') else {
+        cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
         cursor
             .lexemes
             .literal(SourceSpan::new(start + 1, cursor.base + cursor.input.len()));
@@ -1508,6 +1497,10 @@ fn parse_optional_strategy(
         start + 1 + token_leading,
         start + 1 + token_leading + token.len(),
     );
+    if token == "inertia" {
+        return Ok(None);
+    }
+    cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
     cursor
         .lexemes
         .delimiter(SourceSpan::new(start + close, start + close + 1));
@@ -1516,7 +1509,6 @@ fn parse_optional_strategy(
         "buy" => WardleySourceStrategy::Buy,
         "outsource" => WardleySourceStrategy::Outsource,
         "market" => WardleySourceStrategy::Market,
-        "inertia" => return Ok(None),
         _ => {
             cursor.lexemes.literal(token_span);
             return Err(WardleyParseProblem::new(
@@ -1541,17 +1533,44 @@ fn parse_optional_inertia(
         cursor.lexemes.keyword(span);
         return Ok(Some(span));
     }
-    if cursor.remaining().starts_with("(inertia)") {
-        cursor.pos += "(inertia)".len();
-        let keyword = SourceSpan::new(start + 1, start + 1 + "inertia".len());
-        cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
-        cursor.lexemes.keyword(keyword);
-        cursor
-            .lexemes
-            .delimiter(SourceSpan::new(keyword.end, keyword.end + 1));
-        return Ok(Some(keyword));
+    if !cursor.remaining().starts_with('(') {
+        return Ok(None);
     }
-    Ok(None)
+
+    cursor.pos += 1;
+    cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
+    cursor.skip_ws();
+    let keyword_start = cursor.absolute();
+    let Some(after_keyword) = cursor.remaining().strip_prefix("inertia") else {
+        return Err(WardleyParseProblem::new(
+            "expected inertia inside wardley component inertia annotation",
+            SourceSpan::new(keyword_start, keyword_start),
+        ));
+    };
+    if after_keyword
+        .chars()
+        .next()
+        .is_some_and(|ch| !matches!(ch, ' ' | '\t' | ')'))
+    {
+        return Err(WardleyParseProblem::new(
+            "expected inertia inside wardley component inertia annotation",
+            SourceSpan::new(keyword_start, keyword_start + "inertia".len()),
+        ));
+    }
+    cursor.pos += "inertia".len();
+    let keyword = SourceSpan::new(keyword_start, keyword_start + "inertia".len());
+    cursor.lexemes.keyword(keyword);
+    cursor.skip_ws();
+    let close = cursor.absolute();
+    if !cursor.remaining().starts_with(')') {
+        return Err(WardleyParseProblem::new(
+            "expected ')' after wardley component inertia annotation",
+            SourceSpan::new(close, close),
+        ));
+    }
+    cursor.pos += 1;
+    cursor.lexemes.delimiter(SourceSpan::new(close, close + 1));
+    Ok(Some(keyword))
 }
 
 fn parse_evolve(
@@ -2108,7 +2127,7 @@ fn is_valid_wardley_bare_name(name: &str) -> bool {
         return id || spaced_name_atom;
     }
 
-    let mut words = name.split([' ', '\t']);
+    let mut words = name.split([' ', '\t']).filter(|word| !word.is_empty());
     let Some(first_word) = words.next() else {
         return false;
     };
@@ -2122,11 +2141,9 @@ fn is_valid_wardley_bare_name(name: &str) -> bool {
         return false;
     }
     words.all(|word| {
-        !word.is_empty()
-            && word
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '(')
+        word.chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '(')
             && word.chars().all(is_name_continuation)
     })
 }
@@ -2957,6 +2974,41 @@ batch-loader->end-user
         assert_eq!(model.links[0].source, "real-time processing");
         assert_eq!(model.links[0].target, "end-user");
         assert_eq!(model.links[2].source, batch.id);
+    }
+
+    #[test]
+    fn allows_blank_and_comment_lines_between_pipeline_components() {
+        let model = parse(
+            r#"wardley-beta
+component Platform [0.5, 0.5]
+pipeline Platform {
+  component First [0.2]
+
+  %% components may be separated by hidden comments
+  component Second [0.8]
+}
+"#,
+        );
+
+        assert_eq!(
+            model.pipelines[0].component_ids,
+            ["Platform_First", "Platform_Second"]
+        );
+    }
+
+    #[test]
+    fn preserves_consecutive_horizontal_whitespace_in_unquoted_names() {
+        let model = parse("wardley-beta\ncomponent Data  \t Platform [0.5, 0.5]\n");
+
+        assert_eq!(model.nodes[0].id, "Data  \t Platform");
+        assert_eq!(model.nodes[0].label, "Data  \t Platform");
+    }
+
+    #[test]
+    fn allows_hidden_whitespace_inside_parenthesized_inertia() {
+        let model = parse("wardley-beta\ncomponent API [0.5, 0.5] ( \t inertia \t )\n");
+
+        assert_eq!(model.nodes[0].inertia, Some(true));
     }
 
     #[test]

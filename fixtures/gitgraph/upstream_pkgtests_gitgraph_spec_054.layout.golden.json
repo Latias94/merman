@@ -169,7 +169,7 @@
           "y": 178.0
         },
         {
-          "id": "new feature for v1.1â¦",
+          "id": "new feature for v1.1…",
           "message": "",
           "seq": 8.0,
           "commit_type": 0.0,
@@ -264,7 +264,7 @@
           "custom_id": null,
           "tags": [],
           "parents": [
-            "new feature for v1.1â¦"
+            "new feature for v1.1…"
           ],
           "branch": "main",
           "pos": 600.0,
@@ -318,7 +318,7 @@
         },
         {
           "from": "design freeze from here",
-          "to": "new feature for v1.1â¦",
+          "to": "new feature for v1.1…",
           "class_index": 0.0,
           "d": "M 110 -2 L 360 -2"
         },
@@ -347,7 +347,7 @@
           "d": "M 260 88 L 560 88"
         },
         {
-          "from": "new feature for v1.1â¦",
+          "from": "new feature for v1.1…",
           "to": "work on v1.1",
           "class_index": 0.0,
           "d": "M 360 -2 L 610 -2"

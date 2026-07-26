@@ -1052,6 +1052,12 @@ fn dayjs_strict_parses_month_names_and_offsets() {
 }
 
 #[test]
+fn gantt_date_parsers_reject_utf8_at_byte_cutoffs_without_panicking() {
+    assert!(parse_dayjs_like_strict("YYYY", "你好").is_none());
+    assert!(parse_js_date_fallback("2024-01-01T00:你").is_err());
+}
+
+#[test]
 fn gantt_js_date_fallback_parses_iso_date_only_as_utc() {
     let model = parse(
         r#"

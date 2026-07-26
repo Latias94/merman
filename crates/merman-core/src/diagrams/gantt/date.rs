@@ -134,6 +134,20 @@ struct DayjsParsedParts {
     unix_ms: Option<i64>,
 }
 
+/// Splits `s` at `byte_idx`, clamping down to the nearest valid char boundary
+/// so this never panics on multi-byte (e.g. non-ASCII task label) input.
+///
+/// Callers that expect an ASCII-digit run at this position still validate the
+/// result afterwards (`is_ascii_digit`/`parse`), so a clamped, shorter-than-
+/// requested `head` is simply rejected by that validation instead of panicking.
+fn split_at_char_boundary(s: &str, byte_idx: usize) -> (&str, &str) {
+    let mut idx = byte_idx.min(s.len());
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    s.split_at(idx)
+}
+
 pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> {
     let fmt = date_format.trim();
     if fmt.is_empty() {
@@ -169,8 +183,8 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
         if s.len() < digits {
             return None;
         }
-        let (head, tail) = s.split_at(digits);
-        if !head.chars().all(|c| c.is_ascii_digit()) {
+        let (head, tail) = split_at_char_boundary(s, digits);
+        if head.len() != digits || !head.chars().all(|c| c.is_ascii_digit()) {
             return None;
         }
         let v = head.parse().ok()?;
@@ -677,14 +691,14 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
             return None;
         };
 
-        let (hh_str, rest) = rest.split_at(2.min(rest.len()));
+        let (hh_str, rest) = split_at_char_boundary(rest, 2);
         let hh = parse_u32(hh_str)? as i32;
 
         let (mm, rest) = if let Some(rest) = rest.strip_prefix(':') {
-            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            let (mm_str, rest) = split_at_char_boundary(rest, 2);
             (parse_u32(mm_str)? as i32, rest)
         } else {
-            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            let (mm_str, rest) = split_at_char_boundary(rest, 2);
             (parse_u32(mm_str)? as i32, rest)
         };
 
@@ -755,14 +769,14 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
     let (hh_str, rest2) = split_once(rest, ':')?;
     let hour = parse_u32(hh_str)?;
     let (mm_str, mut rest3) = {
-        let (mm_str, rest) = rest2.split_at(2.min(rest2.len()));
+        let (mm_str, rest) = split_at_char_boundary(rest2, 2);
         (mm_str, rest)
     };
     let minute = parse_u32(mm_str)?;
 
     if let Some(r) = rest3.strip_prefix(':') {
         let (ss_str, mut rest4) = {
-            let (ss_str, rest) = r.split_at(2.min(r.len()));
+            let (ss_str, rest) = split_at_char_boundary(r, 2);
             (ss_str, rest)
         };
         second = parse_u32(ss_str)?;

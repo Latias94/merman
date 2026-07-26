@@ -11,7 +11,7 @@ Scope: Mermaid tag `@11.16.0`.
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/parser/quadrant.jison.spec.ts`
 
 - header only: `fixtures/quadrantchart/upstream_quadrant_header_only_jison_spec.mmd`
-- missing right/top side appends ` ? ` to left/bottom: `fixtures/quadrantchart/upstream_quadrant_axes_missing_side_jison_spec.mmd`
+- missing right/top side appends ` ⟶ ` to left/bottom while preserving `❤`: `fixtures/quadrantchart/upstream_quadrant_axes_missing_side_jison_spec.mmd`
 - title raw capture (no string parsing): `fixtures/quadrantchart/upstream_quadrant_title_raw_jison_spec.mmd`
 - whole chart (basic points): `fixtures/quadrantchart/upstream_quadrant_whole_chart_jison_spec.mmd`
 - whole chart (point styles): `fixtures/quadrantchart/upstream_quadrant_whole_chart_point_styles_jison_spec.mmd`

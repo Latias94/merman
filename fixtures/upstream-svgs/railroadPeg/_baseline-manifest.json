@@ -48,8 +48,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009": {
-      "input_sha256": "c35baff65d9d519cc69bad54f7100cac550dc9a3317533edbadd18275dbf4ef6",
-      "svg_sha256": "f81db88c7b9622ddf04a68ddbdec0a3573a074bed055da8bb5c7a73acae63ab4",
+      "input_sha256": "e2be125ab757a91ed05c46d95b40533a422b9617bcc96d3323889dfe97fdf8d7",
+      "svg_sha256": "da220d8adebfb7267eed7c5a13da24bc0f8823b15ad828d0606354179d862be4",
       "renderer_profile": "mmdc-default"
     }
   },

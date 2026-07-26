@@ -408,8 +408,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037": {
-      "input_sha256": "a553424a954a63cc0fa348cbd5d6ec1688d203cf96ff10b488728e8d26695d93",
-      "svg_sha256": "099198bc509137bf604ffe74fed10d88aba5b3fb0d5b9ec7b03207d5e567b292",
+      "input_sha256": "8bf75bf2d364a9e523d39e1019394a3b0e3f185d949fd607585b85f74fb63be3",
+      "svg_sha256": "e762a713d360a6b2b4e07e68c5ba9d7f9859d27fe0be8ad9aeb346293354b8c1",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classlabel_if_class_has_already_been_defined_e_038": {
@@ -448,8 +448,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037": {
-      "input_sha256": "a30caeb9a7fa8568d99a644a1c7f7e0e664ef2e291c3be8ff9606f03a1f108fd",
-      "svg_sha256": "0531a3683e9d58283b21dcde9f6dbd46fb540a1e87d3d31efa5bce0bbbae5b86",
+      "input_sha256": "8c5c676ca78ec3b2fd2e92702cc00edd58cc10cca54a09a220cfdfd2b1b6966b",
+      "svg_sha256": "f10dad58f8e887dd448f9d58fcc7a6e74208abf58540fd51437d2ccc7f560bd7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classlabel_if_class_has_already_been_defined_ea_038": {

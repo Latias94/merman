@@ -11,7 +11,7 @@ use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
-use super::label::class_note_html_div_style;
+use super::label::{class_math_html_label, class_note_html_div_style};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
@@ -24,6 +24,8 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
@@ -204,7 +206,7 @@ pub(super) fn render_class_note_node(
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}"><p>"##,
+            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
             note_node_class,
             escape_attr_display(&note_node_id),
             note_data_look_attr,
@@ -225,12 +227,16 @@ pub(super) fn render_class_note_node(
             sanitize_config,
             ctx.effective_config,
         );
-        let note_html = crate::class::class_note_html_fragment(note_src, note_html_config);
+        let note_html = class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
+            .unwrap_or_else(|| {
+                let html = crate::class::class_note_html_fragment(note_src, note_html_config);
+                format!("<p>{html}</p>")
+            });
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
         }
         out.push_str(&note_html);
-        out.push_str("</p></span></div></foreignObject></g></g>");
+        out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(

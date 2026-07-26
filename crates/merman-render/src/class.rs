@@ -1,6 +1,7 @@
 #[cfg(feature = "layout-elk")]
 use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
+use crate::math::MathRenderer;
 use crate::model::{
     Bounds, ClassDiagramLayout, ClassNodeRowMetrics, ClassRenderItem, ClassRenderRoot,
     ClassRenderRootId, ClassRenderTree, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode,
@@ -29,6 +30,74 @@ type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
 type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
+
+pub(crate) fn class_node_requires_math(node: &ClassNode) -> bool {
+    [
+        node.label.as_str(),
+        node.text.as_str(),
+        node.type_param.as_str(),
+    ]
+    .into_iter()
+    .chain(node.annotations.iter().map(String::as_str))
+    .chain(
+        node.members
+            .iter()
+            .chain(node.methods.iter())
+            .map(|member| member.display_text.as_str()),
+    )
+    .any(crate::math::contains_delimited_math)
+}
+
+pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
+    model.classes.values().any(class_node_requires_math)
+        || model.relations.iter().any(|relation| {
+            [
+                relation.title.as_str(),
+                relation.relation_title_1.as_str(),
+                relation.relation_title_2.as_str(),
+            ]
+            .into_iter()
+            .any(crate::math::contains_delimited_math)
+        })
+        || model
+            .notes
+            .iter()
+            .map(|note| note.text.as_str())
+            .chain(model.interfaces.iter().map(|iface| iface.label.as_str()))
+            .chain(
+                model
+                    .namespaces
+                    .values()
+                    .flat_map(|namespace| [namespace.label.as_str(), namespace.id.as_str()]),
+            )
+            .any(crate::math::contains_delimited_math)
+}
+
+/// Estimates the source-backed graph preparation work shared by Class Dagre and ELK layouts.
+///
+/// Both backends build the same compound graph before dispatch. Namespace extraction walks the
+/// edge set while copying nested descendants, so charge that amplification in addition to the
+/// linear graph-construction baseline.
+pub(crate) fn class_layout_work_units(model: &ClassDiagramModel) -> usize {
+    let complexity = merman_core::resources::ClassComplexity::from_model(model);
+    let baseline = complexity
+        .nodes
+        .saturating_add(complexity.edges)
+        .saturating_mul(4);
+    if complexity.namespaces == 0 || complexity.edges == 0 {
+        return baseline;
+    }
+
+    let depth = complexity.namespace_depth.max(1);
+    let namespace_edge_scans = complexity
+        .namespaces
+        .saturating_mul(complexity.edges)
+        .saturating_mul(depth);
+    let extraction_edge_scans = complexity.nodes.saturating_mul(complexity.edges);
+    baseline
+        .saturating_add(namespace_edge_scans)
+        .saturating_add(extraction_edge_scans)
+}
 
 pub(crate) fn class_member_create_text_input(
     member: &merman_core::models::class_diagram::ClassMember,
@@ -1105,6 +1174,8 @@ fn layout_prepared_node(
 
 struct ClassBoxMeasureCtx<'a> {
     measurer: &'a dyn TextMeasurer,
+    mermaid_config: &'a merman_core::MermaidConfig,
+    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
     html_calc_text_style: &'a TextStyle,
     wrap_probe_font_size: f64,
@@ -1114,11 +1185,36 @@ struct ClassBoxMeasureCtx<'a> {
     capture_row_metrics: bool,
 }
 
+pub(crate) fn class_math_label_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    mermaid_config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Option<crate::text::TextMetrics> {
+    if !crate::math::contains_delimited_math(text) {
+        return None;
+    }
+    let math_renderer = math_renderer?;
+    crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+        measurer,
+        raw_label: text,
+        style,
+        max_width_px,
+        wrap_mode: WrapMode::HtmlLike,
+        config: mermaid_config,
+        math_renderer: Some(math_renderer),
+    })
+}
+
 fn class_box_dimensions(
     node: &ClassNode,
     ctx: &ClassBoxMeasureCtx<'_>,
 ) -> (f64, f64, Option<ClassNodeRowMetrics>) {
     let measurer = ctx.measurer;
+    let mermaid_config = ctx.mermaid_config;
+    let math_renderer = ctx.math_renderer;
     let text_style = ctx.text_style;
     let html_calc_text_style = ctx.html_calc_text_style;
     let wrap_probe_font_size = ctx.wrap_probe_font_size;
@@ -1254,17 +1350,20 @@ fn class_box_dimensions(
         }
     }
 
-    fn measure_label(
-        measurer: &dyn TextMeasurer,
-        text: &str,
-        css_style: &str,
-        style: &TextStyle,
-        html_calc_text_style: &TextStyle,
-        wrap_probe_font_size: f64,
-        wrap_mode: WrapMode,
-    ) -> crate::text::TextMetrics {
-        let effective_style = crate::class::class_effective_text_style(style, css_style);
+    let measure_label = |text: &str, css_style: &str| -> crate::text::TextMetrics {
+        let effective_style = crate::class::class_effective_text_style(text_style, css_style);
         let style = effective_style.as_ref();
+        let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
+        if let Some(metrics) = class_math_label_metrics(
+            text,
+            measurer,
+            style,
+            Some(max_width_px.max(1) as f64),
+            mermaid_config,
+            math_renderer,
+        ) {
+            return metrics;
+        }
         // Mermaid class diagram text uses `createText(..., { classes: 'markdown-node-label' })`,
         // which applies Markdown formatting for both SVG-label and HTML-label modes.
         //
@@ -1276,7 +1375,7 @@ fn class_box_dimensions(
                 measurer,
                 style,
                 text,
-                class_html_create_text_width_px(text, measurer, html_calc_text_style),
+                max_width_px,
                 css_style,
             )
         } else if markdown_analysis.has_styled_runs {
@@ -1297,7 +1396,7 @@ fn class_box_dimensions(
                 measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
             }
         }
-    }
+    };
 
     fn label_rect(m: crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
         if !(m.width.is_finite() && m.height.is_finite()) {
@@ -1318,15 +1417,7 @@ fn class_box_dimensions(
     let mut annotation_group_height = 0.0;
     if let Some(a) = node.annotations.first() {
         let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
-        let m = measure_label(
-            measurer,
-            &t,
-            "",
-            text_style,
-            html_calc_text_style,
-            wrap_probe_font_size,
-            wrap_mode,
-        );
+        let m = measure_label(&t, "");
         annotation_rect = label_rect(m, 0.0);
         if let Some(r) = annotation_rect {
             annotation_group_height = r.height().max(0.0);
@@ -1372,19 +1463,35 @@ fn class_box_dimensions(
         font_weight: Some("bolder".to_string()),
         font_style: text_style.font_style.clone(),
     };
-    let mut title_metrics = if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_styled_runs {
-        crate::text::measure_markdown_with_inline_styles(
-            measurer,
-            &wrapped_title_text,
-            &bold_title_style,
-            title_max_width,
-            wrap_mode,
-        )
-    } else {
-        measurer.measure_wrapped(&wrapped_title_text, &bold_title_style, None, wrap_mode)
-    };
+    let math_title_metrics = class_math_label_metrics(
+        &title_text,
+        measurer,
+        &bold_title_style,
+        Some(
+            class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style)
+                .max(1) as f64,
+        ),
+        mermaid_config,
+        math_renderer,
+    );
+    let has_math_title_metrics = math_title_metrics.is_some();
+    let mut title_metrics = math_title_metrics.unwrap_or_else(|| {
+        if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_styled_runs {
+            crate::text::measure_markdown_with_inline_styles(
+                measurer,
+                &wrapped_title_text,
+                &bold_title_style,
+                title_max_width,
+                wrap_mode,
+            )
+        } else {
+            measurer.measure_wrapped(&wrapped_title_text, &bold_title_style, None, wrap_mode)
+        }
+    });
 
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) && !title_has_styled_runs
+    if !has_math_title_metrics
+        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+        && !title_has_styled_runs
     {
         let bold_title_style = TextStyle {
             font_family: text_style.font_family.clone(),
@@ -1417,15 +1524,7 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(
-                measurer,
-                &t,
-                m.css_style.as_str(),
-                text_style,
-                html_calc_text_style,
-                wrap_probe_font_size,
-                wrap_mode,
-            );
+            let metrics = measure_label(&t, m.css_style.as_str());
             if let Some(out) = members_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1460,15 +1559,7 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(
-                measurer,
-                &t,
-                m.css_style.as_str(),
-                text_style,
-                html_calc_text_style,
-                wrap_probe_font_size,
-                wrap_mode,
-            );
+            let metrics = measure_label(&t, m.css_style.as_str());
             if let Some(out) = methods_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1699,17 +1790,25 @@ fn note_dimensions(
     wrap_mode: WrapMode,
     padding: f64,
     mermaid_config: Option<&merman_core::MermaidConfig>,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
     let label = decode_entities_minimal(text);
-    let mut m = if matches!(wrap_mode, WrapMode::HtmlLike) {
+    let math_metrics = mermaid_config.and_then(|config| {
+        class_math_label_metrics(&label, measurer, text_style, None, config, math_renderer)
+    });
+    let has_math_metrics = math_metrics.is_some();
+    let mut m = if let Some(metrics) = math_metrics {
+        metrics
+    } else if matches!(wrap_mode, WrapMode::HtmlLike) {
         mermaid_config
             .map(|config| class_html_measure_note_metrics(measurer, text_style, text, config))
             .unwrap_or_else(|| measurer.measure_wrapped(&label, text_style, None, wrap_mode))
     } else {
         measurer.measure_wrapped(&label, text_style, None, wrap_mode)
     };
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+    if !has_math_metrics
+        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
         && let Some(width) =
             class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
     {
@@ -1723,12 +1822,22 @@ fn label_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
+    mermaid_config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     if text.trim().is_empty() {
         return (0.0, 0.0);
     }
     let t = decode_entities_minimal(text);
-    let m = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
+    let m = class_math_label_metrics(
+        &t,
+        measurer,
+        text_style,
+        None,
+        mermaid_config,
+        math_renderer,
+    )
+    .unwrap_or_else(|| measurer.measure_wrapped(&t, text_style, None, wrap_mode));
     (m.width.max(0.0), m.height.max(0.0))
 }
 
@@ -1737,6 +1846,8 @@ fn edge_title_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
+    mermaid_config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1744,6 +1855,16 @@ fn edge_title_metrics(
     }
 
     let label = decode_entities_minimal(text);
+    if let Some(metrics) = class_math_label_metrics(
+        &label,
+        measurer,
+        text_style,
+        Some(MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
+        mermaid_config,
+        math_renderer,
+    ) {
+        return (metrics.width.max(0.0), metrics.height.max(0.0));
+    }
     if matches!(wrap_mode, WrapMode::HtmlLike) {
         let metrics = class_html_measure_label_metrics(
             measurer,
@@ -1780,12 +1901,14 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<ClassDiagramLayout> {
     layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
+        math_renderer,
         ClassLayoutEngine::Dagre,
     )
 }
@@ -1799,6 +1922,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
 ) -> Result<ClassDiagramLayout> {
     layout_class_diagram_typed_inner(
@@ -1806,6 +1930,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         effective_config.as_value(),
         effective_config,
         measurer,
+        math_renderer,
         ClassLayoutEngine::Elk(Some(operation_seed)),
     )
 }
@@ -1813,8 +1938,9 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 fn layout_class_diagram_typed_inner(
     model: &ClassDiagramModel,
     effective_config: &Value,
-    note_html_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
 ) -> Result<ClassDiagramLayout> {
     validate_class_namespace_hierarchy(model)?;
@@ -1834,10 +1960,11 @@ fn layout_class_diagram_typed_inner(
         title_margin_top,
         title_margin_bottom,
     } = ClassConfigView::new(effective_config).layout_settings();
-    let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
-    let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
-    let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike);
-    let note_html_config = capture_note_label_metrics.then_some(note_html_config);
+    let contains_math = class_requires_math(model);
+    let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike) || contains_math;
+    let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike) || contains_math;
+    let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike) || contains_math;
+    let note_html_config = capture_note_label_metrics.then_some(mermaid_config);
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
@@ -1886,6 +2013,8 @@ fn layout_class_diagram_typed_inner(
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
+        mermaid_config,
+        math_renderer,
         text_style: &text_style,
         html_calc_text_style: &html_calc_text_style,
         wrap_probe_font_size,
@@ -1924,6 +2053,7 @@ fn layout_class_diagram_typed_inner(
                 wrap_mode_note,
                 class_padding,
                 note_html_config,
+                math_renderer,
             );
             if capture_note_label_metrics {
                 node_label_metrics_by_id.insert(
@@ -1985,7 +2115,14 @@ fn layout_class_diagram_typed_inner(
     // Interface nodes (lollipop syntax).
     for iface in &model.interfaces {
         let label = decode_entities_minimal(iface.label.trim());
-        let (tw, th) = label_metrics(&label, measurer, &text_style, wrap_mode_label);
+        let (tw, th) = label_metrics(
+            &label,
+            measurer,
+            &text_style,
+            wrap_mode_label,
+            mermaid_config,
+            math_renderer,
+        );
         if capture_label_metrics {
             node_label_metrics_by_id.insert(iface.id.clone(), (tw, th));
         }
@@ -2098,7 +2235,14 @@ fn layout_class_diagram_typed_inner(
     }
 
     for rel in &model.relations {
-        let (lw, lh) = edge_title_metrics(&rel.title, measurer, &text_style, wrap_mode_label);
+        let (lw, lh) = edge_title_metrics(
+            &rel.title,
+            measurer,
+            &text_style,
+            wrap_mode_label,
+            mermaid_config,
+            math_renderer,
+        );
         let start_text = if rel.relation_title_1 == "none" {
             String::new()
         } else {
@@ -2110,8 +2254,22 @@ fn layout_class_diagram_typed_inner(
             rel.relation_title_2.clone()
         };
 
-        let (srw, srh) = label_metrics(&start_text, measurer, &text_style, wrap_mode_label);
-        let (elw, elh) = label_metrics(&end_text, measurer, &text_style, wrap_mode_label);
+        let (srw, srh) = label_metrics(
+            &start_text,
+            measurer,
+            &text_style,
+            wrap_mode_label,
+            mermaid_config,
+            math_renderer,
+        );
+        let (elw, elh) = label_metrics(
+            &end_text,
+            measurer,
+            &text_style,
+            wrap_mode_label,
+            mermaid_config,
+            math_renderer,
+        );
 
         // Mermaid passes `edge.arrowTypeStart ? 10 : 0` / `edge.arrowTypeEnd ? 10 : 0`
         // into `calcTerminalLabelPosition(...)`. In class diagrams the arrow type strings are
@@ -2191,6 +2349,8 @@ fn layout_class_diagram_typed_inner(
                 title_margin_bottom,
                 text_style: &text_style,
                 wrap_mode_label,
+                mermaid_config,
+                math_renderer,
                 operation_seed,
             },
             measurer,
@@ -2285,7 +2445,14 @@ fn layout_class_diagram_typed_inner(
         let base_h = ns_node.height.max(1.0);
 
         let title = class_namespace_label(model, id).to_string();
-        let (tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
+        let (tw, th) = label_metrics(
+            &title,
+            measurer,
+            &text_style,
+            wrap_mode_label,
+            mermaid_config,
+            math_renderer,
+        );
         let min_title_w = (tw + namespace_padding).max(1.0);
         let width = if base_w <= min_title_w {
             min_title_w
@@ -2362,6 +2529,7 @@ fn layout_class_diagram_typed_inner(
         edges,
         clusters,
         bounds,
+        uses_elk_adapter_dom: false,
         class_row_metrics_by_id,
         render_tree,
     })
@@ -2449,6 +2617,8 @@ struct ClassElkLayoutSettings<'a> {
     title_margin_bottom: f64,
     text_style: &'a TextStyle,
     wrap_mode_label: WrapMode,
+    mermaid_config: &'a merman_core::MermaidConfig,
+    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     operation_seed: Option<elk::ElkOperationSeed>,
 }
 
@@ -2512,6 +2682,8 @@ fn class_graph_to_elk_graph(
                 measurer,
                 settings.text_style,
                 settings.wrap_mode_label,
+                settings.mermaid_config,
+                settings.math_renderer,
             );
             elk::Label {
                 width: width.max(1.0),
@@ -2718,6 +2890,8 @@ fn class_layout_from_elk(
             measurer,
             settings.text_style,
             settings.wrap_mode_label,
+            settings.mermaid_config,
+            settings.math_renderer,
         );
         let title_label = LayoutLabel {
             x: node.x,
@@ -2795,6 +2969,7 @@ fn class_layout_from_elk(
         edges,
         clusters,
         bounds,
+        uses_elk_adapter_dom: true,
         class_row_metrics_by_id,
         render_tree,
     })
@@ -3058,12 +3233,15 @@ mod tests {
         );
 
         let text_style = default_style();
+        let mermaid_config = merman_core::MermaidConfig::from_value(serde_json::Value::Null);
         let settings = super::ClassElkLayoutSettings {
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,
             text_style: &text_style,
             wrap_mode_label: WrapMode::default(),
+            mermaid_config: &mermaid_config,
+            math_renderer: None,
             operation_seed: None,
         };
         let mut graph = super::class_graph_to_elk_graph(
@@ -3092,6 +3270,11 @@ mod tests {
     struct ClassProbeMeasurer;
 
     struct ClassPrecisionMeasurer;
+
+    struct ClassMathGeometryMeasurer;
+
+    #[derive(Debug)]
+    struct ClassMathGeometryRenderer;
 
     impl TextMeasurer for ClassProbeMeasurer {
         fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
@@ -3122,6 +3305,45 @@ mod tests {
                 height: 17.25,
                 line_count: 1,
             }
+        }
+    }
+
+    impl TextMeasurer for ClassMathGeometryMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 29.0,
+                height: 19.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            17.0
+        }
+    }
+
+    impl crate::math::MathRenderer for ClassMathGeometryRenderer {
+        fn render_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            text.contains("$$").then(|| text.to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+            _style: &TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> Option<TextMetrics> {
+            text.contains("$$").then_some(TextMetrics {
+                width: 123.0,
+                height: 37.0,
+                line_count: 1,
+            })
         }
     }
 
@@ -3431,5 +3653,55 @@ mod tests {
                 "label={non_plain_single_line:?}"
             );
         }
+    }
+
+    #[test]
+    fn class_svg_math_title_keeps_math_renderer_width_in_box_geometry() {
+        let node: super::ClassNode = serde_json::from_value(serde_json::json!({
+            "id": "Formula",
+            "label": "Formula",
+            "text": "$$x^2$$",
+            "domId": "classId-Formula-0"
+        }))
+        .expect("Class node");
+        let config = merman_core::MermaidConfig::default();
+        let text_style = default_style();
+        let context = super::ClassBoxMeasureCtx {
+            measurer: &ClassMathGeometryMeasurer,
+            mermaid_config: &config,
+            math_renderer: Some(&ClassMathGeometryRenderer),
+            text_style: &text_style,
+            html_calc_text_style: &text_style,
+            wrap_probe_font_size: 10.0,
+            wrap_mode: WrapMode::SvgLike,
+            padding: 8.0,
+            hide_empty_members_box: true,
+            capture_row_metrics: false,
+        };
+
+        let (width, _, _) = super::class_box_dimensions(&node, &context);
+
+        assert_eq!(width, 139.0);
+    }
+
+    #[test]
+    fn class_svg_math_note_keeps_math_renderer_width_in_note_geometry() {
+        let config = merman_core::MermaidConfig::default();
+        let style = default_style();
+
+        let (width, height, metrics) = super::note_dimensions(
+            "$$x^2$$",
+            &ClassMathGeometryMeasurer,
+            &style,
+            WrapMode::SvgLike,
+            8.0,
+            Some(&config),
+            Some(&ClassMathGeometryRenderer),
+        );
+
+        assert_eq!(metrics.width, 123.0);
+        assert_eq!(metrics.height, 37.0);
+        assert_eq!(width, 131.0);
+        assert_eq!(height, 45.0);
     }
 }

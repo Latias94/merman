@@ -16,6 +16,7 @@
       "use_max_width": true,
       "show_domain_descriptions": true,
       "boundary_amplitude": 0.0,
+      "seed": 1.0,
       "domain_layouts": [
         {
           "name": "complex",

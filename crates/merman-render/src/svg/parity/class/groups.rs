@@ -24,9 +24,12 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edge_use_html_labels: bool,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) terminal_text_style: &'a TextStyle,
+    pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) look: &'a str,
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
+    pub(super) edge_paths_class: &'static str,
 }
 
 pub(super) struct ClassSplitEdgeGroups {
@@ -67,9 +70,12 @@ pub(super) fn render_class_split_edge_groups(
             edge_use_html_labels: ctx.edge_use_html_labels,
             text_measurer: ctx.text_measurer,
             terminal_text_style: ctx.terminal_text_style,
+            mermaid_config: ctx.mermaid_config,
+            math_renderer: ctx.math_renderer,
             look: ctx.look,
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
+            edge_paths_class: ctx.edge_paths_class,
         },
     );
     ClassSplitEdgeGroups {

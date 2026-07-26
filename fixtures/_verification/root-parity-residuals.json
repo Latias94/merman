@@ -13,15 +13,15 @@
     "decimals": 3
   },
   "evidence": {
-    "browser-root-bbox": {
-      "kind": "browser-measurement",
-      "reference": "docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md",
-      "rationale": "Pinned Mermaid computes the final root from SVG getBBox; deterministic emitted-content bounds preserve semantics but not browser font, stroke, transform, or float-lattice facts."
-    },
     "browser-derived-layout": {
       "kind": "browser-measurement",
       "reference": "docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md",
       "rationale": "Pinned Mermaid propagates DOM text measurements into an explicit root formula; the remaining exact root value is browser-dependent while descendants retain parity."
+    },
+    "browser-root-bbox": {
+      "kind": "browser-measurement",
+      "reference": "docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md",
+      "rationale": "Pinned Mermaid computes the final root from SVG getBBox; deterministic emitted-content bounds preserve semantics but not browser font, stroke, transform, or float-lattice facts."
     },
     "c4-headless-layout": {
       "kind": "source-backed-layout-approximation",
@@ -260,7 +260,7 @@
       "fixture": "stress_architecture_batch3_parallel_edges_and_labels_057",
       "descendants": "parity",
       "input_sha256": "855b615e05d77a3fdebf0eb28561ba977ce1bee3cec16876c3aa85ab51f9788b",
-      "upstream_svg_sha256": "76a74f0a3bc52407836f62bae74ef47a94bd879b6382185fa90db0d500ad492f",
+      "upstream_svg_sha256": "af2a3dcbecef491117c06b16ec3c95580606ea0d38a5966dc1fb25125882fa93",
       "upstream": {
         "style": "max-width: 361.164px; background-color: white;",
         "view_box": "-119.832 -211.175 361.164 586.037",
@@ -300,7 +300,7 @@
       "fixture": "stress_architecture_batch3_unicode_titles_and_services_052",
       "descendants": "parity",
       "input_sha256": "b1428b5b59888938394e34d7ff0e8aa2c7ea9366095924e5e95da4dc38e53289",
-      "upstream_svg_sha256": "f8a7502730d2902a14c3a5c3fd0d4072821cad683446fd68feca5c7accb6918b",
+      "upstream_svg_sha256": "b0b942bdd1ed9da1105917c67d159106c65850b0e8fa4e732ce2f5bd0018626b",
       "upstream": {
         "style": "max-width: 447.926px; background-color: white;",
         "view_box": "-181.963 -165.963 447.926 462.926",
@@ -340,7 +340,7 @@
       "fixture": "stress_architecture_batch4_init_small_icons_061",
       "descendants": "parity",
       "input_sha256": "1600c44dd35f9434c9c4b2291a7b62c5662c33d25a1fa1b79a2cac99e0976399",
-      "upstream_svg_sha256": "ea1e33bb28c2ef9f76b8159b13a4cac991a5d0b5c3d7b9282782f47e21ef6c8f",
+      "upstream_svg_sha256": "be3e95cdf60df02ffe8ddc12c97065871d5ebd155bd1e3c9360bc2f6e86ffda2",
       "upstream": {
         "style": "max-width: 187.859px; background-color: white;",
         "view_box": "-60.286 -56.286 187.859 191.571",
@@ -440,7 +440,7 @@
       "fixture": "stress_architecture_batch5_dense_group_services_073",
       "descendants": "parity",
       "input_sha256": "f9f3824137bdc6aa79b46c61e4a9be6467f77b9bf3514028ea6b44a8bfc60690",
-      "upstream_svg_sha256": "c87207221331e5a3fb4a70d705ece3307a4124354c365e043c4be6cbb3a4ca30",
+      "upstream_svg_sha256": "d5b7c0b0b06f44fdf2d8c4a6183b72f2e5ee0c8b71e0625baf8d051cc5eead7b",
       "upstream": {
         "style": "max-width: 454.327px; background-color: white;",
         "view_box": "-194.663 -166.046 454.327 463.091",
@@ -460,7 +460,7 @@
       "fixture": "stress_architecture_batch5_group_edges_across_nested_groups_075",
       "descendants": "parity",
       "input_sha256": "72397f0b60a8c10bfcd5713fb25e18794085dc408eac569816120a734bfebca9",
-      "upstream_svg_sha256": "0de59f85304be6694ddd63af195a1348afbc9e8acad1eab40a4842077b606969",
+      "upstream_svg_sha256": "a11521843e8dacc488a21cc39c5c78d60382c91995d962361f8354969e7ecb30",
       "upstream": {
         "style": "max-width: 354px; background-color: white;",
         "view_box": "-137 -445.616 354 1022.233",
@@ -500,7 +500,7 @@
       "fixture": "stress_architecture_batch5_long_titles_and_punct_076",
       "descendants": "parity",
       "input_sha256": "5c62033a5bb8afe856358da051353623621105676cabde372adb97bf11d1da46",
-      "upstream_svg_sha256": "cca6f8b4b13de7b419b30437c05570e1aed38e1585011fdec24b3847f4e836aa",
+      "upstream_svg_sha256": "e5efee8f81eb10d89d3b06be79215fdf131861001a9f931fcda1f66e4ba59df8",
       "upstream": {
         "style": "max-width: 543.926px; background-color: white;",
         "view_box": "-274.963 -165.963 543.926 462.926",
@@ -560,7 +560,7 @@
       "fixture": "stress_architecture_batch5_services_outside_groups_crosslinks_078",
       "descendants": "parity",
       "input_sha256": "bd99413f3bb1dd0898a745421b3f10d1dda424eb59b21fa19a38f4fcb5e105db",
-      "upstream_svg_sha256": "ab2abc5013eded45f90d2d3fc143532b719e3f6f90bef07c1b28136255747a43",
+      "upstream_svg_sha256": "00e215e58cc1689bfa8e3bf7bc6d8e57b92a3f519a43cbcff50399a29a7dc7ad",
       "upstream": {
         "style": "max-width: 519.113px; background-color: white;",
         "view_box": "-219.556 -252.914 519.113 640.829",
@@ -600,7 +600,7 @@
       "fixture": "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085",
       "descendants": "parity",
       "input_sha256": "bda86c166019beb24d3207327b8a76a82e6c5ca73dcc287a47b768fe6cb49b0a",
-      "upstream_svg_sha256": "98c9383cb2dc19f05e6be11ffaf905f40c87eb2d0ed241d6b980c240e3b0f9ad",
+      "upstream_svg_sha256": "577c71e2e0ed32c731618ce37828fcbe32fa1f9e518021c35c00e1da59c26ec6",
       "upstream": {
         "style": "max-width: 447.687px; background-color: white;",
         "view_box": "-157.515 -65.5 447.687 262",
@@ -660,7 +660,7 @@
       "fixture": "stress_architecture_batch6_init_fontsize_icon_size_wrap_093",
       "descendants": "parity",
       "input_sha256": "791d561fb7423a14bd6ee0d78a48afc6114ee5545bd614f7d96df68e12db6d3a",
-      "upstream_svg_sha256": "78f6076ef860f20bf1e7e93cd2e5d0a25f6aff328ca7388338c4fa216a4a1303",
+      "upstream_svg_sha256": "acbc8cf1a76ebf7e8c1ebc99a62b1ca579c979e75e0c006d537d1febfd646a75",
       "upstream": {
         "style": "max-width: 323.605px; background-color: white;",
         "view_box": "-130.821 -141.74 323.605 380.479",
@@ -680,7 +680,7 @@
       "fixture": "stress_architecture_batch6_junctions_multi_split_with_group_edges_087",
       "descendants": "parity",
       "input_sha256": "b0d450f0a6cb50ef1c50adff9b4c3d99af5ff28e52057cc448e89935ffc997dc",
-      "upstream_svg_sha256": "38a10cd06089ac6bea6e91ecb0459feb76da8d8e6499284fe9416dd68f7bb0a3",
+      "upstream_svg_sha256": "218286598d27b3bda462536ae4027889fc173f9b6e2b7007d73e1666cab6ca29",
       "upstream": {
         "style": "max-width: 653.184px; background-color: white;",
         "view_box": "-286.592 -257.496 653.184 645.991",
@@ -700,7 +700,7 @@
       "fixture": "stress_architecture_batch6_long_group_titles_wrapping_extreme_095",
       "descendants": "parity",
       "input_sha256": "1ee82cdd1baf22c01f8911da01f727f81ed51afcf34dbf46d1fb0deb846b8f37",
-      "upstream_svg_sha256": "c126b374c0af449172f92602a94c351b0857ae90d616078477db355dd3c5a540",
+      "upstream_svg_sha256": "53c9f567c6cd5a70d04b3d655e9115bd32cb0e50697d721ba3e23ebd6fc46fd4",
       "upstream": {
         "style": "max-width: 532.484px; background-color: white;",
         "view_box": "-224.343 -107 532.484 345",
@@ -740,7 +740,7 @@
       "fixture": "stress_architecture_batch6_nested_groups_group_edges_and_ports_086",
       "descendants": "parity",
       "input_sha256": "2222c6daa73a3c00b8ed9353667f5caaf8b31d3cc2deba6ce21adeeeed6e953e",
-      "upstream_svg_sha256": "1da6867dd0ec83305b01e83bfe7e8f9a5b5a4096463e10f98a0b5bb24380a175",
+      "upstream_svg_sha256": "e5432c22787d0a25d25d9c9ff4c546ac33618efbcd2d4f21688ebc8e6781b5aa",
       "upstream": {
         "style": "max-width: 549.002px; background-color: white;",
         "view_box": "-241.001 -448.219 549.002 1027.438",
@@ -760,7 +760,7 @@
       "fixture": "stress_architecture_batch6_ordering_declarations_and_in_keyword_091",
       "descendants": "parity",
       "input_sha256": "ded2dd1f6eda1378aee1bfeb3cddec88a8acf25072a4df0dd281db0a211b6789",
-      "upstream_svg_sha256": "057c2b187d06a3101d5dff461e1e07b7ec2aea52a1c397cb1966996800e2dfa7",
+      "upstream_svg_sha256": "bb63ee8eb94fe024af737ace897c866a4ab8104a6d7cf3ec27fdf82114092773",
       "upstream": {
         "style": "max-width: 485.714px; background-color: white;",
         "view_box": "-199.357 -186.193 485.714 506.387",
@@ -780,7 +780,7 @@
       "fixture": "stress_architecture_batch6_port_matrix_stress_090",
       "descendants": "parity",
       "input_sha256": "a4fd3a5b6d3de9bb31f7aa4c7f555487357c94595689d4a70b43d677ab0092a7",
-      "upstream_svg_sha256": "3ac47e0e789efd354207ccb2da1395157f34745bc9d2b4b9cdfe52136633b7e2",
+      "upstream_svg_sha256": "05c11eceec4dca569daa7d34d4744f9e2d9cae6caf7d4240ec4b00031b90f90f",
       "upstream": {
         "style": "max-width: 424.198px; background-color: white;",
         "view_box": "-150.599 -190.25 424.198 544.188",
@@ -1020,7 +1020,7 @@
       "fixture": "stress_architecture_grouped_junctions_008",
       "descendants": "parity",
       "input_sha256": "e732f488f0d9aa679386637cb0cb7a4f85d7281d62a66bad9590c43a64b1689e",
-      "upstream_svg_sha256": "2b041b10135bc43ea2824816a326daee69212ce05f7730a08696aaf89f7fc59d",
+      "upstream_svg_sha256": "0f8b4a07511f38de5ed3e4d5e1e0522b2068913c10dffe6ee8be26d63a482e3f",
       "upstream": {
         "style": "max-width: 733.603px; background-color: white;",
         "view_box": "-326.801 -165.884 733.603 462.767",
@@ -1100,7 +1100,7 @@
       "fixture": "stress_architecture_junctions_in_groups_040",
       "descendants": "parity",
       "input_sha256": "ef61d6e60519eef38a124b9965d3d4e414312f50d475dfcae20bce4d661f6d13",
-      "upstream_svg_sha256": "ae78299be5de6deb7fdc2be883ab6005ea7ddcf524b74caf6b1745fac8a4102e",
+      "upstream_svg_sha256": "32f736474a3b9dd5e678115a2378fdc2de307b5c93a69a0fdda331b44d0e0812",
       "upstream": {
         "style": "max-width: 711.257px; background-color: white;",
         "view_box": "-315.629 -174.476 711.257 445.952",
@@ -1140,7 +1140,7 @@
       "fixture": "stress_architecture_long_group_titles_018",
       "descendants": "parity",
       "input_sha256": "7ac8bff26f659a649a4a177f5fcd059c1689459fed359b46ffdcb370f39577d6",
-      "upstream_svg_sha256": "185ff5b039a5770a1103eee422b78cddf55aec48d42fa5bcdb1aae258c396e65",
+      "upstream_svg_sha256": "682643e1f1cf4c8f623bf381443d8b627adfb05d1a5325c30ba1fa58ad4081d6",
       "upstream": {
         "style": "max-width: 480.141px; background-color: white;",
         "view_box": "-182.963 -165.963 480.141 462.926",
@@ -1160,7 +1160,7 @@
       "fixture": "stress_architecture_long_ids_030",
       "descendants": "parity",
       "input_sha256": "461d82085eb83a36516cd2634c59866645406f8753c74b6911ff6181b40cfe9c",
-      "upstream_svg_sha256": "f7fea07eeb4443b5cd78d9d7d440fbb70b0b7c0af6f8fcf9c1a26fe70bdd34de",
+      "upstream_svg_sha256": "2e25ce19fb5d39d334794695c2cd3130fc79abfb18ee3432e2086c9eba08e829",
       "upstream": {
         "style": "max-width: 677.551px; background-color: white;",
         "view_box": "-302.775 -273.275 677.551 677.551",
@@ -1180,7 +1180,7 @@
       "fixture": "stress_architecture_long_labels_006",
       "descendants": "parity",
       "input_sha256": "2bb152d63e70170387e4948d8ea808a3bb80573d4d608729c3acbe61b8069c72",
-      "upstream_svg_sha256": "3567502cd52f6c6dce464465254ed785ce96e99e89d9aa66beb2058d69efd065",
+      "upstream_svg_sha256": "28cd077a7ba871b10293a8a9f7377bd00401154e8d98cedbf13ad1544428c400",
       "upstream": {
         "style": "max-width: 647.529px; background-color: white;",
         "view_box": "-263.264 -165.994 647.529 462.988",
@@ -1200,7 +1200,7 @@
       "fixture": "stress_architecture_mixed_icons_and_text_033",
       "descendants": "parity",
       "input_sha256": "140d7dbf16b53ef43ea4bee0bc9eddc995d4d9f5ad2ff07b9c1638a5f747c5a8",
-      "upstream_svg_sha256": "289d80847ec9eef4dc8712cb1302e1d7f38b56a16fb789fc7cdcd17abd89f609",
+      "upstream_svg_sha256": "70dcc37719683bed66d30771592a3a79b8f27e2e521b6773aedd71496e218d6c",
       "upstream": {
         "style": "max-width: 927.132px; background-color: white;",
         "view_box": "-423.566 -166.973 927.132 464.946",
@@ -1240,7 +1240,7 @@
       "fixture": "stress_architecture_multi_group_crosslinks_022",
       "descendants": "parity",
       "input_sha256": "780467c03a9d5a183710aec923f23f3258e4b346e6e422cc44db44afffbe1ff1",
-      "upstream_svg_sha256": "cdc2132332c1ccc608991699ad1c53d0e2ba116c39f81cb7882108e7657d431d",
+      "upstream_svg_sha256": "db3d298bcd6689f8d0b4bf320773e2c091867ae590e316ed8d5f44999f29e831",
       "upstream": {
         "style": "max-width: 662.126px; background-color: white;",
         "view_box": "-296.73 -188.898 662.126 508.796",
@@ -1260,7 +1260,7 @@
       "fixture": "stress_architecture_nested_groups_002",
       "descendants": "parity",
       "input_sha256": "f19a3e81df73a7d1bdae2a1925f2752d14ffaf831e526e807f93a73b81c01b36",
-      "upstream_svg_sha256": "82491b6c6bd7dc847e0f8af14459479c9b4d14e3231e5cc222cfef136e468b3b",
+      "upstream_svg_sha256": "2ad2979e1f66cf84be6bf979a109470ba3bf1804a96db1561a5c9c1b77b1239e",
       "upstream": {
         "style": "max-width: 728.924px; background-color: white;",
         "view_box": "-314.462 -245.829 728.924 622.658",
@@ -1300,7 +1300,7 @@
       "fixture": "stress_architecture_parallel_labeled_edges_038",
       "descendants": "parity",
       "input_sha256": "d8642fbcd331cc6e32432611693cf3a5c90c6c93b7a7fe9da23e2e9a3f32812e",
-      "upstream_svg_sha256": "c757e778c48f5052bc27972d06e84e22809c8a69c6ca048eb083a6dcbe4fdbc7",
+      "upstream_svg_sha256": "7a72cc953a486877b52ce5818f55718479e0f3f278c5d16d6af66b9f9fd1e4c4",
       "upstream": {
         "style": "max-width: 531.333px; background-color: white;",
         "view_box": "-186.833 -160.72 531.333 484.439",
@@ -1360,7 +1360,7 @@
       "fixture": "stress_architecture_unicode_and_xml_escapes_019",
       "descendants": "parity",
       "input_sha256": "013fc9f64aae7d63ef3a4079175230feec86e4cb87edef1292da9081320457e5",
-      "upstream_svg_sha256": "ef3bf10a9cf96e050fcdf9804a98569179a37cdf1b5ffca95860d2205161faf3",
+      "upstream_svg_sha256": "397bdc488815be6e467fc424bb448cdd9e27185f5635fa470957e773b4c42508",
       "upstream": {
         "style": "max-width: 470.322px; background-color: white;",
         "view_box": "-211.661 -166.297 470.322 463.593",
@@ -1480,7 +1480,7 @@
       "fixture": "upstream_architecture_cypress_groups_within_groups_normalized",
       "descendants": "parity",
       "input_sha256": "86e28171e0117c8bf708853edb500cb9ff9d786872009559e0fb81a24846329d",
-      "upstream_svg_sha256": "05b82729c98a7f8233952054885dc28f5366f9c8813ca05046c094b19c34d312",
+      "upstream_svg_sha256": "9d48c7933a5427de95f921a7743f16f91ceb461a5bc886c5b2ccef6d3c564a51",
       "upstream": {
         "style": "max-width: 529.297px; background-color: white;",
         "view_box": "-224.648 -234.586 529.297 600.172",
@@ -1520,7 +1520,7 @@
       "fixture": "upstream_architecture_cypress_split_directioning_normalized",
       "descendants": "parity",
       "input_sha256": "1d05aeaea475751b15bd35387bf1a0583a53ddd9eeb8d7a09501b14ed0e8b6e2",
-      "upstream_svg_sha256": "9c8cf69fb482e59ae0875e45bba6e331ee20486e82ab128222d2faab89caa4f4",
+      "upstream_svg_sha256": "20e9c1adc72e2f2573c54eb14e52484e1aaabe3f42a5b7be25272ffcf539bc70",
       "upstream": {
         "style": "max-width: 346.839px; background-color: white;",
         "view_box": "-111.919 -237.252 346.839 638.191",
@@ -1660,7 +1660,7 @@
       "fixture": "upstream_architecture_docs_edge_arrows",
       "descendants": "parity",
       "input_sha256": "204bc13a1692dccfdbc34bac649cf2707478a78a652d286a26a9a88c96ebc204",
-      "upstream_svg_sha256": "43eb954c52b5edc49ae66fe760ba1d4cef4726dc051eb290d09acd5fb5c7ddb1",
+      "upstream_svg_sha256": "63cccc7f5f8385febe4788798b2ed07dc4757eba2f6c072cfe2e740b07fa6fbf",
       "upstream": {
         "style": "max-width: 561.85px; background-color: white;",
         "view_box": "-220.175 -110.832 561.85 385.351",
@@ -1800,7 +1800,7 @@
       "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_groups_within_groups_003",
       "descendants": "parity",
       "input_sha256": "ea1fe4185b7c09496906280058067594d3a28381e483311e175c310027dc1626",
-      "upstream_svg_sha256": "0c3d3624f9d48756a3f0a4693703e796bade3492abf772ba8e91d6d8246bb9b6",
+      "upstream_svg_sha256": "58bf7d25ae1b6b46304dc267ab10c4f1ec9fc257e0b18e6a2b3214102d5ab9b9",
       "upstream": {
         "style": "max-width: 529.297px; background-color: white;",
         "view_box": "-224.648 -234.586 529.297 600.172",
@@ -1840,7 +1840,7 @@
       "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_split_directioning_005",
       "descendants": "parity",
       "input_sha256": "d7c764184dc5c1d00f6ce0fe4075e4ac6aa6e381edb52e0d6a39d38d925ebce6",
-      "upstream_svg_sha256": "fdf221872c7bd952ef87a185eb58eab9d35aca2eebacc865d46849e47ba820b7",
+      "upstream_svg_sha256": "6dcc7b06891f9540b952654c302f71a6bf6895e813c77d14c3e04c867ead5097",
       "upstream": {
         "style": "max-width: 346.839px; background-color: white;",
         "view_box": "-111.919 -237.252 346.839 638.191",
@@ -2020,7 +2020,7 @@
       "fixture": "upstream_html_demos_architecture_groups_within_groups_002",
       "descendants": "parity",
       "input_sha256": "3195d1a17363ca354cd336b9dfce9063c350237919751e03461e15a508873cde",
-      "upstream_svg_sha256": "2fc1214d4e097275084e77b319c0babe94e23560338bafcda836614ece3dcd9d",
+      "upstream_svg_sha256": "6cf93fc71b5f075b9eaca6357bff725143507fa651a93fd316c6086df5120718",
       "upstream": {
         "style": "max-width: 529.297px; background-color: white;",
         "view_box": "-224.648 -234.586 529.297 600.172",
@@ -2080,7 +2080,7 @@
       "fixture": "upstream_html_demos_architecture_split_direction_004",
       "descendants": "parity",
       "input_sha256": "7b045dfb594877ae07d33c4aa7a16021473e0ddc4e89734fafcc0aaffd67c53f",
-      "upstream_svg_sha256": "9525188415b2bf802ad0f265e25ec446215ac34a8ef221fc82111fdb95a3073c",
+      "upstream_svg_sha256": "8907381274afda1033af857d3f50d85b391211816a8c494e19e2b4b107005be7",
       "upstream": {
         "style": "max-width: 346.839px; background-color: white;",
         "view_box": "-111.919 -237.252 346.839 638.191",
@@ -2240,7 +2240,7 @@
       "fixture": "upstream_composites",
       "descendants": "parity",
       "input_sha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
-      "upstream_svg_sha256": "442cbaeb56b77e7eb1db106e735559af037b691999bbe6a6cac7bf19418a6e04",
+      "upstream_svg_sha256": "9eeb2dadc163b30fabe96eaed0b5a2751bc5e92a31b2ab3ef7055a82e03a7589",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -2260,7 +2260,7 @@
       "fixture": "upstream_composites_2",
       "descendants": "parity",
       "input_sha256": "ba2944fc213ae7ce76064b995b0298582efab26b3196d9339392b4f62fd816ee",
-      "upstream_svg_sha256": "05166ae3ff14ae2b32a382fbb3011d855190b6cde13282e5c4fb6a9948647d5e",
+      "upstream_svg_sha256": "a444f644ca65b14ca1c2b7666909d8fe36ad8571cf28e9b1cee76f30b9b5a2f7",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -2300,7 +2300,7 @@
       "fixture": "upstream_composites_4",
       "descendants": "parity",
       "input_sha256": "ce8fe59dc70e2515cb9fba2d15a54c1b9b9ba85b5fd63e0305f1f1cfd1001540",
-      "upstream_svg_sha256": "ca9932fe04e4f379c5c6ba56c43ec3ff81aa0e30cb5ed8308b3d4e7a303eb5ed",
+      "upstream_svg_sha256": "c066575720397f77f823a13bbe83b622a4bcc66c2cf67af6073f77726d224478",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -2480,7 +2480,7 @@
       "fixture": "upstream_docs_block_nested_blocks_009",
       "descendants": "parity",
       "input_sha256": "bd54fe8aea77a0c8cac4f1c6390ea744f26b3e7eab1142d5c8cb238ead92a7d4",
-      "upstream_svg_sha256": "5f34fb63995f63296da0e5fac5cf630b617abf668ebc8d57017dda5f693487c4",
+      "upstream_svg_sha256": "b750b855682bbf9c4d762f05bc4787e4a6ffb67232c0a09aaa99fe203831fcf6",
       "upstream": {
         "style": "max-width: 302.25px; background-color: white;",
         "view_box": "-5 -29 302.25 58",
@@ -2780,7 +2780,7 @@
       "fixture": "upstream_pkgtests_block_spec_013",
       "descendants": "parity",
       "input_sha256": "51f0b471f773d3cce2bbeaca66d40f2bf1a403e3b1455d1ebf3156500f02b1f8",
-      "upstream_svg_sha256": "49b08bf7845b2d131cbb3bd48227f9afbeb02d94b8287ae64093ca825c3257c9",
+      "upstream_svg_sha256": "878578090fc70d45cabda83b98122f02a9588bd3c70a41828df5caed212d393f",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -2800,7 +2800,7 @@
       "fixture": "upstream_pkgtests_block_spec_014",
       "descendants": "parity",
       "input_sha256": "60db2c95fdf469943bbd9185d44c9b61fd54adfc88f4fbe4ad5ea0f88715ab29",
-      "upstream_svg_sha256": "1de88da01e4f493763a6a2ad14a015ebc73a4ea7f266415d9045883a79f23141",
+      "upstream_svg_sha256": "6d2eb236e541e6443e4f9d9ec0bb6ae3c70acffa1c58f18375a5c5e6db1b55a2",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -2840,7 +2840,7 @@
       "fixture": "upstream_pkgtests_block_spec_016",
       "descendants": "parity",
       "input_sha256": "eedbf989d18839cb49ab2e40124263cceba7f1d330189ebd209ce01b5e59ecad",
-      "upstream_svg_sha256": "13da0b3b72cff9921053b1bb15099061b806896631d28d61ba7c5c9418fa779c",
+      "upstream_svg_sha256": "465fced6ed8bfbd0099b2e7e79a6895611667b4006fe74ecabf31de98d656aa2",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -4988,8 +4988,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 294",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 294",
         "width": "100%",
         "height": null
       },
@@ -5008,8 +5008,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -5179,37 +5179,17 @@
       "diagram": "class",
       "fixture": "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037",
       "descendants": "parity",
-      "input_sha256": "a553424a954a63cc0fa348cbd5d6ec1688d203cf96ff10b488728e8d26695d93",
-      "upstream_svg_sha256": "099198bc509137bf604ffe74fed10d88aba5b3fb0d5b9ec7b03207d5e567b292",
+      "input_sha256": "8bf75bf2d364a9e523d39e1019394a3b0e3f185d949fd607585b85f74fb63be3",
+      "upstream_svg_sha256": "e762a713d360a6b2b4e07e68c5ba9d7f9859d27fe0be8ad9aeb346293354b8c1",
       "upstream": {
-        "style": "max-width: 2355.73px; background-color: white;",
-        "view_box": "0 0 2355.734 100",
+        "style": "max-width: 2239.31px; background-color: white;",
+        "view_box": "4 4 2239.313 100",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 2355.16px; background-color: white;",
-        "view_box": "0 0 2355.156 100",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "class",
-      "fixture": "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classlabel_if_class_has_already_been_defined_e_038",
-      "descendants": "parity",
-      "input_sha256": "8b4e58b8b96a299a598fe6ae885be736f8c924ee8992d6a2b06b9bd941d30514",
-      "upstream_svg_sha256": "ab637f1293732816d86a00d57c0a9ddae4cfef405b207f8e9ea38496df22a957",
-      "upstream": {
-        "style": "max-width: 191.469px; background-color: white;",
-        "view_box": "0 0 191.469 234",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 191.484px; background-color: white;",
-        "view_box": "0 0 191.484 234",
+        "style": "max-width: 2240.2px; background-color: white;",
+        "view_box": "4 4 2240.203 100",
         "width": "100%",
         "height": null
       },
@@ -5228,8 +5208,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 417.25px; background-color: white;",
-        "view_box": "0 0 417.25 234",
+        "style": "max-width: 417.219px; background-color: white;",
+        "view_box": "0 0 417.219 234",
         "width": "100%",
         "height": null
       },
@@ -5248,8 +5228,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -5288,8 +5268,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 294",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 294",
         "width": "100%",
         "height": null
       },
@@ -5308,8 +5288,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -5319,37 +5299,17 @@
       "diagram": "class",
       "fixture": "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037",
       "descendants": "parity",
-      "input_sha256": "a30caeb9a7fa8568d99a644a1c7f7e0e664ef2e291c3be8ff9606f03a1f108fd",
-      "upstream_svg_sha256": "0531a3683e9d58283b21dcde9f6dbd46fb540a1e87d3d31efa5bce0bbbae5b86",
+      "input_sha256": "8c5c676ca78ec3b2fd2e92702cc00edd58cc10cca54a09a220cfdfd2b1b6966b",
+      "upstream_svg_sha256": "f10dad58f8e887dd448f9d58fcc7a6e74208abf58540fd51437d2ccc7f560bd7",
       "upstream": {
-        "style": "max-width: 2355.73px; background-color: white;",
-        "view_box": "0 0 2355.734 100",
+        "style": "max-width: 2380.92px; background-color: white;",
+        "view_box": "-0.13 0.201 2380.917 103.827",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 2355.16px; background-color: white;",
-        "view_box": "0 0 2355.156 100",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "class",
-      "fixture": "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classlabel_if_class_has_already_been_defined_ea_038",
-      "descendants": "parity",
-      "input_sha256": "f9a1b9dc16cf49606e3addfaa857af60572cea631012d733000890a56ac6d052",
-      "upstream_svg_sha256": "c4ea369e51b45d848654e996a109d67bd21b7fb9734d868df6209d2d6df8ae1c",
-      "upstream": {
-        "style": "max-width: 191.469px; background-color: white;",
-        "view_box": "0 0 191.469 234",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 191.484px; background-color: white;",
-        "view_box": "0 0 191.484 234",
+        "style": "max-width: 2352.05px; background-color: white;",
+        "view_box": "-0.769 -1.225 2352.047 103",
         "width": "100%",
         "height": null
       },
@@ -5368,8 +5328,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 417.25px; background-color: white;",
-        "view_box": "0 0 417.25 234",
+        "style": "max-width: 417.219px; background-color: white;",
+        "view_box": "0 0 417.219 234",
         "width": "100%",
         "height": null
       },
@@ -5388,8 +5348,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -5548,8 +5508,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 397.062px; background-color: white;",
-        "view_box": "0 0 397.063 208",
+        "style": "max-width: 397.039px; background-color: white;",
+        "view_box": "0 0 397.039 208",
         "width": "100%",
         "height": null
       },
@@ -6837,46 +6797,6 @@
     },
     {
       "diagram": "class",
-      "fixture": "upstream_docs_classdiagram_class_labels_008",
-      "descendants": "parity",
-      "input_sha256": "cb3671b844c322481046811c745c5c7f838134e6e825031936164ed3448a753f",
-      "upstream_svg_sha256": "031f4bb8332d0d7c938043e046daeb2478aab99d03238bef7f16007dc5bb36f5",
-      "upstream": {
-        "style": "max-width: 184.688px; background-color: white;",
-        "view_box": "0 0 184.688 234",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 184.719px; background-color: white;",
-        "view_box": "0 0 184.719 234",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "class",
-      "fixture": "upstream_docs_classdiagram_class_labels_010",
-      "descendants": "parity",
-      "input_sha256": "01f18827962a86cd547fe102cb53a52876ab44202f72214d96a8ba64bcb96cb9",
-      "upstream_svg_sha256": "3c82cd845b7cc2427e8ea2fd1db8fcc6ec2fa277c83b087f2e467ca955ec3414",
-      "upstream": {
-        "style": "max-width: 138.859px; background-color: white;",
-        "view_box": "0 0 138.859 234",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 138.875px; background-color: white;",
-        "view_box": "0 0 138.875 234",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "class",
       "fixture": "upstream_docs_classdiagram_default_class_070",
       "descendants": "parity",
       "input_sha256": "4fa7040920669722d525029d24140d2d93bcbd1a64188910c1d3580c9269f9d8",
@@ -7628,8 +7548,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 642.875px; background-color: white;",
-        "view_box": "0 0 642.875 100",
+        "style": "max-width: 642.828px; background-color: white;",
+        "view_box": "0 0 642.828 100",
         "width": "100%",
         "height": null
       },
@@ -7848,8 +7768,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 270",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 270",
         "width": "100%",
         "height": null
       },
@@ -7868,8 +7788,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 294",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 294",
         "width": "100%",
         "height": null
       },
@@ -7888,8 +7808,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 270",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 270",
         "width": "100%",
         "height": null
       },
@@ -7908,8 +7828,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 270",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 270",
         "width": "100%",
         "height": null
       },
@@ -7968,8 +7888,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -7988,8 +7908,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 205.828px; background-color: white;",
-        "view_box": "0 0 205.828 234",
+        "style": "max-width: 205.812px; background-color: white;",
+        "view_box": "0 0 205.813 234",
         "width": "100%",
         "height": null
       },
@@ -11499,17 +11419,17 @@
       "diagram": "flowchart",
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012",
       "descendants": "parity",
-      "input_sha256": "86f5bb157755773af6569796e253401153be66702073e062da84add299e6943a",
-      "upstream_svg_sha256": "e6c97c8ca01f756c77365b469408cf35833478c916a3f14f3be802d20779050e",
+      "input_sha256": "7c5aceff95b395be862a978819f359e864716de809a5ead430100ab041e0957f",
+      "upstream_svg_sha256": "f02723616cb7f88d73f48721c08367bcf66b30546c6934c118030fc724a7f951",
       "upstream": {
-        "style": "max-width: 1926.81px; background-color: white;",
-        "view_box": "0 0 1926.813 452",
+        "style": "max-width: 1561.2px; background-color: white;",
+        "view_box": "0.083 0.278 1561.202 463.994",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 1790.84px; background-color: white;",
-        "view_box": "0 0 1790.844 452",
+        "style": "max-width: 1538.41px; background-color: white;",
+        "view_box": "0 0 1538.406 452",
         "width": "100%",
         "height": null
       },
@@ -12239,17 +12159,17 @@
       "diagram": "flowchart",
       "fixture": "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012",
       "descendants": "parity",
-      "input_sha256": "0e81009deee4bf0a748b83e3a3a62e900fe887160c840c0eb3d7a4730e3d95ce",
-      "upstream_svg_sha256": "fa541f64727919456552b1afccfcf786d4145c3cb6455bfc6ca862211ef861cf",
+      "input_sha256": "b898ec183892fb75f8985afa7dac94b1f7775cf1d25ebc5e3e2d9910d0646afa",
+      "upstream_svg_sha256": "74195ed175f3fa28b484cc0fd41388adbfea91e79844d7799aafed9fc0ea0dea",
       "upstream": {
-        "style": "max-width: 1992.97px; background-color: white;",
-        "view_box": "0 0 1992.969 452",
+        "style": "max-width: 1538.44px; background-color: white;",
+        "view_box": "0 0 1538.438 452",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 1897.59px; background-color: white;",
-        "view_box": "0 0 1897.594 452",
+        "style": "max-width: 1538.41px; background-color: white;",
+        "view_box": "0 0 1538.406 452",
         "width": "100%",
         "height": null
       },
@@ -23879,8 +23799,8 @@
       "diagram": "gitgraph",
       "fixture": "upstream_pkgtests_gitgraph_spec_054",
       "descendants": "parity",
-      "input_sha256": "83283869113922c747ec4068a343fd7a85f057103434c8ce1002c8c2a8a06c0f",
-      "upstream_svg_sha256": "e063afa4dc1197e59c7b32f65ca940d2f9bf5420da3862d08771150feefa457e",
+      "input_sha256": "88c1e24b9790eac20578b4cf2826b6654318d7d24c173d57a49e9b3658b898aa",
+      "upstream_svg_sha256": "1cc91290edd6d47c77e70287da4d98feb39622a5b176bbbeca18527c5a124275",
       "upstream": {
         "style": "max-width: 829.422px; background-color: white;",
         "view_box": "-171.422 -21.5 829.422 373.355",
@@ -23910,6 +23830,66 @@
       "local": {
         "style": "max-width: 254px; background-color: white;",
         "view_box": "-96 -21.5 254 173.791",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "gitgraph",
+      "fixture": "upstream_pkgtests_gitgraph_spec_086",
+      "descendants": "parity",
+      "input_sha256": "c04d45797f798a6796f9cd3762680912ee19db9a5e1264188beaf1e17d5c0334",
+      "upstream_svg_sha256": "b57adffbef367c799a5c48a05830149da1f8e9fed26bd2759b625120ff8fc73c",
+      "upstream": {
+        "style": "max-width: 204px; background-color: white;",
+        "view_box": "-96 -21.5 204 174.018",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 204px; background-color: white;",
+        "view_box": "-96 -21.5 204 174.024",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "gitgraph",
+      "fixture": "upstream_pkgtests_gitgraph_spec_135",
+      "descendants": "parity",
+      "input_sha256": "a9c1fa0a4aa5cfc32a76b4f6f50740cf23644e213df5af33308b30876a6dbfe2",
+      "upstream_svg_sha256": "76edb91c86806a1831f3e22859d8a9890076331829487332b6aaf6fc93aab79e",
+      "upstream": {
+        "style": "max-width: 347.328px; background-color: white;",
+        "view_box": "-139.328 -21.5 347.328 173.444",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 347.344px; background-color: white;",
+        "view_box": "-139.344 -21.5 347.344 173.433",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "gitgraph",
+      "fixture": "upstream_pkgtests_gitgraph_spec_147",
+      "descendants": "parity",
+      "input_sha256": "ef04a508728dd7c3b85a62aed4c5390a8a5c67062b8d2c77cbb264e31a06b358",
+      "upstream_svg_sha256": "06726d463211efbb56cf195b3cc5139bd51175c18c093b138308b6b01a83dbca",
+      "upstream": {
+        "style": "max-width: 397.328px; background-color: white;",
+        "view_box": "-139.328 -21.5 397.328 172.826",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 397.344px; background-color: white;",
+        "view_box": "-139.344 -21.5 397.344 172.815",
         "width": "100%",
         "height": null
       },
@@ -25419,8 +25399,8 @@
       "diagram": "mindmap",
       "fixture": "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017",
       "descendants": "parity",
-      "input_sha256": "79b51a4ff0a85be30e5f21781b6d47a213b693238ca8e31f0441c66128ac6050",
-      "upstream_svg_sha256": "971ea3e0aed3ec587371a3766490a3aa361982a2e69fd1f361c4c87672768430",
+      "input_sha256": "e010f0f50bd19fbc65d2130cd4e6b6197118a47f22c9e1e11726a9ff2f5edd1a",
+      "upstream_svg_sha256": "00cfa3990cf5f21bd5a46021ee43600dd96f87e9744daf01752223b9cd6e40a7",
       "upstream": {
         "style": "max-width: 553.495px; background-color: white;",
         "view_box": "5 5 553.495 112",
@@ -25428,8 +25408,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 513.729px; background-color: white;",
-        "view_box": "5 5 513.729 112",
+        "style": "max-width: 496.166px; background-color: white;",
+        "view_box": "5 5 496.166 112",
         "width": "100%",
         "height": null
       },
@@ -27297,19 +27277,39 @@
     },
     {
       "diagram": "railroad",
-      "fixture": "upstream_cypress_railroad_spec_renders_a_simple_rule_001",
+      "fixture": "upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005",
       "descendants": "parity",
-      "input_sha256": "12d244ce3dae4a34af166429b28dadbe93c71ab7eb3ac6892dd8af401594706d",
-      "upstream_svg_sha256": "683182d89f82d698cdc890843c22e566bc4b1ef361b5dd3eb1dd3e1ac9bd6b0b",
+      "input_sha256": "c8142568715ebf200f666cde4c417b423cb33b1311a2d99c136a0f6899b2fc2c",
+      "upstream_svg_sha256": "e4326d059caacecfce2a3aef0370cca0b5ad6efe25a87040bbaedb93513f9758",
       "upstream": {
-        "style": "max-width: 149.016px; background-color: white;",
-        "view_box": "0 0 149.016 87.5",
+        "style": "max-width: 259.828px; background-color: white;",
+        "view_box": "0 0 259.828 653",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 149.031px; background-color: white;",
-        "view_box": "0 0 149.031 87.5",
+        "style": "max-width: 259.766px; background-color: white;",
+        "view_box": "0 0 259.766 653",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "railroad",
+      "fixture": "upstream_cypress_railroad_spec_renders_a_simple_rule_001",
+      "descendants": "parity",
+      "input_sha256": "e241058f6560da1df452c12c75e7f6b3162a8c6f981a4aa66433d76d1b005be5",
+      "upstream_svg_sha256": "80277fc43064600aade68442aecab4850f23926663257a71d89bd85664664041",
+      "upstream": {
+        "style": "max-width: 171.828px; background-color: white;",
+        "view_box": "0 0 171.828 87",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 171.797px; background-color: white;",
+        "view_box": "0 0 171.797 87",
         "width": "100%",
         "height": null
       },
@@ -27319,17 +27319,17 @@
       "diagram": "railroad",
       "fixture": "upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004",
       "descendants": "parity",
-      "input_sha256": "ba16459943fd5be3f4b3fe40a9cb926ace49b97c9bb990a722d8d2ad1c98775a",
-      "upstream_svg_sha256": "4de4abc531502a7c6253f4abb694b696b2de45dbaf01108efd703c097c6f2352",
+      "input_sha256": "e2098d1350d543800407724288b206b9498ea21c8d9e7b3737205e8637c6d625",
+      "upstream_svg_sha256": "ccf2644a2f5d79a570b1d43a13d3dbe31751dc95891e37ee00baa9170864f72a",
       "upstream": {
-        "style": "max-width: 490.516px; background-color: white;",
-        "view_box": "0 0 490.516 1335.5",
+        "style": "max-width: 525.484px; background-color: white;",
+        "view_box": "0 0 525.484 1315",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 490.5px; background-color: white;",
-        "view_box": "0 0 490.5 1335.5",
+        "style": "max-width: 525.359px; background-color: white;",
+        "view_box": "0 0 525.359 1315",
         "width": "100%",
         "height": null
       },
@@ -27339,17 +27339,37 @@
       "diagram": "railroad",
       "fixture": "upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003",
       "descendants": "parity",
-      "input_sha256": "8ca3b06bf302f72f0bb99ff943df7b758dc25e7bf1a267fcaf55b99791fcf820",
-      "upstream_svg_sha256": "3fe658502e1349aa96e546c52293bf43cb833229bf627a35b9ba07fc9a563174",
+      "input_sha256": "49fa95465763fd3d8e36acd42c523710b1828c8f73077febdb83803d10fcfaad",
+      "upstream_svg_sha256": "47ce7793fed0ce7e920bc0d073b32ab84b563ecb0de5302e3358e613ddc2f259",
       "upstream": {
-        "style": "max-width: 457.188px; background-color: white;",
-        "view_box": "0 0 457.188 576",
+        "style": "max-width: 496.656px; background-color: white;",
+        "view_box": "0 0 496.656 568",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 457.203px; background-color: white;",
-        "view_box": "0 0 457.203 576",
+        "style": "max-width: 496.578px; background-color: white;",
+        "view_box": "0 0 496.578 568",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "railroad",
+      "fixture": "upstream_cypress_railroad_spec_renders_sequences_and_choices_002",
+      "descendants": "parity",
+      "input_sha256": "39bdbe5fc825bd6ca1787a57974c5780d415df238928a737d1465207dfac1f17",
+      "upstream_svg_sha256": "5ba640a4a2886cff2e4daa38415ecb2f943f3768b487a304998d469eeaaa620b",
+      "upstream": {
+        "style": "max-width: 437.047px; background-color: white;",
+        "view_box": "0 0 437.047 529",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 436.938px; background-color: white;",
+        "view_box": "0 0 436.938 529",
         "width": "100%",
         "height": null
       },
@@ -27370,6 +27390,26 @@
       "local": {
         "style": "max-width: 289.547px; background-color: white;",
         "view_box": "0 0 289.547 221",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "railroadAbnf",
+      "fixture": "upstream_cypress_railroad_spec_renders_alternation_and_repetition_008",
+      "descendants": "parity",
+      "input_sha256": "8af1c0d8b6b5381c9241ee8441c273b8c5d3f3df5e57abe9691326e9b1fcb105",
+      "upstream_svg_sha256": "e4b8ebcbb0456730ac2302df199142b24a505eb218df913a9e6d582ed1ef7520",
+      "upstream": {
+        "style": "max-width: 378.016px; background-color: white;",
+        "view_box": "0 0 378.016 514",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 377.922px; background-color: white;",
+        "view_box": "0 0 377.922 514",
         "width": "100%",
         "height": null
       },
@@ -27399,17 +27439,37 @@
       "diagram": "railroadEbnf",
       "fixture": "upstream_cypress_railroad_spec_renders_iso_14977_notation_007",
       "descendants": "parity",
-      "input_sha256": "9d05d2aa15b4aeedf35cb938bb71d4afaaa678bfb092804f32193d5051678e7f",
-      "upstream_svg_sha256": "b270eb8670e77a559ddefa69fbb0e417c4ebd183f9d6a7c7da7c8397b8e59081",
+      "input_sha256": "d87b477e2ecbe33c723845bdd62e02ed629ef36f10085532c213d533d5c8be6c",
+      "upstream_svg_sha256": "5aed967c3fd3716d105b988a6e5b26cd7fa3d9283b59787e2258d98211c67954",
       "upstream": {
-        "style": "max-width: 367.641px; background-color: white;",
-        "view_box": "0 0 367.641 543",
+        "style": "max-width: 435.438px; background-color: white;",
+        "view_box": "0 0 435.438 534",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 367.688px; background-color: white;",
-        "view_box": "0 0 367.688 543",
+        "style": "max-width: 435.313px; background-color: white;",
+        "view_box": "0 0 435.313 534",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "railroadEbnf",
+      "fixture": "upstream_cypress_railroad_spec_renders_sequences_and_choices_006",
+      "descendants": "parity",
+      "input_sha256": "b63b82fcf9987bb054845ecea7223d56484768d40f6ff441e7bbd93add6daa92",
+      "upstream_svg_sha256": "9db3a321b0396fe70ef3c730f2433a0fb80e64c8e2f58323745a0815bb692953",
+      "upstream": {
+        "style": "max-width: 437.047px; background-color: white;",
+        "view_box": "0 0 437.047 529",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 436.938px; background-color: white;",
+        "view_box": "0 0 436.938 529",
         "width": "100%",
         "height": null
       },
@@ -27430,6 +27490,26 @@
       "local": {
         "style": "max-width: 430.594px; background-color: white;",
         "view_box": "0 0 430.594 107",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "railroadPeg",
+      "fixture": "upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009",
+      "descendants": "parity",
+      "input_sha256": "e2be125ab757a91ed05c46d95b40533a422b9617bcc96d3323889dfe97fdf8d7",
+      "upstream_svg_sha256": "da220d8adebfb7267eed7c5a13da24bc0f8823b15ad828d0606354179d862be4",
+      "upstream": {
+        "style": "max-width: 437.047px; background-color: white;",
+        "view_box": "0 0 437.047 727",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 436.938px; background-color: white;",
+        "view_box": "0 0 436.938 727",
         "width": "100%",
         "height": null
       },
@@ -28640,7 +28720,7 @@
       "fixture": "stress_state_comments_and_weird_spacing_018",
       "descendants": "parity",
       "input_sha256": "b4a217698bab2386ec1028bef33745979b49cb2202f528978b32a22576760ce9",
-      "upstream_svg_sha256": "d9f475706f9671fe63e3c00f5d06707206e4c39c075e39121698cb6baf3f9937",
+      "upstream_svg_sha256": "a9a72b013434c7df98ea66cea7dfdc836bc33194b5bc413a0e8cfb874c63be86",
       "upstream": {
         "style": "max-width: 262.539px; background-color: white;",
         "view_box": "0 0 262.539 1506",
@@ -29080,7 +29160,7 @@
       "fixture": "stress_state_nested_composite_concurrency_001",
       "descendants": "parity",
       "input_sha256": "c1cce900de81950a5ae2843134c921109beeb64ffe8d8263fa4a938f482b4fa6",
-      "upstream_svg_sha256": "15e4111a7b31bd7ae94f253d33e41082538de261f22109c3bc60b6a81f85eba1",
+      "upstream_svg_sha256": "b30dbd3ea83e09819260a9578b7da5d4782a9a829df2b4354d95b98591edf6f9",
       "upstream": {
         "style": "max-width: 273.297px; background-color: white;",
         "view_box": "0 0 273.297 1622",
@@ -29300,7 +29380,7 @@
       "fixture": "stress_state_three_way_concurrency_013",
       "descendants": "parity",
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "upstream_svg_sha256": "29d17cc0b39127f14cfe8a26cbd1398b2c66535db5de84a2505fc27b762b667f",
+      "upstream_svg_sha256": "e541ffd06566e545b80928095f7868125ff7bfa7de79f42bc898780d530cd19f",
       "upstream": {
         "style": "max-width: 573.277px; background-color: white;",
         "view_box": "0 0 573.277 1657",
@@ -29499,17 +29579,17 @@
       "diagram": "state",
       "fixture": "upstream_cypress_statediagram_spec_should_render_composite_states_015",
       "descendants": "parity",
-      "input_sha256": "202c6b156d6465669c62ec420b55bd013395f9304cf05a62ad7065751927b0fb",
-      "upstream_svg_sha256": "49606d629c03f2bb7e19bcf7d771c00472bdcb1dd8a01a606e6689d9da5a7c23",
+      "input_sha256": "bc0a92289e6e203c8b15f85bfe6ec9e41546cf2c9eab77fa8303d759b1f22f58",
+      "upstream_svg_sha256": "15170a87567d5440442775dd726c2775baa4ed7df45e2fa2c067a7bdb0bb4269",
       "upstream": {
-        "style": "max-width: 372.359px; background-color: white;",
-        "view_box": "0 0 372.359 609",
+        "style": "max-width: 383.609px; background-color: white;",
+        "view_box": "0 0 383.609 657",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 372.336px; background-color: white;",
-        "view_box": "0 0 372.336 609",
+        "style": "max-width: 383.574px; background-color: white;",
+        "view_box": "0 0 383.574 657",
         "width": "100%",
         "height": null
       },
@@ -29520,7 +29600,7 @@
       "fixture": "upstream_cypress_statediagram_spec_should_render_concurrency_states_019",
       "descendants": "parity",
       "input_sha256": "9f89077abf2d4b9012fc7ea76028ca784b69b9d13d232a5f3bdd234f4a13c547",
-      "upstream_svg_sha256": "0bbf5a8f3686688e771e22f25324af39bf55d020a565cdf8359b733be73d3906",
+      "upstream_svg_sha256": "d95d35f0a7ebbf2ee3ac1667d596a97a4ee7254849089bd9546d30fec36d7fd5",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -29999,17 +30079,17 @@
       "diagram": "state",
       "fixture": "upstream_cypress_statediagram_v2_spec_v2_should_render_composite_states_016",
       "descendants": "parity",
-      "input_sha256": "ec8d3759ea6a4fbca943b87ac2e685f85aa2a4bb294355e7c040d50db4c38aec",
-      "upstream_svg_sha256": "5f4cd7ffd9120338704fa1f4bf165520082943de6b191780289dd8bd4b565525",
+      "input_sha256": "8c565f23b913479bf5413386f17fbbc56c070176c3a8c99b71f8f5975a7517bb",
+      "upstream_svg_sha256": "24f4bf8354c772e6d93be5112f07003cfbcd1c78995b73dfb2635945ec37f54b",
       "upstream": {
-        "style": "max-width: 372.359px; background-color: white;",
-        "view_box": "0 0 372.359 609",
+        "style": "max-width: 383.609px; background-color: white;",
+        "view_box": "0 0 383.609 657",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 372.336px; background-color: white;",
-        "view_box": "0 0 372.336 609",
+        "style": "max-width: 383.574px; background-color: white;",
+        "view_box": "0 0 383.574 657",
         "width": "100%",
         "height": null
       },
@@ -30020,7 +30100,7 @@
       "fixture": "upstream_cypress_statediagram_v2_spec_v2_should_render_concurrency_states_020",
       "descendants": "parity",
       "input_sha256": "0f823c07d492e2e9246b228c40aaa636e2883da17270f7a258de1823193db7e9",
-      "upstream_svg_sha256": "87013ef6b26e649162104d7f3d983c8c865f857daf0db8866abda83fa87b0af2",
+      "upstream_svg_sha256": "c91c0e96812fbff2dc77b42ffdac3b89b32d377822c9b5ac3b79a23a7e30f19b",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -30220,7 +30300,7 @@
       "fixture": "upstream_docs_statediagram_concurrency_030",
       "descendants": "parity",
       "input_sha256": "17d68bbfe39896a12f203e29a754680b1a71aab56d3644f705e46edffee2fdbb",
-      "upstream_svg_sha256": "b529be24d23b3d86a5c3b85092d1f2c11e5668ef6ef9fa76aeb02310e0ac3e78",
+      "upstream_svg_sha256": "b4210428580878bc13eb795330386f451389c60395db3880ab5d4ab7071123a0",
       "upstream": {
         "style": "max-width: 1193.72px; background-color: white;",
         "view_box": "0 0 1193.719 573",
@@ -30900,7 +30980,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_022",
       "descendants": "parity",
       "input_sha256": "ec222ca4739d2ecd7e6db0fcda2c6231b2f0865507d124df3ef85f677daae601",
-      "upstream_svg_sha256": "e874767222da3fd1fda429f6df0da0b1e58d87cdae0ec67ba452fe535744cb30",
+      "upstream_svg_sha256": "80483ee02951714acbf951cca03dc31474ef503263c6ba3a1fbd7ef5a9054e28",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -30920,7 +31000,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_023",
       "descendants": "parity",
       "input_sha256": "e95f0da71e585eea7b36dd21497e267b917002c47017b49bbc263b71c4da2c21",
-      "upstream_svg_sha256": "5dd797c5182a2c4ccf88a69fa838cdcca19a7e24f378e801fb30d437c3fa7b89",
+      "upstream_svg_sha256": "870a2172ace8e288d872b7826d2c90734856b8c3cd884dd49364200a6480a2a0",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -31280,7 +31360,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_022",
       "descendants": "parity",
       "input_sha256": "123c2ba2cac6a749e14b023acc2bd8fab2a051f8c84922734076eebe4e5b09e6",
-      "upstream_svg_sha256": "1f0c0a553e99336350cb9b082ae17d80a70c477ae3e33e11a8df8a976df4e4a0",
+      "upstream_svg_sha256": "bc9d251edeade9e389692303d3009c93b76a459325f57341ad8dddf2fb7e33e3",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -31300,7 +31380,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_023",
       "descendants": "parity",
       "input_sha256": "a4b17bc451d573dbad7c7636388ce555071565ce71158831623dbd844d70c468",
-      "upstream_svg_sha256": "5e6a432618a452f38ec66192550d0f7bdcd539921fa342c7582630121a9aedd2",
+      "upstream_svg_sha256": "fe9828e0cf48848fadc9a20aba78b8df0c8d8cb348c87aa771b12cba951f964f",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -31440,7 +31520,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_minimal_spec",
       "descendants": "parity",
       "input_sha256": "4feab66e91540a6eb9060a9168f475afda0b48967c39945ab4f6129e17a8bab4",
-      "upstream_svg_sha256": "6b4c605e5015bb1f431ab57ddc6a263c718d594e4daade7e79475626b3464b4a",
+      "upstream_svg_sha256": "27e56e66e7e954147d65d14894f14a69179096ff40a09f6042a24b34d7520bd7",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -31460,7 +31540,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "e51115f5c87d6fb6ca7defd7656b62e6057a5bb8418b01c6987121c505487e14",
-      "upstream_svg_sha256": "975aa029140b84fc3875fdcb7255dcc7df5ac28495a5f46cab250668fd2fbbfd",
+      "upstream_svg_sha256": "be35a25eecc91e77bdeed865a401081d012af39410265aa1114827fdb6797512",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -31820,7 +31900,7 @@
       "fixture": "upstream_stateDiagram_v2_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "ae25c53cc9432b727aaf5730153a8b3d9545da9c235127fd00d9021ca1cdc269",
-      "upstream_svg_sha256": "3128bdb96fc28078f8cb324a87395b7c038cbc3a33df2e5c24abdf6e9a0ff777",
+      "upstream_svg_sha256": "dcb1c5ddaef0bf644abea1f1aead9aa2b87b12ef7fc14be40ae795739462de1e",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -32257,19 +32337,59 @@
     },
     {
       "diagram": "treeView",
-      "fixture": "upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013",
+      "fixture": "upstream_cypress_treeview_spec_should_hide_default_icons_with_icon_none_and_icon_012",
       "descendants": "parity",
-      "input_sha256": "2133e74ef78c33317db543c81e1f741c9ff3f408130ba74cbb323fd9b4f925dc",
-      "upstream_svg_sha256": "f801dbcc76c0592f15a646664acd9c989f237db9101d422a77f84325fee311cb",
+      "input_sha256": "feff117a5ca378e804430dc48101d22609f297e15fb5c5301f97764ee9b8c965",
+      "upstream_svg_sha256": "da8b40306b68bd8d5bedc14ed8a3e8e12b253a16963ed0f259540decca95d36b",
       "upstream": {
-        "style": "max-width: 170.594px; background-color: white;",
-        "view_box": "-0.5 0 170.594 119",
+        "style": "max-width: 158.219px; background-color: white;",
+        "view_box": "-0.5 0 158.219 140",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 166.625px; background-color: white;",
-        "view_box": "-0.5 0 166.625 115.594",
+        "style": "max-width: 158.141px; background-color: white;",
+        "view_box": "-0.5 0 158.141 140",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "treeView",
+      "fixture": "upstream_cypress_treeview_spec_should_pick_file_icons_from_the_filenameicons_and_extensionicons_009",
+      "descendants": "parity",
+      "input_sha256": "b8fae3896a6b74de0d85e4e20df5d9ae0e773025c9bbc0b39161bf9fc1352b2d",
+      "upstream_svg_sha256": "c3465edcd34f5f0b7752c4f9eb52aee080da63228a647143019e74e12127e125",
+      "upstream": {
+        "style": "max-width: 173.219px; background-color: white;",
+        "view_box": "-0.5 0 173.219 196",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 173.141px; background-color: white;",
+        "view_box": "-0.5 0 173.141 196",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "treeView",
+      "fixture": "upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013",
+      "descendants": "parity",
+      "input_sha256": "c797fe29db1add0a3dacfcf91aa122e5dba81a976b8eb91348107c4e74e3c30f",
+      "upstream_svg_sha256": "7f197111cf4de24cefd209d00fd72a3d0e0c458622c92571e487bba8213c6f8f",
+      "upstream": {
+        "style": "max-width: 213.625px; background-color: white;",
+        "view_box": "-0.5 0 213.625 116",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 209.625px; background-color: white;",
+        "view_box": "-0.5 0 209.625 112.406",
         "width": "100%",
         "height": null
       },
@@ -32279,17 +32399,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002",
       "descendants": "parity",
-      "input_sha256": "a38d3ba62d10c850189fd241cc4f4bffda35b7c32d0492e587ea25a8813c64e3",
-      "upstream_svg_sha256": "3969632c5fda0f70a807f58c2d3330c42fe74465560d36156aedb345ad938d70",
+      "input_sha256": "3a0d32b4d86acc4119c8d83e0cfa8ef0aa7a836bfad868e242298539c149a171",
+      "upstream_svg_sha256": "5b67f2b5fd2cf8eabfccb1cede15a2c160d748571b83596e8c8c76a34531a0c8",
       "upstream": {
-        "style": "max-width: 143.922px; background-color: white;",
-        "view_box": "-0.5 0 143.922 377",
+        "style": "max-width: 179.828px; background-color: white;",
+        "view_box": "-0.5 0 179.828 364",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 143.938px; background-color: white;",
-        "view_box": "-0.5 0 143.938 377",
+        "style": "max-width: 179.734px; background-color: white;",
+        "view_box": "-0.5 0 179.734 364",
         "width": "100%",
         "height": null
       },
@@ -32299,17 +32419,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003",
       "descendants": "parity",
-      "input_sha256": "cb74cbb3fd4d5f2213389c88ad8ee48798d06fb69684df5ab31decb1aebadb17",
-      "upstream_svg_sha256": "5d33bc481485e752f8599248103861920c95133605413805ac8d335ee1dcad4a",
+      "input_sha256": "07481aa184959417c2c2d17f76c997ec18d065ed884b1d617e37dec5fc2f9bea",
+      "upstream_svg_sha256": "2a10282a04f45499b947283a7fdd06cc9aadb05d78bb01af5ac77fec431b4dbd",
       "upstream": {
-        "style": "max-width: 128.922px; background-color: white;",
-        "view_box": "-0.5 0 128.922 348",
+        "style": "max-width: 164.828px; background-color: white;",
+        "view_box": "-0.5 0 164.828 336",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 128.938px; background-color: white;",
-        "view_box": "-0.5 0 128.938 348",
+        "style": "max-width: 164.734px; background-color: white;",
+        "view_box": "-0.5 0 164.734 336",
         "width": "100%",
         "height": null
       },
@@ -32319,17 +32439,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001",
       "descendants": "parity",
-      "input_sha256": "e3eca43634d7f863673982fd132e036c4c4526001c08ebe28b184d81af660050",
-      "upstream_svg_sha256": "dc78c5617a9dcfea7ecdd8c0a7f16c069a779bc413f9e61d29da580a39ca9d4b",
+      "input_sha256": "59e3f0bea6dc3a20dc81819f5f8d16fe42dd0dc1b6b0429da866f9884df9d541",
+      "upstream_svg_sha256": "0109dc0296f9d0247893767b47d2a8cb8e2c90d576b295dfbec18e999d648d10",
       "upstream": {
-        "style": "max-width: 76.016px; background-color: white;",
-        "view_box": "-0.5 0 76.016 58",
+        "style": "max-width: 101.812px; background-color: white;",
+        "view_box": "-0.5 0 101.813 56",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 76.031px; background-color: white;",
-        "view_box": "-0.5 0 76.031 58",
+        "style": "max-width: 101.766px; background-color: white;",
+        "view_box": "-0.5 0 101.766 56",
         "width": "100%",
         "height": null
       },
@@ -32339,17 +32459,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004",
       "descendants": "parity",
-      "input_sha256": "1b2f98d6f3eba98efcab26cfb69539758bd01659fbb9d75edc15d84ce5fa0f54",
-      "upstream_svg_sha256": "480d5c9a61cbe9c96152a2e1f6c30f7148aed6d2586f2ce0a05699ca555533ca",
+      "input_sha256": "a7285d4c781ecde8be92c540861baa59e22bc7275082380a4cb1b94ecb49b032",
+      "upstream_svg_sha256": "403fcc4945b9a59c0b4ff3f01280168ecf1d8b88c1a5600978220b9851c0ead8",
       "upstream": {
-        "style": "max-width: 413.766px; background-color: white;",
-        "view_box": "-1.5 0 413.766 396.203",
+        "style": "max-width: 446.016px; background-color: white;",
+        "view_box": "-1.5 0 446.016 396",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 413.789px; background-color: white;",
-        "view_box": "-1.5 0 413.789 396.203",
+        "style": "max-width: 445.953px; background-color: white;",
+        "view_box": "-1.5 0 445.953 396",
         "width": "100%",
         "height": null
       },
@@ -32359,17 +32479,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_bare_unquoted_labels_with_icons_005",
       "descendants": "parity",
-      "input_sha256": "6c0ed7d5cc652777211483a3f8631f74746d24e1fddb77b3a1a5d58d23792431",
-      "upstream_svg_sha256": "d4e9b95b4f0e36247ad98c51ff96605195287d091ada102499081cd0942f9995",
+      "input_sha256": "cb8e9d268b7560764b46412764fe7068dd9dedd46556f4fe8e3d64ce66437c04",
+      "upstream_svg_sha256": "6ba9fb6c447b7d2597273db5862810829a498307da567687b0f3e9f3079e91d9",
       "upstream": {
-        "style": "max-width: 164.047px; background-color: white;",
-        "view_box": "-0.5 0 164.047 319",
+        "style": "max-width: 184.016px; background-color: white;",
+        "view_box": "-0.5 0 184.016 308",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 164.063px; background-color: white;",
-        "view_box": "-0.5 0 164.063 319",
+        "style": "max-width: 183.953px; background-color: white;",
+        "view_box": "-0.5 0 183.953 308",
         "width": "100%",
         "height": null
       },
@@ -32379,17 +32499,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_class_annotations_for_highlighting_006",
       "descendants": "parity",
-      "input_sha256": "aea6bc9be34757d2a7ac7f6be05168d9ebfae47b68739c9e8ae9cfac1a472fb4",
-      "upstream_svg_sha256": "2b459f76db827da652c1fa47562dc19ae83ddc61c7fe119c962f7716b612405a",
+      "input_sha256": "54c57a8d0d12d57898b5f25a88b6db4777c95baff7166f7bbecb4d8470dae211",
+      "upstream_svg_sha256": "5e0648906c21d010b9aeb7d51682f48b221c91152936708acf96338608d0eefb",
       "upstream": {
-        "style": "max-width: 151.047px; background-color: white;",
-        "view_box": "-0.5 0 151.047 232",
+        "style": "max-width: 171.016px; background-color: white;",
+        "view_box": "-0.5 0 171.016 224",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 151.063px; background-color: white;",
-        "view_box": "-0.5 0 151.063 232",
+        "style": "max-width: 170.953px; background-color: white;",
+        "view_box": "-0.5 0 170.953 224",
         "width": "100%",
         "height": null
       },
@@ -32399,17 +32519,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_combined_annotations_015",
       "descendants": "parity",
-      "input_sha256": "98f26f192904142c48d95da0f88c48a41b275f77d36b72104fc1c2737d3a8b9e",
-      "upstream_svg_sha256": "2e19b9028eb6adfa419548445f09aa75812f7d1cff83337687dd51ea8dde3c4c",
+      "input_sha256": "47bced291beeb6dc7a7ea34f254128b296580ecc6867a91faa1865a9c54d2c25",
+      "upstream_svg_sha256": "b9445db8d3d3da0c948adbf71db365f83b2ad9f5c50dad44765fefb2841bce1f",
       "upstream": {
-        "style": "max-width: 321.594px; background-color: white;",
-        "view_box": "-0.5 0 321.594 261",
+        "style": "max-width: 382.859px; background-color: white;",
+        "view_box": "-0.5 0 382.859 252",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 321.609px; background-color: white;",
-        "view_box": "-0.5 0 321.609 261",
+        "style": "max-width: 382.641px; background-color: white;",
+        "view_box": "-0.5 0 382.641 252",
         "width": "100%",
         "height": null
       },
@@ -32419,17 +32539,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_descriptions_007",
       "descendants": "parity",
-      "input_sha256": "3287ef263fcaecfc50b70ae5431d215f052e7b957834adf9ae6c2e5ac7118050",
-      "upstream_svg_sha256": "cbe07b02dfbdf8b52738be776f5496f429fc61119c01ebbb365cad4343daa4ab",
+      "input_sha256": "4995e58cabeabc8ab008e1af255395fc04bf061f465ac977424312df17e2ed54",
+      "upstream_svg_sha256": "bac54ff935a3090c8f9d5f53fcbbd6a4f6d777df851e72bf4b2e2db95731cf18",
       "upstream": {
-        "style": "max-width: 294.641px; background-color: white;",
-        "view_box": "-0.5 0 294.641 203",
+        "style": "max-width: 357.859px; background-color: white;",
+        "view_box": "-0.5 0 357.859 196",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 294.672px; background-color: white;",
-        "view_box": "-0.5 0 294.672 203",
+        "style": "max-width: 357.641px; background-color: white;",
+        "view_box": "-0.5 0 357.641 196",
         "width": "100%",
         "height": null
       },
@@ -32439,17 +32559,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_emoji_as_icons_with_the_default_icons_hidden_014",
       "descendants": "parity",
-      "input_sha256": "d9baaefe1f24b96b0a7da40ad420826b820e65a15f75236f0e16b7582f05d02f",
-      "upstream_svg_sha256": "d365d05f4d79f500258d84535f74b228b7b10d435b93a7c5f9801f87e475f258",
+      "input_sha256": "efa756e8687d22ce5a4e8034d8cc7e8431a1f99031ab1e80fce94c307c1599a5",
+      "upstream_svg_sha256": "7de9ba1dd3fb4ffdf75c28255e7e0c86f35a40b7277808701714b978e4e4b1b0",
       "upstream": {
-        "style": "max-width: 150.953px; background-color: white;",
-        "view_box": "-0.5 0 150.953 157",
+        "style": "max-width: 157.016px; background-color: white;",
+        "view_box": "-0.5 0 157.016 156",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 145.969px; background-color: white;",
-        "view_box": "-0.5 0 145.969 143.375",
+        "style": "max-width: 151.969px; background-color: white;",
+        "view_box": "-0.5 0 151.969 141.625",
         "width": "100%",
         "height": null
       },
@@ -32459,17 +32579,17 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_icon_overrides_from_registered_iconify_packs_008",
       "descendants": "parity",
-      "input_sha256": "3071e575e774b951b32647d6f708b2149ed36914c86ac95c2e4300488285fdd2",
-      "upstream_svg_sha256": "08aab79973ec5bb0cf29db5ca16e650f9b3a898c3a90ff1a83fe3943273f4041",
+      "input_sha256": "5553f6f943e0c3e154fcfb1ee824da3e75b0a1b1728cfbabe3ddb3d9d1868397",
+      "upstream_svg_sha256": "f993f613461812d26d186ed05c8d813becc3f2467b3bd11af0ca61105e47d573",
       "upstream": {
-        "style": "max-width: 135.797px; background-color: white;",
-        "view_box": "-0.5 0 135.797 174",
+        "style": "max-width: 154.172px; background-color: white;",
+        "view_box": "-0.5 0 154.172 168",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 135.828px; background-color: white;",
-        "view_box": "-0.5 0 135.828 174",
+        "style": "max-width: 154.109px; background-color: white;",
+        "view_box": "-0.5 0 154.109 168",
         "width": "100%",
         "height": null
       },
@@ -32479,17 +32599,37 @@
       "diagram": "treeView",
       "fixture": "upstream_cypress_treeview_spec_should_render_the_unknown_icon_fallback_for_unregistered_icons_011",
       "descendants": "parity",
-      "input_sha256": "4fc6b35bd70a5779781c16b1a255c09b847478060eafb0a6fc5253ab08dd28fc",
-      "upstream_svg_sha256": "f9e94d6e1219f001d83a5043469e4d532ba5d34eda8019ba0ea87984201f888d",
+      "input_sha256": "752a03f8b989e4ef04514d1ecdd1b6af7b9c1d1915acb07c50dc8215fd7a1f1c",
+      "upstream_svg_sha256": "8691124d9a4313d9fd409e50ac291e47d4a1d38e3c9c4e74f2473041bdcbbf24",
       "upstream": {
-        "style": "max-width: 115.188px; background-color: white;",
-        "view_box": "-0.5 0 115.188 87",
+        "style": "max-width: 134.812px; background-color: white;",
+        "view_box": "-0.5 0 134.813 84",
         "width": "100%",
         "height": null
       },
       "local": {
-        "style": "max-width: 115.172px; background-color: white;",
-        "view_box": "-0.5 0 115.172 87",
+        "style": "max-width: 134.766px; background-color: white;",
+        "view_box": "-0.5 0 134.766 84",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-derived-layout"
+    },
+    {
+      "diagram": "treeView",
+      "fixture": "upstream_cypress_treeview_spec_should_resolve_unprefixed_icon_overrides_via_defaulticonpack_010",
+      "descendants": "parity",
+      "input_sha256": "109e75bf3b11d60f70f14a0db3127c8d89ab150290a53c4b604479c145e40a42",
+      "upstream_svg_sha256": "a9789da4d7ecd0ddeb6b0b192621ca688f210ae9130d899d47dcfc3fc14b92c0",
+      "upstream": {
+        "style": "max-width: 144.422px; background-color: white;",
+        "view_box": "-0.5 0 144.422 112",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 144.359px; background-color: white;",
+        "view_box": "-0.5 0 144.359 112",
         "width": "100%",
         "height": null
       },

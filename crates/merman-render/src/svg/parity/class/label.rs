@@ -1,5 +1,19 @@
 use super::super::*;
 
+pub(super) fn class_math_html_label(
+    text: &str,
+    mermaid_config: Option<&merman_core::MermaidConfig>,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) -> Option<String> {
+    if !crate::math::contains_delimited_math(text) {
+        return None;
+    }
+    let (Some(config), Some(renderer)) = (mermaid_config, math_renderer) else {
+        return None;
+    };
+    crate::math::render_math_html_label(text, config, Some(renderer))
+}
+
 pub(super) struct ClassInlineStyles<'a> {
     pub style_attr: String,
     pub fill: Option<&'a str>,
@@ -8,22 +22,29 @@ pub(super) struct ClassInlineStyles<'a> {
     pub stroke_dasharray: Option<&'a str>,
 }
 
-pub(super) fn render_class_html_label(
-    out: &mut String,
-    span_class: &str,
-    text: &str,
-    include_p: bool,
-    extra_span_class: Option<&str>,
-    span_style: Option<&str>,
-) {
+pub(super) struct ClassHtmlLabelSpec<'a> {
+    pub span_class: &'a str,
+    pub text: &'a str,
+    pub include_p: bool,
+    pub extra_span_class: Option<&'a str>,
+    pub span_style: Option<&'a str>,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+}
+
+pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpec<'_>) {
     out.push_str(r#"<span class=""#);
-    escape_xml_into(out, span_class);
-    if let Some(extra) = extra_span_class.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    escape_xml_into(out, spec.span_class);
+    if let Some(extra) = spec
+        .extra_span_class
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         out.push(' ');
         escape_xml_into(out, extra);
     }
-    let span_style = span_style.map(str::trim).unwrap_or("");
-    if span_class == "nodeLabel" || !span_style.is_empty() {
+    let span_style = spec.span_style.map(str::trim).unwrap_or("");
+    if spec.span_class == "nodeLabel" || !span_style.is_empty() {
         out.push_str(r#"" style=""#);
         super::super::util::escape_attr_into(out, span_style);
         out.push_str(r#"">"#);
@@ -31,8 +52,9 @@ pub(super) fn render_class_html_label(
         out.push_str(r#"">"#);
     }
 
-    let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    if include_p {
+    let html = class_math_html_label(spec.text, spec.mermaid_config, spec.math_renderer)
+        .unwrap_or_else(|| crate::text::mermaid_markdown_to_xhtml_label_fragment(spec.text, true));
+    if spec.include_p {
         out.push_str(&html);
     } else {
         let inner = html
@@ -45,11 +67,11 @@ pub(super) fn render_class_html_label(
 }
 
 pub(super) fn write_class_svg_text_markdown(out: &mut String, markdown: &str, include_style: bool) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, markdown, include_style);
+    crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text(out: &mut String, text: &str, include_style: bool) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(out, text, include_style);
+    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text_markdown(
@@ -57,11 +79,7 @@ pub(super) fn write_class_svg_edge_text_markdown(
     markdown: &str,
     include_style: bool,
 ) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_centered(
-        out,
-        markdown,
-        include_style,
-    );
+    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
 }
 
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
@@ -347,18 +365,22 @@ pub(super) fn class_apply_inline_styles<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::render_class_html_label;
+    use super::{ClassHtmlLabelSpec, render_class_html_label};
 
     #[test]
     fn class_html_label_serializes_raw_html_and_escaped_generics_structurally() {
         let mut rich = String::new();
         render_class_html_label(
             &mut rich,
-            "nodeLabel",
-            "<a href='https://example.com'><code>Entity</code></a>",
-            true,
-            Some("markdown-node-label"),
-            None,
+            &ClassHtmlLabelSpec {
+                span_class: "nodeLabel",
+                text: "<a href='https://example.com'><code>Entity</code></a>",
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: None,
+                mermaid_config: None,
+                math_renderer: None,
+            },
         );
         assert!(rich.contains(r#"<a href='https://example.com'><code>Entity</code></a>"#));
         assert!(!rich.contains("&lt;code&gt;"));
@@ -366,11 +388,15 @@ mod tests {
         let mut generic = String::new();
         render_class_html_label(
             &mut generic,
-            "nodeLabel",
-            "Generic&lt;T&gt; driver_license",
-            true,
-            Some("markdown-node-label"),
-            None,
+            &ClassHtmlLabelSpec {
+                span_class: "nodeLabel",
+                text: "Generic&lt;T&gt; driver_license",
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: None,
+                mermaid_config: None,
+                math_renderer: None,
+            },
         );
         assert!(generic.contains("<p>Generic&lt;T&gt; driver_license</p>"));
         assert!(!generic.contains("&amp;lt;"));

@@ -830,9 +830,19 @@ fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramRenderModel
         .any(crate::math::contains_delimited_math)
 }
 
+fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -> bool {
+    model
+        .nodes
+        .iter()
+        .map(|node| node.label.as_str())
+        .any(crate::math::contains_delimited_math)
+}
+
 fn model_requires_math(model: &RenderSemanticModel) -> bool {
     match model {
+        RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
         RenderSemanticModel::Flowchart(model) => flowchart_requires_math(model),
+        RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
     }
@@ -1025,8 +1035,9 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
                 crate::mindmap::layout_mindmap_diagram_typed(
                     model,
-                    effective_config,
+                    &meta.effective_config,
                     execution.text_measurer(),
+                    execution.math_renderer(),
                 )
             })?)
         }
@@ -1469,6 +1480,272 @@ mod tests {
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, 5);
         assert_eq!(limit.max, 4);
+    }
+
+    #[test]
+    fn mindmap_math_label_requires_the_math_capability() {
+        let source = r#"---
+config:
+  layout: tidy-tree
+---
+mindmap
+  root[Root]
+    formula["$$x^2$$"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("mindmap source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .unwrap();
+
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
+        assert!(!plan.is_ready());
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("mindmap math label unexpectedly rendered without a math backend"),
+        };
+        assert!(matches!(
+            error,
+            Error::MissingCapability {
+                capability: RenderCapability::Math,
+                ref diagram_type,
+            } if diagram_type == "mindmap"
+        ));
+    }
+
+    #[derive(Debug)]
+    struct MindmapMathRenderer;
+
+    impl crate::math::MathRenderer for MindmapMathRenderer {
+        fn render_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            text.contains("$$")
+                .then(|| "<strong>rendered-mindmap-math</strong>".to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+            _style: &crate::text::TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: crate::text::WrapMode,
+        ) -> Option<crate::text::TextMetrics> {
+            text.contains("$$").then_some(crate::text::TextMetrics {
+                width: 96.0,
+                height: 24.0,
+                line_count: 1,
+            })
+        }
+    }
+
+    #[test]
+    fn mindmap_math_label_is_consumed_by_the_math_renderer() {
+        let source = r#"---
+config:
+  layout: tidy-tree
+---
+mindmap
+  root[Root]
+    formula["$$x^2$$"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("mindmap source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(MindmapMathRenderer))
+            .begin_session()
+            .unwrap();
+
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert!(plan.missing_capabilities().is_empty());
+        assert!(plan.is_ready());
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(rendered.svg().contains("rendered-mindmap-math"));
+        assert!(!rendered.svg().contains("$$x^2$$"));
+    }
+
+    #[test]
+    fn class_math_label_requires_the_math_capability() {
+        let source = r#"classDiagram
+class Formula["$$x^2$$"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .unwrap();
+
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
+        assert!(!plan.is_ready());
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("Class math label unexpectedly rendered without a math backend"),
+        };
+        assert!(matches!(
+            error,
+            Error::MissingCapability {
+                capability: RenderCapability::Math,
+                ref diagram_type,
+            } if diagram_type == "class"
+        ));
+    }
+
+    #[derive(Debug)]
+    struct ClassMathRenderer;
+
+    impl crate::math::MathRenderer for ClassMathRenderer {
+        fn render_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            text.contains("$$")
+                .then(|| "<div>rendered-class-math</div>".to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+            _style: &crate::text::TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: crate::text::WrapMode,
+        ) -> Option<crate::text::TextMetrics> {
+            text.contains("$$").then_some(crate::text::TextMetrics {
+                width: 96.0,
+                height: 24.0,
+                line_count: 1,
+            })
+        }
+    }
+
+    #[test]
+    fn class_math_label_is_consumed_by_the_math_renderer() {
+        let source = r#"classDiagram
+class Formula["$$x^2$$"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(ClassMathRenderer))
+            .begin_session()
+            .unwrap();
+
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert!(plan.missing_capabilities().is_empty());
+        assert!(plan.is_ready());
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(rendered.svg().contains("rendered-class-math"));
+        assert!(!rendered.svg().contains("$$x^2$$"));
+    }
+
+    fn render_class_math(source: &str) -> String {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(ClassMathRenderer))
+            .begin_session()
+            .unwrap();
+        prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .svg()
+            .to_string()
+    }
+
+    #[test]
+    fn class_math_label_forces_html_rendering_when_html_labels_are_disabled() {
+        let svg = render_class_math(
+            r#"---
+config:
+  htmlLabels: false
+---
+classDiagram
+class Formula["$$x^2$$"]
+"#,
+        );
+
+        assert!(svg.contains("rendered-class-math"));
+        assert!(!svg.contains("$$x^2$$"));
+    }
+
+    #[test]
+    fn class_relation_terminal_and_note_math_labels_use_the_math_renderer() {
+        let svg = render_class_math(
+            r#"classDiagram
+class Formula
+class Result
+Formula "$$one$$" --> "$$many$$" Result : $$edge$$
+note for Formula "$$note$$"
+"#,
+        );
+
+        assert_eq!(svg.matches("rendered-class-math").count(), 4);
+        assert!(!svg.contains("$$"));
+        assert!(!svg.contains("<p><div>"));
+    }
+
+    #[test]
+    fn class_annotation_and_interface_math_labels_require_and_use_math() {
+        for source in [
+            r#"classDiagram
+class Formula <<$$annotation$$>>
+"#,
+            r#"classDiagram
+class Formula
+$$interface$$ ()-- Formula
+"#,
+        ] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Class source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .without_math_renderer()
+                .begin_session()
+                .unwrap();
+
+            let plan = plan_render(&parsed, &session).unwrap();
+            assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+            assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
+
+            let svg = render_class_math(source);
+            assert!(svg.contains("rendered-class-math"));
+            assert!(!svg.contains("$$"));
+            assert!(!svg.contains("<p><div>"));
+        }
     }
 
     #[cfg(feature = "layout-elk")]

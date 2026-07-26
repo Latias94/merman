@@ -130,6 +130,15 @@ impl RootResidualEntry {
             && self.upstream == observation.upstream
             && self.local == observation.local
     }
+
+    fn matches_except_upstream_svg_hash(&self, observation: &RootResidualObservation) -> bool {
+        self.diagram == observation.diagram
+            && self.fixture == observation.fixture
+            && self.descendants == observation.descendants
+            && self.input_sha256 == observation.input_sha256
+            && self.upstream == observation.upstream
+            && self.local == observation.local
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,7 +153,7 @@ struct RootResidualObservation {
 }
 
 impl RootResidualObservation {
-    fn into_candidate_entry(self) -> RootResidualEntry {
+    fn into_candidate_entry(self, evidence_id: String) -> RootResidualEntry {
         RootResidualEntry {
             diagram: self.diagram,
             fixture: self.fixture,
@@ -153,7 +162,7 @@ impl RootResidualObservation {
             upstream_svg_sha256: self.upstream_svg_sha256,
             upstream: self.upstream,
             local: self.local,
-            evidence_id: "unreviewed".to_string(),
+            evidence_id,
         }
     }
 }
@@ -329,6 +338,28 @@ fn load_catalog(decimals: u32) -> Result<RootResidualCatalog, String> {
     Ok(catalog)
 }
 
+fn load_catalog_for_candidate_inheritance(
+    decimals: u32,
+) -> Result<Option<RootResidualCatalog>, String> {
+    // A provenance refresh intentionally makes the old SVG hashes stale. Validate the
+    // reviewed policy itself here; candidate entries still validate against live artifacts.
+    let path = catalog_path();
+    let json = match fs::read_to_string(&path) {
+        Ok(json) => json,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "read root residual catalog {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    let catalog: RootResidualCatalog = serde_json::from_str(&json)
+        .map_err(|error| format!("parse root residual catalog {}: {error}", path.display()))?;
+    validate_catalog_contract(&catalog, decimals, true)?;
+    Ok(Some(catalog))
+}
+
 fn validate_evidence_reference(
     evidence_id: &str,
     evidence: &RootResidualEvidence,
@@ -462,6 +493,18 @@ fn validate_catalog(
     decimals: u32,
     require_reviewed: bool,
 ) -> Result<(), String> {
+    validate_catalog_contract(catalog, decimals, require_reviewed)?;
+    for entry in &catalog.entries {
+        validate_entry_artifacts(entry)?;
+    }
+    Ok(())
+}
+
+fn validate_catalog_contract(
+    catalog: &RootResidualCatalog,
+    decimals: u32,
+    require_reviewed: bool,
+) -> Result<(), String> {
     if catalog.schema_version != SCHEMA_VERSION {
         return Err(format!(
             "root residual catalog schema {} is unsupported; expected {SCHEMA_VERSION}",
@@ -526,7 +569,6 @@ fn validate_catalog(
             ));
         }
         validate_evidence_profile(entry, evidence, require_reviewed)?;
-        validate_entry_artifacts(entry)?;
     }
     Ok(())
 }
@@ -681,11 +723,34 @@ fn write_candidate_catalog(
     decimals: u32,
     observations: impl Iterator<Item = RootResidualObservation>,
 ) -> Result<PathBuf, String> {
+    let previous = load_catalog_for_candidate_inheritance(decimals)?;
+    let previous_entries = previous
+        .as_ref()
+        .map(|catalog| {
+            catalog
+                .entries
+                .iter()
+                .map(|entry| (entry.key(), entry))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
     let entries = observations
-        .map(RootResidualObservation::into_candidate_entry)
+        .map(|observation| {
+            let key = (observation.diagram.as_str(), observation.fixture.as_str());
+            let evidence_id = previous_entries
+                .get(&key)
+                .filter(|entry| entry.matches_except_upstream_svg_hash(&observation))
+                .map(|entry| entry.evidence_id.clone())
+                .unwrap_or_else(|| "unreviewed".to_string());
+            observation.into_candidate_entry(evidence_id)
+        })
         .collect::<Vec<_>>();
+    let used_evidence = entries
+        .iter()
+        .map(|entry| entry.evidence_id.as_str())
+        .collect::<BTreeSet<_>>();
     let mut evidence = BTreeMap::new();
-    if !entries.is_empty() {
+    if used_evidence.contains("unreviewed") {
         evidence.insert(
             "unreviewed".to_string(),
             RootResidualEvidence {
@@ -695,6 +760,17 @@ fn write_candidate_catalog(
                     .to_string(),
             },
         );
+    }
+    if let Some(previous) = previous {
+        for evidence_id in used_evidence {
+            if evidence_id == "unreviewed" {
+                continue;
+            }
+            let reviewed = previous.evidence.get(evidence_id).ok_or_else(|| {
+                format!("inherited root residual evidence `{evidence_id}` is missing")
+            })?;
+            evidence.insert(evidence_id.to_string(), reviewed.clone());
+        }
     }
     let catalog = RootResidualCatalog {
         schema_version: SCHEMA_VERSION,
@@ -848,6 +924,20 @@ mod tests {
         let mut changed_hash = observation("basic", "101");
         changed_hash.input_sha256 = "changed".to_string();
         assert!(!expected.matches(&changed_hash));
+
+        let mut refreshed_svg = observation("basic", "101");
+        refreshed_svg.upstream_svg_sha256 = "refreshed".to_string();
+        assert!(!expected.matches(&refreshed_svg));
+        assert!(
+            expected.matches_except_upstream_svg_hash(&refreshed_svg),
+            "a provenance-only SVG refresh may retain reviewed evidence"
+        );
+
+        refreshed_svg.local.width = Some("changed".to_string());
+        assert!(
+            !expected.matches_except_upstream_svg_hash(&refreshed_svg),
+            "root signature changes must return to unreviewed evidence"
+        );
     }
 
     #[test]
@@ -1133,6 +1223,8 @@ mod tests {
             read_hashed(&crate::cmd::fixtures_root().join("flowchart/basic.mmd")).unwrap();
         catalog.entries[0].input_sha256 = input_sha256;
         catalog.entries[0].upstream_svg_sha256 = "b".repeat(64);
+        validate_catalog_contract(&catalog, 3, true)
+            .expect("candidate inheritance validates reviewed policy before refreshed artifacts");
         assert!(
             validate_catalog(&catalog, 3, true)
                 .unwrap_err()

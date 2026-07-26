@@ -63,11 +63,15 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 Class ELK entry-point coverage:
 
 - Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
-  feature-gated Class ELK adapter under `elk-layout`, then reuse the existing Class SVG renderer.
+  feature-gated Class ELK adapter under `elk-layout`. The renderer shares Class semantic,
+  node, edge, and namespace emitters while selecting Mermaid 11.16's layout-adapter top-level DOM
+  (`subgraphs`, `nodes`, `edges edgePaths`, and `edgeLabels`) instead of the Dagre root wrapper.
   `render_model_dispatch_uses_elk_for_class_layout_config`,
   `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
-  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered
-  Class semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
+  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered Class
+  semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
+  `class_svg_elk_layout_uses_upstream_adapter_dom` locks the adapter-specific wrapper order and
+  classes against the pinned upstream renderer.
 - The deferred upstream Cypress full-diagram ELK copy with stem
   `upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_using_elk_057`
   is treated as absorbed because its diagram body matches the active fixture

@@ -303,8 +303,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017": {
-      "input_sha256": "79b51a4ff0a85be30e5f21781b6d47a213b693238ca8e31f0441c66128ac6050",
-      "svg_sha256": "971ea3e0aed3ec587371a3766490a3aa361982a2e69fd1f361c4c87672768430",
+      "input_sha256": "e010f0f50bd19fbc65d2130cd4e6b6197118a47f22c9e1e11726a9ff2f5edd1a",
+      "svg_sha256": "00cfa3990cf5f21bd5a46021ee43600dd96f87e9744daf01752223b9cd6e40a7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018": {

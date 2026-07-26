@@ -59,6 +59,53 @@ fn class_has_whitespace_only_text_label(body: &str) -> bool {
     })
 }
 
+fn strip_yaml_frontmatter_for_header(body: &str) -> &str {
+    let mut lines = body.lines();
+    let Some(first) = lines.next() else {
+        return body;
+    };
+    if first.trim() != "---" {
+        return body;
+    }
+
+    let mut consumed = first.len() + 1;
+    for line in lines {
+        consumed += line.len() + 1;
+        if line.trim() == "---" {
+            break;
+        }
+    }
+    body.get(consumed..).unwrap_or("")
+}
+
+fn has_valid_gitgraph_header(body: &str) -> bool {
+    for raw in strip_yaml_frontmatter_for_header(body).lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with("%%") {
+            continue;
+        }
+
+        let lower = line.to_ascii_lowercase();
+        let Some(rest) = lower.strip_prefix("gitgraph") else {
+            return false;
+        };
+        let rest = rest.trim();
+        if rest.is_empty() || rest == ":" {
+            return true;
+        }
+
+        let direction = rest.strip_suffix(':').unwrap_or(rest).trim();
+        return matches!(direction, "tb" | "bt" | "lr");
+    }
+    false
+}
+
+fn extract_javascript_fixture_literals(
+    source: &str,
+) -> Result<Vec<crate::cmd::javascript_source::StaticStringExpression>, &'static str> {
+    crate::cmd::javascript_source::extract_package_test_strings(source)
+}
+
 pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -207,7 +254,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             "pie" => has_any_directive(body, &["pie"]),
             "mindmap" => has_any_directive(body, &["mindmap"]),
             "timeline" => has_any_directive(body, &["timeline"]),
-            "gitgraph" => has_any_directive(body, &["gitgraph"]),
+            "gitgraph" => has_valid_gitgraph_header(body),
             "sankey" => has_any_directive(body, &["sankey"]),
             "packet" => has_any_directive(body, &["packet"]),
             "treemap" => has_any_directive(body, &["treemap"]),
@@ -324,401 +371,6 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         Ok(())
     }
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum InterpMode {
-        Normal,
-        SingleQuote,
-        DoubleQuote,
-        LineComment,
-        BlockComment,
-    }
-
-    fn scan_template_literal(text: &str, open_tick: usize) -> Option<(Option<String>, usize)> {
-        let bytes = text.as_bytes();
-        if bytes.get(open_tick) != Some(&b'`') {
-            return None;
-        }
-
-        let mut i = open_tick + 1;
-        let mut out = String::new();
-        let mut escaped = false;
-        let mut _has_interpolation = false;
-        let mut interp_depth: i32 = 0;
-        let mut mode = InterpMode::Normal;
-
-        while i < bytes.len() {
-            let b = bytes[i];
-
-            if interp_depth == 0 {
-                if escaped {
-                    match b {
-                        b'n' => out.push('\n'),
-                        b'r' => out.push('\r'),
-                        b't' => out.push('\t'),
-                        b'\\' => out.push('\\'),
-                        b'`' => out.push('`'),
-                        _ => out.push(b as char),
-                    }
-                    escaped = false;
-                    i += 1;
-                    continue;
-                }
-                if b == b'\\' {
-                    escaped = true;
-                    i += 1;
-                    continue;
-                }
-                if b == b'`' {
-                    let end = i + 1;
-                    return Some((Some(out), end));
-                }
-                if b == b'$' && bytes.get(i + 1) == Some(&b'{') {
-                    _has_interpolation = true;
-                    // Replace `${...}` with a deterministic placeholder so we can still extract a
-                    // stable Mermaid definition from tests that build diagrams with variables.
-                    // Downstream diagram detection will discard non-Mermaid strings.
-                    //
-                    // Heuristic: if the interpolation is appended directly to an identifier-like
-                    // token (e.g. `C4Context${suffix}`), inserting `X` would often break upstream
-                    // parsing (`C4ContextX` is not a recognized macro). In that case, prefer
-                    // eliding the interpolation entirely so the surrounding token stays valid.
-                    let prev_is_ident = out
-                        .chars()
-                        .last()
-                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
-                    if !prev_is_ident {
-                        out.push('X');
-                    }
-                    interp_depth = 1;
-                    mode = InterpMode::Normal;
-                    i += 2;
-                    continue;
-                }
-
-                out.push(b as char);
-                i += 1;
-                continue;
-            }
-
-            match mode {
-                InterpMode::Normal => {
-                    if b == b'\'' {
-                        mode = InterpMode::SingleQuote;
-                        escaped = false;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'"' {
-                        mode = InterpMode::DoubleQuote;
-                        escaped = false;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                        mode = InterpMode::LineComment;
-                        i += 2;
-                        continue;
-                    }
-                    if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                        mode = InterpMode::BlockComment;
-                        i += 2;
-                        continue;
-                    }
-                    if b == b'`' {
-                        // Nested template literal inside interpolation. Skip it.
-                        if let Some((_, end)) = scan_template_literal(text, i) {
-                            i = end;
-                            continue;
-                        }
-                    }
-
-                    if b == b'{' {
-                        interp_depth += 1;
-                    } else if b == b'}' {
-                        interp_depth -= 1;
-                        if interp_depth == 0 {
-                            i += 1;
-                            continue;
-                        }
-                    }
-                    i += 1;
-                }
-                InterpMode::SingleQuote => {
-                    if escaped {
-                        escaped = false;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'\\' {
-                        escaped = true;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'\'' {
-                        mode = InterpMode::Normal;
-                    }
-                    i += 1;
-                }
-                InterpMode::DoubleQuote => {
-                    if escaped {
-                        escaped = false;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'\\' {
-                        escaped = true;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'"' {
-                        mode = InterpMode::Normal;
-                    }
-                    i += 1;
-                }
-                InterpMode::LineComment => {
-                    if b == b'\n' {
-                        mode = InterpMode::Normal;
-                    }
-                    i += 1;
-                }
-                InterpMode::BlockComment => {
-                    if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                        mode = InterpMode::Normal;
-                        i += 2;
-                        continue;
-                    }
-                    i += 1;
-                }
-            }
-        }
-
-        None
-    }
-
-    fn extract_all_template_literals(text: &str) -> Vec<String> {
-        let bytes = text.as_bytes();
-        let mut out: Vec<String> = Vec::new();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'`'
-                && let Some((content, end)) = scan_template_literal(text, i)
-            {
-                if let Some(content) = content {
-                    out.push(content);
-                }
-                i = end;
-                continue;
-            }
-            i += 1;
-        }
-        out
-    }
-
-    fn extract_all_string_literals(text: &str) -> Vec<String> {
-        fn hex_val(b: u8) -> Option<u8> {
-            match b {
-                b'0'..=b'9' => Some(b - b'0'),
-                b'a'..=b'f' => Some(10 + (b - b'a')),
-                b'A'..=b'F' => Some(10 + (b - b'A')),
-                _ => None,
-            }
-        }
-
-        fn scan_string_literal(
-            text: &str,
-            open_quote: usize,
-            quote: u8,
-        ) -> Option<(String, usize)> {
-            let bytes = text.as_bytes();
-            if bytes.get(open_quote) != Some(&quote) {
-                return None;
-            }
-
-            let mut out: Vec<u8> = Vec::new();
-            let mut i = open_quote + 1;
-            let mut escaped = false;
-
-            while i < bytes.len() {
-                let b = bytes[i];
-
-                if escaped {
-                    escaped = false;
-                    match b {
-                        b'n' => out.push(b'\n'),
-                        b'r' => out.push(b'\r'),
-                        b't' => out.push(b'\t'),
-                        b'\\' => out.push(b'\\'),
-                        b'\'' => out.push(b'\''),
-                        b'"' => out.push(b'"'),
-                        b'`' => out.push(b'`'),
-                        b'0' => out.push(0),
-                        b'\n' => {
-                            // Line continuation: `"...\\\n..."` in JS.
-                        }
-                        b'\r' => {
-                            // Handle `\\\r\n` continuation.
-                            if bytes.get(i + 1) == Some(&b'\n') {
-                                i += 1;
-                            }
-                        }
-                        b'x' => {
-                            let hi = bytes.get(i + 1).copied().and_then(hex_val);
-                            let lo = bytes.get(i + 2).copied().and_then(hex_val);
-                            if let (Some(hi), Some(lo)) = (hi, lo) {
-                                out.push((hi << 4) | lo);
-                                i += 2;
-                            } else {
-                                out.extend_from_slice(b"x");
-                            }
-                        }
-                        b'u' => {
-                            // `\uXXXX` or `\u{...}`.
-                            if bytes.get(i + 1) == Some(&b'{') {
-                                let mut j = i + 2;
-                                let mut v: u32 = 0;
-                                let mut saw = false;
-                                while j < bytes.len() {
-                                    if bytes[j] == b'}' {
-                                        break;
-                                    }
-                                    let Some(h) = hex_val(bytes[j]) else {
-                                        break;
-                                    };
-                                    saw = true;
-                                    v = (v << 4) | (h as u32);
-                                    j += 1;
-                                }
-                                if saw && j < bytes.len() && bytes[j] == b'}' {
-                                    if let Some(ch) = char::from_u32(v) {
-                                        let mut buf = [0u8; 4];
-                                        out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
-                                        i = j;
-                                    } else {
-                                        out.extend_from_slice(b"u");
-                                    }
-                                } else {
-                                    out.extend_from_slice(b"u");
-                                }
-                            } else {
-                                let d1 = bytes.get(i + 1).copied().and_then(hex_val);
-                                let d2 = bytes.get(i + 2).copied().and_then(hex_val);
-                                let d3 = bytes.get(i + 3).copied().and_then(hex_val);
-                                let d4 = bytes.get(i + 4).copied().and_then(hex_val);
-                                if let (Some(d1), Some(d2), Some(d3), Some(d4)) = (d1, d2, d3, d4) {
-                                    let v: u32 = ((d1 as u32) << 12)
-                                        | ((d2 as u32) << 8)
-                                        | ((d3 as u32) << 4)
-                                        | (d4 as u32);
-                                    if let Some(ch) = char::from_u32(v) {
-                                        let mut buf = [0u8; 4];
-                                        out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
-                                        i += 4;
-                                    } else {
-                                        out.extend_from_slice(b"u");
-                                    }
-                                } else {
-                                    out.extend_from_slice(b"u");
-                                }
-                            }
-                        }
-                        _ => out.push(b),
-                    }
-                    i += 1;
-                    continue;
-                }
-
-                if b == b'\\' {
-                    escaped = true;
-                    i += 1;
-                    continue;
-                }
-
-                if b == quote {
-                    let s = String::from_utf8_lossy(&out).to_string();
-                    return Some((s, i + 1));
-                }
-
-                // Invalid JS string (raw newline). Bail out to avoid swallowing the rest of the file.
-                if b == b'\n' || b == b'\r' {
-                    return None;
-                }
-
-                out.push(b);
-                i += 1;
-            }
-
-            None
-        }
-
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        enum Mode {
-            Normal,
-            LineComment,
-            BlockComment,
-        }
-
-        let bytes = text.as_bytes();
-        let mut out: Vec<String> = Vec::new();
-        let mut i = 0usize;
-        let mut mode = Mode::Normal;
-        while i < bytes.len() {
-            let b = bytes[i];
-            match mode {
-                Mode::Normal => {
-                    if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                        mode = Mode::LineComment;
-                        i += 2;
-                        continue;
-                    }
-                    if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                        mode = Mode::BlockComment;
-                        i += 2;
-                        continue;
-                    }
-                    if b == b'`' {
-                        // Skip template literals entirely so we don't accidentally scan quotes within
-                        // them here. Template literals are extracted separately.
-                        if let Some((_, end)) = scan_template_literal(text, i) {
-                            i = end;
-                            continue;
-                        }
-                    }
-                    if b == b'\''
-                        && let Some((content, end)) = scan_string_literal(text, i, b'\'')
-                    {
-                        out.push(content);
-                        i = end;
-                        continue;
-                    }
-                    if b == b'"'
-                        && let Some((content, end)) = scan_string_literal(text, i, b'"')
-                    {
-                        out.push(content);
-                        i = end;
-                        continue;
-                    }
-                    i += 1;
-                }
-                Mode::LineComment => {
-                    if b == b'\n' {
-                        mode = Mode::Normal;
-                    }
-                    i += 1;
-                }
-                Mode::BlockComment => {
-                    if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                        mode = Mode::Normal;
-                        i += 2;
-                        continue;
-                    }
-                    i += 1;
-                }
-            }
-        }
-
-        out
-    }
-
     fn complexity_score(body: &str) -> i64 {
         let line_count = body.lines().count() as i64;
         (line_count * 1_000) + (body.len() as i64)
@@ -762,8 +414,16 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 continue;
             }
         };
-        let mut blocks = extract_all_template_literals(&text);
-        blocks.extend(extract_all_string_literals(&text));
+        let blocks = match extract_javascript_fixture_literals(&text) {
+            Ok(blocks) => blocks,
+            Err(reason) => {
+                skipped.push(format!(
+                    "skip (TypeScript parse failed): {} ({reason})",
+                    spec_path.display()
+                ));
+                continue;
+            }
+        };
         if blocks.is_empty() {
             continue;
         }
@@ -775,8 +435,9 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             .to_string();
         let source_slug = clamp_slug(slugify(&source_stem), 48);
 
-        for (idx, raw) in blocks.into_iter().enumerate() {
-            let body = canonical_fixture_text(&raw);
+        for expression in blocks {
+            let idx = expression.source_ordinal;
+            let body = canonical_fixture_text(&expression.value);
             if body.trim().is_empty() {
                 continue;
             }
@@ -824,7 +485,8 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 continue;
             }
 
-            let stem = format!("upstream_pkgtests_{source_slug}_{idx:03}", idx = idx + 1);
+            let content_id = imported_fixture_content_id(&body);
+            let stem = format!("upstream_pkgtests_{source_slug}_{content_id}");
             candidates.push(Candidate {
                 source_path: spec_path.clone(),
                 idx_in_file: idx,
@@ -933,7 +595,11 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             .join("_deferred")
             .join(&c.diagram_dir)
             .join(format!("{}.mmd", c.stem));
+        // An explicit overwrite belongs to the source-addressed normal fixture. Deferred
+        // fixtures still require baseline revalidation before being promoted.
+        let source_addressed_overwrite = source_addressed_active_overwrite(overwrite, &out_path);
         if let Some(existing_path) = existing_path.as_deref()
+            && !source_addressed_overwrite
             && !should_revalidate_deferred_fixture(
                 existing_path,
                 &deferred_out_path,
@@ -1009,7 +675,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
         imported += 1;
         if !with_baselines {
-            existing.insert(c.body, f.path.clone());
+            record_imported_fixture_content(
+                existing,
+                c.body,
+                f.path.clone(),
+                &[f.path.as_path(), deferred_out_path.as_path()],
+            );
             created.push(f);
             continue;
         }
@@ -1048,7 +719,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 f.path.display()
             ));
             let deferred_path = defer_fixture(&f, false, overwrite)?;
-            existing.insert(c.body, deferred_path);
+            record_imported_fixture_content(
+                existing,
+                c.body,
+                deferred_path,
+                &[f.path.as_path(), deferred_out_path.as_path()],
+            );
             continue;
         }
 
@@ -1064,7 +740,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 f.path.display()
             ));
             let deferred_path = defer_fixture(&f, true, overwrite)?;
-            existing.insert(c.body, deferred_path);
+            record_imported_fixture_content(
+                existing,
+                c.body,
+                deferred_path,
+                &[f.path.as_path(), deferred_out_path.as_path()],
+            );
             continue;
         }
 
@@ -1159,7 +840,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 f.rollback.iter(),
             ));
         }
-        existing.insert(c.body, f.path.clone());
+        record_imported_fixture_content(
+            existing,
+            c.body,
+            f.path.clone(),
+            &[f.path.as_path(), deferred_out_path.as_path()],
+        );
         f.rollback = None;
         created.push(f);
     }
@@ -1187,7 +873,100 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
 #[cfg(test)]
 mod tests {
-    use super::{class_has_whitespace_only_text_label, xychart_has_renderable_plot};
+    use super::{
+        class_has_whitespace_only_text_label, extract_javascript_fixture_literals,
+        has_valid_gitgraph_header, xychart_has_renderable_plot,
+    };
+
+    #[test]
+    fn package_test_literal_extraction_preserves_unicode_and_js_escape_semantics() {
+        let source = r#"
+const diagram = `stateDiagram-v2
+  [*] --> 完成🚀: \u007D \uD83D\uDE0E`;
+const other = "flowchart LR\n  开始 --> 完成\xFF";
+"#;
+
+        assert_eq!(
+            extract_javascript_fixture_literals(source)
+                .expect("TypeScript source should parse")
+                .into_iter()
+                .map(|expression| expression.value)
+                .collect::<Vec<_>>(),
+            [
+                "stateDiagram-v2\n  [*] --> 完成🚀: } 😎",
+                "flowchart LR\n  开始 --> 完成ÿ",
+            ]
+        );
+    }
+
+    #[test]
+    fn package_test_literal_extraction_folds_static_concatenation_without_regex_false_positives() {
+        let source = r#"
+const graph = 'gitGraph TB:\n' + 'commit\n';
+const dynamic = "flowchart LR" + suffix;
+const helpers = {
+  check() {
+    if (ready) /"stateDiagram-v2"/.test(input);
+  },
+};
+"#;
+
+        assert_eq!(
+            extract_javascript_fixture_literals(source)
+                .expect("TypeScript source should parse")
+                .into_iter()
+                .map(|expression| (expression.source_ordinal, expression.value))
+                .collect::<Vec<_>>(),
+            [(0, "gitGraph TB:\ncommit\n".to_string())]
+        );
+    }
+
+    #[test]
+    fn package_test_literal_extraction_rejects_identifier_composition_without_emitting_fragments() {
+        let source = r#"
+const header = 'gitGraph:\n';
+const graph = header + 'commit\n';
+parser.parse(graph);
+"#;
+
+        assert!(
+            extract_javascript_fixture_literals(source)
+                .expect("TypeScript source should parse")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn package_test_literal_extraction_uses_source_order_ordinals() {
+        let source = r#"
+const graph = 'gitGraph TB:\n' + 'commit\n';
+const note = `not a diagram`;
+"#;
+
+        assert_eq!(
+            extract_javascript_fixture_literals(source)
+                .expect("TypeScript source should parse")
+                .into_iter()
+                .map(|expression| (expression.source_ordinal, expression.value))
+                .collect::<Vec<_>>(),
+            [
+                (0, "gitGraph TB:\ncommit\n".to_string()),
+                (1, "not a diagram".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn gitgraph_header_validation_rejects_prefix_only_messages() {
+        assert!(has_valid_gitgraph_header("gitGraph:\ncommit\n"));
+        assert!(has_valid_gitgraph_header("gitGraph TB:\ncommit\n"));
+        assert!(has_valid_gitgraph_header(
+            "%%{init: {}}%%\ngitGraph\ncommit\n"
+        ));
+        assert!(!has_valid_gitgraph_header("gitGraph config directives"));
+        assert!(!has_valid_gitgraph_header("gitGraph TBD:\ncommit\n"));
+        assert!(!has_valid_gitgraph_header("gitGraph RL:\ncommit\n"));
+    }
 
     #[test]
     fn class_render_baseline_import_skips_whitespace_only_text_label() {

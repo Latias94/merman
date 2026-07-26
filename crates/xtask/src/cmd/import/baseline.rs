@@ -149,6 +149,20 @@ pub(crate) fn load_existing_imported_fixtures(
     )
 }
 
+pub(crate) fn record_imported_fixture_content(
+    index: &mut HashMap<String, PathBuf>,
+    body: String,
+    path: PathBuf,
+    identity_paths: &[&Path],
+) {
+    index.retain(|_, indexed_path| {
+        !identity_paths
+            .iter()
+            .any(|identity_path| indexed_path == identity_path)
+    });
+    index.insert(body, path);
+}
+
 pub(crate) fn should_revalidate_deferred_fixture(
     existing_path: &Path,
     deferred_candidate_path: &Path,
@@ -388,12 +402,14 @@ mod tests {
         acquire_imported_fixture_family_locks_in, acquire_imported_fixture_workspace_lock_in,
         candidate_snapshot_failure, candidate_svg_compare_failure, candidate_upstream_svg_failure,
         is_candidate_upstream_svg_failure, load_existing_imported_fixtures_from_dirs,
-        rollback_imported_fixture_snapshots, should_revalidate_deferred_fixture,
+        record_imported_fixture_content, rollback_imported_fixture_snapshots,
+        should_revalidate_deferred_fixture,
     };
     use crate::XtaskError;
     use crate::cmd::import::ImportedFixtureSnapshot;
+    use std::collections::HashMap;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -441,6 +457,30 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("remove dedup cache test root");
+    }
+
+    #[test]
+    fn recording_overwritten_content_removes_stale_body_mappings() {
+        let active = Path::new("fixtures/flowchart/example.mmd");
+        let deferred = Path::new("fixtures/_deferred/flowchart/example.mmd");
+        let unrelated = PathBuf::from("fixtures/flowchart/other.mmd");
+        let mut index = HashMap::from([
+            ("old".to_string(), active.to_path_buf()),
+            ("deferred-old".to_string(), deferred.to_path_buf()),
+            ("unrelated".to_string(), unrelated.clone()),
+        ]);
+
+        record_imported_fixture_content(
+            &mut index,
+            "new".to_string(),
+            active.to_path_buf(),
+            &[active, deferred],
+        );
+
+        assert_eq!(index.get("new"), Some(&active.to_path_buf()));
+        assert_eq!(index.get("unrelated"), Some(&unrelated));
+        assert!(!index.contains_key("old"));
+        assert!(!index.contains_key("deferred-old"));
     }
 
     #[test]

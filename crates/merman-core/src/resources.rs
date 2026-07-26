@@ -508,7 +508,8 @@ impl ModelComplexity {
         }
     }
 
-    fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
+    /// Counts the stable serialized model shape used by JSON-returning transport operations.
+    pub fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
         let mut counter = ModelComplexitySerializer::default();
         model
             .serialize(&mut counter)

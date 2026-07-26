@@ -45,22 +45,22 @@
     "basic": {
       "input_sha256": "f097b5f4f46cda2da21b954c9ff4097e1e14ae7064ecdee2c2cec2d3c1f08e6b",
       "svg_sha256": "a94b33a4eeef71b084fda214124954d2af23dc71aaeda640a158f13280d592ea",
-      "renderer_profile": "scripted-puppeteer-error-fallback-v1"
+      "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_024": {
       "input_sha256": "76fd510b6693194ba0339c9d980c81417ec9eb099fb26cbb54e7b03dd7f194ce",
       "svg_sha256": "e9da7f85cf10351ec832e9d086f48f5f1dee4b318882fc9939bfd4ce824f505d",
-      "renderer_profile": "scripted-puppeteer-error-fallback-v1"
+      "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_030": {
       "input_sha256": "8d3563652b4cf6e549f4e9d9803fe7b6c704579cca49e9a7396a224f1b2f87e0",
       "svg_sha256": "f1b0801d9f996421be45ada1d1c9e893e3a4cd715d0fcd18ca40881657de28c1",
-      "renderer_profile": "scripted-puppeteer-error-fallback-v1"
+      "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_v2_spec_024": {
       "input_sha256": "3523f6d7544be322caee5c5cb630e79a56791cd292cc42fa140f479a65ab4873",
       "svg_sha256": "ed3f21bf49ed15084a38886b4fed6cc25238518d85a213d5dbe64be54f03a52b",
-      "renderer_profile": "scripted-puppeteer-error-fallback-v1"
+      "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     }
   },
   "excluded": {}

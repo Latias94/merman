@@ -828,6 +828,28 @@ pub(crate) fn validate_cypress_source_observations(
     failures
 }
 
+pub(crate) fn refreshed_cypress_corpus_manifest(
+    manifest: &CypressCorpusManifest,
+    observations: &[CypressSourceObservation],
+) -> Result<CypressCorpusManifest, Vec<String>> {
+    let mut refreshed = manifest.clone();
+    for entry in &mut refreshed.entries {
+        if let Some(observation) = observations.iter().find(|observation| {
+            observation.source_spec == entry.source_spec.as_str()
+                && observation.call_ordinal == entry.call_ordinal
+        }) {
+            entry.mmd_sha256.clone_from(&observation.mmd_sha256);
+        }
+    }
+
+    let failures = validate_cypress_source_observations(&refreshed, observations);
+    if failures.is_empty() {
+        Ok(refreshed)
+    } else {
+        Err(failures)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1087,6 +1109,43 @@ mod tests {
             failures
                 .iter()
                 .any(|failure| failure.contains("missing source call")),
+            "{failures:#?}"
+        );
+    }
+
+    #[test]
+    fn source_refresh_updates_only_content_hashes_after_contract_validation() {
+        let first = entry(1);
+        let second = entry(2);
+        let manifest = manifest(vec![first.clone(), second.clone()]);
+        let mut first_observation = observation(&first);
+        first_observation.mmd_sha256 = "a".repeat(64);
+        let mut second_observation = observation(&second);
+        second_observation.mmd_sha256 = "b".repeat(64);
+
+        let refreshed =
+            refreshed_cypress_corpus_manifest(&manifest, &[first_observation, second_observation])
+                .expect("matching source metadata should permit a content refresh");
+
+        assert_eq!(refreshed.entries[0].mmd_sha256, "a".repeat(64));
+        assert_eq!(refreshed.entries[1].mmd_sha256, "b".repeat(64));
+        assert_eq!(refreshed.entries[0].fixture, first.fixture);
+        assert_eq!(refreshed.entries[1].fixture, second.fixture);
+    }
+
+    #[test]
+    fn source_refresh_rejects_metadata_drift() {
+        let expected = entry(1);
+        let mut drifted = observation(&expected);
+        drifted.call = "renderSnapshot".to_string();
+
+        let failures = refreshed_cypress_corpus_manifest(&manifest(vec![expected]), &[drifted])
+            .expect_err("metadata drift must not be absorbed into a content refresh");
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("source call drift")),
             "{failures:#?}"
         );
     }

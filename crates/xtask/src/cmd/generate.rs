@@ -2251,6 +2251,7 @@ const configPath = String(input.config_path || '');
 const theme = String(input.theme || 'default');
 const svgId = String(input.svg_id || 'diagram');
 const seedStr = String((input.seed ?? 1));
+const fixedWallClockMs = 1704067200000;
 const width = Number(input.width || 800);
 const height = Number(input.height || 600);
 const backgroundColor = input.background_color === undefined
@@ -2295,7 +2296,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     });
   }
 
-  await page.evaluateOnNewDocument((seedStr) => {
+  await page.evaluateOnNewDocument(({ seedStr, fixedWallClockMs }) => {
     const mask64 = (1n << 64n) - 1n;
     let state = (BigInt(seedStr) & mask64);
     if (state === 0n) state = 1n;
@@ -2315,6 +2316,8 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
 
     Math.random = nextF64;
+    // Iconify derives SVG IDs from the wall clock during Mermaid bundle initialization.
+    Date.now = () => fixedWallClockMs;
 
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
       const orig = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
@@ -2335,7 +2338,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
         }
       };
     }
-  }, seedStr);
+  }, { seedStr, fixedWallClockMs });
 
   await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
@@ -3807,6 +3810,35 @@ mod tests {
                 "seeded renderer must retain and complete async Sequence actor math: {required}"
             );
         }
+    }
+
+    #[test]
+    fn seeded_renderer_fixes_wall_clock_before_loading_mermaid() {
+        let script_path = ensure_seeded_upstream_svg_renderer_script()
+            .expect("install seeded upstream SVG renderer script");
+        let script = fs::read_to_string(script_path).expect("read seeded renderer script");
+
+        let injection = script
+            .find("await page.evaluateOnNewDocument")
+            .expect("find deterministic page-realm injection");
+        let fixed_clock = script
+            .find("Date.now = () => fixedWallClockMs")
+            .expect("find fixed page wall clock");
+        let navigation = script
+            .find("await page.goto")
+            .expect("find Mermaid CLI page navigation");
+        let mermaid_load = script
+            .find("page.addScriptTag({ path: mermaidIifePath })")
+            .expect("find Mermaid bundle load");
+
+        assert!(injection < fixed_clock);
+        assert!(fixed_clock < navigation);
+        assert!(fixed_clock < mermaid_load);
+        assert!(script.contains("const fixedWallClockMs = 1704067200000;"));
+        assert!(
+            !script.contains("performance.now ="),
+            "monotonic timing must remain live while the wall clock is deterministic"
+        );
     }
 
     #[test]

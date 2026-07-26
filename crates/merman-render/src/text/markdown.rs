@@ -295,7 +295,7 @@ pub(crate) fn mermaid_markdown_to_lines(
         let mut out = vec![Vec::new()];
         let mut line_idx = 0;
         let mut style_stack = Vec::new();
-        let mut previous_text_end = None;
+        let mut previous_text = None;
 
         for (event, range) in parser {
             match event {
@@ -314,10 +314,26 @@ pub(crate) fn mermaid_markdown_to_lines(
                         .last()
                         .copied()
                         .unwrap_or(MermaidMarkdownWordType::Normal);
-                    let join_first_word = previous_text_end == Some(range.start);
-                    let raw = markdown.get(range.clone()).unwrap_or(text.as_ref());
-                    append_text(&mut out, &mut line_idx, raw, word_type, join_first_word);
-                    previous_text_end = Some(range.end);
+                    let join_first_word =
+                        previous_text.is_some_and(|(end, can_join): (usize, bool)| {
+                            end == range.start && can_join
+                        }) && text
+                            .chars()
+                            .next()
+                            .is_some_and(|character| !character.is_whitespace());
+                    append_text(
+                        &mut out,
+                        &mut line_idx,
+                        text.as_ref(),
+                        word_type,
+                        join_first_word,
+                    );
+                    previous_text = Some((
+                        range.end,
+                        text.chars()
+                            .last()
+                            .is_some_and(|character| !character.is_whitespace()),
+                    ));
                 }
                 pulldown_cmark::Event::Code(code) => {
                     let raw = markdown.get(range).unwrap_or(code.as_ref());
@@ -328,18 +344,18 @@ pub(crate) fn mermaid_markdown_to_lines(
                         MermaidMarkdownWordType::Normal,
                         false,
                     );
-                    previous_text_end = None;
+                    previous_text = None;
                 }
                 pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html) => {
                     let raw = markdown.get(range).unwrap_or(html.as_ref());
                     line_mut(&mut out, line_idx)
                         .push((raw.to_string(), MermaidMarkdownWordType::Normal));
-                    previous_text_end = None;
+                    previous_text = None;
                 }
                 pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
                     line_idx += 1;
                     out.push(Vec::new());
-                    previous_text_end = None;
+                    previous_text = None;
                 }
                 pulldown_cmark::Event::Rule => {
                     if let Some(raw) = markdown.get(range) {
@@ -351,7 +367,7 @@ pub(crate) fn mermaid_markdown_to_lines(
                             false,
                         );
                     }
-                    previous_text_end = None;
+                    previous_text = None;
                 }
                 _ => {}
             }
@@ -634,6 +650,15 @@ mod tests {
         assert_eq!(
             mermaid_markdown_to_lines("`**CoreResult&lt;T&gt;**`", true),
             vec![vec![("CoreResult&lt;T&gt;".to_string(), Strong)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines(r"`**_styled_ \#tag &amp; value**`", true),
+            vec![vec![
+                ("styled".to_string(), Em),
+                ("#tag".to_string(), Strong),
+                ("&".to_string(), Strong),
+                ("value".to_string(), Strong),
+            ]]
         );
         assert_eq!(
             mermaid_markdown_to_lines("`**CoreResult~T~**`", true),

@@ -167,11 +167,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "Pacifist",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -183,11 +183,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -199,11 +199,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -215,11 +215,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -230,12 +230,12 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "Yet another long long Ã¶ong Ã¶ong Ã¶ong label",
+        "label": "Yet another long long öong öong öong label",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -247,11 +247,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvConfig",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -263,11 +263,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvConfig  EvConfig EvConfig  EvConfig EvConfig",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       }
     ],
@@ -288,6 +288,17 @@
         "textStyles": [],
         "start": true
       },
+      "B": {
+        "id": "B",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "NotShooting": {
         "id": "NotShooting",
         "type": "default",
@@ -305,7 +316,7 @@
               "type": "default",
               "classes": []
             },
-            "description": "Yet another long long Ã¶ong Ã¶ong Ã¶ong label"
+            "description": "Yet another long long öong öong öong label"
           },
           {
             "stmt": "relation",
@@ -342,30 +353,19 @@
         "textStyles": [],
         "start": null
       },
-      "A": {
-        "id": "A",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "B": {
-        "id": "B",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
       "C": {
         "id": "C",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "A": {
+        "id": "A",
         "type": "default",
         "descriptions": [],
         "doc": null,

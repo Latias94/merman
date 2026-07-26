@@ -450,7 +450,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    let decoded_value = decode_attr_html_entities_minimally(value);
+    let decoded_value = decode_attr_html_entities(value);
     let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
 
     if is_dompurify_allowed_uri(value_no_ws.as_ref()) {
@@ -472,17 +472,20 @@ fn dompurify_is_valid_attribute(
     value.is_empty()
 }
 
-fn decode_attr_html_entities_minimally(input: &str) -> String {
+fn decode_attr_html_entities(input: &str) -> String {
     if input.is_empty() {
         return String::new();
     }
 
+    // Mermaid's sanitizer normalizes these spellings before DOMPurify sees a parsed attribute.
+    // Preserve that compatibility, then apply the full HTML attribute entity algorithm because
+    // lol_html exposes the raw source value to the rewrite callback.
     let mut out = replace_ascii_case_insensitive_literal(input, "&colon;", ":");
     out = replace_ascii_case_insensitive_literal(&out, "&newline;", "\n");
     out = replace_ascii_case_insensitive_literal(&out, "&tab;", "\t");
     out = replace_decimal_colon_entity_like_current_regex(&out);
     out = replace_hex_colon_entity_like_current_regex(&out);
-    out
+    htmlize::unescape_attribute(out).into_owned()
 }
 
 fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement: &str) -> String {
@@ -696,8 +699,8 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
 
                 if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
                     // DOMPurify validates URI values on parsed DOM values (entities already decoded).
-                    // `lol_html` gives us raw values, so we decode the minimal subset Mermaid relies on.
-                    let decoded = decode_attr_html_entities_minimally(&value);
+                    // `lol_html` gives us raw values, so apply HTML attribute entity semantics here.
+                    let decoded = decode_attr_html_entities(&value);
                     if decoded != value {
                         let _ = el.set_attribute(&name, &decoded);
                     }
@@ -858,23 +861,24 @@ mod tests {
     }
 
     #[test]
-    fn decode_attr_entities_matches_minimal_dompurify_url_subset_without_regex() {
+    fn decode_attr_entities_matches_browser_attribute_semantics_without_regex() {
         assert_eq!(
-            decode_attr_html_entities_minimally("javascript&colon;alert&NEWLINE;one&TAB;two"),
+            decode_attr_html_entities("javascript&colon;alert&NEWLINE;one&TAB;two"),
             "javascript:alert\none\ttwo"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("a&#58;b&#00058;c&#058d"),
+            decode_attr_html_entities("a&#58;b&#00058;c&#058d"),
             "a:b:c:d"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("a&#x3a;b&#X0003A;c&#x03adef"),
+            decode_attr_html_entities("a&#x3a;b&#X0003A;c&#x03adef"),
             "a:b:c:def"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("&colon &newline &tab &#59; &#x3b;"),
-            "&colon &newline &tab &#59; &#x3b;"
+            decode_attr_html_entities("&colon &newline &tab &#59; &#x3b;"),
+            "&colon &newline &tab ; ;"
         );
+        assert_eq!(decode_attr_html_entities("jav&#x61;script:"), "javascript:");
     }
 
     #[test]
@@ -1241,6 +1245,27 @@ mod tests {
         assert!(out.contains(">x</a>"));
         assert!(!out.to_ascii_lowercase().contains("javascript:"));
         assert!(!out.to_ascii_lowercase().contains("href="));
+    }
+
+    #[test]
+    fn sanitize_text_strips_script_schemes_obfuscated_with_html_character_references() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text(
+            concat!(
+                r#"<a href="jav&#x61;script:alert(1)">hex</a>"#,
+                r#"<a href="java&#115;cript:alert(2)">decimal</a>"#,
+                r#"<a href="https://mermaid.js.org/">safe</a>"#,
+            ),
+            &cfg,
+        );
+
+        assert!(out.contains(">hex</a>"));
+        assert!(out.contains(">decimal</a>"));
+        assert_eq!(out.matches("href=").count(), 1, "{out}");
+        assert!(out.contains(r#"href="https://mermaid.js.org/""#));
     }
 
     #[test]

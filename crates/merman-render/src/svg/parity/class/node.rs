@@ -9,8 +9,9 @@ use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{
-    class_html_div_style, class_html_label_metrics, class_html_title_metrics, class_svg_label_rect,
-    render_class_html_label, wrap_class_svg_text_like_mermaid, write_class_svg_text_markdown,
+    ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
+    class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
+    write_class_svg_text_markdown,
 };
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
@@ -109,6 +110,8 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub include_p: bool,
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
 pub(super) struct ClassHtmlNodeBodyContext<'a> {
@@ -123,6 +126,8 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
 }
 
@@ -442,8 +447,21 @@ pub(super) fn render_class_html_node_body(
         ctx.measurer,
         ctx.html_calc_text_style,
     );
-    let title_metrics =
-        class_html_title_metrics(ctx.measurer, ctx.text_style, title_text, title_max_width_px);
+    let title_metrics = ctx
+        .mermaid_config
+        .and_then(|config| {
+            crate::class::class_math_label_metrics(
+                title_text,
+                ctx.measurer,
+                ctx.text_style,
+                Some(title_max_width_px.max(1) as f64),
+                config,
+                ctx.math_renderer,
+            )
+        })
+        .unwrap_or_else(|| {
+            class_html_title_metrics(ctx.measurer, ctx.text_style, title_text, title_max_width_px)
+        });
     let title_width = title_metrics.width.max(1.0);
     let title_height = title_metrics.height.max(ctx.line_height).max(1.0);
     let title_x = -title_width / 2.0;
@@ -462,7 +480,20 @@ pub(super) fn render_class_html_node_body(
             ctx.measurer,
             ctx.html_calc_text_style,
         );
-        class_html_label_metrics(ctx.measurer, ctx.text_style, text, max_width_px, "")
+        ctx.mermaid_config
+            .and_then(|config| {
+                crate::class::class_math_label_metrics(
+                    text,
+                    ctx.measurer,
+                    ctx.text_style,
+                    Some(max_width_px.max(1) as f64),
+                    config,
+                    ctx.math_renderer,
+                )
+            })
+            .unwrap_or_else(|| {
+                class_html_label_metrics(ctx.measurer, ctx.text_style, text, max_width_px, "")
+            })
     });
     let annotation_width = annotation_metrics
         .as_ref()
@@ -568,6 +599,8 @@ pub(super) fn render_class_html_node_body(
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
                 span_style: Some(ctx.node_style_attr),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
             },
         );
         out.push_str("</g>");
@@ -598,6 +631,8 @@ pub(super) fn render_class_html_node_body(
             include_p: true,
             extra_span_class: Some("markdown-node-label"),
             span_style: Some(ctx.node_style_attr),
+            mermaid_config: ctx.mermaid_config,
+            math_renderer: ctx.math_renderer,
         },
     );
     out.push_str("</g>");
@@ -608,8 +643,7 @@ pub(super) fn render_class_html_node_body(
         members_x,
         members_group_y,
         &members_rows_rendered,
-        ctx.line_height,
-        ctx.node_style_attr,
+        ctx,
     );
 
     render_class_html_node_rows_group(
@@ -618,8 +652,7 @@ pub(super) fn render_class_html_node_body(
         members_x,
         methods_group_y,
         &methods_rows_rendered,
-        ctx.line_height,
-        ctx.node_style_attr,
+        ctx,
     );
 
     if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
@@ -1073,23 +1106,26 @@ pub(super) fn render_class_html_node_label_group(
     );
     render_class_html_label(
         out,
-        "nodeLabel",
-        spec.text,
-        spec.include_p,
-        spec.extra_span_class,
-        spec.span_style,
+        &ClassHtmlLabelSpec {
+            span_class: "nodeLabel",
+            text: spec.text,
+            include_p: spec.include_p,
+            extra_span_class: spec.extra_span_class,
+            span_style: spec.span_style,
+            mermaid_config: spec.mermaid_config,
+            math_renderer: spec.math_renderer,
+        },
     );
     out.push_str("</div></foreignObject></g>");
 }
 
-pub(super) fn render_class_html_node_rows_group(
+fn render_class_html_node_rows_group(
     out: &mut String,
     group_class: &str,
     group_x: f64,
     group_y: f64,
     rows_rendered: &ClassHtmlNodeRows,
-    line_height: f64,
-    node_style_attr: &str,
+    ctx: &ClassHtmlNodeBodyContext<'_>,
 ) {
     if rows_rendered.rows.is_empty() {
         let _ = write!(
@@ -1117,12 +1153,14 @@ pub(super) fn render_class_html_node_rows_group(
                 label_style: row.row_style.as_str(),
                 translate_y: row.y,
                 width: row.metrics.width.max(1.0),
-                height: row.metrics.height.max(line_height).max(1.0),
+                height: row.metrics.height.max(ctx.line_height).max(1.0),
                 div_style: div_style.as_str(),
                 text: row.text.as_str(),
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
-                span_style: Some(node_style_attr),
+                span_style: Some(ctx.node_style_attr),
+                mermaid_config: ctx.mermaid_config,
+                math_renderer: ctx.math_renderer,
             },
         );
     }

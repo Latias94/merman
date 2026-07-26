@@ -123,12 +123,18 @@ impl TreeViewParseOutcome {
                     nodes,
                     mut editor_facts,
                 } = snapshot;
-                let model = tree_view_input_to_render_model(title, acc_title, acc_descr, nodes)
-                    .map_err(|message| {
-                        editor_facts.mark_recovered_from_parse_error(message.clone(), None);
-                        Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
-                    })
-                    .and_then(|model| render_model_to_compat_json(&model, meta));
+                let model = tree_view_input_to_render_model(
+                    title,
+                    acc_title,
+                    acc_descr,
+                    nodes,
+                    &meta.effective_config,
+                )
+                .map_err(|message| {
+                    editor_facts.mark_recovered_from_parse_error(message.clone(), None);
+                    Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
+                })
+                .and_then(|model| render_model_to_compat_json(&model, meta));
                 (model, editor_facts)
             },
             crate::family::CombinedSemanticFailure::into_parts,
@@ -206,6 +212,7 @@ struct TreeViewLineView<'a> {
     indent: usize,
     content: &'a str,
     content_offset: usize,
+    expand_content_tabs: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -279,8 +286,9 @@ fn construct_tree_view_semantic_source(
         nodes,
         editor_facts: _,
     } = parsed;
-    let render_model = tree_view_input_to_render_model(title, acc_title, acc_descr, nodes)
-        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
+    let render_model =
+        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
+            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
     Ok(TreeViewSemanticSource { render_model })
 }
 
@@ -482,6 +490,7 @@ fn tree_view_input_to_render_model(
     acc_title: Option<String>,
     acc_descr: Option<String>,
     nodes: Vec<TreeViewNodeLineDetails>,
+    config: &crate::MermaidConfig,
 ) -> std::result::Result<TreeViewDiagramRenderModel, String> {
     let mut arena = vec![ArenaNode {
         id: 0,
@@ -513,7 +522,9 @@ fn tree_view_input_to_render_model(
             node_type: flat.node_type,
             css_class: flat.css_class.map(|value| value.value),
             icon: flat.icon.map(|value| value.value),
-            description: flat.description.map(|value| value.value),
+            description: flat
+                .description
+                .map(|value| crate::sanitize::sanitize_text(&value.value, config)),
             children: Vec::new(),
         });
         arena[parent].children.push(idx);
@@ -704,6 +715,7 @@ fn tree_view_line_view<'a>(
             indent,
             content,
             content_offset,
+            expand_content_tabs: false,
         }));
     }
 
@@ -739,6 +751,7 @@ fn tree_view_line_view<'a>(
             indent: depth * 4,
             content,
             content_offset,
+            expand_content_tabs: true,
         }));
     }
 
@@ -752,6 +765,7 @@ fn tree_view_line_view<'a>(
             indent: 0,
             content,
             content_offset: 0,
+            expand_content_tabs: false,
         }));
     }
 
@@ -767,6 +781,7 @@ fn tree_view_line_view<'a>(
         indent: 0,
         content,
         content_offset: 0,
+        expand_content_tabs: false,
     }))
 }
 
@@ -780,7 +795,7 @@ fn parse_node_content(
     let span = SourceSpan::new(content_abs, content_abs + content.len());
     let mut lexemes = LangiumLexemeTrace::default();
 
-    let (raw_name, name_start, name_end, suffix_start, quoted) =
+    let (mut raw_name, name_start, name_end, suffix_start, quoted) =
         if let Some((_, quote @ ('"' | '\''))) = content.char_indices().next() {
             let mut end = None;
             for (idx, ch) in content[quote.len_utf8()..].char_indices() {
@@ -821,6 +836,9 @@ fn parse_node_content(
                 false,
             )
         };
+    if line_view.expand_content_tabs {
+        raw_name = raw_name.replace('\t', "    ");
+    }
 
     let (name, node_type, selection_end) = normalize_tree_view_node_name(raw_name, name_end);
     let selection = SourceSpan::new(content_abs + name_start, content_abs + selection_end);
@@ -838,7 +856,8 @@ fn parse_node_content(
 
     let suffix = &content[suffix_start..];
     let suffix_abs = content_abs + suffix_start;
-    let annotations = match parse_tree_view_annotations(suffix, suffix_abs, meta, &mut lexemes) {
+    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, meta, &mut lexemes)
+    {
         Ok(annotations) => annotations,
         Err(error) => {
             return Err(TreeViewNodeParseFailure {
@@ -847,6 +866,11 @@ fn parse_node_content(
             });
         }
     };
+    if line_view.expand_content_tabs
+        && let Some(description) = &mut annotations.description
+    {
+        description.value = description.value.replace('\t', "    ");
+    }
 
     Ok(TreeViewNodeLineDetails {
         indent: line_view.indent,
@@ -1132,7 +1156,7 @@ fn is_annotation_token_boundary(s: &str, idx: usize) -> bool {
         && s[..idx]
             .chars()
             .next_back()
-            .is_some_and(char::is_whitespace)
+            .is_some_and(|ch| ch == ' ' || ch == '\t')
 }
 
 fn skip_ascii_whitespace(s: &str, mut idx: usize) -> usize {
@@ -1306,6 +1330,24 @@ plain file.ts ## entry point
     }
 
     #[test]
+    fn sanitizes_descriptions_before_projecting_tree_view_semantics() {
+        let mut meta = meta();
+        meta.effective_config = MermaidConfig::from_value(json!({
+            "securityLevel": "strict"
+        }));
+        let source = "treeView-beta\nfile.txt ## <style>.bad{display:none}</style><b>safe</b>\n";
+
+        let semantic = parse_tree_view(source, &meta).unwrap();
+        let typed = parse_tree_view_model_for_render(source, &meta).unwrap();
+
+        assert_eq!(semantic["nodes"][1]["description"], json!("<b>safe</b>"));
+        assert_eq!(
+            typed.root.children[0].description.as_deref(),
+            Some("<b>safe</b>")
+        );
+    }
+
+    #[test]
     fn annotation_markers_inside_bare_node_names_remain_literal() {
         let semantic = parse_tree_view(
             r#"treeView-beta
@@ -1321,6 +1363,25 @@ file##notes
         assert!(nodes[1].get("cssClass").is_none());
         assert_eq!(nodes[2]["name"], json!("file##notes"));
         assert!(nodes[2].get("description").is_none());
+    }
+
+    #[test]
+    fn non_breaking_space_does_not_start_an_annotation() {
+        let semantic = parse_tree_view(
+            "treeView-beta\nclass\u{a0}:::literal\nicon\u{a0}icon(literal)\ndesc\u{a0}## literal\n",
+            &meta(),
+        )
+        .unwrap();
+        let nodes = semantic["nodes"].as_array().expect("nodes array");
+
+        assert_eq!(nodes[1]["name"], json!("class\u{a0}:::literal"));
+        assert_eq!(nodes[2]["name"], json!("icon\u{a0}icon(literal)"));
+        assert_eq!(nodes[3]["name"], json!("desc\u{a0}## literal"));
+        for node in &nodes[1..] {
+            assert!(node.get("cssClass").is_none());
+            assert!(node.get("icon").is_none());
+            assert!(node.get("description").is_none());
+        }
     }
 
     #[test]
@@ -1456,6 +1517,19 @@ my-project/
         .unwrap();
 
         assert_eq!(box_draw["root"], indent["root"]);
+    }
+
+    #[test]
+    fn box_drawing_preprocessing_expands_tabs_across_the_branch_line() {
+        let semantic = parse_tree_view(
+            "treeView-beta\nroot/\n├── feature\tflag ## alpha\tbeta\n",
+            &meta(),
+        )
+        .unwrap();
+        let node = &semantic["nodes"][2];
+
+        assert_eq!(node["name"], json!("feature    flag"));
+        assert_eq!(node["description"], json!("alpha    beta"));
     }
 
     #[test]

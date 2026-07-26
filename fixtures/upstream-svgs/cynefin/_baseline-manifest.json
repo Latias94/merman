@@ -48,63 +48,63 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_a_cynefin_diagram_with_transitions_002": {
-      "input_sha256": "0a47698534945e3f559fdfab51082c1c16df493cef0b19bbc6b3a532b5095b94",
-      "svg_sha256": "da0f928227edf7833593617a83c43c21d2125bf3827ff391757b006d89a39709",
+      "input_sha256": "283c4895f2049a113848e158d144c30ab842163b8d0524398e64e4f5861a066b",
+      "svg_sha256": "e3cac9660404bd45a78d95cb1b4da118b01ec717e9ee9796d11ab67cbaa7bf58",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001": {
-      "input_sha256": "f852451974b9d7025570b33b097f890b65e942ef22a7828c21cbbb178d4cefc0",
-      "svg_sha256": "e8f24bcf340c36fa70f50fa76195e1a1d85cdbff36b33fa40f699661af8a7ceb",
+      "input_sha256": "7c25ee8b1a5eb55155791d76f3d60049016dc59fbe72faaab62d36d99dacd326",
+      "svg_sha256": "acdef2bc743b48b2767d5e064cf8db7250b0f14f84324af813d9ec3b9dc7e245",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_an_empty_cynefin_framework_003": {
-      "input_sha256": "ddf6d8c645a3e4c47385972e85e7f7d9227565c31ba0ec7f72919363c8cddb06",
-      "svg_sha256": "60f30ff1f7fc3cbc4e8ca991b3d61c38635ddcc85ec1fe6705eb871c46ca401a",
+      "input_sha256": "60dd644cde13cfefd087135038ea58c15d216bcca9aa266fb7ee6a188637ec3a",
+      "svg_sha256": "e334be29e9146c5b752f04bce82adcca07533957a3f44c0f68a3ef1716911f00",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_deterministically_with_an_explicit_seed_ov_012": {
-      "input_sha256": "7fd8fc1553c2fc1d0f8aa0711ef7c195593ec39cf5508008dbf0cb473fd46700",
-      "svg_sha256": "1b8dbdf39d11d14d6abac057387e7a6364aa49ed74b0d97deda59b68bc9fb3df",
+      "input_sha256": "eeaffdcb34c69ec7cea037fee205b33b7225965ba28a9d13c74b4083cedb41e2",
+      "svg_sha256": "9bc4665458b9765428d0f2a076e53a1e6e9cad347648e62254ff4938c2eaded1",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_accessibility_directives_011": {
-      "input_sha256": "adb943a62a736bb4f4eea2b26103804d7c4b90baf12970077e50a1323620a62f",
-      "svg_sha256": "e80b92a101a21954b13bd101eb028a6283d4932adbf5d0f5a5cbf8d001521f46",
+      "input_sha256": "21b737b93640d213504f4bdae12cbdd72a947af59afadc273db112f21139e555",
+      "svg_sha256": "a005a41d9c77db43f6ab2fca6e971505f5a970211c3d54aa83fab66c8651c6fb",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_config_override_005": {
-      "input_sha256": "fb4a5744a0284c975950a821832b9772f962827f8b2506cf2503c42304b4fb5b",
-      "svg_sha256": "cef65e092a31dfe07e2f7e18d72dcb937115f49d23b73729e208ca5527f895e4",
+      "input_sha256": "de499d876de4ee31b112c8953bdd72098c6b18c8d507cd0a90bf0e40da41eadc",
+      "svg_sha256": "d63e6963a532c11e4203a55e46fecab14d3c390932a9fed4921d067e0a30643c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_confusion_domain_items_without_overfl_009": {
-      "input_sha256": "e882baf77e7368f3d5d8b9e1ad52a2f18f8def4d4da7397902f3c075c4373df7",
-      "svg_sha256": "e0b18ef4db9e44ed90685dbf5adb9d1118485d4f0ed5495244dafa534e765da9",
+      "input_sha256": "9cc753d281301a4ecc6e47f3d1180a987db358ce2c989459233612384b6a0fe3",
+      "svg_sha256": "9a244db8278827a5b8a0dc3d50bcd4b14bab85658022cb6732f3e57f00b671cc",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_many_items_per_domain_004": {
-      "input_sha256": "c54deb58b120a90e04c013f3d3eb4098f4a7e4afd9de9dd6fff4ec387bf44ddd",
-      "svg_sha256": "6a4c1fac68f26809148e978dc0fec7d4dfb420f47f4e7dc092616edd2790ef25",
+      "input_sha256": "ebc7ff96bdeacbb5f4733322e2b7bed9fb5a2701897e56e96dee4ba34c8f382f",
+      "svg_sha256": "1190e280f9027636f07dbf0a333edbd4dbc7b7a9dc26cece4f363a1a19a349fb",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_self_loop_transitions_silently_droppe_010": {
-      "input_sha256": "597acbdcb50f080fa6412672745c6d63db0216d819e2dedbe5ce472dc9682234",
-      "svg_sha256": "e343bb72757ce46af7114f333dd217afc8b945e2f74eda193222b283e6b0d159",
+      "input_sha256": "11d7800f1c13b84220975f70b4dac287cc2f7af6b150015fe76e89fc5ad00a43",
+      "svg_sha256": "9c5d300d2a0309bacf95e80b0daec06ef2875224b15fca1fa10e339109ddb16c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_straight_boundaries_when_amplitude_is_008": {
-      "input_sha256": "0cd8a81a21c16857bcb99d739dd9e6465452eed4f7e2d618756029de824bd8e8",
-      "svg_sha256": "35ccf31841688192861fb7d111971e0001d10e594af0ca04fce03e24e7a8f80e",
+      "input_sha256": "510ba03290382991678acdb3deb22e1698baca4f464c4232f1e12f54dbd528ca",
+      "svg_sha256": "aa8450b155000739d671223528a90ddb84ff99fbdc599774c5f35553887e73b2",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_with_theme_override_007": {
-      "input_sha256": "d151983627107c9a74cddb845bf186b8ae6503faafa45da646c84177aded6bf8",
-      "svg_sha256": "c8f7caf16db55fd824143201ab55e34c6b6a4bace502363c03ae9ab891e21f41",
+      "input_sha256": "3f7196f426de6060323799479b7f80f5fc41fed81c6f27386fe6bbac8814c82e",
+      "svg_sha256": "068aae745b5ddd00e870612425434343d129a5e9563516a4e2f3b24e466abcf6",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_cynefin_spec_should_render_cynefin_without_domain_descriptions_006": {
-      "input_sha256": "fe496a41b972da9de67afdc962bc5f42fc874f6340990815ff034a0e05773a0b",
-      "svg_sha256": "084cf7f38605baa0cedce0ab281487e4c3a1cc204ac8f561e393cd85515463b3",
+      "input_sha256": "35164948c6ebec1931904d313ee9a3870194f956433421bf3ecf1cc9d0c2d616",
+      "svg_sha256": "eaf6a915b58b51bd93bd7efc080582ac6a4d4c74961e52c90ed9ebc8ada71a84",
       "renderer_profile": "mmdc-default"
     }
   },

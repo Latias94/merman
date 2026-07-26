@@ -6,7 +6,7 @@
       {
         "id": "0",
         "domId": "node_0",
-        "label": "`**Start** with\n    a second line ð`",
+        "label": "`**Start** with\n    a second line 😎`",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -58,7 +58,7 @@
       "id": 0,
       "nodeId": "id1",
       "level": 0,
-      "descr": "`**Start** with\n    a second line ð`",
+      "descr": "`**Start** with\n    a second line 😎`",
       "type": 2,
       "children": [
         {

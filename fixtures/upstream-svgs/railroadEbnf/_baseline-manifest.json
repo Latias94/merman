@@ -48,13 +48,13 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_iso_14977_notation_007": {
-      "input_sha256": "9d05d2aa15b4aeedf35cb938bb71d4afaaa678bfb092804f32193d5051678e7f",
-      "svg_sha256": "b270eb8670e77a559ddefa69fbb0e417c4ebd183f9d6a7c7da7c8397b8e59081",
+      "input_sha256": "d87b477e2ecbe33c723845bdd62e02ed629ef36f10085532c213d533d5c8be6c",
+      "svg_sha256": "5aed967c3fd3716d105b988a6e5b26cd7fa3d9283b59787e2258d98211c67954",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_sequences_and_choices_006": {
-      "input_sha256": "cdfdac8a7017a41f22c8b7e6cbf30304f7a67fa82535b4958e98cde471b30f2f",
-      "svg_sha256": "0a4780c1eb91de647fd9fb3419a0d9259b763e2f0d4379f327075198293da389",
+      "input_sha256": "b63b82fcf9987bb054845ecea7223d56484768d40f6ff441e7bbd93add6daa92",
+      "svg_sha256": "9db3a321b0396fe70ef3c730f2433a0fb80e64c8e2f58323745a0815bb692953",
       "renderer_profile": "mmdc-default"
     }
   },

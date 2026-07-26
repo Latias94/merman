@@ -36,6 +36,7 @@ mod info;
 mod ishikawa;
 mod journey;
 mod kanban;
+mod label;
 mod layout_debug;
 mod mindmap;
 mod packet;

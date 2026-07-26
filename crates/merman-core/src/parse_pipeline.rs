@@ -1,6 +1,7 @@
 use crate::preprocess::{
-    PreprocessedSource, preprocess_diagram_with_known_type,
-    preprocess_mermaid_public_parse_pipeline,
+    DirectiveRecoveryMode, PreprocessedSource,
+    preprocess_diagram_with_known_type_and_directive_recovery,
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery,
 };
 use crate::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
@@ -197,7 +198,11 @@ impl<'a> ParsePipeline<'a> {
         let operation_timing = timing.operation_timing(operation_context);
         let total_start = operation_timing.map(runtime::OperationTiming::start);
         let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let Some((code, meta)) = self.preprocess()? else {
+        let Some((code, meta)) = self.preprocess_for_with_directive_recovery(
+            PreprocessPath::PublicParse,
+            DirectiveRecoveryMode::RecoverLine,
+        )?
+        else {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(&code);
@@ -499,15 +504,24 @@ impl<'a> ParsePipeline<'a> {
         })
     }
 
-    fn preprocess(&self) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
-        self.preprocess_for(PreprocessPath::PublicParse)
-    }
-
     fn preprocess_for(
         &self,
         path: PreprocessPath,
     ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
-        match self.preprocess_strict(path) {
+        let directive_recovery = if self.options.suppress_errors {
+            DirectiveRecoveryMode::RecoverLine
+        } else {
+            DirectiveRecoveryMode::Strict
+        };
+        self.preprocess_for_with_directive_recovery(path, directive_recovery)
+    }
+
+    fn preprocess_for_with_directive_recovery(
+        &self,
+        path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
+    ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+        match self.preprocess_with_directive_recovery(path, directive_recovery) {
             Err(Error::DetectType(_)) if self.options.suppress_errors => Ok(None),
             result => result.map(Some),
         }
@@ -517,10 +531,18 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
     ) -> Result<(PreprocessedSource, ParseMetadata)> {
+        self.preprocess_with_directive_recovery(path, DirectiveRecoveryMode::Strict)
+    }
+
+    fn preprocess_with_directive_recovery(
+        &self,
+        path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
+    ) -> Result<(PreprocessedSource, ParseMetadata)> {
         match self.source {
-            ParseSource::Detect => self.preprocess_and_detect_strict(path),
+            ParseSource::Detect => self.preprocess_and_detect_strict(path, directive_recovery),
             ParseSource::KnownType(diagram_type) => {
-                self.preprocess_and_assume_type(diagram_type, path)
+                self.preprocess_and_assume_type(diagram_type, path, directive_recovery)
             }
         }
     }
@@ -528,8 +550,9 @@ impl<'a> ParsePipeline<'a> {
     fn preprocess_and_detect_strict(
         &self,
         path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
     ) -> Result<(PreprocessedSource, ParseMetadata)> {
-        let pre = self.preprocess_input(path, None)?;
+        let pre = self.preprocess_input_with_directive_recovery(path, None, directive_recovery)?;
         if pre.code().trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
         }
@@ -576,8 +599,13 @@ impl<'a> ParsePipeline<'a> {
         &self,
         diagram_type: &str,
         path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
     ) -> Result<(PreprocessedSource, ParseMetadata)> {
-        let pre = self.preprocess_input(path, Some(diagram_type))?;
+        let pre = self.preprocess_input_with_directive_recovery(
+            path,
+            Some(diagram_type),
+            directive_recovery,
+        )?;
         if pre.code().trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
         }
@@ -610,20 +638,40 @@ impl<'a> ParsePipeline<'a> {
         ))
     }
 
+    #[cfg(test)]
     fn preprocess_input(
         &self,
         path: PreprocessPath,
         diagram_type: Option<&str>,
     ) -> Result<crate::PreprocessResult> {
+        self.preprocess_input_with_directive_recovery(
+            path,
+            diagram_type,
+            DirectiveRecoveryMode::Strict,
+        )
+    }
+
+    fn preprocess_input_with_directive_recovery(
+        &self,
+        path: PreprocessPath,
+        diagram_type: Option<&str>,
+        directive_recovery: DirectiveRecoveryMode,
+    ) -> Result<crate::PreprocessResult> {
         match path {
-            PreprocessPath::PublicParse => preprocess_mermaid_public_parse_pipeline(
+            PreprocessPath::PublicParse => {
+                preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
+                    self.text,
+                    &self.engine.registry,
+                    diagram_type,
+                    directive_recovery,
+                )
+            }
+            PreprocessPath::Render => preprocess_diagram_with_known_type_and_directive_recovery(
                 self.text,
                 &self.engine.registry,
                 diagram_type,
+                directive_recovery,
             ),
-            PreprocessPath::Render => {
-                preprocess_diagram_with_known_type(self.text, &self.engine.registry, diagram_type)
-            }
         }
     }
 

@@ -346,11 +346,21 @@ fn render_timeline_diagram_svg_inner(
                 ..root_svg::RootChrome::new(diagram_id, "timeline")
             },
         )?;
-    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
-    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let (arrowhead_id, arrowhead_url) =
+        if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
+            (
+                "undefined-arrowhead".to_string(),
+                "url(#arrowhead)".to_string(),
+            )
+        } else {
+            (
+                scoped_svg_id(diagram_id, "arrowhead"),
+                scoped_svg_url(diagram_id, "arrowhead"),
+            )
+        };
 
-    // Mermaid's vertical renderer lowers the activity axis to the first root child. Preserve that
-    // observable DOM order while retaining Merman's diagram-scoped marker reference.
+    // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
+    // marker initialization without a diagram id. Preserve both observable source behaviors.
     if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
         let _ = write!(
             &mut out,

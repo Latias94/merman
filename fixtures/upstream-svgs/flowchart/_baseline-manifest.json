@@ -1028,8 +1028,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012": {
-      "input_sha256": "86f5bb157755773af6569796e253401153be66702073e062da84add299e6943a",
-      "svg_sha256": "e6c97c8ca01f756c77365b469408cf35833478c916a3f14f3be802d20779050e",
+      "input_sha256": "7c5aceff95b395be862a978819f359e864716de809a5ead430100ab041e0957f",
+      "svg_sha256": "f02723616cb7f88d73f48721c08367bcf66b30546c6934c118030fc724a7f951",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_handdrawn_spec_fhd13_should_render_color_of_styled_nodes_013": {
@@ -1348,8 +1348,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012": {
-      "input_sha256": "0e81009deee4bf0a748b83e3a3a62e900fe887160c840c0eb3d7a4730e3d95ce",
-      "svg_sha256": "fa541f64727919456552b1afccfcf786d4145c3cb6455bfc6ca862211ef861cf",
+      "input_sha256": "b898ec183892fb75f8985afa7dac94b1f7775cf1d25ebc5e3e2d9910d0646afa",
+      "svg_sha256": "74195ed175f3fa28b484cc0fd41388adbfea91e79844d7799aafed9fc0ea0dea",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_spec_13_should_render_color_of_styled_nodes_013": {
@@ -2983,8 +2983,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_theme_spec_should_not_allow_unbalanced_css_definitions_2_002": {
-      "input_sha256": "fe5bade7cd50c15d49b52b4039eca67ca2979bf17e9aed1a1b88020a3aa6eedf",
-      "svg_sha256": "6eba6c853b4416e4e25bedd42a4d803844195b68739fd15bb104fd76bb787593",
+      "input_sha256": "8d931c819eeed6449b4549508a32ca0e0eb8c22c53f384e63843526102ca1f53",
+      "svg_sha256": "a5288ecee34f951870f56d86998e16def44845c6cb31a8e048f362aa70c15986",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_theme_spec_should_render_a_flowchart_diagram_004": {

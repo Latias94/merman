@@ -1,6 +1,9 @@
 use super::super::timing::RenderTimings;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
-use super::nodes::{ClassNodesRenderContext, ClassNodesRenderState, render_class_render_tree};
+use super::nodes::{
+    ClassNodesRenderContext, ClassNodesRenderState, render_class_elk_adapter_dom,
+    render_class_render_tree,
+};
 use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
 use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
@@ -54,14 +57,14 @@ fn render_class_diagram_svg_model_inner(
     );
     let settings = ClassRenderSettings::from_config(effective_config, hand_drawn_seed);
 
-    // Mermaid's class renderer uses Dagre with fixed `marginx/marginy=8`, then calls
-    // `setupGraphViewbox(svg, padding=conf.diagramPadding)` which computes the final SVG viewBox
-    // from `svg.getBBox()`.
-    //
-    // Our headless layout output is margin-free, so re-introduce Dagre's margin at render time to
-    // match upstream SVG coordinates and viewport sizing.
-    let content_tx = CLASS_GRAPH_MARGIN_PX;
-    let content_ty = CLASS_GRAPH_MARGIN_PX;
+    // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
+    // the layout coordinates directly and keeps the viewport padding as the only outer margin.
+    let content_tx = if layout.uses_elk_adapter_dom {
+        0.0
+    } else {
+        CLASS_GRAPH_MARGIN_PX
+    };
+    let content_ty = content_tx;
 
     // Mermaid derives the final viewport using `svg.getBBox()` (after rendering). We don't have a
     // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
@@ -104,6 +107,11 @@ fn render_class_diagram_svg_model_inner(
     out.push_str("<g>");
     // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
     class_markers(&mut out, diagram_id, aria_roledescription, true);
+    if layout.uses_elk_adapter_dom {
+        out.push_str("</g>");
+        push_class_shadow_defs(&mut out, diagram_id, effective_config);
+        push_class_gradient(&mut out, diagram_id, effective_config);
+    }
 
     let ClassRenderLookups {
         class_nodes_by_id,
@@ -112,8 +120,6 @@ fn render_class_diagram_svg_model_inner(
         note_by_id,
         iface_by_id,
     } = ClassRenderLookups::new(model);
-
-    out.push_str(r#"<g class="root">"#);
 
     drop(build_ctx_guard);
 
@@ -143,9 +149,16 @@ fn render_class_diagram_svg_model_inner(
         edge_use_html_labels: settings.edge_use_html_labels,
         text_measurer: measurer,
         terminal_text_style: &terminal_text_style,
+        mermaid_config: borrowed_sanitize_config,
+        math_renderer: options.math_renderer(),
         look: settings.look.as_str(),
         hand_drawn_seed: settings.hand_drawn_seed.clone(),
         timing,
+        edge_paths_class: if layout.uses_elk_adapter_dom {
+            "edges edgePaths"
+        } else {
+            "edgePaths"
+        },
     };
 
     // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
@@ -162,32 +175,50 @@ fn render_class_diagram_svg_model_inner(
         effective_config,
         diagram_id,
         measurer,
+        mermaid_config: borrowed_sanitize_config,
+        math_renderer: options.math_renderer(),
         content_tx,
         content_ty,
         timing,
     };
-    render_class_render_tree(
-        ClassNodesRenderState {
-            out: &mut out,
-            content_bounds: &mut content_bounds,
-            detail: &mut detail,
-            sanitize_config: &mut sanitize_config,
-            borrowed_sanitize_config,
-        },
-        &nodes_ctx,
-        &group_ctx,
-    )?;
-    out.push_str("</g>"); // root
-    out.push_str("</g>"); // wrapper
+    if layout.uses_elk_adapter_dom {
+        render_class_elk_adapter_dom(
+            ClassNodesRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+                sanitize_config: &mut sanitize_config,
+                borrowed_sanitize_config,
+            },
+            &nodes_ctx,
+            &group_ctx,
+        )?;
+    } else {
+        out.push_str(r#"<g class="root">"#);
+        render_class_render_tree(
+            ClassNodesRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+                sanitize_config: &mut sanitize_config,
+                borrowed_sanitize_config,
+            },
+            &nodes_ctx,
+            &group_ctx,
+        )?;
+        out.push_str("</g>"); // root
+        out.push_str("</g>"); // wrapper
+    }
     if let Some(s) = nodes_start {
         detail.nodes += s.elapsed();
     }
 
-    // The unified Mermaid renderer appends shared root resources after the pre-existing graph
-    // wrapper. Shadow defs are emitted for every look, while the gradient remains config-gated;
-    // neither resource decision depends on whether shapes use the hand-drawn look.
-    push_class_shadow_defs(&mut out, diagram_id, effective_config);
-    push_class_gradient(&mut out, diagram_id, effective_config);
+    // The Dagre renderer completes its graph wrapper before the shared resources are appended.
+    // The registered ELK renderer receives those resources before it inserts its top-level groups.
+    if !layout.uses_elk_adapter_dom {
+        push_class_shadow_defs(&mut out, diagram_id, effective_config);
+        push_class_gradient(&mut out, diagram_id, effective_config);
+    }
 
     drop(render_guard);
     let viewbox_guard = timing.section(&mut timings.viewbox);

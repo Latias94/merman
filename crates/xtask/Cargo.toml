@@ -18,7 +18,7 @@ fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
-merman = { path = "../merman", features = ["svg"] }
+merman = { path = "../merman", default-features = false, features = ["svg"] }
 merman-analysis.workspace = true
 merman-core = { path = "../merman-core" }
 merman-editor-core.workspace = true
@@ -38,6 +38,8 @@ sha2.workspace = true
 thiserror.workspace = true
 tempfile = "3.27.0"
 toml.workspace = true
+tree-sitter = "=0.26.5"
+tree-sitter-typescript = "=0.23.2"
 wasmi.workspace = true
 
 [target.'cfg(unix)'.dependencies]

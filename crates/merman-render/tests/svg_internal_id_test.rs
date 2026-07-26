@@ -129,6 +129,32 @@ section Phase
 }
 
 #[test]
+fn vertical_timeline_preserves_upstream_marker_contract() {
+    let svg = render_svg_from_text(
+        r#"timeline TD
+title Release
+section Phase
+  Alpha : Build
+  Beta : Test"#,
+        "m15-timeline-vertical",
+    );
+
+    assert!(
+        svg.contains(r#"id="undefined-arrowhead""#),
+        "expected Mermaid's vertical Timeline marker id:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"marker-end="url(#arrowhead)""#),
+        "expected Mermaid's vertical Timeline marker reference:\n{svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="m15-timeline-vertical-arrowhead""#)
+            && !svg.contains(r#"url(#m15-timeline-vertical-arrowhead)"#),
+        "vertical Timeline must not use the horizontal renderer's scoped marker contract:\n{svg}"
+    );
+}
+
+#[test]
 fn sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors() {
     let svg = render_svg_from_text(
         r#"sequenceDiagram

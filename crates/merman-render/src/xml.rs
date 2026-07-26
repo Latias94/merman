@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use crate::svg::scanner::find_tag_end;
+
 pub(crate) fn is_xml_1_0_char(ch: char) -> bool {
     matches!(ch, '\u{9}' | '\u{A}' | '\u{D}')
         || matches!(
@@ -144,6 +146,139 @@ pub(crate) fn normalize_html_entities_for_xml(value: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// Normalizes sanitized browser HTML into a fragment that can be embedded in SVG XML.
+pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
+    let input = input
+        .replace("<br>", "<br />")
+        .replace("<br/>", "<br />")
+        .replace("<br >", "<br />")
+        .replace("</br>", "<br />")
+        .replace("</br/>", "<br />")
+        .replace("</br />", "<br />")
+        .replace("</br >", "<br />");
+    let input = normalize_html_entities_for_xml(&input);
+
+    fn is_xhtml_void_tag(name: &str) -> bool {
+        matches!(
+            name,
+            "br" | "img"
+                | "hr"
+                | "input"
+                | "meta"
+                | "link"
+                | "source"
+                | "area"
+                | "base"
+                | "col"
+                | "embed"
+                | "param"
+                | "track"
+                | "wbr"
+        )
+    }
+
+    fn self_close_xhtml_void_tag(tag: &str) -> String {
+        if !tag.ends_with('>') {
+            return tag.to_string();
+        }
+        let mut inner = tag[..tag.len() - 1].to_string();
+        while inner.ends_with(|character: char| character.is_whitespace()) {
+            inner.pop();
+        }
+        if inner.ends_with('/') {
+            while inner.ends_with('/') {
+                inner.pop();
+            }
+            while inner.ends_with(|character: char| character.is_whitespace()) {
+                inner.pop();
+            }
+        }
+        inner.push_str(" /");
+        inner.push('>');
+        inner
+    }
+
+    let mut out = String::with_capacity(input.len());
+    let mut characters = input.char_indices().peekable();
+
+    while let Some((offset, character)) = characters.next() {
+        match character {
+            '<' => {
+                let next = characters.peek().map(|(_, character)| *character);
+                if !matches!(
+                    next,
+                    Some(next) if next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?')
+                ) {
+                    out.push_str("&lt;");
+                    continue;
+                }
+
+                let Some(end) = find_tag_end(input.as_ref(), offset + character.len_utf8()) else {
+                    out.push_str("&lt;");
+                    continue;
+                };
+                while characters
+                    .peek()
+                    .is_some_and(|(character_offset, _)| *character_offset <= end)
+                {
+                    characters.next();
+                }
+
+                let tag = &input[offset..=end];
+                let tag = tag.trim();
+                let inner = tag.trim_start_matches('<').trim_end_matches('>').trim();
+                let is_closing = inner.starts_with('/');
+                let name = inner
+                    .trim_start_matches('/')
+                    .trim_end_matches('/')
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if !is_closing && is_xhtml_void_tag(&name) {
+                    out.push_str(&self_close_xhtml_void_tag(tag));
+                } else {
+                    out.push_str(tag);
+                }
+            }
+            '>' => out.push_str("&gt;"),
+            '&' => {
+                let mut tail = String::new();
+                let mut valid_terminator = false;
+                for _ in 0..32 {
+                    match characters.peek().map(|(_, character)| *character) {
+                        Some(';') => {
+                            characters.next();
+                            tail.push(';');
+                            valid_terminator = true;
+                            break;
+                        }
+                        Some(character)
+                            if character.is_ascii_alphanumeric()
+                                || matches!(character, '#' | 'x' | 'X') =>
+                        {
+                            characters.next();
+                            tail.push(character);
+                        }
+                        _ => break,
+                    }
+                }
+                let entity = tail.strip_suffix(';').unwrap_or(&tail);
+                if valid_terminator && is_valid_xml_entity_reference(entity) {
+                    out.push('&');
+                    out.push_str(&tail);
+                } else {
+                    out.push_str("&amp;");
+                    out.push_str(&tail);
+                }
+            }
+            _ => out.push(character),
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +322,50 @@ mod tests {
             normalize_html_entities_for_xml("&&x41; &&X41;"),
             "&amp;&amp;x41; &amp;&amp;X41;"
         );
+    }
+
+    #[test]
+    fn sanitized_html_is_normalized_for_svg_xml_embedding() {
+        assert_eq!(
+            normalize_html_fragment_for_xhtml("<p>A<br><img src=\"x\"> 1 < 2 &amp;</p>"),
+            "<p>A<br /><img src=\"x\" /> 1 &lt; 2 &amp;</p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_normalization_preserves_greater_than_in_double_quoted_attributes() {
+        let normalized =
+            normalize_html_fragment_for_xhtml(r#"<img title="left > right" src="diagram.svg">"#);
+        assert_eq!(
+            normalized,
+            r#"<img title="left > right" src="diagram.svg" />"#
+        );
+
+        let rooted = format!("<root>{normalized}</root>");
+        let document =
+            roxmltree::Document::parse(&rooted).expect("normalized XHTML must remain valid XML");
+        let image = document
+            .descendants()
+            .find(|node| node.has_tag_name("img"))
+            .expect("normalized fragment must contain the image");
+        assert_eq!(image.attribute("title"), Some("left > right"));
+        assert_eq!(image.attribute("src"), Some("diagram.svg"));
+    }
+
+    #[test]
+    fn xhtml_normalization_preserves_greater_than_in_single_quoted_attributes() {
+        let normalized =
+            normalize_html_fragment_for_xhtml("<input data-rule='score > 10' value='ready'>");
+        assert_eq!(normalized, "<input data-rule='score > 10' value='ready' />");
+
+        let rooted = format!("<root>{normalized}</root>");
+        let document =
+            roxmltree::Document::parse(&rooted).expect("normalized XHTML must remain valid XML");
+        let input = document
+            .descendants()
+            .find(|node| node.has_tag_name("input"))
+            .expect("normalized fragment must contain the input");
+        assert_eq!(input.attribute("data-rule"), Some("score > 10"));
+        assert_eq!(input.attribute("value"), Some("ready"));
     }
 }

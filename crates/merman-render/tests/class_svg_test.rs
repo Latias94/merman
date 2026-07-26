@@ -617,6 +617,41 @@ style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
     );
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_svg_elk_layout_uses_upstream_adapter_dom() {
+    let svg = render_class_svg_from_text(
+        r#"---
+config:
+  layout: elk
+---
+classDiagram
+direction LR
+class Animal
+class Duck
+Animal <|-- Duck
+"#,
+    );
+
+    assert!(
+        !svg.contains(r#"<g class="root""#),
+        "Class ELK must not emit the Dagre root wrapper: {svg}"
+    );
+    let subgraphs = svg
+        .find(r#"<g class="subgraphs""#)
+        .expect("Class ELK subgraphs group");
+    let nodes = svg
+        .find(r#"<g class="nodes""#)
+        .expect("Class ELK nodes group");
+    let edges = svg
+        .find(r#"<g class="edges edgePaths""#)
+        .expect("Class ELK edge paths group");
+    let labels = svg
+        .find(r#"<g class="edgeLabels""#)
+        .expect("Class ELK edge labels group");
+    assert!(subgraphs < nodes && nodes < edges && edges < labels);
+}
+
 #[test]
 fn class_svg_namespace_clusters_keep_theme_fill() {
     let svg = render_class_svg_from_text(

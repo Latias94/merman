@@ -357,12 +357,16 @@ pub(crate) fn render_er_diagram_svg_model(
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_color_theme = is_er_redux_color_theme(effective_config);
     let svg_theme = SvgTheme::new(effective_config);
-    let redux_border_colors = redux_color_theme
-        .then(|| svg_theme.string_array("borderColorArray"))
-        .unwrap_or_default();
-    let redux_background_colors = redux_color_theme
-        .then(|| svg_theme.string_array("bkgColorArray"))
-        .unwrap_or_default();
+    let redux_border_colors = if redux_color_theme {
+        svg_theme.string_array("borderColorArray")
+    } else {
+        Vec::new()
+    };
+    let redux_background_colors = if redux_color_theme {
+        svg_theme.string_array("bkgColorArray")
+    } else {
+        Vec::new()
+    };
     let theme_color_limit = er_theme_color_limit(effective_config);
     let color_indices = er_color_indices(model);
 

@@ -11,6 +11,7 @@ pub(crate) mod feature_matrix;
 pub(crate) mod fixtures;
 pub(crate) mod generate;
 pub(crate) mod import;
+pub(crate) mod javascript_source;
 pub(crate) mod lalrpop_parsers;
 pub(crate) mod mermaid_reference;
 pub(crate) mod native_abi;

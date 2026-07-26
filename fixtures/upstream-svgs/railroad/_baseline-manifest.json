@@ -48,28 +48,28 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005": {
-      "input_sha256": "00d2bdb000c021e8067e139fcf908095850df89012990c99be623d65e1e38502",
-      "svg_sha256": "2e8e34157a57f57e233efcebf1d2f85a1f84f4bc57a596acbadee78ad20ae7d2",
+      "input_sha256": "c8142568715ebf200f666cde4c417b423cb33b1311a2d99c136a0f6899b2fc2c",
+      "svg_sha256": "e4326d059caacecfce2a3aef0370cca0b5ad6efe25a87040bbaedb93513f9758",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_a_simple_rule_001": {
-      "input_sha256": "12d244ce3dae4a34af166429b28dadbe93c71ab7eb3ac6892dd8af401594706d",
-      "svg_sha256": "683182d89f82d698cdc890843c22e566bc4b1ef361b5dd3eb1dd3e1ac9bd6b0b",
+      "input_sha256": "e241058f6560da1df452c12c75e7f6b3162a8c6f981a4aa66433d76d1b005be5",
+      "svg_sha256": "80277fc43064600aade68442aecab4850f23926663257a71d89bd85664664041",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004": {
-      "input_sha256": "ba16459943fd5be3f4b3fe40a9cb926ace49b97c9bb990a722d8d2ad1c98775a",
-      "svg_sha256": "4de4abc531502a7c6253f4abb694b696b2de45dbaf01108efd703c097c6f2352",
+      "input_sha256": "e2098d1350d543800407724288b206b9498ea21c8d9e7b3737205e8637c6d625",
+      "svg_sha256": "ccf2644a2f5d79a570b1d43a13d3dbe31751dc95891e37ee00baa9170864f72a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003": {
-      "input_sha256": "8ca3b06bf302f72f0bb99ff943df7b758dc25e7bf1a267fcaf55b99791fcf820",
-      "svg_sha256": "3fe658502e1349aa96e546c52293bf43cb833229bf627a35b9ba07fc9a563174",
+      "input_sha256": "49fa95465763fd3d8e36acd42c523710b1828c8f73077febdb83803d10fcfaad",
+      "svg_sha256": "47ce7793fed0ce7e920bc0d073b32ab84b563ecb0de5302e3358e613ddc2f259",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_sequences_and_choices_002": {
-      "input_sha256": "64f8ee52ccdb712eef550d4a52717464a1e7e32d211ad6264f6bae2cc6d6dc89",
-      "svg_sha256": "55094d604057c0a83a20e50c6ac02591cb6dfa630a0038d6ef6a157381ed0240",
+      "input_sha256": "39bdbe5fc825bd6ca1787a57974c5780d415df238928a737d1465207dfac1f17",
+      "svg_sha256": "5ba640a4a2886cff2e4daa38415ecb2f943f3768b487a304998d469eeaaa620b",
       "renderer_profile": "mmdc-default"
     }
   },

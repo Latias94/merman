@@ -1,8 +1,11 @@
 use crate::config::{config_f64_css_px, config_string};
+use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
+use merman_core::MermaidConfig;
 use serde_json::Value;
 
 mod tidy_tree;
@@ -93,13 +96,45 @@ fn mindmap_label_bbox_px(
     (wrapped.width.max(0.0), wrapped.height.max(0.0))
 }
 
-fn mindmap_node_dimensions_px(
-    node: &MindmapNodeModel,
+fn mindmap_label_bbox_px_with_math(
+    text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<(f64, f64)> {
+    if !crate::math::contains_delimited_math(text) {
+        return Ok(mindmap_label_bbox_px(
+            text,
+            measurer,
+            style,
+            max_node_width_px,
+        ));
+    }
+
+    let math_renderer = math_renderer.ok_or_else(|| Error::MissingCapability {
+        capability: crate::RenderCapability::Math,
+        diagram_type: "mindmap".to_string(),
+    })?;
+    let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        measurer,
+        raw_label: mindmap_label_text_for_layout(text),
+        label_type: "markdown",
+        style,
+        max_width_px: Some(max_node_width_px.max(1.0)),
+        wrap_mode: WrapMode::HtmlLike,
+        config,
+        math_renderer: Some(math_renderer),
+    });
+    Ok((metrics.width.max(0.0), metrics.height.max(0.0)))
+}
+
+fn mindmap_node_dimensions_from_label_bbox(
+    node: &MindmapNodeModel,
+    bbox_w: f64,
+    bbox_h: f64,
 ) -> (f64, f64, f64, f64) {
-    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
     // Mermaid mindmap applies some shape-specific padding overrides during rendering (after
     // `mindmapDb.getData()`), notably for rounded nodes.
     //
@@ -162,6 +197,17 @@ fn mindmap_node_dimensions_px(
     (w, h, bbox_w, bbox_h)
 }
 
+#[cfg(test)]
+fn mindmap_node_dimensions_px(
+    node: &MindmapNodeModel,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_node_width_px: f64,
+) -> (f64, f64, f64, f64) {
+    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
+    mindmap_node_dimensions_from_label_bbox(node, bbox_w, bbox_h)
+}
+
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     let mut pts: Vec<(f64, f64)> = Vec::new();
     for n in nodes {
@@ -203,17 +249,20 @@ fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
 
 pub(crate) fn layout_mindmap_diagram_typed(
     model: &MindmapModel,
-    effective_config: &Value,
+    config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<MindmapDiagramLayout> {
-    layout_mindmap_diagram_model(model, effective_config, text_measurer)
+    layout_mindmap_diagram_model(model, config, text_measurer, math_renderer)
 }
 
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
-    effective_config: &Value,
+    config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<MindmapDiagramLayout> {
+    let effective_config = config.as_value();
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
@@ -226,8 +275,16 @@ fn layout_mindmap_diagram_model(
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
     for (_id_num, n) in nodes_sorted {
+        let (label_width, label_height) = mindmap_label_bbox_px_with_math(
+            &n.label,
+            text_measurer,
+            &text_style,
+            max_node_width_px,
+            config,
+            math_renderer,
+        )?;
         let (width, height, label_width, label_height) =
-            mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
+            mindmap_node_dimensions_from_label_bbox(n, label_width, label_height);
 
         nodes.push(LayoutNode {
             id: n.id.clone(),

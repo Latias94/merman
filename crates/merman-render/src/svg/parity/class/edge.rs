@@ -4,8 +4,8 @@ use super::bounds::{include_path_bounds, include_path_d, include_xywh};
 use super::context::ClassRenderDetails;
 use super::defs::class_marker_name;
 use super::label::{
-    class_html_div_style, render_class_html_label, write_class_svg_edge_text,
-    write_class_svg_edge_text_markdown,
+    ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
+    write_class_svg_edge_text, write_class_svg_edge_text_markdown,
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
@@ -40,9 +40,12 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edge_use_html_labels: bool,
     pub text_measurer: &'a dyn TextMeasurer,
     pub terminal_text_style: &'a TextStyle,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
+    pub edge_paths_class: &'static str,
 }
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
@@ -272,7 +275,7 @@ pub(super) fn render_class_edge_groups(
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
-    out.push_str(r#"<g class="edgePaths">"#);
+    let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     for e in ordered_edges.iter().copied() {
         if e.points.len() < 2 {
             continue;
@@ -464,7 +467,7 @@ pub(super) fn render_class_edge_groups(
             e.label.as_ref(),
             label_center.as_ref().map(|center| center.x).unwrap_or(0.0),
             label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
-            ctx.edge_use_html_labels,
+            ctx,
         );
     }
     for e in ordered_edges.iter().copied() {
@@ -493,8 +496,7 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         start_text,
                         true,
-                        ctx.text_measurer,
-                        ctx.terminal_text_style,
+                        ctx,
                     );
                 }
             }
@@ -540,8 +542,7 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         end_text,
                         false,
-                        ctx.text_measurer,
-                        ctx.terminal_text_style,
+                        ctx,
                     );
                 }
             }
@@ -573,17 +574,18 @@ pub(super) fn class_edge_label_center(
     center
 }
 
-pub(super) fn render_class_edge_label_group(
+fn render_class_edge_label_group(
     out: &mut String,
     dom_id: &str,
     label_text: &str,
     label: Option<&LayoutLabel>,
     center_x: f64,
     center_y: f64,
-    use_html_labels: bool,
+    ctx: &ClassEdgeGroupsRenderContext<'_>,
 ) {
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
+    let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
     if use_html_labels {
         let empty_div_style =
             class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -611,7 +613,18 @@ pub(super) fn render_class_edge_label_group(
                 fmt(lbl.height.max(0.0)),
                 escape_attr_display(div_style.as_str()),
             );
-            render_class_html_label(out, "edgeLabel", trimmed, true, None, None);
+            render_class_html_label(
+                out,
+                &ClassHtmlLabelSpec {
+                    span_class: "edgeLabel",
+                    text: trimmed,
+                    include_p: true,
+                    extra_span_class: None,
+                    span_style: None,
+                    mermaid_config: ctx.mermaid_config,
+                    math_renderer: ctx.math_renderer,
+                },
+            );
             out.push_str("</div></foreignObject></g></g>");
         } else {
             let _ = write!(
@@ -668,14 +681,13 @@ pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {
     (trimmed.encode_utf16().count() as f64 * 9.0, 12.0)
 }
 
-pub(super) fn render_class_edge_terminal_group(
+fn render_class_edge_terminal_group(
     out: &mut String,
     x: f64,
     y: f64,
     text: &str,
     is_start_terminal: bool,
-    text_measurer: &dyn TextMeasurer,
-    terminal_text_style: &TextStyle,
+    ctx: &ClassEdgeGroupsRenderContext<'_>,
 ) {
     let decoded = decode_entities_minimal_cow(text);
     let trimmed = decoded.trim();
@@ -683,8 +695,34 @@ pub(super) fn render_class_edge_terminal_group(
         return;
     }
     let (style_width, style_height) = class_terminal_box_size(trimmed);
-    let measured =
-        text_measurer.measure_wrapped(trimmed, terminal_text_style, None, WrapMode::HtmlLike);
+    let measured = match (ctx.mermaid_config, ctx.math_renderer) {
+        (Some(config), Some(renderer)) if crate::math::contains_delimited_math(trimmed) => {
+            crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+                measurer: ctx.text_measurer,
+                raw_label: trimmed,
+                style: ctx.terminal_text_style,
+                max_width_px: None,
+                wrap_mode: WrapMode::HtmlLike,
+                config,
+                math_renderer: Some(renderer),
+            })
+            .unwrap_or_else(|| {
+                crate::text::measure_markdown_with_inline_styles(
+                    ctx.text_measurer,
+                    trimmed,
+                    ctx.terminal_text_style,
+                    None,
+                    WrapMode::HtmlLike,
+                )
+            })
+        }
+        _ => ctx.text_measurer.measure_wrapped(
+            trimmed,
+            ctx.terminal_text_style,
+            None,
+            WrapMode::HtmlLike,
+        ),
+    };
     let foreign_width = measured.width.max(0.0);
     let foreign_height = measured.height.max(0.0);
     let inner_tx = -foreign_width / 2.0;
@@ -692,7 +730,7 @@ pub(super) fn render_class_edge_terminal_group(
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"><p>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -702,12 +740,12 @@ pub(super) fn render_class_edge_terminal_group(
             fmt(style_width),
             fmt(style_height),
         );
-        escape_xml_into(out, trimmed);
-        out.push_str("</p></span></div></foreignObject></g></g>");
+        render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
+        out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"><p>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -717,8 +755,23 @@ pub(super) fn render_class_edge_terminal_group(
             fmt(style_width),
             fmt(style_height),
         );
-        escape_xml_into(out, trimmed);
-        out.push_str("</p></span></div></foreignObject></g>");
+        render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
+        out.push_str("</span></div></foreignObject></g>");
+    }
+}
+
+fn render_class_terminal_label(
+    out: &mut String,
+    text: &str,
+    mermaid_config: Option<&merman_core::MermaidConfig>,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) {
+    if let Some(math_html) = class_math_html_label(text, mermaid_config, math_renderer) {
+        out.push_str(&math_html);
+    } else {
+        out.push_str("<p>");
+        escape_xml_into(out, text);
+        out.push_str("</p>");
     }
 }
 

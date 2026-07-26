@@ -329,25 +329,52 @@ fn malformed_directive_json_is_removed_without_rejecting_the_diagram() {
 }
 
 #[test]
-fn bare_unterminated_directive_marker_does_not_consume_following_diagram() {
+fn strict_unterminated_directive_marker_truncates_like_mermaid() {
     let source = "%%{\nflowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
     let mut config = MermaidConfig::empty_object();
 
-    let detected = registry
-        .detect_type(source, &mut config)
-        .expect("detector preserves source after an unterminated marker");
-    assert_eq!(detected, "flowchart-v2");
+    assert!(registry.detect_type(source, &mut config).is_err());
 
     let preprocessed = preprocess_diagram(source, &registry)
-        .expect("preprocessor recovers an unterminated marker");
-    assert_eq!(preprocessed.code(), "flowchart TD\nA-->B\n");
+        .expect("strict preprocessing truncates an unterminated directive");
+    assert_eq!(preprocessed.code(), "");
+
+    let error = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap_err();
+    assert!(matches!(error, crate::Error::DetectType(_)));
+}
+
+#[test]
+fn lenient_unterminated_directive_marker_recovers_the_following_diagram() {
+    let source = concat!(
+        "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
+        "%%{\n",
+        "flowchart TD\nA-->B\n",
+    );
 
     let parsed = Engine::new()
-        .parse_diagram_sync(source, ParseOptions::strict())
-        .expect("unterminated marker does not reject a valid diagram")
+        .parse_diagram_sync(source, ParseOptions::lenient())
+        .expect("lenient preprocessing recovers an unterminated directive")
         .expect("flowchart model");
     assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+    assert_eq!(
+        parsed.meta.config.get_str("flowchart.curve"),
+        Some("linear")
+    );
+}
+
+#[test]
+fn editor_unterminated_directive_marker_recovers_the_following_diagram() {
+    let source = "%%{\nflowchart TD\nA-->B\n";
+
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_sync(source)
+        .expect("editor preprocessing recovers an unterminated directive")
+        .expect("flowchart snapshot");
+
+    assert_eq!(snapshot.metadata().diagram_type, "flowchart-v2");
 }
 
 #[test]

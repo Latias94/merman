@@ -54,6 +54,12 @@ pub struct FrontmatterBlock<'a> {
 
 const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DirectiveRecoveryMode {
+    Strict,
+    RecoverLine,
+}
+
 pub fn preprocess_diagram(input: &str, registry: &DetectorRegistry) -> Result<PreprocessResult> {
     preprocess_diagram_with_known_type(input, registry, None)
 }
@@ -63,22 +69,61 @@ pub fn preprocess_diagram_with_known_type(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)
-        .map(prepare_parser_code)
+    preprocess_diagram_with_known_type_and_directive_recovery(
+        input,
+        registry,
+        diagram_type,
+        DirectiveRecoveryMode::Strict,
+    )
 }
 
+pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+) -> Result<PreprocessResult> {
+    preprocess_single_pass(
+        PreprocessedSource::new(input),
+        registry,
+        diagram_type,
+        directive_recovery,
+    )
+    .map(prepare_parser_code)
+}
+
+#[cfg(test)]
 pub(crate) fn preprocess_mermaid_public_parse_pipeline(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
+        input,
+        registry,
+        diagram_type,
+        DirectiveRecoveryMode::Strict,
+    )
+}
+
+pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+) -> Result<PreprocessResult> {
     #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
-    let outer = preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)?;
+    let outer = preprocess_single_pass(
+        PreprocessedSource::new(input),
+        registry,
+        diagram_type,
+        directive_recovery,
+    )?;
     // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
     // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
-    let inner = preprocess_single_pass(outer.source, registry, diagram_type)?;
+    let inner = preprocess_single_pass(outer.source, registry, diagram_type, directive_recovery)?;
     Ok(PreprocessResult {
         source: prepare_parser_text(inner.source),
         title: outer.title,
@@ -90,6 +135,7 @@ fn preprocess_single_pass(
     mut source: PreprocessedSource,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
 ) -> Result<PreprocessResult> {
     cleanup_text(&mut source);
     let (frontmatter_len, title, mut frontmatter_config) = {
@@ -108,7 +154,8 @@ fn preprocess_single_pass(
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
     }
 
-    let processed_directives = process_directives(source.text(), registry, diagram_type)?;
+    let processed_directives =
+        process_directives(source.text(), registry, diagram_type, directive_recovery)?;
     for prefix in processed_directives.editor_prefixes {
         source.record_global_directive_prefix(prefix);
     }
@@ -624,8 +671,9 @@ fn process_directives(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
 ) -> Result<ProcessedDirectives> {
-    let blocks = directive_blocks(input);
+    let blocks = directive_blocks(input, directive_recovery);
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
@@ -642,7 +690,13 @@ fn process_directives(
             directives.push(directive);
         }
     }
-    let init = detect_init(&directives, input, registry, diagram_type)?;
+    let input_without_directives = remove_directive_blocks(input, &blocks);
+    let init = detect_init(
+        &directives,
+        input_without_directives.as_ref(),
+        registry,
+        diagram_type,
+    )?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
     let mut editor_prefixes = Vec::new();
     for directive in &directives {
@@ -733,7 +787,28 @@ struct DirectiveBlock<'a> {
     range: std::ops::Range<usize>,
 }
 
-fn directive_blocks(input: &str) -> Vec<DirectiveBlock<'_>> {
+fn remove_directive_blocks<'a>(input: &'a str, blocks: &[DirectiveBlock<'_>]) -> Cow<'a, str> {
+    if blocks.is_empty() {
+        return Cow::Borrowed(input);
+    }
+
+    let retained_bytes = blocks.iter().fold(input.len(), |remaining, block| {
+        remaining.saturating_sub(block.range.len())
+    });
+    let mut output = String::with_capacity(retained_bytes);
+    let mut cursor = 0usize;
+    for block in blocks {
+        output.push_str(&input[cursor..block.range.start]);
+        cursor = block.range.end;
+    }
+    output.push_str(&input[cursor..]);
+    Cow::Owned(output)
+}
+
+fn directive_blocks(
+    input: &str,
+    directive_recovery: DirectiveRecoveryMode,
+) -> Vec<DirectiveBlock<'_>> {
     let mut blocks = Vec::new();
     let mut pos = 0;
     while let Some(rel) = input[pos..].find("%%{") {
@@ -746,8 +821,13 @@ fn directive_blocks(input: &str) -> Vec<DirectiveBlock<'_>> {
             .find("%%{")
             .map(|relative| content_start + relative);
 
-        if let Some(content_end) = close.filter(|close| next_open.is_none_or(|open| *close < open))
-        {
+        let content_end = match directive_recovery {
+            DirectiveRecoveryMode::Strict => close,
+            DirectiveRecoveryMode::RecoverLine => {
+                close.filter(|close| next_open.is_none_or(|open| *close < open))
+            }
+        };
+        if let Some(content_end) = content_end {
             let end = content_end + 3;
             blocks.push(DirectiveBlock {
                 raw: Some(input[content_start..content_end].trim()),
@@ -757,12 +837,16 @@ fn directive_blocks(input: &str) -> Vec<DirectiveBlock<'_>> {
             continue;
         }
 
-        // Mermaid ignores directive parse failures. Bound recovery for an unterminated marker to
-        // its physical line so a malformed prefix cannot delete the remaining diagram.
-        let line_end = input[content_start..]
-            .find(['\r', '\n'])
-            .map_or(input.len(), |relative| content_start + relative);
-        let end = next_open.map_or(line_end, |open| line_end.min(open));
+        let end = match directive_recovery {
+            // Mermaid's optional closing marker makes an unterminated directive consume to EOF.
+            DirectiveRecoveryMode::Strict => input.len(),
+            DirectiveRecoveryMode::RecoverLine => {
+                let line_end = input[content_start..]
+                    .find(['\r', '\n'])
+                    .map_or(input.len(), |relative| content_start + relative);
+                next_open.map_or(line_end, |open| line_end.min(open))
+            }
+        };
         blocks.push(DirectiveBlock {
             raw: None,
             range: start..end,
@@ -785,7 +869,7 @@ fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
 #[cfg(test)]
 fn detect_directives(input: &str) -> Result<Vec<Directive>> {
     let mut directives = Vec::new();
-    for block in directive_blocks(input) {
+    for block in directive_blocks(input, DirectiveRecoveryMode::Strict) {
         let Some(raw) = block.raw else {
             continue;
         };
@@ -1065,7 +1149,7 @@ fn directive_value_at_path_mut<'a>(
 }
 
 pub(crate) fn directive_removal_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
-    directive_blocks(text)
+    directive_blocks(text, DirectiveRecoveryMode::Strict)
         .into_iter()
         .map(|block| block.range)
         .collect()

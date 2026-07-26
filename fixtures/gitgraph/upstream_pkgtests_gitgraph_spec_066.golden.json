@@ -2,7 +2,17 @@
   "diagramType": "gitGraph",
   "model": {
     "type": "gitGraph",
-    "commits": [],
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      }
+    ],
     "branches": [
       {
         "name": "main"
