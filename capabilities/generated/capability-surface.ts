@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988" as const;
 
 export const TARGETS = [
   {
@@ -52,6 +52,15 @@ export const CAPABILITIES = [
     "implications": []
   },
   {
+    "id": "icons",
+    "kind": "tool",
+    "description": "Compile CLI local Iconify pack loading.",
+    "targets": [
+      "native"
+    ],
+    "implications": []
+  },
+  {
     "id": "jpeg",
     "kind": "output",
     "description": "Export rendered diagrams as JPEG.",
@@ -85,6 +94,15 @@ export const CAPABILITIES = [
     "implications": [
       "svg"
     ]
+  },
+  {
+    "id": "markdown",
+    "kind": "tool",
+    "description": "Compile CLI Markdown batch conversion.",
+    "targets": [
+      "native"
+    ],
+    "implications": []
   },
   {
     "id": "math",
@@ -365,6 +383,17 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
+    "id": "svg-plan-json",
+    "capability": "svg",
+    "description": "Plan the capabilities required to render Mermaid input as SVG.",
+    "media_type": "application/json",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
     "id": "validation-json",
     "capability": "analysis",
     "description": "Validate Mermaid input and return validation JSON.",
@@ -389,9 +418,11 @@ export const CAPABILITY_IDS = [
   "analysis",
   "ascii",
   "editor",
+  "icons",
   "jpeg",
   "layout-cytoscape",
   "layout-elk",
+  "markdown",
   "math",
   "network-icons",
   "parallel-markdown",
@@ -429,6 +460,7 @@ export const BINDING_OPERATION_IDS = [
   "png",
   "semantic-json",
   "svg",
+  "svg-plan-json",
   "validation-json"
 ] as const;
 

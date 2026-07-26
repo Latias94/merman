@@ -45,10 +45,9 @@ impl YamlValueBuilder {
         match event {
             Event::StreamStart
             | Event::StreamEnd
-            | Event::DocumentStart(_)
+            | Event::DocumentStart(..)
             | Event::DocumentEnd
-            | Event::Comment(_, _)
-            | Event::Nothing => Ok(()),
+            | Event::Comment(_, _) => Ok(()),
             Event::Alias(anchor_id) => {
                 let role = self.reserve_role()?;
                 let node = self
@@ -108,6 +107,7 @@ impl YamlValueBuilder {
                 };
                 self.complete_node(node, frame.role, frame.anchor_id)
             }
+            _ => Err("unsupported YAML parser event".to_string()),
         }
     }
 

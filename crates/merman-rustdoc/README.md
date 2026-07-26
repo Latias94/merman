@@ -17,16 +17,20 @@ Mermaid rendering, a JavaScript-based rustdoc integration may be a lighter fit.
 
 ## Dependency weight
 
-`merman-rustdoc` renders diagrams during rustdoc macro expansion. To do that, it depends on Merman's
-SVG renderer with default features disabled. It does not enable system clock, time-zone, random, or
-timing adapters, so documentation builds remain deterministic. Many crates still do not want the
-renderer stack compiled during every normal build.
+`merman-rustdoc` renders diagrams during rustdoc macro expansion. Its default is the complete,
+deterministic SVG renderer: `svg`, Cytoscape layout, ELK layout, and math. It does not enable
+system clock, time-zone, random, or timing adapters, so documentation builds remain deterministic.
+
+The expert minimal setup remains available with `default-features = false, features = ["svg"]`.
+Add `layout-cytoscape`, `layout-elk`, or `math` only when that deliberately slim documentation
+closure needs those engines. Each engine feature includes `svg`; the features stay separate so a
+dependency named `svg` does not hide the complete layout and math closure.
 
 For libraries and applications, prefer an optional documentation feature:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.4", default-features = false, features = ["svg"], optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -61,10 +65,12 @@ If you are fine compiling the rustdoc integration in ordinary builds, use a norm
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"] }
+merman-rustdoc = "=0.8.0-alpha.4"
 ```
 
-This works for local `cargo doc` and docs.rs with the simple `cfg_attr(doc, ...)` examples below.
+This works for local `cargo doc` and docs.rs with the simple `cfg_attr(doc, ...)` examples below,
+including diagrams that need Cytoscape, ELK, or math. Use the explicit minimal feature setup above
+when build weight matters more than complete renderer coverage.
 
 ## Quickstart
 

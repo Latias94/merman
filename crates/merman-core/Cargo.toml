@@ -38,10 +38,10 @@ system-timing = ["dep:web-time"]
 [dependencies]
 euclid.workspace = true
 htmlize.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
 lalrpop-util.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
 granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true

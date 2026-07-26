@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9"
+    "digest": "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988"
   },
   "profiles": [
     {
@@ -12,8 +12,8 @@
       "description": "Full native SDK JNI library slices for the published Android targets.",
       "semantic_target": "native",
       "cargo": {
-        "package": "merman-ffi",
-        "manifest": "crates/merman-ffi/Cargo.toml",
+        "package": "merman-android-jni",
+        "manifest": "crates/merman-android-jni/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
         "features": [
@@ -21,9 +21,9 @@
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
-          "name": "merman_ffi",
-          "kinds": ["cdylib", "rlib", "staticlib"],
-          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "name": "merman_android_jni",
+          "kinds": ["cdylib"],
+          "crate_types": ["cdylib"],
           "required_features": []
         },
         "build_target": {
@@ -161,9 +161,10 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
-          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
-          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "system-timing"
         ],
         "target": {
           "name": "merman-cli",
@@ -181,14 +182,55 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
-          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
-          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "system-timing"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math",
-          "network-icons", "parallel-markdown", "pdf", "png", "shell-completions",
-          "svg", "system-clock", "system-random", "system-timezone", "system-timing"
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "system-timing"
+        ],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "flutter-android-native",
+      "description": "Full native SDK C ABI library slices for the Flutter Android targets.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-linux-android",
+            "x86_64-linux-android"
+          ]
+        }
+      },
+      "expected": {
+        "capabilities": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
+        ],
+        "runtime_ids": [
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
@@ -356,7 +398,14 @@
           "crate_types": ["cdylib", "rlib", "staticlib"],
           "required_features": []
         },
-        "build_target": { "kind": "host" }
+        "build_target": {
+          "kind": "target-set",
+          "triples": [
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu"
+          ]
+        }
       },
       "expected": {
         "capabilities": [
@@ -937,7 +986,7 @@
     },
     {
       "id": "web-full",
-      "description": "Complete retained browser workflow in one WASM artifact, excluding math pending admission.",
+      "description": "Complete browser SDK with analysis, ASCII, editor, Cytoscape, ELK, and math backends.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
@@ -945,7 +994,13 @@
         "profile": "wasm-size",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
+          "analysis",
+          "ascii",
+          "editor",
+          "layout-cytoscape",
+          "layout-elk",
+          "math",
+          "svg"
         ],
         "target": {
           "name": "merman_wasm",
@@ -960,24 +1015,36 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
+          "analysis",
+          "ascii",
+          "editor",
+          "layout-cytoscape",
+          "layout-elk",
+          "math",
+          "svg"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"
+          "analysis",
+          "ascii",
+          "editor",
+          "layout-cytoscape",
+          "layout-elk",
+          "math",
+          "svg"
         ],
         "outputs": ["ascii", "svg"]
       }
     },
     {
       "id": "web-render",
-      "description": "Candidate browser WASM artifact for the independent analysis and SVG render workflow.",
+      "description": "Public complete browser SVG renderer with Cytoscape, ELK, and math backends but no analysis, ASCII, or editor APIs.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["analysis", "svg"],
+        "features": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -990,8 +1057,8 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "svg"],
-        "runtime_ids": ["analysis", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["svg"]
       }
     }

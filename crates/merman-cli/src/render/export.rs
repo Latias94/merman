@@ -2,7 +2,7 @@ use super::executor::{RenderRequest, RenderedArtifact};
 #[cfg(feature = "pdf")]
 use super::plan::RenderMode;
 use super::plan::RenderPlan;
-#[cfg(feature = "analysis")]
+#[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
 #[cfg(feature = "pdf")]
 use crate::cli::PdfCliArgs;
@@ -206,7 +206,7 @@ impl<'a> RenderRequest<'a> {
         &self,
         svg: &merman::svg::ResvgCompatibleSvg,
     ) -> Result<RenderedArtifact, CliError> {
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "markdown")]
         let metadata = svg_metadata(svg.as_str());
         let bytes = match self.plan.format {
             #[cfg(feature = "png")]
@@ -261,9 +261,9 @@ impl<'a> RenderRequest<'a> {
         };
         Ok(RenderedArtifact {
             bytes,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             title: metadata.0,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             desc: metadata.1,
         })
     }

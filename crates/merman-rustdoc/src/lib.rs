@@ -13,22 +13,24 @@
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"] }
+//! merman-rustdoc = "=0.8.0-alpha.4"
 //! ```
 //!
 //! This works for local `cargo doc` and for docs.rs because the examples below use
 //! `cfg_attr(doc, ...)`. The macro only expands during rustdoc builds, but Cargo will still compile
 //! the dependency during ordinary builds.
 //!
-//! `svg` enables the basic renderer. Add `layout-cytoscape`, `layout-elk`, or `math` only when the
-//! documented diagrams require those engines. Each engine feature includes `svg`.
+//! The default enables complete deterministic SVG rendering: `svg`, Cytoscape layout, ELK layout,
+//! and math, without system clock, time-zone, random, or timing adapters. For an expert minimal
+//! closure, use `default-features = false, features = ["svg"]`; add `layout-cytoscape`,
+//! `layout-elk`, or `math` only when those deliberately selected diagrams need them.
 //!
 //! If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
 //! documentation feature:
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.3", default-features = false, features = ["svg"], optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.4", default-features = false, features = ["svg"], optional = true }
 //!
 //! [features]
 //! doc-diagrams = ["dep:merman-rustdoc"]

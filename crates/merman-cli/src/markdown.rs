@@ -1,6 +1,5 @@
 use crate::cli::RenderFormat;
 use crate::error::CliError;
-use merman_analysis::{DocumentSource, source_descriptor_for_markdown_path};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 
@@ -19,7 +18,13 @@ pub(crate) struct MarkdownImage {
 }
 
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
-    merman_analysis::markdown::is_markdown_path(path)
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("md")
+                || extension.eq_ignore_ascii_case("markdown")
+                || extension.eq_ignore_ascii_case("mdx")
+        })
 }
 
 pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
@@ -27,16 +32,144 @@ pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
 }
 
 pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
-    let document = DocumentSource::new(source, source_descriptor_for_markdown_path(None));
-    document
-        .diagrams()
-        .iter()
-        .map(|diagram| MarkdownChart {
-            start: diagram.start,
-            end: diagram.end,
-            definition: diagram.text.to_owned_text(),
-        })
-        .collect()
+    let mut charts = Vec::new();
+    let mut cursor = 0;
+
+    while cursor < source.len() {
+        let line_end = next_line_end(source, cursor);
+        let line = trim_line_ending(&source[cursor..line_end]);
+
+        let Some(opening) = markdown_fence_opening(line) else {
+            cursor = line_end;
+            continue;
+        };
+
+        if !opening.is_mermaid {
+            cursor = skip_markdown_fence(source, line_end, opening.delimiter);
+            continue;
+        }
+
+        let body_start = line_end;
+        let mut search_start = body_start;
+        while search_start < source.len() {
+            let closing_end = next_line_end(source, search_start);
+            let closing_line = trim_line_ending(&source[search_start..closing_end]);
+            if matching_closing_fence(closing_line, opening.delimiter) {
+                charts.push(MarkdownChart {
+                    start: cursor,
+                    end: closing_end,
+                    definition: source[body_start..search_start].to_string(),
+                });
+                cursor = closing_end;
+                break;
+            }
+            search_start = closing_end;
+        }
+
+        if search_start == source.len() {
+            charts.push(MarkdownChart {
+                start: cursor,
+                end: source.len(),
+                definition: source[body_start..].to_string(),
+            });
+            break;
+        }
+    }
+
+    charts
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FenceDelimiter {
+    marker: u8,
+    len: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MarkdownFenceOpening {
+    delimiter: FenceDelimiter,
+    is_mermaid: bool,
+}
+
+fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
+    let trimmed = trim_fence_indent(line)?;
+    let marker = *trimmed.as_bytes().first()?;
+    if !matches!(marker, b'`' | b'~' | b':') {
+        return None;
+    }
+
+    let len = repeated_marker_len(trimmed.as_bytes(), marker);
+    if len < 3 {
+        return None;
+    }
+
+    let rest = trimmed[len..].trim_start();
+    let is_mermaid = rest
+        .get(.."mermaid".len())
+        .is_some_and(|language| language.eq_ignore_ascii_case("mermaid"))
+        && (rest.len() == "mermaid".len()
+            || rest["mermaid".len()..].starts_with(char::is_whitespace));
+
+    Some(MarkdownFenceOpening {
+        delimiter: FenceDelimiter { marker, len },
+        is_mermaid,
+    })
+}
+
+fn matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
+    let Some(trimmed) = trim_fence_indent(line) else {
+        return false;
+    };
+    let len = repeated_marker_len(trimmed.as_bytes(), delimiter.marker);
+    len >= delimiter.len && trimmed[len..].chars().all(char::is_whitespace)
+}
+
+fn skip_markdown_fence(source: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
+    while cursor < source.len() {
+        let line_end = next_line_end(source, cursor);
+        let line = trim_line_ending(&source[cursor..line_end]);
+        if matching_closing_fence(line, delimiter) {
+            return line_end;
+        }
+        cursor = line_end;
+    }
+    source.len()
+}
+
+fn trim_fence_indent(line: &str) -> Option<&str> {
+    let mut spaces = 0;
+    for (index, byte) in line.bytes().enumerate() {
+        match byte {
+            b' ' if spaces < 3 => spaces += 1,
+            b' ' | b'\t' => return None,
+            _ => return Some(&line[index..]),
+        }
+    }
+    Some("")
+}
+
+fn repeated_marker_len(bytes: &[u8], marker: u8) -> usize {
+    bytes.iter().take_while(|byte| **byte == marker).count()
+}
+
+fn trim_line_ending(line: &str) -> &str {
+    line.strip_suffix('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+        .unwrap_or_else(|| line.strip_suffix('\r').unwrap_or(line))
+}
+
+fn next_line_end(source: &str, start: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut index = start;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\n' => return index + 1,
+            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return index + 2,
+            b'\r' => return index + 1,
+            _ => index += 1,
+        }
+    }
+    source.len()
 }
 
 pub(crate) fn replace_charts_with_images(source: &str, images: &[MarkdownImage]) -> String {
@@ -209,6 +342,58 @@ mod tests {
     }
 
     #[test]
+    fn ignores_mermaid_looking_content_inside_another_fence() {
+        let source = "````text\n```mermaid\nflowchart LR\nIgnored-->Fence\n```\n````\n\n```mermaid\nflowchart LR\nRendered-->Diagram\n```\n";
+        let charts = extract_charts(source);
+
+        assert_eq!(charts.len(), 1);
+        assert!(charts[0].definition.contains("Rendered-->Diagram"));
+        assert!(!charts[0].definition.contains("Ignored-->Fence"));
+    }
+
+    #[test]
+    fn preserves_commonmark_fence_boundaries_and_line_endings() {
+        let source = concat!(
+            "    ```mermaid\n",
+            "flowchart LR\n",
+            "    ```\n",
+            "\t```mermaid\n",
+            "flowchart LR\n",
+            "```\n",
+            "```mermaidx\n",
+            "flowchart LR\n",
+            "```\n",
+            "   ```` mermaid\n",
+            "flowchart TD\n",
+            "A-->B\n",
+            "``````\n",
+            "~~~mermaid\r",
+            "sequenceDiagram\r",
+            "A->>B: Hi\r",
+            "~~~~\r",
+        );
+        let charts = extract_charts(source);
+
+        assert_eq!(charts.len(), 2);
+        assert_eq!(charts[0].definition, "flowchart TD\nA-->B\n");
+        assert_eq!(
+            charts[1].definition, "sequenceDiagram\rA->>B: Hi\r",
+            "bare CR line endings must be retained in the rendered definition"
+        );
+    }
+
+    #[test]
+    fn retains_an_unclosed_mermaid_fence_to_match_cli_conversion_behavior() {
+        let source = "before\n~~~mermaid\nflowchart LR\nA-->B\n";
+        let charts = extract_charts(source);
+
+        assert_eq!(charts.len(), 1);
+        assert_eq!(charts[0].start, "before\n".len());
+        assert_eq!(charts[0].end, source.len());
+        assert_eq!(charts[0].definition, "flowchart LR\nA-->B\n");
+    }
+
+    #[test]
     fn replaces_charts_with_escaped_markdown_images() {
         let source = "```mermaid\nflowchart LR\nA-->B\n```";
         let images = [MarkdownImage {
@@ -225,9 +410,9 @@ mod tests {
 
     #[test]
     fn markdown_output_uses_render_format_extension_for_numbered_artefacts() {
-        let out = numbered_output_path(Path::new("docs/out.md"), 2, RenderFormat::Png, None);
+        let out = numbered_output_path(Path::new("docs/out.md"), 2, RenderFormat::Svg, None);
 
-        assert_eq!(out, PathBuf::from("docs/out-2.png"));
+        assert_eq!(out, PathBuf::from("docs/out-2.svg"));
     }
 
     #[test]

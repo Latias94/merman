@@ -1,9 +1,9 @@
 mod executor;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod export;
-#[cfg(feature = "network-icons")]
+#[cfg(feature = "icons")]
 mod icons;
-#[cfg(feature = "analysis")]
+#[cfg(feature = "markdown")]
 mod markdown_export;
 mod plan;
 mod svg_pipeline;

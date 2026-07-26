@@ -16,17 +16,19 @@ the right output format.
 This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not
 parse Mermaid syntax itself.
 
-`merman-ascii` has no default features. Mermaid language semantics are unconditional in
-`merman-core`; system clock, time-zone, random, and timing adapters are separate opt-ins and do not
-change which typed models this crate can render:
+`merman-ascii` has no optional Cargo features. Mermaid language semantics are unconditional in
+`merman-core`; system clock, time-zone, random, and timing adapters do not change which typed
+models this crate can render:
 
 ```toml
-merman-ascii = { version = "0.8.0-alpha.3", default-features = false }
+merman-ascii = { version = "0.8.0-alpha.4", default-features = false }
 ```
 
-Applications that need host-derived values must choose the relevant `system-*` adapters and capture
-them into an operation policy. Deterministic and sandboxed applications should provide explicit
-operation values instead of enabling system adapters.
+This model renderer does not own a runtime-policy constructor, so it does not forward `system-*`
+features. Applications that need host-derived values select adapters on their parsing/facade owner,
+capture one operation context, and pass its local time zone through
+`render_model_with_local_time_zone`. Deterministic and sandboxed applications should provide
+explicit operation values instead of enabling system adapters.
 
 ## Current Status
 

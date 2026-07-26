@@ -20,7 +20,10 @@ proc-macro = true
 artifact-profile-required = true
 
 [features]
-default = []
+# The published proc macro should render the complete deterministic SVG path out of
+# the box. Exact release artifacts still opt into their direct leaves below.
+default = ["complete-svg"]
+complete-svg = ["svg", "layout-cytoscape", "layout-elk", "math"]
 svg = [
     "dep:merman",
     "dep:proc-macro2",

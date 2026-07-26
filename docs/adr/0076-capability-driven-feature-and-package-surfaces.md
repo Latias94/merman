@@ -38,11 +38,26 @@ artifact-profile verifier discovers that owner-local coverage requirement throug
 Public leaves name observable outputs, APIs, engines, adapters, or compiled tool commands. The
 repository deliberately has no global `preset-*` Cargo feature lattice: additive Cargo features
 cannot express exclusions, and a cross-product of product, transport, runtime, and release
-profiles would make the public API misleading. The `merman` facade keeps only the result-named
-`complete-svg` aggregate (`svg`, both layout engines, and `math`); all other products and artifact
-profiles select direct positive leaves owned by their package. `complete-svg` is a convenience
-compile aggregate, not an absence or runtime-policy contract. Runtime environment selection and
-resource profiles remain independent from the compiled capability set.
+profiles would make the public API misleading. The user-facing `merman` facade and
+`merman-rustdoc` integration crate expose the same result-named `complete-svg` aggregate (`svg`,
+both layout engines, and `math`); the Rustdoc default mirrors the facade so its accepted examples
+render without extra feature study. Other products and artifact profiles select direct positive
+leaves owned by their package. `complete-svg` is a convenience compile aggregate, not an absence
+or runtime-policy contract. Runtime environment selection and resource profiles remain independent
+from the compiled capability set.
+
+Source consumers may select `complete-svg` or individual leaves, but the published Python, Apple,
+Android, and Flutter binaries intentionally remain one full native SDK SKU per surface. The C ABI
+is a source-only crate; its full native artifact profile produces host reference libraries for
+verification rather than a prebuilt release bundle. Artifact profiles still describe those
+products with direct leaves so their closure is auditable; they do not imply that every useful
+source feature set must become a prebuilt product. A second native SKU requires surface-specific
+demand and measured final-artifact evidence, not only a smaller Cargo dependency graph.
+
+Evidence for a second native SKU belongs to the proposal that introduces it. The proposal must set
+its threshold before measuring same-revision, same-target final artifacts and must use existing
+surface build and smoke entry points. Native size or memory measurements become standing CI or
+release gates only after maintainers accept the SKU and a stable budget.
 
 ## Verification Boundary
 

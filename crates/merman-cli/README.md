@@ -20,8 +20,10 @@ cargo install merman-cli
 
 The default binary is the complete CLI feature set: SVG/PNG/JPG/PDF export,
 ASCII/Unicode text output, RaTeX math rendering, Markdown batch export, offline-first Iconify
-packs, shell completions, and native time/random environment adapters. Network access remains
-opt-in at runtime through `--allow-network`.
+packs with optional network retrieval, shell completions, and compiled native
+clock/time-zone/random/timing adapters. Compiling those adapters does not select them: every
+runtime-bearing command defaults to the deterministic policy. Network access remains opt-in at
+runtime through `--allow-network`.
 
 This crate installs `merman-cli`, not `mmdc`.
 
@@ -40,10 +42,12 @@ artifact to inspect its authoritative, machine-readable contract.
 
 | Exact build recipe | Intended use | Available surface |
 | --- | --- | --- |
-| Default | `mmdc` replacement | Complete local CLI, including SVG, exports, analysis, Markdown, optional network icon loading, parallel Markdown work, and completions. |
-| `--no-default-features --features analysis,svg,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math` | Full local engine without CLI-only integrations | Full local renderer and analysis, but no network icon loader, parallel Markdown worker pool, or completion generator. |
-| `--no-default-features --features analysis` | CI linting and source fixes | `capabilities`, `detect`, `parse`, `lint`, `fix`, and `lint-rules`; no SVG renderer, output backends, layout engines, math, network client, Rayon pool, or completion generator. |
-| `--no-default-features --features svg` | Basic SVG-only tooling | Parse/detect/layout and SVG rendering; unavailable output formats and tool integrations are absent from help, and omitted layout engines return typed missing-capability errors. |
+| Default | `mmdc` replacement | Complete local CLI, including SVG, exports, analysis, Markdown conversion, local and optional network Iconify loading, parallel Markdown work, completions, and explicitly selectable native runtime adapters. |
+| `--no-default-features --features analysis,svg,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math` | Full local engine without CLI-only integrations | Full local renderer and analysis, but no native runtime adapters, network icon loader, parallel Markdown worker pool, or completion generator. |
+| `--no-default-features --features analysis` | CI linting and source fixes | `capabilities`, `detect`, `parse`, `lint`, `fix`, and `lint-rules`; no native runtime adapters, SVG renderer, output backends, layout engines, math, network client, Rayon pool, or completion generator. |
+| `--no-default-features --features svg` | Basic SVG-only tooling | Parse/detect/layout and SVG rendering; native runtime adapters and unavailable output/tool integrations are absent, while omitted layout engines return typed missing-capability errors. |
+| `--no-default-features --features markdown` | Markdown conversion without linting | Extract and render Mermaid fences with sequential output; no analysis commands or Rayon worker pool. |
+| `--no-default-features --features icons` | Offline Iconify loading | Load local JSON, `node_modules`, and `file://` Iconify packs; no HTTP client or `--allow-network` flag. |
 
 For example, install a slim CI binary with:
 
@@ -52,11 +56,11 @@ cargo install merman-cli --no-default-features --features analysis
 ```
 
 The public leaves are `analysis`, `svg`, `ascii`, `png`, `jpeg`, `pdf`,
-`layout-cytoscape`, `layout-elk`, `math`, `system-clock`, `system-timezone`,
-`system-random`, `system-timing`, `network-icons`, `parallel-markdown`, and
-`shell-completions`. Output and layout leaves pull in their necessary SVG capability. Prefer the
-default for a complete CLI, or an explicit direct list when you own the deployment profile and
-have checked `capabilities --json`.
+`layout-cytoscape`, `layout-elk`, `math`, `icons`, `markdown`, `system-clock`,
+`system-timezone`, `system-random`, `system-timing`, `network-icons`,
+`parallel-markdown`, and `shell-completions`. SVG-backed output, layout, math, and CLI tool leaves
+pull in their necessary SVG capability. Prefer the default for a complete CLI, or an explicit direct
+list when you own the deployment profile and have checked `capabilities --json`.
 
 ## Quick Start
 
@@ -84,8 +88,9 @@ provided.
 ## Command Surfaces
 
 The top-level command is an `mmdc` replacement and a strict superset. Existing calls such as
-`merman-cli -i input.mmd -o output.svg` do not need any Merman-specific flag. Optional native
-controls make resource policy and browserless behavior explicit without changing that common path.
+`merman-cli -i input.mmd -o output.svg` do not need any Merman-specific flag. Optional Merman
+controls make runtime/resource policy and browserless behavior explicit without changing that
+common path.
 
 | Surface | Contract | Help groups |
 | --- | --- | --- |
@@ -93,8 +98,35 @@ controls make resource policy and browserless behavior explicit without changing
 | Optional Merman superset | Renderer selection plus independently scoped PNG/JPG, vector-PDF, embedded-image, and aggregate-memory budgets. | `Merman renderer controls`, `Merman raster controls`, `Merman PDF controls`, `Merman embedded-image controls`, `Merman resource controls` |
 | `render` subcommand | An explicit Rust-native surface for selecting SVG/PNG/JPG/PDF/ASCII/Unicode output and developer-oriented controls. | `Render input and output` plus the applicable Merman control groups |
 
-`Deterministic rendering` and `Text output` are additional Merman groups shared where their options
-apply. Run `merman-cli --help` or `merman-cli render --help` for the exact current surface.
+`Runtime policy` and `Text output` are additional Merman groups shared where their options apply.
+Run `merman-cli --help` or `merman-cli render --help` for the exact current surface.
+
+## Runtime Policy
+
+Every parse, analysis, and render command defaults to `--runtime deterministic`, including
+binaries that compile every `system-*` adapter. The deterministic policy uses the Unix epoch, UTC,
+fixed operation randomness, and no timing instrumentation. Cargo feature unification therefore
+cannot silently change CLI output or make a lint/render operation consult ambient host state.
+
+Choose native clock, complete system time-zone rules, and operating-system randomness explicitly:
+
+```sh
+merman-cli parse --runtime native diagram.mmd
+merman-cli -i diagram.mmd -o diagram.svg --runtime native
+```
+
+Native mode requires the compiled `system-clock`, `system-timezone`, and `system-random`
+capabilities. `system-timing` is independent and remains disabled in both modes until requested:
+
+```sh
+merman-cli parse --system-timing diagram.mmd
+merman-cli lint --runtime native --system-timing diagram.mmd
+```
+
+Timing diagnostics are written to stderr and never mixed with the requested payload. A request for
+an adapter that was not compiled returns exit status `2`, writes no payload, and names the missing
+runtime capability. `--fixed-local-offset-minutes` and `--fixed-today` override the corresponding
+parts of the selected deterministic or native policy without changing the other sources.
 
 ## Output Formats
 
@@ -127,9 +159,10 @@ merman-cli -i diagram.mmd -o diagram.txt -e unicode
 
 ## Markdown Input
 
-`.md` and `.markdown` input files activate Markdown mode when the `analysis` capability is
-compiled. Mermaid code blocks are extracted, rendered as numbered artefacts, and optionally
-rewritten back into Markdown image links.
+`.md`, `.markdown`, and `.mdx` input files activate Markdown mode when the `markdown` capability
+is compiled. Mermaid code blocks are extracted, rendered as numbered artefacts, and optionally
+rewritten back into Markdown image links. Markdown conversion does not compile the analysis
+commands; add `analysis` separately when linting or fixes are also needed.
 
 ```sh
 merman-cli -i README.md -o README.svg
@@ -151,7 +184,8 @@ Use `--artefacts` or the Rust-friendly `--artifacts` alias to place images in a 
 merman-cli -i docs/input.md -o docs/output.md --artifacts docs/assets
 ```
 
-Use `--jobs` to bound parallel chart rendering. Results are still linked in source order:
+The `parallel-markdown` capability adds `--jobs` to bound parallel chart rendering. Results are
+still linked in source order:
 
 ```sh
 merman-cli -i docs/input.md -o docs/output.md --jobs 4
@@ -161,8 +195,9 @@ Markdown mode does not support stdout output because it may need to write multip
 
 ## Icon Packs
 
-Iconify packs are loaded into a Rust SVG icon registry when `network-icons` is compiled, so
-Flowchart, Architecture, and TreeView nodes can embed real icon SVGs without a browser.
+The `icons` capability loads local Iconify packs into a Rust SVG icon registry, so Flowchart,
+Architecture, and TreeView nodes can embed real icon SVGs without a browser. The
+`network-icons` capability adds HTTP(S) retrieval and `--allow-network`.
 
 Load an Iconify package name:
 
@@ -172,8 +207,9 @@ merman-cli -i diagram.mmd -o diagram.svg --iconPacks @iconify-json/logos
 
 `merman-cli` first looks for `node_modules/@iconify-json/logos/icons.json` from the current working
 directory upward. The default is offline-first: if no local package is found, the command fails
-with migration guidance instead of fetching from the network. Pass `--allow-network` when you
-intentionally want the package to be fetched from `https://unpkg.com/@iconify-json/logos/icons.json`.
+with migration guidance instead of fetching from the network. Build with `network-icons` and pass
+`--allow-network` when you intentionally want the package fetched from
+`https://unpkg.com/@iconify-json/logos/icons.json`.
 
 Load an explicit prefix and source:
 
@@ -211,8 +247,8 @@ denser relationship graphs return explicit diagnostics instead of silently dropp
 
 ### RaTeX Math
 
-RaTeX math rendering is enabled by default and requires the `math` capability in a custom
-artifact:
+RaTeX math rendering is enabled by default when the binary includes the `math` capability. A custom
+artifact without `math` has no default math backend:
 
 ```sh
 printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | merman-cli render --math-renderer ratex -
@@ -321,21 +357,28 @@ recommendations, and the default `core` profile does not enable Merman authoring
 - `-q, --quiet` suppresses non-error logs.
 - Runtime failures use categorized exit statuses: `1` for render/runtime failures, `2` for
   invalid input/config/output CLI contracts, and `3` for direct I/O failures. Broken stdout pipes
-  are treated as normal pipeline termination and do not print a generic I/O diagnostic.
+  are treated as normal pipeline termination and do not print a generic I/O diagnostic. Requesting
+  a runtime adapter that is absent from the artifact is an invalid configuration and exits with
+  status `2`.
+- `--runtime deterministic|native` selects the operation's clock, local time-zone, and randomness
+  sources. It defaults to `deterministic` regardless of compiled features.
+- `--system-timing` independently enables operation timing diagnostics and requires the compiled
+  `system-timing` capability.
 - `--text-measurer deterministic|vendored` controls text measurement.
 - `--resource-profile interactive|constrained|trusted-native|unbounded-for-trusted-input`
   selects semantic/SVG work budgets. The CLI defaults to `trusted-native` for local `mmdc`
   workloads; use `interactive` only for cooperative local editing and `constrained` for untrusted,
   public, or multi-tenant input. This does not alter PNG/JPG, PDF-filter, embedded-image, or
   aggregate encoding budgets.
-- `--math-renderer none|ratex` controls math label rendering.
+- `--math-renderer none|ratex` overrides math label rendering. When omitted, the CLI uses the
+  compiled default (`ratex` when the `math` capability is present); explicit `none` disables it.
 - `--svg-pipeline parity|readable|resvg-safe` selects the SVG output contract for SVG files.
   Raster/PDF formats keep the built-in `resvg-safe` export path.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
 - `--fixed-today <YYYY-MM-DD>` fixes the local "today" date for time-dependent diagrams such as
   Gantt.
-- `--fixed-local-offset-minutes <minutes>` fixes the local timezone offset for deterministic
-  local-time parsing and rendering.
+- `--fixed-local-offset-minutes <minutes>` fixes the local timezone offset for local-time parsing
+  and rendering without changing the rest of the selected runtime policy.
 - `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 
 ## SVG Input Export

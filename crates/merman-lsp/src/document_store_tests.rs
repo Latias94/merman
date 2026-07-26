@@ -1761,11 +1761,11 @@ fn zenuml_documents_use_parser_facts() {
         concat!(
             "zenuml\n",
             "title Login Flow\n",
-            "accTitle: Login accessibility title\n",
-            "accDescr: Login accessibility description\n",
             "Alice\n",
             "Bob\n",
             "A as API\n",
+            "accTitle: Login accessibility title\n",
+            "accDescr: Login accessibility description\n",
             "Alice->Bob: Login\n",
             "SomeType result = A.SyncMessage()\n",
             "new Session(with, params)\n",
@@ -1776,12 +1776,12 @@ fn zenuml_documents_use_parser_facts() {
 
     assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("zenuml"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
-    for id in ["Alice", "Bob", "A", "Session"] {
+    for id in ["Alice", "Bob", "A", "accTitle", "accDescr", "Session"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
     }
-    for prefix in ["title", "accTitle", "accDescr"] {
-        assert!(index.has_directive_prefix(prefix));
-    }
+    assert!(index.has_directive_prefix("title"));
+    assert!(!index.has_directive_prefix("accTitle"));
+    assert!(!index.has_directive_prefix("accDescr"));
     for payload in [
         "Login Flow",
         "Login accessibility title",

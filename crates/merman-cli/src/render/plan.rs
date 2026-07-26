@@ -4,8 +4,8 @@ use super::export::EmbeddedImageCliOptions;
 use super::export::PdfCliOptions;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use super::export::RasterCliOptions;
-#[cfg(feature = "network-icons")]
-use super::icons::{NetworkPolicy, load_icon_registry};
+#[cfg(feature = "icons")]
+use super::icons::load_icon_registry;
 use crate::cli::{
     ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat, SvgPipelineKind,
 };
@@ -13,16 +13,16 @@ use crate::cli::{
 use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
-#[cfg(feature = "analysis")]
+#[cfg(feature = "markdown")]
 use crate::markdown;
-#[cfg(feature = "network-icons")]
+#[cfg(feature = "icons")]
 use merman::svg::IconRegistry;
 #[cfg(feature = "ascii")]
 use std::env;
 #[cfg(feature = "ascii")]
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
-#[cfg(feature = "network-icons")]
+#[cfg(feature = "icons")]
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
@@ -49,9 +49,9 @@ pub(crate) struct RenderPlan {
     pub(super) background: Option<String>,
     pub(super) css: Option<String>,
     pub(super) svg_pipeline: Option<SvgPipelineKind>,
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     pub(super) icon_registry: Option<Arc<IconRegistry>>,
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     pub(super) artefacts: Option<PathBuf>,
     #[cfg(feature = "parallel-markdown")]
     pub(super) jobs: usize,
@@ -68,16 +68,16 @@ pub(crate) fn render_plan_for_mmdc(
     export: ExportArgs,
 ) -> Result<RenderPlan, CliError> {
     let input = merge_input(export.input_file.clone(), positional_input)?;
-    #[cfg(not(feature = "analysis"))]
+    #[cfg(not(feature = "markdown"))]
     if input.as_deref().is_some_and(is_markdown_path)
         || export.output.as_deref().is_some_and(is_markdown_path)
     {
         return Err(CliError::InvalidInput(
-            "Markdown batch export requires building merman-cli with --features analysis."
+            "Markdown batch export requires building merman-cli with --features markdown."
                 .to_string(),
         ));
     }
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     let artefacts = prepare_artefacts_dir(export.artefacts.as_deref(), input.as_deref())?;
 
     let format = infer_output_format(export.output.as_deref(), export.output_format)?
@@ -89,11 +89,12 @@ pub(crate) fn render_plan_for_mmdc(
             .clone()
             .unwrap_or_else(|| default_mmdc_output_path(input.as_deref(), format)),
     ));
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
         &export.icons.icon_packs,
         &export.icons.icon_packs_names_and_urls,
-        NetworkPolicy::from_allow_network(export.icons.allow_network),
+        #[cfg(feature = "network-icons")]
+        export.icons.allow_network,
     )?;
     #[cfg(feature = "ascii")]
     let text = resolve_text_output_args(export.text.clone(), output.as_ref());
@@ -125,9 +126,9 @@ pub(crate) fn render_plan_for_mmdc(
         ),
         css: read_optional_text_file(export.css_file.as_deref(), "CSS file")?,
         svg_pipeline: export.svg_pipeline,
-        #[cfg(feature = "network-icons")]
+        #[cfg(feature = "icons")]
         icon_registry,
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "markdown")]
         artefacts,
         #[cfg(feature = "parallel-markdown")]
         jobs: export.jobs.unwrap_or_else(default_jobs),
@@ -145,11 +146,12 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
     let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)?
         .unwrap_or(RenderFormat::Svg);
     let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
         &args.export.icons.icon_packs,
         &args.export.icons.icon_packs_names_and_urls,
-        NetworkPolicy::from_allow_network(args.export.icons.allow_network),
+        #[cfg(feature = "network-icons")]
+        args.export.icons.allow_network,
     )?;
     #[cfg(feature = "ascii")]
     let text = resolve_text_output_args(args.export.text.clone(), output.as_ref());
@@ -171,9 +173,9 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
         svg_pipeline: args.export.svg_pipeline,
-        #[cfg(feature = "network-icons")]
+        #[cfg(feature = "icons")]
         icon_registry,
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "markdown")]
         artefacts: None,
         #[cfg(feature = "parallel-markdown")]
         jobs: 1,
@@ -187,23 +189,23 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
 }
 
 impl RenderPlan {
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     pub(super) fn icon_registry(&self) -> Option<Arc<IconRegistry>> {
         self.icon_registry.clone()
     }
 
-    #[cfg(not(feature = "network-icons"))]
+    #[cfg(not(feature = "icons"))]
     pub(super) fn icon_registry(&self) -> Option<std::sync::Arc<merman::svg::IconRegistry>> {
         None
     }
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     #[cfg(feature = "parallel-markdown")]
     pub(super) const fn markdown_jobs(&self) -> usize {
         self.jobs
     }
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     #[cfg(not(feature = "parallel-markdown"))]
     pub(super) const fn markdown_jobs(&self) -> usize {
         1
@@ -357,7 +359,7 @@ fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs)
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "markdown")]
 fn prepare_artefacts_dir(
     artefacts: Option<&str>,
     input: Option<&str>,
@@ -412,7 +414,7 @@ fn merge_input(
     }
 }
 
-#[cfg(not(feature = "analysis"))]
+#[cfg(not(feature = "markdown"))]
 fn is_markdown_path(path: &str) -> bool {
     if path == "-" {
         return false;
@@ -427,12 +429,12 @@ fn is_markdown_path(path: &str) -> bool {
     )
 }
 
-#[cfg(all(test, feature = "svg", not(feature = "analysis")))]
-mod analysis_boundary_tests {
+#[cfg(all(test, feature = "svg", not(feature = "markdown")))]
+mod markdown_boundary_tests {
     use super::*;
 
     #[test]
-    fn markdown_input_requires_the_analysis_capability() {
+    fn markdown_input_requires_the_markdown_capability() {
         let error = render_plan_for_mmdc(
             None,
             ExportArgs {
@@ -442,11 +444,11 @@ mod analysis_boundary_tests {
         )
         .expect_err("Markdown input must not fall through to the SVG renderer");
 
-        assert!(error.to_string().contains("--features analysis"), "{error}");
+        assert!(error.to_string().contains("--features markdown"), "{error}");
     }
 
     #[test]
-    fn markdown_output_requires_the_analysis_capability() {
+    fn markdown_output_requires_the_markdown_capability() {
         let error = render_plan_for_mmdc(
             None,
             ExportArgs {
@@ -456,7 +458,7 @@ mod analysis_boundary_tests {
         )
         .expect_err("Markdown output must not receive SVG bytes");
 
-        assert!(error.to_string().contains("--features analysis"), "{error}");
+        assert!(error.to_string().contains("--features markdown"), "{error}");
     }
 }
 

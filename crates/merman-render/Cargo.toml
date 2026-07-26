@@ -43,7 +43,7 @@ base64.workspace = true
 chrono.workspace = true
 cssparser.workspace = true
 dugong.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
 icu_collator.workspace = true
 icu_locale_core.workspace = true
 kurbo.workspace = true

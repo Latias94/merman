@@ -1443,10 +1443,12 @@ mod tests {
         "analysis",
         "ascii",
         "editor",
+        "icons",
         "jpeg",
         "layout-cytoscape",
         "layout-elk",
         "math",
+        "markdown",
         "network-icons",
         "parallel-markdown",
         "pdf",
@@ -1473,6 +1475,7 @@ mod tests {
         "png",
         "semantic-json",
         "svg",
+        "svg-plan-json",
         "validation-json",
     ];
 
@@ -1551,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_descriptor_only_implies_svg_for_renderer_engines() {
+    fn committed_descriptor_has_the_exact_capability_implication_graph() {
         let descriptor = committed_descriptor();
         let implications = descriptor
             .capabilities

@@ -2,32 +2,13 @@ use crate::error::CliError;
 use merman::svg::IconRegistry;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "network-icons")]
 use std::time::Duration;
-
-#[derive(Debug, Clone, Copy)]
-pub(super) enum NetworkPolicy {
-    Offline,
-    AllowNetwork,
-}
-
-impl NetworkPolicy {
-    pub(super) const fn from_allow_network(allow_network: bool) -> Self {
-        if allow_network {
-            Self::AllowNetwork
-        } else {
-            Self::Offline
-        }
-    }
-
-    const fn allows_network(self) -> bool {
-        matches!(self, Self::AllowNetwork)
-    }
-}
 
 pub(super) fn load_icon_registry(
     icon_packs: &[String],
     icon_packs_names_and_urls: &[String],
-    network_policy: NetworkPolicy,
+    #[cfg(feature = "network-icons")] allow_network: bool,
 ) -> Result<Option<Arc<IconRegistry>>, CliError> {
     if icon_packs.is_empty() && icon_packs_names_and_urls.is_empty() {
         return Ok(None);
@@ -40,16 +21,17 @@ pub(super) fn load_icon_registry(
         let prefix = icon_pack_package_prefix(icon_pack)?;
         let source = match local_icon_pack_path(icon_pack, &cwd) {
             Some(path) => IconPackSource::LocalPath(path),
-            None if network_policy.allows_network() => {
+            #[cfg(feature = "network-icons")]
+            None if allow_network => {
                 IconPackSource::RemoteUrl(format!("https://unpkg.com/{icon_pack}/icons.json"))
             }
-            None => {
-                return Err(CliError::InvalidInput(format!(
-                    "Icon pack `{icon_pack}` was not found in node_modules or as a local JSON path. Install it locally or pass --allow-network to fetch it from unpkg."
-                )));
-            }
+            None => return Err(missing_local_icon_pack_error(icon_pack)),
         };
-        let json = read_icon_pack_source(&source, network_policy)?;
+        let json = read_icon_pack_source(
+            &source,
+            #[cfg(feature = "network-icons")]
+            allow_network,
+        )?;
         register_icon_pack_json(&mut registry, &json, Some(&prefix), icon_pack)?;
     }
 
@@ -67,8 +49,12 @@ pub(super) fn load_icon_registry(
             )));
         }
 
-        let source = icon_pack_source_from_cli(source, &cwd);
-        let json = read_icon_pack_source(&source, network_policy)?;
+        let source = icon_pack_source_from_cli(source, &cwd)?;
+        let json = read_icon_pack_source(
+            &source,
+            #[cfg(feature = "network-icons")]
+            allow_network,
+        )?;
         register_icon_pack_json(&mut registry, &json, Some(prefix), icon_pack_info)?;
     }
 
@@ -77,7 +63,24 @@ pub(super) fn load_icon_registry(
 
 enum IconPackSource {
     LocalPath(PathBuf),
+    #[cfg(feature = "network-icons")]
     RemoteUrl(String),
+}
+
+fn missing_local_icon_pack_error(icon_pack: &str) -> CliError {
+    #[cfg(feature = "network-icons")]
+    {
+        CliError::InvalidInput(format!(
+            "Icon pack `{icon_pack}` was not found in node_modules or as a local JSON path. Install it locally or pass --allow-network to fetch it from unpkg."
+        ))
+    }
+
+    #[cfg(not(feature = "network-icons"))]
+    {
+        CliError::InvalidInput(format!(
+            "Icon pack `{icon_pack}` was not found in node_modules or as a local JSON path. Install it locally or build merman-cli with --features network-icons to fetch it from unpkg."
+        ))
+    }
 }
 
 fn register_icon_pack_json(
@@ -123,19 +126,28 @@ fn local_icon_pack_path(icon_pack: &str, cwd: &Path) -> Option<PathBuf> {
     None
 }
 
-fn icon_pack_source_from_cli(source: &str, cwd: &Path) -> IconPackSource {
+fn icon_pack_source_from_cli(source: &str, cwd: &Path) -> Result<IconPackSource, CliError> {
     if source.starts_with("http://") || source.starts_with("https://") {
-        IconPackSource::RemoteUrl(source.to_string())
+        #[cfg(feature = "network-icons")]
+        {
+            Ok(IconPackSource::RemoteUrl(source.to_string()))
+        }
+        #[cfg(not(feature = "network-icons"))]
+        {
+            Err(CliError::InvalidInput(format!(
+                "Icon pack URL `{source}` requires building merman-cli with --features network-icons."
+            )))
+        }
     } else if let Some(path) = file_url_to_path(source) {
-        IconPackSource::LocalPath(path)
+        Ok(IconPackSource::LocalPath(path))
     } else {
-        IconPackSource::LocalPath(resolve_cli_path(source, cwd))
+        Ok(IconPackSource::LocalPath(resolve_cli_path(source, cwd)))
     }
 }
 
 fn read_icon_pack_source(
     source: &IconPackSource,
-    network_policy: NetworkPolicy,
+    #[cfg(feature = "network-icons")] allow_network: bool,
 ) -> Result<String, CliError> {
     match source {
         IconPackSource::LocalPath(path) => std::fs::read_to_string(path).map_err(|err| {
@@ -144,15 +156,16 @@ fn read_icon_pack_source(
                 path.display()
             ))
         }),
-        IconPackSource::RemoteUrl(url) if network_policy.allows_network() => {
-            fetch_icon_pack_json(url)
-        }
+        #[cfg(feature = "network-icons")]
+        IconPackSource::RemoteUrl(url) if allow_network => fetch_icon_pack_json(url),
+        #[cfg(feature = "network-icons")]
         IconPackSource::RemoteUrl(url) => Err(CliError::InvalidInput(format!(
             "Icon pack URL `{url}` requires --allow-network before merman-cli will fetch HTTP(S) sources."
         ))),
     }
 }
 
+#[cfg(feature = "network-icons")]
 fn fetch_icon_pack_json(url: &str) -> Result<String, CliError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))

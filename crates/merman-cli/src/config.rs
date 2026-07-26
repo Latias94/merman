@@ -110,10 +110,12 @@ pub(crate) fn renderer_for(
         .with_resource_policy(merman::svg::RenderResourcePolicy::for_profile(
             render.resource_profile,
         ));
-    environment = match math_renderer(render.math_renderer)? {
-        Some(renderer) => environment.with_math_renderer(renderer),
-        None => environment.without_math_renderer(),
-    };
+    if let Some(kind) = render.math_renderer {
+        environment = match math_renderer(kind)? {
+            Some(renderer) => environment.with_math_renderer(renderer),
+            None => environment.without_math_renderer(),
+        };
+    }
     if let Some(registry) = icon_registry {
         environment = environment.with_icon_registry(registry);
     }
@@ -179,8 +181,11 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn none_math_renderer_disables_the_compiled_default() {
-        let renderer = renderer_for(&ParseCliArgs::default(), &RenderCliArgs::default(), None)
-            .expect("CLI renderer");
+        let render = RenderCliArgs {
+            math_renderer: Some(MathRendererKind::None),
+            ..RenderCliArgs::default()
+        };
+        let renderer = renderer_for(&ParseCliArgs::default(), &render, None).expect("CLI renderer");
         let error = renderer
             .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
             .expect_err("explicitly disabling math must reject math labels");
@@ -192,6 +197,23 @@ mod tests {
             }) => assert_eq!(capability, merman::svg::RenderCapability::Math),
             other => panic!("expected a missing math capability error, got {other:?}"),
         }
+    }
+
+    #[cfg(all(feature = "svg", feature = "math"))]
+    #[test]
+    fn unspecified_math_renderer_uses_the_compiled_default() {
+        let renderer = renderer_for(&ParseCliArgs::default(), &RenderCliArgs::default(), None)
+            .expect("CLI renderer");
+        let svg = renderer
+            .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
+            .expect("the default CLI renderer should use compiled RaTeX support")
+            .expect("successful rendering should return SVG output");
+
+        assert!(
+            svg.contains("<path"),
+            "expected rendered math glyphs: {svg}"
+        );
+        assert!(!svg.contains("$$x^2$$"), "math delimiters must be replaced");
     }
 
     #[test]

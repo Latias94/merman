@@ -378,14 +378,13 @@ pub(crate) struct RenderCliArgs {
     pub(crate) text_measurer: TextMeasurerKind,
 
     #[cfg(feature = "svg")]
-    /// Math renderer selection. `ratex` requires compiling the `math` capability.
+    /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
     #[arg(
         long = "math-renderer",
         value_enum,
-        default_value_t = MathRendererKind::None,
         help_heading = "Merman renderer controls"
     )]
-    pub(crate) math_renderer: MathRendererKind,
+    pub(crate) math_renderer: Option<MathRendererKind>,
 
     #[cfg(feature = "svg")]
     /// Available container width for size-sensitive layouts. Top-level mmdc-compatible mode defaults to 800.
@@ -444,7 +443,7 @@ impl Default for RenderCliArgs {
             #[cfg(feature = "svg")]
             text_measurer: TextMeasurerKind::Vendored,
             #[cfg(feature = "svg")]
-            math_renderer: MathRendererKind::None,
+            math_renderer: None,
             #[cfg(feature = "svg")]
             container_width: None,
             #[cfg(feature = "svg")]
@@ -482,7 +481,7 @@ pub(crate) struct ExportArgs {
     )]
     pub(crate) output: Option<String>,
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     /// Output artefacts directory for Markdown input.
     #[arg(
         short = 'a',
@@ -578,7 +577,7 @@ pub(crate) struct ExportArgs {
     #[command(flatten)]
     pub(crate) embedded_images: EmbeddedImageCliArgs,
 
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     #[command(flatten)]
     pub(crate) icons: IconCliArgs,
 
@@ -675,7 +674,7 @@ pub(crate) struct RenderExportArgs {
     #[command(flatten)]
     pub(crate) embedded_images: EmbeddedImageCliArgs,
 
-    #[cfg(feature = "network-icons")]
+    #[cfg(feature = "icons")]
     #[command(flatten)]
     pub(crate) icons: IconCliArgs,
 
@@ -746,6 +745,7 @@ pub(crate) struct RasterCliArgs {
     /// Parallel encoding scheduling budget for Markdown jobs, in MiB. Defaults to 512.
     #[arg(
         long = "encoding-parallel-budget-mib",
+        visible_alias = "encoding-memory-budget-mib",
         value_parser = parse_positive_u64,
         help_heading = "Merman resource controls"
     )]
@@ -774,6 +774,7 @@ pub(crate) struct PdfCliArgs {
     /// Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432.
     #[arg(
         long = "pdf-max-filter-image-pixels",
+        visible_alias = "pdf-max-filter-pixels",
         value_parser = parse_positive_u64,
         conflicts_with = "filter_images_unbounded",
         help_heading = "Merman PDF controls"
@@ -783,6 +784,7 @@ pub(crate) struct PdfCliArgs {
     /// Disable the retained PDF filter-image pixel budget for trusted inputs.
     #[arg(
         long = "pdf-filter-images-unbounded",
+        visible_alias = "pdf-filter-unbounded",
         conflicts_with = "max_filter_image_pixels",
         help_heading = "Merman PDF controls"
     )]
@@ -842,9 +844,10 @@ pub(crate) struct EmbeddedImageCliArgs {
     pub(crate) embedded_images_unbounded: bool,
 }
 
-#[cfg(feature = "network-icons")]
+#[cfg(feature = "icons")]
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct IconCliArgs {
+    #[cfg(feature = "network-icons")]
     /// Allow icon pack loading from HTTP(S) URLs.
     #[arg(long = "allow-network", help_heading = "Icon packs")]
     pub(crate) allow_network: bool,
@@ -1165,6 +1168,35 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     Ok(parsed)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn documented_pdf_budget_flags_are_accepted() {
+        for args in [
+            ["merman-cli", "--pdf-max-filter-pixels", "1", "-"].as_slice(),
+            ["merman-cli", "--pdf-filter-unbounded", "-"].as_slice(),
+        ] {
+            assert!(
+                Cli::try_parse_from(args).is_ok(),
+                "documented PDF flag must parse: {args:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "parallel-markdown")]
+    #[test]
+    fn documented_encoding_budget_flag_is_accepted() {
+        let args = ["merman-cli", "--encoding-memory-budget-mib", "1", "-"];
+        assert!(
+            Cli::try_parse_from(args).is_ok(),
+            "documented encoding budget flag must parse"
+        );
+    }
+}
+
 #[cfg(all(
     test,
     any(
@@ -1184,6 +1216,40 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
             not(feature = "layout-cytoscape"),
             not(feature = "layout-elk"),
             not(feature = "math"),
+            not(feature = "icons"),
+            not(feature = "network-icons"),
+            not(feature = "markdown"),
+            not(feature = "parallel-markdown"),
+            not(feature = "shell-completions")
+        ),
+        all(
+            feature = "svg",
+            feature = "icons",
+            not(feature = "analysis"),
+            not(feature = "ascii"),
+            not(feature = "png"),
+            not(feature = "jpeg"),
+            not(feature = "pdf"),
+            not(feature = "layout-cytoscape"),
+            not(feature = "layout-elk"),
+            not(feature = "math"),
+            not(feature = "network-icons"),
+            not(feature = "markdown"),
+            not(feature = "parallel-markdown"),
+            not(feature = "shell-completions")
+        ),
+        all(
+            feature = "svg",
+            feature = "markdown",
+            not(feature = "analysis"),
+            not(feature = "ascii"),
+            not(feature = "png"),
+            not(feature = "jpeg"),
+            not(feature = "pdf"),
+            not(feature = "layout-cytoscape"),
+            not(feature = "layout-elk"),
+            not(feature = "math"),
+            not(feature = "icons"),
             not(feature = "network-icons"),
             not(feature = "parallel-markdown"),
             not(feature = "shell-completions")
@@ -1260,7 +1326,9 @@ mod profile_tests {
         not(feature = "layout-cytoscape"),
         not(feature = "layout-elk"),
         not(feature = "math"),
+        not(feature = "icons"),
         not(feature = "network-icons"),
+        not(feature = "markdown"),
         not(feature = "parallel-markdown"),
         not(feature = "shell-completions")
     ))]
@@ -1295,6 +1363,111 @@ mod profile_tests {
             assert!(
                 !help.contains(omitted),
                 "SVG-basic help must not expose {omitted}:\n{help}"
+            );
+        }
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        feature = "icons",
+        not(feature = "analysis"),
+        not(feature = "ascii"),
+        not(feature = "png"),
+        not(feature = "jpeg"),
+        not(feature = "pdf"),
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math"),
+        not(feature = "network-icons"),
+        not(feature = "markdown"),
+        not(feature = "parallel-markdown"),
+        not(feature = "shell-completions")
+    ))]
+    #[test]
+    fn local_icons_profile_exposes_local_sources_without_network_controls() {
+        for accepted in [
+            ["merman-cli", "--iconPacks", "@iconify-json/logos"].as_slice(),
+            ["merman-cli", "--iconPacksNamesAndUrls", "logos#icons.json"].as_slice(),
+        ] {
+            assert!(
+                Cli::try_parse_from(accepted).is_ok(),
+                "local-icons CLI must accept {accepted:?}"
+            );
+        }
+
+        assert!(
+            Cli::try_parse_from(["merman-cli", "--allow-network"]).is_err(),
+            "local-icons CLI must not expose network authorization"
+        );
+
+        let help = <Cli as clap::CommandFactory>::command()
+            .render_long_help()
+            .to_string();
+        for expected in ["--iconPacks", "--iconPacksNamesAndUrls"] {
+            assert!(
+                help.contains(expected),
+                "local-icons help must expose {expected}:\n{help}"
+            );
+        }
+        assert!(
+            !help.contains("--allow-network"),
+            "local-icons help must not expose network authorization:\n{help}"
+        );
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        feature = "markdown",
+        not(feature = "analysis"),
+        not(feature = "ascii"),
+        not(feature = "png"),
+        not(feature = "jpeg"),
+        not(feature = "pdf"),
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math"),
+        not(feature = "icons"),
+        not(feature = "network-icons"),
+        not(feature = "parallel-markdown"),
+        not(feature = "shell-completions")
+    ))]
+    #[test]
+    fn markdown_profile_converts_documents_without_analysis_or_parallel_controls() {
+        assert!(
+            Cli::try_parse_from([
+                "merman-cli",
+                "-i",
+                "input.md",
+                "-o",
+                "output.md",
+                "--artefacts",
+                "images",
+            ])
+            .is_ok(),
+            "Markdown conversion must be available without analysis"
+        );
+
+        for rejected in [
+            ["merman-cli", "lint", "-"].as_slice(),
+            ["merman-cli", "--jobs", "2"].as_slice(),
+        ] {
+            assert!(
+                Cli::try_parse_from(rejected).is_err(),
+                "markdown-only CLI must not expose {rejected:?}"
+            );
+        }
+
+        let help = <Cli as clap::CommandFactory>::command()
+            .render_long_help()
+            .to_string();
+        assert!(
+            help.contains("Markdown batch export:") && help.contains("--artefacts"),
+            "markdown-only help must expose conversion options:\n{help}"
+        );
+        for omitted in ["\n  lint ", "--jobs"] {
+            assert!(
+                !help.contains(omitted),
+                "markdown-only help must not expose {omitted}:\n{help}"
             );
         }
     }

@@ -1,5 +1,10 @@
 # Choosing Merman capabilities
 
+This page documents the current repository source. The published `0.8.0-alpha.3` packages predate
+this capability vocabulary; their release-specific feature names remain documented on that tag.
+The Rust snippets below therefore use workspace path dependencies and cannot be mistaken for
+features already available from crates.io.
+
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
 dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
 configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
@@ -22,20 +27,28 @@ Artifact profiles are not Cargo features and are not part of an application depe
 
 The public capability leaves are:
 
-| Capability | Meaning | Implication |
+| Capability | Meaning | Global semantic implication |
 | --- | --- | --- |
-| `svg` | SVG rendering | Base for layout engines and binary exports |
-| `analysis` | Diagnostics, validation, and semantic analysis | Independent of rendering |
-| `editor` | Parser-backed editor intelligence | Implies `analysis` |
-| `ascii` | Terminal text output | Native and browser packages |
-| `png`, `jpeg`, `pdf` | Independent binary exports | Each implies `svg` |
+| `svg` | SVG rendering | None |
+| `analysis` | Diagnostics, validation, and semantic analysis | None |
+| `editor` | Parser-backed editor intelligence | None |
+| `ascii` | Terminal text output | None |
+| `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
-| `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | Compiled separately; selected explicitly at runtime |
+| `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
+| `icons`, `markdown`, `network-icons`, `parallel-markdown`, `shell-completions` | Compiled CLI tool commands | None; the CLI Cargo manifest owns their workflow forwarding |
 
-There is one public convenience aggregate: `complete-svg` on the `merman` facade. It means
-`svg + layout-cytoscape + layout-elk + math`. It does not include system adapters, analysis,
-ASCII, or binary exports.
+This column describes only the repository-wide semantic contract recorded in the canonical
+descriptor. A Cargo package or product surface may forward additional features to assemble an
+operational workflow. Today the `merman` facade forwards `editor` to `analysis`, and forwards each
+binary export to `svg`; the corresponding Web and CLI products make the same combinations where
+their public workflow requires them. Those owner-specific compile combinations do not turn into
+global capability implications.
+
+There is one public convenience aggregate name: `complete-svg`, exposed by the `merman` facade and
+the `merman-rustdoc` integration crate. It means `svg + layout-cytoscape + layout-elk + math`. It
+does not include system adapters, analysis, ASCII, or binary exports.
 
 There is deliberately no global `preset-*` feature lattice. Cargo features are additive and
 cannot express “everything except X”; a large preset table would mix application workflows,
@@ -65,7 +78,7 @@ select their own direct leaf set instead.
 
 ```toml
 [dependencies]
-merman = { version = "0.8.0-alpha.3", default-features = false, features = ["complete-svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["complete-svg"] }
 ```
 
 ```rust
@@ -81,7 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The ordinary `merman = "0.8.0-alpha.3"` dependency uses the same `complete-svg` aggregate.
+The ordinary `merman = { path = "crates/merman" }` dependency uses the same `complete-svg`
+aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
 
@@ -89,7 +103,7 @@ or timing state.
 
 ```toml
 [dependencies]
-merman = { version = "0.8.0-alpha.3", default-features = false, features = ["svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["svg"] }
 ```
 
 If an input requires a compiled-out layout engine or math renderer, the operation returns a typed
@@ -99,15 +113,17 @@ If an input requires a compiled-out layout engine or math renderer, the operatio
 
 ```toml
 [dependencies]
-merman-analysis = { version = "0.8.0-alpha.3", default-features = false }
+merman-analysis = { path = "crates/merman-analysis", default-features = false }
 merman = {
-    version = "0.8.0-alpha.3",
+    path = "crates/merman",
     default-features = false,
     features = ["analysis", "editor"],
 }
 ```
 
-`editor` implies `analysis`. Neither feature adds or removes a Mermaid diagram family.
+On the `merman` facade, enabling the `editor` Cargo feature also enables `analysis`. The canonical
+`editor` capability has no global implication, so another package must declare the pair explicitly
+when its workflow exposes both. Neither capability adds or removes a Mermaid diagram family.
 
 ### Explicit system adapters
 
@@ -116,7 +132,7 @@ Compile only the adapters required by the host:
 ```toml
 [dependencies]
 merman = {
-    version = "0.8.0-alpha.3",
+    path = "crates/merman",
     default-features = false,
     features = [
         "complete-svg",
@@ -139,7 +155,7 @@ Binary output is opt-in and additive:
 ```toml
 [dependencies]
 merman = {
-    version = "0.8.0-alpha.3",
+    path = "crates/merman",
     default-features = false,
     features = ["svg", "png", "pdf"],
 }
@@ -151,23 +167,34 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
-analysis, ASCII, PNG, JPEG, PDF, both optional layout engines, math, native adapters, network
-icons, parallel Markdown, and shell completions.
+analysis, ASCII, PNG, JPEG, PDF, both optional layout engines, math, local Iconify loading,
+Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions.
+Compiled native adapters never change the default runtime policy:
+
+```sh
+merman-cli render --runtime deterministic diagram.mmd
+merman-cli render --runtime native diagram.mmd
+merman-cli parse --system-timing diagram.mmd
+```
+
+`--runtime` defaults to `deterministic`. Native mode explicitly requests system clock, complete
+time-zone rules, and randomness; `--system-timing` is a separate opt-in. A missing requested
+adapter returns the CLI's invalid-configuration exit status instead of falling back.
 
 For a lean lint executable:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.3 --locked \
-  --no-default-features --features analysis
-merman-cli lint diagram.mmd
+cargo run -p merman-cli --no-default-features --features analysis -- lint diagram.mmd
 ```
 
 For a complete release build, use the repository's `cli-release` artifact profile. Do not use a
 bare `cargo build -p merman-cli` as a release proof: Cargo feature unification can change the
 effective closure.
 
-Network access remains a runtime permission (`--allow-network`); compiling the icon client does
-not grant network access to an operation.
+`icons` enables local Iconify JSON, `node_modules`, and `file://` sources. `network-icons` adds
+the HTTP client and `--allow-network`; network access remains an explicit runtime permission.
+Likewise, `markdown` enables document conversion without analysis commands, while
+`parallel-markdown` only adds the Rayon worker pool and `--jobs`.
 
 ## Browser, Typst, and native packages
 
@@ -175,7 +202,8 @@ Browser package names are the user-facing selection mechanism:
 
 | Package | Compiled workflow | Status |
 | --- | --- | --- |
-| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, and ELK | Complete browser package |
+| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
+| `@mermanjs/web-render` | SVG, Cytoscape, ELK, and math | Complete SVG-only package |
 | `@mermanjs/web-analysis` | Analysis | Slim package |
 | `@mermanjs/web-editor` | Analysis and editor | Slim package |
 | `@mermanjs/web-ascii` | ASCII | Slim package |
@@ -227,9 +255,10 @@ runtime catalog for the exact limits.
 
 ## Artifact profiles and measurements
 
-An artifact profile records the package, target, direct feature set, default-feature setting,
-runtime policy, resource profile, expected capability IDs, package contents, and evidence digest.
-It is the only place where Merman makes an exclusion or distribution claim.
+An artifact profile records an exact Cargo package, target, direct feature set, default-feature
+setting, and expected semantic IDs. Product owners separately define runtime policy, resource
+policy, package contents, evidence receipts, and distribution gates. Exclusion claims require both
+the exact artifact recipe and its owner-specific dependency or size evidence.
 
 When comparing builds, record the target, compiler, lockfile, direct feature set, uncompressed and
 compressed sizes, dependency closure, licenses, and advisory results. A feature name alone is not a

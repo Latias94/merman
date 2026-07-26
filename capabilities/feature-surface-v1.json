@@ -171,6 +171,28 @@
       }
     },
     {
+      "id": "icons",
+      "kind": "tool",
+      "description": "Compile CLI local Iconify pack loading.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Local Iconify pack loading is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
+      "id": "markdown",
+      "kind": "tool",
+      "description": "Compile CLI Markdown batch conversion.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Markdown conversion is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
       "id": "network-icons",
       "kind": "tool",
       "description": "Compile CLI network icon loading commands.",
@@ -294,6 +316,14 @@
       "id": "layout-json",
       "capability": "svg",
       "description": "Render Mermaid input into layout model JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "svg-plan-json",
+      "capability": "svg",
+      "description": "Plan the capabilities required to render Mermaid input as SVG.",
       "media_type": "application/json",
       "requires_uri": false,
       "targets": ["native", "web"]

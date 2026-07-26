@@ -1,5 +1,5 @@
 use super::plan::RenderPlan;
-#[cfg(feature = "analysis")]
+#[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
 use super::svg_pipeline::svg_output_policy;
 use crate::cli::{RenderFormat, SvgPipelineKind};
@@ -36,9 +36,9 @@ pub(super) struct RenderRequest<'a> {
 
 pub(super) struct RenderedArtifact {
     pub(super) bytes: Vec<u8>,
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     pub(super) title: Option<String>,
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     pub(super) desc: Option<String>,
 }
 
@@ -57,7 +57,7 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     )))]
     let request = RenderRequest::new(&plan, renderer);
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "markdown")]
     if plan.is_mmdc_markdown_input() {
         return request.render_markdown(&text);
     }
@@ -215,15 +215,15 @@ impl<'a> RenderRequest<'a> {
         };
         Ok(RenderedArtifact {
             bytes: rendered.into_bytes(),
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             title: None,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             desc: None,
         })
     }
 
     #[cfg(any(
-        feature = "analysis",
+        feature = "markdown",
         feature = "png",
         feature = "jpeg",
         feature = "pdf"
@@ -237,13 +237,13 @@ impl<'a> RenderRequest<'a> {
 
 impl RenderedArtifact {
     fn from_svg(svg: String) -> Self {
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "markdown")]
         let (title, desc) = svg_metadata(&svg);
         Self {
             bytes: svg.into_bytes(),
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             title,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "markdown")]
             desc,
         }
     }

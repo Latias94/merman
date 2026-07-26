@@ -691,7 +691,7 @@ mod tests {
         );
         assert_eq!(
             string_values(&selected[0].features),
-            vec!["analysis", "svg"]
+            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
         );
         assert!(!selected[0].default_features);
     }
@@ -714,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn web_recipes_are_math_free_until_admission() {
+    fn web_renderer_recipes_match_their_product_boundaries() {
         let web = artifacts()
             .iter()
             .filter(|artifact| artifact.surface == Surface::Web)
@@ -731,14 +731,42 @@ mod tests {
                 "web-render"
             ]
         );
-        assert!(web.iter().all(|artifact| {
-            !artifact.features.iter().any(|feature| feature == "math")
-                && !artifact
-                    .capabilities
-                    .iter()
-                    .any(|capability| capability == "math")
-                && !artifact.runtime_ids.iter().any(|id| id == "math")
-        }));
+
+        let full = web
+            .iter()
+            .find(|artifact| artifact.id == "web-full")
+            .unwrap();
+        assert_eq!(
+            string_values(&full.features),
+            vec![
+                "analysis",
+                "ascii",
+                "editor",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "svg"
+            ]
+        );
+        assert_eq!(
+            string_values(&full.capabilities),
+            string_values(&full.features)
+        );
+        assert_eq!(
+            string_values(&full.runtime_ids),
+            string_values(&full.features)
+        );
+        assert_eq!(string_values(&full.outputs), vec!["ascii", "svg"]);
+
+        let render = web
+            .iter()
+            .find(|artifact| artifact.id == "web-render")
+            .unwrap();
+        let complete_svg = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
+        assert_eq!(string_values(&render.features), complete_svg);
+        assert_eq!(string_values(&render.capabilities), complete_svg);
+        assert_eq!(string_values(&render.runtime_ids), complete_svg);
+        assert_eq!(string_values(&render.outputs), vec!["svg"]);
     }
 
     #[test]

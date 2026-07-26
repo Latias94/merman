@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -14,9 +14,11 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "analysis",
     "ascii",
     "editor",
+    "icons",
     "jpeg",
     "layout-cytoscape",
     "layout-elk",
+    "markdown",
     "math",
     "network-icons",
     "parallel-markdown",
@@ -50,6 +52,7 @@ pub const BINDING_OPERATION_IDS: &[&str] = &[
     "png",
     "semantic-json",
     "svg",
+    "svg-plan-json",
     "validation-json",
 ];
 
@@ -97,6 +100,13 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         implications: &[],
     },
     CapabilityDescriptor {
+        id: "icons",
+        kind: "tool",
+        description: "Compile CLI local Iconify pack loading.",
+        targets: &["native"],
+        implications: &[],
+    },
+    CapabilityDescriptor {
         id: "jpeg",
         kind: "output",
         description: "Export rendered diagrams as JPEG.",
@@ -116,6 +126,13 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Enable Mermaid ELK-backed layout behavior.",
         targets: &["native", "typst", "web"],
         implications: &["svg"],
+    },
+    CapabilityDescriptor {
+        id: "markdown",
+        kind: "tool",
+        description: "Compile CLI Markdown batch conversion.",
+        targets: &["native"],
+        implications: &[],
     },
     CapabilityDescriptor {
         id: "math",
@@ -341,6 +358,14 @@ pub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = &[
         media_type: "image/svg+xml",
         requires_uri: false,
         targets: &["native", "typst", "web"],
+    },
+    BindingOperationDescriptor {
+        id: "svg-plan-json",
+        capability_id: Some("svg"),
+        description: "Plan the capabilities required to render Mermaid input as SVG.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
     },
     BindingOperationDescriptor {
         id: "validation-json",

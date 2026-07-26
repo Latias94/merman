@@ -90,9 +90,11 @@ fn compiled_capability_ids() -> Vec<&'static str> {
 
     include_capability!("analysis", "analysis");
     include_capability!("ascii", "ascii");
+    include_capability!("icons", "icons");
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");
     include_capability!("layout-elk", "layout-elk");
+    include_capability!("markdown", "markdown");
     include_capability!("math", "math");
     include_capability!("network-icons", "network-icons");
     include_capability!("parallel-markdown", "parallel-markdown");
@@ -121,5 +123,28 @@ mod tests {
                 .all(|id| declared.contains(id)),
             "CLI reported a capability absent from the canonical descriptor"
         );
+    }
+
+    #[test]
+    fn compiled_tool_ids_follow_their_feature_boundaries() {
+        let ids = compiled_capability_ids();
+
+        assert_eq!(ids.contains(&"icons"), cfg!(feature = "icons"));
+        assert_eq!(ids.contains(&"markdown"), cfg!(feature = "markdown"));
+        assert_eq!(
+            ids.contains(&"network-icons"),
+            cfg!(feature = "network-icons")
+        );
+        assert_eq!(
+            ids.contains(&"parallel-markdown"),
+            cfg!(feature = "parallel-markdown")
+        );
+
+        if cfg!(feature = "network-icons") {
+            assert!(ids.contains(&"icons"));
+        }
+        if cfg!(feature = "parallel-markdown") {
+            assert!(ids.contains(&"markdown"));
+        }
     }
 }

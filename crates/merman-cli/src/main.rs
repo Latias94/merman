@@ -6,7 +6,7 @@ mod commands;
 mod config;
 mod error;
 mod io;
-#[cfg(all(feature = "svg", feature = "analysis"))]
+#[cfg(feature = "markdown")]
 mod markdown;
 #[cfg(feature = "svg")]
 mod render;

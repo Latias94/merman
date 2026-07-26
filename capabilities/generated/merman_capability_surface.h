@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -16,9 +16,11 @@
 #define MERMAN_CAPABILITY_ANALYSIS "analysis"
 #define MERMAN_CAPABILITY_ASCII "ascii"
 #define MERMAN_CAPABILITY_EDITOR "editor"
+#define MERMAN_CAPABILITY_ICONS "icons"
 #define MERMAN_CAPABILITY_JPEG "jpeg"
 #define MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE "layout-cytoscape"
 #define MERMAN_CAPABILITY_LAYOUT_ELK "layout-elk"
+#define MERMAN_CAPABILITY_MARKDOWN "markdown"
 #define MERMAN_CAPABILITY_MATH "math"
 #define MERMAN_CAPABILITY_NETWORK_ICONS "network-icons"
 #define MERMAN_CAPABILITY_PARALLEL_MARKDOWN "parallel-markdown"
@@ -48,6 +50,7 @@
 #define MERMAN_BINDING_OPERATION_PNG "png"
 #define MERMAN_BINDING_OPERATION_SEMANTIC_JSON "semantic-json"
 #define MERMAN_BINDING_OPERATION_SVG "svg"
+#define MERMAN_BINDING_OPERATION_SVG_PLAN_JSON "svg-plan-json"
 #define MERMAN_BINDING_OPERATION_VALIDATION_JSON "validation-json"
 
 typedef struct MermanCapabilityDescriptor {
@@ -95,6 +98,10 @@ static const char *const MERMAN_CAPABILITY_EDITOR_TARGETS[] = {
     "web",
 };
 
+static const char *const MERMAN_CAPABILITY_ICONS_TARGETS[] = {
+    "native",
+};
+
 static const char *const MERMAN_CAPABILITY_JPEG_TARGETS[] = {
     "native",
 };
@@ -117,6 +124,10 @@ static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS[] = {
 
 static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS[] = {
     "svg",
+};
+
+static const char *const MERMAN_CAPABILITY_MARKDOWN_TARGETS[] = {
+    "native",
 };
 
 static const char *const MERMAN_CAPABILITY_MATH_TARGETS[] = {
@@ -174,9 +185,11 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "analysis", "api", "Expose diagnostics and semantic analysis APIs.", MERMAN_CAPABILITY_ANALYSIS_TARGETS, 3, NULL, 0 },
     { "ascii", "output", "Render supported Mermaid semantics as terminal text.", MERMAN_CAPABILITY_ASCII_TARGETS, 2, NULL, 0 },
     { "editor", "api", "Expose parser-backed editor intelligence APIs.", MERMAN_CAPABILITY_EDITOR_TARGETS, 2, NULL, 0 },
+    { "icons", "tool", "Compile CLI local Iconify pack loading.", MERMAN_CAPABILITY_ICONS_TARGETS, 1, NULL, 0 },
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
+    { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
     { "network-icons", "tool", "Compile CLI network icon loading commands.", MERMAN_CAPABILITY_NETWORK_ICONS_TARGETS, 1, NULL, 0 },
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
@@ -189,7 +202,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 17u
+#define MERMAN_CAPABILITY_COUNT 19u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",
@@ -277,6 +290,11 @@ static const char *const MERMAN_BINDING_OPERATION_SVG_TARGETS[] = {
     "web",
 };
 
+static const char *const MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
 static const char *const MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS[] = {
     "native",
     "web",
@@ -294,9 +312,10 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "png", "png", "Render Mermaid input as PNG.", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1 },
     { "semantic-json", NULL, "Parse Mermaid input into canonical semantic JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2 },
     { "svg", "svg", "Render Mermaid input as SVG.", "image/svg+xml", 0, MERMAN_BINDING_OPERATION_SVG_TARGETS, 3 },
+    { "svg-plan-json", "svg", "Plan the capabilities required to render Mermaid input as SVG.", "application/json", 0, MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS, 2 },
     { "validation-json", "analysis", "Validate Mermaid input and return validation JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2 },
 };
-#define MERMAN_BINDING_OPERATION_COUNT 12u
+#define MERMAN_BINDING_OPERATION_COUNT 13u
 
 
 #endif /* MERMAN_CAPABILITY_SURFACE_H */

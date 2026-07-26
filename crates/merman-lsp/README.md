@@ -28,6 +28,11 @@ language behavior.
 
 ## Notes
 
+- `stdio` is the only Cargo feature owned by this crate. It adds the bundled Tokio stdio binary;
+  the default build remains a protocol-neutral library.
+- LSP analysis uses the deterministic runtime policy. Initialization and workspace settings can
+  provide `fixed_today` and `fixed_local_offset_minutes`, but the LSP exposes no native runtime
+  selector and therefore does not forward `system-*` Cargo features.
 - Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
 - Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
 - Language features remain editor-core-driven; the LSP layer converts URI/range/type shapes and

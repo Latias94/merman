@@ -105,6 +105,14 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
     ))
 }
 
+#[wasm_bindgen(js_name = svgPlanJson)]
+pub fn svg_plan_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::svg_plan_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+    ))
+}
+
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 #[wasm_bindgen(js_name = renderSvgWithTextMeasurer)]
 pub fn render_svg_with_text_measurer(
@@ -558,6 +566,19 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_plan_reports_the_owner_capability_payload() {
+        let result =
+            merman_bindings_core::svg_plan_json(b"flowchart TD\nA[Hello] --> B[World]", b"")
+                .unwrap();
+        let plan: serde_json::Value = serde_json::from_slice(&result).unwrap();
+
+        assert_eq!(plan["planned_operation_id"], "svg");
+        assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
+        assert_eq!(plan["ready"], true);
+    }
+
     #[cfg(feature = "analysis")]
     #[test]
     fn validation_error_uses_binding_status() {
@@ -877,8 +898,20 @@ mod tests {
             assert_eq!(resources.profiles.len(), 4);
         } else {
             let resources = catalog.resources;
-            assert_eq!(resources.limits.len(), 1);
-            assert_eq!(resources.limits[0].id, "max_source_bytes");
+            let limit_ids = resources
+                .limits
+                .iter()
+                .map(|limit| limit.id)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                limit_ids,
+                vec![
+                    "max_source_bytes",
+                    "max_model_items",
+                    "max_model_text_bytes",
+                    "max_model_nesting_depth",
+                ]
+            );
         }
     }
 

@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba4988349e9`
+Semantic digest: `sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988`
 
 ## Public Leaves
 
@@ -11,9 +11,11 @@ Semantic digest: `sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba
 | `analysis` | `Api` | `native`, `web`, `typst` | none | Expose diagnostics and semantic analysis APIs. |
 | `ascii` | `Output` | `native`, `web` | none | Render supported Mermaid semantics as terminal text. |
 | `editor` | `Api` | `native`, `web` | none | Expose parser-backed editor intelligence APIs. |
+| `icons` | `Tool` | `native` | none | Compile CLI local Iconify pack loading. |
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
+| `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
 | `network-icons` | `Tool` | `native` | none | Compile CLI network icon loading commands. |
 | `parallel-markdown` | `Tool` | `native` | none | Compile parallel CLI Markdown batch processing. |
@@ -51,4 +53,5 @@ Semantic digest: `sha256:49983beb657d0367c6ab71f36c4a66f66a8cff645d0b8deac956fba
 | `png` | `png` | `image/png` | no | `native` |
 | `semantic-json` | none | `application/json` | no | `native`, `web` |
 | `svg` | `svg` | `image/svg+xml` | no | `native`, `web`, `typst` |
+| `svg-plan-json` | `svg` | `application/json` | no | `native`, `web` |
 | `validation-json` | `analysis` | `application/json` | no | `native`, `web` |

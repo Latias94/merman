@@ -96,6 +96,18 @@ pub(crate) struct WasmArtifactProfile {
     pub(crate) outputs: Vec<String>,
 }
 
+/// A validated exact artifact recipe compiled for the executing Rust host.
+#[derive(Debug, Clone)]
+pub(crate) struct HostArtifactProfile {
+    pub(crate) id: String,
+    pub(crate) package: String,
+    pub(crate) manifest_path: PathBuf,
+    pub(crate) default_features: bool,
+    pub(crate) features: Vec<String>,
+    pub(crate) target_name: String,
+    pub(crate) target_kinds: Vec<String>,
+}
+
 impl WasmArtifactProfile {
     pub(crate) fn configure_cargo_command(&self, command: &mut Command) {
         command.arg("--manifest-path").arg(&self.manifest_path);
@@ -105,6 +117,44 @@ impl WasmArtifactProfile {
         if !self.features.is_empty() {
             command.arg("--features").arg(self.features.join(","));
         }
+    }
+}
+
+impl HostArtifactProfile {
+    pub(crate) fn configure_cargo_command(&self, command: &mut Command) -> Result<(), String> {
+        command
+            .arg("--package")
+            .arg(&self.package)
+            .arg("--manifest-path")
+            .arg(&self.manifest_path);
+        let kinds = self
+            .target_kinds
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if kinds == BTreeSet::from(["bin"]) {
+            command.arg("--bin").arg(&self.target_name);
+        } else if !kinds.is_disjoint(&BTreeSet::from([
+            "lib",
+            "proc-macro",
+            "cdylib",
+            "rlib",
+            "staticlib",
+        ])) {
+            command.arg("--lib");
+        } else {
+            return Err(format!(
+                "artifact profile `{}` has unsupported host target kinds {:?}",
+                self.id, self.target_kinds
+            ));
+        }
+        if !self.default_features {
+            command.arg("--no-default-features");
+        }
+        if !self.features.is_empty() {
+            command.arg("--features").arg(self.features.join(","));
+        }
+        Ok(())
     }
 }
 
@@ -909,6 +959,29 @@ pub(crate) fn load_wasm_size_artifact_profiles() -> Result<Vec<WasmArtifactProfi
     let profiles = wasm_artifact_profiles(&descriptor)?;
     validate_wasm_owner_closures(&profiles)?;
     Ok(profiles)
+}
+
+/// Loads every validated exact recipe whose build target is the executing host.
+pub(crate) fn load_host_artifact_profiles() -> Result<Vec<HostArtifactProfile>, String> {
+    let root = super::workspace_root();
+    let descriptor = read_descriptor(&root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
+    let context = ValidationContext::load(&root)?;
+    validate_descriptor(&descriptor, &context)?;
+
+    Ok(descriptor
+        .profiles
+        .into_iter()
+        .filter(|profile| matches!(&profile.cargo.build_target, BuildTarget::Host))
+        .map(|profile| HostArtifactProfile {
+            id: profile.id,
+            package: profile.cargo.package,
+            manifest_path: PathBuf::from(profile.cargo.manifest),
+            default_features: profile.cargo.default_features,
+            features: profile.cargo.features,
+            target_name: profile.cargo.target.name,
+            target_kinds: profile.cargo.target.kinds,
+        })
+        .collect())
 }
 
 /// Loads one validated exact WASM artifact recipe by descriptor ID.

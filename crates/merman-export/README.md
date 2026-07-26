@@ -16,12 +16,8 @@ dependency closure. `merman-export` is therefore not a lightweight arbitrary-SVG
 library, and its crate boundary alone is not evidence that parsing or rendering dependencies were
 removed. Exact PNG and PDF closure claims are verified from the repository's artifact profiles.
 
-Enable only the formats needed by the host:
-
-```toml
-[dependencies]
-merman-export = { version = "0.8.0-alpha.3", features = ["png"] }
-```
+Enable only the `png`, `jpeg`, or `pdf` features needed by the host. The published crate version
+must match the rest of the Merman workspace.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability.
 All formats keep explicit allocation and embedded-image limits; see the main project's
