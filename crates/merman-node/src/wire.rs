@@ -1,4 +1,7 @@
-use merman_bindings_core::{BindingEngine, BindingError, BindingOperationRequest, BindingStatus};
+use merman_bindings_core::{
+    BindingEngine, BindingError, BindingOperationRequest, BindingStatus,
+    TextMeasurementProviderProjection,
+};
 use serde::{Deserialize, Serialize};
 
 const NODE_WIRE_VERSION: u32 = 1;
@@ -9,6 +12,8 @@ struct NodeOperationRequest {
     operation_id: String,
     source: String,
     uri: Option<String>,
+    #[serde(default)]
+    options_json: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,6 +51,21 @@ pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, Binding
     BindingEngine::from_options(options_json.as_bytes())
 }
 
+pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {
+    let surface = merman_bindings_core::compiled_runtime_capability_surface()
+        .project_to_descriptor_target("native", TextMeasurementProviderProjection::VendoredOnly)?;
+    serde_json::to_string(&merman_bindings_core::runtime_catalog_for(
+        NODE_WIRE_VERSION,
+        surface,
+    ))
+    .map_err(|error| {
+        BindingError::new(
+            BindingStatus::InternalError,
+            format!("failed to serialize the Node runtime catalog: {error}"),
+        )
+    })
+}
+
 pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String {
     let request = match serde_json::from_str::<NodeOperationRequest>(request_json) {
         Ok(request) => request,
@@ -61,7 +81,10 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
         operation_id: &request.operation_id,
         source: request.source.as_bytes(),
         uri: request.uri.as_deref().map(str::as_bytes),
-        options_json: b"",
+        options_json: request
+            .options_json
+            .as_deref()
+            .map_or(b"", str::as_bytes),
     });
 
     match result {
@@ -124,4 +147,19 @@ fn serialize_envelope(value: &impl Serialize) -> String {
                 .unwrap_or_else(|_| "\"failed to serialize Node response\"".to_owned())
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_catalog_wire;
+
+    #[test]
+    fn runtime_catalog_reports_only_callable_text_measurement_providers() {
+        let catalog: serde_json::Value =
+            serde_json::from_str(&runtime_catalog_wire().unwrap()).unwrap();
+        assert_eq!(
+            catalog["capabilities"]["text_measurement"]["provider_ids"],
+            serde_json::json!(["vendored"])
+        );
+    }
 }

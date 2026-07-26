@@ -19,11 +19,20 @@ The candidates are deliberately separate:
 - `napi` is built from the same crate and shared operation bridge with napi-rs. Each native package
   owns one target-specific `merman.node` file.
 
-Both candidates resolve the exact `rust-static-svg` artifact recipe and append only their private
-transport leaf. The build receipt records the resolved recipe digest, and the comparison rejects
-artifacts built from different capability inputs. They construct
+Both candidates resolve the same private native capability recipe and append only their private
+transport leaf. The recipe is checked against the canonical capability descriptor; it is not a
+claim that either candidate is a published Merman artifact profile. Each build receipt binds the
+current `Cargo.lock`, resolved dependency closure, exact target and feature configuration, complete
+artifact file set, build-verifier inputs, and artifact-owned runtime catalog and operation probes.
+The SVG probe parses a real successful result and records its structure and geometry digests. The
+receipt summary carries every runtime file needed by the selected transport, including the Node
+WASM loader, binary, and nested module manifest, so installed hashes can be checked one by one. The
+comparison rejects receipts whose shared source, lockfile, binding contract, capability recipe, or
+runtime catalog digests differ. The candidates construct
 `merman_bindings_core::BindingEngine`, execute `BindingOperationRequest`, default to the
 deterministic runtime policy, and preserve typed missing-capability and unknown-operation errors.
+The generic operation API also exercises the descriptor-owned `svg-plan-json` capability planner
+through both the build receipt and installed-package probe.
 
 Install the pinned candidate tooling and run static contracts:
 
@@ -39,10 +48,18 @@ npm run build:candidate -- --candidate node-wasm
 npm run build:candidate -- --candidate napi --target darwin-arm64
 ```
 
-Run the comparison only after both artifacts exist. The harness launches isolated child processes
-for cold samples, records repeated warm samples and RSS, rejects a candidate pair with semantic
-JSON, typed-error, or SVG-structure differences, reports exact geometry drift without hiding it,
-and refuses to select a winner when target runtime evidence is incomplete.
+Run the comparison only after both artifacts exist. The harness packs and installs each candidate,
+then launches its workers exclusively through the installed product's `createNodeEngine()` facade.
+For napi it installs only the root package and verifies that npm resolves the target package through
+the declared exact-version optional dependency; both paths reject any installed browser fallback.
+The harness launches isolated child processes for cold samples, records repeated warm samples and
+RSS, rejects a candidate pair with semantic JSON, typed-error, or SVG-structure differences,
+reports exact geometry drift without hiding it, and recomputes timing summaries from the raw
+samples. It hashes the harness before and after measurement and aborts if an input changes. A target
+result binds its host mapping, build receipt, installed package manifests, loaded artifact hashes,
+install manifest and lockfile dependency edge, runtime probes, concurrent outcomes, and raw
+queue/lifecycle settlements; five unbound passing booleans cannot satisfy the admission matrix. The
+harness refuses to select a winner while any target evidence is missing.
 
 ```console
 npm run benchmark -- --native artifacts/napi/darwin-arm64/merman.node \

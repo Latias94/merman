@@ -120,10 +120,11 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
   const recipes = JSON.parse(
     await readFile(path.join(nodeRoot, "candidate-builds.json"), "utf8"),
   );
-  assert.equal(recipes.schema_version, 2);
-  assert.deepEqual(recipes.artifact_profile, {
-    descriptor: "capabilities/artifact-profiles-v1.json",
-    id: "rust-static-svg",
+  assert.equal(recipes.schema_version, 3);
+  assert.deepEqual(recipes.capability_recipe, {
+    descriptor: "capabilities/feature-surface-v1.json",
+    target: "native",
+    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
   });
   assert.equal(recipes.cargo.default_features, false);
   assert.equal("features" in recipes.cargo, false);

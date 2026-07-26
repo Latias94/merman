@@ -109,6 +109,7 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
   WasmEngine: class WasmEngine {
     execute(value) { return value; }
     executeSync(value) { return value; }
+    runtimeCatalogJson() { return "{}"; }
   },
 };
 `,

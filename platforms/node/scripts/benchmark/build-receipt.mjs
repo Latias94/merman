@@ -1,19 +1,78 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { digestJson } from "../stable-json.mjs";
+import {
+  probeCandidateRuntime,
+  resolveCandidateBuildEvidence,
+  resolveCandidateRecipe,
+  resolveCandidateRuntimeContract,
+  validateCandidateDependencyPackages,
+} from "../build-candidate.mjs";
+import { digestJson, stableJson } from "../stable-json.mjs";
+import { validateRuntimeCatalog } from "../../src/engine.mjs";
 
-export function readBuildReceipt(artifact) {
+const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repositoryRoot = path.resolve(nodeRoot, "..", "..");
+const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
+
+export function readBuildReceipt(
+  artifact,
+  {
+    probeCurrentRuntime = probeCandidateRuntime,
+    resolveCurrentEvidence = resolveCandidateBuildEvidence,
+  } = {},
+) {
   const receiptPath = path.join(path.dirname(artifact), "build-receipt.json");
   assertFile(receiptPath, "candidate build receipt");
   const value = JSON.parse(readFileSync(receiptPath, "utf8"));
   if (value.schema_version !== 1) {
     throw new Error("candidate build receipt schema_version must be 1.");
   }
-  for (const key of ["source_digest", "binding_contract_digest", "input_digest"]) {
+  for (const key of [
+    "source_digest",
+    "cargo_lock_digest",
+    "binding_contract_digest",
+    "input_digest",
+  ]) {
     if (!/^sha256:[0-9a-f]{64}$/.test(value[key] ?? "")) {
       throw new Error(`candidate build receipt has an invalid ${key}.`);
+    }
+  }
+  if (value.cargo_lock_digest !== digestFile(cargoLockPath)) {
+    throw new Error("candidate build receipt Cargo lock digest does not match the current lockfile.");
+  }
+  const dependencyClosureDigest = validateDependencyClosure(
+    value.dependency_closure,
+    value.config?.candidate,
+  );
+  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config);
+  validateBuildTools(value.tools);
+  const expectedInputDigest = digestJson({
+    cargo_lock_digest: value.cargo_lock_digest,
+    config: value.config,
+    dependency_closure_digest: dependencyClosureDigest,
+    source_digest: value.source_digest,
+    tools: value.tools,
+  });
+  if (value.input_digest !== expectedInputDigest) {
+    throw new Error("candidate build receipt input digest does not match its recorded build inputs.");
+  }
+  const currentEvidence = resolveCurrentEvidence(buildRecipe);
+  for (const key of [
+    "source_digest",
+    "binding_contract_digest",
+    "dependency_closure_digest",
+  ]) {
+    if (!/^sha256:[0-9a-f]{64}$/.test(currentEvidence?.[key] ?? "")) {
+      throw new Error(`current candidate build evidence has an invalid ${key}.`);
+    }
+    const receiptValue = key === "dependency_closure_digest"
+      ? dependencyClosureDigest
+      : value[key];
+    if (receiptValue !== currentEvidence[key]) {
+      throw new Error(`candidate build receipt ${key} is stale for the current source tree.`);
     }
   }
   const receiptRoot = path.dirname(receiptPath);
@@ -23,7 +82,15 @@ export function readBuildReceipt(artifact) {
   }
   const seen = new Set();
   for (const recorded of value.artifacts) {
-    if (!recorded || typeof recorded.path !== "string" || seen.has(recorded.path)) {
+    if (
+      !recorded ||
+      typeof recorded.path !== "string" ||
+      recorded.path.length === 0 ||
+      recorded.path !== path.posix.normalize(recorded.path) ||
+      recorded.path.startsWith("../") ||
+      path.posix.isAbsolute(recorded.path) ||
+      seen.has(recorded.path)
+    ) {
       throw new Error("candidate build receipt contains an invalid or duplicate artifact path.");
     }
     seen.add(recorded.path);
@@ -40,21 +107,170 @@ export function readBuildReceipt(artifact) {
       throw new Error(`candidate build receipt does not match ${recorded.path}.`);
     }
   }
+  const actualArtifactPaths = collectArtifactPaths(receiptRoot).filter(
+    (candidatePath) => candidatePath !== "build-receipt.json",
+  );
+  const recordedArtifactPaths = [...seen].sort();
+  if (JSON.stringify(actualArtifactPaths) !== JSON.stringify(recordedArtifactPaths)) {
+    throw new Error("candidate build receipt artifact file set does not match its directory.");
+  }
   const recordedArtifact = value.artifacts?.find((item) => item.path === artifactPath);
   const artifactDigest = digestFile(artifact);
   if (recordedArtifact?.sha256 !== artifactDigest) {
     throw new Error(`candidate build receipt does not match ${artifactPath}.`);
   }
-  const capabilityRecipe = validateCapabilityRecipe(value.config);
+  const runtimeCatalogDigest = validateRuntimeEvidence(value.runtime, capabilityRecipe);
+  const runtimeArtifacts = runtimeArtifactEntries(value.config.candidate, value.artifacts);
+  const currentRuntime = probeCurrentRuntime(receiptRoot, buildRecipe);
+  if (stableJson(currentRuntime) !== stableJson(value.runtime)) {
+    throw new Error("candidate build receipt runtime evidence does not match the current artifact.");
+  }
   return {
     receipt_digest: digestJson(value),
+    candidate: value.config.candidate,
+    target: value.config.target,
+    rust_target: value.config.rust_target,
+    wasm_pack_target: value.config.wasm_pack_target,
     commit: value.commit,
     source_digest: value.source_digest,
+    cargo_lock_digest: value.cargo_lock_digest,
     binding_contract_digest: value.binding_contract_digest,
+    dependency_closure_digest: dependencyClosureDigest,
     capability_recipe_digest: digestJson(capabilityRecipe),
+    runtime_catalog_digest: runtimeCatalogDigest,
     input_digest: value.input_digest,
     artifact_digest: artifactDigest,
+    runtime_artifacts: runtimeArtifacts,
   };
+}
+
+function runtimeArtifactEntries(candidate, artifacts) {
+  const expectedPaths = candidate === "napi"
+    ? ["merman.node"]
+    : candidate === "node-wasm"
+      ? ["merman_node.js", "merman_node_bg.wasm", "package.json"]
+      : null;
+  if (expectedPaths === null) throw new Error(`unknown candidate runtime artifacts: ${candidate}.`);
+  const byPath = new Map(artifacts.map((artifact) => [artifact.path, artifact]));
+  const runtimeArtifacts = expectedPaths.map((artifactPath) => byPath.get(artifactPath));
+  if (
+    runtimeArtifacts.some(
+      (artifact) =>
+        !artifact ||
+        !Number.isSafeInteger(artifact.bytes) ||
+        artifact.bytes < 1 ||
+        !/^sha256:[0-9a-f]{64}$/.test(artifact.sha256 ?? ""),
+    )
+  ) {
+    throw new Error(`${candidate} build receipt lacks its complete runtime artifact set.`);
+  }
+  return runtimeArtifacts.map(({ path: artifactPath, bytes, sha256 }) => ({
+    path: artifactPath,
+    bytes,
+    sha256,
+  }));
+}
+
+function validateDependencyClosure(closure, candidate) {
+  if (
+    !closure ||
+    typeof closure !== "object" ||
+    Array.isArray(closure) ||
+    !/^sha256:[0-9a-f]{64}$/.test(closure.digest ?? "") ||
+    !Array.isArray(closure.packages) ||
+    digestJson(closure.packages) !== closure.digest
+  ) {
+    throw new Error("candidate build receipt dependency closure is invalid.");
+  }
+  validateCandidateDependencyPackages(closure.packages, candidate);
+  return closure.digest;
+}
+
+function validateRuntimeEvidence(runtime, capabilityRecipe) {
+  if (!runtime || typeof runtime !== "object" || Array.isArray(runtime)) {
+    throw new Error("candidate build receipt runtime evidence is required.");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(runtime.catalog_digest ?? "")) {
+    throw new Error("candidate build receipt runtime catalog digest is invalid.");
+  }
+  let catalog;
+  try {
+    catalog = validateRuntimeCatalog(runtime.catalog);
+  } catch (cause) {
+    throw new Error(
+      `candidate build receipt runtime catalog is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+  if (
+    !catalog ||
+    typeof catalog !== "object" ||
+    Array.isArray(catalog) ||
+    digestJson(catalog) !== runtime.catalog_digest ||
+    catalog.schema_version !== 1 ||
+    catalog.transport_api_version !== 1 ||
+    typeof catalog.package_version !== "string" ||
+    catalog.package_version.length === 0 ||
+    !Number.isSafeInteger(catalog.registry?.diagram_family_count) ||
+    catalog.registry.diagram_family_count < 1
+  ) {
+    throw new Error("candidate build receipt runtime evidence is invalid.");
+  }
+  const capabilities = catalog.capabilities;
+  const capabilityIds = sortedUniqueStrings(
+    capabilities?.capability_ids,
+    "runtime capability IDs",
+  );
+  const outputIds = sortedUniqueStrings(capabilities?.output_ids, "runtime output IDs");
+  const operationIds = sortedUniqueStrings(
+    capabilities?.operation_ids,
+    "runtime operation IDs",
+  );
+  const systemAdapterIds = sortedUniqueStrings(
+    capabilities?.system_adapter_ids,
+    "runtime system adapter IDs",
+    { allowEmpty: true },
+  );
+  const textMeasurementProviderIds = sortedUniqueStrings(
+    capabilities?.text_measurement?.provider_ids,
+    "runtime text measurement provider IDs",
+  );
+  const expectedRuntime = resolveCandidateRuntimeContract();
+  if (
+    JSON.stringify(textMeasurementProviderIds) !==
+    JSON.stringify(expectedRuntime.textMeasurementProviderIds)
+  ) {
+    throw new Error(
+      "candidate build receipt runtime text measurement provider IDs are not callable by Node.",
+    );
+  }
+  if (
+    JSON.stringify(capabilityIds) !==
+      JSON.stringify(expectedRuntime.capabilityIds) ||
+    JSON.stringify(outputIds) !== JSON.stringify(expectedRuntime.outputIds) ||
+    JSON.stringify(operationIds) !== JSON.stringify(expectedRuntime.operationIds) ||
+    JSON.stringify(systemAdapterIds) !== JSON.stringify(expectedRuntime.systemAdapterIds)
+  ) {
+    throw new Error("candidate build receipt runtime catalog disagrees with its capability recipe.");
+  }
+  if (
+    !runtime.probe ||
+    typeof runtime.probe !== "object" ||
+    Array.isArray(runtime.probe) ||
+    runtime.probe.missing_capability_id !== "png" ||
+    !Number.isSafeInteger(runtime.probe.semantic_json_bytes) ||
+    runtime.probe.semantic_json_bytes < 1 ||
+    !Number.isSafeInteger(runtime.probe.svg_plan_json_bytes) ||
+    runtime.probe.svg_plan_json_bytes < 1 ||
+    !Number.isSafeInteger(runtime.probe.svg_bytes) ||
+    runtime.probe.svg_bytes < 1 ||
+    !/^sha256:[0-9a-f]{64}$/.test(runtime.probe.svg_structure_sha256 ?? "") ||
+    !/^sha256:[0-9a-f]{64}$/.test(runtime.probe.svg_geometry_sha256 ?? "") ||
+    runtime.probe.unknown_operation_kind !== "unknown-operation" ||
+    runtime.probe.request_options_limit_code_name !== "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+  ) {
+    throw new Error("candidate build receipt runtime probe is invalid.");
+  }
+  return runtime.catalog_digest;
 }
 
 function validateCapabilityRecipe(config) {
@@ -64,55 +280,106 @@ function validateCapabilityRecipe(config) {
   if (config.default_features !== false) {
     throw new Error("candidate build receipt must disable Cargo default features.");
   }
-  const profile = config.artifact_profile;
+  assertExactKeys(config, [
+    "candidate",
+    "target",
+    "rust_target",
+    "wasm_pack_target",
+    "default_features",
+    "capability_recipe",
+    "features",
+  ], "candidate build receipt config");
+  const recipe = config.capability_recipe;
   if (
-    !profile ||
-    typeof profile !== "object" ||
-    Array.isArray(profile) ||
-    typeof profile.descriptor !== "string" ||
-    profile.descriptor.length === 0 ||
-    typeof profile.id !== "string" ||
-    profile.id.length === 0
+    !recipe ||
+    typeof recipe !== "object" ||
+    Array.isArray(recipe) ||
+    typeof recipe.descriptor !== "string" ||
+    recipe.descriptor.length === 0 ||
+    typeof recipe.target !== "string" ||
+    recipe.target.length === 0
   ) {
-    throw new Error("candidate build receipt artifact profile is invalid.");
+    throw new Error("candidate build receipt capability recipe is invalid.");
   }
   const capabilityFeatures = sortedUniqueStrings(
-    profile.features,
-    "artifact profile features",
+    recipe.capabilities,
+    "capability recipe capabilities",
   );
-  const cargoFeatures = sortedUniqueStrings(config.features, "Cargo features");
-  const transportFeature =
-    config.candidate === "napi"
-      ? "transport-napi"
-      : config.candidate === "node-wasm"
-        ? "transport-wasm"
-        : null;
-  if (transportFeature === null) {
-    throw new Error(`candidate build receipt has unknown candidate ${config.candidate}.`);
+  const expectedRecipe = resolveCandidateRuntimeContract().capabilityRecipe;
+  if (
+    recipe.descriptor !== expectedRecipe.descriptor ||
+    recipe.target !== expectedRecipe.target ||
+    JSON.stringify(capabilityFeatures) !== JSON.stringify(expectedRecipe.capabilities)
+  ) {
+    throw new Error("candidate build receipt capability recipe is not the canonical Node recipe.");
   }
-  const expectedCargoFeatures = [...capabilityFeatures, transportFeature].sort();
-  if (JSON.stringify(cargoFeatures) !== JSON.stringify(expectedCargoFeatures)) {
+  const cargoFeatures = sortedUniqueStrings(config.features, "Cargo features");
+  let expectedBuildRecipe;
+  try {
+    expectedBuildRecipe = resolveCandidateRecipe(config.candidate, config.target);
+  } catch (error) {
     throw new Error(
-      "candidate build receipt Cargo features must equal the artifact profile leaves plus its transport.",
+      `candidate build receipt has an invalid candidate target: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (
+    config.target !== expectedBuildRecipe.targetId ||
+    config.rust_target !== expectedBuildRecipe.rustTarget ||
+    config.wasm_pack_target !== expectedBuildRecipe.wasmPackTarget
+  ) {
+    throw new Error("candidate build receipt target configuration is not canonical.");
+  }
+  if (JSON.stringify(cargoFeatures) !== JSON.stringify(expectedBuildRecipe.cargoFeatures)) {
+    throw new Error(
+      "candidate build receipt Cargo features must equal the capability recipe capabilities plus its transport.",
     );
   }
   return {
-    default_features: false,
-    artifact_profile: {
-      descriptor: profile.descriptor,
-      id: profile.id,
-      features: capabilityFeatures,
+    buildRecipe: expectedBuildRecipe,
+    capabilityRecipe: {
+      default_features: false,
+      capability_recipe: {
+        descriptor: recipe.descriptor,
+        target: recipe.target,
+        capabilities: capabilityFeatures,
+      },
     },
   };
 }
 
-function sortedUniqueStrings(value, label) {
+function validateBuildTools(tools) {
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) {
+    throw new Error("candidate build receipt tools are required.");
+  }
+  assertExactKeys(
+    tools,
+    ["cargo", "node", "rustc", "transport_builder"],
+    "candidate build receipt tools",
+  );
+  for (const [key, value] of Object.entries(tools)) {
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error(`candidate build receipt tool ${key} is invalid.`);
+    }
+  }
+}
+
+function assertExactKeys(value, expected, label) {
+  const actual = Object.keys(value).sort();
+  const normalizedExpected = [...expected].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(normalizedExpected)) {
+    throw new Error(`${label} fields are invalid.`);
+  }
+}
+
+function sortedUniqueStrings(value, label, { allowEmpty = false } = {}) {
   if (
     !Array.isArray(value) ||
-    value.length === 0 ||
+    (!allowEmpty && value.length === 0) ||
     value.some((item) => typeof item !== "string" || item.length === 0)
   ) {
-    throw new Error(`candidate build receipt ${label} must be non-empty strings.`);
+    throw new Error(
+      `candidate build receipt ${label} must be ${allowEmpty ? "strings" : "non-empty strings"}.`,
+    );
   }
   const normalized = [...new Set(value)].sort();
   if (JSON.stringify(value) !== JSON.stringify(normalized)) {
@@ -123,6 +390,18 @@ function sortedUniqueStrings(value, label) {
 
 function digestFile(file) {
   return `sha256:${createHash("sha256").update(readFileSync(file)).digest("hex")}`;
+}
+
+function collectArtifactPaths(root, current = root) {
+  const files = [];
+  for (const entry of readdirSync(current, { withFileTypes: true })) {
+    const absolute = path.join(current, entry.name);
+    if (entry.isDirectory()) files.push(...collectArtifactPaths(root, absolute));
+    else if (entry.isFile()) {
+      files.push(path.relative(root, absolute).split(path.sep).join("/"));
+    }
+  }
+  return files.sort();
 }
 
 function assertFile(file, label) {

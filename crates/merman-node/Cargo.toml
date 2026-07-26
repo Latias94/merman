@@ -17,7 +17,7 @@ svg = ["merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
-transport-napi = ["dep:napi", "dep:napi-derive"]
+transport-napi = ["dep:napi", "dep:napi-build", "dep:napi-derive"]
 transport-wasm = ["dep:serde-wasm-bindgen", "dep:wasm-bindgen"]
 
 [dependencies]
@@ -30,7 +30,7 @@ serde-wasm-bindgen = { version = "0.6.5", optional = true }
 wasm-bindgen = { version = "0.2.126", optional = true }
 
 [build-dependencies]
-napi-build = "=2.3.2"
+napi-build = { version = "=2.3.2", optional = true }
 
 # Keep the candidate outside the root workspace until U14 has comparative evidence.
 [workspace]

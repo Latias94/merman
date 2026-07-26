@@ -26,6 +26,12 @@ impl NativeEngine {
         })
     }
 
+    #[napi(js_name = "runtimeCatalogJson")]
+    pub fn runtime_catalog_json(&self) -> napi::Result<String> {
+        wire::runtime_catalog_wire()
+            .map_err(|error| napi::Error::from_reason(wire::error_envelope(&error)))
+    }
+
     #[napi(js_name = "executeSync")]
     pub fn execute_sync(&self, request_json: String) -> String {
         wire::execute_wire(&self.engine, &request_json)

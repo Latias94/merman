@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
+  MermanNodeEngine,
   createNodeEngine,
   normalizeBindingOptions,
 } from "../src/engine.mjs";
 import {
   MermanDisposedError,
+  MermanInvalidTransportError,
   MermanOperationError,
   MermanQueueSaturatedError,
 } from "../src/errors.mjs";
+
+const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function deferred() {
   let resolve;
@@ -40,6 +47,26 @@ function success(svg = "<svg />") {
   });
 }
 
+function jsonSuccess(operationId, value) {
+  const data = JSON.stringify(value);
+  return JSON.stringify({
+    version: 1,
+    ok: true,
+    result: {
+      operation_id: operationId,
+      media_type: "application/json",
+      data,
+      metadata_json: JSON.stringify({
+        version: 1,
+        operation_id: operationId,
+        media_type: "application/json",
+        runtime_policy: "deterministic",
+        byte_length: Buffer.byteLength(data),
+      }),
+    },
+  });
+}
+
 function failure({ kind, capabilityId = null }) {
   return JSON.stringify({
     version: 1,
@@ -57,6 +84,75 @@ function failure({ kind, capabilityId = null }) {
   });
 }
 
+function runtimeCatalog(overrides = {}) {
+  return {
+    schema_version: 1,
+    transport_api_version: 1,
+    package_version: "0.8.0-alpha.3",
+    capabilities: {
+      capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
+      output_ids: ["svg"],
+      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+      system_adapter_ids: [],
+      text_measurement: {
+        protocol_version: 3,
+        provider_ids: ["vendored"],
+      },
+    },
+    registry: { diagram_family_count: 35 },
+    resources: {
+      general_binding_default_profile: "interactive",
+      cli_default_profile: "trusted-native",
+      limits: [{
+        id: "max_source_bytes",
+        phase: "source",
+        description: "Maximum source bytes.",
+        overridable: true,
+        hard_cap: false,
+      }],
+      profiles: [
+        {
+          id: "interactive",
+          purpose: "Interactive rendering.",
+          trust_assumption: "Cooperative input.",
+          recommended_binding_default: true,
+          limits: { max_source_bytes: 1024 },
+        },
+        {
+          id: "trusted-native",
+          purpose: "Trusted rendering.",
+          trust_assumption: "Trusted input.",
+          recommended_binding_default: false,
+          limits: { max_source_bytes: null },
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+test("runtime catalog accepts additive fields within schema 1", async () => {
+  const catalog = runtimeCatalog();
+  catalog.future_root_metadata = true;
+  catalog.capabilities.future_capability_metadata = true;
+  catalog.registry.future_registry_metadata = true;
+  catalog.resources.future_resource_metadata = true;
+  const factory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(catalog);
+    },
+  });
+
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "svg",
+  ]);
+  await engine.dispose();
+});
+
 function transportFactory(overrides = {}) {
   const calls = [];
   const createdWith = [];
@@ -68,6 +164,9 @@ function transportFactory(overrides = {}) {
     executeSync(requestJson) {
       calls.push(JSON.parse(requestJson));
       return success();
+    },
+    runtimeCatalogJson() {
+      return JSON.stringify(runtimeCatalog());
     },
     async dispose() {},
     ...overrides,
@@ -106,6 +205,194 @@ test("default construction is explicit deterministic interactive policy", async 
     },
   ]);
   await engine.dispose();
+});
+
+test("generic operations preserve request-local options JSON", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  const optionsJson = JSON.stringify({
+    resources: { limits: { max_source_bytes: 4096 } },
+  });
+
+  await engine.executeOperation({
+    operationId: "svg",
+    source: "flowchart TD\nA --> B",
+    optionsJson,
+  });
+
+  assert.deepEqual(factory.calls, [
+    {
+      operation_id: "svg",
+      source: "flowchart TD\nA --> B",
+      uri: null,
+      options_json: optionsJson,
+    },
+  ]);
+  await engine.dispose();
+});
+
+test("generic operations invoke descriptor-owned SVG planning", async () => {
+  const plan = {
+    schema_version: 1,
+    planned_operation_id: "svg",
+    diagram_type: "flowchart-v2",
+    required_capability_ids: [],
+    missing_capability_ids: [],
+    ready: true,
+  };
+  const factory = transportFactory();
+  factory.transport.execute = async (requestJson) => {
+    const request = JSON.parse(requestJson);
+    factory.calls.push(request);
+    return jsonSuccess(request.operation_id, plan);
+  };
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  const result = await engine.executeOperation({
+    operationId: "svg-plan-json",
+    source: "flowchart TD\nA --> B",
+  });
+
+  assert.equal(result.operation_id, "svg-plan-json");
+  assert.equal(result.media_type, "application/json");
+  assert.deepEqual(JSON.parse(result.data), plan);
+  assert.deepEqual(factory.calls, [
+    {
+      operation_id: "svg-plan-json",
+      source: "flowchart TD\nA --> B",
+      uri: null,
+    },
+  ]);
+  await engine.dispose();
+});
+
+test("generic operations reject superseded request fields", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  assert.throws(
+    () => engine.executeOperationSync({
+      operationId: "svg",
+      source: "flowchart TD\nA --> B",
+      formatOptions: { version: 1 },
+    }),
+    /unknown operation request field `formatOptions`/i,
+  );
+  assert.deepEqual(factory.calls, []);
+  await engine.dispose();
+});
+
+test("construction validates and exposes the loaded artifact runtime catalog", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  assert.deepEqual(engine.runtimeCatalog, runtimeCatalog());
+  const callerCopy = engine.runtimeCatalog;
+  callerCopy.capabilities.capability_ids.length = 0;
+  assert.deepEqual(engine.runtimeCatalog, runtimeCatalog());
+  await engine.dispose();
+
+  const malformed = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(runtimeCatalog({
+        capabilities: {
+          ...runtimeCatalog().capabilities,
+          operation_ids: ["semantic-json"],
+        },
+      }));
+    },
+  });
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: malformed.loadTransport }),
+    MermanInvalidTransportError,
+  );
+});
+
+test("runtime catalog validates text measurement and resource local relations", async () => {
+  const invalidCatalogs = [];
+
+  const missingProtocol = runtimeCatalog();
+  delete missingProtocol.capabilities.text_measurement.protocol_version;
+  invalidCatalogs.push(missingProtocol);
+
+  const missingVendored = runtimeCatalog();
+  missingVendored.capabilities.text_measurement.provider_ids = ["host-callback"];
+  invalidCatalogs.push(missingVendored);
+
+  const uncallableHostCallback = runtimeCatalog();
+  uncallableHostCallback.capabilities.text_measurement.provider_ids = [
+    "host-callback",
+    "vendored",
+  ];
+  invalidCatalogs.push(uncallableHostCallback);
+
+  const measurementWithoutSvg = runtimeCatalog();
+  measurementWithoutSvg.capabilities.capability_ids =
+    measurementWithoutSvg.capabilities.capability_ids.filter((id) => id !== "svg");
+  measurementWithoutSvg.capabilities.output_ids = [];
+  measurementWithoutSvg.capabilities.operation_ids = [
+    "semantic-json",
+  ];
+  invalidCatalogs.push(measurementWithoutSvg);
+
+  const malformedLimit = runtimeCatalog();
+  malformedLimit.resources.limits = [{ id: "max-source-bytes" }];
+  invalidCatalogs.push(malformedLimit);
+
+  const malformedProfile = runtimeCatalog();
+  malformedProfile.resources.profiles = [{
+    id: "interactive",
+    purpose: "Interactive rendering.",
+    trust_assumption: "Untrusted input.",
+    recommended_binding_default: true,
+    limits: { max_source_bytes: -1 },
+  }];
+  invalidCatalogs.push(malformedProfile);
+
+  const missingProfileLimit = runtimeCatalog();
+  missingProfileLimit.resources.profiles[0].limits = {};
+  invalidCatalogs.push(missingProfileLimit);
+
+  const unknownDefaultProfile = runtimeCatalog();
+  unknownDefaultProfile.resources.general_binding_default_profile = "missing";
+  invalidCatalogs.push(unknownDefaultProfile);
+
+  const duplicateLimit = runtimeCatalog();
+  duplicateLimit.resources.limits.push({ ...duplicateLimit.resources.limits[0] });
+  invalidCatalogs.push(duplicateLimit);
+
+  for (const catalog of invalidCatalogs) {
+    const factory = transportFactory({
+      runtimeCatalogJson() {
+        return JSON.stringify(catalog);
+      },
+    });
+    await assert.rejects(
+      createNodeEngine({}, { loadTransport: factory.loadTransport }),
+      MermanInvalidTransportError,
+    );
+  }
+});
+
+test("public TypeScript declarations cover the generic operation API", () => {
+  const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
+  for (const method of [
+    "dispose",
+    "executeOperation",
+    "executeOperationSync",
+    "renderSvg",
+    "renderSvgSync",
+  ]) {
+    assert.equal(typeof MermanNodeEngine.prototype[method], "function", method);
+    assert.match(declarations, new RegExp(`\\b${method}\\s*\\(`));
+  }
+  assert.match(declarations, /\breadonly runtimeCatalog:/);
+  assert.match(declarations, /\boptionsJson\?: string;/);
+  assert.match(declarations, /provider_ids:\s*\["vendored"\]/);
+  assert.match(declarations, /limits:\s*MermanRuntimeResourceLimit\[\]/);
+  assert.match(declarations, /profiles:\s*MermanRuntimeResourceProfile\[\]/);
+  assert.doesNotMatch(declarations, /\b(?:limits|profiles):\s*unknown\[\]/);
+  assert.doesNotMatch(declarations, /\bformatOptions\??:/);
 });
 
 test("binding options preserve the shared profile vocabulary and reject host measurement", () => {

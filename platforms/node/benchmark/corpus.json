@@ -9,7 +9,7 @@
       "profile": "trusted-native"
     }
   },
-  "format_options": {
+  "operation_options": {
     "version": 1
   }
 }

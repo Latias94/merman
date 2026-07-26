@@ -76,7 +76,12 @@ function parseSvg(svg) {
       `Cannot inspect rendered SVG: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   }
-  if (errors.length > 0 || !document.documentElement || document.documentElement.nodeName === "parsererror") {
+  if (
+    errors.length > 0 ||
+    !document.documentElement ||
+    document.documentElement.nodeName === "parsererror" ||
+    document.documentElement.localName !== "svg"
+  ) {
     throw new Error(`Cannot inspect rendered SVG: ${errors[0] ?? "missing root element"}`);
   }
   return document;

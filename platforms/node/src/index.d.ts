@@ -26,6 +26,73 @@ export interface RenderSvgOptions {
    * preempted and its Promise settles with the actual operation result.
    */
   signal?: AbortSignal;
+  /** Raw per-request options JSON merged by the shared binding contract. */
+  optionsJson?: string;
+}
+
+export interface MermanOperationRequest {
+  operationId: string;
+  source: string;
+  uri?: string | null;
+  /** Raw per-request options JSON merged over the reusable engine baseline. */
+  optionsJson?: string;
+}
+
+export interface MermanOperationResult {
+  operation_id: string;
+  media_type: string;
+  data: string;
+  metadata_json: string;
+}
+
+export interface MermanTextMeasurementCatalog {
+  protocol_version: number;
+  provider_ids: ["vendored"];
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeResourceLimit {
+  id: string;
+  phase: string;
+  description: string;
+  overridable: boolean;
+  hard_cap: boolean;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeResourceProfile {
+  id: string;
+  purpose: string;
+  trust_assumption: string;
+  recommended_binding_default: boolean;
+  limits: Record<string, number | null>;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeCatalog {
+  schema_version: 1;
+  transport_api_version: 1;
+  package_version: string;
+  capabilities: {
+    capability_ids: string[];
+    output_ids: string[];
+    operation_ids: string[];
+    system_adapter_ids: string[];
+    text_measurement: MermanTextMeasurementCatalog | null;
+    [key: string]: unknown;
+  };
+  registry: {
+    diagram_family_count: number;
+    [key: string]: unknown;
+  };
+  resources: {
+    general_binding_default_profile: string;
+    cli_default_profile: string;
+    limits: MermanRuntimeResourceLimit[];
+    profiles: MermanRuntimeResourceProfile[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 }
 
 export interface MermanQueueState {
@@ -38,9 +105,15 @@ export interface MermanQueueState {
 
 export declare class MermanNodeEngine {
   readonly queueState: MermanQueueState;
+  readonly runtimeCatalog: MermanRuntimeCatalog;
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;
   /** Synchronous rendering is intended only for explicit SSG build paths. */
-  renderSvgSync(source: string): string;
+  renderSvgSync(source: string, options?: Omit<RenderSvgOptions, "signal">): string;
+  executeOperation(
+    request: MermanOperationRequest,
+    options?: Pick<RenderSvgOptions, "signal">,
+  ): Promise<MermanOperationResult>;
+  executeOperationSync(request: MermanOperationRequest): MermanOperationResult;
   dispose(): Promise<void>;
 }
 

@@ -1,25 +1,22 @@
-import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import { loadNativeTransport } from "../../src/candidates/native.mjs";
-import { loadNodeWasmTransport } from "../../src/candidates/wasm.mjs";
-import { createNodeEngine } from "../../src/engine.mjs";
-import {
-  MermanDisposedError,
-  MermanQueueSaturatedError,
-} from "../../src/errors.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
 import { digestJson } from "../stable-json.mjs";
 
-const requireFromWorker = createRequire(import.meta.url);
+const SMOKE_SOURCE = "flowchart TD\nA-->B";
 
 try {
   const inputPath = process.argv[2];
   if (!inputPath) throw new Error("benchmark worker requires an input JSON path");
   const input = JSON.parse(readFileSync(inputPath, "utf8"));
-  const output = input.mode === "cold" ? await runCold(input) : await runWarm(input);
+  const output =
+    input.mode === "cold"
+      ? await runCold(input)
+      : input.mode === "shutdown"
+        ? await runShutdown(input)
+        : await runWarm(input);
   process.stdout.write(`${JSON.stringify(output)}\n`);
 } catch (error) {
   console.error(error instanceof Error ? error.stack ?? error.message : String(error));
@@ -28,13 +25,12 @@ try {
 
 async function runCold(input) {
   const baselineBytes = process.memoryUsage().rss;
-  const loadTransport = candidateLoader(input);
   const started = performance.now();
-  const engine = await createNodeEngine(
+  const engine = await createProductEngine(
+    input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
-    { loadTransport },
   );
-  const outcome = await renderOutcome(engine, input.cases[0], input.formatOptions);
+  const outcome = await renderOutcome(engine, input.cases[0], input.operationOptions);
   const operationMs = performance.now() - started;
   await engine.dispose();
   return {
@@ -45,21 +41,44 @@ async function runCold(input) {
   };
 }
 
+async function runShutdown(input) {
+  const engine = await createProductEngine(
+    input,
+    { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
+  );
+  const outcome = await renderOutcome(
+    engine,
+    { path: "process-shutdown-smoke.mmd", source: SMOKE_SOURCE },
+    input.operationOptions,
+  );
+  if (!outcome.ok) {
+    throw new Error(`process-shutdown probe failed to render: ${outcome.message ?? outcome.kind}`);
+  }
+  // Deliberately do not call dispose(): successful worker exit proves an idle engine does not
+  // retain event-loop handles that would hang a one-shot SSG process.
+  return {
+    process_shutdown_passed: true,
+    evidence: {
+      render_succeeded: true,
+      dispose_called: false,
+    },
+  };
+}
+
 async function runWarm(input) {
   const baselineBytes = process.memoryUsage().rss;
-  const loadTransport = candidateLoader(input);
-  const engine = await createNodeEngine(
+  const engine = await createProductEngine(
+    input,
     {
       bindingOptions: input.bindingOptions,
       concurrency: input.concurrency,
       maxQueue: input.maxQueue,
     },
-    { loadTransport },
   );
 
   for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
     for (const item of input.cases) {
-      await renderOutcome(engine, item, input.formatOptions);
+      await renderOutcome(engine, item, input.operationOptions);
     }
   }
 
@@ -68,7 +87,7 @@ async function runWarm(input) {
   for (let iteration = 0; iteration < input.iterations; iteration += 1) {
     for (const item of input.cases) {
       const started = performance.now();
-      const outcome = await renderOutcome(engine, item, input.formatOptions);
+      const outcome = await renderOutcome(engine, item, input.operationOptions);
       const elapsedMs = performance.now() - started;
       samplesMs.push(elapsedMs);
       samples.push({
@@ -81,28 +100,34 @@ async function runWarm(input) {
   }
 
   const concurrencySamplesMs = [];
+  const concurrencySamples = [];
   const batch = Array.from(
     { length: input.concurrency },
     (_, index) => input.cases[index % input.cases.length],
   );
   for (let iteration = 0; iteration < input.concurrencyIterations; iteration += 1) {
     const started = performance.now();
-    await Promise.all(batch.map((item) => renderOutcome(engine, item, input.formatOptions)));
-    concurrencySamplesMs.push(performance.now() - started);
+    const batchOutcomes = await Promise.all(
+      batch.map((item) => renderOutcome(engine, item, input.operationOptions)),
+    );
+    const elapsedMs = performance.now() - started;
+    concurrencySamplesMs.push(elapsedMs);
+    concurrencySamples.push({ iteration, elapsed_ms: elapsedMs, outcomes: batchOutcomes });
   }
   const outcomes = [];
   for (const item of input.cases) {
-    outcomes.push(await corpusOutcome(engine, item, input.formatOptions));
+    outcomes.push(await corpusOutcome(engine, item, input.operationOptions));
   }
-  const errorBehavior = await probeTypedErrors(engine, input, loadTransport);
+  const errorBehavior = await probeTypedErrors(engine, input);
   await engine.dispose();
 
-  const queueLifecycle = await probeQueueLifecycle(input, loadTransport);
+  const queueLifecycle = await probeQueueLifecycle(input);
   return {
     outcomes,
     samples_ms: samplesMs,
     samples,
     concurrency_samples_ms: concurrencySamplesMs,
+    concurrency_samples: concurrencySamples,
     baseline_rss_bytes: baselineBytes,
     peak_rss_bytes: maxRssBytes(),
     queue_lifecycle: queueLifecycle,
@@ -110,7 +135,7 @@ async function runWarm(input) {
   };
 }
 
-async function probeTypedErrors(engine, input, loadTransport) {
+async function probeTypedErrors(engine, input) {
   const source = "flowchart TD\nA";
   const unknownOperation = await operationError(engine, {
     operationId: "bitmap",
@@ -123,20 +148,20 @@ async function probeTypedErrors(engine, input, loadTransport) {
   return {
     unknown_operation: unknownOperation,
     missing_capability: missingCapability,
-    text_measurement_callback_rejected: await probeTextMeasurementPolicy(input, loadTransport),
+    text_measurement_callback_rejected: await probeTextMeasurementPolicy(input),
   };
 }
 
-async function probeTextMeasurementPolicy(input, loadTransport) {
+async function probeTextMeasurementPolicy(input) {
   try {
-    const unexpected = await createNodeEngine(
+    const unexpected = await createProductEngine(
+      input,
       {
         bindingOptions: {
           ...input.bindingOptions,
           textMeasurement: () => ({ width: 1, height: 1 }),
         },
       },
-      { loadTransport },
     );
     await unexpected.dispose();
     return false;
@@ -158,80 +183,130 @@ async function operationError(engine, request) {
   }
 }
 
-async function probeQueueLifecycle(input, loadTransport) {
-  const saturationEngine = await createNodeEngine(
+async function probeQueueLifecycle(input) {
+  const source = SMOKE_SOURCE;
+  const optionsJson = JSON.stringify(input.operationOptions);
+  const saturationEngine = await createProductEngine(
+    input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
-    { loadTransport },
   );
-  const active = saturationEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
+  const active = saturationEngine.renderSvg(source, {
+    optionsJson,
   });
-  const queued = saturationEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
+  const queued = saturationEngine.renderSvg(source, {
+    optionsJson,
   });
-  const saturated = saturationEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
+  const saturated = saturationEngine.renderSvg(source, {
+    optionsJson,
   });
-  const saturationPassed = await rejectsAs(saturated, MermanQueueSaturatedError);
-  await Promise.allSettled([active, queued]);
-  await saturationEngine.dispose();
+  const saturatedSettlement = await lifecycleSettlement(saturated);
+  const [activeSettlement, queuedSettlement] = await Promise.all([
+    lifecycleSettlement(active),
+    lifecycleSettlement(queued),
+  ]);
+  const saturationDisposeSettlement = await lifecycleSettlement(saturationEngine.dispose());
+  const saturationPassed =
+    saturatedSettlement.status === "rejected" &&
+    saturatedSettlement.error.code === "MERMAN_QUEUE_SATURATED" &&
+    activeSettlement.status === "fulfilled" &&
+    queuedSettlement.status === "fulfilled" &&
+    saturationDisposeSettlement.status === "fulfilled";
 
-  const disposeEngine = await createNodeEngine(
+  const disposeEngine = await createProductEngine(
+    input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
-    { loadTransport },
   );
-  const disposingActive = disposeEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
+  const disposingActive = disposeEngine.renderSvg(source, {
+    optionsJson,
   });
-  const disposingQueued = disposeEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
+  const disposingQueued = disposeEngine.renderSvg(source, {
+    optionsJson,
   });
   const disposing = disposeEngine.dispose();
-  const disposePassed = await rejectsAs(disposingQueued, MermanDisposedError);
-  await Promise.allSettled([disposingActive, disposing]);
+  const [disposingQueuedSettlement, disposingActiveSettlement, disposeSettlement] =
+    await Promise.all([
+      lifecycleSettlement(disposingQueued),
+      lifecycleSettlement(disposingActive),
+      lifecycleSettlement(disposing),
+    ]);
+  const disposePassed =
+    disposingQueuedSettlement.status === "rejected" &&
+    disposingQueuedSettlement.error.code === "MERMAN_ENGINE_DISPOSED" &&
+    disposingActiveSettlement.status === "fulfilled" &&
+    disposeSettlement.status === "fulfilled";
 
-  const abortEngine = await createNodeEngine(
+  const abortEngine = await createProductEngine(
+    input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
-    { loadTransport },
   );
-  const controller = new AbortController();
-  const executing = abortEngine.renderSvg(input.cases[0].source, {
-    formatOptions: input.formatOptions,
-    signal: controller.signal,
+  const executingController = new AbortController();
+  const queuedController = new AbortController();
+  const executing = abortEngine.renderSvg(source, {
+    optionsJson,
+    signal: executingController.signal,
   });
-  controller.abort();
-  const executionResult = await executing.then(
-    () => ({ aborted: false }),
-    (error) => ({ aborted: error?.name === "AbortError" }),
-  );
-  await abortEngine.dispose();
+  const queuedAbort = abortEngine.renderSvg(source, {
+    optionsJson,
+    signal: queuedController.signal,
+  });
+  const executionResult = lifecycleSettlement(executing);
+  const queuedAbortResult = lifecycleSettlement(queuedAbort);
+  executingController.abort();
+  queuedController.abort();
+  const [executionSettlement, queuedAbortSettlement, abortDisposeSettlement] = await Promise.all([
+    executionResult,
+    queuedAbortResult,
+    lifecycleSettlement(executing.finally(() => abortEngine.dispose())),
+  ]);
+  const queuedAbortPassed =
+    queuedAbortSettlement.status === "rejected" &&
+    queuedAbortSettlement.error.name === "AbortError";
+  const executionPassed = executionSettlement.status === "fulfilled";
+  const abortDisposed = abortDisposeSettlement.status === "fulfilled";
 
   return {
     saturation_passed: saturationPassed,
     dispose_passed: disposePassed,
-    non_preemptive_abort_passed: !executionResult.aborted,
+    queued_abort_passed: queuedAbortPassed && abortDisposed,
+    non_preemptive_abort_passed: executionPassed && abortDisposed,
+    evidence: {
+      saturation: {
+        active: activeSettlement,
+        queued: queuedSettlement,
+        saturated: saturatedSettlement,
+        dispose: saturationDisposeSettlement,
+      },
+      disposal: {
+        active: disposingActiveSettlement,
+        queued: disposingQueuedSettlement,
+        dispose: disposeSettlement,
+      },
+      abort: {
+        executing: executionSettlement,
+        queued: queuedAbortSettlement,
+        dispose: abortDisposeSettlement,
+      },
+    },
   };
 }
 
-function candidateLoader(input) {
-  if (input.candidate === "napi") {
-    const binding = requireFromWorker(input.artifact);
-    return (optionsJson) =>
-      loadNativeTransport(optionsJson, { loadPackage: () => binding });
+async function createProductEngine(input, options) {
+  if (typeof input.productModule !== "string" || input.productModule.length === 0) {
+    throw new Error(`${input.candidate} benchmark lacks an installed product entrypoint.`);
   }
-  if (input.candidate === "node-wasm") {
-    return (optionsJson) =>
-      loadNodeWasmTransport(optionsJson, { modulePath: input.artifact });
+  const facade = await import(input.productModule);
+  if (typeof facade.createNodeEngine !== "function") {
+    throw new Error(`${input.candidate} product entrypoint does not export createNodeEngine().`);
   }
-  throw new Error(`unknown benchmark candidate: ${input.candidate}`);
+  return facade.createNodeEngine(options);
 }
 
-async function renderOutcome(engine, item, formatOptions) {
+async function renderOutcome(engine, item, operationOptions) {
   try {
     const result = await engine.executeOperation({
       operationId: "svg",
       source: item.source,
-      formatOptions,
+      optionsJson: JSON.stringify(operationOptions),
     });
     return {
       path: item.path,
@@ -253,13 +328,13 @@ async function renderOutcome(engine, item, formatOptions) {
   }
 }
 
-async function corpusOutcome(engine, item, formatOptions) {
-  const semantic = await semanticOutcome(engine, item);
+async function corpusOutcome(engine, item, operationOptions) {
+  const semantic = await semanticOutcome(engine, item, operationOptions);
   try {
     const result = await engine.executeOperation({
       operationId: "svg",
       source: item.source,
-      formatOptions,
+      optionsJson: JSON.stringify(operationOptions),
     });
     const svgEvidence = svgTransportEvidence(result.data);
     return {
@@ -283,11 +358,12 @@ async function corpusOutcome(engine, item, formatOptions) {
   }
 }
 
-async function semanticOutcome(engine, item) {
+async function semanticOutcome(engine, item, operationOptions) {
   try {
     const result = await engine.executeOperation({
       operationId: "semantic-json",
       source: item.source,
+      optionsJson: JSON.stringify(operationOptions),
     });
     return {
       ok: true,
@@ -309,11 +385,21 @@ function errorEvidence(error) {
   };
 }
 
-async function rejectsAs(promise, ErrorType) {
-  return promise.then(
-    () => false,
-    (error) => error instanceof ErrorType,
-  );
+async function lifecycleSettlement(promise) {
+  try {
+    await promise;
+    return { status: "fulfilled" };
+  } catch (error) {
+    return {
+      status: "rejected",
+      error: {
+        name: error?.name ?? null,
+        code: error?.code ?? null,
+        code_name: error?.codeName ?? null,
+        kind: error?.kind ?? null,
+      },
+    };
+  }
 }
 
 function digest(value) {

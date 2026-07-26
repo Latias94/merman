@@ -24,12 +24,12 @@ export function loadCorpus(manifestPath) {
   cases.sort((left, right) => left.path.localeCompare(right.path));
   if (cases.length === 0) throw new Error("Node benchmark corpus contains no input cases.");
   const bindingOptions = manifest.binding_options;
-  const formatOptions = manifest.format_options;
+  const operationOptions = manifest.operation_options;
   return {
     cases,
     bindingOptions,
-    formatOptions,
-    digest: computeInputDigest({ cases, bindingOptions, formatOptions }),
+    operationOptions,
+    digest: computeInputDigest({ cases, bindingOptions, operationOptions }),
     manifestPath: manifestFile,
   };
 }

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readBuildReceipt } from "../scripts/benchmark/build-receipt.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
@@ -12,8 +13,17 @@ import {
   computeInputDigest,
   validateComparisonReport,
 } from "../scripts/benchmark/report-contract.mjs";
+import { collectHarnessInputFiles } from "../scripts/benchmark/harness-inputs.mjs";
+import {
+  assertHarnessUnchanged,
+  projectFootprint,
+} from "../scripts/benchmark/run.mjs";
+import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
+
+const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 
 const provenance = {
   measured_at_utc: "2026-07-23T12:00:00.000Z",
@@ -30,6 +40,7 @@ const provenance = {
   },
   tools: {
     node: "v22.0.0",
+    npm: "11.0.0",
     rustc: "rustc 1.95.0",
     cargo: "cargo 1.95.0",
     napi: "3.11.0",
@@ -40,29 +51,255 @@ const provenance = {
   commit: "0123456789abcdef0123456789abcdef01234567",
 };
 const COMPARISON_INPUT_DIGEST = `sha256:${"a".repeat(64)}`;
+const SAMPLING = {
+  cold_processes: 2,
+  warmup_iterations: 1,
+  measured_iterations: 2,
+  concurrency_iterations: 2,
+};
 const CAPABILITY_RECIPE = {
   default_features: false,
-  artifact_profile: {
-    descriptor: "capabilities/artifact-profiles-v1.json",
-    id: "rust-static-svg",
-    features: ["layout-cytoscape", "layout-elk", "math", "svg"],
+  capability_recipe: {
+    descriptor: "capabilities/feature-surface-v1.json",
+    target: "native",
+    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
+const RUNTIME_CATALOG = {
+  schema_version: 1,
+  transport_api_version: 1,
+  package_version: "0.8.0-alpha.3",
+  capabilities: {
+    capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    output_ids: ["svg"],
+    operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+    system_adapter_ids: [],
+    text_measurement: {
+      protocol_version: 1,
+      provider_ids: ["vendored"],
+    },
+  },
+  registry: { diagram_family_count: 35 },
+  resources: {
+    general_binding_default_profile: "interactive",
+    cli_default_profile: "trusted-native",
+    limits: [{
+      id: "max_source_bytes",
+      phase: "source",
+      description: "Maximum source bytes.",
+      overridable: true,
+      hard_cap: false,
+    }],
+    profiles: [
+      {
+        id: "interactive",
+        purpose: "Interactive rendering.",
+        trust_assumption: "Cooperative input.",
+        recommended_binding_default: true,
+        limits: { max_source_bytes: 1024 },
+      },
+      {
+        id: "trusted-native",
+        purpose: "Trusted rendering.",
+        trust_assumption: "Trusted input.",
+        recommended_binding_default: false,
+        limits: { max_source_bytes: null },
+      },
+    ],
+  },
+};
+const RUNTIME_CATALOG_DIGEST = digestJson(RUNTIME_CATALOG);
+const TARGETS = {
+  "darwin-arm64": {
+    platform: "darwin",
+    arch: "arm64",
+    libc: null,
+    rustTarget: "aarch64-apple-darwin",
+    packageName: "@mermanjs/node-darwin-arm64",
+  },
+  "darwin-x64": {
+    platform: "darwin",
+    arch: "x64",
+    libc: null,
+    rustTarget: "x86_64-apple-darwin",
+    packageName: "@mermanjs/node-darwin-x64",
+  },
+  "linux-x64-gnu": {
+    platform: "linux",
+    arch: "x64",
+    libc: "gnu",
+    rustTarget: "x86_64-unknown-linux-gnu",
+    packageName: "@mermanjs/node-linux-x64-gnu",
+  },
+  "linux-x64-musl": {
+    platform: "linux",
+    arch: "x64",
+    libc: "musl",
+    rustTarget: "x86_64-unknown-linux-musl",
+    packageName: "@mermanjs/node-linux-x64-musl",
+  },
+  "win32-x64-msvc": {
+    platform: "win32",
+    arch: "x64",
+    libc: null,
+    rustTarget: "x86_64-pc-windows-msvc",
+    packageName: "@mermanjs/node-win32-x64-msvc",
+  },
+};
+const INITIAL_TARGETS = Object.keys(TARGETS);
+const PACKAGE_VERSION = "0.8.0-alpha.3";
+const RUNTIME_EVIDENCE = {
+  catalog_digest: RUNTIME_CATALOG_DIGEST,
+  catalog: RUNTIME_CATALOG,
+  probe: {
+    missing_capability_id: "png",
+    semantic_json_bytes: 120,
+    svg_plan_json_bytes: 120,
+    svg_bytes: 120,
+    svg_structure_sha256: `sha256:${"7".repeat(64)}`,
+    svg_geometry_sha256: `sha256:${"8".repeat(64)}`,
+    unknown_operation_kind: "unknown-operation",
+    request_options_limit_code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+  },
+};
+
+function queueLifecycleEvidence() {
+  const fulfilled = () => ({ status: "fulfilled" });
+  const rejected = (error) => ({ status: "rejected", error });
+  return {
+    saturation_passed: true,
+    dispose_passed: true,
+    queued_abort_passed: true,
+    non_preemptive_abort_passed: true,
+    process_shutdown_passed: true,
+    evidence: {
+      saturation: {
+        active: fulfilled(),
+        queued: fulfilled(),
+        saturated: rejected({ code: "MERMAN_QUEUE_SATURATED" }),
+        dispose: fulfilled(),
+      },
+      disposal: {
+        active: fulfilled(),
+        queued: rejected({ code: "MERMAN_ENGINE_DISPOSED" }),
+        dispose: fulfilled(),
+      },
+      abort: {
+        executing: fulfilled(),
+        queued: rejected({ name: "AbortError" }),
+        dispose: fulfilled(),
+      },
+      shutdown: { render_succeeded: true, dispose_called: false },
+    },
+  };
+}
+
+function timedSuccess(path) {
+  return {
+    path,
+    ok: true,
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    sha256: `sha256:${"1".repeat(64)}`,
+    bytes: 10,
+  };
+}
+
+function timedFailure(path) {
+  return {
+    path,
+    ok: false,
+    kind: "parse-error",
+    code_name: null,
+    capability_id: null,
+  };
+}
+
+test("benchmark provenance binds every runtime and package assembly input", () => {
+  const inputs = collectHarnessInputFiles();
+  for (const expected of [
+    "package-lock.json",
+    "package-surfaces.json",
+    "benchmark/corpus.json",
+    "packages/node/package.json",
+    "scripts/assemble-packages.mjs",
+    "scripts/benchmark/footprint.mjs",
+    "scripts/benchmark/run.mjs",
+    "src/engine.mjs",
+    "src/candidates/native.mjs",
+  ]) {
+    assert.equal(inputs.some((file) => file.endsWith(expected)), true, expected);
+  }
+});
+
+test("benchmark measurement rejects harness drift", () => {
+  const initial = `sha256:${"1".repeat(64)}`;
+  assert.doesNotThrow(() => assertHarnessUnchanged(initial, initial));
+  assert.throws(
+    () => assertHarnessUnchanged(initial, `sha256:${"2".repeat(64)}`),
+    /changed during measurement/i,
+  );
+});
+
+test("process shutdown probe uses a stable valid smoke diagram", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-shutdown-probe-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const productModule = path.join(root, "product.mjs");
+  writeFileSync(
+    productModule,
+    [
+      "export async function createNodeEngine() {",
+      "  return {",
+      "    async executeOperation({ source }) {",
+      "      if (source.startsWith('architecture-beta')) {",
+      "        const error = new Error('expected architecture-beta header');",
+      "        error.kind = 'parse-error';",
+      "        throw error;",
+      "      }",
+      "      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '<svg/>' };",
+      "    },",
+      "    async dispose() {},",
+      "  };",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const input = path.join(root, "input.json");
+  writeFileSync(
+    input,
+    JSON.stringify({
+      mode: "shutdown",
+      candidate: "node-wasm",
+      productModule: pathToFileURL(productModule).href,
+      bindingOptions: {
+        version: 1,
+        runtime_policy: "deterministic",
+        resources: { profile: "trusted-native" },
+      },
+      operationOptions: { version: 1 },
+      cases: [{ path: "invalid.mmd", source: "architecture-beta\ninvalid" }],
+    }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [path.join(nodeRoot, "scripts", "benchmark", "worker.mjs"), input],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    process_shutdown_passed: true,
+    evidence: { render_succeeded: true, dispose_called: false },
+  });
+});
 
 function candidate(id) {
-  return {
+  const target = id === "napi" ? "linux-x64-gnu" : null;
+  const buildReceipt = buildReceiptFor(id, target);
+  const value = {
     id,
     input_digest: COMPARISON_INPUT_DIGEST,
-    build_receipt: {
-      receipt_digest: `sha256:${"c".repeat(64)}`,
-      commit: provenance.commit,
-      source_digest: `sha256:${"d".repeat(64)}`,
-      binding_contract_digest: `sha256:${"e".repeat(64)}`,
-      capability_recipe_digest: CAPABILITY_RECIPE_DIGEST,
-      input_digest: `sha256:${"e".repeat(64)}`,
-      artifact_digest: `sha256:${"f".repeat(64)}`,
-    },
+    build_receipt: buildReceipt,
     corpus: {
       cases: 2,
       matched: 2,
@@ -77,6 +314,8 @@ function candidate(id) {
         {
           path: "a.mmd",
           ok: true,
+          operation_id: "svg",
+          media_type: "image/svg+xml",
           sha256: `sha256:${"1".repeat(64)}`,
           svg_structure_sha256: `sha256:${"2".repeat(64)}`,
           svg_geometry_sha256: `sha256:${"3".repeat(64)}`,
@@ -92,6 +331,8 @@ function candidate(id) {
           path: "b.mmd",
           ok: false,
           kind: "parse-error",
+          code_name: null,
+          capability_id: null,
           semantic: { ok: false, kind: "parse-error" },
         },
       ],
@@ -100,16 +341,62 @@ function candidate(id) {
       isolated_processes: true,
       samples_ms: [10, 11],
       samples: [
-        { elapsed_ms: 10, operation_ms: 8, baseline_rss_bytes: 400, peak_rss_bytes: 900 },
-        { elapsed_ms: 11, operation_ms: 9, baseline_rss_bytes: 410, peak_rss_bytes: 910 },
+        {
+          elapsed_ms: 10,
+          operation_ms: 8,
+          baseline_rss_bytes: 400,
+          peak_rss_bytes: 900,
+          outcome: {
+            path: "a.mmd",
+            ok: true,
+            operation_id: "svg",
+            media_type: "image/svg+xml",
+            sha256: `sha256:${"1".repeat(64)}`,
+            bytes: 10,
+          },
+        },
+        {
+          elapsed_ms: 11,
+          operation_ms: 9,
+          baseline_rss_bytes: 410,
+          peak_rss_bytes: 910,
+          outcome: {
+            path: "b.mmd",
+            ok: false,
+            kind: "parse-error",
+            code_name: null,
+            capability_id: null,
+          },
+        },
       ],
     },
     warm_latency: {
-      samples_ms: [1, 2, 1.5],
+      samples_ms: [1, 2, 1.5, 2.5],
       samples: [
-        { iteration: 0, path: "a.mmd", elapsed_ms: 1, outcome: { ok: true } },
-        { iteration: 0, path: "b.mmd", elapsed_ms: 2, outcome: { ok: false } },
-        { iteration: 1, path: "a.mmd", elapsed_ms: 1.5, outcome: { ok: true } },
+        {
+          iteration: 0,
+          path: "a.mmd",
+          elapsed_ms: 1,
+          outcome: timedSuccess("a.mmd"),
+        },
+        {
+          iteration: 0,
+          path: "b.mmd",
+          elapsed_ms: 2,
+          outcome: timedFailure("b.mmd"),
+        },
+        {
+          iteration: 1,
+          path: "a.mmd",
+          elapsed_ms: 1.5,
+          outcome: timedSuccess("a.mmd"),
+        },
+        {
+          iteration: 1,
+          path: "b.mmd",
+          elapsed_ms: 2.5,
+          outcome: timedFailure("b.mmd"),
+        },
       ],
     },
     rss: {
@@ -117,35 +404,34 @@ function candidate(id) {
       peak_bytes: 1000,
       baseline_bytes: 500,
     },
-    footprint: {
-      packed_bytes: 100,
-      unpacked_bytes: 200,
-      installed_bytes: 300,
-      package_count: 1,
-      runtime_api_passed: true,
-      install_method: "single-package",
-      target_install_passed: true,
-      packages: [
-        {
-          filename: "candidate.tgz",
-          size: 100,
-          unpacked_size: 200,
-          files: [{ path: "package/package.json", bytes: 10 }],
-        },
-      ],
-      installed_files: [
-        { path: "candidate/package.json", bytes: 300 },
-      ],
-    },
-    queue_lifecycle: {
-      saturation_passed: true,
-      dispose_passed: true,
-      non_preemptive_abort_passed: true,
-    },
+    footprint: footprintFor(id, buildReceipt, target ?? "linux-x64-gnu"),
+    queue_lifecycle: queueLifecycleEvidence(),
     concurrency: {
       workers: 4,
       requests_per_batch: 4,
       batch_samples_ms: [4, 5],
+      samples: [
+        {
+          iteration: 0,
+          elapsed_ms: 4,
+          outcomes: [
+            timedSuccess("a.mmd"),
+            timedFailure("b.mmd"),
+            timedSuccess("a.mmd"),
+            timedFailure("b.mmd"),
+          ],
+        },
+        {
+          iteration: 1,
+          elapsed_ms: 5,
+          outcomes: [
+            timedSuccess("a.mmd"),
+            timedFailure("b.mmd"),
+            timedSuccess("a.mmd"),
+            timedFailure("b.mmd"),
+          ],
+        },
+      ],
     },
     error_behavior: {
       unknown_operation: { kind: "unknown-operation", capability_id: null },
@@ -154,9 +440,270 @@ function candidate(id) {
     },
     target_results: [],
   };
+  value.corpus.results_digest = digestJson(value.corpus.outcomes);
+  value.cold_process.summary = summarize(value.cold_process.samples_ms);
+  value.warm_latency.summary = summarize(value.warm_latency.samples_ms);
+  value.concurrency.summary = summarize(value.concurrency.batch_samples_ms);
+  return value;
 }
 
-test("the digest binds corpus bytes, options, profile, and format options", () => {
+function buildReceiptFor(id, target) {
+  const receiptTarget = id === "napi" ? target : null;
+  const runtimeArtifacts = id === "napi"
+    ? [{ path: "merman.node", bytes: 100, sha256: `sha256:${"f".repeat(64)}` }]
+    : [
+        { path: "merman_node.js", bytes: 100, sha256: `sha256:${"f".repeat(64)}` },
+        { path: "merman_node_bg.wasm", bytes: 200, sha256: `sha256:${"9".repeat(64)}` },
+        { path: "package.json", bytes: 20, sha256: `sha256:${"a".repeat(64)}` },
+      ];
+  return {
+    receipt_digest: digestJson({ candidate: id, target: receiptTarget, kind: "receipt" }),
+    candidate: id,
+    target: receiptTarget,
+    rust_target: id === "napi" ? TARGETS[target].rustTarget : "wasm32-unknown-unknown",
+    wasm_pack_target: id === "node-wasm" ? "nodejs" : null,
+    commit: provenance.commit,
+    source_digest: `sha256:${"d".repeat(64)}`,
+    cargo_lock_digest: `sha256:${"5".repeat(64)}`,
+    binding_contract_digest: `sha256:${"e".repeat(64)}`,
+    dependency_closure_digest: `sha256:${"6".repeat(64)}`,
+    capability_recipe_digest: CAPABILITY_RECIPE_DIGEST,
+    runtime_catalog_digest: RUNTIME_CATALOG_DIGEST,
+    input_digest: digestJson({ candidate: id, target: receiptTarget, kind: "input" }),
+    artifact_digest: `sha256:${"f".repeat(64)}`,
+    runtime_artifacts: runtimeArtifacts,
+  };
+}
+
+function footprintFor(id, buildReceipt, target) {
+  const runtimeProbe = {
+    runtime_catalog_digest: RUNTIME_CATALOG_DIGEST,
+    semantic_operation: {
+      operation_id: "semantic-json",
+      media_type: "application/json",
+      result_digest: `sha256:${"4".repeat(64)}`,
+      bytes: 80,
+    },
+    svg_plan_operation: {
+      operation_id: "svg-plan-json",
+      media_type: "application/json",
+      result_digest: `sha256:${"0".repeat(64)}`,
+      planned_operation_id: "svg",
+      ready: true,
+      bytes: 96,
+    },
+    svg_operation: {
+      operation_id: "svg",
+      media_type: "image/svg+xml",
+      output_digest: `sha256:${"1".repeat(64)}`,
+      structure_sha256: `sha256:${"2".repeat(64)}`,
+      geometry_sha256: `sha256:${"3".repeat(64)}`,
+      bytes: 120,
+    },
+    request_options_error: {
+      code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+      kind: "resource-limit",
+      capability_id: null,
+    },
+  };
+  if (id === "napi") {
+    const contract = TARGETS[target];
+    const rootManifest = {
+      name: "@mermanjs/node",
+      version: PACKAGE_VERSION,
+      optionalDependencies: { [contract.packageName]: PACKAGE_VERSION },
+    };
+    const targetManifest = {
+      name: contract.packageName,
+      version: PACKAGE_VERSION,
+      main: "./merman.node",
+      os: [contract.platform],
+      cpu: [contract.arch],
+      ...(contract.libc === null
+        ? {}
+        : { libc: [contract.libc === "gnu" ? "glibc" : contract.libc] }),
+    };
+    const productEntrypoint = "@mermanjs/node/dist/index.mjs";
+    const artifactPath = `${contract.packageName}/merman.node`;
+    return {
+      packed_bytes: 200,
+      unpacked_bytes: 400,
+      installed_bytes: 120,
+      package_count: 2,
+      runtime_api_passed: true,
+      runtime_catalog_passed: true,
+      generic_operation_passed: true,
+      svg_plan_operation_passed: true,
+      svg_operation_passed: true,
+      request_options_passed: true,
+      browser_fallback_absent: true,
+      optional_platform_package_passed: true,
+      install_method: "root-optional-dependency",
+      target_install_passed: true,
+      packages: [
+        packedPackage("@mermanjs/node", "node.tgz"),
+        packedPackage(contract.packageName, "target.tgz"),
+      ],
+      installed_files: [
+        { path: productEntrypoint, bytes: 20 },
+        { path: artifactPath, bytes: 100 },
+      ],
+      installation_evidence: {
+        root_package: { name: "@mermanjs/node", version: PACKAGE_VERSION, manifest: rootManifest },
+        target_package: { name: contract.packageName, version: PACKAGE_VERSION, manifest: targetManifest },
+        product_entrypoint: productEntrypoint,
+        loaded_artifacts: [{ path: artifactPath, bytes: 100, sha256: buildReceipt.artifact_digest }],
+        install_manifest: {
+          name: "merman-node-footprint-probe",
+          private: true,
+          version: "0.0.0",
+          dependencies: { "@mermanjs/node": "file:../tarballs/node.tgz" },
+          overrides: { [contract.packageName]: "file:../tarballs/target.tgz" },
+        },
+        package_lock: {
+          lockfileVersion: 3,
+          packages: {
+            "": { dependencies: { "@mermanjs/node": "file:../tarballs/node.tgz" } },
+            "node_modules/@mermanjs/node": {
+              version: PACKAGE_VERSION,
+              resolved: "file:../tarballs/node.tgz",
+              optionalDependencies: { [contract.packageName]: PACKAGE_VERSION },
+            },
+            [`node_modules/${contract.packageName}`]: {
+              version: PACKAGE_VERSION,
+              resolved: "file:../tarballs/target.tgz",
+              optional: true,
+            },
+          },
+        },
+      },
+      runtime_probe: runtimeProbe,
+    };
+  }
+
+  const productEntrypoint = "@mermanjs/node-wasm-candidate/index.mjs";
+  const loaderPath = "@mermanjs/node-wasm-candidate/artifact/merman_node.js";
+  const wasmPath = "@mermanjs/node-wasm-candidate/artifact/merman_node_bg.wasm";
+  const artifactManifestPath = "@mermanjs/node-wasm-candidate/artifact/package.json";
+  return {
+    packed_bytes: 100,
+    unpacked_bytes: 200,
+    installed_bytes: 340,
+    package_count: 1,
+    runtime_api_passed: true,
+    runtime_catalog_passed: true,
+    generic_operation_passed: true,
+    svg_plan_operation_passed: true,
+    svg_operation_passed: true,
+    request_options_passed: true,
+    browser_fallback_absent: true,
+    optional_platform_package_passed: null,
+    install_method: "single-package",
+    target_install_passed: true,
+    packages: [packedPackage(WASM_PACKAGE_NAME_FOR_TEST, "wasm.tgz")],
+    installed_files: [
+      { path: productEntrypoint, bytes: 20 },
+      { path: loaderPath, bytes: 100 },
+      { path: wasmPath, bytes: 200 },
+      { path: artifactManifestPath, bytes: 20 },
+    ],
+    installation_evidence: {
+      root_package: {
+        name: WASM_PACKAGE_NAME_FOR_TEST,
+        version: PACKAGE_VERSION,
+        manifest: { name: WASM_PACKAGE_NAME_FOR_TEST, version: PACKAGE_VERSION },
+      },
+      target_package: null,
+      product_entrypoint: productEntrypoint,
+      loaded_artifacts: [
+        { path: loaderPath, bytes: 100, sha256: buildReceipt.artifact_digest },
+        { path: wasmPath, bytes: 200, sha256: `sha256:${"9".repeat(64)}` },
+        { path: artifactManifestPath, bytes: 20, sha256: `sha256:${"a".repeat(64)}` },
+      ],
+      install_manifest: {
+        name: "merman-node-footprint-probe",
+        private: true,
+        version: "0.0.0",
+        dependencies: {
+          [WASM_PACKAGE_NAME_FOR_TEST]: "file:../tarballs/wasm.tgz",
+        },
+      },
+      package_lock: {
+        lockfileVersion: 3,
+        packages: {
+          "": {
+            dependencies: {
+              [WASM_PACKAGE_NAME_FOR_TEST]: "file:../tarballs/wasm.tgz",
+            },
+          },
+          [`node_modules/${WASM_PACKAGE_NAME_FOR_TEST}`]: {
+            version: PACKAGE_VERSION,
+            resolved: "file:../tarballs/wasm.tgz",
+          },
+        },
+      },
+    },
+    runtime_probe: runtimeProbe,
+  };
+}
+
+const WASM_PACKAGE_NAME_FOR_TEST = "@mermanjs/node-wasm-candidate";
+
+function packedPackage(name, filename) {
+  return {
+    name,
+    version: PACKAGE_VERSION,
+    filename,
+    size: 100,
+    unpacked_size: 200,
+    files: [{ path: "package/package.json", bytes: 200 }],
+  };
+}
+
+function targetResultFor(candidateValue, target) {
+  const contract = TARGETS[target];
+  const buildReceipt = candidateValue.id === "napi"
+    ? buildReceiptFor("napi", target)
+    : candidateValue.build_receipt;
+  const targetProvenance = {
+    ...provenance,
+    machine: {
+      ...provenance.machine,
+      hostname: `${target}-host`,
+      os: contract.platform,
+      arch: contract.arch,
+    },
+  };
+  const payload = {
+    schema_version: 1,
+    host: {
+      platform: contract.platform,
+      arch: contract.arch,
+      libc: contract.libc,
+      resolved_target: target,
+      node: provenance.tools.node,
+    },
+    provenance: targetProvenance,
+    build_receipt: buildReceipt,
+    footprint: footprintFor(candidateValue.id, buildReceipt, target),
+    queue_lifecycle: structuredClone(candidateValue.queue_lifecycle),
+    error_behavior: structuredClone(candidateValue.error_behavior),
+  };
+  return {
+    target,
+    runtime_passed: true,
+    install_passed: true,
+    node: provenance.tools.node,
+    evidence: { ...payload, digest: digestJson(payload) },
+  };
+}
+
+function resignTargetEvidence(result) {
+  const { digest: _digest, ...payload } = result.evidence;
+  result.evidence.digest = digestJson(payload);
+}
+
+test("the digest binds corpus bytes, binding policy, and operation options", () => {
   const first = computeInputDigest({
     cases: [
       { path: "a.mmd", source: "flowchart TD\nA" },
@@ -167,7 +714,7 @@ test("the digest binds corpus bytes, options, profile, and format options", () =
       runtime_policy: "deterministic",
       resources: { profile: "trusted-native" },
     },
-    formatOptions: { version: 1 },
+    operationOptions: { version: 1 },
   });
   const second = computeInputDigest({
     cases: [
@@ -179,10 +726,17 @@ test("the digest binds corpus bytes, options, profile, and format options", () =
       runtime_policy: "deterministic",
       resources: { profile: "trusted-native" },
     },
-    formatOptions: { version: 1 },
+    operationOptions: { version: 1 },
   });
   assert.match(first, /^sha256:[0-9a-f]{64}$/);
   assert.notEqual(first, second);
+});
+
+test("comparison projection preserves installed SVG planning evidence", () => {
+  assert.equal(
+    projectFootprint({ svg_plan_operation_passed: true }).svg_plan_operation_passed,
+    true,
+  );
 });
 
 test("SVG transport evidence separates structure from exact geometry", () => {
@@ -217,6 +771,7 @@ test("SVG transport evidence separates structure from exact geometry", () => {
     svgTransportEvidence(native.replace("-19.184615184444468", "-19.184615")).structure_sha256,
   );
   assert.throws(() => svgTransportEvidence("<svg><path></svg>"), /inspect/i);
+  assert.throws(() => svgTransportEvidence("<not-svg/>"), /inspect/i);
 });
 
 test("a build receipt is bound to the exact measured artifact", (context) => {
@@ -225,12 +780,24 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   const artifact = path.join(root, "merman.node");
   writeFileSync(artifact, "candidate-v1");
   const artifactDigest = `sha256:${createHash("sha256").update("candidate-v1").digest("hex")}`;
+  const cargoLockDigest = `sha256:${createHash("sha256")
+    .update(readFileSync(path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock")))
+    .digest("hex")}`;
+  const tools = {
+    cargo: "cargo 1.95.0",
+    node: "v22.0.0",
+    rustc: "rustc 1.95.0",
+    transport_builder: "3.7.4",
+  };
   const receipt = {
     schema_version: 1,
     config: {
       candidate: "napi",
+      target: "darwin-arm64",
+      rust_target: "aarch64-apple-darwin",
+      wasm_pack_target: null,
       default_features: false,
-      artifact_profile: CAPABILITY_RECIPE.artifact_profile,
+      capability_recipe: CAPABILITY_RECIPE.capability_recipe,
       features: [
         "layout-cytoscape",
         "layout-elk",
@@ -241,8 +808,33 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     },
     commit: provenance.commit,
     source_digest: `sha256:${"d".repeat(64)}`,
+    cargo_lock_digest: cargoLockDigest,
     binding_contract_digest: `sha256:${"e".repeat(64)}`,
-    input_digest: `sha256:${"e".repeat(64)}`,
+    dependency_closure: {
+      digest: digestJson([
+        {
+          name: "merman-node-candidate",
+          version: "0.8.0-alpha.3",
+          source: "path:crates/merman-node",
+        },
+        { name: "napi", version: "3.11.0", source: "registry+test" },
+        { name: "napi-build", version: "2.3.2", source: "registry+test" },
+        { name: "napi-derive", version: "3.6.0", source: "registry+test" },
+      ]),
+      packages: [
+        {
+          name: "merman-node-candidate",
+          version: "0.8.0-alpha.3",
+          source: "path:crates/merman-node",
+        },
+        { name: "napi", version: "3.11.0", source: "registry+test" },
+        { name: "napi-build", version: "2.3.2", source: "registry+test" },
+        { name: "napi-derive", version: "3.6.0", source: "registry+test" },
+      ],
+    },
+    input_digest: null,
+    runtime: RUNTIME_EVIDENCE,
+    tools,
     artifacts: [
       { path: "merman.node", bytes: 12, sha256: artifactDigest },
       {
@@ -252,18 +844,86 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       },
     ],
   };
+  receipt.input_digest = digestJson({
+    cargo_lock_digest: receipt.cargo_lock_digest,
+    config: receipt.config,
+    dependency_closure_digest: receipt.dependency_closure.digest,
+    source_digest: receipt.source_digest,
+    tools: receipt.tools,
+  });
+  const currentEvidence = {
+    source_digest: receipt.source_digest,
+    binding_contract_digest: receipt.binding_contract_digest,
+    dependency_closure_digest: receipt.dependency_closure.digest,
+  };
+  const readReceipt = () => readBuildReceipt(artifact, {
+    probeCurrentRuntime: () => receipt.runtime,
+    resolveCurrentEvidence: () => currentEvidence,
+  });
   writeFileSync(path.join(root, "runtime.sidecar"), "sidecar-v1");
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
-  assert.deepEqual(readBuildReceipt(artifact), {
+  assert.deepEqual(readReceipt(), {
     receipt_digest: digestJson(receipt),
+    candidate: "napi",
+    target: "darwin-arm64",
+    rust_target: "aarch64-apple-darwin",
+    wasm_pack_target: null,
     commit: receipt.commit,
     source_digest: receipt.source_digest,
+    cargo_lock_digest: receipt.cargo_lock_digest,
     binding_contract_digest: receipt.binding_contract_digest,
+    dependency_closure_digest: receipt.dependency_closure.digest,
     capability_recipe_digest: CAPABILITY_RECIPE_DIGEST,
+    runtime_catalog_digest: RUNTIME_CATALOG_DIGEST,
     input_digest: receipt.input_digest,
     artifact_digest: artifactDigest,
+    runtime_artifacts: [{ path: "merman.node", bytes: 12, sha256: artifactDigest }],
   });
+
+  assert.throws(
+    () => readBuildReceipt(artifact, {
+      probeCurrentRuntime: () => receipt.runtime,
+      resolveCurrentEvidence: () => ({
+        ...currentEvidence,
+        source_digest: `sha256:${"0".repeat(64)}`,
+      }),
+    }),
+    /source_digest.*stale.*current source tree/i,
+  );
+  assert.throws(
+    () => readBuildReceipt(artifact, {
+      probeCurrentRuntime: () => ({
+        ...receipt.runtime,
+        probe: { ...receipt.runtime.probe, svg_bytes: receipt.runtime.probe.svg_bytes + 1 },
+      }),
+      resolveCurrentEvidence: () => currentEvidence,
+    }),
+    /runtime evidence.*current artifact/i,
+  );
+
+  const forgedInputDigest = structuredClone(receipt);
+  forgedInputDigest.input_digest = `sha256:${"0".repeat(64)}`;
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(forgedInputDigest));
+  assert.throws(() => readReceipt(), /input digest.*recorded build inputs/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const wrongTarget = structuredClone(receipt);
+  wrongTarget.config.rust_target = "x86_64-apple-darwin";
+  wrongTarget.input_digest = digestJson({
+    cargo_lock_digest: wrongTarget.cargo_lock_digest,
+    config: wrongTarget.config,
+    dependency_closure_digest: wrongTarget.dependency_closure.digest,
+    source_digest: wrongTarget.source_digest,
+    tools: wrongTarget.tools,
+  });
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(wrongTarget));
+  assert.throws(() => readReceipt(), /target configuration.*canonical/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  writeFileSync(path.join(root, "unrecorded.sidecar"), "unrecorded");
+  assert.throws(() => readReceipt(), /artifact file set.*does not match/i);
+  rmSync(path.join(root, "unrecorded.sidecar"));
 
   const profileAsFeature = structuredClone(receipt);
   profileAsFeature.config.features = [
@@ -274,15 +934,52 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     "transport-napi",
   ];
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(profileAsFeature));
-  assert.throws(() => readBuildReceipt(artifact), /artifact profile leaves plus its transport/i);
+  assert.throws(() => readReceipt(), /capability recipe capabilities plus its transport/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const missingRuntimeEvidence = structuredClone(receipt);
+  delete missingRuntimeEvidence.runtime;
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(missingRuntimeEvidence));
+  assert.throws(() => readReceipt(), /runtime evidence/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const unparsedSvgEvidence = structuredClone(receipt);
+  delete unparsedSvgEvidence.runtime.probe.svg_structure_sha256;
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(unparsedSvgEvidence));
+  assert.throws(() => readReceipt(), /runtime probe/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const phantomRuntimeOperation = structuredClone(receipt);
+  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.splice(
+    1,
+    0,
+    "phantom-json",
+  );
+  phantomRuntimeOperation.runtime.catalog_digest = digestJson(
+    phantomRuntimeOperation.runtime.catalog,
+  );
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(phantomRuntimeOperation));
+  assert.throws(() => readReceipt(), /capability recipe/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const uncallableRuntimeProvider = structuredClone(receipt);
+  uncallableRuntimeProvider.runtime.catalog.capabilities.text_measurement.provider_ids = [
+    "host-callback",
+    "vendored",
+  ];
+  uncallableRuntimeProvider.runtime.catalog_digest = digestJson(
+    uncallableRuntimeProvider.runtime.catalog,
+  );
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(uncallableRuntimeProvider));
+  assert.throws(() => readReceipt(), /text measurement provider/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   writeFileSync(path.join(root, "runtime.sidecar"), "sidecar-v2");
-  assert.throws(() => readBuildReceipt(artifact), /does not match/i);
+  assert.throws(() => readReceipt(), /does not match/i);
   writeFileSync(path.join(root, "runtime.sidecar"), "sidecar-v1");
 
   writeFileSync(artifact, "candidate-v2");
-  assert.throws(() => readBuildReceipt(artifact), /does not match/i);
+  assert.throws(() => readReceipt(), /does not match/i);
 });
 
 test("WASM footprint staging preserves generated artifacts despite wasm-pack's wildcard ignore", (context) => {
@@ -314,13 +1011,15 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
     input: {
       digest: COMPARISON_INPUT_DIGEST,
       corpus: "fixtures/**/*.mmd",
+      cases: 2,
       binding_options: {
         version: 1,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      format_options: { version: 1 },
+      operation_options: { version: 1 },
     },
+    sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "inconclusive", selected: null, reasons: ["target matrix incomplete"] },
   };
@@ -338,6 +1037,17 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   mismatched.candidates[1].input_digest = `sha256:${"b".repeat(64)}`;
   assert.throws(() => validateComparisonReport(mismatched), /input digest/i);
 
+  const missingOperationOptions = structuredClone(report);
+  delete missingOperationOptions.input.operation_options;
+  assert.throws(
+    () => validateComparisonReport(missingOperationOptions),
+    /operation options/i,
+  );
+
+  const missingSampling = structuredClone(report);
+  delete missingSampling.sampling;
+  assert.throws(() => validateComparisonReport(missingSampling), /sampling/i);
+
   const fakeCold = structuredClone(report);
   fakeCold.candidates[0].cold_process.isolated_processes = false;
   assert.throws(() => validateComparisonReport(fakeCold), /isolated process/i);
@@ -345,6 +1055,13 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   const missingBuildReceipt = structuredClone(report);
   delete missingBuildReceipt.candidates[0].build_receipt.receipt_digest;
   assert.throws(() => validateComparisonReport(missingBuildReceipt), /build receipt/i);
+
+  const incompleteWasmReceipt = structuredClone(report);
+  incompleteWasmReceipt.candidates[0].build_receipt.runtime_artifacts.splice(1, 1);
+  assert.throws(
+    () => validateComparisonReport(incompleteWasmReceipt),
+    /runtime artifact set/i,
+  );
 
   const erasedErrorKind = structuredClone(report);
   erasedErrorKind.candidates[0].error_behavior.missing_capability.kind = "generic";
@@ -363,10 +1080,21 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
     /capability-recipe digest/i,
   );
 
+  const mismatchedRuntimeCatalog = structuredClone(report);
+  mismatchedRuntimeCatalog.candidates[1].build_receipt.runtime_catalog_digest =
+    `sha256:${"6".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(mismatchedRuntimeCatalog),
+    /runtime.catalog|runtime-catalog/i,
+  );
+
   const distinctArtifactClosures = structuredClone(report);
   distinctArtifactClosures.candidates[1].build_receipt.source_digest =
     `sha256:${"8".repeat(64)}`;
-  assert.deepEqual(validateComparisonReport(distinctArtifactClosures), distinctArtifactClosures);
+  assert.throws(
+    () => validateComparisonReport(distinctArtifactClosures),
+    /source digest/i,
+  );
 
   const missingOutcomes = structuredClone(report);
   delete missingOutcomes.candidates[0].corpus.outcomes;
@@ -383,7 +1111,213 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   const missingPackageContents = structuredClone(report);
   delete missingPackageContents.candidates[0].footprint.packages;
   assert.throws(() => validateComparisonReport(missingPackageContents), /package contents/i);
+
+  const forgedFootprintTotal = structuredClone(report);
+  forgedFootprintTotal.candidates[0].footprint.installed_bytes += 1;
+  assert.throws(
+    () => validateComparisonReport(forgedFootprintTotal),
+    /installed footprint total.*file contents/i,
+  );
+
+  const replacedInstalledWasm = structuredClone(report);
+  replacedInstalledWasm.candidates[0].footprint.installation_evidence.loaded_artifacts
+    .find((artifact) => artifact.path.endsWith("merman_node_bg.wasm")).sha256 =
+      `sha256:${"0".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(replacedInstalledWasm),
+    /bind the installed WASM artifacts/i,
+  );
+
+  const failedProductEntrypoint = structuredClone(report);
+  failedProductEntrypoint.candidates[0].footprint.runtime_api_passed = false;
+  assert.throws(
+    () => validateComparisonReport(failedProductEntrypoint),
+    /runtime_api_passed.*must be true/i,
+  );
+
+  const browserFallback = structuredClone(report);
+  browserFallback.candidates[1].footprint.browser_fallback_absent = false;
+  assert.throws(
+    () => validateComparisonReport(browserFallback),
+    /browser_fallback_absent.*must be true/i,
+  );
+
+  const explicitPlatformInstall = structuredClone(report);
+  const napiFootprint = explicitPlatformInstall.candidates[1].footprint;
+  const targetName = napiFootprint.installation_evidence.target_package.name;
+  napiFootprint.installation_evidence.install_manifest.dependencies[targetName] =
+    "file:../tarballs/target.tgz";
+  napiFootprint.installation_evidence.package_lock.packages[""].dependencies[targetName] =
+    "file:../tarballs/target.tgz";
+  assert.throws(
+    () => validateComparisonReport(explicitPlatformInstall),
+    /install manifest or lockfile root edge/i,
+  );
+
+  const failedSvgProbe = structuredClone(report);
+  failedSvgProbe.candidates[0].footprint.svg_operation_passed = false;
+  assert.throws(
+    () => validateComparisonReport(failedSvgProbe),
+    /svg_operation_passed.*must be true/i,
+  );
+
+  const failedSvgPlanProbe = structuredClone(report);
+  failedSvgPlanProbe.candidates[0].footprint.svg_plan_operation_passed = false;
+  assert.throws(
+    () => validateComparisonReport(failedSvgPlanProbe),
+    /svg_plan_operation_passed.*must be true/i,
+  );
+
+  const missingShutdownEvidence = structuredClone(report);
+  delete missingShutdownEvidence.candidates[0].queue_lifecycle.process_shutdown_passed;
+  assert.throws(
+    () => validateComparisonReport(missingShutdownEvidence),
+    /process_shutdown_passed/i,
+  );
+
+  const failedQueuedAbortProbe = structuredClone(report);
+  failedQueuedAbortProbe.candidates[0].queue_lifecycle.queued_abort_passed = false;
+  assert.throws(
+    () => validateComparisonReport(failedQueuedAbortProbe),
+    /queued_abort_passed.*must be true/i,
+  );
+
+  const forgedLifecycleSummary = structuredClone(report);
+  forgedLifecycleSummary.candidates[0].queue_lifecycle.evidence.saturation.active = {
+    status: "rejected",
+    error: { code: "MERMAN_QUEUE_SATURATED" },
+  };
+  assert.throws(
+    () => validateComparisonReport(forgedLifecycleSummary),
+    /saturation active.*settlement is invalid/i,
+  );
+
+  const forgedLatencySummary = structuredClone(report);
+  forgedLatencySummary.candidates[0].warm_latency.summary.mean_ms += 1;
+  assert.throws(
+    () => validateComparisonReport(forgedLatencySummary),
+    /warm latency summary.*raw samples/i,
+  );
+
+  const duplicateWarmSample = structuredClone(report);
+  duplicateWarmSample.candidates[0].warm_latency.samples[3] = {
+    ...duplicateWarmSample.candidates[0].warm_latency.samples[2],
+    elapsed_ms: duplicateWarmSample.candidates[0].warm_latency.samples_ms[3],
+  };
+  assert.throws(
+    () => validateComparisonReport(duplicateWarmSample),
+    /raw warm-latency sample/i,
+  );
+
+  const forgedTimedOutcome = structuredClone(report);
+  forgedTimedOutcome.candidates[0].warm_latency.samples[0].outcome.sha256 =
+    `sha256:${"0".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(forgedTimedOutcome),
+    /raw warm-latency sample/i,
+  );
+
+  const failedConcurrentOutcome = structuredClone(report);
+  failedConcurrentOutcome.candidates[0].concurrency.samples[0].outcomes[0] =
+    timedFailure("a.mmd");
+  assert.throws(
+    () => validateComparisonReport(failedConcurrentOutcome),
+    /concurrency sample 0.*failed outcome/i,
+  );
+
+  const forgedOutcomeDigest = structuredClone(report);
+  forgedOutcomeDigest.candidates[0].corpus.results_digest = `sha256:${"0".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(forgedOutcomeDigest),
+    /raw corpus outcomes.*recorded summary/i,
+  );
+
+  const forgedParity = structuredClone(report);
+  forgedParity.candidates[1].corpus.outcomes[0].semantic.sha256 = `sha256:${"0".repeat(64)}`;
+  forgedParity.candidates[1].corpus.results_digest = digestJson(
+    forgedParity.candidates[1].corpus.outcomes,
+  );
+  assert.throws(
+    () => validateComparisonReport(forgedParity),
+    /raw corpus outcomes.*cross-candidate parity/i,
+  );
+
+  const genericTransportFailures = structuredClone(report);
+  for (const candidateResult of genericTransportFailures.candidates) {
+    candidateResult.corpus.outcomes[0] = {
+      path: "a.mmd",
+      ok: false,
+      kind: "generic",
+      semantic: { ok: false, kind: "generic" },
+    };
+    candidateResult.corpus.successful = 0;
+    candidateResult.corpus.failed = 2;
+    candidateResult.corpus.results_digest = digestJson(candidateResult.corpus.outcomes);
+  }
+  assert.throws(
+    () => validateComparisonReport(genericTransportFailures),
+    /typed error evidence/i,
+  );
+
+  const typedBindingStatusFailures = structuredClone(report);
+  for (const candidateResult of typedBindingStatusFailures.candidates) {
+    for (const outcome of candidateResult.corpus.outcomes) {
+      if (!outcome.ok) {
+        recordParseStatus(outcome);
+        recordParseStatus(outcome.semantic);
+      }
+    }
+    for (const sample of candidateResult.cold_process.samples) {
+      if (!sample.outcome.ok) recordParseStatus(sample.outcome);
+    }
+    for (const sample of candidateResult.warm_latency.samples) {
+      if (!sample.outcome.ok) recordParseStatus(sample.outcome);
+    }
+    for (const sample of candidateResult.concurrency.samples) {
+      for (const outcome of sample.outcomes) {
+        if (!outcome.ok) recordParseStatus(outcome);
+      }
+    }
+    candidateResult.corpus.results_digest = digestJson(candidateResult.corpus.outcomes);
+  }
+  assert.deepEqual(
+    validateComparisonReport(typedBindingStatusFailures),
+    typedBindingStatusFailures,
+  );
+
+  const internalFailures = structuredClone(typedBindingStatusFailures);
+  for (const candidateResult of internalFailures.candidates) {
+    const outcome = candidateResult.corpus.outcomes.find((item) => !item.ok);
+    outcome.code_name = "MERMAN_INTERNAL_ERROR";
+    outcome.semantic.code_name = "MERMAN_INTERNAL_ERROR";
+    candidateResult.corpus.results_digest = digestJson(candidateResult.corpus.outcomes);
+  }
+  assert.throws(
+    () => validateComparisonReport(internalFailures),
+    /typed error evidence/i,
+  );
+
+  const failedLifecycleProbe = structuredClone(report);
+  failedLifecycleProbe.candidates[0].queue_lifecycle.dispose_passed = false;
+  assert.throws(
+    () => validateComparisonReport(failedLifecycleProbe),
+    /dispose_passed.*must be true/i,
+  );
+
+  const mismatchedCargoLock = structuredClone(report);
+  mismatchedCargoLock.candidates[1].build_receipt.cargo_lock_digest =
+    `sha256:${"4".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(mismatchedCargoLock),
+    /Cargo lock digest/i,
+  );
 });
+
+function recordParseStatus(evidence) {
+  evidence.kind = "generic";
+  evidence.code_name = "MERMAN_PARSE_ERROR";
+  evidence.capability_id = null;
+}
 
 test("the report cannot announce a winner without complete target evidence", () => {
   const report = {
@@ -392,13 +1326,15 @@ test("the report cannot announce a winner without complete target evidence", () 
     input: {
       digest: COMPARISON_INPUT_DIGEST,
       corpus: "fixtures/**/*.mmd",
+      cases: 2,
       binding_options: {
         version: 1,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      format_options: { version: 1 },
+      operation_options: { version: 1 },
     },
+    sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "admitted", selected: "napi", reasons: ["complete evidence"] },
   };
@@ -412,24 +1348,82 @@ test("the report cannot announce a winner without complete target evidence", () 
   ];
   assert.throws(
     () => validateComparisonReport(report),
-    /complete initial target matrix/i,
+    /runtime and installation evidence/i,
   );
 
-  report.candidates[1].target_results = [
-    "darwin-arm64",
-    "darwin-x64",
-    "linux-x64-gnu",
-    "linux-x64-musl",
-    "win32-x64-msvc",
-  ].map((target) => ({ target, runtime_passed: true, install_passed: true }));
-  report.candidates[1].target_results[2].install_passed = false;
+  report.candidates[1].target_results = INITIAL_TARGETS.map((target) => ({
+    target,
+    runtime_passed: true,
+    install_passed: true,
+  }));
   assert.throws(
     () => validateComparisonReport(report),
     /runtime and installation evidence/i,
   );
 
+  report.candidates[1].target_results = [
+    targetResultFor(report.candidates[1], "darwin-arm64"),
+  ];
+  assert.throws(
+    () => validateComparisonReport(report),
+    /complete initial target matrix/i,
+  );
+
+  report.candidates[1].target_results = INITIAL_TARGETS.map((target) =>
+    targetResultFor(report.candidates[1], target));
+
+  const duplicateNativeReceipt = structuredClone(report);
+  duplicateNativeReceipt.candidates[1].target_results[1].evidence.build_receipt.receipt_digest =
+    duplicateNativeReceipt.candidates[1].target_results[0].evidence.build_receipt.receipt_digest;
+  resignTargetEvidence(duplicateNativeReceipt.candidates[1].target_results[1]);
+  assert.throws(
+    () => validateComparisonReport(duplicateNativeReceipt),
+    /distinct build receipt per native target/i,
+  );
+
+  const wrongHost = structuredClone(report);
+  wrongHost.candidates[1].target_results[0].evidence.host.platform = "win32";
+  resignTargetEvidence(wrongHost.candidates[1].target_results[0]);
+  assert.throws(
+    () => validateComparisonReport(wrongHost),
+    /host evidence does not match the target/i,
+  );
+
+  const wrongReceiptTarget = structuredClone(report);
+  wrongReceiptTarget.candidates[1].target_results[0].evidence.build_receipt.target =
+    "darwin-x64";
+  resignTargetEvidence(wrongReceiptTarget.candidates[1].target_results[0]);
+  assert.throws(
+    () => validateComparisonReport(wrongReceiptTarget),
+    /build receipt target configuration/i,
+  );
+
+  const wrongLoadedArtifact = structuredClone(report);
+  wrongLoadedArtifact.candidates[1].target_results[0]
+    .evidence.footprint.installation_evidence.loaded_artifacts[0].sha256 =
+      `sha256:${"0".repeat(64)}`;
+  resignTargetEvidence(wrongLoadedArtifact.candidates[1].target_results[0]);
+  assert.throws(
+    () => validateComparisonReport(wrongLoadedArtifact),
+    /bind the target package and loaded artifact/i,
+  );
+
+  const falseInnerInstallFlag = structuredClone(report);
+  falseInnerInstallFlag.candidates[1].target_results[0]
+    .evidence.footprint.target_install_passed = false;
+  resignTargetEvidence(falseInnerInstallFlag.candidates[1].target_results[0]);
+  assert.throws(
+    () => validateComparisonReport(falseInnerInstallFlag),
+    /pass flags.*complete target evidence/i,
+  );
+
+  report.candidates[1].target_results[2].install_passed = false;
+  assert.throws(
+    () => validateComparisonReport(report),
+    /pass flags.*complete target evidence/i,
+  );
+
   report.candidates[1].target_results[2].install_passed = true;
-  report.candidates[1].footprint.install_method = "explicit-package-pair";
   report.candidates[1].footprint.target_install_passed = false;
   assert.throws(
     () => validateComparisonReport(report),
@@ -437,6 +1431,7 @@ test("the report cannot announce a winner without complete target evidence", () 
   );
 
   report.candidates[1].footprint.target_install_passed = true;
+  report.candidates[1].footprint.install_method = "explicit-package-pair";
   assert.throws(
     () => validateComparisonReport(report),
     /root optional dependency/i,
@@ -446,12 +1441,16 @@ test("the report cannot announce a winner without complete target evidence", () 
   report.candidates[1].queue_lifecycle.dispose_passed = false;
   assert.throws(
     () => validateComparisonReport(report),
-    /queue and lifecycle/i,
+    /dispose_passed.*must be true/i,
   );
 
   report.candidates[1].queue_lifecycle.dispose_passed = true;
-  report.candidates[1].corpus.geometry_svg_mismatches = 1;
-  report.candidates[1].corpus.geometry_mismatch_paths = ["a.mmd"];
+  report.candidates[1].corpus.outcomes[0].svg_geometry_sha256 = `sha256:${"8".repeat(64)}`;
+  report.candidates[1].corpus.results_digest = digestJson(report.candidates[1].corpus.outcomes);
+  for (const candidateResult of report.candidates) {
+    candidateResult.corpus.geometry_svg_mismatches = 1;
+    candidateResult.corpus.geometry_mismatch_paths = ["a.mmd"];
+  }
   assert.deepEqual(validateComparisonReport(report), report);
 });
 
@@ -462,13 +1461,15 @@ test("a rejected report records no selected transport", () => {
     input: {
       digest: COMPARISON_INPUT_DIGEST,
       corpus: "fixtures/**/*.mmd",
+      cases: 2,
       binding_options: {
         version: 1,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      format_options: { version: 1 },
+      operation_options: { version: 1 },
     },
+    sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "rejected", selected: null, reasons: ["semantic corpus mismatch"] },
   };

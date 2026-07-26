@@ -1,9 +1,15 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "private-evaluation",
-  "artifact_profile": {
-    "descriptor": "capabilities/artifact-profiles-v1.json",
-    "id": "rust-static-svg"
+  "capability_recipe": {
+    "descriptor": "capabilities/feature-surface-v1.json",
+    "target": "native",
+    "capabilities": [
+      "layout-cytoscape",
+      "layout-elk",
+      "math",
+      "svg"
+    ]
   },
   "cargo": {
     "manifest": "crates/merman-node/Cargo.toml",
