@@ -36,6 +36,7 @@ WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
 WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
 ARTIFACT_PROFILE_DESCRIPTOR_JSON = ROOT / "capabilities" / "artifact-profiles-v1.json"
+RELEASE_SKILL = ROOT / ".agents" / "skills" / "merman-release" / "SKILL.md"
 APPLE_RELEASE_SMOKE = (
     ROOT
     / "platforms"
@@ -70,6 +71,16 @@ SOURCE_REF_RELEASE_WORKFLOWS = [
 
 def read_workflow(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+class ReleaseSkillAuthorizationTests(unittest.TestCase):
+    def test_tag_triggered_publishers_form_one_authorization_bundle(self) -> None:
+        skill = RELEASE_SKILL.read_text(encoding="utf-8")
+
+        self.assertIn("tag-triggered publication bundle", skill)
+        for workflow in ["release.yml", "release-crates.yml", "release-flutter.yml"]:
+            self.assertIn(f"`{workflow}`", skill)
+        self.assertIn("authorize all three tag-triggered surfaces", skill)
 
 
 def web_package_entries() -> list[dict]:
@@ -307,12 +318,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             text = read_workflow(path)
 
             checkout_count = text.count("uses: actions/checkout")
+            local_validated_ref_count = len(
+                re.findall(
+                    r"(?m)^\s*ref:\s*\$\{\{ steps\.release\.outputs\.source_ref \}\}\s*$",
+                    text,
+                )
+            )
             validated_ref_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_ref }}")
+            validated_sha_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_sha }}")
             pinned_ref_count = text.count("ref: ${{ needs.preflight.outputs.source_sha }}")
             workflow_ref_count = text.count("ref: ${{ github.workflow_sha }}")
             with self.subTest(workflow=path.name):
                 self.assertEqual(
-                    validated_ref_count + pinned_ref_count + workflow_ref_count,
+                    local_validated_ref_count
+                    + validated_ref_count
+                    + validated_sha_count
+                    + pinned_ref_count
+                    + workflow_ref_count,
                     checkout_count,
                 )
                 self.assertGreaterEqual(
@@ -832,6 +854,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("id-token: write", verify_job)
         self.assertIn("python -m pip install --upgrade twine", verify_job)
         self.assertIn("python -m twine check wheels/merman-*.whl", verify_job)
+        self.assertIn('test "${#wheels[@]}" -eq 3', verify_job)
+        self.assertIn(
+            'python scripts/python_wheel_licenses.py "${wheels[@]}"',
+            verify_job,
+        )
 
         self.assertIn("contents: write", github_release_job)
         self.assertIn("environment: github-release", github_release_job)
@@ -946,6 +973,22 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--target-dist-tag staging", pack["run"])
         self.assertNotIn("npm pack --dry-run", pack["run"])
 
+    def test_release_preflight_recomputes_exact_rust_license_reports(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        preflight = workflow_job(workflow, "versions-and-packages")
+        install = workflow_step(preflight, name="Install cargo-about")
+        verify = workflow_step(
+            preflight,
+            name="Verify exact Rust dependency license reports",
+        )
+
+        self.assertEqual(install["uses"], "taiki-e/install-action@v2")
+        self.assertEqual(install["with"]["tool"], "cargo-about@0.9.1")
+        self.assertEqual(
+            verify["run"],
+            "python3 scripts/generate-rust-license-report.py --check",
+        )
+
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
         publish_job = indented_block(text, "publish:")
@@ -998,7 +1041,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertEqual(
             public_names,
-            {"@mermanjs/web", "@mermanjs/web-analysis", "@mermanjs/web-ascii", "@mermanjs/web-editor"},
+            {
+                "@mermanjs/web",
+                "@mermanjs/web-analysis",
+                "@mermanjs/web-ascii",
+                "@mermanjs/web-editor",
+                "@mermanjs/web-render",
+            },
         )
 
     def test_npmrc_files_do_not_disable_provenance(self) -> None:

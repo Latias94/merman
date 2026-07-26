@@ -110,8 +110,12 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Cargo workspace dependency merman-core", labels)
         self.assertIn("Cargo.lock package merman-lsp", labels)
         self.assertIn("fuzz/Cargo.lock package merman-ffi", labels)
+        self.assertIn("Web workspace", labels)
+        self.assertIn("Web workspace lock", labels)
+        self.assertIn("Web workspace lock package", labels)
         self.assertIn("Web package @mermanjs/web", labels)
         self.assertIn("Web lock package @mermanjs/web", labels)
+        self.assertIn("Playground local Web workspace lock", labels)
         self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
         self.assertIn("Python package", labels)
@@ -189,6 +193,38 @@ class ReleaseProjectionTests(unittest.TestCase):
                     'name = "merman"\nversion = "9.9.9"',
                 ),
             ),
+            (
+                release_projection.WEB_WORKSPACE_PACKAGE,
+                lambda text: replace_once(
+                    text,
+                    f'"version": "{canonical}"',
+                    '"version": "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.WEB_LOCK,
+                lambda text: replace_once(
+                    text,
+                    f'"version": "{canonical}"',
+                    '"version": "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.WEB_LOCK,
+                lambda text: replace_once(
+                    text,
+                    (
+                        '"": {\n'
+                        '      "name": "merman-web-workspace",\n'
+                        f'      "version": "{canonical}"'
+                    ),
+                    (
+                        '"": {\n'
+                        '      "name": "merman-web-workspace",\n'
+                        '      "version": "9.9.9"'
+                    ),
+                ),
+            ),
             *[
                 (
                     web_package_manifest(entry),
@@ -231,6 +267,22 @@ class ReleaseProjectionTests(unittest.TestCase):
                     (
                         f'"../platforms/web/{default_entry["package_dir"]}": {{\n'
                         '      "name": "@mermanjs/web",\n'
+                        '      "version": "9.9.9"'
+                    ),
+                ),
+            ),
+            (
+                release_projection.PLAYGROUND_LOCK,
+                lambda text: replace_once(
+                    text,
+                    (
+                        '"../platforms/web": {\n'
+                        '      "name": "merman-web-workspace",\n'
+                        f'      "version": "{canonical}"'
+                    ),
+                    (
+                        '"../platforms/web": {\n'
+                        '      "name": "merman-web-workspace",\n'
                         '      "version": "9.9.9"'
                     ),
                 ),
@@ -340,6 +392,7 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn(Path("Cargo.toml"), updates)
         self.assertIn(release_projection.FUZZ_LOCK, updates)
+        self.assertIn(release_projection.WEB_WORKSPACE_PACKAGE, updates)
         for entry in web_package_entries():
             self.assertIn(web_package_manifest(entry), updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)

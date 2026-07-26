@@ -1,7 +1,7 @@
 # Releasing
 
 Status: maintained release operator guide.
-Last updated: 2026-07-23
+Last updated: 2026-07-25
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -28,15 +28,17 @@ is zero.
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
-Most platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
-and `source_ref` inputs. This lets a fixed workflow on `main` build assets for an existing release
-tag without moving the tag. Flutter is the exception: pub.dev automated publishing only accepts
-GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from the `v*`
-tag push and uses manual runs for validation only. The crates.io workflow is idempotent for
-already-published crate versions, so a rerun can continue after a partial publish caused by registry
-propagation delays. For unpublished crates, it performs `cargo publish --dry-run --locked`
-immediately before the real publish, after upstream workspace dependencies in the same release have
-become visible in crates.io.
+Most platform publish workflows are manual `workflow_dispatch` workflows. Python, Android, and
+Apple accept a `release_tag`, resolve the matching immutable tag commit and tree, and build all
+artifacts from that source. The workflow definition may be dispatched from `main`, but `main` is
+never an artifact source for those releases. Web and VS Code still expose an explicit `source_ref`
+for their owner-specific recovery flows. Flutter is the exception: pub.dev automated publishing
+only accepts GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes
+from the `v*` tag push and uses manual runs for validation only. The crates.io workflow is
+idempotent for already-published crate versions, so a rerun can continue after a partial publish
+caused by registry propagation delays. For unpublished crates, it performs
+`cargo publish --dry-run --locked` immediately before the real publish, after upstream workspace
+dependencies in the same release have become visible in crates.io.
 
 ## Required Credentials
 
@@ -65,9 +67,10 @@ repository `merman`, workflow `release-python.yml`, and environment `pypi`. A Py
 Publisher is only needed before the first trusted publish of a new project name.
 
 The public browser packages are `@mermanjs/web`, `@mermanjs/web-analysis`,
-`@mermanjs/web-editor`, and `@mermanjs/web-ascii`. Configure npm Trusted Publishing for each
-admitted package with workflow file `release-web.yml` and GitHub environment `npm`. Trusted
-publishes automatically include npm provenance; the workflow does not need `--provenance`.
+`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. Configure npm Trusted
+Publishing for every package in that lockstep group with workflow file `release-web.yml` and GitHub
+environment `npm`. Trusted publishes automatically include npm provenance; the workflow does not
+need `--provenance`.
 
 The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
 the `npm` environment, requests `id-token: write`, checks out only `github.workflow_sha` without
@@ -144,7 +147,7 @@ For local spot checks, run the normal Rust and platform gates:
 
 ```bash
 cargo nextest run --cargo-quiet
-cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 python3 -m py_compile \
   scripts/release-status.py \
   scripts/verify-release-surfaces.py \
@@ -211,7 +214,7 @@ For local VS Code VSIX validation:
 
 ```bash
 cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
-cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 cd tools/vscode-extension
 npm ci
 npm test
@@ -286,9 +289,9 @@ After the primary release exists, run platform publish workflows manually:
 
 ```bash
 RELEASE_TAG="v<version>"
-gh workflow run release-python.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG"
-gh workflow run release-apple.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG"
+gh workflow run release-python.yml -f release_tag="$RELEASE_TAG" -f publish_to_pypi=true
+gh workflow run release-android.yml -f release_tag="$RELEASE_TAG"
+gh workflow run release-apple.yml -f release_tag="$RELEASE_TAG"
 gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
@@ -301,9 +304,11 @@ Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A man
 injects native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real
 `dart pub publish --force` step only runs from the pushed `v*` tag.
 
-For a workflow-only recovery after a release tag already exists, use `source_ref=main` only when the
-source code and manifest versions are unchanged and the new commits only fix CI/release workflow
-behavior.
+For a workflow-only recovery after a release tag already exists, Python, Android, and Apple may use
+the updated workflow definition from `main`, but they still check out and verify the immutable
+release-tag commit and tree. For workflows that continue to expose `source_ref`, use
+`source_ref=main` only when source code and manifest versions are unchanged and the new commits only
+fix CI or release workflow behavior.
 
 ## Follow-On Registry Work
 

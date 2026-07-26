@@ -4,7 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0-alpha.4] - 2026-07-26
+
+0.8.0-alpha.4 moves Merman to a capability-driven build and distribution architecture while
+completing the Mermaid 11.16 family catalog. It is a deliberately breaking prerelease: native
+hosts must move to ABI 3, browser consumers choose an explicit package surface, and source users
+can select product capabilities without changing parser or editor semantics.
+
+### Highlights
+
+- Added source-backed parsing, editor facts, typed layout, and SVG rendering for all 35 Mermaid
+  11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley.
+- Replaced native ABI 2 with generated ABI 3 contracts and runtime capability discovery across C,
+  Android, Apple, Flutter, and Python integrations.
+- Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, each
+  carrying one verified WASM artifact and an exact dependency and license closure.
+- Made Cargo features capability-oriented: the core catalog is invariant, lower-level crates have
+  empty defaults, and facade, CLI, binding, and transport profiles compose explicit workflows.
+- Added reproducible artifact recipes, per-target dependency fingerprints, native baseline probes,
+  governed RustSec exceptions, package-content checks, and release provenance gates.
 
 ### Breaking changes
 
@@ -18,7 +36,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Replaced fixed capability booleans with runtime-contract schema 1 and descriptor-owned capability, operation, output, system-adapter, text-measurement, family, and resource catalogs. Hosts validate the loaded artifact instead of inferring support from package names or exported symbols.
 - Renamed the public Rust accessor `merman_analysis::FenceDelimiter::len()` to `marker_len()` without a deprecated alias; update callers to use the replacement name.
 - Renamed the public Rust type `merman_core::diagrams::flowchart::FlowchartV2Model` to `FlowchartModel` without retaining a deprecated alias. Mermaid's `flowchart-v2` diagram id and the compatibility layout JSON `FlowchartV2` variant key are unchanged.
-- Removed the public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through render functions. Use `merman::render::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`; direct low-level callers can use `merman_render::family::prepare` with one `RenderSession`.
+- Removed the public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through render functions. Use `merman::svg::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`; direct low-level callers can use `merman_render::family::prepare` with one `RenderSession`.
+- Made the internal `merman-elk-layered` phase modules private so callers cannot bypass operation-seed resolution. Use the crate-root import/configuration APIs and guarded pipeline entry points with `OperationSeed`.
 - Moved production text measurement, math and icon services, clock, randomness, and resource limits into `RenderEnvironment`. Layout and SVG options no longer select independent services; binding and Web JSON now use `host_theme.theme_variables`, `environment.text_measurement`, and `environment.math_renderer`, while legacy `host_theme.themeVariables`, `layout.text_measurer`, and `layout.math_renderer` paths are rejected; `SvgRenderOptions` carries request values and `SvgDebugOptions` carries diagnostics.
 - Replaced the public field-based `RenderResourceLimits` surface with the sealed, descriptor-driven `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id. General bindings default to `interactive`, the CLI to `trusted-native`, and Typst always enforces `constrained`; all platform projections are generated from the same descriptor.
 - Added effective `font_style` to `merman_render::text::TextStyle` and removed the redundant `measure_wrapped_raw` / `WrappedRaw` extension point. Custom measurers should implement `measure_wrapped` from the complete style; successful host measurements are no longer followed by vendored whole-label style adjustments. The public heuristic-only `wrap_text_lines_px` helper is also removed; callers that need wrapping should use `wrap_text_lines_measurer` with their selected `TextMeasurer`.

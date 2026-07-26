@@ -4,7 +4,9 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## Unreleased
+## [0.8.0a4] - 2026-07-26
+
+Corresponds to merman workspace release `0.8.0-alpha.4`.
 
 ### Breaking changes
 

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload the AAR to, for example v0.8.0-alpha.3"
+        description: "Release tag to upload the AAR to, for example v0.8.0-alpha.4"
         required: true
         type: string
 
@@ -162,18 +162,23 @@ jobs:
         run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
 
       - name: Verify AAR contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 scripts/verify-platform-bindings.py --verify-android-aar
 
       - name: Publish to the local Maven staging repository
         run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
 
       - name: Verify Maven publication contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 scripts/verify-platform-bindings.py --verify-android-maven
 
       - name: Prepare release asset
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
+          set -euo pipefail
           mkdir -p target/release-assets
           cp platforms/android/build/outputs/aar/*.aar "target/release-assets/merman-android-${RELEASE_TAG}.aar"
 

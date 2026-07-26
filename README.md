@@ -61,16 +61,16 @@ Cargo features and raster/PDF/image allocation budgets remain separate concerns.
 
 ## Install
 
-The commands below use the currently published `0.8.0-alpha.3` artifacts. Source on this branch may
-describe `Unreleased` behavior in the
-[changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
+The commands below target the `0.8.0-alpha.4` release candidate and its capability-driven package
+surface. See the [changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md) for migration
+notes from earlier prereleases.
 
 ```sh
 # CLI
-cargo install merman-cli --version 0.8.0-alpha.3
+cargo install merman-cli --version 0.8.0-alpha.4
 
 # Rust library
-cargo add merman@0.8.0-alpha.3 --features svg
+cargo add merman@0.8.0-alpha.4
 
 # Browser / TypeScript
 npm install @mermanjs/web@alpha
@@ -79,7 +79,7 @@ npm install @mermanjs/web@alpha
 python -m pip install --pre merman
 
 # Flutter
-flutter pub add 'merman:0.8.0-alpha.3'
+flutter pub add 'merman:0.8.0-alpha.4'
 ```
 
 Homebrew also provides the latest non-prerelease CLI:
@@ -156,26 +156,29 @@ records which channels are published, repository-only, or blocked.
 
 ## Browser And Editor Support
 
-`@mermanjs/web` publishes separate `core`, `render`, `render-only`, `ascii`, `editor`,
-and `full` entry points backed by capability-specific WASM artifacts. The `editor` surface
-provides the complete 35-family parser and language-intelligence catalog without SVG, ASCII, host,
-or ELK dependencies.
+`@mermanjs/web` is the complete browser SDK and contains one WASM artifact for SVG, analysis,
+ASCII, editor intelligence, Cytoscape and ELK layouts, and math. Capability-specific browser
+artifacts use standalone package names: `@mermanjs/web-analysis`, `@mermanjs/web-ascii`, and
+`@mermanjs/web-editor`. `@mermanjs/web-render` is the complete SVG-only package with Cytoscape,
+ELK, and math but without analysis, ASCII, or editor APIs.
+There are no public package subpaths or raw-WASM fallback entry points.
 
-The Playground runs the editor surface in a local module Worker and projects the same Rust-owned
-document snapshot into Monaco. It does not use regex fallback for semantic tokens or diagram
-detection. The native LSP projects the same token descriptor and parser-backed facts into LSP
-ranges, so browser and editor behavior share one semantic source.
+The Playground uses the complete SDK in both its rendering realm and local module Worker, while
+initializing one WASM artifact per realm. It projects the Rust-owned document snapshot into Monaco
+without a regex fallback for semantic tokens or diagram detection. The native LSP projects the same
+token descriptor and parser-backed facts into LSP ranges, so browser and editor behavior share one
+semantic source.
 
 The VS Code extension is implemented but not yet published to Marketplace. It can be built and
 installed from this repository or from CI-generated VSIX artifacts.
 
 ## Native ABI And Text Measurement
 
-C/C++, Android JNI, and Flutter/Dart use the native C ABI `3`; Apple Swift and Python use the
-direct UniFFI binding API `3`; browser WebAssembly has its own transport API. A host must pair its
-headers or generated bindings with the native library from the same release. The current
-text-measurement contract contains 19 exact operations (`0..18`) with operation-specific result
-kinds.
+C/C++ and Flutter/Dart use the native C ABI `3`; Android JNI uses its dedicated transport API `1`;
+Apple Swift and Python use the direct UniFFI binding API `3`; browser WebAssembly has its own
+transport API. A host must pair its headers or generated bindings with the native library from the
+same release. The current text-measurement contract contains 19 exact operations (`0..18`) with
+operation-specific result kinds.
 
 Merman's default measurer is deterministic and suitable for servers, CLIs, CI, and documentation
 builds. A GUI or WebView that needs geometry matching its own fonts should install the host
@@ -195,6 +198,8 @@ See the
 and [C ABI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md).
 
 ## Feature Selection
+
+This section documents the current repository source and the `0.8.0-alpha.4` package surface.
 
 | Feature | Adds |
 | --- | --- |

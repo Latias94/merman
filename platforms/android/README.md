@@ -4,15 +4,15 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
 > **Alpha:** the Android wrapper is not published to Maven Central. Use the repository module or
-> an AAR from a matching GitHub release; Kotlin classes and `libmerman_ffi.so` must come from the
-> same release.
+> an AAR from a matching GitHub release; Kotlin classes and `libmerman_android_jni.so` must come
+> from the same release.
 
 ## Requirements
 
 - Android API 23 or newer
 - Java 17 toolchain
 - `arm64-v8a` or `x86_64`
-- a release-matched `libmerman_ffi.so` from the Android native SDK artifact
+- a release-matched `libmerman_android_jni.so` from the Android native SDK artifact
 
 At load time, the wrapper validates its direct runtime catalog rather than relying on C ABI symbols
 or per-method JNI name lookup. A mismatched Kotlin/native pair fails before the first operation.
@@ -24,6 +24,9 @@ Build native slices:
 ```sh
 python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 ```
+
+The default `android-native` recipe builds the internal `merman-android-jni` crate. It is reserved
+for this Kotlin AAR; Flutter Android packages build `merman-ffi` from a separate C ABI recipe.
 
 Include the module from the host project's `settings.gradle.kts`:
 
@@ -80,8 +83,8 @@ The package's normal release artifact uses the complete native feature set, but 
 query the catalog before exposing optional output choices.
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use
-their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full
-Markdown/MDX-like content plus a URI to document analysis:
+their independently defined schema `1`. These payload schemas are independent of Android transport
+version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 
 ```kotlin
 val factsJson = MermanEngine.analyzeDocumentFactsJson(
@@ -106,8 +109,8 @@ Merman owns a deterministic vendored text measurer by default. Keep it for backg
 and content generation. Native Android previews can call `setTextMeasurer` when layout must match
 the final `TextPaint`/`StaticLayout` font stack. Return `null` for requests that cannot be answered
 faithfully; the engine falls back per request. Reusable calls are serialized and the same engine
-must not be called from its measurement callback. Calling `close()` during a callback safely defers
-native release until the call returns.
+must not be called or closed from its measurement callback. Those operations return a typed
+reentrant-call error; retry `close()` after the active call returns.
 
 ## Verify Locally
 
@@ -117,8 +120,9 @@ python3 scripts/verify-platform-bindings.py --build-android-slices
 ```
 
 The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and explicit native SDK
-capability profile. A connected-device JNI smoke is available through
-`--only-android-instrumentation-smoke`.
+capability profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports
+`JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is
+available through `--only-android-instrumentation-smoke`.
 
 ## Documentation And Releases
 

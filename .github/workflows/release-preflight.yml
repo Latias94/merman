@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the leading v, for example 0.8.0-alpha.3"
+        description: "Release version without the leading v, for example 0.8.0-alpha.4"
         required: true
         type: string
       source_ref:
@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       source_ref: ${{ steps.release.outputs.source_ref }}
+      source_sha: ${{ steps.pin-source.outputs.source_sha }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -67,6 +68,19 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve immutable release source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Pin resolved source commit
+        id: pin-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'source_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   versions-and-packages:
     needs: validate-inputs
     name: versions-and-packages
@@ -74,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Install Rust toolchain
@@ -82,6 +96,11 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.1
 
       - name: Verify release versions
         env:
@@ -93,6 +112,9 @@ jobs:
 
       - name: Verify exact artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py
+
+      - name: Verify exact Rust dependency license reports
+        run: python3 scripts/generate-rust-license-report.py --check
 
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
@@ -183,7 +205,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
@@ -235,7 +257,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Read Android toolchain versions
@@ -284,12 +306,16 @@ jobs:
         run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
 
       - name: Verify AAR contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 scripts/verify-platform-bindings.py --verify-android-aar
 
       - name: Publish to the local Maven staging repository
         run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
 
       - name: Verify Maven publication contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 scripts/verify-platform-bindings.py --verify-android-maven
 
   apple-xcframework:
@@ -299,7 +325,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Verify release versions
@@ -334,7 +360,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Verify release versions
@@ -431,7 +457,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
@@ -466,7 +492,7 @@ jobs:
       - name: Build release runtime binaries
         run: |
           cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
-          cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+          cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension
@@ -539,7 +565,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Read Android toolchain versions
@@ -578,12 +604,12 @@ jobs:
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
 
-      - name: Inject Android libraries into Flutter package
+      - name: Verify Android libraries in Flutter package
         run: |
-          mkdir -p platforms/flutter/android/src/main/jniLibs
-          cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
+          test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
+          test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
 
       - name: Build and inject iOS XCFramework
         env:

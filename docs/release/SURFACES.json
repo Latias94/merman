@@ -195,11 +195,11 @@
     {
       "id": "rustdoc",
       "name": "Rustdoc integration",
-      "audience": "Rust library authors who want Mermaid fences rendered into API docs without compiling the renderer during ordinary builds.",
+      "audience": "Rust library authors who want Mermaid fences rendered into API docs, with an optional dependency path for ordinary builds that omit the renderer.",
       "public": true,
       "public_channel": "crates.io",
       "entry_point": "merman-rustdoc",
-      "install": "cargo add merman-rustdoc@{version} --optional",
+      "install": "cargo add merman-rustdoc@{version}",
       "support_level": "published",
       "dependency_weight": "doc-build-only",
       "capabilities": ["rustdoc-proc-macro", "inline-svg", "rustdoc-theme"],
@@ -219,7 +219,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo nextest run -p merman-rustdoc --cargo-quiet"]
+      "gates": ["cargo nextest run -p merman-rustdoc --test complete_svg_e2e --cargo-quiet", "features=\"$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)\"; cargo nextest run -p merman-rustdoc --no-default-features --features \"$features\" --cargo-quiet"]
     },
     {
       "id": "cli",
@@ -273,7 +273,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing"]
+      "gates": ["cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing"]
     },
     {
       "id": "homebrew",
@@ -312,13 +312,14 @@
       "install": "npm install @mermanjs/web@{version}",
       "support_level": "published",
       "dependency_weight": "package-specific",
-      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor", "editor-worker"],
+      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor", "editor-worker", "layout-cytoscape", "layout-elk", "math"],
       "docs": ["README.md", "platforms/web/README.md", "docs/release/PACKAGE_SURFACES.md", "docs/adr/0069-wasm-package-surface-semantics.md", "docs/adr/0074-browser-runtime-and-benchmark-ownership.md"],
       "packages": [
         { "kind": "npm", "name": "@mermanjs/web", "manifest": "platforms/web/packages/full/package.json" },
         { "kind": "npm", "name": "@mermanjs/web-analysis", "manifest": "platforms/web/packages/analysis/package.json" },
         { "kind": "npm", "name": "@mermanjs/web-ascii", "manifest": "platforms/web/packages/ascii/package.json" },
-        { "kind": "npm", "name": "@mermanjs/web-editor", "manifest": "platforms/web/packages/editor/package.json" }
+        { "kind": "npm", "name": "@mermanjs/web-editor", "manifest": "platforms/web/packages/editor/package.json" },
+        { "kind": "npm", "name": "@mermanjs/web-render", "manifest": "platforms/web/packages/render/package.json" }
       ],
       "channels": [
         {
@@ -388,7 +389,7 @@
       ],
       "gates": [
         "cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio",
-        "cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
+        "cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
         "npm run test --prefix tools/vscode-extension",
         "npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>"
       ]

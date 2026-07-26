@@ -1,15 +1,14 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-07-23
+Last updated: 2026-07-26
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.3`.
 
-The next workspace release version has not been selected. Release operators must provide an
-explicit candidate rather than treating the versions in a development checkout as a release
-decision.
+Prepared workspace release candidate: `0.8.0-alpha.4`. This is a local prepare-state decision; it
+does not authorize a tag, workflow dispatch, registry publication, or GitHub Release mutation.
 
 Rationale:
 
@@ -20,8 +19,9 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests remain aligned to the published `0.8.0-alpha.3` baseline. Python package
-metadata uses the PEP 440 spelling `0.8.0a3`.
+Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.4` candidate. Python package
+metadata uses the PEP 440 spelling `0.8.0a4`. The independently versioned VS Code extension, Typst
+wrapper, and `roughr-merman` remain on their own release axes.
 
 ## Publish Order
 
@@ -87,10 +87,9 @@ transport with the released binding core, renderer, ASCII, and editor-capable cr
 The npm browser SDK is not a single Cargo publication and is intentionally outside the crates.io
 topological order. After the selected source revision has passed release preflight, run
 `release-web.yml` for the admitted package group: `@mermanjs/web`, `@mermanjs/web-analysis`,
-`@mermanjs/web-editor`, and `@mermanjs/web-ascii`. The workflow publishes missing exact versions to
-a staging tag, verifies every member, then promotes the requested public tag as a recoverable group
-operation. `@mermanjs/web-render` is private and must not be published or added to the release
-contract until its independent admission requirements are met.
+`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow publishes
+missing exact versions to a staging tag, verifies every member, then promotes the requested public
+tag as a recoverable group operation.
 
 ## Pre-Publish Gates
 

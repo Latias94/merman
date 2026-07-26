@@ -17,7 +17,7 @@ Flutter targets.
 
 ```yaml
 dependencies:
-  merman: ">=0.8.0-alpha.3 <0.9.0"
+  merman: ">=0.8.0-alpha.4 <0.9.0"
 ```
 
 Run `flutter pub get` after adding the dependency.
@@ -160,6 +160,9 @@ Flutter Web is not supported because this package uses `dart:ffi`; use
 [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) in browsers.
 Verify the release archive before deployment because native target availability
 is release-specific.
+
+Android package slices use the `flutter-android-native` C ABI recipe from `merman-ffi`. The Kotlin
+AAR's JNI transport lives in the separate internal `merman-android-jni` crate.
 
 ## Local Development
 

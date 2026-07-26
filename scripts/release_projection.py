@@ -563,6 +563,13 @@ def _collect_platform_versions(
     web_workspace = view.json(WEB_WORKSPACE_PACKAGE)
     if web_workspace.get("private") is not True:
         raise ReleaseProjectionError("platforms/web/package.json must be a private workspace owner")
+    _observe(
+        observations,
+        "Web workspace",
+        WEB_WORKSPACE_PACKAGE,
+        canonical,
+        web_workspace.get("version"),
+    )
     web_entries = _web_package_entries(view)
     for entry, package_dir in web_entries:
         manifest_path = package_dir / "package.json"
@@ -576,6 +583,23 @@ def _collect_platform_versions(
         )
     web_lock = view.json(WEB_LOCK)
     web_lock_packages = _mapping(web_lock.get("packages"), "Web lock packages")
+    web_lock_workspace = _mapping(
+        web_lock_packages.get(""), "Web lock workspace package"
+    )
+    _observe(
+        observations,
+        "Web workspace lock",
+        WEB_LOCK,
+        canonical,
+        web_lock.get("version"),
+    )
+    _observe(
+        observations,
+        "Web workspace lock package",
+        WEB_LOCK,
+        canonical,
+        web_lock_workspace.get("version"),
+    )
     for entry, package_dir in web_entries:
         lock_key = package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix()
         local_package = _mapping(
@@ -594,6 +618,17 @@ def _collect_platform_versions(
     playground_lock = view.json(PLAYGROUND_LOCK)
     playground_packages = _mapping(
         playground_lock.get("packages"), "Playground lock packages"
+    )
+    playground_web_workspace = _mapping(
+        playground_packages.get("../platforms/web"),
+        "Playground lock local Web workspace",
+    )
+    _observe(
+        observations,
+        "Playground local Web workspace lock",
+        PLAYGROUND_LOCK,
+        canonical,
+        playground_web_workspace.get("version"),
     )
     for entry, package_dir in playground_web_packages:
         lock_key = f"../{package_dir.as_posix()}"
@@ -799,6 +834,9 @@ def _plan_version_update(
     )
 
     web_entries = _web_package_entries(view)
+    updates[WEB_WORKSPACE_PACKAGE] = _replace_json_paths(
+        view.text(WEB_WORKSPACE_PACKAGE), {("version",): release.canonical}
+    )
     for _entry, package_dir in web_entries:
         manifest_path = package_dir / "package.json"
         updates[manifest_path] = _replace_json_paths(
@@ -808,17 +846,31 @@ def _plan_version_update(
         ("packages", package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix(), "version"): release.canonical
         for _entry, package_dir in web_entries
     }
+    web_lock_updates.update(
+        {
+            ("version",): release.canonical,
+            ("packages", "", "version"): release.canonical,
+        }
+    )
     updates[WEB_LOCK] = _replace_json_paths(
         view.text(WEB_LOCK),
         web_lock_updates,
     )
     playground_web_packages = _playground_web_dependencies(view, web_entries)
+    playground_lock_updates = {
+        (
+            "packages",
+            f"../{package_dir.as_posix()}",
+            "version",
+        ): release.canonical
+        for _entry, package_dir in playground_web_packages
+    }
+    playground_lock_updates[("packages", "../platforms/web", "version")] = (
+        release.canonical
+    )
     playground_lock = _replace_json_paths(
         view.text(PLAYGROUND_LOCK),
-        {
-            ("packages", f"../{package_dir.as_posix()}", "version"): release.canonical
-            for _entry, package_dir in playground_web_packages
-        },
+        playground_lock_updates,
     )
     updates[PLAYGROUND_LOCK] = playground_lock
     playground_license_report = _replace_one(

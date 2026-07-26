@@ -17,7 +17,7 @@ Install the current prerelease from PyPI:
 python -m pip install --pre merman
 ```
 
-Published wheels currently target CPython-compatible Python `3.9+` on macOS universal2, manylinux x86_64, and Windows x86_64. Other platforms must build the UniFFI library locally.
+Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. Other platforms must build the UniFFI library locally.
 
 ## Render A Diagram
 
@@ -131,7 +131,9 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 The helper resolves the descriptor-owned `python-uniffi-native` recipe. The bundled release
-library excludes `bindgen-smoke`; only the source-generation process enables that feature.
+library excludes `bindgen-smoke`; only the source-generation process enables that feature. It also
+embeds the checked-in Rust dependency license report for the selected target rather than the union
+of every published wheel target.
 
 ## Documentation And Releases
 

@@ -4,15 +4,16 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0-alpha.4] - 2026-07-26
 
 ### Breaking changes
 
 - Replaced the C-ABI-forwarding JNI bridge with a direct `JNI_OnLoad` + `RegisterNatives`
-  transport over `merman-bindings-core`. Kotlin classes and `libmerman_ffi.so` from older prerelease
-  releases are incompatible and must be upgraded together.
-- Replaced per-output native methods with `executeBytes(operationId, source, optionsJson, uri)` and
-  reusable-engine `executeBytes(operationId, source, uri)`. SVG, ASCII, JSON, PNG, JPEG, and PDF
+  transport over `merman-bindings-core` in a dedicated internal crate. Kotlin classes and the new
+  `libmerman_android_jni.so` from this release must be upgraded together; older
+  `libmerman_ffi.so` JNI slices are incompatible.
+- Replaced per-output native methods with `executeBytes(operationId, source, optionsJson, uri)` for
+  both one-shot and reusable engines. SVG, ASCII, JSON, PNG, JPEG, and PDF
   convenience methods delegate to the same operation path.
 - Replaced `runtimeContractJson()` with `runtimeCatalogJson()`. The new direct catalog is a flat
   schema-1 document containing package identity, sorted capability/output/operation IDs, registry

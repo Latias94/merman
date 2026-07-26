@@ -40,7 +40,7 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
         )
         self.assertEqual(
             {package["id"] for package in descriptor["packages"] if package["visibility"] == "public"},
-            {"full", "analysis", "ascii", "editor"},
+            {"full", "analysis", "ascii", "editor", "render"},
         )
 
     def test_validate_web_descriptor_rejects_old_schema_and_duplicates(self) -> None:
@@ -48,7 +48,7 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
         duplicate["packages"].append(dict(duplicate["packages"][0]))
         with self.assertRaisesRegex(
             verify_release_surfaces.CheckFailure,
-            "duplicate package id",
+            "(?i)duplicate package id",
         ):
             verify_release_surfaces.validate_web_surface_descriptor(duplicate)
 
@@ -62,11 +62,18 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
 
     def test_validate_web_descriptor_rejects_candidate_default(self) -> None:
         descriptor = minimal_web_descriptor()
+        full = next(package for package in descriptor["packages"] if package["id"] == "full")
+        render = next(
+            package for package in descriptor["packages"] if package["id"] == "render"
+        )
+        full["name"] = "@mermanjs/web-full"
+        render["name"] = "@mermanjs/web"
+        render["visibility"] = "candidate"
         descriptor["default_package"] = "render"
 
         with self.assertRaisesRegex(
             verify_release_surfaces.CheckFailure,
-            "default_package must be public",
+            "default package visibility must be 'public'",
         ):
             verify_release_surfaces.validate_web_surface_descriptor(descriptor)
 
@@ -537,19 +544,27 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_minimal_web_surface(root)
+            descriptor_path = root / verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH
+            descriptor = json.loads(descriptor_path.read_text())
+            render = next(
+                package for package in descriptor["packages"] if package["id"] == "render"
+            )
+            render["visibility"] = "candidate"
+            write(
+                root,
+                verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
+                json.dumps(descriptor),
+            )
+            render_manifest_path = root / "platforms/web/packages/render/package.json"
+            render_manifest = json.loads(render_manifest_path.read_text())
+            render_manifest["private"] = True
+            render_manifest.pop("publishConfig")
+            write(
+                root,
+                "platforms/web/packages/render/package.json",
+                json.dumps(render_manifest),
+            )
             contract = web_contract()
-            candidate = next(
-                package
-                for package in minimal_web_descriptor()["packages"]
-                if package["visibility"] == "candidate"
-            )
-            contract["surfaces"][0]["packages"].append(
-                {
-                    "kind": "npm",
-                    "name": candidate["name"],
-                    "manifest": f"platforms/web/{candidate['package_dir']}/package.json",
-                }
-            )
 
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
@@ -576,11 +591,14 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_minimal_web_surface(root)
-            descriptor_path = root / verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH
-            descriptor = json.loads(descriptor_path.read_text())
-            full = next(package for package in descriptor["packages"] if package["id"] == "full")
-            full["artifact_profile"] = "web-unknown"
-            write(root, verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH, json.dumps(descriptor))
+            profiles_path = root / "capabilities/artifact-profiles-v1.json"
+            profiles = json.loads(profiles_path.read_text())
+            profiles["profiles"] = [
+                profile
+                for profile in profiles["profiles"]
+                if profile["id"] != "web-full"
+            ]
+            write(root, "capabilities/artifact-profiles-v1.json", json.dumps(profiles))
 
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
@@ -1001,7 +1019,7 @@ def minimal_web_descriptor() -> dict:
                 "package_dir": "packages/render",
                 "artifact_profile": "web-render",
                 "runtime_profile": "render",
-                "visibility": "candidate",
+                "visibility": "public",
             },
         ],
     }

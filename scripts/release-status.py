@@ -1147,7 +1147,7 @@ def render_maintainer(rows: list[dict[str, Any]]) -> str:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--contract", type=Path, default=SURFACES_PATH)
-    parser.add_argument("--version", help="Target release version, for example 0.8.0-alpha.3")
+    parser.add_argument("--version", help="Target release version, for example 0.8.0-alpha.4")
     parser.add_argument("--probe", action="store_true", help="Best-effort network/tool probes for the target version.")
     parser.add_argument("--view", choices=["maintainer", "public"], default="maintainer")
     parser.add_argument("--format", choices=["table", "json"], default="table")

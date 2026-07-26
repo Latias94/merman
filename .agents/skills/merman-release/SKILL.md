@@ -22,6 +22,29 @@ From the repository root, read these before editing or publishing:
 Completion criterion: the target version, source ref, release channel, publish surfaces, and version
 files are known before any tag or registry action.
 
+## Operating Mode And Authorization Boundary
+
+Treat every release request as `prepare` unless the maintainer's current instruction explicitly
+authorizes `ship` for a concrete version, source ref, release channel, and set of publish surfaces.
+
+- `prepare` may edit version files and release notes, run local checks, dispatch the non-publishing
+  preflight when requested, and inspect release or registry state read-only. It must stop after
+  reporting the prepared commit and preflight evidence.
+- `ship` may create or push a tag, dispatch a publishing workflow, create or modify a GitHub
+  Release, or mutate a registry only within the explicitly authorized scope.
+- A pushed release tag starts one inseparable tag-triggered publication bundle: `release.yml`
+  creates cargo-dist GitHub Release artifacts, `release-crates.yml` publishes crates.io, and
+  `release-flutter.yml` publishes pub.dev. Authorization for only one of those surfaces does not
+  authorize creating or pushing the tag; the maintainer must authorize all three tag-triggered surfaces.
+- A request to prepare, bump, validate, run preflight, recover, or continue does not authorize
+  external release mutations. A green preflight, an existing release plan, or authorization from a
+  previous release also does not authorize them.
+- If any part of the ship scope is missing or ambiguous, state the exact external actions that are
+  ready, ask the maintainer for explicit authorization, and stop before the first mutation.
+
+Completion criterion: the active mode and, for `ship`, the authorized version, source ref, channel,
+and surfaces are recorded in the conversation before any external release mutation.
+
 ## Release Notes
 
 Write release notes for users first, then maintainers.
@@ -87,6 +110,18 @@ will be tagged.
 
 ## Tag And Publish
 
+This section is a mandatory authorization gate, not an automatic continuation from preflight.
+Before running any command below, confirm the active mode is `ship` and that the maintainer has
+explicitly authorized the exact version, source ref, release channel, and publish surfaces in the
+current request. Otherwise report the green preflight and stop in `prepare` mode.
+
+A tag push is not surface-selective. Treat `release.yml`, `release-crates.yml`, and
+`release-flutter.yml` as the tag-triggered publication bundle and confirm all three are explicitly
+authorized before creating or pushing the release tag. Python, Android, Apple, Web, VS Code, and
+Homebrew remain separately authorized manual surfaces. If any tag-triggered publisher is not ready
+or is intentionally excluded, remain in `prepare`; do not push a tag and hope that workflow-level
+conditions will approximate the missing authorization.
+
 After preflight passes, tag the intended source commit:
 
 ```bash
@@ -146,6 +181,11 @@ Classify a failed release before changing code:
   that the registry already accepted.
 - After any external registry publish, treat the release tag as immutable. Do not move it unless the
   maintainer explicitly accepts the registry and provenance risk.
+
+Recovery diagnosis and local workflow fixes remain `prepare` work. Rerunning a publishing workflow,
+uploading an asset, changing a tag, or mutating a registry requires a fresh `ship` authorization for
+the named version, source ref, channel, and affected surfaces; an incident or partial publish does
+not waive the authorization gate.
 
 Known traps from `0.8.0-alpha.3`:
 

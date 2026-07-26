@@ -124,11 +124,11 @@ package exports only `.` and contains exactly one owned WASM artifact at
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
+| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts, and math. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | Private candidate for SVG rendering. It is not published until independent admission proves its package-size and behavior contract. |
+| `@mermanjs/web-render` | `web-render` | Public complete SVG-only renderer with Cytoscape, ELK, and math. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
@@ -162,12 +162,37 @@ Current release semantics are intentionally explicit:
   release decision with a descriptor entry, artifact profile, package-size evidence, independent
   installation smoke, and a migration note.
 
+## Native Prebuilt SKU Policy
+
+Python, Apple, Android, and Flutter releases currently ship one full prebuilt native SDK SKU per
+surface. The C ABI is published as the source-only `merman-ffi` crate; its native artifact profile
+defines reproducible host reference libraries, not a downloadable binary SDK. These are
+intentional product boundaries, not inferences from the Rust facade default. Source users can
+select `complete-svg` or direct feature leaves; release recipes select the full leaf set explicitly
+through their artifact profiles.
+
+Do not add a `full`/`svg` prebuilt matrix solely because both source closures compile. A proposed
+SVG-only native SKU must identify concrete consumer demand and set its material-improvement
+threshold before collecting evidence. The proposal must compare the existing full artifact and the
+candidate from the same revision, target, toolchain, and machine; measure final stripped library or
+framework bytes and packaged artifact bytes; run the existing installation and output smokes; and
+record runtime memory only where the selected platform has a stable, representative measurement
+method. The proposal must also own package naming, legal closure, update policy, and CI for the
+extra SKU.
+
+As of 2026-07-26, the repository has no comparable all-target record of final package bytes,
+smoke-process peak RSS, and cold-start behavior for a complete-SVG candidate versus each full
+native SDK. Therefore no second native SKU is admitted by this refactor; source-level Cargo
+closure differences alone are not release evidence. Keep this comparison in the proposal that
+introduces the candidate; do not add a standing PR or release gate until maintainers have accepted
+a second SKU and a stable budget.
+
 ## Release Gates By Surface
 
 | Surface | Required local gate before release changes |
 | --- | --- |
 | Browser npm package group | `cargo run -p xtask -- verify-mermaid-reference`; `cargo run -p xtask -- verify-editor-token-descriptor`; `cargo run -p xtask -- verify-artifact-profiles`; `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run verify:packages --prefix platforms/web`; `python3 scripts/web_package_group.py validate-descriptor --descriptor platforms/web/web-surface-descriptor.json` |
-| VS Code extension | `cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio`; `cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
+| VS Code extension | `cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio`; `cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
 | Browser artifact evidence | `cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json`; inspect the selected artifact profile instead of a legacy feature-profile name. |
 | Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo run --locked -p xtask -- verify-typst-profile-constants`; `cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm`; `cargo run --locked -p xtask -- build-typst-package --profile publish`; `cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json`; `cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build`. The package builder consumes the sole `publish` profile and canonical `typst-wasm` artifact recipe, then validates the generated artifact, flat runtime catalog, plugin ABI `2`, size, package provenance, and Typst examples without exposing a private target path. PR CI compiles package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs the size matrix plus the tests-only package smoke. The dependency gate derives package, manifest, target, default-feature policy, and features from the exact artifact profile. Its admitted `json5`, `lol_html`, and `url` dependencies are pure-Rust parts of invariant Mermaid semantics and remain measured by the artifact size budget. |
@@ -187,3 +212,18 @@ bytes together with the exact Cargo profile, target, feature set, runtime IDs, c
 output IDs. The schema-2 budget file must cover every exact Web and Typst artifact profile once,
 with no legacy feature-profile entries or stale profiles. Compare only artifacts with the same profile and
 target; browser and Typst transports deliberately have different closures.
+
+The 2026-07-26 complete-SVG admission run measured `web-render` against the capability-superset
+`web-full` on the same `wasm32-unknown-unknown` `wasm-size` profile:
+
+| Artifact profile | Raw | Stripped | Gzip | Brotli |
+| --- | ---: | ---: | ---: | ---: |
+| `web-full` | 18,284,917 | 14,392,820 | 4,646,814 | 3,215,042 |
+| `web-render` | 17,023,368 | 13,543,476 | 4,379,667 | 3,043,714 |
+
+Removing analysis, ASCII, and editor saves 5.90% by stripped bytes and 5.33% by Brotli. The package
+is admitted because it establishes the complete SVG-only capability contract, not because it meets
+the 15% threshold used for workflow-specific slim packages. Do not weaken `web-render` to basic SVG
+under the same package identity: it would no longer be capability-equivalent. A future basic-SVG
+package needs a separate workflow and at least a 15% measured reduction against its declared
+comparison artifact before release admission is considered.

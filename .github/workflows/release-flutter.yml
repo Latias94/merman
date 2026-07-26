@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag/version to publish, for example v0.8.0-alpha.3"
+        description: "Release tag/version to publish, for example v0.8.0-alpha.4"
         required: true
         type: string
       publish_to_pub:
@@ -167,12 +167,10 @@ jobs:
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
 
-      - name: Inject Android libraries into Flutter package
+      - name: Verify Android libraries in Flutter package
         run: |
-          mkdir -p platforms/flutter/android/src/main/jniLibs
-          cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
           test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
           test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
 
