@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "generated_notice": "THIRD_PARTY_NOTICES.md",
   "license_root": "THIRD_PARTY_LICENSES",
   "repository_lock": {
@@ -10,6 +10,48 @@
     {
       "path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
       "owner": "cargo-about normalized runtime dependency closure",
+      "required": true,
+      "format": "json"
+    }
+  ],
+  "scoped_external_materials": [
+    {
+      "artifact_scope": "web-analysis",
+      "path": "platforms/web/legal/rust-cargo-dependencies/web-analysis.json",
+      "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about 0.9.1 exact web-analysis dependency closure",
+      "required": true,
+      "format": "json"
+    },
+    {
+      "artifact_scope": "web-ascii",
+      "path": "platforms/web/legal/rust-cargo-dependencies/web-ascii.json",
+      "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about 0.9.1 exact web-ascii dependency closure",
+      "required": true,
+      "format": "json"
+    },
+    {
+      "artifact_scope": "web-editor",
+      "path": "platforms/web/legal/rust-cargo-dependencies/web-editor.json",
+      "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about 0.9.1 exact web-editor dependency closure",
+      "required": true,
+      "format": "json"
+    },
+    {
+      "artifact_scope": "web-full",
+      "path": "platforms/web/legal/rust-cargo-dependencies/web-full.json",
+      "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about 0.9.1 exact web-full dependency closure",
+      "required": true,
+      "format": "json"
+    },
+    {
+      "artifact_scope": "web-render",
+      "path": "platforms/web/legal/rust-cargo-dependencies/web-render.json",
+      "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+      "owner": "cargo-about 0.9.1 exact web-render dependency closure",
       "required": true,
       "format": "json"
     }
@@ -59,6 +101,30 @@
       "components": ["beautiful-mermaid", "mermaid", "mermaid-ascii", "mermaid-rs-renderer"]
     },
     {
+      "id": "web-analysis",
+      "description": "Browser analysis artifacts containing the Merman core parser, sanitizer, diagram detection, and diagnostics without renderer or ASCII components.",
+      "extends": [],
+      "components": ["dompurify", "mermaid", "sanitize-url", "zenuml-core"]
+    },
+    {
+      "id": "web-ascii",
+      "description": "Browser ASCII artifacts combining the core parser legal closure with the ASCII renderer's copied fixtures and behavior references.",
+      "extends": ["ascii-render", "web-analysis"],
+      "components": []
+    },
+    {
+      "id": "web-editor",
+      "description": "Browser editor artifacts built on the analysis and core-parser legal closure without SVG or ASCII rendering components.",
+      "extends": ["web-analysis"],
+      "components": []
+    },
+    {
+      "id": "web-render",
+      "description": "Published complete browser SVG renderer with Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload, but without analysis, ASCII, or editor APIs.",
+      "extends": ["elk-render", "ratex-render"],
+      "components": []
+    },
+    {
       "id": "typst-publish",
       "description": "The published Typst WASM profile, including ELK and wasm-minimal-protocol but excluding RaTeX.",
       "extends": ["elk-render"],
@@ -72,8 +138,8 @@
     },
     {
       "id": "web-full",
-      "description": "The published full browser WASM artifact profile with ELK layout and without the separate RaTeX math profile.",
-      "extends": ["elk-render"],
+      "description": "The published complete browser SVG renderer, including Cytoscape, ELK, RaTeX, and the embedded KaTeX font payload.",
+      "extends": ["ascii-render", "elk-render", "ratex-render"],
       "components": []
     },
     {

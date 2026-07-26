@@ -48,7 +48,7 @@ jobs:
         run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_web_package_group.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_artifact_profile_recipe.py scripts/test_verify_artifact_dependency_closures.py scripts/test_publish.py
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_web_package_group.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_python_wheel_licenses.py scripts/test_verify_rustsec_exceptions.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_build_android.py scripts/test_native_symbol_contract.py scripts/test_artifact_profile_recipe.py scripts/test_verify_artifact_dependency_closures.py scripts/test_publish.py
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -133,6 +133,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -180,6 +182,59 @@ jobs:
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
+      - name: Test exact Rustdoc artifact recipe
+        if: matrix.parity
+        run: |
+          features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
+          cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
+
+      - name: Test exact artifact owner APIs
+        if: matrix.parity
+        shell: bash
+        run: |
+          run_owner_test() {
+            local profile="$1"
+            local expected_package="$2"
+            shift 2
+
+            local package
+            package="$(python3 scripts/artifact_profile_recipe.py "$profile" --field package)"
+            test "$package" = "$expected_package"
+
+            local features
+            features="$(python3 scripts/artifact_profile_recipe.py "$profile")"
+            local -a args=(
+              --locked
+              --package "$package"
+              --no-default-features
+              --cargo-quiet
+            )
+            if [[ -n "$features" ]]; then
+              args+=(--features "$features")
+            fi
+            cargo nextest run "${args[@]}" "$@"
+          }
+
+          run_owner_test cli-analysis merman-cli \
+            --lib lint_only_profile_has_no_render_or_tool_commands
+          run_owner_test rust-analysis merman-analysis \
+            --test analyzer facts_and_diagnostics_payloads_use_independent_version_constants
+          run_owner_test rust-ascii merman-ascii \
+            --test flowchart_model flowchart_parser_lr_chain_matches_upstream_ascii_golden
+          run_owner_test rust-editor-core merman-editor-core \
+            --test completion completion_offers_known_node_ids_with_text_edits
+          run_owner_test rust-editor-facade merman \
+            --test feature_surface_smoke facade_exposes_callable_analysis_and_editor_apis
+          run_owner_test rust-svg-basic merman
+          run_owner_test rust-bindings-core-native-sdk merman-bindings-core \
+            --lib runtime_capabilities_follow_callable_feature_surface
+          run_owner_test rust-export-jpeg merman-export \
+            --lib jpeg_leaf_encodes_a_sealed_svg
+          run_owner_test rust-export-png merman-export \
+            --lib png_leaf_encodes_a_sealed_svg
+          run_owner_test rust-export-pdf merman-export \
+            --lib pdf_leaf_encodes_a_sealed_svg
+
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
@@ -220,7 +275,7 @@ jobs:
           cargo check -p merman-uniffi --no-default-features --features ascii
 
       - name: Build (release)
-        run: cargo build --release --locked -p merman-cli --no-default-features --features analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+        run: cargo build --release --locked -p merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: SVG DOM structure
         if: matrix.parity
@@ -383,6 +438,7 @@ jobs:
             scripts/verify-ffi-publish-surface.py \
             scripts/verify-platform-bindings.py \
             scripts/build-python-uniffi-wheel.py \
+            scripts/python_wheel_licenses.py \
             platforms/android/build-android.py \
             platforms/flutter/tool/android-smoke.py
 
@@ -544,9 +600,6 @@ jobs:
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
-      - name: Run Python example
-        run: PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
-
   c-ffi-example:
     name: c-ffi-example
     runs-on: ubuntu-24.04
@@ -567,10 +620,11 @@ jobs:
       - name: Build and run C example
         run: |
           profile_dir="$(python3 scripts/artifact_profile_recipe.py c-abi-native --field profile)"
+          library_dir="target/$profile_dir"
           cc -I crates/merman-ffi/include \
             crates/merman-ffi/examples/render_svg.c \
-            -L "target/$profile_dir" -lmerman_ffi \
-            -Wl,-rpath,"$PWD/target/$profile_dir" \
+            -L "$library_dir" -lmerman_ffi \
+            -Wl,-rpath,"$PWD/$library_dir" \
             -o target/merman-ffi-render-svg
           target/merman-ffi-render-svg | grep -q '<svg'
 
@@ -600,6 +654,7 @@ jobs:
         run: |
           flutter pub get
           dart run ffigen --config ffigen.yaml
+          git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
           git diff --exit-code -- lib/src/generated/native_abi.dart
           flutter analyze
           dart format --set-exit-if-changed lib example tool
@@ -608,9 +663,13 @@ jobs:
       - name: Run Dart FFI smoke
         working-directory: platforms/flutter
         run: |
-          python3 ../../scripts/artifact_profile_recipe.py c-abi-native --build --locked
-          profile_dir="$(python3 ../../scripts/artifact_profile_recipe.py c-abi-native --field profile)"
-          dart run example/smoke.dart "../../target/$profile_dir/libmerman_ffi.so"
+          target_triple=x86_64-unknown-linux-gnu
+          python3 ../../scripts/artifact_profile_recipe.py flutter-desktop-native \
+            --build \
+            --locked \
+            --target-triple "$target_triple"
+          profile_dir="$(python3 ../../scripts/artifact_profile_recipe.py flutter-desktop-native --field profile)"
+          dart run example/smoke.dart "../../target/$target_triple/$profile_dir/libmerman_ffi.so"
 
   apple-uniffi-smoke:
     name: apple-uniffi-smoke

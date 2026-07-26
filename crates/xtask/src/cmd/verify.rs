@@ -2,6 +2,8 @@ use crate::XtaskError;
 use crate::cmd;
 use std::process::Command;
 
+const STRICT_WEB_SCRIPTS: [&str; 4] = ["build", "test", "smoke", "verify:packages"];
+
 #[derive(Debug, Default)]
 struct VerifyOptions {
     clippy: bool,
@@ -165,6 +167,16 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("\n== open-source release materials ==");
         for (what, script, argument) in [
             (
+                "governed RustSec exceptions",
+                "scripts/verify_rustsec_exceptions.py",
+                None,
+            ),
+            (
+                "exact artifact dependency closures",
+                "scripts/verify_artifact_dependency_closures.py",
+                None,
+            ),
+            (
                 "third-party source and license contract",
                 "scripts/verify-third-party-licenses.py",
                 None,
@@ -274,7 +286,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     if options.strict {
         println!("\n== Web package ==");
-        for script in ["build", "smoke", "prepack"] {
+        for script in STRICT_WEB_SCRIPTS {
             run_npm_script(&workspace_root, "platforms/web", script, &mut run_checked)?;
         }
 
@@ -308,4 +320,31 @@ fn run_npm_script(
         .args(["run", script])
         .current_dir(workspace_root.join(package_dir));
     run_checked(&what, &mut command)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strict_web_scripts_exist_in_workspace_manifest() {
+        let manifest_path = crate::cmd::workspace_root().join("platforms/web/package.json");
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display())),
+        )
+        .unwrap_or_else(|error| panic!("parse {}: {error}", manifest_path.display()));
+        let scripts = manifest["scripts"]
+            .as_object()
+            .expect("platforms/web/package.json must define scripts");
+
+        for script in STRICT_WEB_SCRIPTS {
+            assert!(
+                scripts
+                    .get(script)
+                    .is_some_and(serde_json::Value::is_string),
+                "strict Web verification script `{script}` is missing"
+            );
+        }
+    }
 }

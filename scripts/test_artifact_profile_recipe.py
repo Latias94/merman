@@ -60,7 +60,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "EXPECTED_OPERATION_IDS = ['analysis-facts-json', 'analysis-json', "
             "'ascii', 'document-analysis-facts-json', 'document-analysis-json', "
             "'jpeg', 'layout-json', 'pdf', 'png', 'semantic-json', 'svg', "
-            "'validation-json']",
+            "'svg-plan-json', 'validation-json']",
             script,
         )
         self.assertNotIn("required_capabilities", script)
@@ -89,9 +89,10 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
     def test_committed_native_recipes_have_owner_specific_structure(self) -> None:
         expected_packages = {
-            "android-native": "merman-ffi",
+            "android-native": "merman-android-jni",
             "apple-uniffi-native": "merman-uniffi",
             "c-abi-native": "merman-ffi",
+            "flutter-android-native": "merman-ffi",
             "flutter-desktop-native": "merman-ffi",
             "flutter-ios-native": "merman-ffi",
             "python-uniffi-native": "merman-uniffi",
@@ -145,6 +146,10 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
     def test_flutter_recipes_own_exact_cross_platform_target_sets(self) -> None:
         expected_targets = {
+            "flutter-android-native": (
+                "aarch64-linux-android",
+                "x86_64-linux-android",
+            ),
             "flutter-ios-native": (
                 "aarch64-apple-ios",
                 "aarch64-apple-ios-sim",
@@ -172,6 +177,18 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     recipe.crate_types,
                     ("cdylib", "rlib", "staticlib"),
                 )
+
+    def test_android_jni_transport_uses_an_independent_internal_crate(self) -> None:
+        android = load_artifact_profile("android-native")
+        flutter = load_artifact_profile("flutter-android-native")
+        c_abi = load_artifact_profile("c-abi-native")
+
+        self.assertEqual(android.package, "merman-android-jni")
+        self.assertEqual(android.manifest, "crates/merman-android-jni/Cargo.toml")
+        self.assertEqual(android.target_name, "merman_android_jni")
+        self.assertEqual(android.crate_types, ("cdylib",))
+        self.assertEqual(android.features, flutter.features)
+        self.assertEqual(flutter.features, c_abi.features)
 
     def test_native_shell_consumers_validate_the_committed_recipe_at_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -261,8 +278,9 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
     def test_python_production_and_generator_commands_have_separate_features(self) -> None:
         recipe = load_artifact_profile("python-uniffi-native")
         wheel_builder.validate_python_native_recipe(recipe)
-        production = cargo_build_args(recipe)
-        cdylib = wheel_builder.production_cdylib_path(recipe)
+        target = "aarch64-apple-darwin"
+        production = cargo_build_args(recipe, target=target)
+        cdylib = wheel_builder.production_cdylib_path(recipe, target)
         generator = wheel_builder.python_generator_args(
             recipe,
             cdylib,
@@ -272,6 +290,15 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             production[production.index("--features") + 1], recipe.feature_argument
         )
         self.assertNotIn("bindgen-smoke", production)
+        self.assertEqual(production[production.index("--target") + 1], target)
+        self.assertEqual(
+            cdylib,
+            wheel_builder.REPO_ROOT
+            / "target"
+            / target
+            / recipe.cargo_profile
+            / "libmerman_uniffi.dylib",
+        )
         expected_generator_features = ",".join(
             sorted((*recipe.features, "bindgen-smoke"))
         )
@@ -376,6 +403,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     return_value=recipe,
                 ),
                 mock.patch.object(wheel_builder, "validate_python_native_recipe"),
+                mock.patch.object(
+                    wheel_builder,
+                    "select_python_wheel_target",
+                    return_value="x86_64-unknown-linux-gnu",
+                ),
                 mock.patch.object(wheel_builder, "production_cdylib_path", return_value=cdylib),
                 mock.patch.object(
                     wheel_builder,
@@ -390,9 +422,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     wheel_builder,
                     "verify_staged_python_support_files",
                 ),
+                mock.patch.object(wheel_builder, "install_target_report"),
                 mock.patch.object(wheel_builder, "newest_wheel", return_value=wheel),
                 mock.patch.object(wheel_builder, "require_platform_wheel"),
                 mock.patch.object(wheel_builder, "require_native_platlib_layout"),
+                mock.patch.object(wheel_builder, "verify_wheel_license_report"),
                 mock.patch.object(
                     wheel_builder,
                     "venv_python",
@@ -404,6 +438,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         generator_command = run.call_args_list[1].args[0]
         wheel_command = run.call_args_list[2].args[0]
+        build_command = run.call_args_list[0].args[0]
+        self.assertEqual(
+            build_command[build_command.index("--target") + 1],
+            "x86_64-unknown-linux-gnu",
+        )
         self.assertIn(str(staged), generator_command)
         self.assertNotIn(str(source), generator_command)
         self.assertIn(str(staged), wheel_command)
@@ -494,8 +533,9 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
     def test_ci_runs_the_formal_strict_feature_matrix_command(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
+        job = workflow_job(workflow, "build-test")
         step = workflow_step(
-            workflow_job(workflow, "build-test"),
+            job,
             name="Verify generated architecture contracts",
         )
         commands = [line.strip() for line in step["run"].splitlines() if line.strip()]
@@ -503,26 +543,37 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "cargo run --locked -p xtask -- verify-feature-matrix --strict",
             commands,
         )
+        toolchain = workflow_step(job, name="Install Rust toolchain")
+        self.assertEqual(
+            set(toolchain["with"]["targets"].split(",")),
+            {"aarch64-linux-android", "wasm32-unknown-unknown"},
+        )
 
     def test_native_ci_smokes_resolve_the_recipe_owned_output_directory(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
         steps = (
-            workflow_step(
-                workflow_job(workflow, "c-ffi-example"),
-                name="Build and run C example",
+            (
+                workflow_step(
+                    workflow_job(workflow, "c-ffi-example"),
+                    name="Build and run C example",
+                ),
+                "c-abi-native",
             ),
-            workflow_step(
-                workflow_job(workflow, "flutter-package-check"),
-                name="Run Dart FFI smoke",
+            (
+                workflow_step(
+                    workflow_job(workflow, "flutter-package-check"),
+                    name="Run Dart FFI smoke",
+                ),
+                "flutter-desktop-native",
             ),
         )
 
-        for step in steps:
+        for step, profile_id in steps:
             with self.subTest(step=step["name"]):
                 command = step["run"]
                 self.assertIn(
-                    "artifact_profile_recipe.py c-abi-native --field profile",
+                    f"artifact_profile_recipe.py {profile_id} --field profile",
                     command,
                 )
                 self.assertNotIn("target/release", command)

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload wheels to, for example v0.8.0-alpha.3"
+        description: "Release tag to upload wheels to, for example v0.8.0-alpha.4"
         required: true
         type: string
       publish_to_pypi:
@@ -355,11 +355,17 @@ jobs:
 
   verify-wheel-metadata:
     needs:
+      - validate-inputs
       - build
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -376,6 +382,9 @@ jobs:
         run: |
           python -m pip install --upgrade twine
           python -m twine check wheels/merman-*.whl
+          wheels=(wheels/merman-*.whl)
+          test "${#wheels[@]}" -eq 3
+          python scripts/python_wheel_licenses.py "${wheels[@]}"
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile

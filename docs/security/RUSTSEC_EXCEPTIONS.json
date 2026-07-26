@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "id": "RUSTSEC-2026-0192",
+      "package": {
+        "name": "ttf-parser",
+        "version": "0.25.1"
+      },
+      "reason": "The current resvg/usvg, krilla, and ratex releases require ttf-parser; no safe upstream upgrade is available yet.",
+      "dependency_paths": [
+        [
+          "merman-export@0.8.0-alpha.4",
+          "krilla-svg@0.8.1",
+          "fontdb@0.23.0",
+          "ttf-parser@0.25.1"
+        ],
+        [
+          "merman-export@0.8.0-alpha.4",
+          "krilla@0.8.2",
+          "rustybuzz@0.20.1",
+          "ttf-parser@0.25.1"
+        ],
+        [
+          "merman-export@0.8.0-alpha.4",
+          "usvg@0.47.0",
+          "ttf-parser@0.25.1"
+        ],
+        [
+          "merman-render@0.8.0-alpha.4",
+          "ratex-svg@0.1.13",
+          "ab_glyph@0.2.32",
+          "owned_ttf_parser@0.25.1",
+          "ttf-parser@0.25.1"
+        ],
+        [
+          "merman-render@0.8.0-alpha.4",
+          "ratex-svg@0.1.13",
+          "ratex-unicode-font@0.1.13",
+          "ttf-parser@0.25.1"
+        ]
+      ],
+      "affected_artifact_profiles": [
+        "android-native",
+        "apple-uniffi-native",
+        "c-abi-native",
+        "cli-release",
+        "flutter-android-native",
+        "flutter-desktop-native",
+        "flutter-ios-native",
+        "python-uniffi-native",
+        "rust-all",
+        "rust-bindings-core-native-sdk",
+        "rust-export-jpeg",
+        "rust-export-native-sdk",
+        "rust-export-pdf",
+        "rust-export-png",
+        "rust-native-sdk",
+        "rust-native-svg",
+        "rust-render-native-svg",
+        "rust-static-svg",
+        "rustdoc-static-svg",
+        "web-full",
+        "web-render"
+      ],
+      "upstream_issue": "https://github.com/harfbuzz/ttf-parser/issues/217",
+      "owner": "Latias94",
+      "reviewed_on": "2026-07-26",
+      "review_due": "2026-10-24",
+      "exit_condition": "Remove this exception when every affected artifact profile no longer resolves ttf-parser 0.25.1, either through maintained upstream releases or a verified migration to skrifa."
+    },
+    {
+      "id": "RUSTSEC-2026-0206",
+      "package": {
+        "name": "rustybuzz",
+        "version": "0.20.1"
+      },
+      "reason": "The current resvg/usvg and krilla releases require rustybuzz; no safe upstream upgrade is available yet.",
+      "dependency_paths": [
+        [
+          "merman-export@0.8.0-alpha.4",
+          "krilla@0.8.2",
+          "rustybuzz@0.20.1"
+        ],
+        [
+          "merman-export@0.8.0-alpha.4",
+          "usvg@0.47.0",
+          "rustybuzz@0.20.1"
+        ]
+      ],
+      "affected_artifact_profiles": [
+        "android-native",
+        "apple-uniffi-native",
+        "c-abi-native",
+        "cli-release",
+        "flutter-android-native",
+        "flutter-desktop-native",
+        "flutter-ios-native",
+        "python-uniffi-native",
+        "rust-all",
+        "rust-bindings-core-native-sdk",
+        "rust-export-jpeg",
+        "rust-export-native-sdk",
+        "rust-export-pdf",
+        "rust-export-png",
+        "rust-native-sdk"
+      ],
+      "upstream_issue": "https://github.com/harfbuzz/rustybuzz/issues/166",
+      "owner": "Latias94",
+      "reviewed_on": "2026-07-26",
+      "review_due": "2026-10-24",
+      "exit_condition": "Remove this exception when every affected artifact profile no longer resolves rustybuzz 0.20.1, either through maintained upstream releases or a verified migration to harfrust."
+    }
+  ]
+}

@@ -12,14 +12,19 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Iterable
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 
 CONTRACT_PATH = Path("docs/release/THIRD_PARTY_COMPONENTS.json")
 NOTICE_PATH = Path("THIRD_PARTY_NOTICES.md")
 LICENSE_ROOT = Path("THIRD_PARTY_LICENSES")
-SCHEMA_VERSION = 1
+ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v1.json")
+WEB_REPORT_ROOT = Path("platforms/web/legal/rust-cargo-dependencies")
+WEB_REPORT_PROJECTION = Path("THIRD_PARTY_LICENSES/rust-cargo-dependencies.json")
+SCHEMA_VERSION = 3
+WEB_REPORT_SCHEMA_VERSION = 2
+CARGO_ABOUT_VERSION = "0.9.1"
 HEX_40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX_64 = re.compile(r"[0-9a-f]{64}\Z")
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -99,7 +104,14 @@ def require_string_list(value: Any, context: str) -> list[str]:
 def require_repo_path(value: Any, context: str) -> Path:
     raw = require_string(value, context)
     pure = PurePosixPath(raw)
-    if pure.is_absolute() or "\\" in raw or any(part in {"", ".", ".."} for part in pure.parts):
+    if (
+        pure.is_absolute()
+        or bool(PureWindowsPath(raw).drive)
+        or "\\" in raw
+        or pure.as_posix() != raw
+        or not pure.parts
+        or any(part in {"", ".", ".."} for part in pure.parts)
+    ):
         raise ContractError(f"{context} must be a normalized repository-relative path")
     return Path(*pure.parts)
 
@@ -113,6 +125,16 @@ def sha256(path: Path) -> str:
     except OSError as error:
         raise ContractError(f"cannot hash {path}: {error}") from error
     return digest.hexdigest()
+
+
+def sha256_json(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def require_regular_file(root: Path, relative: Path, context: str) -> Path:
@@ -246,6 +268,345 @@ def validate_external_materials(root: Path, values: Any) -> set[Path]:
             raise ContractError(f"required external material is missing: {relative}")
         paths.add(relative)
     return paths
+
+
+def validate_scoped_external_materials(
+    root: Path,
+    values: Any,
+    scopes: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    materials: list[dict[str, Any]] = []
+    source_paths: set[Path] = set()
+    mapped_scopes: set[str] = set()
+    raw_values = require_list(values, "scoped_external_materials")
+    for index, raw in enumerate(raw_values):
+        context = f"scoped_external_materials[{index}]"
+        value = require_object(raw, context)
+        require_exact_keys(
+            value,
+            {
+                "artifact_scope",
+                "path",
+                "projection_path",
+                "owner",
+                "required",
+                "format",
+            },
+            set(),
+            context,
+        )
+        scope_id = require_string(value["artifact_scope"], f"{context}.artifact_scope")
+        if scope_id not in scopes:
+            raise ContractError(f"{context} references unknown artifact scope {scope_id}")
+        if scope_id in mapped_scopes:
+            raise ContractError(f"{context} repeats artifact scope {scope_id}")
+        relative = require_repo_path(value["path"], f"{context}.path")
+        if (
+            relative.parent != WEB_REPORT_ROOT
+            or relative.name != f"{scope_id}.json"
+            or relative in source_paths
+        ):
+            raise ContractError(
+                f"{context}.path must uniquely bind {scope_id} under {WEB_REPORT_ROOT}"
+            )
+        projection = require_repo_path(
+            value["projection_path"], f"{context}.projection_path"
+        )
+        if projection != WEB_REPORT_PROJECTION:
+            raise ContractError(
+                f"{context}.projection_path must be {WEB_REPORT_PROJECTION}"
+            )
+        require_string(value["owner"], f"{context}.owner")
+        if value["required"] is not True:
+            raise ContractError(f"{context}.required must be true")
+        if value["format"] != "json":
+            raise ContractError(f"{context}.format must be json")
+        source_paths.add(relative)
+        mapped_scopes.add(scope_id)
+        materials.append(value)
+
+    profile_path = root / ARTIFACT_PROFILES_PATH
+    if not raw_values and not profile_path.is_file():
+        return materials
+    profiles = load_web_artifact_profiles(root)
+    expected_scopes = set(profiles)
+    if mapped_scopes != expected_scopes:
+        missing = sorted(expected_scopes - mapped_scopes)
+        unexpected = sorted(mapped_scopes - expected_scopes)
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected " + ", ".join(unexpected))
+        raise ContractError(
+            "scoped_external_materials must exactly cover Web artifact profiles: "
+            + "; ".join(details)
+        )
+    for material in materials:
+        scope_id = material["artifact_scope"]
+        report_path = require_regular_file(
+            root,
+            require_repo_path(material["path"], f"scoped material {scope_id} path"),
+            f"scoped material {scope_id}",
+        )
+        validate_web_rust_report(root, load_json(report_path), profiles[scope_id], scope_id)
+    return materials
+
+
+def load_web_artifact_profiles(root: Path) -> dict[str, dict[str, Any]]:
+    authority = require_object(
+        load_json(require_regular_file(root, ARTIFACT_PROFILES_PATH, "artifact profiles")),
+        "artifact profiles",
+    )
+    if authority.get("schema_version") != 1:
+        raise ContractError("artifact profile authority schema_version must be 1")
+    profiles: dict[str, dict[str, Any]] = {}
+    for index, raw in enumerate(require_list(authority.get("profiles"), "artifact profiles")):
+        profile = require_object(raw, f"artifact profiles[{index}]")
+        profile_id = profile.get("id")
+        if not isinstance(profile_id, str) or profile.get("semantic_target") != "web":
+            continue
+        if not SLUG.fullmatch(profile_id):
+            raise ContractError(f"Web artifact profile id must be a lowercase slug: {profile_id!r}")
+        if profile_id in profiles:
+            raise ContractError(f"artifact profile authority repeats {profile_id}")
+        cargo = require_object(profile.get("cargo"), f"artifact profile {profile_id} cargo")
+        require_exact_keys(
+            cargo,
+            {
+                "package",
+                "manifest",
+                "profile",
+                "default_features",
+                "features",
+                "target",
+                "build_target",
+            },
+            set(),
+            f"artifact profile {profile_id} cargo",
+        )
+        package = require_string(cargo["package"], f"artifact profile {profile_id} package")
+        manifest = require_repo_path(
+            cargo["manifest"], f"artifact profile {profile_id} manifest"
+        )
+        require_string(cargo["profile"], f"artifact profile {profile_id} profile")
+        if cargo.get("default_features") is not False:
+            raise ContractError(f"artifact profile {profile_id} must disable default features")
+        features = require_string_list(
+            cargo["features"], f"artifact profile {profile_id} features"
+        )
+        if not features or features != sorted(features):
+            raise ContractError(
+                f"artifact profile {profile_id} features must be non-empty and sorted"
+            )
+        target = require_object(cargo["target"], f"artifact profile {profile_id} target")
+        require_exact_keys(
+            target,
+            {"name", "kinds", "crate_types", "required_features"},
+            set(),
+            f"artifact profile {profile_id} target",
+        )
+        require_string(target["name"], f"artifact profile {profile_id} target name")
+        for field in ("kinds", "crate_types", "required_features"):
+            require_string_list(
+                target[field], f"artifact profile {profile_id} target {field}"
+            )
+        build_target = require_object(
+            cargo.get("build_target"), f"artifact profile {profile_id} build target"
+        )
+        require_exact_keys(
+            build_target,
+            {"kind", "triples"},
+            set(),
+            f"artifact profile {profile_id} build target",
+        )
+        if build_target.get("kind") != "target-set" or build_target.get("triples") != [
+            "wasm32-unknown-unknown"
+        ]:
+            raise ContractError(f"artifact profile {profile_id} must target wasm32-unknown-unknown")
+        validate_web_profile_manifest(root, manifest, package, features, profile_id)
+        profiles[profile_id] = {
+            "id": profile_id,
+            "semantic_target": "web",
+            "cargo": cargo,
+        }
+    if not profiles:
+        raise ContractError("artifact profile authority defines no Web profiles")
+    return profiles
+
+
+def validate_web_profile_manifest(
+    root: Path,
+    manifest: Path,
+    package: str,
+    features: list[str],
+    profile_id: str,
+) -> None:
+    manifest_path = require_regular_file(
+        root, manifest, f"artifact profile {profile_id} manifest"
+    )
+    try:
+        document = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise ContractError(
+            f"cannot read artifact profile {profile_id} manifest {manifest}: {error}"
+        ) from error
+    package_table = require_object(
+        document.get("package"), f"artifact profile {profile_id} manifest package"
+    )
+    if package_table.get("name") != package:
+        raise ContractError(
+            f"artifact profile {profile_id} package does not match {manifest}"
+        )
+    manifest_features = require_object(
+        document.get("features"), f"artifact profile {profile_id} manifest features"
+    )
+    missing = sorted(set(features) - manifest_features.keys())
+    if missing:
+        raise ContractError(
+            f"artifact profile {profile_id} references missing Cargo features: "
+            + ", ".join(missing)
+        )
+
+
+def validate_web_rust_report(
+    root: Path,
+    raw: Any,
+    expected_profile: dict[str, Any],
+    scope_id: str,
+) -> None:
+    report = require_object(raw, f"Web Rust report {scope_id}")
+    require_exact_keys(
+        report,
+        {"schema_version", "artifact_profile", "generator", "dependency_closure", "licenses"},
+        set(),
+        f"Web Rust report {scope_id}",
+    )
+    if report["schema_version"] != WEB_REPORT_SCHEMA_VERSION:
+        raise ContractError(f"Web Rust report {scope_id} has an unsupported schema")
+    if report["artifact_profile"] != expected_profile:
+        raise ContractError(f"Web Rust report {scope_id} does not match its artifact profile recipe")
+    generator = require_object(report["generator"], f"Web Rust report {scope_id} generator")
+    require_exact_keys(
+        generator,
+        {
+            "name",
+            "version",
+            "command_profile",
+            "offline",
+            "cargo_lock_sha256",
+            "configuration_sha256",
+            "artifact_profile_sha256",
+        },
+        set(),
+        f"Web Rust report {scope_id} generator",
+    )
+    expected_generator = {
+        "name": "cargo-about",
+        "version": CARGO_ABOUT_VERSION,
+        "command_profile": "artifact-profile-runtime",
+        "offline": True,
+        "cargo_lock_sha256": sha256(root / "Cargo.lock"),
+        "configuration_sha256": sha256(root / "about.toml"),
+        "artifact_profile_sha256": sha256_json(expected_profile),
+    }
+    if generator != expected_generator:
+        raise ContractError(f"Web Rust report {scope_id} generator inputs have drifted")
+
+    licenses = require_list(report["licenses"], f"Web Rust report {scope_id} licenses")
+    if not licenses:
+        raise ContractError(f"Web Rust report {scope_id} has no licenses")
+    packages: dict[tuple[str, str, str], dict[str, Any]] = {}
+    license_order: list[tuple[str, str]] = []
+    for license_index, raw_license in enumerate(licenses):
+        context = f"Web Rust report {scope_id} licenses[{license_index}]"
+        license_entry = require_object(raw_license, context)
+        require_exact_keys(
+            license_entry,
+            {"id", "name", "text_sha256", "text", "packages"},
+            set(),
+            context,
+        )
+        license_id = require_string(license_entry["id"], f"{context}.id")
+        require_string(license_entry["name"], f"{context}.name")
+        text = license_entry["text"]
+        if not isinstance(text, str) or not text:
+            raise ContractError(f"{context}.text must be a non-empty string")
+        text_digest = require_string(license_entry["text_sha256"], f"{context}.text_sha256")
+        if text_digest != hashlib.sha256(text.encode()).hexdigest():
+            raise ContractError(f"{context}.text_sha256 does not match its license text")
+        license_order.append((license_id, text_digest))
+        package_order: list[tuple[str, str, str]] = []
+        for package_index, raw_package in enumerate(
+            require_list(license_entry["packages"], f"{context}.packages")
+        ):
+            package_context = f"{context}.packages[{package_index}]"
+            package = require_object(raw_package, package_context)
+            require_exact_keys(
+                package,
+                {
+                    "name",
+                    "version",
+                    "source",
+                    "license_expression",
+                    "authors",
+                    "repository",
+                },
+                set(),
+                package_context,
+            )
+            key = (
+                require_string(package["name"], f"{package_context}.name"),
+                require_string(package["version"], f"{package_context}.version"),
+                require_string(package["source"], f"{package_context}.source"),
+            )
+            authors = [
+                require_string(author, f"{package_context}.authors[{author_index}]")
+                for author_index, author in enumerate(
+                    require_list(package["authors"], f"{package_context}.authors")
+                )
+            ]
+            if authors != sorted(authors):
+                raise ContractError(f"{package_context}.authors must be sorted")
+            for optional in ("license_expression", "repository"):
+                if package[optional] is not None:
+                    require_string(package[optional], f"{package_context}.{optional}")
+            existing = packages.get(key)
+            if existing is not None and existing != package:
+                raise ContractError(f"{package_context} conflicts with another package record")
+            packages[key] = package
+            package_order.append(key)
+        if (
+            not package_order
+            or len(package_order) != len(set(package_order))
+            or package_order != sorted(package_order)
+        ):
+            raise ContractError(f"{context}.packages must be non-empty, unique, and sorted")
+    if license_order != sorted(license_order) or len(license_order) != len(set(license_order)):
+        raise ContractError(f"Web Rust report {scope_id} licenses must be unique and sorted")
+
+    ordered_packages = [packages[key] for key in sorted(packages)]
+    encoded = json.dumps(
+        ordered_packages,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    expected_closure = {
+        "package_count": len(ordered_packages),
+        "packages_sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    closure = require_object(
+        report["dependency_closure"], f"Web Rust report {scope_id} dependency closure"
+    )
+    require_exact_keys(
+        closure,
+        {"package_count", "packages_sha256"},
+        set(),
+        f"Web Rust report {scope_id} dependency closure",
+    )
+    if closure != expected_closure:
+        raise ContractError(f"Web Rust report {scope_id} dependency closure is incomplete or stale")
 
 
 def validate_components(
@@ -545,6 +906,7 @@ def load_and_validate(root: Path, contract_relative: Path = CONTRACT_PATH) -> tu
         "license_root",
         "repository_lock",
         "externally_managed_files",
+        "scoped_external_materials",
         "artifact_scopes",
         "components",
     }
@@ -563,6 +925,9 @@ def load_and_validate(root: Path, contract_relative: Path = CONTRACT_PATH) -> tu
     external = validate_external_materials(root, contract["externally_managed_files"])
     components, licensed = validate_components(root, contract["components"], repo_lock)
     scopes = validate_scopes(contract["artifact_scopes"], components)
+    validate_scoped_external_materials(
+        root, contract["scoped_external_materials"], scopes
+    )
     validate_license_directory(root, licensed, external)
     notice = render_notice(
         contract_relative,

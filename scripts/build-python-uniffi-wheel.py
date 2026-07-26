@@ -23,6 +23,10 @@ from artifact_profile_recipe import (
     cargo_run_example_args,
     load_artifact_profile,
 )
+from python_wheel_licenses import (
+    install_target_report,
+    verify_wheel_license_report,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -45,15 +49,15 @@ PYTHON_STAGING_IGNORE = shutil.ignore_patterns(
 )
 
 
-def production_cdylib_path(recipe: CargoArtifactRecipe) -> Path:
+def production_cdylib_path(recipe: CargoArtifactRecipe, target: str) -> Path:
     library_stem = recipe.target_name.replace("-", "_")
-    if sys.platform == "win32":
+    if "windows" in target:
         filename = f"{library_stem}.dll"
-    elif sys.platform == "darwin":
+    elif "apple" in target:
         filename = f"lib{library_stem}.dylib"
     else:
         filename = f"lib{library_stem}.so"
-    return REPO_ROOT / "target" / recipe.cargo_profile / filename
+    return REPO_ROOT / "target" / target / recipe.cargo_profile / filename
 
 
 def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
@@ -67,16 +71,47 @@ def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
         or recipe.target_name != "merman_uniffi"
         or recipe.target_kinds != expected_target_contract
         or recipe.crate_types != expected_target_contract
-        or recipe.build_target_kind != "host"
-        or recipe.build_targets
+        or recipe.build_target_kind != "target-set"
+        or not recipe.build_targets
     ):
         raise RuntimeError(
-            "python-uniffi-native must remain the exact host native-sdk merman-uniffi "
-            "complete native SDK cdylib recipe"
+            "python-uniffi-native must remain the exact target-set native-sdk "
+            "merman-uniffi complete native SDK cdylib recipe"
         )
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
         raise RuntimeError(f"python-uniffi-native manifest does not exist: {manifest}")
+
+
+def rustc_host_target() -> str:
+    result = subprocess.run(
+        ["rustc", "-vV"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "could not detect the Rust host target: "
+            + (result.stderr or result.stdout).strip()
+        )
+    for line in result.stdout.splitlines():
+        if line.startswith("host: "):
+            target = line.removeprefix("host: ")
+            if target:
+                return target
+    raise RuntimeError("rustc -vV did not report a host target")
+
+
+def select_python_wheel_target(recipe: CargoArtifactRecipe) -> str:
+    target = rustc_host_target()
+    if target not in recipe.build_targets:
+        raise RuntimeError(
+            f"Python wheels are not published for Rust host target {target!r}; "
+            f"supported targets: {', '.join(recipe.build_targets)}"
+        )
+    return target
 
 
 def python_generator_args(
@@ -550,9 +585,10 @@ def main() -> int:
 
     recipe = load_artifact_profile("python-uniffi-native")
     validate_python_native_recipe(recipe)
+    target = select_python_wheel_target(recipe)
     require_tracked_python_support_files(package_source)
-    run(cargo_build_args(recipe, locked=True))
-    cdylib = production_cdylib_path(recipe)
+    run(cargo_build_args(recipe, locked=True, target=target))
+    cdylib = production_cdylib_path(recipe, target)
     if not cdylib.is_file():
         raise RuntimeError(f"expected production UniFFI library not found: {cdylib}")
     with staged_python_package(package_source) as package_dir:
@@ -561,6 +597,7 @@ def main() -> int:
             env=python_generator_environment(),
         )
         verify_staged_python_support_files(package_source, package_dir)
+        install_target_report(REPO_ROOT, package_dir, target)
 
         remove_stale_package_build(package_dir)
         wheel_dir.mkdir(parents=True, exist_ok=True)
@@ -580,6 +617,11 @@ def main() -> int:
         wheel = newest_wheel(wheel_dir)
         require_platform_wheel(wheel)
         require_native_platlib_layout(wheel)
+        verify_wheel_license_report(
+            wheel,
+            root=REPO_ROOT,
+            expected_target=target,
+        )
 
     if args.run_smoke:
         venv_dir = REPO_ROOT / "target" / "python-wheel-smoke"

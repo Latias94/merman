@@ -9,26 +9,42 @@ on:
       - Cargo.lock
       - Cargo.toml
       - about.toml
+      - capabilities/artifact-profiles-v1.json
       - deny.toml
+      - docs/security/RUSTSEC_EXCEPTIONS.json
       - "LICENSE-*"
       - THIRD_PARTY_NOTICES.md
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+      - "platforms/python/legal/rust-cargo-dependencies/*.json"
+      - scripts/generate-rust-license-report.py
+      - scripts/python_wheel_licenses.py
+      - scripts/verify_artifact_dependency_closures.py
+      - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   pull_request:
     paths:
       - Cargo.lock
       - Cargo.toml
       - about.toml
+      - capabilities/artifact-profiles-v1.json
       - deny.toml
+      - docs/security/RUSTSEC_EXCEPTIONS.json
       - "LICENSE-*"
       - THIRD_PARTY_NOTICES.md
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+      - "platforms/python/legal/rust-cargo-dependencies/*.json"
+      - scripts/generate-rust-license-report.py
+      - scripts/python_wheel_licenses.py
+      - scripts/verify_artifact_dependency_closures.py
+      - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   schedule:
     - cron: "23 4 * * 1"
@@ -82,6 +98,12 @@ jobs:
 
       - name: Verify dependency advisories, bans, licenses, and sources
         run: cargo deny check advisories bans licenses sources
+
+      - name: Verify governed RustSec exceptions
+        run: python3 scripts/verify_rustsec_exceptions.py
+
+      - name: Verify advisory artifact-profile coverage
+        run: python3 scripts/verify_artifact_dependency_closures.py
 
       - name: Verify checked-in Rust dependency notices
         run: python3 scripts/generate-rust-license-report.py --check

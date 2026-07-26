@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,8 +17,26 @@ assert SPEC is not None and SPEC.loader is not None
 sync = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sync)
 
+GENERATOR_MODULE_PATH = Path(__file__).with_name("generate-rust-license-report.py")
+GENERATOR_SPEC = importlib.util.spec_from_file_location(
+    "generate_rust_license_report_contract",
+    GENERATOR_MODULE_PATH,
+)
+assert GENERATOR_SPEC is not None and GENERATOR_SPEC.loader is not None
+generator = importlib.util.module_from_spec(GENERATOR_SPEC)
+sys.modules[GENERATOR_SPEC.name] = generator
+GENERATOR_SPEC.loader.exec_module(generator)
+
 
 class ReleaseLegalMaterialTests(unittest.TestCase):
+    def test_native_report_sources_match_generator_outputs(self) -> None:
+        generated_reports = {
+            spec.output.parents[1].as_posix(): spec.output
+            for spec in generator.NATIVE_REPORT_SPECS
+        }
+
+        self.assertEqual(sync.NATIVE_RUST_REPORTS, generated_reports)
+
     def test_write_and_check_cover_every_release_surface(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -33,6 +52,13 @@ class ReleaseLegalMaterialTests(unittest.TestCase):
             self.assertIn(
                 root / "platforms/android/src/main/resources/META-INF/LICENSE",
                 expected,
+            )
+            self.assertEqual(
+                expected[
+                    root
+                    / "platforms/android/src/main/resources/META-INF/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+                ],
+                b"platforms/android exact report\n",
             )
 
     def test_check_rejects_stale_and_unexpected_files(self) -> None:
@@ -77,6 +103,14 @@ def seed_root(root: Path) -> None:
     (root / "THIRD_PARTY_NOTICES.md").write_text("Notices\n", encoding="utf-8")
     licenses = root / "THIRD_PARTY_LICENSES"
     licenses.mkdir()
+    (licenses / "rust-cargo-dependencies.json").write_text(
+        "workspace report\n",
+        encoding="utf-8",
+    )
+    for bundle_root, report_path in sync.NATIVE_RUST_REPORTS.items():
+        path = root / report_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{bundle_root} exact report\n", encoding="utf-8")
     components = []
     component_ids = sorted(
         {

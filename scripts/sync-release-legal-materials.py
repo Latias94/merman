@@ -35,6 +35,21 @@ RELEASE_BUNDLE_ROOTS = (
     "playground/public",
 )
 ANDROID_META_INF = "platforms/android/src/main/resources/META-INF"
+RUST_DEPENDENCY_REPORT = Path("rust-cargo-dependencies.json")
+NATIVE_RUST_REPORTS = {
+    "platforms/python/merman": Path(
+        "platforms/python/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+    ),
+    "platforms/flutter": Path(
+        "platforms/flutter/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+    ),
+    "platforms/android": Path(
+        "platforms/android/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+    ),
+    "platforms/apple": Path(
+        "platforms/apple/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+    ),
+}
 EXTERNALLY_MANAGED_PROJECTIONS = (
     "playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt",
     "tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt",
@@ -136,6 +151,11 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
             destination / CANONICAL_LICENSE_DIRECTORY,
             expected,
         )
+        native_report = NATIVE_RUST_REPORTS.get(bundle_root)
+        if native_report is not None:
+            expected[
+                destination / CANONICAL_LICENSE_DIRECTORY / RUST_DEPENDENCY_REPORT
+            ] = read_required_file(root / native_report)
 
     android = root / ANDROID_META_INF
     expected[android / "LICENSE"] = project_license
@@ -144,6 +164,9 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
         licenses,
         android / CANONICAL_LICENSE_DIRECTORY,
         expected,
+    )
+    expected[android / CANONICAL_LICENSE_DIRECTORY / RUST_DEPENDENCY_REPORT] = (
+        read_required_file(root / NATIVE_RUST_REPORTS["platforms/android"])
     )
     for crate_root in DUAL_LICENSE_CRATE_ROOTS:
         destination = root / crate_root
