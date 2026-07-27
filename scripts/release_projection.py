@@ -1,4 +1,4 @@
-"""Workspace release-version authority, projections, and transactional updates."""
+"""Workspace release-version authority, projections, and updates."""
 
 from __future__ import annotations
 
@@ -23,14 +23,31 @@ try:
 except ModuleNotFoundError:
     import web_package_group
 
+try:
+    from scripts import release_readme
+except ModuleNotFoundError:
+    import release_readme
+
 
 ROOT_MANIFEST = Path("Cargo.toml")
 ROOT_LOCK = Path("Cargo.lock")
+README = Path("README.md")
+PROJECTED_READMES = tuple(
+    Path(path) for path in release_readme.projected_readme_paths()
+)
 FUZZ_MANIFEST = Path("fuzz/Cargo.toml")
 FUZZ_LOCK = Path("fuzz/Cargo.lock")
 WEB_WORKSPACE_PACKAGE = Path("platforms/web/package.json")
 WEB_DESCRIPTOR = Path("platforms/web/web-surface-descriptor.json")
 WEB_LOCK = Path("platforms/web/package-lock.json")
+NODE_ROOT = Path("platforms/node")
+NODE_CARGO_MANIFEST = Path("crates/merman-node/Cargo.toml")
+NODE_CARGO_LOCK = Path("crates/merman-node/Cargo.lock")
+NODE_DESCRIPTOR = NODE_ROOT / "package-surfaces.json"
+NODE_WORKSPACE_PACKAGE = NODE_ROOT / "package.json"
+NODE_WORKSPACE_LOCK = NODE_ROOT / "package-lock.json"
+NODE_CARGO_PACKAGE = "merman-node-candidate"
+NODE_BINDINGS_PACKAGE = "merman-bindings-core"
 PLAYGROUND_PACKAGE = Path("playground/package.json")
 PLAYGROUND_LOCK = Path("playground/package-lock.json")
 PLAYGROUND_LICENSE_REPORT = Path(
@@ -75,9 +92,32 @@ class VerificationResult:
 @dataclass(frozen=True)
 class WorkspaceCatalog:
     authority: ReleaseVersion
+    repository_url: str
+    readme_registry_version: str | None
     coupled_packages: Mapping[str, Path]
     member_manifests: tuple[Path, ...]
     root_data: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _NodePackageEntry:
+    name: str
+    directory: Path
+
+    @property
+    def manifest_path(self) -> Path:
+        return NODE_ROOT / self.directory / "package.json"
+
+
+@dataclass(frozen=True)
+class _NodePackageCatalog:
+    version: str
+    root: _NodePackageEntry
+    targets: tuple[_NodePackageEntry, ...]
+
+    @property
+    def entries(self) -> tuple[_NodePackageEntry, ...]:
+        return (self.root, *self.targets)
 
 
 class RepositoryView:
@@ -170,6 +210,10 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
         _string(package.get("version"), "Cargo.toml workspace.package.version"),
         allow_v_prefix=False,
     )
+    repository_url = _string(
+        package.get("repository"),
+        "Cargo.toml workspace.package.repository",
+    )
 
     metadata = _mapping(
         workspace.get("metadata", {}), "Cargo.toml [workspace.metadata]"
@@ -191,6 +235,22 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
         raise ReleaseProjectionError(
             "Cargo.toml independent package declarations must be unique"
         )
+    readme_registry_raw = release_metadata.get("readme-registry-version")
+    readme_registry_version = None
+    if readme_registry_raw is not None:
+        readme_registry_version = parse_release_version(
+            _string(
+                readme_registry_raw,
+                "Cargo.toml workspace.metadata.merman-release.readme-registry-version",
+            ),
+            allow_v_prefix=False,
+        ).canonical
+        if readme_registry_version != authority.canonical:
+            raise ReleaseProjectionError(
+                "Cargo.toml workspace.metadata.merman-release.readme-registry-version "
+                f"must match workspace.package.version {authority.canonical}, "
+                f"found {readme_registry_version}"
+            )
 
     members = workspace.get("members")
     if not isinstance(members, list) or not members:
@@ -242,6 +302,8 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
 
     return WorkspaceCatalog(
         authority=authority,
+        repository_url=repository_url,
+        readme_registry_version=readme_registry_version,
         coupled_packages=coupled,
         member_manifests=tuple(member_manifests),
         root_data=root_data,
@@ -252,6 +314,7 @@ def verify_repository(
     root: Path,
     *,
     expected_version: str | None = None,
+    required_readme_mode: str | None = None,
     overrides: Mapping[Path | str, str] | None = None,
 ) -> VerificationResult:
     view = RepositoryView(root, overrides)
@@ -282,7 +345,14 @@ def verify_repository(
         errors,
     )
     _collect_fuzz_lock_versions(view, catalog, observations, errors)
+    _collect_node_candidate_projection(view, catalog, observations, errors)
     _collect_platform_versions(view, catalog.authority, observations)
+    _collect_readme_projection(
+        view,
+        catalog,
+        errors,
+        required_mode=required_readme_mode,
+    )
 
     return VerificationResult(
         authority=catalog.authority,
@@ -431,6 +501,8 @@ def _collect_cargo_lock_versions(
     required_packages: set[str],
     observations: list[VersionObservation],
     errors: list[str],
+    *,
+    label: str | None = None,
 ) -> None:
     lock = view.toml(lock_path)
     packages = lock.get("package")
@@ -460,7 +532,7 @@ def _collect_cargo_lock_versions(
         actual = matches[0].get("version")
         observations.append(
             VersionObservation(
-                f"{lock_path} package {package_name}",
+                f"{label or lock_path} package {package_name}",
                 lock_path,
                 catalog.authority.canonical,
                 actual if isinstance(actual, str) else "<missing>",
@@ -515,6 +587,251 @@ def _web_package_entries(view: RepositoryView) -> list[tuple[dict[str, Any], Pat
             )
         )
     return entries
+
+
+def _node_package_entry(
+    raw_entry: Any,
+    label: str,
+) -> _NodePackageEntry:
+    entry = _mapping(raw_entry, label)
+    name = _string(entry.get("name"), f"{label}.name")
+    directory = Path(_string(entry.get("directory"), f"{label}.directory"))
+    if directory.is_absolute() or ".." in directory.parts or directory == Path("."):
+        raise ReleaseProjectionError(
+            f"{label}.directory must stay inside {NODE_ROOT}: {directory}"
+        )
+    return _NodePackageEntry(
+        name=name,
+        directory=directory,
+    )
+
+
+def _node_package_catalog(view: RepositoryView) -> _NodePackageCatalog:
+    descriptor = view.json(NODE_DESCRIPTOR)
+    version = _string(descriptor.get("version"), f"{NODE_DESCRIPTOR}.version")
+    try:
+        parse_release_version(
+            version,
+            allow_v_prefix=False,
+        )
+    except ValueError as exc:
+        raise ReleaseProjectionError(
+            f"{NODE_DESCRIPTOR}.version is invalid: {exc}"
+        ) from exc
+
+    root = _node_package_entry(
+        descriptor.get("root"),
+        f"{NODE_DESCRIPTOR}.root",
+    )
+    raw_targets = descriptor.get("targets")
+    if not isinstance(raw_targets, list):
+        raise ReleaseProjectionError(
+            f"{NODE_DESCRIPTOR}.targets must be an array"
+        )
+    targets = tuple(
+        _node_package_entry(
+            raw_target,
+            f"{NODE_DESCRIPTOR}.targets[{index}]",
+        )
+        for index, raw_target in enumerate(raw_targets)
+    )
+    return _NodePackageCatalog(version=version, root=root, targets=targets)
+
+
+def _collect_node_candidate_projection(
+    view: RepositoryView,
+    catalog: WorkspaceCatalog,
+    observations: list[VersionObservation],
+    errors: list[str],
+) -> None:
+    canonical = catalog.authority.canonical
+    node_catalog = _node_package_catalog(view)
+
+    cargo_manifest = view.toml(NODE_CARGO_MANIFEST)
+    cargo_package = _mapping(
+        cargo_manifest.get("package"),
+        f"{NODE_CARGO_MANIFEST} [package]",
+    )
+    if cargo_package.get("name") != NODE_CARGO_PACKAGE:
+        raise ReleaseProjectionError(
+            f"{NODE_CARGO_MANIFEST} must define {NODE_CARGO_PACKAGE}"
+        )
+    if cargo_package.get("publish") is not False:
+        raise ReleaseProjectionError(
+            f"{NODE_CARGO_MANIFEST} must remain a private, non-publishable candidate"
+        )
+    if not isinstance(cargo_manifest.get("workspace"), dict):
+        raise ReleaseProjectionError(
+            f"{NODE_CARGO_MANIFEST} must remain a detached private workspace "
+            "until Node admission"
+        )
+    _observe(
+        observations,
+        "Node candidate Cargo package",
+        NODE_CARGO_MANIFEST,
+        canonical,
+        cargo_package.get("version"),
+    )
+
+    dependencies = _mapping(
+        cargo_manifest.get("dependencies"),
+        f"{NODE_CARGO_MANIFEST} [dependencies]",
+    )
+    bindings_dependency = _mapping(
+        dependencies.get(NODE_BINDINGS_PACKAGE),
+        f"{NODE_CARGO_MANIFEST} dependency {NODE_BINDINGS_PACKAGE}",
+    )
+    bindings_path = Path(
+        _string(
+            bindings_dependency.get("path"),
+            f"{NODE_CARGO_MANIFEST} dependency {NODE_BINDINGS_PACKAGE}.path",
+        )
+    )
+    bindings_member = catalog.coupled_packages.get(NODE_BINDINGS_PACKAGE)
+    if bindings_member is None:
+        raise ReleaseProjectionError(
+            f"root workspace must contain the coupled {NODE_BINDINGS_PACKAGE} package"
+        )
+    expected_bindings_dir = (view.root / bindings_member).resolve()
+    actual_bindings_dir = (
+        (view.root / NODE_CARGO_MANIFEST).parent / bindings_path
+    ).resolve()
+    if actual_bindings_dir != expected_bindings_dir:
+        errors.append(
+            f"{NODE_CARGO_MANIFEST} must depend on the local "
+            f"{NODE_BINDINGS_PACKAGE} package"
+        )
+
+    _collect_cargo_lock_versions(
+        view,
+        catalog,
+        NODE_CARGO_LOCK,
+        {NODE_CARGO_PACKAGE, NODE_BINDINGS_PACKAGE},
+        observations,
+        errors,
+        label="Node candidate Cargo.lock",
+    )
+    _observe(
+        observations,
+        "Node candidate package surface",
+        NODE_DESCRIPTOR,
+        canonical,
+        node_catalog.version,
+    )
+
+    workspace_manifest = view.json(NODE_WORKSPACE_PACKAGE)
+    if (
+        workspace_manifest.get("name") != "merman-node-candidate-workspace"
+        or workspace_manifest.get("private") is not True
+    ):
+        raise ReleaseProjectionError(
+            f"{NODE_WORKSPACE_PACKAGE} must remain the private Node candidate workspace"
+        )
+    _observe(
+        observations,
+        "Node candidate workspace",
+        NODE_WORKSPACE_PACKAGE,
+        canonical,
+        workspace_manifest.get("version"),
+    )
+
+    workspace_lock = view.json(NODE_WORKSPACE_LOCK)
+    lock_packages = _mapping(
+        workspace_lock.get("packages"),
+        f"{NODE_WORKSPACE_LOCK}.packages",
+    )
+    lock_root = _mapping(
+        lock_packages.get(""),
+        f"{NODE_WORKSPACE_LOCK} root package",
+    )
+    if (
+        workspace_lock.get("name") != workspace_manifest.get("name")
+        or lock_root.get("name") != workspace_manifest.get("name")
+    ):
+        errors.append(
+            f"{NODE_WORKSPACE_LOCK} root package must match "
+            f"{NODE_WORKSPACE_PACKAGE}"
+        )
+    _observe(
+        observations,
+        "Node candidate workspace lock",
+        NODE_WORKSPACE_LOCK,
+        canonical,
+        workspace_lock.get("version"),
+    )
+    _observe(
+        observations,
+        "Node candidate workspace lock package",
+        NODE_WORKSPACE_LOCK,
+        canonical,
+        lock_root.get("version"),
+    )
+
+    for entry in node_catalog.entries:
+        manifest = view.json(entry.manifest_path)
+        _observe(
+            observations,
+            f"Node candidate package {entry.name}",
+            entry.manifest_path,
+            canonical,
+            manifest.get("version"),
+        )
+
+
+def _plan_node_candidate_projection(
+    view: RepositoryView,
+    catalog: WorkspaceCatalog,
+    release: ReleaseVersion,
+) -> dict[Path, str]:
+    node_catalog = _node_package_catalog(view)
+    updates = {
+        NODE_CARGO_MANIFEST: _replace_toml_section_string(
+            view.text(NODE_CARGO_MANIFEST),
+            "package",
+            "version",
+            release.canonical,
+        ),
+        NODE_DESCRIPTOR: _replace_json_paths(
+            view.text(NODE_DESCRIPTOR),
+            {("version",): release.canonical},
+        ),
+        NODE_WORKSPACE_PACKAGE: _replace_json_paths(
+            view.text(NODE_WORKSPACE_PACKAGE),
+            {("version",): release.canonical},
+        ),
+        NODE_WORKSPACE_LOCK: _replace_json_paths(
+            view.text(NODE_WORKSPACE_LOCK),
+            {
+                ("version",): release.canonical,
+                ("packages", "", "version"): release.canonical,
+            },
+        ),
+    }
+    node_lock_packages = _local_coupled_lock_packages(
+        view,
+        catalog,
+        NODE_CARGO_LOCK,
+    ) | {NODE_CARGO_PACKAGE, NODE_BINDINGS_PACKAGE}
+    updates[NODE_CARGO_LOCK] = _replace_lock_workspace_versions(
+        view.text(NODE_CARGO_LOCK),
+        node_lock_packages,
+        release.canonical,
+        lock_path=NODE_CARGO_LOCK,
+    )
+    for entry in node_catalog.entries:
+        replacements = {("version",): release.canonical}
+        if entry == node_catalog.root:
+            replacements.update(
+                {
+                    ("optionalDependencies", target.name): release.canonical
+                    for target in node_catalog.targets
+                }
+            )
+        updates[entry.manifest_path] = _replace_json_paths(
+            view.text(entry.manifest_path),
+            replacements,
+        )
+    return updates
 
 
 def _playground_web_dependencies(
@@ -722,6 +1039,55 @@ def _collect_platform_versions(
     )
 
 
+def _collect_readme_projection(
+    view: RepositoryView,
+    catalog: WorkspaceCatalog,
+    errors: list[str],
+    *,
+    required_mode: str | None = None,
+) -> None:
+    mode = (
+        release_readme.REGISTRY_MODE
+        if catalog.readme_registry_version is not None
+        else release_readme.SOURCE_MODE
+    )
+    if required_mode is not None:
+        if required_mode not in release_readme.MODES:
+            raise ReleaseProjectionError(
+                f"unsupported README installation mode {required_mode!r}; "
+                f"expected one of {sorted(release_readme.MODES)}"
+            )
+        if mode != required_mode:
+            errors.append(
+                f"README installation mode is {mode!r}, expected "
+                f"{required_mode!r}; run `python3 scripts/release-version.py "
+                f"set-readme-mode --mode {required_mode} --version "
+                f"{catalog.authority.canonical}`"
+            )
+    try:
+        release_readme.verify_readme(
+            view.text(README),
+            catalog.authority,
+            mode=mode,
+            repository_url=catalog.repository_url,
+        )
+    except release_readme.ReleaseReadmeError as exc:
+        errors.append(f"{README}: {exc}")
+        return
+    for path in PROJECTED_READMES:
+        try:
+            release_readme.verify_projected_readme(
+                path.as_posix(),
+                view.text(path),
+                catalog.authority,
+                mode=mode,
+                repository_url=catalog.repository_url,
+            )
+        except release_readme.ReleaseReadmeError as exc:
+            errors.append(f"{path}: {exc}")
+            continue
+
+
 def _observe(
     observations: list[VersionObservation],
     label: str,
@@ -781,24 +1147,73 @@ def _plist_value(text: str, key: str) -> str:
     return matches[0]
 
 
-def plan_version_update(root: Path, version: str) -> dict[Path, str]:
-    updates, _originals = _plan_version_update(root, version)
+def _render_readme_projections(
+    view: RepositoryView,
+    release: ReleaseVersion,
+    mode: str,
+    repository_url: str,
+) -> dict[Path, str]:
+    rendered = {
+        README: release_readme.render_readme(
+            view.text(README),
+            release,
+            mode,
+            repository_url,
+        )
+    }
+    for path in PROJECTED_READMES:
+        rendered[path] = release_readme.render_projected_readme(
+            path.as_posix(),
+            view.text(path),
+            release,
+            mode,
+            repository_url,
+        )
+    return rendered
+
+
+def plan_version_update(
+    root: Path,
+    version: str,
+    *,
+    overrides: Mapping[Path | str, str] | None = None,
+) -> dict[Path, str]:
+    updates, _originals = _plan_version_update(
+        root,
+        version,
+        overrides=overrides,
+    )
     return updates
 
 
 def _plan_version_update(
     root: Path,
     version: str,
+    *,
+    overrides: Mapping[Path | str, str] | None = None,
 ) -> tuple[dict[Path, str], dict[Path, str]]:
     release = parse_release_version(version, allow_v_prefix=False)
-    view = RepositoryView(root)
+    view = RepositoryView(root, overrides)
     catalog = load_workspace_catalog(view)
     updates: dict[Path, str] = {}
+    version_changed = catalog.authority.canonical != release.canonical
+    readme_mode = (
+        release_readme.REGISTRY_MODE
+        if not version_changed and catalog.readme_registry_version is not None
+        else release_readme.SOURCE_MODE
+    )
 
     root_text = view.text(ROOT_MANIFEST)
     root_text = _replace_toml_section_string(
         root_text, "workspace.package", "version", release.canonical
     )
+    if version_changed:
+        root_text = _set_optional_toml_section_string(
+            root_text,
+            "workspace.metadata.merman-release",
+            "readme-registry-version",
+            None,
+        )
     workspace_dependencies = _mapping(
         _mapping(catalog.root_data["workspace"], "Cargo.toml [workspace]").get(
             "dependencies"
@@ -822,7 +1237,10 @@ def _plan_version_update(
             )
     updates[ROOT_MANIFEST] = root_text
     updates[ROOT_LOCK] = _replace_lock_workspace_versions(
-        view.text(ROOT_LOCK), set(catalog.coupled_packages), release.canonical
+        view.text(ROOT_LOCK),
+        set(catalog.coupled_packages),
+        release.canonical,
+        lock_path=ROOT_LOCK,
     )
     fuzz_lock_packages = _local_coupled_lock_packages(view, catalog, FUZZ_LOCK)
     if not fuzz_lock_packages:
@@ -830,8 +1248,13 @@ def _plan_version_update(
             "fuzz/Cargo.lock does not contain any workspace-coupled package entries"
         )
     updates[FUZZ_LOCK] = _replace_lock_workspace_versions(
-        view.text(FUZZ_LOCK), fuzz_lock_packages, release.canonical
+        view.text(FUZZ_LOCK),
+        fuzz_lock_packages,
+        release.canonical,
+        lock_path=FUZZ_LOCK,
     )
+
+    updates.update(_plan_node_candidate_projection(view, catalog, release))
 
     web_entries = _web_package_entries(view)
     updates[WEB_WORKSPACE_PACKAGE] = _replace_json_paths(
@@ -924,11 +1347,19 @@ def _plan_version_update(
             flags=0,
         )
     updates[FLUTTER_IOS_BUILD] = build_text
+    updates.update(
+        _render_readme_projections(
+            view,
+            release,
+            readme_mode,
+            catalog.repository_url,
+        )
+    )
 
     result = verify_repository(
         root,
         expected_version=release.canonical,
-        overrides=updates,
+        overrides={**view.overrides, **updates},
     )
     if not result.ok:
         detail = "\n".join(format_verification_failures(result))
@@ -946,11 +1377,116 @@ def _plan_version_update(
 
 def apply_version_update(root: Path, version: str) -> tuple[Path, ...]:
     updates, originals = _plan_version_update(root, version)
-    _atomic_replace(root.resolve(), updates, expected=originals)
+    _replace_projection_files(root.resolve(), updates, expected=originals)
     result = verify_repository(root, expected_version=version)
     if not result.ok:
         raise ReleaseProjectionError(
-            "release version projection changed on disk but did not verify: "
+            "release version projection changed on disk but did not verify; "
+            "keep the worktree, resolve any concurrent edit, and rerun the same "
+            "command: "
+            + "; ".join(format_verification_failures(result))
+        )
+    return tuple(sorted(updates))
+
+
+def plan_readme_install_mode(
+    root: Path,
+    version: str,
+    mode: str,
+    *,
+    overrides: Mapping[Path | str, str] | None = None,
+) -> dict[Path, str]:
+    updates, _originals = _plan_readme_install_mode(
+        root,
+        version,
+        mode,
+        overrides=overrides,
+    )
+    return updates
+
+
+def _plan_readme_install_mode(
+    root: Path,
+    version: str,
+    mode: str,
+    *,
+    overrides: Mapping[Path | str, str] | None = None,
+) -> tuple[dict[Path, str], dict[Path, str]]:
+    release = parse_release_version(version, allow_v_prefix=False)
+    view = RepositoryView(root, overrides)
+    catalog = load_workspace_catalog(view)
+    if catalog.authority.canonical != release.canonical:
+        raise ReleaseProjectionError(
+            "README installation version must match Cargo workspace authority: "
+            f"expected {catalog.authority.canonical}, found {release.canonical}"
+        )
+    if mode not in release_readme.MODES:
+        raise ReleaseProjectionError(
+            f"unsupported README installation mode {mode!r}; "
+            f"expected one of {sorted(release_readme.MODES)}"
+        )
+
+    root_text = _set_optional_toml_section_string(
+        view.text(ROOT_MANIFEST),
+        "workspace.metadata.merman-release",
+        "readme-registry-version",
+        release.canonical if mode == release_readme.REGISTRY_MODE else None,
+    )
+    try:
+        projected_readmes = _render_readme_projections(
+            view,
+            release,
+            mode,
+            catalog.repository_url,
+        )
+    except release_readme.ReleaseReadmeError as exc:
+        raise ReleaseProjectionError(str(exc)) from exc
+
+    result = verify_repository(
+        root,
+        expected_version=release.canonical,
+        overrides={
+            **view.overrides,
+            ROOT_MANIFEST: root_text,
+            **projected_readmes,
+        },
+    )
+    if not result.ok:
+        raise ReleaseProjectionError(
+            "planned README installation projection did not verify: "
+            + "; ".join(format_verification_failures(result))
+        )
+    updates = {
+        path: content
+        for path, content in {
+            ROOT_MANIFEST: root_text,
+            **projected_readmes,
+        }.items()
+        if content != view.text(path)
+    }
+    originals = {path: view.text(path) for path in updates}
+    return updates, originals
+
+
+def apply_readme_install_mode(
+    root: Path,
+    version: str,
+    mode: str,
+) -> tuple[Path, ...]:
+    updates, originals = _plan_readme_install_mode(root, version, mode)
+    if not updates:
+        return ()
+    _replace_projection_files(root.resolve(), updates, expected=originals)
+    result = verify_repository(
+        root,
+        expected_version=version,
+        required_readme_mode=mode,
+    )
+    if not result.ok:
+        raise ReleaseProjectionError(
+            "README installation projection changed on disk but did not verify; "
+            "keep the worktree, resolve any concurrent edit, and rerun the same "
+            "command: "
             + "; ".join(format_verification_failures(result))
         )
     return tuple(sorted(updates))
@@ -986,6 +1522,73 @@ def _replace_toml_section_string(
         actual: Any = parsed
         for component in (*section.split("."), key):
             actual = actual[component]
+    except (KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
+        raise ReleaseProjectionError(
+            f"failed to structurally update {section}.{key}: {exc}"
+        ) from exc
+    if actual != value:
+        raise ReleaseProjectionError(f"failed to update {section}.{key}")
+    return candidate
+
+
+def _set_optional_toml_section_string(
+    text: str,
+    section: str,
+    key: str,
+    value: str | None,
+) -> str:
+    lines = text.splitlines(keepends=True)
+    section_header = f"[{section}]"
+    section_indexes = [
+        index for index, line in enumerate(lines) if line.strip() == section_header
+    ]
+    if len(section_indexes) != 1:
+        raise ReleaseProjectionError(
+            f"expected one {section_header} section; found {len(section_indexes)}"
+        )
+    section_start = section_indexes[0]
+    section_end = next(
+        (
+            index
+            for index in range(section_start + 1, len(lines))
+            if lines[index].strip().startswith("[")
+            and lines[index].strip().endswith("]")
+        ),
+        len(lines),
+    )
+    assignment = re.compile(
+        rf'^(\s*{re.escape(key)}\s*=\s*)"[^"]*"(\s*(?:#.*)?(?:\r?\n)?)$'
+    )
+    matches = [
+        index
+        for index in range(section_start + 1, section_end)
+        if assignment.match(lines[index])
+    ]
+    if len(matches) > 1:
+        raise ReleaseProjectionError(
+            f"expected at most one {section}.{key} assignment; found {len(matches)}"
+        )
+
+    if value is None:
+        if matches:
+            del lines[matches[0]]
+    elif matches:
+        index = matches[0]
+        lines[index] = assignment.sub(rf'\g<1>"{value}"\g<2>', lines[index])
+    else:
+        insert_at = section_end
+        while insert_at > section_start + 1 and not lines[insert_at - 1].strip():
+            insert_at -= 1
+        newline = "\r\n" if "\r\n" in text else "\n"
+        lines.insert(insert_at, f'{key} = "{value}"{newline}')
+
+    candidate = "".join(lines)
+    try:
+        parsed = tomllib.loads(candidate)
+        table: Any = parsed
+        for component in section.split("."):
+            table = table[component]
+        actual = table.get(key)
     except (KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
         raise ReleaseProjectionError(
             f"failed to structurally update {section}.{key}: {exc}"
@@ -1042,6 +1645,8 @@ def _replace_lock_workspace_versions(
     text: str,
     package_names: set[str],
     version: str,
+    *,
+    lock_path: Path = ROOT_LOCK,
 ) -> str:
     marker = "[[package]]"
     prefix, *raw_blocks = text.split(marker)
@@ -1059,7 +1664,7 @@ def _replace_lock_workspace_versions(
                 document,
                 r'^(version\s*=\s*")[^"]+("\s*)$',
                 rf"\g<1>{version}\g<2>",
-                ROOT_LOCK,
+                lock_path,
                 f"local package {name} version",
             )
             seen.add(name)
@@ -1067,7 +1672,8 @@ def _replace_lock_workspace_versions(
     missing = package_names - seen
     if missing:
         raise ReleaseProjectionError(
-            "Cargo.lock is missing local workspace packages: " + ", ".join(sorted(missing))
+            f"{lock_path} is missing local workspace packages: "
+            + ", ".join(sorted(missing))
         )
     return prefix + "".join(blocks)
 
@@ -1098,13 +1704,18 @@ def _replace_json_paths(
         data = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
     except json.JSONDecodeError as exc:
         raise ReleaseProjectionError(f"cannot update invalid JSON: {exc}") from exc
+    changed = False
     for path, value in replacements.items():
         target = data
         for component in path[:-1]:
             target = _mapping(target.get(component), f"JSON path {'.'.join(path)}")
         if path[-1] not in target:
             raise ReleaseProjectionError(f"missing JSON path {'.'.join(path)}")
+        if target[path[-1]] != value:
+            changed = True
         target[path[-1]] = value
+    if not changed:
+        return text
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -1125,70 +1736,150 @@ def _replace_one(
     return candidate
 
 
-def _atomic_replace(
+def _replace_projection_files(
     root: Path,
     updates: Mapping[Path, str],
     *,
-    expected: Mapping[Path, str] | None = None,
+    expected: Mapping[Path, str],
 ) -> None:
-    root = root.resolve()
-    prepared: list[tuple[Path, Path, Path]] = []
-    replaced: list[tuple[Path, Path]] = []
-    try:
-        for relative, content in sorted(updates.items(), key=lambda item: str(item[0])):
-            path = (root / relative).resolve()
-            try:
-                path.relative_to(root)
-            except ValueError as exc:
-                raise ReleaseProjectionError(f"update path escapes repository: {relative}") from exc
-            if path.is_symlink() or not path.is_file():
-                raise ReleaseProjectionError(
-                    f"release projection must be a regular non-symlink file: {relative}"
-                )
-            original = path.read_bytes()
-            if expected is not None:
-                expected_text = expected.get(relative)
-                if expected_text is None:
-                    raise ReleaseProjectionError(
-                        f"missing expected pre-update content for {relative}"
-                    )
-                if original != expected_text.encode("utf-8"):
-                    raise ReleaseProjectionError(
-                        f"{relative} changed while planning the release update; no files were written"
-                    )
-            mode = stat.S_IMODE(path.stat().st_mode)
-            new_temp = _write_temp(path, content.encode("utf-8"), mode)
-            rollback_temp = _write_temp(path, original, mode)
-            prepared.append((path, new_temp, rollback_temp))
+    """Install validated projections in an exclusive Git worktree.
 
-        for path, new_temp, rollback_temp in prepared:
-            os.replace(new_temp, path)
-            replaced.append((path, rollback_temp))
-        for directory in {path.parent for path, _, _ in prepared}:
-            _sync_directory(directory)
-    except Exception as exc:
-        rollback_errors: list[str] = []
-        for path, rollback_temp in reversed(replaced):
+    Each file replacement is atomic, but the group is intentionally not a
+    filesystem transaction. The workspace authority is installed last, so an
+    interrupted update can be completed by rerunning the same command.
+    """
+
+    root = root.resolve()
+    prepared: list[tuple[Path, Path, Path, bytes, int]] = []
+    installed: list[Path] = []
+    try:
+        for relative, content in sorted(
+            updates.items(),
+            key=lambda item: (item[0] == ROOT_MANIFEST, str(item[0])),
+        ):
+            normalized, target = _projection_target(root, relative)
             try:
-                os.replace(rollback_temp, path)
-            except OSError as rollback_exc:
-                rollback_errors.append(f"{path}: {rollback_exc}")
-        if rollback_errors:
+                expected_text = expected[relative]
+            except KeyError as exc:
+                raise ReleaseProjectionError(
+                    f"missing expected pre-update content for {relative}"
+                ) from exc
+            original, mode = _read_projection_preimage(target, normalized)
+            expected_bytes = expected_text.encode("utf-8")
+            if original != expected_bytes:
+                raise ReleaseProjectionError(
+                    f"{normalized} changed while planning the release update; "
+                    "no files were written"
+                )
+            temp_path = _write_projection_temp(
+                target,
+                content.encode("utf-8"),
+                mode,
+            )
+            prepared.append(
+                (normalized, target, temp_path, expected_bytes, mode)
+            )
+
+        # Catch edits made while temporary files were being prepared before
+        # replacing any tracked file.
+        for relative, target, _temp_path, expected_bytes, mode in prepared:
+            _require_projection_preimage(
+                target,
+                relative,
+                expected_bytes,
+                mode,
+            )
+
+        for relative, target, temp_path, expected_bytes, mode in prepared:
+            # This is a cooperative check, not a claim to serialize arbitrary
+            # editors. Release preparation requires an exclusive worktree.
+            _require_projection_preimage(
+                target,
+                relative,
+                expected_bytes,
+                mode,
+            )
+            os.replace(temp_path, target)
+            installed.append(relative)
+
+        for directory in {target.parent for _, target, _, _, _ in prepared}:
+            _sync_projection_directory(directory)
+    except BaseException as exc:
+        if installed:
             raise ReleaseProjectionError(
-                f"release version update failed ({exc}); rollback also failed: "
-                + "; ".join(rollback_errors)
+                "release projection update stopped after changing "
+                f"{', '.join(str(path) for path in installed)}; keep the "
+                "worktree and rerun the same command"
             ) from exc
         raise
     finally:
-        for _path, new_temp, rollback_temp in prepared:
-            for temp_path in (new_temp, rollback_temp):
-                try:
-                    temp_path.unlink()
-                except FileNotFoundError:
-                    pass
+        for _relative, _target, temp_path, _expected_bytes, _mode in prepared:
+            temp_path.unlink(missing_ok=True)
 
 
-def _write_temp(target: Path, content: bytes, mode: int) -> Path:
+def _projection_target(root: Path, relative: Path) -> tuple[Path, Path]:
+    normalized = Path(os.path.normpath(relative))
+    if (
+        relative.is_absolute()
+        or normalized.is_absolute()
+        or normalized == Path(".")
+        or ".." in normalized.parts
+    ):
+        raise ReleaseProjectionError(
+            f"release projection path escapes repository root: {relative}"
+        )
+
+    target = root / normalized
+    current = root
+    for component in normalized.parts[:-1]:
+        current /= component
+        try:
+            metadata = current.lstat()
+        except OSError as exc:
+            raise ReleaseProjectionError(
+                f"release projection has an inaccessible parent: {normalized}"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise ReleaseProjectionError(
+                f"release projection has an unsafe parent: {normalized}"
+            )
+    return normalized, target
+
+
+def _read_projection_preimage(target: Path, relative: Path) -> tuple[bytes, int]:
+    try:
+        metadata = target.lstat()
+    except OSError as exc:
+        raise ReleaseProjectionError(
+            f"cannot inspect release projection {relative}: {exc}"
+        ) from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise ReleaseProjectionError(
+            f"release projection must be a regular non-symlink file: {relative}"
+        )
+    try:
+        return target.read_bytes(), stat.S_IMODE(metadata.st_mode)
+    except OSError as exc:
+        raise ReleaseProjectionError(
+            f"cannot read release projection {relative}: {exc}"
+        ) from exc
+
+
+def _require_projection_preimage(
+    target: Path,
+    relative: Path,
+    expected: bytes,
+    expected_mode: int,
+) -> None:
+    content, mode = _read_projection_preimage(target, relative)
+    if content != expected or mode != expected_mode:
+        raise ReleaseProjectionError(
+            f"{relative} changed while preparing the release update; "
+            "no further files were written"
+        )
+
+
+def _write_projection_temp(target: Path, content: bytes, mode: int) -> Path:
     descriptor, raw_path = tempfile.mkstemp(
         prefix=f".{target.name}.release-version-",
         dir=target.parent,
@@ -1198,15 +1889,17 @@ def _write_temp(target: Path, content: bytes, mode: int) -> Path:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(content)
             handle.flush()
+            os.chmod(temp_path, mode)
             os.fsync(handle.fileno())
-        os.chmod(temp_path, mode)
-    except Exception:
+    except BaseException:
         temp_path.unlink(missing_ok=True)
         raise
     return temp_path
 
 
-def _sync_directory(path: Path) -> None:
+def _sync_projection_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
     descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)

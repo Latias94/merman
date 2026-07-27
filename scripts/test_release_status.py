@@ -16,7 +16,7 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
-from scripts import release_projection
+from scripts import release_projection, release_readme
 
 
 MODULE_PATH = Path(__file__).with_name("release-status.py")
@@ -61,6 +61,29 @@ def web_package_manifest(entry: dict) -> Path:
     return release_projection.WEB_DESCRIPTOR.parent / entry["package_dir"] / "package.json"
 
 
+def node_package_surface() -> dict:
+    descriptor_path = REPOSITORY_ROOT / release_projection.NODE_DESCRIPTOR
+    return json.loads(descriptor_path.read_text(encoding="utf-8"))
+
+
+def node_package_manifests(descriptor: dict | None = None) -> list[Path]:
+    surface = descriptor or node_package_surface()
+    entries = [surface["root"], *surface["targets"]]
+    return [
+        release_projection.NODE_ROOT / entry["directory"] / "package.json"
+        for entry in entries
+    ]
+
+
+def replace_json_path(text: str, path: tuple[str, ...], value: object) -> str:
+    data = json.loads(text)
+    target = data
+    for component in path[:-1]:
+        target = target[component]
+    target[path[-1]] = value
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
 class ReleaseStatusVersionTests(unittest.TestCase):
     def test_release_kind_detects_stable_and_prerelease_versions(self) -> None:
         self.assertEqual(release_status.release_kind("0.8.0"), "stable")
@@ -98,6 +121,46 @@ class ReleaseStatusVersionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertNotIn("VS Code extension", stdout.getvalue())
 
+    def test_release_check_reports_registry_projection_failure(self) -> None:
+        version = release_version_script.cargo_workspace_version()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            stderr
+        ):
+            exit_code = release_version_script.check_versions(
+                version,
+                required_readme_mode=release_readme.REGISTRY_MODE,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(
+            "set-readme-mode --mode registry",
+            stderr.getvalue(),
+        )
+
+    def test_release_check_accepts_a_verified_registry_projection(self) -> None:
+        version = release_version_script.cargo_workspace_version()
+        registry = release_projection.plan_readme_install_mode(
+            REPOSITORY_ROOT,
+            version,
+            release_readme.REGISTRY_MODE,
+        )
+        with mock.patch.object(
+            release_version_script,
+            "verify_repository",
+            side_effect=lambda root, **kwargs: release_projection.verify_repository(
+                root,
+                overrides=registry,
+                **kwargs,
+            ),
+        ), contextlib.redirect_stdout(io.StringIO()):
+            exit_code = release_version_script.check_versions(
+                version,
+                required_readme_mode=release_readme.REGISTRY_MODE,
+            )
+
+        self.assertEqual(exit_code, 0)
+
 
 class ReleaseProjectionTests(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +181,16 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Playground local Web workspace lock", labels)
         self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
+        self.assertIn("Node candidate Cargo package", labels)
+        self.assertIn("Node candidate Cargo.lock package merman-bindings-core", labels)
+        self.assertIn("Node candidate package surface", labels)
+        self.assertIn("Node candidate workspace", labels)
+        self.assertIn("Node candidate workspace lock", labels)
+        self.assertIn("Node candidate package @mermanjs/node", labels)
+        self.assertIn(
+            "Node candidate package @mermanjs/node-darwin-arm64",
+            labels,
+        )
         self.assertIn("Python package", labels)
         self.assertIn("Flutter Android package", labels)
         self.assertIn("Flutter iOS Podspec", labels)
@@ -138,6 +211,19 @@ class ReleaseProjectionTests(unittest.TestCase):
     def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
         version = release_projection.verify_repository(self.ROOT).authority
         canonical = version.canonical
+        catalog = release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT)
+        )
+        current_readme_mode = (
+            release_readme.REGISTRY_MODE
+            if catalog.readme_registry_version is not None
+            else release_readme.SOURCE_MODE
+        )
+        other_readme_mode = (
+            release_readme.SOURCE_MODE
+            if current_readme_mode == release_readme.REGISTRY_MODE
+            else release_readme.REGISTRY_MODE
+        )
         entries = web_package_entries()
         default_entry = next(entry for entry in entries if entry["id"] == "full")
         playground_lock_digest = hashlib.sha256(
@@ -150,6 +236,14 @@ class ReleaseProjectionTests(unittest.TestCase):
                     text,
                     f'version = "{canonical}"',
                     'version = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.README,
+                lambda text: replace_once(
+                    text,
+                    f"<!-- merman-release-install-mode: {current_readme_mode} -->",
+                    f"<!-- merman-release-install-mode: {other_readme_mode} -->",
                 ),
             ),
             (
@@ -378,7 +472,7 @@ class ReleaseProjectionTests(unittest.TestCase):
                     continue
                 self.assertFalse(result.ok)
 
-    def test_transaction_plan_projects_one_authority_without_touching_independent_axes(self) -> None:
+    def test_update_plan_projects_one_authority_without_touching_independent_axes(self) -> None:
         current = release_projection.verify_repository(self.ROOT).authority
         next_version = f"{current.major}.{current.minor + 1}.0-alpha.1"
 
@@ -395,34 +489,343 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn(release_projection.WEB_WORKSPACE_PACKAGE, updates)
         for entry in web_package_entries():
             self.assertIn(web_package_manifest(entry), updates)
+        self.assertIn(release_projection.NODE_CARGO_MANIFEST, updates)
+        self.assertIn(release_projection.NODE_CARGO_LOCK, updates)
+        self.assertIn(release_projection.NODE_DESCRIPTOR, updates)
+        self.assertIn(release_projection.NODE_WORKSPACE_PACKAGE, updates)
+        self.assertIn(release_projection.NODE_WORKSPACE_LOCK, updates)
+        for manifest_path in node_package_manifests():
+            self.assertIn(manifest_path, updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
+        self.assertIn(release_projection.README, updates)
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
         self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
 
-    def test_multi_file_update_rolls_back_when_a_replace_fails(self) -> None:
+    def test_node_candidate_verification_fails_closed_on_each_version_projection(
+        self,
+    ) -> None:
+        version = release_projection.verify_repository(self.ROOT).authority.canonical
+        catalog = release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT)
+        )
+        descriptor = node_package_surface()
+        local_lock_packages = [
+            package["name"]
+            for package in release_projection.RepositoryView(self.ROOT)
+            .toml(release_projection.NODE_CARGO_LOCK)["package"]
+            if "source" not in package
+            and (
+                package["name"] == release_projection.NODE_CARGO_PACKAGE
+                or package["name"] in catalog.coupled_packages
+            )
+        ]
+        mutations = [
+            (
+                "Cargo manifest",
+                release_projection.NODE_CARGO_MANIFEST,
+                lambda text: replace_once(
+                    text,
+                    (
+                        '[package]\n'
+                        'name = "merman-node-candidate"\n'
+                        f'version = "{version}"'
+                    ),
+                    (
+                        '[package]\n'
+                        'name = "merman-node-candidate"\n'
+                        'version = "9.9.9"'
+                    ),
+                ),
+            ),
+            *[
+                (
+                    f"Cargo lock {package_name}",
+                    release_projection.NODE_CARGO_LOCK,
+                    lambda text, package_name=package_name: replace_once(
+                        text,
+                        f'name = "{package_name}"\nversion = "{version}"',
+                        f'name = "{package_name}"\nversion = "9.9.9"',
+                    ),
+                )
+                for package_name in local_lock_packages
+            ],
+            (
+                "package surface",
+                release_projection.NODE_DESCRIPTOR,
+                lambda text: replace_json_path(text, ("version",), "9.9.9"),
+            ),
+            (
+                "workspace manifest",
+                release_projection.NODE_WORKSPACE_PACKAGE,
+                lambda text: replace_json_path(text, ("version",), "9.9.9"),
+            ),
+            (
+                "workspace lock authority",
+                release_projection.NODE_WORKSPACE_LOCK,
+                lambda text: replace_json_path(text, ("version",), "9.9.9"),
+            ),
+            (
+                "workspace lock package",
+                release_projection.NODE_WORKSPACE_LOCK,
+                lambda text: replace_json_path(
+                    text,
+                    ("packages", "", "version"),
+                    "9.9.9",
+                ),
+            ),
+            *[
+                (
+                    f"package manifest {entry['name']}",
+                    release_projection.NODE_ROOT
+                    / entry["directory"]
+                    / "package.json",
+                    lambda text: replace_json_path(text, ("version",), "9.9.9"),
+                )
+                for entry in [descriptor["root"], *descriptor["targets"]]
+            ],
+        ]
+
+        for label, path, mutate in mutations:
+            with self.subTest(label=label, path=path):
+                original = (self.ROOT / path).read_text(encoding="utf-8")
+                result = release_projection.verify_repository(
+                    self.ROOT,
+                    overrides={path: mutate(original)},
+                )
+                self.assertFalse(result.ok)
+
+    def test_node_candidate_package_structure_is_owned_by_the_node_gate(self) -> None:
+        descriptor = (
+            self.ROOT / release_projection.NODE_DESCRIPTOR
+        ).read_text(encoding="utf-8")
+        manifest_path = node_package_manifests()[0]
+        manifest = (self.ROOT / manifest_path).read_text(encoding="utf-8")
+        descriptor_data = node_package_surface()
+        target_name = descriptor_data["targets"][0]["name"]
+        optional_dependency_manifest = replace_json_path(
+            manifest,
+            ("optionalDependencies", target_name),
+            f"^{release_projection.verify_repository(self.ROOT).authority.canonical}",
+        )
+        result = release_projection.verify_repository(
+            self.ROOT,
+            overrides={
+                release_projection.NODE_DESCRIPTOR: replace_json_path(
+                    descriptor,
+                    ("admission_status",),
+                    "public",
+                ),
+                manifest_path: replace_json_path(
+                    optional_dependency_manifest,
+                    ("private",),
+                    False,
+                ),
+            },
+        )
+        self.assertTrue(result.ok)
+
+    def test_node_candidate_cargo_projection_preserves_detached_workspace(self) -> None:
+        cargo_manifest = (
+            self.ROOT / release_projection.NODE_CARGO_MANIFEST
+        ).read_text(encoding="utf-8")
+        with self.assertRaisesRegex(
+            release_projection.ReleaseProjectionError,
+            "detached private workspace",
+        ):
+            release_projection.verify_repository(
+                self.ROOT,
+                overrides={
+                    release_projection.NODE_CARGO_MANIFEST: replace_once(
+                        cargo_manifest,
+                        "\n[workspace]\nresolver = \"2\"\n",
+                        "\n",
+                    )
+                },
+            )
+
+    def test_readme_registry_state_is_exact_and_version_bumps_return_to_source(
+        self,
+    ) -> None:
+        current = release_projection.verify_repository(self.ROOT).authority
+        source = release_projection.plan_readme_install_mode(
+            self.ROOT,
+            current.canonical,
+            release_readme.SOURCE_MODE,
+        )
+        registry_delta = release_projection.plan_readme_install_mode(
+            self.ROOT,
+            current.canonical,
+            release_readme.REGISTRY_MODE,
+            overrides=source,
+        )
+        registry = {**source, **registry_delta}
+
+        self.assertEqual(
+            set(registry_delta),
+            {
+                release_projection.ROOT_MANIFEST,
+                release_projection.README,
+                *release_projection.PROJECTED_READMES,
+            },
+        )
+        registry_result = release_projection.verify_repository(
+            self.ROOT,
+            expected_version=current.canonical,
+            overrides=registry,
+        )
+        self.assertTrue(registry_result.ok)
+        registry_catalog = release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT, registry)
+        )
+        self.assertEqual(
+            registry_catalog.readme_registry_version,
+            current.canonical,
+        )
+
+        same_version = release_projection.plan_version_update(
+            self.ROOT,
+            current.canonical,
+            overrides=registry,
+        )
+        self.assertEqual(same_version, {})
+
+        next_version = f"{current.major}.{current.minor + 1}.0-alpha.1"
+        bumped = release_projection.plan_version_update(
+            self.ROOT,
+            next_version,
+            overrides=registry,
+        )
+        bumped_view = {**registry, **bumped}
+        bumped_result = release_projection.verify_repository(
+            self.ROOT,
+            expected_version=next_version,
+            overrides=bumped_view,
+        )
+        self.assertTrue(bumped_result.ok)
+        bumped_catalog = release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT, bumped_view)
+        )
+        self.assertIsNone(bumped_catalog.readme_registry_version)
+        projection = release_readme.verify_readme(
+            bumped_view[release_projection.README],
+            bumped_catalog.authority,
+            mode=release_readme.SOURCE_MODE,
+            repository_url=bumped_catalog.repository_url,
+        )
+        self.assertEqual(projection, release_readme.SOURCE_MODE)
+
+    def test_readme_mode_plan_rejects_wrong_or_mismatched_versions(self) -> None:
+        current = release_projection.verify_repository(self.ROOT).authority
+        wrong = f"{current.major}.{current.minor + 1}.0"
+        with self.assertRaisesRegex(
+            release_projection.ReleaseProjectionError,
+            "must match Cargo workspace authority",
+        ):
+            release_projection.plan_readme_install_mode(
+                self.ROOT,
+                wrong,
+                release_readme.REGISTRY_MODE,
+            )
+
+        registry = release_projection.plan_readme_install_mode(
+            self.ROOT,
+            current.canonical,
+            release_readme.REGISTRY_MODE,
+        )
+        registry_manifest = registry.get(
+            release_projection.ROOT_MANIFEST,
+            (self.ROOT / release_projection.ROOT_MANIFEST).read_text(encoding="utf-8"),
+        )
+        mismatched_manifest = registry_manifest.replace(
+            f'readme-registry-version = "{current.canonical}"',
+            'readme-registry-version = "9.9.9"',
+            1,
+        )
+        with self.assertRaisesRegex(
+            release_projection.ReleaseProjectionError,
+            "must match workspace.package.version",
+        ):
+            release_projection.verify_repository(
+                self.ROOT,
+                overrides={
+                    **registry,
+                    release_projection.ROOT_MANIFEST: mismatched_manifest,
+                },
+            )
+
+
+class ReleaseProjectionWriteTests(unittest.TestCase):
+    def test_installs_workspace_authority_last_and_preserves_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            nested = root / "nested"
+            nested.mkdir()
+            manifest = root / release_projection.ROOT_MANIFEST
+            projection = nested / "projection.txt"
+            manifest.write_text("old authority", encoding="utf-8")
+            projection.write_text("old projection", encoding="utf-8")
+            projection.chmod(0o640)
+            destinations: list[Path] = []
+            real_replace = release_projection.os.replace
+
+            def record_replace(source, destination):  # noqa: ANN001
+                destinations.append(Path(destination))
+                return real_replace(source, destination)
+
+            with mock.patch.object(
+                release_projection.os,
+                "replace",
+                side_effect=record_replace,
+            ):
+                release_projection._replace_projection_files(
+                    root,
+                    {
+                        release_projection.ROOT_MANIFEST: "new authority",
+                        Path("nested/projection.txt"): "new projection",
+                    },
+                    expected={
+                        release_projection.ROOT_MANIFEST: "old authority",
+                        Path("nested/projection.txt"): "old projection",
+                    },
+                )
+
+            self.assertEqual(destinations, [projection.resolve(), manifest.resolve()])
+            self.assertEqual(manifest.read_text(encoding="utf-8"), "new authority")
+            self.assertEqual(
+                projection.read_text(encoding="utf-8"),
+                "new projection",
+            )
+            self.assertEqual(projection.stat().st_mode & 0o777, 0o640)
+            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
+
+    def test_edit_during_preparation_is_preserved_before_any_replace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             first = root / "first.txt"
             second = root / "second.txt"
             first.write_text("first-old", encoding="utf-8")
             second.write_text("second-old", encoding="utf-8")
-            real_replace = release_projection.os.replace
-            replace_count = 0
+            real_write_temp = release_projection._write_projection_temp
+            write_count = 0
 
-            def replace_with_second_call_failure(source, destination):  # noqa: ANN001
-                nonlocal replace_count
-                replace_count += 1
-                if replace_count == 2:
-                    raise OSError("injected replace failure")
-                return real_replace(source, destination)
+            def edit_after_preparing_temp(target, content, mode):  # noqa: ANN001
+                nonlocal write_count
+                temp_path = real_write_temp(target, content, mode)
+                write_count += 1
+                if write_count == 2:
+                    first.write_text("external edit", encoding="utf-8")
+                return temp_path
 
             with mock.patch.object(
-                release_projection.os,
-                "replace",
-                side_effect=replace_with_second_call_failure,
-            ), self.assertRaisesRegex(OSError, "injected replace failure"):
-                release_projection._atomic_replace(
+                release_projection,
+                "_write_projection_temp",
+                side_effect=edit_after_preparing_temp,
+            ), self.assertRaisesRegex(
+                release_projection.ReleaseProjectionError,
+                "changed while preparing",
+            ):
+                release_projection._replace_projection_files(
                     root,
                     {
                         Path("first.txt"): "first-new",
@@ -434,9 +837,85 @@ class ReleaseProjectionTests(unittest.TestCase):
                     },
                 )
 
-            self.assertEqual(first.read_text(encoding="utf-8"), "first-old")
+            self.assertEqual(first.read_text(encoding="utf-8"), "external edit")
             self.assertEqual(second.read_text(encoding="utf-8"), "second-old")
-            self.assertEqual(list(root.glob(".*.release-version-*")), [])
+            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
+
+    def test_interrupted_group_is_completed_by_rerunning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest = root / release_projection.ROOT_MANIFEST
+            projection = root / "projection.txt"
+            manifest.write_text("old authority", encoding="utf-8")
+            projection.write_text("old projection", encoding="utf-8")
+            real_replace = release_projection.os.replace
+
+            def fail_authority_replace(source, destination):  # noqa: ANN001
+                if Path(destination) == manifest.resolve():
+                    raise OSError("injected replace failure")
+                return real_replace(source, destination)
+
+            with mock.patch.object(
+                release_projection.os,
+                "replace",
+                side_effect=fail_authority_replace,
+            ), self.assertRaisesRegex(
+                release_projection.ReleaseProjectionError,
+                "rerun the same command",
+            ):
+                release_projection._replace_projection_files(
+                    root,
+                    {
+                        release_projection.ROOT_MANIFEST: "new authority",
+                        Path("projection.txt"): "new projection",
+                    },
+                    expected={
+                        release_projection.ROOT_MANIFEST: "old authority",
+                        Path("projection.txt"): "old projection",
+                    },
+                )
+
+            self.assertEqual(manifest.read_text(encoding="utf-8"), "old authority")
+            self.assertEqual(projection.read_text(encoding="utf-8"), "new projection")
+            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
+
+            release_projection._replace_projection_files(
+                root,
+                {release_projection.ROOT_MANIFEST: "new authority"},
+                expected={release_projection.ROOT_MANIFEST: "old authority"},
+            )
+            self.assertEqual(manifest.read_text(encoding="utf-8"), "new authority")
+
+    def test_rejects_escape_and_symlink_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "target.txt"
+            target.write_text("old", encoding="utf-8")
+            link = root / "link.txt"
+            link.symlink_to(target.name)
+
+            with self.assertRaisesRegex(
+                release_projection.ReleaseProjectionError,
+                "escapes repository root",
+            ):
+                release_projection._replace_projection_files(
+                    root,
+                    {Path("../outside.txt"): "new"},
+                    expected={Path("../outside.txt"): "old"},
+                )
+
+            with self.assertRaisesRegex(
+                release_projection.ReleaseProjectionError,
+                "regular non-symlink",
+            ):
+                release_projection._replace_projection_files(
+                    root,
+                    {Path("link.txt"): "new"},
+                    expected={Path("link.txt"): "old"},
+                )
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "old")
+            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
 
 
 class ReleaseStatusProbeTests(unittest.TestCase):
