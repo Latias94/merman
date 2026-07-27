@@ -63,34 +63,6 @@ fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Outp
     child.wait_with_output().expect("wait cli")
 }
 
-fn run_with_closed_stdout(args: &[&str], input: Option<&[u8]>) -> Output {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let mut command = Command::new(exe);
-    command
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if input.is_some() {
-        command.stdin(Stdio::piped());
-    } else {
-        command.stdin(Stdio::null());
-    }
-
-    let mut child = command.spawn().expect("spawn cli");
-    drop(child.stdout.take().expect("stdout pipe"));
-    if let Some(input) = input {
-        child
-            .stdin
-            .as_mut()
-            .expect("stdin")
-            .write_all(input)
-            .expect("write stdin");
-        drop(child.stdin.take());
-    }
-
-    child.wait_with_output().expect("wait cli")
-}
-
 fn pdf_media_box(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
     let marker = text.find("/MediaBox")?;
@@ -145,23 +117,6 @@ fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         .iter()
         .find(|task| task["id"].as_str() == Some(id))
         .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
-}
-
-#[test]
-fn cli_prints_help_successfully() {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-
-    for arg in ["--help", "-h"] {
-        let output = Command::new(exe).arg(arg).output().expect("run cli");
-
-        assert!(output.status.success(), "stderr: {:?}", output.stderr);
-        let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-        assert!(stdout.contains("Usage:"), "unexpected help:\n{stdout}");
-        assert!(
-            stdout.contains("-i, --input"),
-            "help should include mmdc-compatible input flag:\n{stdout}"
-        );
-    }
 }
 
 #[test]
@@ -259,22 +214,6 @@ fn render_help_excludes_top_level_only_options() {
             "render help should include direct rendering option {present}:\n{stdout}"
         );
     }
-}
-
-#[test]
-fn cli_prints_version_successfully() {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .arg("--version")
-        .output()
-        .expect("run cli");
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(
-        stdout.contains(env!("CARGO_PKG_VERSION")),
-        "unexpected version output:\n{stdout}"
-    );
 }
 
 #[test]
@@ -384,26 +323,6 @@ fn cli_rejects_invalid_fixed_time_options() {
             "unexpected stderr for {flag} {value}:\n{stderr}"
         );
     }
-}
-
-#[test]
-fn cli_default_runtime_remains_deterministic_when_system_adapters_are_compiled() {
-    let output = run_with_stdin(
-        &["parse", "-"],
-        r#"gantt
-dateFormat YYYY-MM-DD
-section Demo
-Missing ref: id1,after missing,1d
-"#,
-    );
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let model: Value = serde_json::from_slice(&output.stdout).expect("parse stdout should be JSON");
-    assert_eq!(
-        task_by_id(&model, "id1")["startTime"].as_i64(),
-        Some(0),
-        "compiling system adapters must not change the deterministic CLI default"
-    );
 }
 
 #[cfg(all(
@@ -1205,32 +1124,6 @@ fn completion_subcommand_generates_bash_script() {
 }
 
 #[test]
-fn top_level_mmdc_flags_render_svg_file() {
-    let root = repo_root();
-    let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");
-    assert!(fixture.exists(), "fixture missing: {}", fixture.display());
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out = tmp.path().join("out.svg");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
-        .current_dir(&root)
-        .args([
-            "-i",
-            fixture.to_string_lossy().as_ref(),
-            "-o",
-            out.to_string_lossy().as_ref(),
-        ])
-        .assert()
-        .success();
-
-    let svg = fs::read_to_string(&out).expect("read svg");
-    assert!(svg.trim_start().starts_with("<svg"), "output is not SVG");
-    assert!(svg.contains("flowchart"), "expected rendered flowchart SVG");
-}
-
-#[test]
 fn default_cli_renders_architecture_fixture() {
     let root = repo_root();
     let fixture = root
@@ -1255,31 +1148,6 @@ fn default_cli_renders_architecture_fixture() {
 
     let svg = fs::read_to_string(&out).expect("read SVG");
     assert!(svg.trim_start().starts_with("<svg"), "output is not SVG");
-}
-
-#[test]
-fn top_level_missing_input_file_reports_path() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .current_dir(tmp.path())
-        .args(["-i", "missing.mmd", "-o", "out.svg"])
-        .output()
-        .expect("run cli");
-
-    assert!(!output.status.success(), "expected missing input failure");
-    assert_eq!(
-        exit_code(output.status),
-        2,
-        "missing input should be usage/input error"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("Input file \"missing.mmd\" doesn't exist"),
-        "unexpected stderr:\n{stderr}"
-    );
-    assert!(!tmp.path().join("out.svg").exists());
 }
 
 #[test]
@@ -1323,110 +1191,6 @@ fn top_level_output_dash_writes_to_stdout() {
     assert!(
         !dash_file.exists(),
         "stdout output must not create a file named '-'"
-    );
-}
-
-#[test]
-fn stdout_output_does_not_mix_non_error_logs() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let input = tmp.path().join("input.md");
-    fs::write(&input, "# No diagrams\n\nPlain text.\n").expect("write markdown");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .current_dir(tmp.path())
-        .args(["-i", "input.md", "-o", "out.svg"])
-        .output()
-        .expect("run cli");
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stdout.is_empty(),
-        "non-payload logs must not be written to stdout:\n{stdout}"
-    );
-    assert!(
-        stderr.contains("No mermaid charts found in Markdown input"),
-        "diagnostic should be written to stderr:\n{stderr}"
-    );
-}
-
-#[test]
-fn stdout_broken_pipe_exits_success_without_diagnostic() {
-    let output = run_with_closed_stdout(&["-i", "-", "-o", "-"], Some(b"flowchart LR\nA-->B\n"));
-    assert!(
-        output.status.success(),
-        "broken stdout pipe should be treated as normal pipe termination: {:?}",
-        output.stderr
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        !stderr.contains("I/O error") && !stderr.contains("Broken pipe"),
-        "broken pipe should not print a generic diagnostic:\n{stderr}"
-    );
-}
-
-#[test]
-fn parse_stdout_broken_pipe_exits_success_without_panic() {
-    let output = run_with_closed_stdout(&["parse", "-"], Some(b"flowchart LR\nA-->B\n"));
-    assert!(
-        output.status.success(),
-        "parse broken stdout pipe should be treated as normal pipe termination: {:?}",
-        output.stderr
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
-        "broken pipe should not panic or print a diagnostic:\n{stderr}"
-    );
-}
-
-#[test]
-fn completion_stdout_broken_pipe_exits_success_without_panic() {
-    let output = run_with_closed_stdout(&["completion", "bash"], None);
-    assert!(
-        output.status.success(),
-        "completion broken stdout pipe should be treated as normal pipe termination: {:?}",
-        output.stderr
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
-        "broken pipe should not panic or print a diagnostic:\n{stderr}"
-    );
-}
-
-#[test]
-fn lint_rules_stdout_broken_pipe_exits_success_without_panic() {
-    let output = run_with_closed_stdout(&["lint-rules"], None);
-    assert!(
-        output.status.success(),
-        "lint-rules broken stdout pipe should be treated as normal pipe termination: {:?}",
-        output.stderr
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
-        "broken pipe should not panic or print a diagnostic:\n{stderr}"
-    );
-}
-
-#[test]
-fn lint_text_stdout_broken_pipe_exits_success_without_panic() {
-    let output = run_with_closed_stdout(
-        &["lint", "--markdown", "--format", "text", "-"],
-        Some(b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n"),
-    );
-    assert!(
-        output.status.success(),
-        "lint text broken stdout pipe should be treated as normal pipe termination: {:?}",
-        output.stderr
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
-        "broken pipe should not panic or print a diagnostic:\n{stderr}"
     );
 }
 
@@ -1635,28 +1399,6 @@ xychart-beta
         fit_media_box, "0 0 600 600",
         "--pdfFit should match mmdc's 800 CSS pixel viewport converted to PDF points"
     );
-}
-
-#[test]
-fn top_level_default_output_for_input_file_appends_svg() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let input = tmp.path().join("input.mmd");
-    fs::write(&input, "flowchart LR\nA-->B\n").expect("write input");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
-        .current_dir(tmp.path())
-        .args(["-i", "input.mmd", "-q"])
-        .assert()
-        .success();
-
-    let output = tmp.path().join("input.mmd.svg");
-    assert!(
-        output.exists(),
-        "default mmdc output should append .svg to the input path"
-    );
-    let svg = fs::read_to_string(output).expect("read svg");
-    assert!(svg.trim_start().starts_with("<svg"));
 }
 
 #[test]
@@ -1887,49 +1629,6 @@ fn markdown_artefacts_directory_controls_image_location() {
 }
 
 #[test]
-fn markdown_jobs_preserve_rewrite_order() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let input = tmp.path().join("input.md");
-    let output = tmp.path().join("out.md");
-    fs::write(
-        &input,
-        "one\n```mermaid\nflowchart LR\nA1-->B1\n```\ntwo\n```mermaid\nflowchart LR\nA2-->B2\n```\nthree\n```mermaid\nflowchart LR\nA3-->B3\n```\n",
-    )
-    .expect("write markdown");
-
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
-        .current_dir(tmp.path())
-        .args([
-            "-i",
-            input.to_string_lossy().as_ref(),
-            "-o",
-            output.to_string_lossy().as_ref(),
-            "--jobs",
-            "2",
-            "-q",
-        ])
-        .assert()
-        .success();
-
-    for index in 1..=3 {
-        assert!(
-            tmp.path().join(format!("out-{index}.svg")).exists(),
-            "missing numbered artefact {index}"
-        );
-    }
-
-    let rewritten = fs::read_to_string(&output).expect("read rewritten markdown");
-    let first = rewritten.find("./out-1.svg").expect("first image");
-    let second = rewritten.find("./out-2.svg").expect("second image");
-    let third = rewritten.find("./out-3.svg").expect("third image");
-    assert!(
-        first < second && second < third,
-        "Markdown image order must follow source order:\n{rewritten}"
-    );
-}
-
-#[test]
 fn markdown_input_rejects_stdout_output() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.md");
@@ -2134,62 +1833,6 @@ fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
 }
 
 #[test]
-fn dynamic_icon_pack_http_url_requires_network_opt_in() {
-    let icon_arg = "remote#https://example.invalid/icons.json";
-    let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", icon_arg],
-        "flowchart TD\nA@{ icon: \"remote:cloud\", label: \"Cloud\" }\n",
-    );
-
-    assert!(!output.status.success(), "expected network policy failure");
-    assert_eq!(
-        exit_code(output.status),
-        2,
-        "network policy failure should be usage/config error"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    let normalized = stderr.to_ascii_lowercase();
-    assert!(
-        stderr.contains("--allow-network") && normalized.contains("icon pack"),
-        "unexpected stderr:\n{stderr}"
-    );
-}
-
-#[test]
-fn dynamic_icon_pack_package_missing_local_copy_does_not_fetch_by_default() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let output = run_with_stdin_in_dir(
-        &[
-            "-i",
-            "-",
-            "-o",
-            "-",
-            "--iconPacks",
-            "@iconify-json/missing-test-pack",
-        ],
-        "flowchart TD\nA@{ icon: \"missing-test-pack:box\", label: \"Box\" }\n",
-        Some(tmp.path()),
-    );
-
-    assert!(
-        !output.status.success(),
-        "expected missing local package failure"
-    );
-    assert_eq!(
-        exit_code(output.status),
-        2,
-        "missing local icon package should be usage/config error"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("@iconify-json/missing-test-pack")
-            && stderr.contains("--allow-network")
-            && stderr.contains("node_modules"),
-        "unexpected stderr:\n{stderr}"
-    );
-}
-
-#[test]
 fn dynamic_icon_pack_package_renders_local_node_modules_icon() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let package = tmp
@@ -2225,13 +1868,4 @@ fn dynamic_icon_pack_package_renders_local_node_modules_icon() {
         stdout.contains(r#"data-icon="box""#),
         "expected local package icon body in SVG:\n{stdout}"
     );
-}
-
-#[test]
-fn developer_subcommands_still_work() {
-    let output = run_with_stdin(&["detect", "-"], "sequenceDiagram\nA->>B: Hello\n");
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout.trim(), "sequence");
 }

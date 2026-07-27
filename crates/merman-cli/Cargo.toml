@@ -124,6 +124,44 @@ required-features = [
 ]
 
 [[test]]
+name = "cli_contract"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+[[test]]
+name = "process_contract"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+[[test]]
 name = "ascii_smoke"
 required-features = ["ascii"]
 
