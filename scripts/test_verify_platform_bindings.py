@@ -37,6 +37,7 @@ FLUTTER_ANDROID_SMOKE_SPEC.loader.exec_module(flutter_android_smoke)
 EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
     "io/merman/MermanErrorKind.class",
+    "io/merman/MermanOperationResult.class",
     "io/merman/MermanReusableEngine.class",
     "io/merman/MermanException.class",
     "io/merman/MermanResourceOptions.class",
@@ -44,6 +45,7 @@ EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanTextMeasureResult.class",
     "io/merman/MermanTextMeasurementOperation.class",
     "io/merman/MermanTextMeasurementResultKind.class",
+    "io/merman/MermanTextMeasurementVocabulary.class",
     "io/merman/MermanTextMeasurer.class",
 ]
 EXPECTED_ANDROID_NATIVE_LIBRARIES = [

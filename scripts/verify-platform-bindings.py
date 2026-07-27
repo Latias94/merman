@@ -49,6 +49,7 @@ ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-re
 ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanEngine.class",
     "io/merman/MermanErrorKind.class",
+    "io/merman/MermanOperationResult.class",
     "io/merman/MermanReusableEngine.class",
     "io/merman/MermanException.class",
     "io/merman/MermanResourceOptions.class",
@@ -56,6 +57,7 @@ ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanTextMeasureResult.class",
     "io/merman/MermanTextMeasurementOperation.class",
     "io/merman/MermanTextMeasurementResultKind.class",
+    "io/merman/MermanTextMeasurementVocabulary.class",
     "io/merman/MermanTextMeasurer.class",
 ]
 ANDROID_NATIVE_LIBRARIES = [
