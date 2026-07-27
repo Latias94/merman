@@ -14,7 +14,6 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use indexmap::IndexMap;
-use std::borrow::Cow;
 use std::fmt::Write as _;
 
 #[cfg(feature = "layout-cytoscape")]
@@ -363,12 +362,17 @@ impl<'a> SvgExecution<'a> {
 
     pub(crate) fn rough_randomness(
         &self,
-        number: f64,
+        configured_seed: f64,
         owner_domain: &str,
     ) -> roughr::core::RoughRandomness {
+        let resolved_seed = if configured_seed == 0.0 {
+            self.seed() as f64
+        } else {
+            configured_seed
+        };
         let operation = self.session.operation_context();
         roughr::core::RoughRandomness::new(
-            roughr::core::RoughJsSeed::new(number),
+            roughr::core::RoughJsSeed::new(resolved_seed),
             roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
         )
     }
@@ -379,46 +383,6 @@ impl<'a> SvgExecution<'a> {
 
     pub(crate) const fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
         self.session.resource_policy()
-    }
-
-    fn effective_config_value<'b>(
-        &self,
-        effective_config: &'b serde_json::Value,
-    ) -> Cow<'b, serde_json::Value> {
-        let configured = effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_f64);
-        if configured.is_some_and(|seed| seed != 0.0) {
-            return Cow::Borrowed(effective_config);
-        }
-
-        let replacement = self.seed();
-        if effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_u64)
-            == Some(replacement)
-        {
-            return Cow::Borrowed(effective_config);
-        }
-        let Some(object) = effective_config.as_object() else {
-            return Cow::Borrowed(effective_config);
-        };
-        let mut object = object.clone();
-        object.insert(
-            "handDrawnSeed".to_string(),
-            serde_json::Value::Number(replacement.into()),
-        );
-        Cow::Owned(serde_json::Value::Object(object))
-    }
-
-    fn effective_config<'b>(
-        &self,
-        effective_config: &'b merman_core::MermaidConfig,
-    ) -> Cow<'b, merman_core::MermaidConfig> {
-        match self.effective_config_value(effective_config.as_value()) {
-            Cow::Borrowed(_) => Cow::Borrowed(effective_config),
-            Cow::Owned(value) => Cow::Owned(merman_core::MermaidConfig::from_value(value)),
-        }
     }
 }
 
@@ -475,8 +439,6 @@ fn render_builtin_family_artifact_raw(
     use crate::family::BuiltinFamilyArtifact;
 
     let measurer = options.text_measurer();
-    let effective_config = options.effective_config(effective_config);
-    let effective_config = effective_config.as_ref();
     let effective_config_value = effective_config.as_value();
 
     match family {
@@ -784,14 +746,19 @@ mod operation_time_tests {
             serde_json::json!(1.75),
             serde_json::json!(4_294_967_297_u64),
         ] {
-            let config = serde_json::json!({ "handDrawnSeed": seed });
-            let effective = execution.effective_config_value(&config);
-            assert_eq!(effective.as_ref(), &config);
+            let seed = seed.as_f64().expect("numeric seed");
+            assert_eq!(
+                execution
+                    .rough_randomness(seed, "render.test.roughjs")
+                    .seed()
+                    .number(),
+                seed
+            );
         }
     }
 
     #[test]
-    fn svg_execution_owns_falsy_seed_replacement_and_shared_math_random_stream() {
+    fn svg_execution_resolves_falsy_seed_and_shared_math_random_stream() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin render session");
@@ -799,12 +766,14 @@ mod operation_time_tests {
         let debug = SvgDebugOptions::default();
         let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
-        for config in [
-            serde_json::json!({}),
-            serde_json::json!({ "handDrawnSeed": 0 }),
-        ] {
-            let effective = execution.effective_config_value(&config);
-            assert_eq!(effective["handDrawnSeed"].as_u64(), Some(execution.seed()));
+        for seed in [0.0, -0.0] {
+            assert_eq!(
+                execution
+                    .rough_randomness(seed, "render.test.roughjs")
+                    .seed()
+                    .number(),
+                execution.seed() as f64
+            );
         }
 
         let randomness = execution.rough_randomness(0.0, "render.test.roughjs");
