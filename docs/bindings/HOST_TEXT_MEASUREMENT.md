@@ -221,23 +221,21 @@ host text API needs owned strings.
 
 ### Direct UniFFI Reusable Engines
 
-The direct UniFFI surface applies an engine-local callback safety boundary:
+The direct UniFFI surface uses the shared reusable-engine admission contract:
 
-- While any host text-measurement callback is active, every new operation and every
-  `set_text_measurer()` or `clear_text_measurer()` call on that same reusable engine fails
-  immediately with the typed `MermanErrorKind::ReentrantCall` error. The rule is the same on the
-  callback thread and on other threads.
-- This rejection is intentionally conservative. Generated foreign bindings do not propagate a
-  causal token when a callback starts another thread, so Merman cannot distinguish a callback
-  waiting for that thread from an unrelated caller that happens to use the same engine. Allowing
-  the latter would also allow the former to deadlock. Use a separate reusable engine with
-  independently synchronized host state for work that must continue while a callback is active.
-- Other reusable engine instances remain independent at this lifecycle boundary. Calls on one
-  engine do not observe another engine's active callback; callbacks that share host state still
-  remain the host's synchronization responsibility.
-- Concurrent calls are supported when no callback or text-measurer mutation is active at call
-  admission. Calls admitted before a callback begins can still overlap that callback, so the
-  measurer and its shared caches must remain thread-safe.
+- The host callback is immutable after reusable-engine construction. Construct a separate engine
+  to change or remove it; there is no callback mutation or manual close API.
+- Callback-free engines admit concurrent operations. Engines constructed with a callback serialize
+  operation admission and return typed `MermanErrorKind::Busy` to a competing operation.
+- While the callback is active, every new operation on the same engine fails immediately with
+  typed `MermanErrorKind::ReentrantCall`. The rule is the same on the callback thread and on other
+  threads because generated bindings do not propagate a causal token across host dispatch.
+- Other reusable engine instances remain independent. Calls on one engine do not observe another
+  engine's active callback; callbacks that share host state remain the host's synchronization
+  responsibility.
+- UniFFI object reference counting retains the callback for the reusable engine lifetime. UniFFI's
+  generated trampoline can report a returned callback error, but Merman does not catch arbitrary
+  foreign unwinds, exceptions, or longjmps that bypass that generated boundary.
 
 ## Python UniFFI
 
@@ -260,11 +258,12 @@ svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
 assert svg.startswith("<svg")
 ```
 
-For long-lived preview surfaces, call `set_text_measurer()` when the host text stack becomes
-available and `clear_text_measurer()` before destroying the host-side measurement state. Returning
+For long-lived preview surfaces, construct the reusable engine after its host text stack is
+available and discard that engine before destroying the host-side measurement state. Returning
 `None` from `measure()` leaves that single request on Merman's vendored fallback metrics. Invalid
-metrics and callback exceptions or errors have the same per-request behavior: Merman uses the
-vendored fallback and continues the enclosing layout or render operation.
+metrics and errors or exceptions reported through UniFFI's generated callback trampoline have the
+same per-request behavior: Merman uses the vendored fallback and continues the enclosing layout or
+render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
 
@@ -281,14 +280,15 @@ library, then runs that file against the generated API.
 Use `MermanReusableEngine` with `MermanTextMeasurer`:
 
 ```kotlin
-val engine = MermanReusableEngine()
-engine.setTextMeasurer { request ->
-    when (request.operation) {
-        MermanTextMeasurementOperation.MEASURE ->
-            MermanTextMeasureResult.metrics(width = 42.0, height = 18.0, lineCount = 1)
-        else -> null
+val engine = MermanReusableEngine(
+    textMeasurer = { request ->
+        when (request.operation) {
+            MermanTextMeasurementOperation.MEASURE ->
+                MermanTextMeasureResult.metrics(width = 42.0, height = 18.0, lineCount = 1)
+            else -> null
+        }
     }
-}
+)
 ```
 
 The four named factories require exactly the meaningful shape: `metrics(width, height, lineCount)`,
@@ -364,9 +364,9 @@ Recommended Apple implementation choices:
 - If the final surface is `WKWebView`, the closest measurement is DOM/canvas in that WebView after
   fonts have loaded. Keep the synchronous callback boundary in mind; prefer a prepared measurement
   service or cache over blocking arbitrary render threads on WebKit.
-- Keep the measurer alive for at least as long as the reusable engine. UniFFI owns the callback
-  handle while it is installed; Swift code does not pass raw context pointers or retain request
-  buffers.
+- Keep the measurer alive for at least as long as the reusable engine. UniFFI owns the immutable
+  callback handle for the engine lifetime; Swift code does not pass raw context pointers or retain
+  request buffers.
 - Treat `MermanTextMeasureRequest` as a value. It contains decoded Swift strings and can be
   inspected without pointer lifetime rules.
 - Use `autoreleasepool` around measurement code that creates Objective-C objects repeatedly.
