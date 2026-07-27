@@ -1,36 +1,68 @@
 # merman-editor-core
 
-Protocol-neutral editor intelligence for Merman.
+[![Crates.io](https://img.shields.io/crates/v/merman-editor-core.svg)](https://crates.io/crates/merman-editor-core) [![Documentation](https://docs.rs/merman-editor-core/badge.svg)](https://docs.rs/merman-editor-core) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-This crate is an internal Rust reuse layer shared by protocol adapters such as `merman-lsp` and
-browser adapters such as `merman-wasm`. External editors should normally integrate through the LSP
-server rather than depending on this crate directly.
+Protocol-neutral Mermaid editor intelligence for Rust hosts.
+
+Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak the Language Server Protocol. Use this library, normally through the [`merman`](https://crates.io/crates/merman) facade, when a Rust host needs completion, navigation, rename, diagnostics, and semantic-token logic in process without LSP, WASM, Monaco, or VS Code types.
+
+## Quick Start
+
+<!-- BEGIN GENERATED RELEASE README EDITOR_CORE_DEPENDENCY -->
+
+The current source candidate is not published yet:
+
+```toml
+[dependencies]
+merman = {
+    version = "=0.8.0-alpha.4",
+    git = "https://github.com/Latias94/merman",
+    default-features = false,
+    features = ["analysis", "editor"],
+}
+```
+
+<!-- END GENERATED RELEASE README EDITOR_CORE_DEPENDENCY -->
+
+```rust
+use merman::editor::{
+    DocumentKind, DocumentWorkspace, Position, completion_for_snapshot,
+};
+
+let mut workspace = DocumentWorkspace::new();
+let snapshot = workspace.upsert(
+    "file:///workspace/diagram.mmd",
+    1,
+    "flowchart TD\nA --> B\nB -->".to_owned(),
+    DocumentKind::Diagram,
+);
+let completions = completion_for_snapshot(&snapshot, Position::new(2, 5));
+```
+
+`DocumentKind::Diagram` handles standalone Mermaid files. Markdown-family documents use the same parser-backed fence indexing and retain original-document source ranges.
 
 ## Responsibilities
 
-- Own document snapshots and source/fence lookup through `DocumentWorkspace`, `DocumentSnapshot`,
-  and `FenceSnapshot`.
-- Query parser-backed semantic facts for completion, hover, document symbols, workspace symbols,
-  definition, references, prepare-rename, rename, and semantic tokens.
-- Preserve semantic fact provenance with `FenceTextIndexSource` so callers can tell
-  `ParserComplete`, `ParserRecovered`, and `Unavailable` results apart. Parser-backed facts carry
-  exact original-source spans; a fact that crosses an unrepresentable preprocessing edit is
-  omitted locally and recorded as a recovery diagnostic.
-- Keep language behavior protocol-neutral: no LSP `Url`, `Range`, `Diagnostic`, or VS Code
-  ownership policy lives here.
+- Own document, diagram, and Mermaid-fence snapshots through `DocumentWorkspace`, `DocumentSnapshot`, and `FenceSnapshot`.
+- Project parser-backed facts into completion, hover, symbols, folding, definition, references, prepare-rename, rename, selection ranges, code actions, and semantic tokens.
+- Preserve source provenance with `FenceTextIndexSource`, distinguishing `ParserComplete`, `ParserRecovered`, and `Unavailable` facts.
+- Keep exact original-source spans when preprocessing can represent them; omit unrepresentable facts and emit recovery diagnostics.
+- Keep all editor results protocol-neutral so adapters can map them to LSP, browser, or native UI types.
 
-`Unavailable` means no body semantics are projected; source-start headers and templates are read
-independently from the static family catalog. New editor behavior should deepen parser-backed
-semantic facts in `merman-core` / `merman-analysis` rather than adding protocol-layer scans.
+`Unavailable` means no body semantics are projected. Header and template suggestions can still come from the static family catalog, but the crate does not invent body symbols, references, or rename targets without complete or recovered parser facts.
 
-Editor-core builds typed snapshots directly from `AnalysisResult` and `FenceTextIndex`; it does not
-serialize or deserialize an analysis payload internally. The separately exposed binding wire is
-the current `AnalysisFactsPayload` version 1. Other versions are rejected at the binding boundary. The
-superseded TextScan-capable implementation
-is removed rather than supported in parallel. This does not change LSP document revision numbers or
-Mermaid's own `*-v2` diagram ids.
+## Data Contract
 
-For parser-backed families, completion, navigation, and refactoring continue through the same
-protocol-neutral queries. The breaking behavior is deliberate on unavailable input: editor-core no
-longer invents body symbols, references, or rename targets when a family parser cannot provide
-complete or recovered facts.
+Editor queries operate directly on typed snapshots and `AnalysisResult`; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 1, and reject other schema versions at their boundary.
+
+The removed TextScan implementation is not maintained in parallel. This does not change LSP document revision numbers or Mermaid's own `*-v2` diagram IDs.
+
+## Boundary
+
+This crate owns semantic editor behavior, not transport policy. URI conversion, protocol request and response types, client capability negotiation, document synchronization, cancellation wiring, and UI behavior belong to adapters such as `merman-lsp` or `@mermanjs/web-editor`.
+
+The optional `system-clock`, `system-timezone`, `system-random`, and `system-timing` features forward the corresponding analysis and parser adapters. They do not add editor features or Mermaid families.
+
+## License
+
+Licensed under either Apache-2.0 or MIT at your option.

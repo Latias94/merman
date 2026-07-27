@@ -1,62 +1,98 @@
 # merman-analysis
 
-`merman-analysis` owns the diagnostics-first JSON contract and the richer parser-backed analysis
-result for Merman lint, validation, document/fence source mapping, binding payloads, and editor
-projections.
+[![Crates.io](https://img.shields.io/crates/v/merman-analysis.svg)](https://crates.io/crates/merman-analysis) [![Documentation](https://docs.rs/merman-analysis/badge.svg)](https://docs.rs/merman-analysis) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-The crate intentionally starts below FFI, UniFFI, WASM, CLI, and render wrappers. It provides
-stable JSON payload types, `AnalysisResult` syntax facts, `DocumentSource` extraction for plain
-Mermaid / Markdown / MDX, source-position mapping helpers, and the canonical policy for merging
-parser diagnostics with recovered editor facts.
+Parser-backed Mermaid diagnostics, lint metadata, and document source mapping without SVG or export dependencies.
 
-Diagnostic ownership is intentionally narrow:
+Use `merman-analysis` directly when a Rust application needs to validate Mermaid, inspect diagnostics, analyze Markdown/MDX fences, or build editor tooling. Use [`merman`](https://crates.io/crates/merman) for rendering, [`merman-cli`](https://crates.io/crates/merman-cli) for command-line linting, or [`merman-lsp`](https://crates.io/crates/merman-lsp) for an editor protocol.
 
-- `merman-core` emits structured parse diagnostics with exact spans, insertion points, or explicit
-  fallback locations.
-- `merman-analysis` maps those parser facts into stable rule ids, metadata, Markdown ranges, and
-  duplicate/recovery policy.
-- Editor-core consumes the typed `AnalysisResult`; LSP and VS Code project typed diagnostics and
-  editor results without adding semantic deduplication or rewriting recovered-parser messages.
+## Quick Start
 
-Editor-facing ownership is layered:
+<!-- BEGIN GENERATED RELEASE README ANALYSIS_INSTALL -->
 
-- `AnalysisResult` carries document-level diagnostics plus per-diagram syntax facts.
-- `AnalysisFactsPayload` is the serializable facts contract for bindings. It includes the
-  diagnostics summary, document/fence spans, parser fact provenance, semantic items, outline items,
-  expected syntax, references, and the first typed Flowchart projection.
-- `FenceTextIndex` preserves parser-complete, parser-recovered, or explicit-unavailable provenance
-  for semantic facts and expected syntax.
-- `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, rename,
-  selection ranges, folding ranges, and semantic-token queries over snapshots built directly from
-  `AnalysisResult` and `FenceTextIndex`.
-- LSP, WASM, and VS Code convert those protocol-neutral results into host surfaces.
+```sh
+cargo add merman-analysis --git https://github.com/Latias94/merman
+```
 
-## Rust API Migration Notes
+<!-- END GENERATED RELEASE README ANALYSIS_INSTALL -->
 
-### Analysis payload versioning
+Analyze one Mermaid diagram:
 
-The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are separate serialized
-contracts with separate version constants. `AnalysisPayload` remains version 1. The parser-only
-`AnalysisFactsPayload` is the sole version 1 facts contract; readers reject every other version at
-the boundary before attempting to decode its body.
+```rust
+use merman_analysis::{AnalysisOptions, Analyzer, SourceDescriptor};
 
-Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
-not manufacture body semantic items. Current writers include `rename_policy` on every
-`semantic_items[]` entry so consumers can enforce the owning diagram family's identifier grammar.
-Readers accept entries that omit this additive field and conservatively decode them as
-`"none"`; missing metadata must never enable a rename operation.
+fn main() {
+    let options = AnalysisOptions::default().with_source(
+        SourceDescriptor::diagram().with_path("diagram.mmd"),
+    );
+    let result = Analyzer::with_options(options)
+        .analyze_result("flowchart TD\n  A[Start] -->");
 
-The superseded TextScan-capable shape is deleted: there is no legacy decoder, executor,
-deprecated alias, or dual projection path. Alpha consumers must regenerate against the current
-package. This schema version is independent from LSP document revisions, Mermaid ids such as
-`flowchart-v2`, and native/WASM ABI versions.
+    for diagnostic in result.diagnostics() {
+        println!("{}: {}", diagnostic.id, diagnostic.message);
+    }
 
-`DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use
-`SharedTextSlice` instead of owned `String` buffers. The slice shares the immutable document text
-and stores UTF-8 byte bounds, so Markdown/MDX fence snapshots no longer copy every Mermaid body.
-Consumers that only read the source should use `as_str()` or `AsRef<str>`. Consumers that need an
-owned buffer can call `to_owned_text()`.
+    assert!(!result.payload().valid);
+}
+```
 
-See `docs/adr/0070-diagnostics-first-analysis-contract.md` for the accepted architecture decision
-and `docs/adr/0072-lint-rule-governance.md` for rule-origin, profile, and authoring-governance
-policy.
+`AnalysisResult` retains typed per-diagram syntax facts. Call `into_payload()` when a diagnostics-only result is sufficient, or `to_facts_payload()` when a binding or editor needs the serializable facts contract.
+
+## Analyze Markdown And MDX
+
+`analyze_document_result` extracts Mermaid fences and maps every diagnostic back to the enclosing document:
+
+````rust
+use merman_analysis::{
+    Analyzer, analyze_document_result, source_descriptor_for_markdown_path,
+};
+
+let markdown = "```mermaid\nflowchart TD\n  A -->\n```\n";
+let result = analyze_document_result(
+    markdown,
+    &Analyzer::new(),
+    source_descriptor_for_markdown_path(Some("README.md")),
+);
+
+assert_eq!(result.diagrams().len(), 1);
+assert!(!result.diagnostics().is_empty());
+````
+
+Use `analyze_document` for the smaller diagnostics payload and `analyze_document_facts` for the versioned binding payload.
+
+## What This Crate Owns
+
+- Stable diagnostic IDs, severities, metadata, fixes, and source ranges.
+- Plain Mermaid, Markdown, and MDX document extraction.
+- UTF-8 byte, line/column, and LSP-compatible source mapping.
+- Parser-backed semantic items, outline items, references, expected syntax, and provenance.
+- Rule catalogs and the policy for merging parser diagnostics with recovered editor facts.
+- Deterministic analysis options and explicit source-size limits.
+
+The layer boundaries are deliberate:
+
+- `merman-core` emits structured parser facts and exact spans.
+- `merman-analysis` turns those facts into diagnostics and document-level results.
+- `merman-editor-core` queries typed analysis snapshots for editor behavior.
+- LSP, WASM, CLI, FFI, and UniFFI only project those results into their host protocols.
+
+## Runtime And Features
+
+The crate has no default features and does not depend on SVG, raster, PDF, or editor protocol implementations. Analysis is deterministic by default.
+
+The optional `system-clock`, `system-timezone`, `system-random`, and `system-timing` features only make their matching runtime adapters available. They do not change Mermaid language coverage or select ambient host state automatically.
+
+## Payload Contracts
+
+The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are both `1`; consumers must validate the version belonging to the payload they decode.
+
+Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
+
+`DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
+
+## Related Documentation
+
+- [Diagnostics architecture](https://github.com/Latias94/merman/blob/main/docs/adr/0070-diagnostics-first-analysis-contract.md)
+- [Lint rule governance](https://github.com/Latias94/merman/blob/main/docs/adr/0072-lint-rule-governance.md)
+- [Editor and LSP capabilities](https://github.com/Latias94/merman/blob/main/docs/lsp/README.md)
+- [Project compatibility status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)

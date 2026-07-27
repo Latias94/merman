@@ -1,19 +1,35 @@
 # @mermanjs/web-render
 
-This is the browser-only complete SVG rendering package. Its artifact contains `svg`, both
-supported layout engines, and RaTeX math, but does not contain analysis, editor, or ASCII APIs.
+This is the browser-only complete SVG rendering package. Its artifact contains `svg`, both supported layout engines, and RaTeX math, but does not contain analysis, editor, or ASCII APIs.
 
-Install it when an application needs complete Mermaid SVG rendering without the analysis, editor,
-or ASCII workflows from `@mermanjs/web`:
+## Install
+
+<!-- BEGIN GENERATED RELEASE README NPM_RENDER_INSTALL -->
+
+The `0.8.0-alpha.4` candidate is not published yet. Build the browser workspace from a checkout, then install this profile into the application from its local package directory:
+
+```sh
+npm ci --prefix /path/to/merman/platforms/web
+npm run build --prefix /path/to/merman/platforms/web
+npm install /path/to/merman/platforms/web/packages/render
+```
+
+<!-- END GENERATED RELEASE README NPM_RENDER_INSTALL -->
+
+Install it when an application needs complete Mermaid SVG rendering without the analysis, editor, or ASCII workflows from `@mermanjs/web`:
 
 ```ts
 import { initMerman, renderSvg } from "@mermanjs/web-render";
 
 await initMerman();
-const svg = renderSvg("flowchart TD\\n  A --> B");
+const svg = renderSvg(`flowchart TD
+  A --> B`);
 ```
 
-The package participates in the same lockstep release, provenance, legal-material, declaration,
-and lifecycle checks as the rest of the public browser package group. Its size is measured against
-`@mermanjs/web`, but its product boundary is complete SVG capability rather than a 15% slim-workflow
-threshold.
+It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport. A server-side application must use a separately admitted native transport.
+
+Browser bindings use the `interactive` resource profile by default. For untrusted public input, pass `{ resources: { profile: "constrained" } }` and also enforce host timeout, memory, concurrency, and process-isolation limits.
+
+The package participates in the same lockstep release, provenance, legal-material, declaration, and lifecycle checks as the rest of the public browser package group. Its size is measured against `@mermanjs/web`, but its product boundary is complete SVG capability rather than a 15% slim-workflow threshold.
+
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for custom WASM loading and resource-policy guidance.

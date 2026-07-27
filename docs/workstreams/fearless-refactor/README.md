@@ -1,17 +1,14 @@
 # Fearless Refactor Workstream
 
-This workstream tracks the cleanup plan for the next merman version. The goal is to make the
-project cleaner, faster, and easier to extend while preserving Mermaid parity.
+This workstream tracks the cleanup plan for the next merman version. The goal is to make the project cleaner, faster, and easier to extend while preserving Mermaid parity.
 
-The active baseline is Mermaid `@11.16.0`. Current parity boundaries live in
-`docs/workstreams/PARITY_BOUNDARY.md`; family ownership and cleanup rules live in ADR-0073. This
-workstream remains historical context for internal architecture, maintainability, feature-gate
-health, and performance-oriented simplification.
+The active baseline is Mermaid `@11.16.0`. Current parity boundaries live in `docs/workstreams/PARITY_BOUNDARY.md`; family ownership and cleanup rules live in ADR-0073. This workstream remains historical context for internal architecture, maintainability, feature-gate health, and performance-oriented simplification.
+
+> **Historical snapshot:** the command and feature inventories below record the repository state when this workstream was active. They are not current, runnable guidance. Use [`docs/FEATURES.md`](../../FEATURES.md) for current feature names and the repository's active verification documentation for current commands.
 
 ## Mission
 
-Ship the next version with a simpler render pipeline, fewer redundant code paths, clearer module
-boundaries, and stronger verification gates.
+Ship the next version with a simpler render pipeline, fewer redundant code paths, clearer module boundaries, and stronger verification gates.
 
 The target state is:
 
@@ -19,8 +16,7 @@ The target state is:
 - One authoritative dispatch point for each pipeline stage.
 - Large renderer/text modules split by responsibility.
 - Feature-gated code that compiles under `--all-features`.
-- Browser-probed font profiles that contain reusable glyph facts rather than complete-label or
-  fixture-keyed answers.
+- Browser-probed font profiles that contain reusable glyph facts rather than complete-label or fixture-keyed answers.
 - Benchmarks and parity gates that make refactoring safe.
 
 ## Non-goals
@@ -39,10 +35,9 @@ The target state is:
 - Preserve the public parse APIs until a replacement is documented.
 - Add or reuse tests before changing behavior-sensitive code.
 - Run the smallest relevant gate first, then a broader gate before committing.
-- Keep browser-dependent residuals visible. Prefer operation-provided host measurement when exact
-  system-font behavior is required; never copy fixture answers into production code.
+- Keep browser-dependent residuals visible. Prefer operation-provided host measurement when exact system-font behavior is required; never copy fixture answers into production code.
 
-## Standard Gates
+## Historical Standard Gates
 
 Minimum gate for any refactor touching `merman-core` or `merman-render`:
 
@@ -73,42 +68,32 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3
 cargo run -p xtask -- check-alignment
 ```
 
-Benchmark gate for performance-sensitive work:
+The historical benchmark gate used the now-removed `render` feature:
 
-```sh
+```text
 cargo bench -p merman --features render
 ```
 
 Use narrower `xtask compare-*` commands when working on one diagram family.
 
-## Fast Local Refactor Gates
+## Historical Fast Local Refactor Gates
 
 Use the narrowest gate that still covers the changed ownership boundary:
 
-- Core parser/API changes:
-  `cargo fmt`, `cargo nextest run -p merman-core`,
-  `cargo clippy -p merman-core --all-targets -- -D warnings`.
-- Render layout/SVG changes:
-  `cargo fmt`, `cargo nextest run -p merman-render`,
-  `cargo clippy -p merman-render --all-targets -- -D warnings`, plus a targeted
-  `cargo run -p xtask -- compare-svg-xml --diagram <name> --check`.
-- Public API or feature-flag changes:
-  add `cargo check --workspace --all-features` and
-  `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
-- Release-boundary changes:
-  use `cargo run -p xtask -- verify --strict`.
+- Core parser/API changes: `cargo fmt`, `cargo nextest run -p merman-core`, `cargo clippy -p merman-core --all-targets -- -D warnings`.
+- Render layout/SVG changes: `cargo fmt`, `cargo nextest run -p merman-render`, `cargo clippy -p merman-render --all-targets -- -D warnings`, plus a targeted `cargo run -p xtask -- compare-svg-xml --diagram <name> --check`.
+- Public API or feature-flag changes: add `cargo check --workspace --all-features` and `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+- Release-boundary changes: use `cargo run -p xtask -- verify --strict`.
 
-## Feature Flag Audit
+## Historical Feature Flag Audit
 
-Current feature flags:
+Feature flags at the time this snapshot was written:
 
 - `merman/render`: keep. This is the public opt-in boundary for layout/SVG dependencies.
 - `merman/raster`: keep. This is the public opt-in boundary for PNG/JPG/PDF dependencies.
-- `merman-core/large-features`: keep for now. It controls the full detector surface versus the
-  tiny detector surface and needs a separate public API decision before removal.
+- `merman-core/large-features`: keep for now. It controls the full detector surface versus the tiny detector surface and needs a separate public API decision before removal.
 - `dugong/dagreish`: keep. It exposes the parity-oriented Dagre pipeline variant.
-- `merman-render/flowchart_root_pack`: removed. The gated code was an experimental debug-only
-  post-layout packing path that Mermaid does not apply and default parity paths did not use.
+- `merman-render/flowchart_root_pack`: removed. The gated code was an experimental debug-only post-layout packing path that Mermaid does not apply and default parity paths did not use.
 
 ## Priority Model
 
@@ -123,8 +108,7 @@ Use this order when choosing work:
 
 ## Workstream Documents
 
-- `STATUS.md`: short current-state dashboard, completion estimate, remaining buckets, and finish
-  definition.
+- `STATUS.md`: short current-state dashboard, completion estimate, remaining buckets, and finish definition.
 - `TODO.md`: prioritized task backlog.
 - `MILESTONES.md`: staged roadmap and exit criteria.
 - `GATES.md`: standard refactor, parity, performance, and release command sets.

@@ -1,32 +1,17 @@
 # merman-layout-elk
 
-`merman-layout-elk` is the optional ELK layout engine integration point for
-`merman`.
+`merman-layout-elk` adapts Merman graph models to the source-backed ELK layered implementation.
 
-The crate exists so ELK-specific dependencies and adapters can be developed,
-tested, and feature-gated outside `merman-render`. The first supported target is
-Mermaid's default ELK behavior for `flowchart-elk` / `layout: elk`, which maps
-to the layered ELK algorithm.
+> **Implementation dependency:** applications should enable `layout-elk` on the [`merman`](https://crates.io/crates/merman) facade. This crate is the internal adapter and does not promise the complete Eclipse ELK API.
 
-This crate ships the sole source-backed layered adapter used by Flowchart ELK,
-Class, and ER rendering. It is an integration point for Mermaid's adapter
-surface, not a general-purpose complete Eclipse ELK distribution.
+Keeping this boundary separate lets `merman` feature-gate ELK-specific code and the EPL-2.0 source port outside the base SVG renderer. This crate ships the sole source-backed layered adapter used by Flowchart ELK, Class, and ER rendering; it is an integration point for Mermaid's adapter surface, not a general-purpose Eclipse ELK distribution.
 
-Source-backed Eclipse ELK layered work lives in `merman-elk-layered`, an
-EPL-2.0 crate that keeps translated ELK algorithm code behind an explicit
-license boundary. Its phase implementations are not re-exported: diagnostics
-use `SourcePhaseDiagnostics`, which preserves the same guarded execution
-boundary as production layout. The removed compatibility algorithm has no
-fallback alias.
+Source-backed Eclipse ELK layered work lives in `merman-elk-layered`, an EPL-2.0 crate that keeps translated algorithm code behind an explicit license boundary. Phase implementations are not re-exported: diagnostics use `SourcePhaseDiagnostics`, preserving the same guarded execution boundary as production layout. There is no compatibility fallback under the same API.
 
 ## Random seed authority
 
-ELK treats `randomSeed = 0` as an unseeded request. A headless layout must not
-turn that into ambient process randomness. `layout(&Graph)` therefore rejects
-that sentinel with a typed error. Normal Mermaid graphs use the upstream
-nonzero default and continue to use `layout` directly.
+ELK treats `randomSeed = 0` as an unseeded request. A headless layout must not turn that into ambient process randomness. `layout(&Graph)` therefore rejects that sentinel with a typed error. Normal Mermaid graphs use the upstream nonzero default and continue to use `layout` directly.
 
-An operation owner that intentionally accepts the sentinel must call
-`layout_with_operation_seed` with an `ElkOperationSeed` created from the immutable,
-nonzero seed it captured for that operation. This keeps replayed layouts byte-stable
-while preserving the configured `randomSeed` value in the source model.
+An operation owner that intentionally accepts the sentinel must call `layout_with_operation_seed` with an `ElkOperationSeed` created from the immutable, nonzero seed captured for that operation. This keeps replayed layouts byte-stable while preserving the configured `randomSeed` in the source model.
+
+The workspace license is MIT OR Apache-2.0; the translated ELK implementation remains EPL-2.0 in its own crate.

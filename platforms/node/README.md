@@ -1,38 +1,17 @@
 # Merman Node/SSG transport evaluation
 
-This directory is the private U14 comparison workspace. It does not declare an admitted public
-Node product. A release surface may be added only after the same corpus, options, resource profile,
-target, installation, semantic-model, SVG-structure, error, queue, lifecycle, timing, RSS, and
-footprint gates pass. Exact geometry drift is reported independently.
+This directory is the private U14 comparison workspace. It does not declare an admitted public Node product. A release surface may be added only after the same corpus, options, resource profile, target, installation, semantic-model, SVG-structure, error, queue, lifecycle, timing, RSS, and footprint gates pass. Exact geometry drift is reported independently.
 
-The current local evaluation is inconclusive because it covers only one target and its candidate
-artifacts predate the final refactor state. The macOS arm64 smoke does prove that installing only
-the root package resolves and loads its target package through `optionalDependencies`; the other
-declared targets still require the same evidence. See
-[`docs/performance/NODE_TRANSPORT_ADMISSION.md`](../../docs/performance/NODE_TRANSPORT_ADMISSION.md)
-for the reproducible evidence and the explicit non-admission decision.
+For a supported Node or static-site integration today, invoke `merman-cli` as a child process and exchange Mermaid source and output through files or standard streams. Do not depend on this workspace or either candidate package in an application.
+
+The current local evaluation is inconclusive because it covers only one target and its candidate artifacts predate the final refactor state. The macOS arm64 smoke does prove that installing only the root package resolves and loads its target package through `optionalDependencies`; the other declared targets still require the same evidence. See [`docs/performance/NODE_TRANSPORT_ADMISSION.md`](https://github.com/Latias94/merman/blob/main/docs/performance/NODE_TRANSPORT_ADMISSION.md) for the reproducible evidence and the explicit non-admission decision.
 
 The candidates are deliberately separate:
 
-- `node-wasm` is built from `crates/merman-node` with `wasm-pack --target nodejs`. It never loads
-  `@mermanjs/web` or an artifact from `platforms/web`.
-- `napi` is built from the same crate and shared operation bridge with napi-rs. Each native package
-  owns one target-specific `merman.node` file.
+- `node-wasm` is built from `crates/merman-node` with `wasm-pack --target nodejs`. It never loads `@mermanjs/web` or an artifact from `platforms/web`.
+- `napi` is built from the same crate and shared operation bridge with napi-rs. Each native package owns one target-specific `merman.node` file.
 
-Both candidates resolve the same private native capability recipe and append only their private
-transport leaf. The recipe is checked against the canonical capability descriptor; it is not a
-claim that either candidate is a published Merman artifact profile. Each build receipt binds the
-current `Cargo.lock`, resolved dependency closure, exact target and feature configuration, complete
-artifact file set, build-verifier inputs, and artifact-owned runtime catalog and operation probes.
-The SVG probe parses a real successful result and records its structure and geometry digests. The
-receipt summary carries every runtime file needed by the selected transport, including the Node
-WASM loader, binary, and nested module manifest, so installed hashes can be checked one by one. The
-comparison rejects receipts whose shared source, lockfile, binding contract, capability recipe, or
-runtime catalog digests differ. The candidates construct
-`merman_bindings_core::BindingEngine`, execute `BindingOperationRequest`, default to the
-deterministic runtime policy, and preserve typed missing-capability and unknown-operation errors.
-The generic operation API also exercises the descriptor-owned `svg-plan-json` capability planner
-through both the build receipt and installed-package probe.
+Both candidates resolve the same private native capability recipe and append only their private transport leaf. The recipe is checked against the canonical capability descriptor; it is not a claim that either candidate is a published Merman artifact profile. Each build receipt binds the current `Cargo.lock`, resolved dependency closure, exact target and feature configuration, complete artifact file set, build-verifier inputs, and artifact-owned runtime catalog and operation probes. The SVG probe parses a real successful result and records its structure and geometry digests. The receipt summary carries every runtime file needed by the selected transport, including the Node WASM loader, binary, and nested module manifest, so installed hashes can be checked one by one. The comparison rejects receipts whose shared source, lockfile, binding contract, capability recipe, or runtime catalog digests differ. The candidates construct `merman_bindings_core::BindingEngine`, execute `BindingOperationRequest`, default to the deterministic runtime policy, and preserve typed missing-capability and unknown-operation errors. The generic operation API also exercises the descriptor-owned `svg-plan-json` capability planner through both the build receipt and installed-package probe.
 
 Install the pinned candidate tooling and run static contracts:
 
@@ -48,24 +27,11 @@ npm run build:candidate -- --candidate node-wasm
 npm run build:candidate -- --candidate napi --target darwin-arm64
 ```
 
-Run the comparison only after both artifacts exist. The harness packs and installs each candidate,
-then launches its workers exclusively through the installed product's `createNodeEngine()` facade.
-For napi it installs only the root package and verifies that npm resolves the target package through
-the declared exact-version optional dependency; both paths reject any installed browser fallback.
-The harness launches isolated child processes for cold samples, records repeated warm samples and
-RSS, rejects a candidate pair with semantic JSON, typed-error, or SVG-structure differences,
-reports exact geometry drift without hiding it, and recomputes timing summaries from the raw
-samples. It hashes the harness before and after measurement and aborts if an input changes. A target
-result binds its host mapping, build receipt, installed package manifests, loaded artifact hashes,
-install manifest and lockfile dependency edge, runtime probes, concurrent outcomes, and raw
-queue/lifecycle settlements; five unbound passing booleans cannot satisfy the admission matrix. The
-harness refuses to select a winner while any target evidence is missing.
+Run the comparison only after both artifacts exist. The harness packs and installs each candidate, then launches its workers exclusively through the installed product's `createNodeEngine()` facade. For napi it installs only the root package and verifies that npm resolves the target package through the declared exact-version optional dependency; both paths reject any installed browser fallback. The harness launches isolated child processes for cold samples, records repeated warm samples and RSS, rejects a candidate pair with semantic JSON, typed-error, or SVG-structure differences, reports exact geometry drift without hiding it, and recomputes timing summaries from the raw samples. It hashes the harness before and after measurement and aborts if an input changes. A target result binds its host mapping, build receipt, installed package manifests, loaded artifact hashes, install manifest and lockfile dependency edge, runtime probes, concurrent outcomes, and raw queue/lifecycle settlements; five unbound passing booleans cannot satisfy the admission matrix. The harness refuses to select a winner while any target evidence is missing.
 
 ```console
 npm run benchmark -- --native artifacts/napi/darwin-arm64/merman.node \
   --wasm artifacts/node-wasm/merman_node.js
 ```
 
-`AbortSignal` removes work that is still queued. It does not interrupt Rust work that has already
-started. Call `dispose()` to reject pending work and wait for executing work to finish. The
-synchronous `renderSvgSync()` method is reserved for explicit static-site generation paths.
+`AbortSignal` removes work that is still queued. It does not interrupt Rust work that has already started. Call `dispose()` to reject pending work and wait for executing work to finish. The synchronous `renderSvgSync()` method is reserved for explicit static-site generation paths.

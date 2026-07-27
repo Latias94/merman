@@ -1,49 +1,87 @@
 # merman-lsp
 
-`merman-lsp` is the canonical LSP transport for Merman diagnostics and protocol-neutral editor
-intelligence. It validates the LSP projection while analysis and editor-core own the underlying
-language behavior.
+[![Crates.io](https://img.shields.io/crates/v/merman-lsp.svg)](https://crates.io/crates/merman-lsp) [![Documentation](https://docs.rs/merman-lsp/badge.svg)](https://docs.rs/merman-lsp) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-## Responsibilities
+Local Mermaid language intelligence for `.mmd`, `.mermaid`, Markdown, and MDX documents.
 
-- Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
-  `completionItem/resolve`, `documentSymbol`, `definition`, `references`, `prepareRename`,
-  `rename`, `selectionRange`, `foldingRange`, `codeAction`, `semanticTokens/full`, and
-  `semanticTokens/range`.
-- Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
-  including `merman/ruleCatalog` and `merman/configSchema`.
-- Publish diagnostics from `merman-analysis`, including document pull diagnostics.
-- Keep document state versioned so diagnostics from stale analysis snapshots are suppressed before
-  publication.
-- Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
-  ranges, workspace symbols, definition, references, prepare-rename, rename, and semantic-token
-  responses into LSP types.
-- Provide fix-backed quickfix code actions from shared analysis diagnostics.
-- Reject `workspace/diagnostic` while unopened workspace-file scanning has no owner; tracked
-  document snapshots still support workspace symbols.
+`merman-lsp` provides parser-backed diagnostics, completion, hover, navigation, rename, code actions, symbols, folding, and semantic tokens. It does not render previews; pair it with [`merman-cli`](https://crates.io/crates/merman-cli), or use the [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) for an integrated editor experience.
 
-## Deferred
+## Install The Stdio Server
 
-- Formatting
+The crate defaults to a protocol-neutral Rust library. Enable `stdio` when installing the bundled language-server executable:
 
-## Notes
+<!-- BEGIN GENERATED RELEASE README LSP_INSTALL -->
 
-- `stdio` is the only Cargo feature owned by this crate. It adds the bundled Tokio stdio binary;
-  the default build remains a protocol-neutral library.
-- LSP analysis uses the deterministic runtime policy. Initialization and workspace settings can
-  provide `fixed_today` and `fixed_local_offset_minutes`, but the LSP exposes no native runtime
-  selector and therefore does not forward `system-*` Cargo features.
-- Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
-- Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
-- Language features remain editor-core-driven; the LSP layer converts URI/range/type shapes and
-  handles request lifecycle.
-- The document store consumes typed editor snapshots backed by `FenceTextIndex`; LSP language
-  requests do not serialize or deserialize `AnalysisFactsPayload`.
-- The separately exposed analysis-facts binding wire uses schema version 1. Other versions are
-  rejected at the version boundary, and the superseded TextScan-capable path is deleted.
-  Unsupported body text yields no guessed language items, while legal source-start header
-  completion remains catalog-backed.
-- Facts schema versions are unrelated to LSP `textDocument.version` revisions and Mermaid's own
-  `flowchart-v2`, `stateDiagram-v2`, and `classDiagram-v2` ids.
-- First-class family coverage is tracked in `docs/lsp/CAPABILITIES.md`; parse/render support
-  outside that matrix is not yet a mature LSP commitment.
+```sh
+cargo install --git https://github.com/Latias94/merman --locked merman-lsp \
+  --no-default-features --features stdio
+```
+
+<!-- END GENERATED RELEASE README LSP_INSTALL -->
+
+Configure an editor or LSP client to launch:
+
+```text
+merman-lsp
+```
+
+The server communicates over standard input and output. Logs go to standard error, so protocol messages remain isolated.
+
+For repository development:
+
+```sh
+cargo run -p merman-lsp --features stdio
+```
+
+## Supported Documents
+
+- Standalone Mermaid files: `.mmd` and `.mermaid`.
+- Mermaid code fences in Markdown, MDX, and Markdown-family documents.
+- Multiple fences per document with source ranges mapped back to the host file.
+
+Language behavior comes from `merman-analysis` and `merman-editor-core`; the LSP layer only owns document lifecycle, request cancellation, stale-result suppression, and protocol projection.
+
+## Language Features
+
+- Diagnostics, including pull diagnostics and fix-backed quick fixes.
+- Completion and completion-item resolution.
+- Hover, document symbols, selection ranges, and folding ranges.
+- Definition, references, prepare rename, and rename.
+- Full-document and range semantic tokens.
+- Merman extension requests for the rule catalog and configuration schema.
+
+The server intentionally rejects workspace diagnostics until unopened workspace-file discovery has a defined owner. Formatting is not currently provided.
+
+See the [capability matrix](https://github.com/Latias94/merman/blob/main/docs/lsp/CAPABILITIES.md) for family-level coverage.
+
+## Embed The Protocol Library
+
+Applications that already own a transport can depend on `merman-lsp` with default features disabled and construct `MermanLanguageServer` directly. The `stdio` feature adds only the bundled Tokio stdio transport and executable.
+
+<!-- BEGIN GENERATED RELEASE README LSP_LIBRARY_DEPENDENCY -->
+
+```toml
+[dependencies]
+merman-lsp = {
+    version = "=0.8.0-alpha.4",
+    git = "https://github.com/Latias94/merman",
+    default-features = false,
+}
+```
+
+<!-- END GENERATED RELEASE README LSP_LIBRARY_DEPENDENCY -->
+
+## Runtime And Contract Boundaries
+
+LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`, but the server does not expose a native runtime selector or forward `system-*` Cargo features.
+
+The document store consumes typed editor snapshots backed by `FenceTextIndex`; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
+
+When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
+
+## Related Documentation
+
+- [LSP architecture and lifecycle](https://github.com/Latias94/merman/blob/main/docs/lsp/README.md)
+- [VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
+- [Analysis crate](https://crates.io/crates/merman-analysis)
+- [Editor-core crate](https://docs.rs/merman-editor-core)

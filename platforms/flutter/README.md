@@ -1,17 +1,10 @@
-# Merman For Flutter And Dart
+# Merman For Flutter
 
-[![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
+[![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Render and analyze Mermaid diagrams in Flutter or standalone Dart without a
-browser or JavaScript runtime. The package is a Dart-friendly facade over
-Merman's native ABI 3 table and ships the native library for its supported
-Flutter targets.
+Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships the native library for its supported Flutter targets.
 
-> Install the Dart wrapper and native artifact from the same package release.
-> The package uses ABI 3 only; ABI 2 symbols and raw record layouts are not a
-> fallback path.
+> Install the Dart wrapper and native artifact from the same package release. The package uses ABI 3 only; ABI 2 symbols and raw record layouts are not a fallback path.
 
 ## Install
 
@@ -22,47 +15,44 @@ dependencies:
 
 Run `flutter pub get` after adding the dependency.
 
+## Requirements
+
+- Dart 3.4 or newer and Flutter 3.10 or newer
+- Android API 23 or newer with Java 17
+- iOS 13 or newer
+- macOS 11 or newer
+
+The public Dart API can load a host-owned compatible native library with `Merman.openPath(...)`, but this package itself depends on the Flutter SDK and is not distributed as a standalone Dart package.
+
 ## Render A Diagram
 
-`Merman` owns a default native engine. Close it when the application no longer
-needs it.
+`Merman` owns a default native engine. Close it when the application no longer needs it.
 
 ```dart
 import 'package:merman/merman.dart';
 
+const source = 'flowchart TD\nA[Hello] --> B[World]';
 final merman = Merman.open();
 try {
-  final svg = merman.renderSvg('flowchart TD\nA[Hello] --> B[World]');
+  final svg = merman.renderSvg(source);
   print(svg.substring(0, 4)); // <svg
 } finally {
   merman.dispose();
 }
 ```
 
-The generic API is available when an application needs to select an output at
-runtime:
+The generic API is available when an application needs to select an output at runtime:
 
 ```dart
 final output = merman.execute(MermanOperation.semanticJson, source);
 final semantic = output.jsonObject;
 ```
 
-Convenience methods cover SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis
-JSON, document analysis, and validation. A native artifact can intentionally
-omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI
-or export paths; an unavailable operation raises
-`MermanUnsupportedOperationException` rather than silently falling back.
-`MermanUnknownOperationException` identifies an ID outside the ABI vocabulary;
-`MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native
-request.
+Convenience methods cover SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation. A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
 ## Options And Resource Limits
 
-Options passed when opening `Merman` or creating a reusable engine form the
-baseline for later calls. `execute` and every convenience method also accept
-`optionsJson`; request values deeply override that baseline for one call while
-unspecified nested values remain inherited. Select `runtime_policy` only at
-engine construction.
+Options passed when opening `Merman` or creating a reusable engine form the baseline for later calls. `execute` and every convenience method also accept `optionsJson`; request values deeply override that baseline for one call while unspecified nested values remain inherited. Select `runtime_policy` only at engine construction.
 
 ```dart
 final merman = Merman.open(
@@ -76,27 +66,13 @@ final merman = Merman.open(
 );
 ```
 
-Omitting `runtime_policy` keeps the engine deterministic even when the packaged library includes
-native adapters. Set `"runtime_policy":"native"` only when the operation should consult the host
-clock, time-zone rules, and random source. Generic operation metadata reports the selected policy,
-and a custom slim artifact missing a requested adapter raises
-`MermanUnsupportedOperationException`.
+Omitting `runtime_policy` keeps the engine deterministic even when the packaged library includes native adapters. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Generic operation metadata reports the selected policy, and a custom slim artifact missing a requested adapter raises `MermanUnsupportedOperationException`.
 
-Use `constrained` for untrusted or multi-tenant input, `interactive` for
-cooperative local editing, and `trusted-native` for local native automation.
-`MermanResourceOptionsBuilder` is available when an application only needs to
-produce the shared resource-options fragment. The generic native operation
-envelope has no Dart-facing fields in schema 1, so the Flutter facade keeps it
-internal until a real per-output contract exists.
-The runtime catalog is the source of truth for the compiled capabilities and
-enforced resource limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md)
-for profile selection and the complete option schema.
+Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` is available when an application only needs to produce the shared resource-options fragment. The generic native operation envelope has no Dart-facing fields in schema 1, so the Flutter facade keeps it internal until a real per-output contract exists. The runtime catalog is the source of truth for the compiled capabilities and enforced resource limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for profile selection and the complete option schema.
 
 ## Reusable Engines And Text Measurement
 
-Use an independent `MermanReusableEngine` when a workflow needs its own
-options, lifecycle, or host text measurer. Register the optional synchronous
-measurer when creating the engine; it cannot be changed after construction.
+Use an independent `MermanReusableEngine` when a workflow needs its own options, lifecycle, or host text measurer. Register the optional synchronous measurer when creating the engine; it cannot be changed after construction.
 
 ```dart
 final engine = merman.reusableEngine(
@@ -118,33 +94,21 @@ try {
 }
 ```
 
-The callback is isolate-local and synchronous. Create, render with, and dispose
-the measured engine on the same Dart isolate. Do not call back into that engine
-from the measurer. Precompute or cache WebView, platform-channel, and font
-results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi)
-describes result shapes and cache keys.
+The callback is isolate-local and synchronous. Create, render with, and dispose the measured engine on the same Dart isolate. Do not call back into that engine from the measurer. Precompute or cache WebView, platform-channel, and font results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) describes result shapes and cache keys.
 
-Outputs are returned as owned Dart byte arrays. This keeps the Flutter surface
-small and makes lifetime, error, and cancellation behavior identical for SVG,
-bitmap, PDF, and JSON operations.
+Outputs are returned as owned Dart byte arrays. This keeps the Flutter surface small and makes lifetime, error, and cancellation behavior identical for SVG, bitmap, PDF, and JSON operations.
 
 ## SVG Display
 
-`renderSvg` returns SVG text; it intentionally does not choose a Flutter
-widget. Mermaid-compatible SVG can contain `<style>`, `<marker>`, and
-`<foreignObject>`. A WebView gives the closest browser behavior. Native SVG
-widgets and rasterizers can omit HTML labels, markers, or CSS features.
+`renderSvg` returns SVG text; it intentionally does not choose a Flutter widget. Mermaid-compatible SVG can contain `<style>`, `<marker>`, and `<foreignObject>`. A WebView gives the closest browser behavior. Native SVG widgets and rasterizers can omit HTML labels, markers, or CSS features.
 
 Choose the SVG pipeline for the final consumer:
 
 - `parity` is the default Mermaid-compatible output for browser/WebView use.
 - `readable` favors text fallbacks and inspectability.
-- `resvg-safe` is the explicit choice for stricter SVG consumers, rasterizers,
-  and PDF conversion.
+- `resvg-safe` is the explicit choice for stricter SVG consumers, rasterizers, and PDF conversion.
 
-Set the usual pipeline in `Merman.open(optionsJson: ...)` or
-`reusableEngine(optionsJson: ...)`. Override it for one call with
-`renderSvg(source, optionsJson: ...)` when required.
+Set the usual pipeline in `Merman.open(optionsJson: ...)` or `reusableEngine(optionsJson: ...)`. Override it for one call with `renderSvg(source, optionsJson: ...)` when required.
 
 ## Supported Platforms
 
@@ -156,19 +120,13 @@ Set the usual pipeline in `Merman.open(optionsJson: ...)` or
 | Linux | x86_64 or aarch64 shared library, depending on the release artifact |
 | Windows | x86_64 DLL |
 
-Flutter Web is not supported because this package uses `dart:ffi`; use
-[`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) in browsers.
-Verify the release archive before deployment because native target availability
-is release-specific.
+Flutter Web is not supported because this package uses `dart:ffi`; use [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) in browsers. Verify the release archive before deployment because native target availability is release-specific.
 
-Android package slices use the `flutter-android-native` C ABI recipe from `merman-ffi`. The Kotlin
-AAR's JNI transport lives in the separate internal `merman-android-jni` crate.
+Android package slices use the `flutter-android-native` C ABI recipe from `merman-ffi`. The Kotlin AAR's JNI transport lives in the separate internal `merman-android-jni` crate.
 
 ## Local Development
 
-The checked-in low-level binding is generated with `ffigen` from the public C
-header. It is private to this package; application code uses `merman.dart` and
-never needs ABI pointers or record definitions.
+The checked-in low-level binding is generated with `ffigen` from the public C header. It is private to this package; application code uses `merman.dart` and never needs ABI pointers or record definitions.
 
 ```sh
 cargo build -p merman-ffi --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
@@ -180,9 +138,7 @@ dart run tool/abi3_contract_test.dart
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-Use `.so` on Linux and `.dll` on Windows. CI regenerates the binding and rejects
-a stale checked-in result. Native artifact assembly and platform packaging are
-documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
+Use `.so` on Linux and `.dll` on Windows. CI regenerates the binding and rejects a stale checked-in result. Native artifact assembly and platform packaging are documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
 
 ## Documentation And Releases
 
@@ -192,12 +148,8 @@ documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/bl
 - [Issue tracker](https://github.com/Latias94/merman/issues)
 - [Source repository](https://github.com/Latias94/merman)
 
-pub.dev is the supported registry channel for this package. CocoaPods and
-SwiftPM files inside the plugin are Flutter integration details, not separately
-published Dart packages.
+pub.dev is the supported registry channel for this package. CocoaPods and SwiftPM files inside the plugin are Flutter integration details, not separately published Dart packages.
 
 ## License And Notices
 
-This package is available under MIT or Apache-2.0. See [`LICENSE`](LICENSE),
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and
-[`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/) in the pub package.
+This package is available under MIT or Apache-2.0. See [`LICENSE`](LICENSE), [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and [`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/) in the pub package.

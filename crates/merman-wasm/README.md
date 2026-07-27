@@ -1,103 +1,86 @@
 # merman-wasm
 
-WebAssembly bindings for Merman browser use.
+[![Crates.io](https://img.shields.io/crates/v/merman-wasm.svg)](https://crates.io/crates/merman-wasm) [![Documentation](https://docs.rs/merman-wasm/badge.svg)](https://docs.rs/merman-wasm)
 
-`merman-wasm` is the Rust `wasm-bindgen` transport crate behind the public
-[`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) package. It
-exposes SVG rendering, semantic JSON, layout JSON, ASCII/Unicode rendering, validation, metadata
-helpers, optional diagnostics analysis, and an optional editor surface with the same options
-JSON contract used by the native bindings.
-Metadata helpers include Mermaid core themes and separate host/editor theme presets for
-`host_theme.preset`.
+The internal `wasm-bindgen` transport behind Merman's public browser packages.
 
-This crate is intentionally a browser/JS WebAssembly surface. It uses wasm-bindgen and browser
-imports; it is not the Typst or pure `wasm32-unknown-unknown` package surface.
+Browser and TypeScript applications should install an `@mermanjs/web*` package instead of depending on this crate or loading its raw WASM output. This crate owns the Rust-to-JavaScript transport; the packages own initialization, TypeScript types, text measurement, artifact loading, provenance, and lifecycle.
 
-Most browser and TypeScript applications should install `@mermanjs/web` rather than depending on this
-crate directly:
+It is browser-only. It is not a Node.js/SSR transport and is not the import-free Typst WebAssembly plugin.
 
-```sh
-npm install @mermanjs/web
-```
+## Use The Public Packages
 
-For browser font fidelity, use the web wrapper's `renderSvgWithTextMeasurer`,
-`layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer` APIs. The wrapper owns the
-TypeScript request/response shape and DOM helper for browser text measurement.
-The browser transport reports transport API version `3` and flat runtime catalog schema `1`. These
-versions are independent from native ABI 3, the Typst plugin ABI, and text-measurement protocol
-version `1`. Host callbacks receive one of 19 exact measurement operation names; the contiguous
-core operation range is `0..18`, ending in `raw-bbox-height`.
+See the [browser package guide](https://github.com/Latias94/merman/tree/main/platforms/web#readme) for version-matched installation, initialization, and package selection. The guide distinguishes the current source candidate from published npm artifacts; do not combine this crate's `main`-branch transport contract with an older package release.
 
-Use this crate directly when you need to rebuild the wasm-bindgen package from source or integrate
-the generated wasm artifacts into a custom packaging flow.
+## Transport Contract
 
-## Build
+The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-```sh
-wasm-pack build crates/merman-wasm --target web --profile wasm-size --out-dir ../../target/merman-wasm-pkg
-```
+The browser transport currently reports:
 
-The web wrapper requires `wasm-pack` 0.15.0 or newer because it builds with the workspace
-`wasm-size` Cargo profile.
+- transport API version `3`;
+- runtime catalog schema `1`;
+- text-measurement protocol version `1`;
+- diagnostics payload schema `1`;
+- analysis-facts payload schema `1`.
 
-The checked-in TypeScript wrapper builds this crate into `platforms/web/pkg`:
+These contracts are independently versioned. Native ABI numbers, Typst plugin ABI numbers, Mermaid diagram IDs, and JSON payload versions are not interchangeable.
+
+Call `runtimeCatalog()` after initialization to discover the loaded artifact's exact capability, operation, output, system-adapter, resource, and text-measurement IDs. Do not infer availability from exported function names, package names, or Cargo feature names. A stable function whose backend is absent returns a typed `missing-capability` error.
+
+All profiles retain the same pinned Mermaid language catalog. Slim artifacts remove callable rendering, analysis, ASCII, editor, or layout capabilities, not diagram parsers.
+
+## Browser Text Measurement
+
+The public wrapper owns `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. Host callbacks receive one of 19 exact measurement operations (`0..18`).
+
+Use browser measurement when geometry should follow the page's actual font stack. Deterministic CI, fixture, and offline workflows can retain Merman's vendored measurement profile. A host callback should decline work it cannot answer faithfully so the named deterministic fallback remains authoritative.
+
+## Maintainer Build
+
+Do not invoke `wasm-pack` with this crate's empty default feature set. Normal builds must go through the browser surface descriptor, which selects one exact artifact profile and feature closure for each package:
 
 ```sh
+npm install --prefix platforms/web
 npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
-The Web descriptor maps each standalone package to one exact `web-*` artifact profile. Build all
-owned packages or one selected package with:
+Build only one owned WASM profile when working on a specific package:
 
 ```sh
-npm run build:wasm --prefix platforms/web
 npm run build:wasm:analysis --prefix platforms/web
-npm run build:wasm:render --prefix platforms/web
 npm run build:wasm:ascii --prefix platforms/web
 npm run build:wasm:editor --prefix platforms/web
+npm run build:wasm:render --prefix platforms/web
 npm run build:wasm:full --prefix platforms/web
 ```
 
-The generated module exports `runtimeCatalog()`, `diagramFamilyCapabilities()`, and
-`lintRuleCatalog()`. `runtimeCatalog()` is the closed runtime authority: callers inspect stable
-`capability_ids`, `output_ids`, `system_adapter_ids`, and text-measurement provider IDs instead of
-inferring support from function presence or legacy booleans. The family catalog covers the complete
-pinned Mermaid language surface, while lint entries distinguish Mermaid-backed compatibility from
-Merman authoring guidance. All artifacts share the same language catalog; narrower artifact
-profiles omit only callable output, analysis, editor, engine, or adapter capabilities.
+`web-surface-descriptor.json` and the canonical artifact-profile registry own those mappings. A hand-written feature list is useful only for local dependency experiments; it is not a package identity or release recipe.
 
-Render entry points stay present on the low-level WebAssembly surface for transport-shape stability.
-An artifact without the requested output or engine returns a typed `missing-capability` error naming
-the stable capability ID. Optional analysis, editor, and host text-measurement APIs remain absent or
-fail closed when their corresponding capability is not compiled.
+## Capability Boundaries
 
-The Rust feature boundary for diagnostics and validation is `analysis`. It controls `analyze*`,
-`analysisFacts`, `validate`, and lint rule catalog helpers. The `editor` feature implies
-`analysis`, while ASCII-only browser builds can omit both.
+- `analysis` owns diagnostics, validation, facts, and lint metadata.
+- `editor` implies `analysis` and adds protocol-neutral editor sessions.
+- `ascii` adds supported terminal output.
+- `svg` adds browser SVG operations and JavaScript interop.
+- `layout-cytoscape`, `layout-elk`, and `math` imply `svg`.
 
-`analyze*` returns diagnostics schema v1. `analysisFacts` returns parser-only facts schema v1 and
-rejects every other version at the boundary; the TextScan-capable implementation from
-`0.8.0-alpha.3` is not retained. The two JSON contracts are independently versioned, and their
-versions are independent from
-wasm-bindgen/package ABI versions and Mermaid's own `*-v2` ids.
+The complete `@mermanjs/web` package uses the `web-full` profile. Other public packages map to their own descriptor-owned profiles and contain exactly one matching WASM artifact.
 
-The Rust feature boundary for the browser editor APIs is `editor`; its public capability
-ID is also `editor`. Artifacts other than `web-editor` and `web-full` leave the feature off so they do not
-compile `merman-editor-core` into analysis, render, or ASCII artifacts. The default package is
-`@mermanjs/web`, backed by `web-full`.
-
-For exact artifact-profile size measurements and committed budget checks, use:
+## Size Verification
 
 ```sh
-cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --artifact-profile web-full --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix \
+  --surface web \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-The matrix reports raw, stripped, gzip, and brotli bytes. gzip and brotli are measured from the
-stripped artifact. `--no-strip` is available only for exploratory measurements without a budget
-file because committed budgets require all four stripped-artifact metrics.
+The matrix reports raw, stripped, gzip, and brotli sizes. Committed budgets always use the stripped artifact for compression measurements.
 
-For product scope, diagram coverage, and compatibility policy, see the
-[project README](https://github.com/Latias94/merman#readme) and
-[alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
+## Related Documentation
+
+- [Browser packages](https://github.com/Latias94/merman/tree/main/platforms/web#readme)
+- [Binding options and resource profiles](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md)
+- [Host text measurement](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md)
+- [Package and release surfaces](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md)

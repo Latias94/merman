@@ -1,196 +1,32 @@
 # roughr-merman
 
-[![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
-[![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman)
-[![Crates.io Downloads](https://img.shields.io/crates/d/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
-[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman) [![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+`roughr-merman` is Merman's fork of the Rust Rough.js port. It generates the rough drawing operations used by Mermaid-compatible SVG rendering.
 
-This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
-parity stable and deterministic across platforms.
+> **Implementation dependency:** applications rendering Mermaid should depend on [`merman`](https://crates.io/crates/merman) and enable `svg`. This crate is published so the Merman release graph can resolve, not as a separately supported drawing product or a drop-in replacement for upstream `roughr`.
 
-Drawing options require an explicit `RoughRandomness` contract. Its `RoughJsSeed` preserves the
-JavaScript Number until Rough.js would coerce it in `Math.imul`, including the preceding `seed + 1`
-for cloned curve strokes. Its cloneable `RoughMathRandom` handle is the caller-owned shared stream
-used where upstream Rough.js reads global `Math.random()`; generation never reads ambient host
-randomness.
+## Why Merman Maintains A Fork
 
-## Differences from upstream `roughr`
+Mermaid's normal and hand-drawn SVG paths depend on exact Rough.js behavior. Small differences in seed coercion, cloned stroke streams, or default options change generated path operations and make parity unstable across platforms.
 
-- PRNG / seeding semantics are aligned with Rough.js (used by Mermaid) to keep generated ops stable.
-- Some defaults are adjusted for Mermaid parity; treat this as an implementation dependency rather than a drop-in replacement.
+The fork therefore treats randomness as an explicit operation-owned contract:
 
-If you want to use it under the crate name `roughr`, depend on it like this:
+- `RoughJsSeed` preserves the JavaScript `Number` until Rough.js would coerce it through `Math.imul`, including the preceding `seed + 1` used by cloned curve strokes.
+- `RoughMathRandom` is a cloneable, caller-owned shared stream for branches where upstream Rough.js reads global `Math.random()`.
+- `RoughRandomness` combines both sources, and `OptionsBuilder::build()` rejects options that do not supply it.
+- Shape generation never reads ambient host randomness.
 
-```toml
-[dependencies]
-roughr = { package = "roughr-merman", version = "0.12.1" }
-```
+This lets one Merman render operation replay Rough.js decisions deterministically without silently changing upstream numeric semantics.
 
-<!-- cargo-sync-readme start -->
+## Scope
 
+The crate produces operation sets for lines, curves, arcs, polygons, ellipses, and SVG paths. It does not choose a canvas, raster backend, or UI framework, and this repository does not ship the old upstream Piet gallery adapter.
 
-This crate is a rustlang port of [Rough.js](https://github.com/rough-stuff/rough) npm package written by
-[@pshihn](https://github.com/pshihn).
+APIs and defaults may change when required by the pinned Mermaid and Rough.js behavior. Consumers that intentionally use the low-level generator should follow the exact `roughr-merman` version selected by the matching Merman release.
 
-This package exposes functions to generate rough drawing primitives which looks like hand drawn sketches.
-This is the core create of operations to create rough drawings. It exposes its own primitive drawing types for lines
-curves, arcs, polygons, circles, ellipses and even svg paths.
-Works on [Point2D](https://docs.rs/euclid/0.22.7/euclid/struct.Point2D.html) type from [euclid](https://github.com/servo/euclid) crate
+## Source And License
 
-On its own this crate can not draw on any context. One needs to use existing drawing libraries such as [piet](https://github.com/linebender/piet),
-[raqote](https://github.com/jrmuizel/raqote), [tiny-skia](https://github.com/RazrFalcon/tiny-skia) etc in combination with
-roughr. In this workspace an example adapter is implemented for [piet](https://github.com/linebender/piet). Below examples are
-output of [rough_piet](https://github.com/orhanbalci/rough-rs/tree/main/rough_piet) adapter.
+The implementation originated in [`orhanbalci/rough-rs`](https://github.com/orhanbalci/rough-rs), itself a Rust port of [`rough-stuff/rough`](https://github.com/rough-stuff/rough). Merman's parity changes are maintained in this repository.
 
-## Cargo.toml
-
-```toml
-[dependencies]
-roughr = { package = "roughr-merman", version = "0.12.1" }
-```
-
-## Example
-
-### Rectangle
-
-```rust
-let options = OptionsBuilder::default()
-    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
-    .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
-    .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
-    .fill_style(FillStyle::Hachure)
-    .fill_weight(DPI * 0.01)
-    .build()
-    .unwrap();
-let generator = KurboGenerator::new(options);
-let rect_width = 100.0;
-let rect_height = 50.0;
-let rect = generator.rectangle::<f32>(
-    (WIDTH as f32 - rect_width) / 2.0,
-    (HEIGHT as f32 - rect_height) / 2.0,
-    rect_width,
-    rect_height,
-);
-let background_color = Color::from_hex_str("96C0B7").unwrap();
-
-rc.fill(
-    Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
-    &background_color,
-);
-rect.draw(&mut rc);
-```
-
-### Output Rectangle
-![rectangle](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/rectangle.png)
-
-### Circle
-
-```rust
-let options = OptionsBuilder::default()
-    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
-    .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
-    .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
-    .fill_style(FillStyle::Hachure)
-    .fill_weight(DPI * 0.01)
-    .build()
-    .unwrap();
-let generator = KurboGenerator::new(options);
-let circle_paths = generator.circle::<f32>(
-    (WIDTH as f32) / 2.0,
-    (HEIGHT as f32) / 2.0,
-    HEIGHT as f32 - 10.0f32,
-);
-let background_color = Color::from_hex_str("96C0B7").unwrap();
-
-rc.fill(
-    Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
-    &background_color,
-);
-circle_paths.draw(&mut rc);
-```
-
-### Output Circle
-![circle](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/circle.png)
-
-
-### Ellipse
-
-```rust
-let options = OptionsBuilder::default()
-    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
-    .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
-    .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
-    .fill_style(FillStyle::Hachure)
-    .fill_weight(DPI * 0.01)
-    .build()
-    .unwrap();
-let generator = KurboGenerator::new(options);
-let ellipse_paths = generator.ellipse::<f32>(
-    (WIDTH as f32) / 2.0,
-    (HEIGHT as f32) / 2.0,
-    WIDTH as f32 - 10.0,
-    HEIGHT as f32 - 10.0,
-);
-let background_color = Color::from_hex_str("96C0B7").unwrap();
-
-rc.fill(
-    Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
-    &background_color,
-);
-ellipse_paths.draw(&mut rc);
-```
-
-### Output Ellipse
-![ellipse](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/ellipse.png)
-
-
-### SVG Path
-
-```rust
-let options = OptionsBuilder::default()
-    .randomness(RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(2)))
-    .stroke(Srgba::from_raw(&[114u8, 87u8, 82u8, 255u8]).into_format())
-    .fill(Srgba::from_raw(&[254u8, 246u8, 201u8, 255u8]).into_format())
-    .fill_style(FillStyle::Hachure)
-    .fill_weight(DPI * 0.01)
-    .build()
-    .unwrap();
-let generator = KurboGenerator::new(options);
-let heart_svg_path  = "M140 20C73 20 20 74 20 140c0 135 136 170 228 303 88-132 229-173 229-303 0-66-54-120-120-120-48 0-90 28-109 69-19-41-60-69-108-69z".into();
-let heart_svg_path_drawing = generator.path::<f32>(heart_svg_path);
-let background_color = Color::from_hex_str("96C0B7").unwrap();
-
-rc.fill(
-    Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
-    &background_color,
-);
-heart_svg_path_drawing.draw(&mut rc);
-```
-
-### Output SVG Path
-![svgheart](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/heart_svg_path.png)
-
-## Filler Implementation Status
-- [x] Hachure
-- [x] Zigzag
-- [x] Cross-Hatch
-- [x] Dots
-- [x] Dashed
-- [x] Zigzag-Line
-
-## Examples
-
-For more examples have a look at the
-[examples](https://github.com/orhanbalci/rough-rs/tree/main/rough_piet/examples) folder.
-
-<!-- cargo-sync-readme end -->
-
-## License
-
-Licensed under MIT License ([LICENSE](LICENSE)).
-
-### Contributions
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the MIT license, shall be licensed as above, without any additional terms or conditions.
+Licensed under the MIT License. See [LICENSE](LICENSE).
