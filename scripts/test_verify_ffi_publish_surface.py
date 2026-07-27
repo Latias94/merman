@@ -29,8 +29,6 @@ engine = merman.MermanEngine()
 svg = engine.render_svg("flowchart TD\\nA --> B", None)
 reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
 svg = reusable.render_svg("flowchart TD\\nA --> B", None)
-reusable.set_text_measurer(Measurer())
-reusable.clear_text_measurer()
 plain = engine.reusable_engine(None)
 plain.render_svg("flowchart TD\\nA --> B", None)
 """

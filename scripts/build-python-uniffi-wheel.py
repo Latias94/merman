@@ -362,14 +362,13 @@ assert reusable.validate(source, None).valid
 assert measurer.calls > 0
 
 setter_measurer = Measurer()
-reusable = engine.reusable_engine(None)
-reusable.set_text_measurer(setter_measurer)
-assert reusable.render_svg(source, None).startswith("<svg")
-calls_after_set = setter_measurer.calls
-assert calls_after_set > 0
-reusable.clear_text_measurer()
-assert reusable.render_svg(source, None).startswith("<svg")
-assert setter_measurer.calls == calls_after_set
+callback_engine = engine.reusable_engine_with_text_measurer(None, setter_measurer)
+assert callback_engine.render_svg(source, None).startswith("<svg")
+assert setter_measurer.calls > 0
+plain_engine = engine.reusable_engine(None)
+assert plain_engine.render_svg(source, None).startswith("<svg")
+assert not hasattr(callback_engine, "set_text_measurer")
+assert not hasattr(callback_engine, "clear_text_measurer")
 
 
 class FailingMeasurer(merman.MermanTextMeasurer):
@@ -385,8 +384,8 @@ failing_measurer = FailingMeasurer()
 failing = engine.reusable_engine_with_text_measurer(None, failing_measurer)
 assert failing.render_svg(source, None).startswith("<svg")
 assert failing_measurer.calls > 0
-failing.set_text_measurer(Measurer())
-assert failing.render_svg(source, None).startswith("<svg")
+replacement = engine.reusable_engine_with_text_measurer(None, Measurer())
+assert replacement.render_svg(source, None).startswith("<svg")
 print("python wheel smoke passed")
 """
 
