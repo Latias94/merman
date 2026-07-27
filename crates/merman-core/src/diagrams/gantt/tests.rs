@@ -177,6 +177,99 @@ fn gantt_date_format_consumes_one_separator_and_preserves_extra_whitespace() {
 }
 
 #[test]
+fn gantt_title_preserves_jison_separator_and_last_assignment_semantics() {
+    for (statement, expected) in [("title   Delivery  ", "  Delivery  "), ("title  ", " ")] {
+        let text = format!(
+            "gantt\n{statement}\ndateFormat YYYY-MM-DD\nsection Demo\nTask: id,2026-01-01,1d\n"
+        );
+        let model = parse(&text);
+        assert_eq!(model["title"], expected, "statement: {statement:?}");
+    }
+
+    let model = parse(concat!(
+        "gantt\n",
+        "title First\n",
+        "title  \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task: id,2026-01-01,1d\n",
+    ));
+    assert_eq!(model["title"], " ");
+
+    let unicode = concat!(
+        "gantt\r\n",
+        " title  😀 Delivery  \r\n",
+        "dateFormat YYYY-MM-DD\r\n",
+        "section Demo\r\n",
+        "Task: id,2026-01-01,1d\r\n",
+    );
+    let model = parse(unicode);
+    assert_eq!(model["title"], " 😀 Delivery  ");
+
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", unicode)
+        .unwrap()
+        .expect("gantt editor facts");
+    let title = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+        .expect("title payload");
+    let payload_start = unicode.find("😀 Delivery").unwrap();
+    assert_eq!(title.name, "😀 Delivery");
+    assert_eq!(
+        title.selection,
+        SourceSpan::new(payload_start, payload_start + "😀 Delivery".len(),)
+    );
+}
+
+#[test]
+fn gantt_title_requires_content_after_the_separator() {
+    let text = concat!(
+        "gantt\n",
+        "title \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task: id,2026-01-01,1d\n",
+    );
+    let title_start = text.find("title").unwrap();
+
+    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("a bare title separator must not match the pinned Jison title token")
+    else {
+        panic!("a bare title separator returned a non-parse error");
+    };
+    assert!(
+        diagnostic
+            .message()
+            .contains("unrecognized statement: title")
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(title_start, title_start + "title ".len()))
+    );
+
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
+        .unwrap()
+        .expect("gantt editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|item| item.message.contains("unrecognized statement: title"))
+    );
+    assert!(
+        !facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+    );
+}
+
+#[test]
 fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let text = concat!(
         "gantt\n",

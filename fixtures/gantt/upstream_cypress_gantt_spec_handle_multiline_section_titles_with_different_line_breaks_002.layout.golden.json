@@ -770,7 +770,7 @@
         }
       ],
       "top_ticks": [],
-      "title": "GANTT diagram with multiline section titles",
+      "title": "      GANTT diagram with multiline section titles",
       "title_x": 400.0,
       "title_y": 25.0
     }

@@ -202,6 +202,26 @@ Task: 2024-01-01, 1d
 }
 
 #[test]
+fn gantt_explicit_whitespace_title_overrides_frontmatter_without_trimming() {
+    let svg = render_gantt_svg_from_text(concat!(
+        "---\n",
+        "title: Frontmatter schedule\n",
+        "---\n",
+        "gantt\n",
+        "title  \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Task: 2024-01-01, 1d\n",
+    ));
+
+    assert!(
+        svg.contains(r#"class="titleText"> </text>"#),
+        "the one remaining Jison separator must be rendered exactly: {svg}"
+    );
+    assert!(!svg.contains(">Frontmatter schedule</text>"));
+}
+
+#[test]
 fn gantt_svg_frontmatter_config_fields_affect_visible_output() {
     let svg = render_gantt_svg_from_text(
         r#"---

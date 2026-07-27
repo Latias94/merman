@@ -1057,17 +1057,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
     let mut m = model.clone();
-    let title = m
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or_else(|| {
-            diagram_title
-                .map(str::trim)
-                .filter(|title| !title.is_empty())
-        })
-        .map(str::to_owned);
+    let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
     let gantt_cfg = config.get("gantt").unwrap_or(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);

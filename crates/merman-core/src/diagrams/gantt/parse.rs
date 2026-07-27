@@ -318,6 +318,9 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     } else {
         rest
     };
+    if text.is_empty() {
+        return None;
+    }
     let leading = line.len().saturating_sub(trimmed.len());
     let start = line_start + leading + rest_start;
     Some(SpannedText {
@@ -1565,7 +1568,7 @@ fn parse_gantt_statement(
             EditorSemanticKind::String,
             facts,
         );
-        db.set_diagram_title(v.text.trim());
+        db.set_diagram_title(v.text);
         return Ok(());
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {

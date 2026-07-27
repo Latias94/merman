@@ -200,10 +200,16 @@ pub(crate) fn mermaid_markdown_to_lines(
 
     // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
     // suppressing `**`/`_` formatting.
-    let markdown = markdown
-        .strip_prefix('`')
-        .and_then(|s| s.strip_suffix('`'))
-        .unwrap_or(markdown);
+    let markdown = if markdown.len() >= 2
+        && markdown.starts_with('`')
+        && markdown.ends_with('`')
+        && !markdown.starts_with("``")
+        && !markdown.ends_with("``")
+    {
+        &markdown[1..markdown.len() - 1]
+    } else {
+        markdown
+    };
 
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
 
@@ -295,21 +301,71 @@ pub(crate) fn mermaid_markdown_to_lines(
         let mut out = vec![Vec::new()];
         let mut line_idx = 0;
         let mut style_stack = Vec::new();
+        let mut in_paragraph = false;
+        let mut skipped_inline_depth = 0usize;
+        let mut skipped_block_depth = 0usize;
         let mut previous_text = None;
 
         for (event, range) in parser {
+            if skipped_block_depth > 0 {
+                match event {
+                    pulldown_cmark::Event::Start(_) => skipped_block_depth += 1,
+                    pulldown_cmark::Event::End(_) => skipped_block_depth -= 1,
+                    _ => {}
+                }
+                continue;
+            }
+
             match event {
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                    style_stack.push(MermaidMarkdownWordType::Strong);
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
+                    in_paragraph = true;
                 }
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
-                    style_stack.push(MermaidMarkdownWordType::Em);
+                pulldown_cmark::Event::Start(tag) if in_paragraph => {
+                    if skipped_inline_depth > 0 {
+                        skipped_inline_depth += 1;
+                    } else {
+                        match tag {
+                            pulldown_cmark::Tag::Strong => {
+                                style_stack.push(MermaidMarkdownWordType::Strong);
+                            }
+                            pulldown_cmark::Tag::Emphasis => {
+                                style_stack.push(MermaidMarkdownWordType::Em);
+                            }
+                            _ => {
+                                skipped_inline_depth = 1;
+                                previous_text = None;
+                            }
+                        }
+                    }
                 }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong)
-                | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
-                    let _ = style_stack.pop();
+                pulldown_cmark::Event::Start(_) => {
+                    if let Some(raw) = markdown.get(range) {
+                        line_mut(&mut out, line_idx)
+                            .push((raw.to_string(), MermaidMarkdownWordType::Normal));
+                    }
+                    skipped_block_depth = 1;
+                    previous_text = None;
                 }
-                pulldown_cmark::Event::Text(text) => {
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
+                    in_paragraph = false;
+                    skipped_inline_depth = 0;
+                    style_stack.clear();
+                    previous_text = None;
+                }
+                pulldown_cmark::Event::End(tag) if in_paragraph => {
+                    if skipped_inline_depth > 0 {
+                        skipped_inline_depth -= 1;
+                        if skipped_inline_depth == 0 {
+                            previous_text = None;
+                        }
+                    } else if matches!(
+                        tag,
+                        pulldown_cmark::TagEnd::Strong | pulldown_cmark::TagEnd::Emphasis
+                    ) {
+                        let _ = style_stack.pop();
+                    }
+                }
+                pulldown_cmark::Event::Text(text) if in_paragraph && skipped_inline_depth == 0 => {
                     let word_type = style_stack
                         .last()
                         .copied()
@@ -335,37 +391,28 @@ pub(crate) fn mermaid_markdown_to_lines(
                             .is_some_and(|character| !character.is_whitespace()),
                     ));
                 }
-                pulldown_cmark::Event::Code(code) => {
-                    let raw = markdown.get(range).unwrap_or(code.as_ref());
-                    append_text(
-                        &mut out,
-                        &mut line_idx,
-                        raw,
-                        MermaidMarkdownWordType::Normal,
-                        false,
-                    );
+                pulldown_cmark::Event::Code(_) if in_paragraph && skipped_inline_depth == 0 => {
                     previous_text = None;
                 }
-                pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html) => {
+                pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html)
+                    if skipped_inline_depth == 0 =>
+                {
                     let raw = markdown.get(range).unwrap_or(html.as_ref());
                     line_mut(&mut out, line_idx)
                         .push((raw.to_string(), MermaidMarkdownWordType::Normal));
                     previous_text = None;
                 }
-                pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak
+                    if in_paragraph && skipped_inline_depth == 0 =>
+                {
                     line_idx += 1;
                     out.push(Vec::new());
                     previous_text = None;
                 }
-                pulldown_cmark::Event::Rule => {
+                pulldown_cmark::Event::Rule if skipped_inline_depth == 0 => {
                     if let Some(raw) = markdown.get(range) {
-                        append_text(
-                            &mut out,
-                            &mut line_idx,
-                            raw,
-                            MermaidMarkdownWordType::Normal,
-                            false,
-                        );
+                        line_mut(&mut out, line_idx)
+                            .push((raw.to_string(), MermaidMarkdownWordType::Normal));
                     }
                     previous_text = None;
                 }
@@ -679,6 +726,104 @@ mod tests {
                 ("`**not".to_string(), Normal),
                 ("bold**`".to_string(), Normal),
             ]]
+        );
+    }
+
+    #[test]
+    fn full_delimiter_fallback_matches_mermaid_inline_token_allowlist() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo*** [bar](u)", true),
+            vec![vec![("foo".to_string(), Strong)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo*** ~~bar~~ baz", true),
+            vec![vec![
+                ("foo".to_string(), Strong),
+                ("baz".to_string(), Normal),
+            ]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo*** [bar **baz** `qux` <i>zap</i>](u) tail", true,),
+            vec![vec![
+                ("foo".to_string(), Strong),
+                ("tail".to_string(), Normal),
+            ]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo*** `bar` <i>baz</i>", true),
+            vec![vec![
+                ("foo".to_string(), Strong),
+                ("<i>".to_string(), Normal),
+                ("baz".to_string(), Normal),
+                ("</i>".to_string(), Normal),
+            ]],
+        );
+    }
+
+    #[test]
+    fn full_delimiter_fallback_preserves_unsupported_block_raw_text() {
+        use MermaidMarkdownWordType::*;
+
+        for (markdown, raw) in [
+            ("# ***foo***", "# ***foo***"),
+            ("- ***foo***\n- bar", "- ***foo***\n- bar"),
+            ("> ***foo***", "> ***foo***"),
+            ("```text\n***foo***\n```", "```text\n***foo***\n```"),
+            ("<div>\n***foo***\n</div>", "<div>\n***foo***\n</div>"),
+            (
+                "| label |\n| --- |\n| ***foo*** |",
+                "| label |\n| --- |\n| ***foo*** |",
+            ),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_lines(markdown, true),
+                vec![vec![(raw.to_string(), Normal)]],
+                "markdown={markdown:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn full_delimiter_fallback_preserves_rule_as_one_top_level_raw_token() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo***\n- - -", true),
+            vec![vec![
+                ("foo".to_string(), Strong),
+                ("- - -".to_string(), Normal),
+            ]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("# ***foo***\n- - -", true),
+            vec![vec![
+                ("# ***foo***\n".to_string(), Normal),
+                ("- - -".to_string(), Normal),
+            ]],
+        );
+    }
+
+    #[test]
+    fn full_delimiter_fallback_keeps_nested_inline_styles_inside_paragraphs() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("***foo _bar_*** baz", true),
+            vec![vec![
+                ("foo".to_string(), Strong),
+                ("bar".to_string(), Em),
+                ("baz".to_string(), Normal),
+            ]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("# ***foo***\n***bar*** baz", true),
+            vec![vec![
+                ("# ***foo***\n".to_string(), Normal),
+                ("bar".to_string(), Strong),
+                ("baz".to_string(), Normal),
+            ]],
         );
     }
 
