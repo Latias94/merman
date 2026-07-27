@@ -862,7 +862,10 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
         f"measurement: {report['method']['measurement_seconds']}s"
     )
     lines.append("- `merman`: `cargo bench -p merman --features svg --bench pipeline -- ...`")
-    lines.append("- `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`")
+    lines.append(
+        "- `mermaid-rs-renderer` (mmdr): "
+        "`cargo bench --features benchmark --bench renderer -- ...`"
+    )
     lines.append("- `mermaid-js`: warm `mermaid.render()` calls in one Puppeteer/Chromium process.")
     lines.append("")
     lines.append("## Coverage Summary")
@@ -1101,7 +1104,7 @@ def main(argv: list[str]) -> int:
         cwd=mmdr_dir,
         bench_bin="renderer",
         package=None,
-        features=None,
+        features="benchmark",
         env=mmdr_bench_env,
         toolchain=args.mmdr_toolchain,
     )
@@ -1124,7 +1127,7 @@ def main(argv: list[str]) -> int:
         cwd=mmdr_dir,
         bench_bin="renderer",
         package=None,
-        features=None,
+        features="benchmark",
         exact_benches=exact_benches,
         bench_list=mmdr_list,
         sample_size=args.sample_size,
