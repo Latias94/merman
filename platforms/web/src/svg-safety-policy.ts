@@ -1534,7 +1534,9 @@ function decodeCssEscapes(value: string): string {
     }
     if (hex.length > 0) {
       output += codePointToString(Number.parseInt(hex, 16), "");
-      if (isWhitespace(value[hexCursor] ?? "")) {
+      if (value[hexCursor] === "\r" && value[hexCursor + 1] === "\n") {
+        hexCursor += 2;
+      } else if (isWhitespace(value[hexCursor] ?? "")) {
         hexCursor += 1;
       }
       cursor = hexCursor - 1;
@@ -1721,9 +1723,32 @@ function localName(name: string): string {
 }
 
 function findClosingStyle(source: string, start: number): number | null {
-  const lower = source.toLowerCase();
-  const index = lower.indexOf("</style", start);
-  return index >= 0 ? index : null;
+  let index = source.indexOf("<", start);
+  while (index >= 0) {
+    if (matchesAsciiCaseInsensitive(source, index, "</style")) {
+      return index;
+    }
+    index = source.indexOf("<", index + 1);
+  }
+  return null;
+}
+
+function matchesAsciiCaseInsensitive(
+  source: string,
+  start: number,
+  lowerAscii: string,
+): boolean {
+  if (start + lowerAscii.length > source.length) {
+    return false;
+  }
+  for (let offset = 0; offset < lowerAscii.length; offset += 1) {
+    const code = source.charCodeAt(start + offset);
+    const normalized = code >= 0x41 && code <= 0x5a ? code + 0x20 : code;
+    if (normalized !== lowerAscii.charCodeAt(offset)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function skipWhitespace(source: string, cursor: number): number {

@@ -231,6 +231,11 @@ describe("preview SVG safety", () => {
     );
     assert.doesNotThrow(() =>
       assertSafePreviewSvg(
+        "<svg><style>/*\u0130*/ text { fill: red; }</StYlE><text>ok</text></svg>",
+      ),
+    );
+    assert.doesNotThrow(() =>
+      assertSafePreviewSvg(
         '<svg><style>div.mermaidTooltip{position:absolute;pointer-events:none;z-index:100;}</style><text>ok</text></svg>',
       ),
     );

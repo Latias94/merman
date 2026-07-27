@@ -181,6 +181,11 @@ assert.doesNotThrow(() =>
 );
 assert.doesNotThrow(() =>
   assertSafeSvgForDom(
+    "<svg><style>/*\u0130*/ text { fill: red; }</StYlE><text>ok</text></svg>",
+  ),
+);
+assert.doesNotThrow(() =>
+  assertSafeSvgForDom(
     '<svg><foreignObject width="10" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell"><span class="nodeLabel"><p>A</p></span></div></foreignObject></svg>',
   ),
 );
@@ -445,6 +450,13 @@ assert.throws(
 );
 assert.throws(
   () => assertSafeSvgForDom('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'),
+  /CSS resource|CSS URL/,
+);
+assert.throws(
+  () =>
+    assertSafeSvgForDom(
+      "<svg><style>text { fill: \\75\r\nrl(javascript:alert(1)); }</style></svg>",
+    ),
   /CSS resource|CSS URL/,
 );
 assert.throws(
