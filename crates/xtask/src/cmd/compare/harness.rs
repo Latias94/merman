@@ -6,6 +6,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AcceptedResidualPolicy {
@@ -337,6 +339,111 @@ impl ObservedRenderOperations {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct ObservedNodeMathRenderer {
+    inner: Arc<dyn merman::svg::MathRenderer + Send + Sync>,
+    successful_calls: AtomicUsize,
+}
+
+impl ObservedNodeMathRenderer {
+    pub(crate) fn new(
+        inner: Arc<dyn merman::svg::MathRenderer + Send + Sync>,
+    ) -> Arc<ObservedNodeMathRenderer> {
+        Arc::new(Self {
+            inner,
+            successful_calls: AtomicUsize::new(0),
+        })
+    }
+
+    fn snapshot(&self) -> usize {
+        self.successful_calls.load(Ordering::Relaxed)
+    }
+
+    fn observe<T>(&self, result: Option<T>) -> Option<T> {
+        if result.is_some() {
+            self.successful_calls.fetch_add(1, Ordering::Relaxed);
+        }
+        result
+    }
+}
+
+impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
+    fn render_html_label(&self, text: &str, config: &merman::MermaidConfig) -> Option<String> {
+        self.observe(self.inner.render_html_label(text, config))
+    }
+
+    fn render_sequence_html_label(
+        &self,
+        text: &str,
+        config: &merman::MermaidConfig,
+    ) -> Option<String> {
+        self.observe(self.inner.render_sequence_html_label(text, config))
+    }
+
+    fn measure_html_label(
+        &self,
+        text: &str,
+        config: &merman::MermaidConfig,
+        style: &merman::svg::TextStyle,
+        max_width_px: Option<f64>,
+        wrap_mode: merman::svg::WrapMode,
+    ) -> Option<merman::svg::TextMetrics> {
+        self.observe(
+            self.inner
+                .measure_html_label(text, config, style, max_width_px, wrap_mode),
+        )
+    }
+
+    fn measure_sequence_html_label(
+        &self,
+        text: &str,
+        config: &merman::MermaidConfig,
+    ) -> Option<merman::svg::TextMetrics> {
+        self.observe(self.inner.measure_sequence_html_label(text, config))
+    }
+}
+
+pub(crate) fn prepared_semantic_requires_math(
+    fixture_path: &Path,
+    semantic: &merman::svg::PreparedSemantic,
+) -> Result<bool, String> {
+    Ok(semantic
+        .render_plan()
+        .map_err(|error| {
+            format!(
+                "capability planning failed for {}: {error}",
+                fixture_path.display()
+            )
+        })?
+        .required_capabilities()
+        .contains(&merman::svg::RenderCapability::Math))
+}
+
+pub(crate) fn begin_required_math_evidence(
+    fixture: &str,
+    renderer: Option<&ObservedNodeMathRenderer>,
+) -> Result<usize, String> {
+    renderer
+        .map(ObservedNodeMathRenderer::snapshot)
+        .ok_or_else(|| {
+            format!("cannot compare math fixture {fixture}: Node KaTeX backend is unavailable")
+        })
+}
+
+pub(crate) fn finish_required_math_evidence(
+    fixture: &str,
+    renderer: &ObservedNodeMathRenderer,
+    before: usize,
+) -> Result<usize, String> {
+    let successful_calls = renderer.snapshot().saturating_sub(before);
+    if successful_calls == 0 {
+        return Err(format!(
+            "math fixture {fixture} produced no successful Node KaTeX render or measurement evidence"
+        ));
+    }
+    Ok(successful_calls)
+}
+
 fn format_measurement_identity(identity: &merman::svg::TextMeasurementProfileIdentity) -> String {
     format!("{}@{}", identity.profile(), identity.version())
 }
@@ -564,7 +671,6 @@ pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) fixture_path: &'a Path,
     pub(crate) upstream_svg: &'a str,
     pub(crate) text: &'a str,
-    pub(crate) check_dom: bool,
 }
 
 #[derive(Debug)]
@@ -646,13 +752,16 @@ pub(crate) fn run_canonical_svg_compare(
     } else {
         None
     };
-    let sequence_math_renderer = toolchain_read_guard
+    let node_math_renderer = toolchain_read_guard
         .as_ref()
         .and_then(|guard| guard.node_katex_math_renderer());
+    let observed_node_math_renderer = node_math_renderer
+        .clone()
+        .map(ObservedNodeMathRenderer::new);
 
     let layout_options = super::svg_compare_layout_opts();
     let mut environment = merman::svg::RenderEnvironment::deterministic();
-    if let Some(renderer) = sequence_math_renderer.clone() {
+    if let Some(renderer) = observed_node_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
@@ -706,7 +815,7 @@ pub(crate) fn run_canonical_svg_compare(
                 let _ = writeln!(
                     report,
                     "- Math renderer: `{}`",
-                    if sequence_math_renderer.is_some() {
+                    if node_math_renderer.is_some() {
                         "node-katex"
                     } else {
                         "none"
@@ -734,6 +843,13 @@ pub(crate) fn run_canonical_svg_compare(
                 .ok_or_else(|| {
                     format!("no diagram detected in {}", input.fixture_path.display())
                 })?;
+            let requires_math = fact.specialist == SpecialistHook::SequenceMath
+                && prepared_semantic_requires_math(input.fixture_path, &semantic)?;
+            let required_math_evidence_before = requires_math
+                .then(|| {
+                    begin_required_math_evidence(input.stem, observed_node_math_renderer.as_deref())
+                })
+                .transpose()?;
 
             let prepared = semantic.continue_layout().map_err(|error| {
                 format!(
@@ -780,6 +896,17 @@ pub(crate) fn run_canonical_svg_compare(
                 .observed_operations
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
+            let mut fixture_notes = Vec::new();
+            if let Some(before) = required_math_evidence_before {
+                let observed = observed_node_math_renderer
+                    .as_deref()
+                    .expect("required math evidence checked renderer availability");
+                let successful_calls = finish_required_math_evidence(input.stem, observed, before)?;
+                fixture_notes.push(format!(
+                    "observed {}: Node KaTeX successful calls={successful_calls}",
+                    input.stem
+                ));
+            }
 
             let mut issues = Vec::new();
             if should_report_root {
@@ -791,26 +918,11 @@ pub(crate) fn run_canonical_svg_compare(
                 }
             }
 
-            let skip_dom_compare_for_math = fact.specialist == SpecialistHook::SequenceMath
-                && input.check_dom
-                && input.text.contains("$$")
-                && sequence_math_renderer.is_none();
-            let fixture_notes = skip_dom_compare_for_math
-                .then(|| {
-                    format!(
-                        "skipped {}: contains `$$...$$` (Node KaTeX backend unavailable)",
-                        input.stem
-                    )
-                })
-                .into_iter()
-                .collect();
-
-            let compare_dom = !skip_dom_compare_for_math;
             Ok(match fact.compare_policy {
                 FixtureComparePolicy::Dom => CompareFixtureResult::Rendered {
                     render_evidence,
                     local_svg,
-                    compare_dom,
+                    compare_dom: true,
                     issues,
                     notes: fixture_notes,
                 },
@@ -818,7 +930,7 @@ pub(crate) fn run_canonical_svg_compare(
                     CompareFixtureResult::RenderedWithPolicy {
                         render_evidence,
                         local_svg,
-                        compare_dom,
+                        compare_dom: true,
                         compare_svg_when_dom_disabled: true,
                         issues,
                         notes: fixture_notes,
@@ -1035,7 +1147,6 @@ where
             fixture_path: &mmd_path,
             upstream_svg: &upstream_svg,
             text: &text,
-            check_dom: run.check_dom,
         };
 
         let outcome = match render_fixture(state, &input) {
@@ -1367,6 +1478,66 @@ pub(crate) fn write_notes_section(report: &mut String, notes: &[String]) {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[derive(Debug)]
+    struct TestMathRenderer {
+        succeeds: bool,
+    }
+
+    impl merman::svg::MathRenderer for TestMathRenderer {
+        fn render_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+        ) -> Option<String> {
+            self.succeeds.then(|| "<span>math</span>".to_string())
+        }
+    }
+
+    #[test]
+    fn required_math_evidence_is_fixture_scoped_and_fail_closed() {
+        let missing = begin_required_math_evidence("math-case", None)
+            .expect_err("a missing Node backend must reject the fixture");
+        assert!(missing.contains("math-case"));
+        assert!(missing.contains("unavailable"));
+
+        let renderer = ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer { succeeds: true }));
+        let before = begin_required_math_evidence("math-case", Some(renderer.as_ref()))
+            .expect("renderer snapshot");
+        let rendered = merman::svg::MathRenderer::render_sequence_html_label(
+            renderer.as_ref(),
+            "$$x$$",
+            &merman::MermaidConfig::default(),
+        );
+        assert!(rendered.is_some());
+        assert_eq!(
+            finish_required_math_evidence("math-case", renderer.as_ref(), before),
+            Ok(1)
+        );
+        let before = begin_required_math_evidence("next-math-case", Some(renderer.as_ref()))
+            .expect("renderer snapshot");
+        let error = finish_required_math_evidence("next-math-case", renderer.as_ref(), before)
+            .expect_err("a prior fixture's success must not satisfy this fixture");
+        assert!(error.contains("next-math-case"));
+        assert!(error.contains("no successful"));
+
+        let declining =
+            ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer { succeeds: false }));
+        let before = begin_required_math_evidence("declined-case", Some(declining.as_ref()))
+            .expect("renderer snapshot");
+        assert!(
+            merman::svg::MathRenderer::render_sequence_html_label(
+                declining.as_ref(),
+                "$$x$$",
+                &merman::MermaidConfig::default(),
+            )
+            .is_none()
+        );
+        let error = finish_required_math_evidence("declined-case", declining.as_ref(), before)
+            .expect_err("declined calls are not evidence");
+        assert!(error.contains("declined-case"));
+        assert!(error.contains("no successful"));
+    }
 
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
