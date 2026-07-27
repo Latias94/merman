@@ -6,58 +6,45 @@ use super::{
 };
 
 pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceTextIndex {
-    let mut index = FenceTextIndex::default();
-    let source_mapped_spans = facts.span_coordinate_space.is_original_source();
-    index.completion_dialect = facts.completion_dialect;
-
-    index.source = match (facts.completeness, source_mapped_spans) {
-        (merman_core::EditorSemanticCompleteness::Complete, true) => {
-            FenceTextIndexSource::ParserComplete
-        }
-        (merman_core::EditorSemanticCompleteness::Complete, false) => {
-            FenceTextIndexSource::ParserCompleteDegradedSpans
-        }
-        (merman_core::EditorSemanticCompleteness::Recovered, true) => {
-            FenceTextIndexSource::ParserRecovered
-        }
-        (merman_core::EditorSemanticCompleteness::Recovered, false) => {
-            FenceTextIndexSource::ParserRecoveredDegradedSpans
-        }
+    let source = match facts.completeness {
+        merman_core::EditorSemanticCompleteness::Complete => FenceTextIndexSource::ParserComplete,
+        merman_core::EditorSemanticCompleteness::Recovered => FenceTextIndexSource::ParserRecovered,
     };
-    if source_mapped_spans {
-        index.lexeme_failure = facts.lexeme_failure().map(lexeme_failure_from_core);
-        index.lexemes.extend(facts.lexemes().iter().map(|lexeme| {
-            FenceLexeme {
-                kind: lexeme_kind_from_core(lexeme.kind()),
-                modifiers: lexeme
-                    .modifiers()
-                    .iter()
-                    .map(lexeme_modifier_from_core)
-                    .collect(),
-                span: ByteSpan {
-                    start: lexeme.span().start,
-                    end: lexeme.span().end,
-                },
-            }
-        }));
-    }
+    let mut index = FenceTextIndex {
+        completion_dialect: facts.completion_dialect,
+        source,
+        ..FenceTextIndex::default()
+    };
+    index.lexeme_failure = facts.lexeme_failure().map(lexeme_failure_from_core);
+    index.lexemes.extend(facts.lexemes().iter().map(|lexeme| {
+        FenceLexeme {
+            kind: lexeme_kind_from_core(lexeme.kind()),
+            modifiers: lexeme
+                .modifiers()
+                .iter()
+                .map(lexeme_modifier_from_core)
+                .collect(),
+            span: ByteSpan {
+                start: lexeme.span().start,
+                end: lexeme.span().end,
+            },
+        }
+    }));
     index.directive_prefixes.extend(facts.directive_prefixes);
-    if source_mapped_spans {
-        index
-            .expected_syntax
-            .extend(
-                facts
-                    .expected_syntax
-                    .into_iter()
-                    .map(|expected| FenceExpectedSyntax {
-                        kind: expected_syntax_kind_from_core(expected.kind),
-                        span: ByteSpan {
-                            start: expected.span.start,
-                            end: expected.span.end,
-                        },
-                    }),
-            );
-    }
+    index
+        .expected_syntax
+        .extend(
+            facts
+                .expected_syntax
+                .into_iter()
+                .map(|expected| FenceExpectedSyntax {
+                    kind: expected_syntax_kind_from_core(expected.kind),
+                    span: ByteSpan {
+                        start: expected.span.start,
+                        end: expected.span.end,
+                    },
+                }),
+        );
 
     for symbol in facts.symbols {
         let role = symbol.role;
@@ -69,10 +56,6 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
         if role.contributes_completion() && !is_class_definition {
             index.node_ids.insert(symbol.name.clone());
         }
-        if !source_mapped_spans {
-            continue;
-        }
-
         let item = FenceSemanticItem::new(
             symbol.name,
             symbol.detail,

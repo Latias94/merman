@@ -903,9 +903,7 @@ fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
     match source {
         FenceTextIndexSource::Unavailable => "unavailable",
         FenceTextIndexSource::ParserComplete => "parser_complete",
-        FenceTextIndexSource::ParserCompleteDegradedSpans => "parser_complete_degraded_spans",
         FenceTextIndexSource::ParserRecovered => "parser_recovered",
-        FenceTextIndexSource::ParserRecoveredDegradedSpans => "parser_recovered_degraded_spans",
     }
 }
 
@@ -921,14 +919,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fact_source_names_preserve_degraded_span_provenance() {
+    fn fact_source_names_match_parser_contract() {
         assert_eq!(
-            fact_source_name(FenceTextIndexSource::ParserCompleteDegradedSpans),
-            "parser_complete_degraded_spans"
+            fact_source_name(FenceTextIndexSource::Unavailable),
+            "unavailable"
         );
         assert_eq!(
-            fact_source_name(FenceTextIndexSource::ParserRecoveredDegradedSpans),
-            "parser_recovered_degraded_spans"
+            fact_source_name(FenceTextIndexSource::ParserComplete),
+            "parser_complete"
+        );
+        assert_eq!(
+            fact_source_name(FenceTextIndexSource::ParserRecovered),
+            "parser_recovered"
         );
     }
 

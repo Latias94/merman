@@ -48,8 +48,7 @@ pub use editor::{
     EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
     EditorLexemeProducer, EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, EditorSpanCoordinateSpace,
-    SourceSpan,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{

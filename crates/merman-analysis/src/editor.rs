@@ -190,12 +190,8 @@ pub enum FenceTextIndexSource {
     Unavailable,
     /// Parser-backed facts from a complete family parse.
     ParserComplete,
-    /// Parser-backed complete facts whose spans remain in parser-input coordinates.
-    ParserCompleteDegradedSpans,
     /// Parser-backed facts from a recoverable partial parse.
     ParserRecovered,
-    /// Parser-backed recovered facts whose spans remain in parser-input coordinates.
-    ParserRecoveredDegradedSpans,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,13 +202,7 @@ pub struct ShapeObjectValuePrefix {
 
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
-        matches!(
-            self,
-            Self::ParserComplete
-                | Self::ParserCompleteDegradedSpans
-                | Self::ParserRecovered
-                | Self::ParserRecoveredDegradedSpans
-        )
+        matches!(self, Self::ParserComplete | Self::ParserRecovered)
     }
 
     pub fn is_unavailable(self) -> bool {
@@ -220,14 +210,11 @@ impl FenceTextIndexSource {
     }
 
     pub fn is_recovered(self) -> bool {
-        matches!(
-            self,
-            Self::ParserRecovered | Self::ParserRecoveredDegradedSpans
-        )
+        matches!(self, Self::ParserRecovered)
     }
 
     pub fn has_source_mapped_spans(self) -> bool {
-        matches!(self, Self::ParserComplete | Self::ParserRecovered)
+        self.is_parser_backed()
     }
 }
 
@@ -338,7 +325,7 @@ pub struct FenceTextIndex {
 }
 
 impl FenceTextIndex {
-    pub fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
+    pub(crate) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         core_facts::from_core_facts(facts)
     }
 
