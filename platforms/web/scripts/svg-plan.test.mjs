@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import * as coreRuntime from "../dist/runtime-core.js";
+import { svgPlanJson } from "../dist/runtime-render.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 import { webPackages } from "./surface-manifest.mjs";
 
@@ -14,13 +16,19 @@ test("SVG plan facade preserves the generated object payload and encodes options
     missing_capability_ids: ["layout-elk"],
     ready: false,
   };
-  const runtime = bindSurfaceRuntime(async () => ({
-    default: async () => {},
-    svgPlanJson(source, optionsJson) {
-      calls.push({ source, optionsJson });
-      return expected;
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      svgPlanJson(source, optionsJson) {
+        calls.push({ source, optionsJson });
+        return expected;
+      },
+    }),
+    {
+      initMerman: coreRuntime.initMerman,
+      svgPlanJson,
     },
-  }));
+  );
 
   await runtime.initMerman();
   const result = runtime.svgPlanJson("flowchart TD\n  A --> B", {

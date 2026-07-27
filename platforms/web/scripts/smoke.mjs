@@ -1308,12 +1308,18 @@ async function runSameProcessPackageSmoke() {
       path.join(packageRoot, fullDescriptor.package_dir, "artifacts", "wasm", "merman_wasm.js")
     ).href,
   );
+  const analysisImplementation = await runtimeImplementationForSurface(
+    analysisDescriptor,
+  );
+  const fullImplementation = await runtimeImplementationForSurface(
+    fullDescriptor,
+  );
   const analysis = projectInternalApiForSurface(
-    bindSurfaceRuntime(async () => analysisWasm),
+    bindSurfaceRuntime(async () => analysisWasm, analysisImplementation),
     packageContract(analysisDescriptor),
   );
   const full = projectInternalApiForSurface(
-    bindSurfaceRuntime(async () => fullWasm),
+    bindSurfaceRuntime(async () => fullWasm, fullImplementation),
     packageContract(fullDescriptor),
   );
 
@@ -1356,6 +1362,19 @@ async function runSameProcessPackageSmoke() {
     false
   );
   assert.equal(typeof analysis.renderSvg, "undefined");
+}
+
+async function runtimeImplementationForSurface(descriptor) {
+  const implementation = {};
+  for (const { specifier, exportNames } of descriptor.runtimeExportModules) {
+    const module = await import(
+      sharedDistUrl(specifier.replace(/^\.\.\//, ""))
+    );
+    for (const name of exportNames) {
+      implementation[name] = module[name];
+    }
+  }
+  return implementation;
 }
 
 async function withNodeDomShim(run) {

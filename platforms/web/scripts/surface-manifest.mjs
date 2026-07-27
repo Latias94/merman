@@ -160,9 +160,10 @@ export const surfaceModules = defineSurfaceModules([
     runtimeExportNames: [
       ...lifecycleRuntimeExportNames,
       ...metadataRuntimeExportNames,
-      "supportedHostThemePresets",
     ],
     valueExportNames: ["UNAVAILABLE_DIAGRAM_DETECTION", "encodeOptions"],
+    internalValueExportNames: ["currentRuntimeState", "withResourceOptions"],
+    exactValueExports: true,
   },
   {
     id: "analysis",
@@ -183,9 +184,7 @@ export const surfaceModules = defineSurfaceModules([
     id: "render",
     specifier: "../runtime-render.js",
     owner: "render",
-    runtimeExportNames: renderRuntimeExportNames.filter(
-      (name) => name !== "supportedHostThemePresets",
-    ),
+    runtimeExportNames: renderRuntimeExportNames,
     valueExportNames: ["createBrowserTextMeasurementSession"],
   },
   {
@@ -219,8 +218,22 @@ export const surfaceModules = defineSurfaceModules([
     owner: "editor",
     valueExportNames: editorDescriptorValueExportNames,
   },
-  { specifier: "../runtime-state.js", owner: "shared" },
-  { specifier: "../surface-runtime.js", owner: "shared" },
+  {
+    specifier: "../runtime-state.js",
+    owner: "shared",
+    internalValueExportNames: [
+      "createMermanRuntimeState",
+      "currentMermanRuntimeState",
+      "withMermanRuntimeState",
+    ],
+    exactValueExports: true,
+  },
+  {
+    specifier: "../surface-runtime.js",
+    owner: "shared",
+    internalValueExportNames: ["assertBrowserRuntime", "bindSurfaceRuntime"],
+    exactValueExports: true,
+  },
   { specifier: "../generated/capability-surface.js", owner: "shared" },
   { specifier: "../generated/diagram-catalog.js", owner: "shared" },
   { specifier: "../generated/resource-contract.js", owner: "shared" },
@@ -381,6 +394,8 @@ function defineSurfaceModules(modules) {
         owner,
         runtimeExportNames = [],
         valueExportNames = [],
+        internalValueExportNames = [],
+        exactValueExports = false,
       }) => {
         if (specifiers.has(specifier)) {
           throw new Error(`Duplicate Web surface module ${specifier}.`);
@@ -398,6 +413,8 @@ function defineSurfaceModules(modules) {
           owner,
           runtimeExportNames: Object.freeze([...runtimeExportNames]),
           valueExportNames: Object.freeze([...valueExportNames]),
+          internalValueExportNames: Object.freeze([...internalValueExportNames]),
+          exactValueExports,
         });
       },
     ),

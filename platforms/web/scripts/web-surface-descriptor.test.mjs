@@ -67,6 +67,18 @@ test("complete SDK preserves workflows while the complete SVG renderer stays iso
   }
 });
 
+test("shared loader guidance names every public browser package", () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "runtime-core.ts"),
+    "utf8",
+  );
+  for (const descriptor of webPackageDescriptors) {
+    if (descriptor.visibility === "public") {
+      assert.match(source, new RegExp(escapeRegExp(descriptor.name)));
+    }
+  }
+});
+
 test("descriptor rejects an unsupported schema", () => {
   const descriptor = cloneDescriptor();
   descriptor.schema_version += 1;
@@ -216,4 +228,8 @@ function artifactDescriptorPath() {
     "capabilities",
     "artifact-profiles-v1.json",
   );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

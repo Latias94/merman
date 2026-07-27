@@ -1,30 +1,21 @@
 import type {
-  AsciiCapability,
-  AsciiDiagramType,
   DiagramFamilyCapability,
   DiagramType,
-  EditorSemanticTokenDescriptor,
-  HostThemePresetName,
-  LintRuleCatalogEntry,
+  ThemeName,
+} from "./public-catalog.js";
+import type {
   MermanWasmLoader,
   MermanWasmModule,
   RuntimeCatalog,
-  ThemeName,
-} from "./index.js";
+} from "./public-types.js";
 
 export interface MermanRuntimeState {
   defaultLoader: MermanWasmLoader;
   wasmModule: MermanWasmModule | null;
   initPromise: Promise<MermanWasmModule> | null;
   supportedDiagramsCache: DiagramType[] | null;
-  asciiSupportedDiagramsCache: AsciiDiagramType[] | null;
-  asciiCapabilitiesCache: AsciiCapability[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
   runtimeCatalogCache: RuntimeCatalog | null;
-  diagramMetadataBySyntaxIdCache: ReadonlyMap<string, DiagramType | null> | null;
-  editorSemanticTokenDescriptorCache: EditorSemanticTokenDescriptor | null;
-  lintRuleCatalogCache: LintRuleCatalogEntry[] | null;
-  supportedHostThemePresetsCache: HostThemePresetName[] | null;
   supportedThemesCache: ThemeName[] | null;
 }
 
@@ -38,14 +29,8 @@ export function createMermanRuntimeState(
     wasmModule: null,
     initPromise: null,
     supportedDiagramsCache: null,
-    asciiSupportedDiagramsCache: null,
-    asciiCapabilitiesCache: null,
     diagramFamilyCapabilitiesCache: null,
     runtimeCatalogCache: null,
-    diagramMetadataBySyntaxIdCache: null,
-    editorSemanticTokenDescriptorCache: null,
-    lintRuleCatalogCache: null,
-    supportedHostThemePresetsCache: null,
     supportedThemesCache: null,
   };
 }

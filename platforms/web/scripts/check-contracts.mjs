@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   allPackageRuntimeExportNames,
+  surfaceModules,
   webPackages,
 } from "./surface-manifest.mjs";
 import { loadTypeScriptContract } from "./typescript-contract.mjs";
@@ -19,7 +20,7 @@ const generatedTokenDescriptor = path.join(
   "generated",
   "token-descriptor.ts",
 );
-const surfaceRuntime = path.join(root, "src", "surface-runtime.ts");
+const runtimeState = path.join(root, "src", "runtime-state.ts");
 const packageEntries = webPackages.map((descriptor) => descriptor.id);
 
 const contract = loadTypeScriptContract({
@@ -72,10 +73,6 @@ const declaredPublicTypes = contract.exportedTypeNames(publicTypes);
 const wasmModuleProperties = contract.exportedTypePropertyNames(
   publicEntry,
   "MermanWasmModule",
-);
-const runtimeBindings = contract.exportedFunctionReturnPropertyNames(
-  surfaceRuntime,
-  "bindSurfaceRuntime",
 );
 const generatedPackageBindings = new Set(allPackageRuntimeExportNames);
 const requiredRawWrappers = [...rawWasmExports].filter(
@@ -258,10 +255,6 @@ failed ||= reportPolicyFailure(
     publicValueExports.has("runtimeContract"),
 );
 failed ||= reportMissing(
-  "check-contracts: runtime-dependent wrappers are not returned by bindSurfaceRuntime()",
-  requiredRuntimeBindings.filter((name) => !runtimeBindings.has(name)),
-);
-failed ||= reportMissing(
   "check-contracts: package manifest will not regenerate runtime-bound wrappers",
   requiredRuntimeBindings.filter((name) => !generatedPackageBindings.has(name)),
 );
@@ -271,6 +264,51 @@ failed ||= reportUnexpected(
     ({ file, line, column, rule, detail }) =>
       `${file}:${line}:${column} [${rule}] ${detail}`,
   ),
+);
+
+for (const module of surfaceModules.filter(
+  ({ exactValueExports }) => exactValueExports,
+)) {
+  const implementation = path.resolve(
+    path.join(root, "src", "package-entries"),
+    module.specifier.replace(/\.js$/, ".ts"),
+  );
+  const actualValues = contract.exportedValueNames(implementation);
+  const expectedValues = new Set([
+    ...module.runtimeExportNames,
+    ...module.valueExportNames,
+    ...module.internalValueExportNames,
+  ]);
+  failed ||= reportMissing(
+    `check-contracts: shared module ${module.specifier} is missing declared values`,
+    difference(expectedValues, actualValues),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: shared module ${module.specifier} exports an unowned implementation`,
+    difference(actualValues, expectedValues),
+  );
+}
+
+const runtimeStateProperties = contract.exportedTypePropertyNames(
+  runtimeState,
+  "MermanRuntimeState",
+);
+const expectedRuntimeStateProperties = new Set([
+  "defaultLoader",
+  "wasmModule",
+  "initPromise",
+  "supportedDiagramsCache",
+  "diagramFamilyCapabilitiesCache",
+  "runtimeCatalogCache",
+  "supportedThemesCache",
+]);
+failed ||= reportMissing(
+  "check-contracts: shared runtime state is missing lifecycle or metadata fields",
+  difference(expectedRuntimeStateProperties, runtimeStateProperties),
+);
+failed ||= reportUnexpected(
+  "check-contracts: shared runtime state contains capability-owned fields",
+  difference(runtimeStateProperties, expectedRuntimeStateProperties),
 );
 
 for (const [interfaceName, requiredProperties] of requiredTypeProperties) {
@@ -355,6 +393,21 @@ for (const descriptor of webPackages) {
     `check-contracts: ${descriptor.name} package entry has forbidden value star exports`,
     [...valueStars],
   );
+
+  for (const { specifier, exportNames } of [
+    ...descriptor.runtimeExportModules,
+    ...descriptor.valueExportModules,
+  ]) {
+    const implementation = path.resolve(
+      path.dirname(entry),
+      specifier.replace(/\.js$/, ".ts"),
+    );
+    const implementationExports = contract.exportedValueNames(implementation);
+    failed ||= reportMissing(
+      `check-contracts: ${descriptor.name} module owner ${specifier} is missing exports`,
+      exportNames.filter((name) => !implementationExports.has(name)),
+    );
+  }
 }
 
 if (failed) {

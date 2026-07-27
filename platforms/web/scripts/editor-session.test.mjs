@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import * as webApi from "../dist/index.js";
+import * as coreRuntime from "../dist/runtime-core.js";
+import * as editorRuntimeBindings from "../dist/runtime-editor.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
 if (typeof globalThis.window === "undefined") globalThis.window = {};
@@ -9,6 +11,18 @@ if (typeof globalThis.document === "undefined") globalThis.document = {};
 
 const nativeSessions = [];
 let descriptorCalls = 0;
+const coreTestImplementation = {
+  getMerman: coreRuntime.getMerman,
+  initMerman: coreRuntime.initMerman,
+  isMermanInitialized: coreRuntime.isMermanInitialized,
+  packageVersion: coreRuntime.packageVersion,
+  runtimeCatalog: coreRuntime.runtimeCatalog,
+  transportApiVersion: coreRuntime.transportApiVersion,
+};
+const editorTestImplementation = {
+  ...coreTestImplementation,
+  createEditorSession: editorRuntimeBindings.createEditorSession,
+};
 
 class FakeNativeEditorSession {
   constructor(source, version, uri, optionsJson) {
@@ -115,15 +129,19 @@ test("a native free failure still seals the browser editor session", () => {
 
 test("editor sessions retain their creating surface runtime", async () => {
   const descriptorCounts = { editor: 0, full: 0 };
-  const editorRuntime = bindSurfaceRuntime(async () =>
-    surfaceModule(() => {
-      descriptorCounts.editor += 1;
-    })
+  const editorRuntime = bindSurfaceRuntime(
+    async () =>
+      surfaceModule(() => {
+        descriptorCounts.editor += 1;
+      }),
+    editorTestImplementation,
   );
-  const fullRuntime = bindSurfaceRuntime(async () =>
-    surfaceModule(() => {
-      descriptorCounts.full += 1;
-    })
+  const fullRuntime = bindSurfaceRuntime(
+    async () =>
+      surfaceModule(() => {
+        descriptorCounts.full += 1;
+      }),
+    editorTestImplementation,
   );
   await editorRuntime.initMerman();
   const editorSession = editorRuntime.createEditorSession("flowchart TD", 1);
@@ -310,12 +328,15 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
   ];
 
   for (const [catalog, expected] of cases) {
-    const runtime = bindSurfaceRuntime(async () => ({
-      default: async () => {},
-      packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
-      runtimeCatalog: catalog,
-    }));
+    const runtime = bindSurfaceRuntime(
+      async () => ({
+        default: async () => {},
+        packageVersion: () => "0.8.0-alpha.4",
+        transportApiVersion: () => 3,
+        runtimeCatalog: catalog,
+      }),
+      coreTestImplementation,
+    );
     await runtime.initMerman();
     assert.throws(() => runtime.runtimeCatalog(), expected);
   }
@@ -360,12 +381,15 @@ test("runtime catalog accepts unknown future IDs", async () => {
       future_profile_metadata: true,
     },
   ];
-  const runtime = bindSurfaceRuntime(async () => ({
-    default: async () => {},
-    packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => 3,
-    runtimeCatalog: () => futureCatalog,
-  }));
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => futureCatalog,
+    }),
+    coreTestImplementation,
+  );
   await runtime.initMerman();
 
   const catalog = runtime.runtimeCatalog();
@@ -396,12 +420,15 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
       ]),
     },
   ];
-  const runtime = bindSurfaceRuntime(async () => ({
-    default: async () => {},
-    packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => 3,
-    runtimeCatalog: () => catalog,
-  }));
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => catalog,
+    }),
+    coreTestImplementation,
+  );
   await runtime.initMerman();
 
   const normalized = runtime.runtimeCatalog();
@@ -523,10 +550,13 @@ test("resource options reject looser policy and ambiguous wrappers", () => {
 });
 
 test("Web transport API version rejects invalid module reports", async () => {
-  const runtime = bindSurfaceRuntime(async () => ({
-    default: async () => {},
-    transportApiVersion: () => 0,
-  }));
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => 0,
+    }),
+    coreTestImplementation,
+  );
   await runtime.initMerman();
   assert.throws(
     () => runtime.transportApiVersion(),
