@@ -152,6 +152,97 @@ export const packageRenderValueExportNames = [
   "createBrowserTextMeasurementSession",
 ];
 
+export const surfaceModules = defineSurfaceModules([
+  {
+    id: "core",
+    specifier: "../runtime-core.js",
+    owner: "shared",
+    runtimeExportNames: [
+      ...lifecycleRuntimeExportNames,
+      ...metadataRuntimeExportNames,
+      "supportedHostThemePresets",
+    ],
+    valueExportNames: ["UNAVAILABLE_DIAGRAM_DETECTION", "encodeOptions"],
+  },
+  {
+    id: "analysis",
+    specifier: "../runtime-analysis.js",
+    owner: "analysis",
+    runtimeExportNames: [
+      ...analysisRuntimeExportNames,
+      ...analysisMetadataRuntimeExportNames,
+    ],
+  },
+  {
+    id: "ascii",
+    specifier: "../runtime-ascii.js",
+    owner: "ascii",
+    runtimeExportNames: asciiRuntimeExportNames,
+  },
+  {
+    id: "render",
+    specifier: "../runtime-render.js",
+    owner: "render",
+    runtimeExportNames: renderRuntimeExportNames.filter(
+      (name) => name !== "supportedHostThemePresets",
+    ),
+    valueExportNames: ["createBrowserTextMeasurementSession"],
+  },
+  {
+    id: "editor",
+    specifier: "../runtime-editor.js",
+    owner: "editor",
+    runtimeExportNames: editorRuntimeExportNames,
+  },
+  {
+    specifier: "../public-catalog.js",
+    owner: "shared",
+    valueExportNames: packageStableValueExportNames.filter(
+      (name) =>
+        name !== "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION" &&
+        name !== "UNAVAILABLE_DIAGRAM_DETECTION" &&
+        name !== "encodeOptions",
+    ),
+  },
+  {
+    specifier: "../generated/text-measurement-abi.js",
+    owner: "shared",
+    valueExportNames: ["MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION"],
+  },
+  {
+    specifier: "../svg-safety.js",
+    owner: "render",
+    valueExportNames: ["assertSafeSvgForDom"],
+  },
+  {
+    specifier: "../generated/token-descriptor.js",
+    owner: "editor",
+    valueExportNames: editorDescriptorValueExportNames,
+  },
+  { specifier: "../runtime-state.js", owner: "shared" },
+  { specifier: "../surface-runtime.js", owner: "shared" },
+  { specifier: "../generated/capability-surface.js", owner: "shared" },
+  { specifier: "../generated/diagram-catalog.js", owner: "shared" },
+  { specifier: "../generated/resource-contract.js", owner: "shared" },
+  { specifier: "../svg-safety-policy.js", owner: "render" },
+  { specifier: "../editor-semantic-tokens.js", owner: "editor" },
+]);
+
+export const surfaceModuleOwners = Object.freeze(
+  Object.fromEntries(
+    surfaceModules.map(({ specifier, owner }) => [specifier, owner]),
+  ),
+);
+
+const runtimeExportModuleByName = exportOwnershipMap(
+  surfaceModules,
+  "runtimeExportNames",
+);
+const valueExportModuleByName = exportOwnershipMap(
+  surfaceModules,
+  "valueExportNames",
+);
+
 const analysisProfile = {
   runtimeExportNames: [
     ...lifecycleRuntimeExportNames,
@@ -244,7 +335,17 @@ export const webPackages = webPackageDescriptors.map((descriptor) => {
   return Object.freeze({
     ...descriptor,
     runtimeExportNames: profile.runtimeExportNames,
+    runtimeExportModules: exportGroups(
+      profile.runtimeExportNames,
+      runtimeExportModuleByName,
+      `${descriptor.id} runtime export`,
+    ),
     valueExportNames: profile.valueExportNames,
+    valueExportModules: exportGroups(
+      profile.valueExportNames,
+      valueExportModuleByName,
+      `${descriptor.id} value export`,
+    ),
     wasmExportNames: unique(profile.wasmExportNames),
   });
 });
@@ -267,4 +368,72 @@ export const allPackageWasmExportNames = unique(
 
 function unique(names) {
   return [...new Set(names)];
+}
+
+function defineSurfaceModules(modules) {
+  const specifiers = new Set();
+  const ids = new Set();
+  return Object.freeze(
+    modules.map(
+      ({
+        id,
+        specifier,
+        owner,
+        runtimeExportNames = [],
+        valueExportNames = [],
+      }) => {
+        if (specifiers.has(specifier)) {
+          throw new Error(`Duplicate Web surface module ${specifier}.`);
+        }
+        specifiers.add(specifier);
+        if (id !== undefined) {
+          if (ids.has(id)) {
+            throw new Error(`Duplicate Web surface module id ${id}.`);
+          }
+          ids.add(id);
+        }
+        return Object.freeze({
+          ...(id === undefined ? {} : { id }),
+          specifier,
+          owner,
+          runtimeExportNames: Object.freeze([...runtimeExportNames]),
+          valueExportNames: Object.freeze([...valueExportNames]),
+        });
+      },
+    ),
+  );
+}
+
+function exportOwnershipMap(modules, exportField) {
+  const result = new Map();
+  for (const module of modules) {
+    for (const name of module[exportField]) {
+      if (result.has(name)) {
+        throw new Error(`Duplicate Web surface owner for ${name}.`);
+      }
+      result.set(name, module.specifier);
+    }
+  }
+  return result;
+}
+
+function exportGroups(names, ownership, label) {
+  const groups = new Map();
+  for (const name of names) {
+    const specifier = ownership.get(name);
+    if (!specifier) {
+      throw new Error(`Missing module owner for ${label} ${name}.`);
+    }
+    const group = groups.get(specifier) ?? [];
+    group.push(name);
+    groups.set(specifier, group);
+  }
+  return Object.freeze(
+    [...groups].map(([specifier, exportNames]) =>
+      Object.freeze({
+        specifier,
+        exportNames: Object.freeze(exportNames),
+      }),
+    ),
+  );
 }

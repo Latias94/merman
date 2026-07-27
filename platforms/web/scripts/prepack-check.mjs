@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { spawnNpmSync } from "../../../scripts/npm-command.mjs";
 import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import {
   allPackageWasmExportNames,
@@ -207,7 +208,6 @@ export function assertArtifactFileEvidence({
   const packageDistRecords = packageDistFileRecords(packageDistRoot, packageId);
   const sourceDistRecords = packageDistFileRecords(sourceDistRoot, packageId, {
     allowSiblingPackageEntries: true,
-    allowSharedSourceMaps: true,
   });
   const expected = [...artifactFiles].sort(compareArtifactRecords);
   assertEqualArtifactRecords(
@@ -408,7 +408,7 @@ function assertPackageTypeConsumers(checked) {
 }
 
 function runNpm(args, cwd) {
-  const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
+  const result = spawnNpmSync(args, {
     cwd,
     encoding: "utf8",
   });

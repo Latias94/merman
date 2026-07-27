@@ -75,17 +75,28 @@ test("package provenance rejects stale copied WASM and entry wrappers", () => {
     );
 
     cpSync(sourceWasmRoot, packageWasmRoot, { recursive: true, force: true });
-    writeFileSync(path.join(packageDistRoot, "package-entries", "analysis.js"), "stale wrapper");
+    writeFileSync(
+      path.join(packageDistRoot, "package-entries", "analysis.js"),
+      [
+        'import "../runtime-core.js";',
+        'import("../../artifacts/wasm/merman_wasm.js");',
+        "export const value = false;",
+        "",
+      ].join("\n"),
+    );
     assert.throws(
       () => assertArtifactFileEvidence(evidence),
       /copied package artifacts do not match their provenance evidence/,
     );
 
     cpSync(sourceDistRoot, packageDistRoot, { recursive: true, force: true });
-    writeFileSync(path.join(packageDistRoot, "index.js"), "stale shared runtime");
+    writeFileSync(
+      path.join(packageDistRoot, "editor-semantic-tokens.js"),
+      "export const stale = true;\n",
+    );
     assert.throws(
       () => assertArtifactFileEvidence(evidence),
-      /copied package artifacts do not match their provenance evidence/,
+      /differs from the analysis static module closure/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -184,7 +195,7 @@ test("package legal material is exactly the artifact-profile closure", () => {
   }
 });
 
-test("package provenance rejects shared source maps", () => {
+test("package provenance rejects files outside the static module closure", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-source-maps-"));
   try {
     const packageDistRoot = path.join(root, "packages", "analysis", "dist");
@@ -192,7 +203,7 @@ test("package provenance rejects shared source maps", () => {
     writeFileSync(path.join(packageDistRoot, "index.js.map"), "{}\n");
     assert.throws(
       () => packageDistFileRecords(packageDistRoot, "analysis"),
-      /shared source maps/,
+      /differs from the analysis static module closure/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -209,10 +220,32 @@ function writeRuntime(root) {
 function writeEntryFiles(root, packageId) {
   const entryRoot = path.join(root, "package-entries");
   mkdirSync(entryRoot, { recursive: true });
-  for (const suffix of [".d.ts", ".d.ts.map", ".js", ".js.map"]) {
-    writeFileSync(path.join(entryRoot, `${packageId}${suffix}`), `entry:${suffix}`);
+  writeFileSync(
+    path.join(entryRoot, `${packageId}.js`),
+    [
+      'import "../runtime-core.js";',
+      'import("../../artifacts/wasm/merman_wasm.js");',
+      "export const value = true;",
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(
+    path.join(entryRoot, `${packageId}.d.ts`),
+    'export type { RuntimeValue } from "../runtime-core.js";\n',
+  );
+  writeFileSync(path.join(root, "runtime-core.js"), "export const core = true;\n");
+  writeFileSync(
+    path.join(root, "runtime-core.d.ts"),
+    "export interface RuntimeValue { readonly value: true }\n",
+  );
+  for (const file of [
+    path.join(entryRoot, `${packageId}.d.ts.map`),
+    path.join(entryRoot, `${packageId}.js.map`),
+    path.join(root, "runtime-core.d.ts.map"),
+    path.join(root, "runtime-core.js.map"),
+  ]) {
+    writeFileSync(file, "{}\n");
   }
-  writeFileSync(path.join(root, "index.js"), "shared wrapper");
 }
 
 function compareArtifactRecords(left, right) {

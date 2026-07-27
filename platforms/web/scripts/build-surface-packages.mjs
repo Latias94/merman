@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   renameSync,
   rmSync,
   statSync,
@@ -13,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
+import { packageDistClosure } from "./package-dist-closure.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
 import {
@@ -63,12 +63,23 @@ export function assemblePackageArtifacts() {
 }
 
 export function packageEntrySource(descriptor) {
-  const surfaceRuntimeKeys = [
-    "initMerman",
-    ...descriptor.runtimeExportNames.filter((name) => name !== "initMerman"),
-  ];
+  const runtimeImports = descriptor.runtimeExportModules.flatMap(
+    ({ specifier, exportNames }) => [
+      "import {",
+      ...exportNames.map((name) => `  ${name} as runtime_${name},`),
+      `} from ${JSON.stringify(specifier)};`,
+    ],
+  );
+  const valueExports = descriptor.valueExportModules.flatMap(
+    ({ specifier, exportNames }) => [
+      "export {",
+      ...exportNames.map((name) => `  ${name},`),
+      `} from ${JSON.stringify(specifier)};`,
+    ],
+  );
   return [
-    'import { assertBrowserRuntime, bindSurfaceRuntime, type SurfaceRuntime } from "../surface-runtime.js";',
+    'import { assertBrowserRuntime, bindSurfaceRuntime } from "../surface-runtime.js";',
+    ...runtimeImports,
     "import type {",
     "  MermanInitInput as SharedMermanInitInput,",
     "  MermanInitOptions as SharedMermanInitOptions,",
@@ -83,9 +94,7 @@ export function packageEntrySource(descriptor) {
     "export type MermanWasmLoader = SharedMermanWasmLoader<MermanWasmModule>;",
     "export type MermanInitOptions = SharedMermanInitOptions<MermanWasmModule>;",
     "export type MermanInitInput = SharedMermanInitInput<MermanWasmModule>;",
-    "export {",
-    ...descriptor.valueExportNames.map((name) => `  ${name},`),
-    '} from "../index.js";',
+    ...valueExports,
     "",
     "export const MERMAN_WASM_URL = new URL(\"../../artifacts/wasm/merman_wasm_bg.wasm\", import.meta.url).href;",
     "",
@@ -95,9 +104,11 @@ export function packageEntrySource(descriptor) {
     '  return import("../../artifacts/wasm/merman_wasm.js");',
     "}",
     "",
-    "const runtime: Pick<SurfaceRuntime<MermanWasmModule>,",
-    ...surfaceRuntimeKeys.map((name) => `  | ${JSON.stringify(name)}`),
-    "> = bindSurfaceRuntime(loadMermanWasmModule);",
+    "const implementation = {",
+    ...descriptor.runtimeExportNames.map((name) => `  ${name}: runtime_${name},`),
+    "};",
+    "",
+    "const runtime = bindSurfaceRuntime(loadMermanWasmModule, implementation);",
     "",
     "export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {",
     "  assertBrowserRuntime();",
@@ -106,10 +117,7 @@ export function packageEntrySource(descriptor) {
     "",
     ...descriptor.runtimeExportNames
       .filter((name) => name !== "initMerman")
-      .map(
-        (name) =>
-          `export const ${name}: SurfaceRuntime<MermanWasmModule>[${JSON.stringify(name)}] = runtime.${name};`,
-      ),
+      .map((name) => `export const ${name} = runtime.${name};`),
     "",
   ].join("\n");
 }
@@ -155,19 +163,12 @@ function projectPackageDist(descriptor, packageRoot) {
   rmSync(stage, { recursive: true, force: true });
   try {
     mkdirSync(stage, { recursive: true });
-    for (const entry of readdirSync(distRoot, { withFileTypes: true })) {
-      if (entry.name === "package-entries") continue;
-      cpSync(path.join(distRoot, entry.name), path.join(stage, entry.name), {
-        filter: (source) => !source.endsWith(".map"),
-        recursive: entry.isDirectory(),
-      });
-    }
-    const sourceEntries = path.join(distRoot, "package-entries");
-    const targetEntries = path.join(stage, "package-entries");
-    mkdirSync(targetEntries, { recursive: true });
-    for (const suffix of [".js", ".d.ts", ".js.map", ".d.ts.map"]) {
-      const source = path.join(sourceEntries, `${descriptor.id}${suffix}`);
-      if (existsSync(source)) cpSync(source, path.join(targetEntries, `${descriptor.id}${suffix}`));
+    const closure = packageDistClosure(distRoot, descriptor.id);
+    for (const relative of closure.files) {
+      const source = path.join(distRoot, ...relative.split("/"));
+      const targetFile = path.join(stage, ...relative.split("/"));
+      mkdirSync(path.dirname(targetFile), { recursive: true });
+      cpSync(source, targetFile);
     }
     replaceDirectory({ target, stage, backup });
   } finally {
@@ -244,8 +245,7 @@ function replaceScopedLegalDirectory({ files, target }) {
   }
 }
 
-export function replaceDirectory({ target, stage, backup, fsOps = { existsSync, readdirSync, renameSync, rmSync } }) {
-  recoverInterruptedReplacement({ target, backup, fsOps });
+export function replaceDirectory({ target, stage, backup, fsOps = { existsSync, renameSync, rmSync } }) {
   try {
     if (fsOps.existsSync(target)) fsOps.renameSync(target, backup);
     fsOps.renameSync(stage, target);
@@ -256,15 +256,6 @@ export function replaceDirectory({ target, stage, backup, fsOps = { existsSync, 
     }
     throw error;
   }
-}
-
-function recoverInterruptedReplacement({ target, backup, fsOps }) {
-  if (!fsOps.existsSync(backup)) return;
-  if (fsOps.existsSync(target)) {
-    fsOps.rmSync(backup, { recursive: true, force: true });
-    return;
-  }
-  fsOps.renameSync(backup, target);
 }
 
 function siblingStage(target, kind) {

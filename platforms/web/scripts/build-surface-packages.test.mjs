@@ -13,6 +13,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 import { packageEntrySource, replaceDirectory } from "./build-surface-packages.mjs";
+import { webPackages } from "./surface-manifest.mjs";
 
 describe("browser package assembly", () => {
   it("restores the existing package projection when final replacement fails", () => {
@@ -49,16 +50,25 @@ describe("browser package assembly", () => {
   });
 
   it("generates a package-owned loader and no sibling package import", () => {
-    const source = packageEntrySource({
-      id: "analysis",
-      name: "@mermanjs/web-analysis",
-      runtimeExportNames: ["initMerman", "analyze"],
-      valueExportNames: ["SUPPORTED_DIAGRAMS"],
-      wasmExportNames: ["default", "analyze"],
-    });
+    const descriptor = webPackages.find(({ id }) => id === "analysis");
+    assert.ok(descriptor);
+    const source = packageEntrySource(descriptor);
     assert.match(source, /artifacts\/wasm\/merman_wasm\.js/);
     assert.match(source, /MERMAN_WASM_URL/);
     assert.match(source, /assertBrowserRuntime, bindSurfaceRuntime/);
+    assert.match(source, /from "\.\.\/runtime-core\.js"/);
+    assert.match(source, /from "\.\.\/runtime-analysis\.js"/);
+    assert.doesNotMatch(source, /from "\.\.\/runtime-ascii\.js"/);
+    assert.doesNotMatch(source, /from "\.\.\/runtime-render\.js"/);
+    assert.doesNotMatch(source, /from "\.\.\/runtime-editor\.js"/);
+    assert.doesNotMatch(source, /from "\.\.\/svg-safety\.js"/);
+    assert.doesNotMatch(source, /from "\.\.\/generated\/token-descriptor\.js"/);
+    assert.doesNotMatch(
+      source,
+      /export \{[\s\S]*?\} from "\.\.\/index\.js"/,
+    );
+    assert.match(source, /import type \{[\s\S]*?\} from "\.\.\/index\.js"/);
+    assert.match(source, /export type \* from "\.\.\/index\.js"/);
     assert.doesNotMatch(source, /function assertBrowserRuntime/);
     assert.doesNotMatch(source, /pkg\//);
     assert.doesNotMatch(source, /@mermanjs\/web\//);
