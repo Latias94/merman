@@ -59,8 +59,6 @@ impl<'a> RequirementConfigView<'a> {
                 .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
             font_family: self.font_family(),
             font_size: self.font_size(),
-            calculation_font_family: self.calculation_font_family(),
-            calculation_font_size: self.calculation_font_size(),
         }
     }
 
@@ -119,8 +117,6 @@ pub(crate) struct RequirementRenderSettings<'a> {
     pub(crate) title_top_margin: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
-    pub(crate) calculation_font_family: String,
-    pub(crate) calculation_font_size: f64,
 }
 
 #[cfg(test)]
@@ -208,8 +204,6 @@ mod tests {
         assert_eq!(settings.title_top_margin, DEFAULT_TITLE_TOP_MARGIN);
         assert_eq!(settings.font_family, "Inter,sans-serif");
         assert_eq!(settings.font_size, 20.0);
-        assert_eq!(settings.calculation_font_family, "Inter,sans-serif");
-        assert_eq!(settings.calculation_font_size, 20.0);
     }
 
     #[test]

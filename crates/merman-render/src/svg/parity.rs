@@ -7,8 +7,8 @@ use crate::model::{
     ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
     IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
     PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RailroadDiagramLayout,
-    RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout,
-    TimelineDiagramLayout, TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
+    SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout, TimelineDiagramLayout,
+    TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};

@@ -225,7 +225,7 @@ pub(crate) enum BuiltinFamilyArtifact {
         Box<
             FamilyPair<
                 diagrams::requirement::RequirementDiagramRenderModel,
-                RequirementDiagramLayout,
+                crate::requirement::RequirementPreparedArtifact,
             >,
         >,
     ),
@@ -463,7 +463,7 @@ impl BuiltinFamilyArtifact {
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
             Self::Timeline(pair) => LayoutProjection::TimelineDiagram(pair.layout()),
             Self::Journey(pair) => LayoutProjection::JourneyDiagram(pair.layout()),
-            Self::Requirement(pair) => LayoutProjection::RequirementDiagram(pair.layout()),
+            Self::Requirement(pair) => LayoutProjection::RequirementDiagram(pair.layout().layout()),
             Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
             Self::Radar(pair) => LayoutProjection::RadarDiagram(pair.layout()),
             Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
@@ -1423,6 +1423,48 @@ mod tests {
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, actual);
         assert_eq!(limit.max, max);
+    }
+
+    #[test]
+    fn requirement_layout_projection_excludes_operation_prepared_labels() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"requirementDiagram
+requirement req1 {
+  id: 1
+  text: User logs in
+  risk: high
+}
+element system {
+  type: service
+}
+system - satisfies -> req1
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Requirement source should produce a render model");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let projection = artifact.layout_json().unwrap();
+        let layout = &projection["layout"]["RequirementDiagram"];
+        let fields = layout
+            .as_object()
+            .expect("Requirement layout projection should remain an object");
+
+        assert_eq!(artifact.family_kind(), RenderFamilyKind::Requirement);
+        assert!(fields.contains_key("nodes"));
+        assert!(fields.contains_key("edges"));
+        assert!(fields.contains_key("bounds"));
+        assert!(!fields.contains_key("labels"));
+        assert!(!layout.to_string().contains("display_text"));
+        let serialized_projection = projection.to_string();
+        assert!(!serialized_projection.contains("max_width_px"));
+        assert!(!serialized_projection.contains("keep_centered"));
+        assert!(!serialized_projection.contains("divider_y_offset"));
+        assert!(
+            serde_json::from_value::<RequirementDiagramLayout>(layout.clone()).is_ok(),
+            "prepared labels must not alter the public Requirement layout schema"
+        );
     }
 
     #[test]
