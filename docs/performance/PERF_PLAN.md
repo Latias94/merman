@@ -49,31 +49,49 @@ Before implementation:
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | `mindmap_medium` | 685 us | 4.78x (+537 us) | 8.93x | Repeated documentation, blog, and editor previews accumulate the largest confirmed regression. |
 | P0 | `requirement_medium` | 337 us | 2.12-2.25x (+178-184 us) | 4.58x | Both complete and minimal capability lanes reproduce the regression. |
 | P0 | `kanban_medium` | 153 us | 3.88-4.08x (+114-118 us) | 5.22x | Both capability lanes reproduce a high family-local fixed cost. |
 | P1 | `flowchart_large` | 24.10 ms | about 1.00x | unavailable | This is not a refactor regression, but it is the only standard fixture beyond a 16.7 ms frame. |
 | P1 | `class_medium` | 950 us | 1.10-1.15x (+89-126 us) | 0.40x | A common family with a modest alpha.3 regression; Merman remains about 2.5x faster than mmdr. |
 
-The alpha.3/current confidence intervals for Mindmap, Requirement, and Kanban did not overlap in
-the release measurements. These families also gained Mermaid 11.16 semantics, so optimization must
-preserve the additional work rather than reverting it.
+The alpha.3/current confidence intervals for Requirement and Kanban did not overlap in the release
+measurements. These families also gained Mermaid 11.16 semantics, so optimization must preserve the
+additional work rather than reverting it.
 
 Do not prioritize the current Info, Packet, Radar, or Sankey ratios without new absolute-cost
 evidence. Their measured alpha.3 increases are about 2-5 microseconds. Architecture,
 `flowchart_small`, Gantt, and `flowchart_ports_heavy` are within the current noise band.
 
+## Completed work
+
+### Mindmap ordinary-label rendering
+
+Commit `b2129d9ec` resolved the confirmed ordinary-label regression without a family-local
+classifier. Against pre-fix revision `71cb231c8`, three same-host runs measured:
+
+| Metric | Pre-fix median | Fixed median | Change |
+| --- | ---: | ---: | ---: |
+| Mindmap end-to-end | 654,210 ns | 161,330 ns | -75.34% |
+| Mindmap layout | 94,693 ns | 89,608 ns | -5.37% |
+| Mindmap SVG | 542,590 ns | 62,383 ns | -88.50% |
+| Kanban control | 63,881 ns | 56,272 ns | -7,609 ns |
+
+The control delta remained below the registered 10,000 ns noise threshold. The retained
+implementation defines an exact syntax-free ASCII projection in the Markdown interpreter and lets
+the sanitizer skip DOM work only when its complete effective tag policy preserves the generated
+paragraph. Unicode, entities, Markdown, HTML, icons, math, unknown security levels, and customized
+sanitizer policies retain the full path. The faster punctuation-blacklist experiment was rejected
+after `#quot;` exposed Mermaid placeholder leakage.
+
 ## Work queue
 
 ### P0.1: Establish stage-level evidence
 
-- Compare alpha.3 `render,cytoscape-layout` with current `svg,layout-cytoscape` for Mindmap instead
-  of comparing mismatched product defaults.
-- Run parse, layout, render, and end-to-end measurements for Mindmap, Requirement, and Kanban with
-  30-50 samples, a two-second warm-up, and a three-second measurement window.
+- Run parse, layout, render, and end-to-end measurements for Requirement and Kanban with 30-50
+  samples, a two-second warm-up, and a three-second measurement window.
 - Use Instruments Time Profiler and Allocations only for the stage that remains slow.
 
-Exit: each P0 family has a repeated same-host A/B result and a profile-backed cause.
+Exit: each remaining P0 family has a repeated same-host A/B result and a profile-backed cause.
 
 ### P0.2: Remove redundant configuration ownership
 
@@ -90,14 +108,16 @@ Exit: the targeted configuration clones are gone and the stage benchmark demonst
 
 ### P0.3: Prepare labels once per render operation
 
-Kanban, Mindmap, and Requirement currently repeat portions of Markdown conversion, HTML
-sanitization, and label measurement between layout and SVG emission. Introduce a private prepared
-label/layout artifact only after profiling confirms the repeated work dominates.
+Kanban and Requirement currently repeat portions of Markdown conversion, HTML sanitization, and
+label measurement between layout and SVG emission. Mindmap still repeats work for complex labels,
+including paths where FontAwesome replacement can make measured and emitted content diverge.
+Introduce a private prepared label/layout artifact only after profiling confirms the remaining
+repeated work dominates.
 
 - Reuse prepared XHTML and exact text metrics across layout and SVG.
 - Keep caches operation-scoped and bounded.
-- Restore a plain-text fast path only when differential fixtures prove it equivalent for entities,
-  raw HTML, hostile input, Markdown, math, wrapping, fonts, and custom measurers.
+- Keep shortcut decisions with the Markdown interpreter or sanitizer policy owner. Do not restore a
+  family-local classifier.
 
 Exit: no duplicated semantic work on the measured path, with family goldens and DOM parity green.
 
