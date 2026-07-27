@@ -5,6 +5,10 @@
 > Durable post-optimization checkpoint for Merman `901afd393` and
 > `mermaid-rs-renderer` `7ff1196`. Mermaid.js was intentionally skipped; the earlier three-runner
 > checkpoint remains in `renderer_comparison_2026-07-27.md`.
+>
+> A newer
+> [current checkpoint](renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md)
+> measures the current render/core tree. Keep this file as pre-Requirement evidence.
 
 ## Decision Summary
 

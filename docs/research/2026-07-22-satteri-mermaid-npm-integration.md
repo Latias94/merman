@@ -2,7 +2,7 @@
 
 **Originally researched:** 2026-07-22
 
-**Revalidated and expanded:** 2026-07-27
+**Revalidated and expanded:** 2026-07-28
 
 **Status:** design and release evidence; neither Merman Node transport candidate is an admitted
 public product.
@@ -24,14 +24,20 @@ and size were checked against:
   tarball;
 - the pinned
   [`mermaid-rs-renderer` v0.3.1 source](https://github.com/1jehuang/mermaid-rs-renderer/tree/2f993bd79a55235eb59a34d807852276ba25bea7);
-- Merman source at `71cb231c84bb5ec296f5bf55b1f999f7c1e68582`, plus the in-progress private
-  Node candidate files present in the working tree on 2026-07-27; and
+- the direct Merman/Satteri product-call comparison at Merman source
+  `4264f2aad83370a4c16a1d7404154b71d8d16372`;
+- the latest Merman N-API/Node-WASM transport comparison at
+  `5f540c08db635d4f0ccc8e62429c0e385e95a485`, report SHA-256
+  `a5ef6ad899033010209de2ae9cb25ffadad13c3f57fc56cbd351f777e8119226`;
+- the isolated Merman native-size experiment at `e311f9e6a`, report SHA-256
+  `85293fafb973285aa347f05216ca3a639031b5d1d915e318c51f10ef5691577c`; and
 - Merman's dated, reproducible
   [Node transport admission record](../performance/NODE_TRANSPORT_ADMISSION.md).
 
-The Merman candidate is actively changing and its recorded binary predates the final refactor
-state. Current API and target observations are therefore implementation-state facts, not release
-promises.
+The Merman candidate is actively changing. Each measurement below is bound to its own source
+revision, lockfile, and artifact hash. The direct Satteri lane, current transport lane, and isolated
+size experiment are separate evidence and must not be merged into one synthetic result; package
+and target observations remain implementation-state facts rather than release promises.
 
 ## Executive conclusion
 
@@ -40,13 +46,15 @@ promises.
    MDAST-placeholder/HAST-render split is the most reusable part of the design.
 2. Satteri is not a general Mermaid Node SDK and does not bind Merman. It is a synchronous SSG
    plugin over `mermaid-rs-renderer` (`mmdr`) through one napi-rs `render()` function.
-3. Merman's Node candidate is a substantially broader transport: 35 Mermaid 11.16 families,
+3. Merman's Node candidate is a substantially broader transport: a 41-entry Mermaid 11.16 family
+   catalog, 35 primary SVG admission records,
    semantic/layout/planning operations, math and two optional layout engines, typed errors,
    deterministic resource profiles, async work, a bounded queue, disposal, and queued
    cancellation. That breadth also makes its current native artifact much larger.
-4. There is no valid Satteri-versus-Merman speed winner yet. Satteri's `~3 ms` is an undocumented
-   author observation; mmdr's published numbers compare against fresh Chromium process cost; the
-   Merman numbers use a different 3,995-case corpus and capability set.
+4. A direct 30-fixture synchronous N-API comparison now exists. Merman wins 13 and Satteri 17;
+   the median Merman/Satteri ratio is 1.247x, or 24.7% more Merman time, while the 0.458x geometric
+   mean favors Merman because complex Flowchart wins dominate. This is workload evidence, not a
+   universal winner or an output-equivalence claim.
 5. The published Satteri package has several verifiable contract defects: a missing CommonJS export
    file, a Node engine declaration inconsistent with its selected Node-API level, platform and
    diagram-list drift, unsafe URI schemes in generated links, silent render-error fallback, and
@@ -127,7 +135,8 @@ not authoritative: it contains 24 names, includes unsupported `info` and `venn`,
 published 0.7.1 dependency. Because the HAST plugin catches render errors, an unsupported family is
 quietly restored as a raw code block instead of failing the build.
 
-Merman's current catalog covers 35 Mermaid 11.16 families. Relative to the mmdr 0.3.1 list, Merman
+Merman's current catalog contains 41 Mermaid 11.16 entries and its primary SVG inventory contains
+35 admission records. Relative to the mmdr 0.3.1 list, Merman
 also includes `swimlane`, `info`, `eventmodeling`, `treeView`, `ishikawa`, four Railroad dialects,
 `venn`, `wardley`, and `cynefin`. The catalog is owned by
 [`family.rs`](../../crates/merman-core/src/family.rs), and Node exposes the count through its runtime
@@ -191,17 +200,58 @@ The current declared matrix is macOS x64/arm64, Linux x64 glibc/musl, and Window
 Linux arm64, which Satteri does ship. Each platform package declares exact `os`, `cpu`, and, on
 Linux, `libc` metadata in [`package-surfaces.json`](../../platforms/node/package-surfaces.json).
 
-The 2026-07-23 admission run recorded 8,860,772 packed bytes and 22,718,975 installed bytes for the
-root plus one macOS arm64 target. Its native file is therefore materially larger than Satteri's
-same-host binary. That is expected from a broader implementation, but the current comparison is
-also unfairly pessimistic: the standalone Merman candidate manifest has no release LTO/strip
-profile, while Satteri explicitly enables LTO and symbol stripping.
+The source-bound artifact used by the final transport run is 21,223,312 raw bytes. Satteri's
+same-host binary is 4,206,544 bytes, so the individual Merman binary is 5.05x larger. The npm
+distribution boundary is much closer: Merman's root plus matching platform package measured
+8,966,029 packed and 22,906,407 installed bytes, while Satteri's all-platform root tarball is
+8,310,468 packed and 19,931,056 unpacked bytes. Satteri has the smaller binary; Merman avoids
+installing unrelated target binaries.
+
+The isolated `e311f9e6a` capability-leaf experiment decomposes Merman's own artifact:
+
+| Merman N-API lane | Raw bytes | Gzip `-9` bytes | Normal packages |
+| --- | ---: | ---: | ---: |
+| SVG only | 15,771,392 | 6,563,389 | 132 |
+| SVG + Cytoscape | 16,184,784 | 6,760,083 | 133 |
+| SVG + ELK | 17,028,528 | 7,089,266 | 134 |
+| SVG + math | 19,635,312 | 8,112,389 | 186 |
+| Complete SVG | 21,256,336 | 8,819,018 | 189 |
+| Satteri 0.7.1 | 4,206,544 | 1,822,210 | unknown |
+
+Within Merman, independent Cytoscape, ELK, and math lanes add 413,392, 1,257,136, and 3,863,920
+bytes. Their arithmetic sum is 5,534,448 bytes, while the combined complete-over-SVG increase is
+5,484,944 bytes because the linked combination shares 49,504 bytes. This is not a like-for-like
+decomposition of the Merman/Satteri gap. The products report 41 and 23 diagram-family catalogs
+using unverified classification parity, and the experiment does not separately measure bridge
+code. Even Merman's SVG-only lane is 3.75x Satteri, so the residual cause remains open.
+
+The gap is code and static data, not an unstripped-symbol accident. Both complete binaries expose
+one global symbol. In the matched size experiment, Merman contained 13,336,980 bytes of `__text`
+and 5,346,000 bytes of constant sections, versus Satteri's 3,176,372 and 552,308 bytes. After the
+strongest tested profile, code plus constants still explained 90.46% of the remaining raw gap.
+
+Satteri 0.7.1 declares fat LTO and symbol stripping; its release sources do not declare one release
+codegen unit. Merman's canonical napi build already passes `--strip`, which napi CLI 3.7.4
+implements with linker `-s`. The isolated Merman profile matrix measured:
+
+| Complete-SVG profile | Raw bytes | Change from default |
+| --- | ---: | ---: |
+| Cargo release defaults + napi CLI `--strip` | 21,256,336 | baseline |
+| Fat LTO | 21,239,824 | -0.08% |
+| Fat LTO + one codegen unit | 18,998,416 | -10.62% |
+| Above + Cargo `strip = "symbols"` | 18,998,416 | no further saving |
+
+On this Darwin arm64 lane, adding Cargo `strip = "symbols"` did not reduce raw bytes after the
+existing linker strip. It still changed the binary and increased gzip output by 2,735 bytes, so
+this does not prove byte equivalence or cross-target redundancy. The
+[rustc codegen guidance](https://doc.rust-lang.org/rustc/codegen-options/index.html#strip) documents
+the general debugging trade-off; this experiment did not observe a further diagnostics loss. Fat
+LTO plus one codegen unit is the measured release-profile candidate, but it still needs
+cross-target correctness, latency, memory, and build-time acceptance before becoming policy.
 
 Merman's build receipt records the exact Cargo lock digest, dependency closure, artifact hashes,
-runtime capability catalog, and operation probes. The recorded artifact contained 195 resolved
-packages, but it predates the final refactor and must not be quoted as the current release closure.
-Rebuild after enabling release stripping and after the branch stabilizes before setting a size
-budget.
+runtime capability catalog, and operation probes. The size experiment's 189-package complete lane
+is pinned evidence for that revision, not a release promise or proof that every byte is necessary.
 
 The Merman candidate selects Node-API 8, but its JavaScript package does not yet declare
 `engines.node` even though it uses APIs such as `structuredClone`. The public minimum Node version
@@ -209,32 +259,76 @@ must be chosen, declared, and tested before admission.
 
 ## Performance evidence
 
-These measurements describe different workloads and must remain separate:
+These measurements use different lanes and must not be collapsed into one speed score.
 
-| Evidence | Workload and result | What it does not prove |
-| --- | --- | --- |
-| Satteri article | Claims approximately 3 ms per diagram and approximately 0 ms native initialization | No machine, corpus, repetitions, raw samples, or plugin benchmark is published |
-| mmdr v0.3.1 README | Reports 2.71-4.67 ms CLI render times and 0.07-2.51 ms library times for four small families on an Intel Linux host | Its 100-1400x headline mostly compares with fresh Puppeteer/Chromium process cost, not warm `mermaid.render()` |
-| Merman admission run | On Apple M4 Pro: napi warm p50 0.722 ms, mean 1.354 ms, p95 2.750 ms; cold p50 47.07 ms; peak RSS 238,977,024 bytes across a 3,995-case corpus | Different host, diagrams, options, features, output, and error set; no Satteri result was collected |
-| Same-run Merman Node WASM | napi reduced warm mean by 8.7%, cold p50 by 41.2%, and peak RSS by 63.5% relative to the Node-targeted WASM candidate | One macOS arm64 host and stale pre-final-refactor artifacts; no transport was admitted |
+### Merman N-API versus Node-WASM
 
-The Merman data does support one narrow conclusion: for Merman's own complete static-SVG recipe on
-that host, N-API improved cold start and memory substantially, while warm-render latency improved
-modestly. It does not show that N-API is universally faster than WASM or that Merman is faster than
-mmdr.
+The final schema-2 transport run used the same 4,001-case trusted corpus, binding options, complete
+static-SVG recipe, product facade, and measured source on Apple M4 Pro:
 
-A fair follow-up comparison should:
+| Measure | Node-WASM | N-API | N-API effect |
+| --- | ---: | ---: | ---: |
+| Warm successful-SVG p50 | 0.3189 ms | 0.2903 ms | -9.0% |
+| Warm successful-SVG p95 | 1.6305 ms | 1.3467 ms | -17.4% |
+| Warm successful-SVG mean | 0.9266 ms | 0.8117 ms | -12.4% |
+| Engine init through first SVG p50 | 96.05 ms | 7.39 ms | 12.99x faster |
+| Parent process through result p50 | 137.74 ms | 47.39 ms | 2.91x faster |
+| Four-request batch p50 | 1.4387 ms | 0.2418 ms | 5.95x faster |
+| Peak RSS | 638,189,568 B | 240,648,192 B | -62.3% |
+| Packed / installed | 6,157,111 / 17,784,897 B | 8,966,029 / 22,906,407 B | +45.6% / +28.8% |
 
-1. use the intersection of the 23 mmdr families and identical source files;
-2. separate module import, first render, warm synchronous render, async batch throughput, RSS, and
-   installed footprint;
-3. record successful/failed inputs and well-formed SVG before comparing time;
-4. use only common options, while separately reporting Merman-only math/layout cases;
-5. run isolated processes on each shared published target; and
-6. publish the corpus digest, raw samples, tool versions, and package hashes.
+The warm boundary includes the public facade call plus SHA-256 and byte-length evidence projection.
+Cold and concurrent boundaries stop before that projection, so only the warm rows include evidence
+bookkeeping. These are harness-level operation timings, not isolated renderer CPU measurements.
 
-Do not require SVG byte equality between independent renderers, but do not count a failed or
-silently downgraded Satteri diagram as a fast render.
+All 4,001 semantic or typed-error outcomes match, as do all SVG structure signatures. The corpus
+contains 3,897 successful SVGs and 104 matching typed failures. Exact geometry and raw bytes differ
+for 426 successful SVGs. Their cause is unattributed; the current validator reports them but does
+not make them an admission gate. The decision remains inconclusive because only macOS arm64 has
+runtime/install evidence. The five concurrency batches are directional evidence, not a
+cross-target throughput claim.
+
+### Merman N-API versus Satteri N-API
+
+The direct comparison used `MermanNodeEngine.renderSvgSync(source)` and Satteri's
+`renderMermaidSVG(source, {})` over 30 shared fixtures. It performed three warmups, six alternating
+AB/BA rounds, equal calibrated iteration counts, and 283,656 raw timed calls. Both candidates
+returned well-formed SVG for all 30 inputs. The harness passed the same source string to both
+public facades; Satteri's wrapper then applied `String.trim()` and removed one trailing LF from
+every fixture. The benchmark preserves that public-wrapper behavior instead of bypassing it.
+The selection reuses the native comparison's 30 ratio-eligible standard fixtures; it excludes
+`flowchart_large`, Info, Treemap, and XYChart because the native reference was missing or used
+different fixture bytes.
+
+| Aggregate | Result |
+| --- | ---: |
+| Merman faster / Satteri faster | 13 / 17 |
+| Median fixture Merman / Satteri | 1.247x |
+| Geometric mean Merman / Satteri | 0.458x |
+
+The median fixture favors Satteri by 24.7%, while the geometric mean favors Merman by about 2.18x
+because complex Flowchart cases dominate. For example, `flowchart_ports_heavy` measured 1.54 ms in
+Merman and 471.28 ms in Satteri, while `mindmap_medium` measured 294.31 us versus 83.33 us and
+`requirement_medium` measured 254.63 us versus 80.33 us. This is not a universal winner.
+
+The direct run proves successful public-call execution and timing from the same source arguments;
+it does not prove byte-identical renderer inputs, equivalent SVG geometry, DOM, theme, or Mermaid
+semantics. The independent native Criterion
+[checkpoint](../performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) adds strict
+byte-identical fixture gating: Merman leads 18 of 30 comparable rows, with a 0.664x median and
+0.297x geometric mean. It identifies Requirement and Mindmap as the only mmdr leads above both the
+10% relative and 50 us absolute triage thresholds.
+
+The correctness receipt recorded different raw, structure, and geometry digests for all 30 direct
+outputs; Merman emitted 669,856 bytes in total and Satteri 335,730 bytes. Both products use napi-rs,
+and the separate Merman transport run does not show a broad local latency penalty for its N-API
+candidate. That control also changes target and runtime, however, so it is not an isolated bridge
+A/B. The direct Satteri run measures two complete product call stacks: JS facade, marshalling,
+binding, renderer, allocation, build profile, and different output all remain confounders. A fair
+next step is stage attribution and visual/DOM comparison for the slow families, plus the same
+transport run on every shipped target. Satteri embeds mmdr 0.3.1, while the native Criterion
+checkpoint pins later revision `7ff1196`; it also measures direct Rust rather than the two public
+N-API facades. Do not merge or average those aggregates.
 
 ## Security and reliability boundary
 
@@ -282,8 +376,9 @@ host timeouts, memory and concurrency quotas, and process-level preemption or is
    failure as the release/build default. Never swallow a typed renderer error silently.
 4. Keep exact per-target optional packages. Do not aggregate every native binary into the root
    tarball, and do not add postinstall downloads.
-5. Add release LTO/stripping to the standalone Node candidate, then rerun dependency, size, RSS,
-   and latency evidence. A native transport alone is not a size optimization.
+5. Evaluate fat LTO plus one codegen unit as the measured release-profile candidate. Do not adopt
+   Cargo symbol stripping from one Darwin raw-size result; rerun cross-target size, compression,
+   latency, RSS, build-time, and diagnostics evidence.
 6. Declare and test a minimum Node version. Keep the napi-rs feature level at or below that
    contract.
 7. Run lightweight loader/API/package contract tests on ordinary changes. Reserve the full corpus,
@@ -311,11 +406,12 @@ host timeouts, memory and concurrency quotas, and process-level preemption or is
 
 - **High before admission:** the public Node minimum version is undeclared and only macOS arm64 has
   runtime/install evidence.
-- **Moderate:** the standalone candidate lacks release LTO/stripping, so its current 21 MB-class
-  native file is not an acceptable final size baseline.
+- **Moderate:** fat LTO plus one codegen unit saves 10.62% in the isolated size experiment, but it
+  still needs cross-target latency, correctness, memory, and build-time admission.
 - **Moderate:** Linux arm64 is absent, while the candidate declares targets that have not yet
   passed their required runtime matrix.
-- **Evidence gap:** no controlled same-corpus benchmark against Satteri/mmdr exists.
+- **Moderate:** 426 of 3,897 successful Node transport SVGs have exact geometry and raw-byte drift
+  between N-API and Node-WASM; structure and semantic outcomes match, but the cause is unresolved.
 
 ## Reproduction notes
 
@@ -336,9 +432,17 @@ shasum -a 256 xingwangzhe-satteri-mermaid-0.7.1.tgz package/*.node
 
 The downloaded tarball SHA-256 was
 `5e1b9a21f1c85a90c376d0eee2dd9d6e8ce9c28e3df261acf665d9f5a4866535`.
-No third-party native addon was executed, no external Cargo build was run, and no Satteri
-performance number was independently reproduced. Avoiding unreviewed native-code execution means
-the Node 18/20 failure mode remains a contract finding rather than an observed runtime failure.
+The direct Satteri timing report has SHA-256
+`89e1eaeeaba8a45f9e6fa84989816efc5bdef8d828ff208f1b80eacd4493b00f`; its correctness dry run has
+SHA-256 `554d3764a66754e2503e1f0ae3dd11a2e4295f32aac07b513dca7455b4b811f0`.
+The final Merman transport report has SHA-256
+`a5ef6ad899033010209de2ae9cb25ffadad13c3f57fc56cbd351f777e8119226`.
+The current `75c9fd156` mmdr comparison JSON has SHA-256
+`7a4099daa933c964267367e27fc162dd1cdf47a4f95f1bde55e587f28928e000`.
+
+The Satteri addon was executed only in the isolated benchmark worktree. Its Node 18/20 compatibility
+finding remains source-contract evidence rather than an observed runtime failure because the
+benchmark host used Node 26.5.0.
 
 ## Primary source inventory
 

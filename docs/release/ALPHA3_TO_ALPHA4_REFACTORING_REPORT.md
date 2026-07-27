@@ -9,7 +9,7 @@ It was measured on an Apple M4 Pro with Rust 1.95.0, Cargo 1.95.0, Node 26.5.0, 
 the same local source corpus on 2026-07-27.
 
 The current post-optimization Merman/mmdr evidence is
-[`renderer_comparison_2026-07-27_901afd393_vs_mmdr.md`](../performance/renderer_comparison_2026-07-27_901afd393_vs_mmdr.md).
+[`renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md`](../performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md).
 The alpha.3 comparisons and Mermaid.js measurements below remain fixed to `d2698d0a3`.
 The older mmdr aggregate below predates byte-identical fixture gating and includes different
 Treemap and XYChart inputs; retain it as a historical raw run, not a comparable ranking.
@@ -30,6 +30,11 @@ substantial recovery, but not a universal native performance win. Remaining fami
 regressions are recorded in
 [`PERF_PLAN.md`](../performance/PERF_PLAN.md).
 
+A later focused repair, commit `8d45b8634`, removed duplicate Requirement label measurement
+between layout and SVG emission. Three alternating-order runs reduced `requirement_medium` SVG
+emission by 60.59% and end-to-end latency by 27.60%. This is a Requirement-family improvement, not
+a claim that every diagram became 27.60% faster.
+
 ## At a glance
 
 | Surface | Alpha.3 | Alpha.4 candidate | User consequence |
@@ -43,6 +48,7 @@ regressions are recorded in
 | Browser analysis WASM | 1,914,582 bytes | 3,373,026 bytes | 76.18% larger source rebuild; the analysis capability now covers the expanded semantic baseline. |
 | Current complete browser renderer | not comparable | 11,665,436 bytes | `@mermanjs/web-render` removes analysis, editor, and ASCII APIs while retaining SVG, Cytoscape, ELK, and math. |
 | Minimal native SVG end-to-end | baseline | median 1.12x alpha.3 | The shared configuration-clone regression is fixed; 10 of 32 fixtures are faster and seven are within 5%, with family-local hotspots still visible. |
+| Requirement focused repair | 274.84 us pre-fix | 198.98 us | Operation-scoped label preparation cuts 27.60% from the measured Requirement end-to-end path without changing public layout JSON. |
 
 The CLI sizes are unstripped macOS arm64 Cargo release executables. The WASM values are
 `wasm-pack 0.15.0` optimized package artifacts rebuilt from source where historical output was
@@ -193,6 +199,23 @@ successful execution, but this historical version did not prove aligned fixture 
 or Mermaid-semantic equivalence for `mermaid-rs-renderer`. These timings are not a quality-adjusted
 winner. That distinction matters more than a single geometric mean.
 
+The post-Requirement long run provides the current native reference. It uses 30 samples, a
+two-second warm-up, three-second measurement windows, and byte-identical input gating:
+
+| Current native reference | Result |
+| --- | ---: |
+| Byte-identical, jointly measured rows | 30 |
+| Merman faster / slower | 18 / 12 |
+| Median Merman / mmdr ratio | 0.664x |
+| Geometric-mean ratio | 0.297x |
+| Rows above both 1.10x and 50 us | Requirement and Mindmap |
+
+Requirement's latest full standard row measures 196.96 us versus mmdr's 71.08 us. In the separate
+paired A/B lane, the repair reduced Merman from 274.84 us to 198.98 us.
+Mindmap measures 165.26 us versus 74.06 us, but Merman runs COSE-Bilkent while mmdr falls back to
+radial placement. Complex Flowchart cases remain Merman's strongest measured scaling result. None
+of these ratios prove equivalent layouts, DOM, sanitization, or Mermaid release parity.
+
 ### Alpha.3 to alpha.4 native pipeline
 
 The 34 `standard` fixture files are byte-for-byte unchanged across the range. The comparison used
@@ -282,28 +305,89 @@ focused repair. The final clean alpha.3 comparison above shows that the catastro
 is gone; the remaining roughly 1.9x end-to-end delta on these ultra-small fixtures is a separate,
 much smaller profiling target.
 
+#### Fixed Requirement duplicate label work
+
+Requirement layout measured each node and edge label to size Dugong nodes, then SVG rendering
+rebuilt the label plan and measured the same text again. Commit `8d45b8634` replaces that ownership
+gap with a private operation-scoped prepared artifact. It carries exact metrics and label identity
+from layout to render while keeping Markdown conversion and strict sanitization in the render
+phase. There is no global cache, family allow-list, or syntax heuristic, and the public layout JSON
+still projects the original `RequirementDiagramLayout`.
+
+Three same-host long runs alternated base/head order. Each used 30 Criterion samples, two seconds
+of warm-up, and three-second measurement windows:
+
+| Stage | Before median | After median | Change |
+| --- | ---: | ---: | ---: |
+| Parse | 5.528 us | 5.613 us | +1.54% |
+| Layout | 132.05 us | 131.56 us | -0.37% |
+| SVG emission | 137.43 us | 54.17 us | -60.59% |
+| End-to-end | 274.84 us | 198.98 us | -27.60% |
+
+The latest stage comparison at `75c9fd156` against the same `mermaid-rs-renderer` revision measures
+0.72x parse, 2.81x layout, 3.85x SVG emission, and 2.81x end-to-end. This closes the
+duplicate-measurement cause
+but not the whole family gap: Dugong layout and SVG DOM construction remain separate profiling
+targets. The clean isolated worktree passed all 1,148 `merman-render` tests, with one existing
+skip, plus the focused Requirement and Look SVG selections.
+
 ## Node candidate evidence
 
 `@mermanjs/node` remains a private, inconclusive candidate. It is not a release recommendation
-yet. The current official locked candidate build fails because
-`crates/merman-node/Cargo.lock` still records local alpha.3 package versions. The following
-runtime evidence was generated only in an isolated temporary worktree after regenerating that
-lockfile offline; it demonstrates behavior but does not repair reproducibility.
+yet. The schema-2 comparison binds both candidates to the same source, lockfile, binding contract,
+trusted 4,001-case corpus, and raw artifacts. It was measured on one macOS arm64 host, so it does
+not satisfy the all-target admission contract.
 
 | Candidate, macOS arm64 | Node-WASM | N-API |
 | --- | ---: | ---: |
-| Runtime artifact | 16,867,323 bytes | 21,289,616 bytes |
-| Packed install | 6,145,608 bytes | 8,987,260 bytes |
-| Warm SVG p50, 4,001-case corpus | 0.4085 ms | 0.3569 ms |
-| Warm SVG p95 | 1.8691 ms | 1.5703 ms |
-| Cold process p50 | 89.67 ms | 50.54 ms |
-| Peak RSS | 602.21 MB | 236.04 MB |
-| Concurrent batch p50 | 3.0083 ms | 2.0194 ms |
+| Runtime artifact | 16,881,944-byte WASM, plus 8,070 bytes of JS/manifest | 21,223,312-byte `.node` |
+| Packed / installed | 6,157,111 / 17,784,897 bytes | 8,966,029 / 22,906,407 bytes |
+| Warm successful-SVG p50 | 0.3189 ms | 0.2903 ms |
+| Warm successful-SVG p95 | 1.6305 ms | 1.3467 ms |
+| Cold parent-to-result p50 | 137.74 ms | 47.39 ms |
+| Engine-init-through-first-SVG p50 | 96.05 ms | 7.39 ms |
+| Peak RSS | 638,189,568 bytes | 240,648,192 bytes |
+| Four-request concurrent batch p50 | 1.4387 ms | 0.2418 ms |
 
-N-API is faster and uses less peak RSS on this host; Node-WASM is the smaller artifact and
-install. The official SVG harness found matching success/error outcomes for all 4,001 corpus
-cases, but 426 cross-transport geometry digests differ. A single macOS arm64 result also cannot
-satisfy the all-target admission rule.
+N-API lowers warm p50 by 9.0%, cold outer p50 by 65.6%, first-SVG operation p50 by 92.3%, and peak
+RSS by 62.3% on this host. Its installed footprint is 28.8% larger than Node-WASM. All 4,001
+semantic/typed-error outcomes and SVG structure signatures match; 426 exact geometry and raw-byte
+digests differ. The five concurrency batches are directional evidence, not a stable throughput
+gate.
+
+The warm boundary includes the public facade call plus SHA-256 and byte-length evidence projection;
+cold and concurrent boundaries stop before that projection. These are harness-level product
+operation timings, not isolated renderer CPU measurements. The transport remains unselected because
+the declared target matrix is incomplete; the 426 differences are unattributed report residuals,
+not a semantic/structure failure or a current admission gate.
+
+A separate synchronous N-API run compared the private Merman candidate directly with published
+`@xingwangzhe/satteri-mermaid@0.7.1`, which wraps mmdr 0.3.1. Across 30 shared source arguments that
+both rendered successfully, Merman was faster on 13 fixtures and Satteri on 17. Satteri's public
+wrapper trimmed one trailing LF from each input; the benchmark did not bypass that product
+behavior. The median fixture ratio was 1.247x Merman/Satteri, while the geometric mean was 0.458x
+because Merman's large Flowchart wins dominate the aggregate. Requirement, Mindmap, C4, Sequence
+tiny, Kanban, and Class tiny were the material Satteri leads. The separate transport control does
+not show a broad local latency penalty for Merman's N-API candidate, but it also changes target and
+runtime. It does not isolate renderer/layout cost from Merman's facade, marshalling, binding,
+allocation, build-profile, or output differences. In the direct comparison, all 30 raw, structure,
+and geometry digests differed.
+
+The native size difference remains real. Satteri's macOS arm64 addon is 4,206,544 bytes; the latest
+source-bound transport artifact is 21,223,312 bytes. A separate `e311f9e6a` size-control experiment
+measured a 21,256,336-byte complete baseline and a 15,771,392-byte SVG-only lane, with Cytoscape,
+ELK, and math adding 413,392, 1,257,136, and 3,863,920 bytes within Merman. In that same experiment,
+`lto = true` plus `codegen-units = 1` reduced the complete candidate to 18,998,416 bytes. Adding
+Cargo `strip = "symbols"` after the existing napi CLI `--strip` saved no Darwin arm64 raw bytes,
+but changed the binary and increased gzip output by 2,735 bytes; it is not a cross-target policy
+conclusion.
+
+The detailed protocol, hashes, capability boundary, and package findings are recorded in the
+[Node transport admission](../performance/NODE_TRANSPORT_ADMISSION.md),
+[Satteri Node comparison](../research/2026-07-22-satteri-mermaid-npm-integration.md), and
+[article-claim audit](../research/2026-07-27-satteri-web-wasm-claim-audit.md). The Satteri lane
+embeds mmdr 0.3.1; the native Criterion lane pins later revision `7ff1196`, so their aggregates are
+separate evidence.
 
 A separate `semantic-json` probe gives a cleaner parse-only comparison:
 
@@ -343,11 +427,13 @@ as semantic parity evidence.
 
 ## Risks and next work
 
-1. Profile the remaining family-local regressions: Mindmap, Kanban, and Requirement are the
-   clearest suite outliers. Treat the residual Info/Packet parse, layout, and session fixed costs
-   as a separate small-diagram target rather than reopening the repaired seed path.
-2. Regenerate and commit the Node nested lockfile, then run the official locked harness on every
-   declared target. Investigate the 426 geometry digest differences before admission.
+1. Profile the remaining family-local gaps: compare Mindmap only under the same layout algorithm,
+   and split residual Requirement layout from SVG construction. Treat the residual Info/Packet
+   parse, layout, and session fixed costs as a separate small-diagram target rather than reopening
+   either repaired path.
+2. Run the official locked Node harness on every declared target. Investigate the 426 geometry
+   digest differences before admission, and retain the trusted-corpus/raw-SVG schema-2 evidence
+   checks.
 3. Treat browser full and analysis growth as an explicit release cost. A future size win requires
    a same-capability baseline, not comparison with the historical smaller contract.
 4. Keep the three-runner benchmark honest: it compares native Merman and mmdr with browser
@@ -368,3 +454,5 @@ as semantic parity evidence.
 - Removed the default/zero-seed full-configuration clone while preserving deterministic
   hand-drawn seeds; see this report for the final native SVG comparison and private Node
   candidate limitations.
+- Reused operation-scoped Requirement label measurements between layout and SVG emission, reducing
+  the measured medium Requirement path by 27.60% without changing its public layout JSON.
