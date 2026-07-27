@@ -227,9 +227,54 @@ Legend:
    - Risk: medium (easy to accidentally change normalization behavior).
    - Validation: guardrails + snapshot comparisons.
 
+6) Restore Info and Packet SVG emit performance after the alpha.3 to alpha.4 refactor
+   - Why: same-host Criterion evidence on the unchanged `standard` fixtures found a large
+     end-to-end regression for small fixed-cost diagrams:
+     - `end_to_end/info_medium`: 2.4 us -> 52.1 us (21.3x).
+     - `end_to_end/packet_medium`: 3.6 us -> 54.3 us (15.0x).
+     - `render/info_medium`: 1.7 us -> 43.7 us (25.8x).
+     - `render/packet_medium`: 2.2 us -> 44.4 us (19.9x).
+   - Attribution boundary: current `render/*` uses Criterion 0.8.2 `iter_batched`; its
+     `family::prepare` setup runs outside the timed routine. The regression is therefore in
+     SVG emission/finalization, not parse or layout preparation.
+   - Output evidence: the alpha.3 and alpha.4 Packet SVGs are byte-identical (3,091 bytes,
+     17 XML elements). Info is the same 1,649 bytes and 5 XML elements, differing only in
+     `v11.15.0` versus `v11.16.0`. Do not explain this regression as a larger output contract.
+   - Confirmed root cause:
+     - Mermaid's generated default config sets `handDrawnSeed` to `0`.
+     - Shared SVG dispatch calls `SvgExecution::effective_config` before selecting the family.
+       The zero-seed path deep-clones the full effective JSON config, inserts the
+       operation-derived seed, rebuilds `MermaidConfig`, and drops it after every render.
+       The measured default config is 15,409 bytes with 49 top-level keys and 461 scalars.
+     - Info and Packet never consume the seed, but still pay this shared fixed cost. Alpha.3
+       borrowed the effective config directly.
+     - The path originated in `84477e467` (`refactor(render): own operation render
+       environment`).
+   - Isolated A/B: a detached-worktree diagnostic that only borrowed the config on the
+     zero-seed path changed:
+     - `render/info_medium`: 43.7 us -> 2.44 us.
+     - `render/packet_medium`: 44.4 us -> 3.08 us.
+     - `end_to_end/info_medium`: 52.1 us -> 4.35 us.
+     - `end_to_end/packet_medium`: 54.3 us -> 6.29 us.
+     This proves causality, but the diagnostic is not a production fix because zero requests an
+     operation-derived seed for deterministic hand-drawn output.
+   - Change:
+     - Keep the resolved operation seed in `SvgExecution` and let randomness consumers access
+       it directly, or introduce a borrowed overlay that does not clone the full config.
+     - Do not special-case Info and Packet or maintain a family allow-list: that list would drift
+       when a new rough renderer is added. Do not make `handDrawnSeed: 0` behave like a literal
+       zero seed.
+     - Preserve explicit non-zero seeds and the current deterministic operation stream.
+   - Impact: high for high-volume small-diagram rendering; negligible layout benefit.
+   - Effort: medium.
+   - Risk: medium (seed resolution and hand-drawn parity are behavior-sensitive).
+   - Validation: rerun the exact four Criterion fixtures above on the same host, compare
+     output SHA-256/element counts, run `runtime_determinism` and
+     `hand_drawn_seed_svg_test`, then run the SVG DOM parity gate and focused goldens.
+
 ### P2 (High impact, higher risk; do only with discipline)
 
-6) Move semantic models to typed structs internally; keep JSON as an interchange layer
+7) Move semantic models to typed structs internally; keep JSON as an interchange layer
    - Why: `serde_json::Value` is convenient for parity snapshots but expensive at runtime.
    - Strategy (incremental, diagram-by-diagram):
      - Introduce typed models for one diagram (e.g. flowchart) behind internal modules.
@@ -240,7 +285,7 @@ Legend:
    - Validation:
      - Diagram-scoped golden tests + DOM parity gate + additional roundtrip tests (typed -> JSON).
 
-7) SVG emission rework to reduce allocations
+8) SVG emission rework to reduce allocations
    - Why: constructing many intermediate strings is expensive; `format!` can be costly.
    - Change:
      - Use a dedicated writer with preallocation and `fmt::Write`.
@@ -254,7 +299,7 @@ Legend:
 
 ### P3 (Niche / optional)
 
-8) Add a profiler workflow
+9) Add a profiler workflow
    - Why: once P0/P1 are done, improvements require real profiling to find true hotspots.
    - Change:
      - Document `criterion --profile-time` usage.
