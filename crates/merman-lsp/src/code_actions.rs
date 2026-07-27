@@ -4,6 +4,9 @@ use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_actions_from_fixes,
 };
+#[cfg(test)]
+use std::cell::Cell;
+use std::collections::HashMap;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
@@ -38,6 +41,7 @@ fn code_actions_for_snapshot_with_encoding_and_preferred_support(
         return None;
     }
 
+    let diagnostic_index = SnapshotDiagnosticIndex::new(diagnostics);
     let actions = params
         .context
         .diagnostics
@@ -45,7 +49,7 @@ fn code_actions_for_snapshot_with_encoding_and_preferred_support(
         .filter_map(|diagnostic| {
             Some((
                 diagnostic,
-                matching_snapshot_diagnostic(snapshot, diagnostics, diagnostic)?,
+                matching_snapshot_diagnostic(snapshot, &diagnostic_index, diagnostic)?,
             ))
         })
         .flat_map(|(lsp_diagnostic, editor_diagnostic)| {
@@ -79,9 +83,101 @@ fn code_actions_for_snapshot_with_encoding(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DiagnosticLookupKey {
+    id: String,
+    code: String,
+    message: String,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+}
+
+impl DiagnosticLookupKey {
+    fn from_editor(diagnostic: &EditorDiagnostic) -> Option<Self> {
+        let data = diagnostic.data.as_ref()?;
+        let range = range_to_lsp(diagnostic.range);
+        Some(Self {
+            id: data.id.clone(),
+            code: diagnostic.code.clone(),
+            message: diagnostic.message.clone(),
+            start_line: range.start.line,
+            start_character: range.start.character,
+            end_line: range.end.line,
+            end_character: range.end.character,
+        })
+    }
+
+    fn from_lsp(diagnostic: &Diagnostic, identity: DiagnosticIdentityData) -> Option<Self> {
+        let tower_lsp_server::ls_types::NumberOrString::String(code) = diagnostic.code.as_ref()?
+        else {
+            return None;
+        };
+        Some(Self {
+            id: identity.id,
+            code: code.clone(),
+            message: diagnostic.message.clone(),
+            start_line: diagnostic.range.start.line,
+            start_character: diagnostic.range.start.character,
+            end_line: diagnostic.range.end.line,
+            end_character: diagnostic.range.end.character,
+        })
+    }
+}
+
+struct SnapshotDiagnosticIndex<'a> {
+    by_identity: HashMap<DiagnosticLookupKey, &'a EditorDiagnostic>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static SNAPSHOT_DIAGNOSTIC_INDEX_PROBE: Cell<(usize, usize)> =
+        const { Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+fn reset_snapshot_diagnostic_index_probe() {
+    SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.set((0, 0));
+}
+
+#[cfg(test)]
+fn snapshot_diagnostic_index_probe() -> (usize, usize) {
+    SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.get()
+}
+
+impl<'a> SnapshotDiagnosticIndex<'a> {
+    fn new(diagnostics: &'a [EditorDiagnostic]) -> Self {
+        #[cfg(test)]
+        SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.with(|probe| {
+            let (builds, lookups) = probe.get();
+            probe.set((builds.saturating_add(1), lookups));
+        });
+
+        let mut by_identity = HashMap::with_capacity(diagnostics.len());
+        for diagnostic in diagnostics {
+            let Some(key) = DiagnosticLookupKey::from_editor(diagnostic) else {
+                continue;
+            };
+            by_identity.entry(key).or_insert(diagnostic);
+        }
+        Self { by_identity }
+    }
+
+    fn get(&self, key: &DiagnosticLookupKey) -> Option<&'a EditorDiagnostic> {
+        #[cfg(test)]
+        SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.with(|probe| {
+            let (builds, lookups) = probe.get();
+            probe.set((builds, lookups.saturating_add(1)));
+        });
+
+        self.by_identity.get(key).copied()
+    }
+}
+
 fn matching_snapshot_diagnostic<'a>(
-    snapshot: &'a DocumentSnapshot,
-    diagnostics: &'a [EditorDiagnostic],
+    snapshot: &DocumentSnapshot,
+    diagnostics: &SnapshotDiagnosticIndex<'a>,
     diagnostic: &Diagnostic,
 ) -> Option<&'a EditorDiagnostic> {
     if diagnostic.source.as_deref() != Some("merman") {
@@ -93,18 +189,7 @@ fn matching_snapshot_diagnostic<'a>(
         return None;
     }
 
-    diagnostics.iter().find(|candidate| {
-        candidate.message == diagnostic.message
-            && range_to_lsp(candidate.range) == diagnostic.range
-            && matches!(
-                diagnostic.code.as_ref(),
-                Some(tower_lsp_server::ls_types::NumberOrString::String(code)) if code == &candidate.code
-            )
-            && candidate
-                .data
-                .as_ref()
-                .is_some_and(|data| data.id == identity.id)
-    })
+    diagnostics.get(&DiagnosticLookupKey::from_lsp(diagnostic, identity)?)
 }
 
 fn code_actions_for_editor_diagnostic(
@@ -195,7 +280,10 @@ fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp_server::ls_type
 
 #[cfg(test)]
 mod tests {
-    use super::code_actions_for_snapshot_with_encoding;
+    use super::{
+        code_actions_for_snapshot_with_encoding, reset_snapshot_diagnostic_index_probe,
+        snapshot_diagnostic_index_probe,
+    };
     use crate::diagnostics::editor_diagnostics_to_versioned_diagnostics;
     use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
@@ -312,6 +400,45 @@ mod tests {
         assert_eq!(
             edit.changes.as_ref().expect("plain changes")[&uri][0].new_text,
             " TB"
+        );
+    }
+
+    #[test]
+    fn snapshot_code_action_entry_indexes_many_full_identity_keys_once() {
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
+        let prototype = diagnostics
+            .into_iter()
+            .find(|diagnostic| diagnostic.data.is_some())
+            .expect("diagnostic identity");
+        let diagnostics = (0..4_096)
+            .map(|index| {
+                let mut diagnostic = prototype.clone();
+                diagnostic.code = format!("code-{index}");
+                diagnostic.message = format!("message-{index}");
+                diagnostic.data.as_mut().expect("diagnostic data").id = format!("identity-{index}");
+                diagnostic
+            })
+            .collect::<Vec<_>>();
+        params.context.diagnostics = editor_diagnostics_to_versioned_diagnostics(
+            &diagnostics,
+            &snapshot.uri,
+            snapshot.version,
+        );
+
+        reset_snapshot_diagnostic_index_probe();
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("snapshot-owned quick fixes");
+
+        assert_eq!(actions.len(), diagnostics.len());
+        assert_eq!(
+            snapshot_diagnostic_index_probe(),
+            (1, diagnostics.len()),
+            "the production entry must build one index and perform one lookup per requested diagnostic"
         );
     }
 
