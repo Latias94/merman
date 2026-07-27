@@ -20,12 +20,7 @@ Most applications should use the `merman` facade so parsing and text rendering s
 
 ```toml
 [dependencies]
-merman = {
-    version = "=0.8.0-alpha.4",
-    git = "https://github.com/Latias94/merman",
-    default-features = false,
-    features = ["ascii"],
-}
+merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["ascii"] }
 ```
 
 <!-- END GENERATED RELEASE README ASCII_DEPENDENCY -->

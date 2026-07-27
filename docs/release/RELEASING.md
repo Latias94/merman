@@ -107,9 +107,9 @@ credential-blocked or artifact-only channel is not confused with a missing publi
 
 ## Version Checklist
 
-`Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. Project a
-new version transactionally, then verify every checked-in projection without supplying a second
-version value:
+`Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. Prepare
+the projection in an exclusive Git worktree, then verify every checked-in path without supplying a
+second version value:
 
 ```bash
 python3 scripts/release-version.py set --version <version>
@@ -119,8 +119,37 @@ python3 scripts/release-version.py
 The gate discovers workspace members and validates their inherited package versions, internal
 workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's
 local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests,
-CocoaPods metadata, and iOS framework bundle versions. `check --version <tag-or-version>` remains
-the CI entry point and also proves that the workflow input names the root authority.
+CocoaPods metadata, iOS framework bundle versions, and generated README installation examples. A
+new version starts in README `source` mode so an unpublished candidate uses repository commands.
+
+Immediately before release preflight, project the README to exact registry commands and run the
+release-ready check:
+
+```bash
+python3 scripts/release-version.py set-readme-mode \
+  --mode registry --version <version>
+python3 scripts/release-version.py check --version <version>
+```
+
+The `registry` mode is a packaging projection, not observed publication state. Its generated text
+requires users to verify the selected registry before installation because crates.io, npm, PyPI,
+pub.dev, and GitHub artifacts are published by independent workflows.
+
+Commit every path printed by `set-readme-mode` before tagging: the root manifest, the root README,
+and every projected package README. Every publishing workflow runs the same `check --version` gate,
+which proves that the workflow input names the root authority and that every packaged README uses
+the exact registry command form. If release preparation is cancelled, restore source-candidate
+commands with:
+
+```bash
+python3 scripts/release-version.py set-readme-mode \
+  --mode source --version <version>
+```
+
+After a successful publication, keep that release commit and tag in `registry` mode. Do not switch
+the same version back to `source`; the next development version returns to source commands when
+`set --version <next-version>` projects the new version. If `main` remains on the released version,
+registry mode remains correct.
 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
 version tracks. They are intentionally excluded from workspace projection. Record the workspace

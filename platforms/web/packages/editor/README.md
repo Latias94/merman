@@ -4,9 +4,9 @@ Browser-only Merman package for parser-backed editor intelligence. Use it from a
 
 ## Install
 
-<!-- BEGIN GENERATED RELEASE README NPM_EDITOR_INSTALL -->
+Use the generated command for the current repository release state:
 
-The `0.8.0-alpha.4` candidate is not published yet. Build the browser workspace from a checkout, then install this profile into the application from its local package directory:
+<!-- BEGIN GENERATED RELEASE README NPM_EDITOR_INSTALL -->
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
@@ -30,6 +30,6 @@ const diagnostics = session.diagnostics();
 session.dispose();
 ```
 
-The package exports analysis and editor APIs, but intentionally does not export SVG or ASCII rendering. It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport.
+The package exports analysis and editor workflows, but intentionally exposes no callable SVG or ASCII rendering workflow. Shared package-group catalogs and types remain available for integration code. It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport.
 
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for lifecycle and resource-policy guidance.

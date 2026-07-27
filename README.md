@@ -48,11 +48,8 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 <!-- merman-release-install-mode: source -->
-<!-- BEGIN GENERATED RELEASE README INTRO -->
 
-These examples target the `0.8.0-alpha.4` source candidate, which is not published yet. Install the candidate from this repository. Registry package pages and matching tagged documentation remain authoritative for published releases.
-
-<!-- END GENERATED RELEASE README INTRO -->
+The generated installation commands below follow the repository release state. Development versions use this checkout; release commits use exact registry versions. Registry-form commands prepare release artifacts but do not prove that every independent package channel is already live.
 
 ### Command Line
 
@@ -110,7 +107,7 @@ The default dependency enables complete deterministic SVG rendering, including b
 | --- | --- |
 | Render from Rust | [`merman`](https://crates.io/crates/merman) |
 | Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or [Homebrew](https://formulae.brew.sh/formula/merman-cli) |
-| Render in a browser with SVG only | <!-- BEGIN GENERATED RELEASE README WEB_RENDER -->[`@mermanjs/web-render` (0.8.0-alpha.4 candidate)](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md)<!-- END GENERATED RELEASE README WEB_RENDER --> |
+| Render in a browser with SVG only | [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) |
 | Combine browser rendering, analysis, ASCII, and editor APIs | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) |
 | Analyze Mermaid without SVG | [`merman-analysis`](https://crates.io/crates/merman-analysis) |
 | Add editor intelligence | [`merman-lsp`](https://crates.io/crates/merman-lsp) or the [VS Code preview](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) |
@@ -137,11 +134,7 @@ For example, a basic SVG dependency is:
 
 ```toml
 [dependencies]
-merman = {
-    git = "https://github.com/Latias94/merman",
-    default-features = false,
-    features = ["svg"],
-}
+merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
 ```
 
 <!-- END GENERATED RELEASE README BASIC_SVG -->

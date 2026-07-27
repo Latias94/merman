@@ -4,11 +4,7 @@
 
 A browserless Mermaid command-line renderer for SVG, PNG, JPEG, PDF, ASCII, and Unicode output. The top-level command follows common `mmdc` input and output conventions; parser, layout, lint, and inspection subcommands support development tooling.
 
-<!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_NOTICE -->
-
-> **Source candidate:** this README targets `0.8.0-alpha.4`, which is not published yet. Install it from the repository until the matching release reaches crates.io.
-
-<!-- END GENERATED RELEASE README CLI_PACKAGE_NOTICE -->
+> Installation commands follow the repository release state. Development versions use the Git checkout; release commits use an exact crates.io version. Registry form does not prove that publication has completed.
 
 ## Install
 

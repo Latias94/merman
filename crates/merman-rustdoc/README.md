@@ -6,11 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-<!-- BEGIN GENERATED RELEASE README RUSTDOC_NOTICE -->
-
-> **Source candidate:** the examples below target `0.8.0-alpha.4`, which is not published yet. Use the Git dependency until the matching release reaches crates.io.
-
-<!-- END GENERATED RELEASE README RUSTDOC_NOTICE -->
+> Installation snippets follow the repository release state. Development versions use the Git checkout; release commits use an exact crates.io version. Registry form does not prove that publication has completed.
 
 ## Quick Start
 
@@ -20,11 +16,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = {
-    version = "=0.8.0-alpha.4",
-    git = "https://github.com/Latias94/merman",
-    optional = true,
-}
+merman-rustdoc = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -70,13 +62,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = {
-    version = "=0.8.0-alpha.4",
-    git = "https://github.com/Latias94/merman",
-    default-features = false,
-    features = ["svg"],
-    optional = true,
-}
+merman-rustdoc = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"], optional = true }
 ```
 
 <!-- END GENERATED RELEASE README RUSTDOC_SLIM_DEPENDENCY -->

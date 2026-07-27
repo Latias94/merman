@@ -1,12 +1,12 @@
 # @mermanjs/web-render
 
-This is the browser-only complete SVG rendering package. Its artifact contains `svg`, both supported layout engines, and RaTeX math, but does not contain analysis, editor, or ASCII APIs.
+This is the browser-only complete SVG rendering package. Its artifact contains `svg`, both supported layout engines, and RaTeX math, but no analysis, editor-session, or ASCII-rendering workflow implementation. Shared package-group catalogs and types remain available for integration code.
 
 ## Install
 
-<!-- BEGIN GENERATED RELEASE README NPM_RENDER_INSTALL -->
+Use the generated command for the current repository release state:
 
-The `0.8.0-alpha.4` candidate is not published yet. Build the browser workspace from a checkout, then install this profile into the application from its local package directory:
+<!-- BEGIN GENERATED RELEASE README NPM_RENDER_INSTALL -->
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web

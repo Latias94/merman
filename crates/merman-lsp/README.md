@@ -62,11 +62,7 @@ Applications that already own a transport can depend on `merman-lsp` with defaul
 
 ```toml
 [dependencies]
-merman-lsp = {
-    version = "=0.8.0-alpha.4",
-    git = "https://github.com/Latias94/merman",
-    default-features = false,
-}
+merman-lsp = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false }
 ```
 
 <!-- END GENERATED RELEASE README LSP_LIBRARY_DEPENDENCY -->

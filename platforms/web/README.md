@@ -2,11 +2,7 @@
 
 This workspace builds the lockstep, browser-only Merman package group. Each admitted package contains one matching WASM artifact, its TypeScript wrapper, provenance, and legal material.
 
-<!-- BEGIN GENERATED RELEASE README WEB_GUIDE_NOTICE -->
-
-> The `0.8.0-alpha.4` package group is a source candidate and is not published yet. Build the packages from this checkout; the `alpha` npm tag still resolves to the preceding prerelease.
-
-<!-- END GENERATED RELEASE README WEB_GUIDE_NOTICE -->
+> Installation commands follow the repository release state. Development versions build and install the local package group; release commits use an exact npm version. Registry form does not prove that publication has completed.
 
 Do not use these packages for Node.js or SSR. They require a browser main-thread or Web Worker realm when loading the WASM module. A future Node transport, if admitted, will be a separate package rather than a browser-WASM fallback.
 
@@ -24,9 +20,9 @@ Public packages use one version and one release contract. Workflow-specific slim
 
 ## Browser Quick Start
 
-<!-- BEGIN GENERATED RELEASE README WEB_GUIDE_INSTALL -->
+Install the complete browser package for the current repository release state:
 
-Build the candidate and install the complete local package from a browser application:
+<!-- BEGIN GENERATED RELEASE README WEB_GUIDE_INSTALL -->
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
@@ -70,5 +66,7 @@ npm run smoke --prefix platforms/web
 ```
 
 `web-surface-descriptor.json` maps package names to exact artifact profiles. Cargo feature selection lives in the artifact-profile authority; this workspace derives its WASM build and package assembly from that authority instead of maintaining a second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` to validate all generated WASM inputs and `npm run verify:packages --prefix platforms/web` to enforce the one-WASM, legal-material, provenance, export, and size-admission invariants.
+
+Package evidence is intentionally layered. The artifact profile and runtime catalog prove the compiled Rust/WASM capabilities. The recorded static-module closure proves only the JavaScript and declaration files reachable from that package entry; explicit source tests independently require and forbid the workflow modules for each surface. Shared catalogs and types describe the lockstep package group and do not imply that a workflow implementation is compiled into a slim WASM artifact.
 
 The private workspace itself is never published. Release automation packs and verifies every admitted package as a version-locked group, then performs staged dist-tag reconciliation without rebuilding in the privileged publish job.

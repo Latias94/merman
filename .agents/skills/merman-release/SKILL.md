@@ -74,9 +74,34 @@ python3 scripts/release-version.py set --version <version>
 python3 scripts/release-version.py
 ```
 
-The transaction updates Cargo dependency requirements, workspace and fuzz lock metadata, Web
-package and lock metadata, Python's PEP 440 form, Android and Flutter manifests, CocoaPods
-metadata, and iOS framework versions. Do not edit those projections independently.
+The command validates the complete projection in memory, then updates Cargo dependency
+requirements, workspace and fuzz lock metadata, Web package and lock metadata, Python's PEP 440
+form, Android and Flutter manifests, CocoaPods metadata, iOS framework versions, and generated
+README installation examples. Run it in an exclusive Git worktree. If it is interrupted, keep the
+partial diff and rerun the same command; the workspace authority is written last so the update is
+recoverable without a private journal. A changed version always returns the README to
+source-candidate mode. Do not edit those projections independently.
+
+Immediately before preflight, switch the generated README blocks to exact registry commands and
+run the release-ready gate:
+
+```bash
+python3 scripts/release-version.py set-readme-mode \
+  --mode registry --version <version>
+python3 scripts/release-version.py check --version <version>
+```
+
+Registry mode prepares exact commands inside release artifacts; it does not claim that crates.io,
+npm, or any other independently published channel is already live. Commit every path printed by
+the command before tagging, including the root manifest, root README, and all projected package
+READMEs. If release preparation is cancelled, run the same command with `--mode source`. Do not
+publish, tag, or dispatch a publishing workflow while the release-ready check fails.
+
+After a successful publication, keep the released commit and tag in `registry` mode. Do not switch
+the same version back to `source`, because that would describe a published release as unpublished.
+When development advances to the next version, `set --version <next-version>` returns the generated
+commands to `source` mode automatically. If `main` remains on the released version, leaving it in
+`registry` mode is the truthful state.
 
 The VS Code extension, Typst package wrapper, and `roughr-merman` have independent version axes.
 Do not derive them from the workspace release. Update their versions only for a release of that
@@ -84,8 +109,8 @@ specific package, and record the bundled workspace renderer through artifact pro
 Typst compatibility mapping. Update platform changelogs and package README compatibility sections
 when the published surface changes.
 
-Completion criterion: every workspace-coupled manifest names the root release, with
-registry-specific spelling only where required, while each independent package version and bundled
+Completion criterion: every workspace-coupled manifest names the root release, the README is in
+exact registry mode for that release, and each independent package version and bundled
 workspace-runtime provenance are internally consistent.
 
 ## Preflight

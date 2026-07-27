@@ -4,9 +4,9 @@ The complete browser-only Merman SDK. Its single WASM artifact includes SVG rend
 
 ## Install
 
-<!-- BEGIN GENERATED RELEASE README NPM_FULL_INSTALL -->
+Use the generated command for the current repository release state:
 
-The `0.8.0-alpha.4` candidate is not published yet. Build the browser workspace from a checkout, then install this profile into the application from its local package directory:
+<!-- BEGIN GENERATED RELEASE README NPM_FULL_INSTALL -->
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web

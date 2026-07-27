@@ -55,9 +55,10 @@ Compare these authorities instead of inferring behavior from names:
 - ASCII support: `docs/rendering/ASCII_SUPPORT_MATRIX.md` and runtime
   `ascii_capabilities`; never infer ASCII support from SVG admission.
 - Distribution channels: `docs/release/SURFACES.json` and
-  `docs/release/PACKAGE_SURFACES.md`. An artifact profile is a build/proof contract, not an
-  installable package or proof that a registry channel is live. Use the release-status probe or
-  registry evidence before describing an untagged candidate version as published.
+  `docs/release/PACKAGE_SURFACES.md`. Also record the generated README installation mode reported
+  by `python3 scripts/release-version.py`. An artifact profile or README registry projection is a
+  build/release contract, not proof that a registry channel is live. Use the release-status probe
+  or registry evidence before describing an untagged candidate version as published.
 - Typst: `packages/typst/merman/README.md`, `typst.toml`, and the `typst-wasm` artifact profile.
   Record the independent package-to-Merman version mapping and do not infer browser or math
   capabilities.
@@ -112,6 +113,7 @@ Trace each table cell to a raw fact or command output. Recompute percentages fro
 Run the collector's smoke test and the skill validator:
 
 ```console
+python3 scripts/release-version.py
 python3 .agents/skills/writing-great-skills/scripts/collect_release_facts.py \
   --base v0.8.0-alpha.3 --target HEAD --output /tmp/facts.json
 python3 /Users/frankorz/.codex/skills/.system/skill-creator/scripts/quick_validate.py \

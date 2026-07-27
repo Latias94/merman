@@ -8,9 +8,9 @@ Most applications that want rendered output should use the `merman` facade inste
 
 ## Quick Start
 
-<!-- BEGIN GENERATED RELEASE README CORE_INSTALL -->
+Use the installation command projected for the current repository release state:
 
-The current `0.8.0-alpha.4` source candidate can be used directly from the repository:
+<!-- BEGIN GENERATED RELEASE README CORE_INSTALL -->
 
 ```sh
 cargo add merman-core --git https://github.com/Latias94/merman

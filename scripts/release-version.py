@@ -8,14 +8,18 @@ import sys
 from pathlib import Path
 
 try:
+    from scripts import release_readme
     from scripts.release_projection import (
+        apply_readme_install_mode,
         apply_version_update,
         format_verification_failures,
         verify_repository,
     )
     from scripts.release_version import parse_release_version
 except ModuleNotFoundError:
+    import release_readme
     from release_projection import (
+        apply_readme_install_mode,
         apply_version_update,
         format_verification_failures,
         verify_repository,
@@ -42,8 +46,16 @@ def cargo_workspace_version() -> str:
     return verify_repository(ROOT).authority.canonical
 
 
-def check_versions(version: str | None = None) -> int:
-    result = verify_repository(ROOT, expected_version=version)
+def check_versions(
+    version: str | None = None,
+    *,
+    required_readme_mode: str | None = None,
+) -> int:
+    result = verify_repository(
+        ROOT,
+        expected_version=version,
+        required_readme_mode=required_readme_mode,
+    )
     for observation in result.observations:
         if observation.matches:
             print(f"{observation.label}: {observation.actual}")
@@ -64,16 +76,43 @@ def main() -> int:
         "command",
         nargs="?",
         default="verify",
-        choices=["canonical", "check", "npm-dist-tag", "pep440", "set", "verify"],
+        choices=[
+            "canonical",
+            "check",
+            "npm-dist-tag",
+            "pep440",
+            "set",
+            "set-readme-mode",
+            "verify",
+        ],
     )
     parser.add_argument("--version")
+    parser.add_argument("--mode", choices=sorted(release_readme.MODES))
     args = parser.parse_args()
 
     try:
         if args.command == "verify":
             if args.version is not None:
                 parser.error("verify reads the authority from Cargo.toml; do not pass --version")
+            if args.mode is not None:
+                parser.error("verify reads the README mode from Cargo.toml; do not pass --mode")
             return check_versions()
+        if args.command == "set-readme-mode":
+            if args.version is None:
+                parser.error("set-readme-mode requires --version")
+            if args.mode is None:
+                parser.error("set-readme-mode requires --mode")
+            changed = apply_readme_install_mode(ROOT, args.version, args.mode)
+            for path in changed:
+                print(f"updated {path}")
+            if not changed:
+                print(
+                    f"README installation mode already matches {args.mode} "
+                    f"for {canonical_release_version(args.version)}"
+                )
+            return 0
+        if args.mode is not None:
+            parser.error(f"{args.command} does not accept --mode")
         if args.version is None:
             parser.error(f"{args.command} requires --version")
         if args.command == "canonical":
@@ -86,7 +125,10 @@ def main() -> int:
             print(semver_to_pep440(args.version))
             return 0
         if args.command == "check":
-            return check_versions(args.version)
+            return check_versions(
+                args.version,
+                required_readme_mode=release_readme.REGISTRY_MODE,
+            )
         if args.command == "set":
             changed = apply_version_update(ROOT, args.version)
             for path in changed:

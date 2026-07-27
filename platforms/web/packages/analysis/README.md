@@ -1,12 +1,12 @@
 # @mermanjs/web-analysis
 
-Browser-only Merman semantic analysis, validation, and diagram detection without SVG, ASCII, or editor-session exports.
+Browser-only Merman semantic analysis, validation, and diagram detection without SVG rendering, ASCII rendering, or editor-session workflow implementations. Shared package-group catalogs and types remain available for integration code.
 
 ## Install
 
-<!-- BEGIN GENERATED RELEASE README NPM_ANALYSIS_INSTALL -->
+Use the generated command for the current repository release state:
 
-The `0.8.0-alpha.4` candidate is not published yet. Build the browser workspace from a checkout, then install this profile into the application from its local package directory:
+<!-- BEGIN GENERATED RELEASE README NPM_ANALYSIS_INSTALL -->
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
