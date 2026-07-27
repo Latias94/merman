@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "roots": ["../../../fixtures"],
   "extensions": [".mmd"],
   "binding_options": {
@@ -11,5 +11,17 @@
   },
   "operation_options": {
     "version": 1
+  },
+  "workloads": {
+    "cold_svg": {
+      "operation_id": "svg",
+      "path": "@benchmark/cold-flowchart-smoke.mmd",
+      "source": "flowchart TD\nA-->B"
+    },
+    "concurrency_svg": {
+      "operation_id": "svg",
+      "path": "@benchmark/concurrency-flowchart-smoke.mmd",
+      "source": "flowchart TD\nA-->B"
+    }
   }
 }

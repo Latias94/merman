@@ -14,9 +14,11 @@ try {
   const output =
     input.mode === "cold"
       ? await runCold(input)
-      : input.mode === "shutdown"
-        ? await runShutdown(input)
-        : await runWarm(input);
+      : input.mode === "concurrency"
+        ? await runConcurrency(input)
+        : input.mode === "shutdown"
+          ? await runShutdown(input)
+          : await runWarm(input);
   process.stdout.write(`${JSON.stringify(output)}\n`);
 } catch (error) {
   console.error(error instanceof Error ? error.stack ?? error.message : String(error));
@@ -30,15 +32,51 @@ async function runCold(input) {
     input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
   );
-  const outcome = await renderOutcome(engine, input.cases[0], input.operationOptions);
+  const execution = await executeSvg(engine, input.workload, input.operationOptions);
   const operationMs = performance.now() - started;
+  const result = rawExecutionResult(input.workload, execution);
   await engine.dispose();
   return {
     operation_ms: operationMs,
     baseline_rss_bytes: baselineBytes,
     peak_rss_bytes: maxRssBytes(),
-    outcome,
+    result,
   };
+}
+
+async function runConcurrency(input) {
+  const engine = await createProductEngine(
+    input,
+    {
+      bindingOptions: input.bindingOptions,
+      concurrency: input.concurrency,
+      maxQueue: input.maxQueue,
+    },
+  );
+  const batch = Array.from({ length: input.concurrency }, () => input.workload);
+  for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
+    await Promise.all(
+      batch.map((item) => executeSvg(engine, item, input.operationOptions)),
+    );
+  }
+  const batchSamplesMs = [];
+  const samples = [];
+  for (let iteration = 0; iteration < input.concurrencyIterations; iteration += 1) {
+    const started = performance.now();
+    const executions = await Promise.all(
+      batch.map((item) => executeSvg(engine, item, input.operationOptions)),
+    );
+    const elapsedMs = performance.now() - started;
+    batchSamplesMs.push(elapsedMs);
+    samples.push({
+      iteration,
+      elapsed_ms: elapsedMs,
+      results: executions.map((execution, index) =>
+        rawExecutionResult(batch[index], execution)),
+    });
+  }
+  await engine.dispose();
+  return { batch_samples_ms: batchSamplesMs, samples };
 }
 
 async function runShutdown(input) {
@@ -46,10 +84,10 @@ async function runShutdown(input) {
     input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
   );
-  const outcome = await renderOutcome(
-    engine,
-    { path: "process-shutdown-smoke.mmd", source: SMOKE_SOURCE },
-    input.operationOptions,
+  const item = { path: "process-shutdown-smoke.mmd", source: SMOKE_SOURCE };
+  const outcome = renderOutcome(
+    item,
+    await executeSvg(engine, item, input.operationOptions),
   );
   if (!outcome.ok) {
     throw new Error(`process-shutdown probe failed to render: ${outcome.message ?? outcome.kind}`);
@@ -78,7 +116,7 @@ async function runWarm(input) {
 
   for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
     for (const item of input.cases) {
-      await renderOutcome(engine, item, input.operationOptions);
+      timedRenderOutcome(item, await executeSvg(engine, item, input.operationOptions));
     }
   }
 
@@ -87,7 +125,8 @@ async function runWarm(input) {
   for (let iteration = 0; iteration < input.iterations; iteration += 1) {
     for (const item of input.cases) {
       const started = performance.now();
-      const outcome = await renderOutcome(engine, item, input.operationOptions);
+      const execution = await executeSvg(engine, item, input.operationOptions);
+      const outcome = timedRenderOutcome(item, execution);
       const elapsedMs = performance.now() - started;
       samplesMs.push(elapsedMs);
       samples.push({
@@ -99,21 +138,6 @@ async function runWarm(input) {
     }
   }
 
-  const concurrencySamplesMs = [];
-  const concurrencySamples = [];
-  const batch = Array.from(
-    { length: input.concurrency },
-    (_, index) => input.cases[index % input.cases.length],
-  );
-  for (let iteration = 0; iteration < input.concurrencyIterations; iteration += 1) {
-    const started = performance.now();
-    const batchOutcomes = await Promise.all(
-      batch.map((item) => renderOutcome(engine, item, input.operationOptions)),
-    );
-    const elapsedMs = performance.now() - started;
-    concurrencySamplesMs.push(elapsedMs);
-    concurrencySamples.push({ iteration, elapsed_ms: elapsedMs, outcomes: batchOutcomes });
-  }
   const outcomes = [];
   for (const item of input.cases) {
     outcomes.push(await corpusOutcome(engine, item, input.operationOptions));
@@ -126,8 +150,6 @@ async function runWarm(input) {
     outcomes,
     samples_ms: samplesMs,
     samples,
-    concurrency_samples_ms: concurrencySamplesMs,
-    concurrency_samples: concurrencySamples,
     baseline_rss_bytes: baselineBytes,
     peak_rss_bytes: maxRssBytes(),
     queue_lifecycle: queueLifecycle,
@@ -301,20 +323,30 @@ async function createProductEngine(input, options) {
   return facade.createNodeEngine(options);
 }
 
-async function renderOutcome(engine, item, operationOptions) {
+async function executeSvg(engine, item, operationOptions) {
   try {
-    const result = await engine.executeOperation({
-      operationId: "svg",
-      source: item.source,
-      optionsJson: JSON.stringify(operationOptions),
-    });
     return {
-      path: item.path,
       ok: true,
-      operation_id: result.operation_id,
-      media_type: result.media_type,
-      sha256: digest(result.data),
-      bytes: Buffer.byteLength(result.data),
+      result: await engine.executeOperation({
+        operationId: "svg",
+        source: item.source,
+        optionsJson: JSON.stringify(operationOptions),
+      }),
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+function renderOutcome(item, execution) {
+  const outcome = timedRenderOutcome(item, execution);
+  if (!outcome.ok) return outcome;
+  try {
+    const svgEvidence = svgTransportEvidence(execution.result.data);
+    return {
+      ...outcome,
+      svg_structure_sha256: svgEvidence.structure_sha256,
+      svg_geometry_sha256: svgEvidence.geometry_sha256,
     };
   } catch (error) {
     return {
@@ -328,34 +360,47 @@ async function renderOutcome(engine, item, operationOptions) {
   }
 }
 
-async function corpusOutcome(engine, item, operationOptions) {
-  const semantic = await semanticOutcome(engine, item, operationOptions);
-  try {
-    const result = await engine.executeOperation({
-      operationId: "svg",
-      source: item.source,
-      optionsJson: JSON.stringify(operationOptions),
-    });
-    const svgEvidence = svgTransportEvidence(result.data);
-    return {
-      path: item.path,
-      ok: true,
-      operation_id: result.operation_id,
-      media_type: result.media_type,
-      sha256: digest(result.data),
-      svg_structure_sha256: svgEvidence.structure_sha256,
-      svg_geometry_sha256: svgEvidence.geometry_sha256,
-      bytes: Buffer.byteLength(result.data),
-      semantic,
-    };
-  } catch (error) {
+function timedRenderOutcome(item, execution) {
+  if (!execution.ok) {
     return {
       path: item.path,
       ok: false,
-      ...errorEvidence(error),
-      semantic,
+      ...errorEvidence(execution.error),
     };
   }
+  return {
+    path: item.path,
+    ok: true,
+    operation_id: execution.result.operation_id,
+    media_type: execution.result.media_type,
+    sha256: digest(execution.result.data),
+    bytes: Buffer.byteLength(execution.result.data),
+  };
+}
+
+function rawExecutionResult(item, execution) {
+  if (!execution.ok) {
+    return {
+      path: item.path,
+      ok: false,
+      ...errorEvidence(execution.error),
+    };
+  }
+  return {
+    path: item.path,
+    ok: true,
+    operation_id: execution.result.operation_id,
+    media_type: execution.result.media_type,
+    data: execution.result.data,
+  };
+}
+
+async function corpusOutcome(engine, item, operationOptions) {
+  const semantic = await semanticOutcome(engine, item, operationOptions);
+  return {
+    ...renderOutcome(item, await executeSvg(engine, item, operationOptions)),
+    semantic,
+  };
 }
 
 async function semanticOutcome(engine, item, operationOptions) {

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
   existsSync,
@@ -18,8 +19,14 @@ import { loadCorpus } from "./corpus.mjs";
 import { readBuildReceipt } from "./build-receipt.mjs";
 import { withCandidateInstallation } from "./footprint.mjs";
 import { computeHarnessDigest } from "./harness-inputs.mjs";
-import { validateComparisonReport } from "./report-contract.mjs";
-import { equivalentTransportOutcome } from "./svg-signature.mjs";
+import {
+  computeWorkloadComparison,
+  validateComparisonReport,
+} from "./report-contract.mjs";
+import {
+  equivalentTransportOutcome,
+  svgTransportEvidence,
+} from "./svg-signature.mjs";
 import { summarize } from "./stats.mjs";
 import { digestJson } from "../stable-json.mjs";
 
@@ -59,98 +66,128 @@ export function runComparison(options) {
     const parity = compareOutcomes(measured[0].warm.outcomes, measured[1].warm.outcomes);
     const corpusContractFailed = parity.mismatches.length > 0;
     const reportProvenance = provenance(initialHarnessDigest);
-    const candidates = measured.map(({ id, artifact, cold, footprint, shutdown, warm }) => {
-      const buildReceipt = buildReceipts.get(id);
-      const footprintEvidence = projectFootprint(footprint);
-      const queueLifecycle = {
-        ...warm.queue_lifecycle,
-        process_shutdown_passed: shutdown.process_shutdown_passed,
-        evidence: {
-          ...warm.queue_lifecycle.evidence,
-          shutdown: shutdown.evidence,
-        },
-      };
-      const targetEvidencePayload = {
-        schema_version: 1,
-        host: {
-          platform: process.platform,
-          arch: process.arch,
-          libc: target.endsWith("-gnu") ? "gnu" : target.endsWith("-musl") ? "musl" : null,
-          resolved_target: target,
-          node: process.version,
-        },
-        provenance: reportProvenance,
-        build_receipt: buildReceipt,
-        footprint: footprintEvidence,
-        queue_lifecycle: queueLifecycle,
-        error_behavior: warm.error_behavior,
-      };
-      return {
-        id,
-        input_digest: corpus.digest,
-        build_receipt: buildReceipt,
-        corpus: {
-          cases: corpus.cases.length,
-          matched: parity.matched,
-          mismatched: parity.mismatches.length,
-          geometry_svg_mismatches: parity.geometryMismatches.length,
-          raw_svg_byte_mismatches: parity.rawSvgByteMismatches,
-          mismatch_paths: parity.mismatches,
-          geometry_mismatch_paths: parity.geometryMismatches,
-          successful: warm.outcomes.filter((outcome) => outcome.ok).length,
-          failed: warm.outcomes.filter((outcome) => !outcome.ok).length,
-          outcomes: warm.outcomes,
-          results_digest: digestJson(warm.outcomes),
-        },
-        cold_process: {
-          isolated_processes: true,
-          samples_ms: cold.samplesMs,
-          samples: cold.samples,
-          summary: summarize(cold.samplesMs),
-        },
-        warm_latency: {
-          samples_ms: warm.samples_ms,
-          samples: warm.samples,
-          summary: summarize(warm.samples_ms),
-        },
-        rss: {
-          method: "process.resourceUsage.maxRSS",
-          baseline_bytes: warm.baseline_rss_bytes,
-          peak_bytes: warm.peak_rss_bytes,
-        },
-        footprint: footprintEvidence,
-        queue_lifecycle: queueLifecycle,
-        error_behavior: warm.error_behavior,
-        concurrency: {
-          workers: options.concurrency,
-          requests_per_batch: options.concurrency,
-          batch_samples_ms: warm.concurrency_samples_ms,
-          samples: warm.concurrency_samples,
-          summary: summarize(warm.concurrency_samples_ms),
-        },
-        target_results: [
-          {
-            target,
-            runtime_passed: true,
-            install_passed: footprint.target_install_passed,
+    const candidates = measured.map(
+      ({ id, artifact, cold, concurrency, footprint, shutdown, warm }) => {
+        const buildReceipt = buildReceipts.get(id);
+        const footprintEvidence = projectFootprint(footprint);
+        const successfulWarmSamples = warm.samples.filter((sample) => sample.outcome.ok);
+        if (successfulWarmSamples.length === 0) {
+          throw new Error(`${id} benchmark produced no successful SVG samples.`);
+        }
+        const successfulWarmMs = successfulWarmSamples.map((sample) => sample.elapsed_ms);
+        const queueLifecycle = {
+          ...warm.queue_lifecycle,
+          process_shutdown_passed: shutdown.process_shutdown_passed,
+          evidence: {
+            ...warm.queue_lifecycle.evidence,
+            shutdown: shutdown.evidence,
+          },
+        };
+        const targetEvidencePayload = {
+          schema_version: 1,
+          host: {
+            platform: process.platform,
+            arch: process.arch,
+            libc: target.endsWith("-gnu") ? "gnu" : target.endsWith("-musl") ? "musl" : null,
+            resolved_target: target,
             node: process.version,
-            evidence: {
-              ...targetEvidencePayload,
-              digest: digestJson(targetEvidencePayload),
+          },
+          provenance: reportProvenance,
+          build_receipt: buildReceipt,
+          footprint: footprintEvidence,
+          queue_lifecycle: queueLifecycle,
+          error_behavior: warm.error_behavior,
+        };
+        return {
+          id,
+          input_digest: corpus.digest,
+          build_receipt: buildReceipt,
+          corpus: {
+            cases: corpus.cases.length,
+            matched: parity.matched,
+            mismatched: parity.mismatches.length,
+            geometry_svg_mismatches: parity.geometryMismatches.length,
+            raw_svg_byte_mismatches: parity.rawSvgByteMismatches,
+            mismatch_paths: parity.mismatches,
+            geometry_mismatch_paths: parity.geometryMismatches,
+            successful: warm.outcomes.filter((outcome) => outcome.ok).length,
+            failed: warm.outcomes.filter((outcome) => !outcome.ok).length,
+            outcomes: warm.outcomes,
+            results_digest: digestJson(warm.outcomes),
+          },
+          cold_process: {
+            isolated_processes: true,
+            workload_id: "cold_svg",
+            timing_scope: "parent-dispatch-through-worker-raw-svg-result",
+            operation_timing_scope:
+              "worker-engine-init-through-first-svg-operation-result",
+            evidence_excluded: true,
+            representative: cold.representative,
+            samples_ms: cold.samplesMs,
+            samples: cold.samples,
+            summary: summarize(cold.samplesMs),
+          },
+          warm_latency: {
+            samples_ms: warm.samples_ms,
+            samples: warm.samples,
+            summary: summarize(warm.samples_ms),
+            successful_svg: {
+              samples_ms: successfulWarmMs,
+              summary: summarize(successfulWarmMs),
             },
           },
-        ],
-      };
-    });
+          rss: {
+            method: "process.resourceUsage.maxRSS",
+            baseline_bytes: warm.baseline_rss_bytes,
+            peak_bytes: warm.peak_rss_bytes,
+          },
+          footprint: footprintEvidence,
+          queue_lifecycle: queueLifecycle,
+          error_behavior: warm.error_behavior,
+          concurrency: {
+            workload_id: "concurrency_svg",
+            timing_scope: "warmed-engine-raw-svg-operation-batch",
+            evidence_excluded: true,
+            representative: concurrency.representative,
+            workers: options.concurrency,
+            requests_per_batch: options.concurrency,
+            batch_samples_ms: concurrency.samplesMs,
+            samples: concurrency.samples,
+            summary: summarize(concurrency.samplesMs),
+          },
+          target_results: [
+            {
+              target,
+              runtime_passed: true,
+              install_passed: footprint.target_install_passed,
+              node: process.version,
+              evidence: {
+                ...targetEvidencePayload,
+                digest: digestJson(targetEvidencePayload),
+              },
+            },
+          ],
+        };
+      },
+    );
+    const workloadComparison = computeWorkloadComparison(candidates);
+    const workloadDrift = Object.entries(workloadComparison)
+      .filter(([, comparison]) =>
+        !comparison.geometry_matched ||
+        !comparison.raw_svg_matched ||
+        !comparison.bytes_matched)
+      .map(([id]) => id);
     const report = {
-      schema_version: 1,
+      schema_version: 2,
       provenance: reportProvenance,
       input: {
         digest: corpus.digest,
+        corpus_digest: corpus.corpusDigest,
         corpus: path.relative(repositoryRoot, corpus.manifestPath).split(path.sep).join("/"),
         cases: corpus.cases.length,
         binding_options: corpus.bindingOptions,
         operation_options: corpus.operationOptions,
+        workloads: corpus.workloads,
       },
       sampling: {
         cold_processes: options.coldSamples,
@@ -159,6 +196,7 @@ export function runComparison(options) {
         concurrency_iterations: options.concurrencyIterations,
       },
       candidates,
+      workload_comparison: workloadComparison,
       decision: {
         status: corpusContractFailed ? "rejected" : "inconclusive",
         selected: null,
@@ -173,12 +211,17 @@ export function runComparison(options) {
                 `${parity.geometryMismatches.length} SVG outcomes have cross-target geometry drift; this is recorded separately from the Node transport contract.`,
               ]
             : []),
+          ...(workloadDrift.length > 0
+            ? [
+                `${workloadDrift.join(", ")} fixed SVG workload evidence differs in geometry or raw bytes across Node transports; the report records each comparison explicitly.`,
+              ]
+            : []),
           "This host contributes one target result only; U14 admission requires runtime CI evidence for every shipped target.",
         ],
       },
     };
     assertHarnessUnchanged(initialHarnessDigest);
-    return validateComparisonReport(report);
+    return validateComparisonReport(report, { trustedCorpus: corpus });
 
     function measureInstalledCandidate(id, artifact) {
       return withCandidateInstallation(
@@ -191,52 +234,148 @@ export function runComparison(options) {
     }
 
     function measureCandidate(id, artifact, productModule) {
-      const input = {
+      const input = buildCandidateWorkerInputs({
         candidate: id,
-        artifact,
         productModule,
-        bindingOptions: corpus.bindingOptions,
-        operationOptions: corpus.operationOptions,
-        cases: corpus.cases,
-        iterations: options.iterations,
-        warmupIterations: options.warmupIterations,
-        concurrencyIterations: options.concurrencyIterations,
-        concurrency: options.concurrency,
-        maxQueue: options.maxQueue,
-      };
-      const warm = runWorker(temporaryRoot, { ...input, mode: "warm" }, `${id}-warm`);
+        corpus,
+        options,
+      });
+      const warm = runWorker(temporaryRoot, input.warm, `${id}-warm`);
+      const rawConcurrency = runWorker(
+        temporaryRoot,
+        input.concurrency,
+        `${id}-concurrency`,
+      );
+      const concurrency = projectConcurrencyResult(
+        rawConcurrency,
+        corpus.workloads.concurrency_svg,
+      );
       const shutdown = runWorker(
         temporaryRoot,
-        { ...input, mode: "shutdown" },
+        input.shutdown,
         `${id}-shutdown`,
       );
       const samples = [];
+      let representative = null;
       for (let index = 0; index < options.coldSamples; index += 1) {
         const started = performance.now();
-        const sample = runWorker(
+        const rawSample = runWorker(
           temporaryRoot,
-          { ...input, mode: "cold", cases: [corpus.cases[index % corpus.cases.length]] },
+          input.cold,
           `${id}-cold-${index}`,
         );
+        const elapsedMs = performance.now() - started;
+        const outcome = projectSvgOutcome(rawSample.result);
+        representative ??= projectRepresentative(
+          rawSample.result,
+          corpus.workloads.cold_svg,
+        );
         samples.push({
-          elapsed_ms: performance.now() - started,
-          operation_ms: sample.operation_ms,
-          baseline_rss_bytes: sample.baseline_rss_bytes,
-          peak_rss_bytes: sample.peak_rss_bytes,
-          outcome: sample.outcome,
+          elapsed_ms: elapsedMs,
+          operation_ms: rawSample.operation_ms,
+          baseline_rss_bytes: rawSample.baseline_rss_bytes,
+          peak_rss_bytes: rawSample.peak_rss_bytes,
+          outcome,
         });
       }
       return {
         id,
         artifact,
         warm,
+        concurrency,
         shutdown,
-        cold: { samples, samplesMs: samples.map((sample) => sample.elapsed_ms) },
+        cold: {
+          representative,
+          samples,
+          samplesMs: samples.map((sample) => sample.elapsed_ms),
+        },
       };
     }
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
+}
+
+export function buildCandidateWorkerInputs({ candidate, productModule, corpus, options }) {
+  const common = {
+    candidate,
+    productModule,
+    bindingOptions: corpus.bindingOptions,
+    operationOptions: corpus.operationOptions,
+  };
+  return {
+    warm: {
+      ...common,
+      mode: "warm",
+      cases: corpus.cases,
+      iterations: options.iterations,
+      warmupIterations: options.warmupIterations,
+      concurrency: options.concurrency,
+      maxQueue: options.maxQueue,
+    },
+    cold: {
+      ...common,
+      mode: "cold",
+      workload: corpus.workloads.cold_svg,
+    },
+    concurrency: {
+      ...common,
+      mode: "concurrency",
+      workload: corpus.workloads.concurrency_svg,
+      warmupIterations: options.warmupIterations,
+      concurrencyIterations: options.concurrencyIterations,
+      concurrency: options.concurrency,
+      maxQueue: options.maxQueue,
+    },
+    shutdown: { ...common, mode: "shutdown" },
+  };
+}
+
+export function projectSvgOutcome(result) {
+  if (
+    result?.ok !== true ||
+    typeof result.path !== "string" ||
+    result.operation_id !== "svg" ||
+    result.media_type !== "image/svg+xml" ||
+    typeof result.data !== "string"
+  ) {
+    throw new Error("fixed benchmark workload did not return a raw SVG result.");
+  }
+  const svgEvidence = svgTransportEvidence(result.data);
+  return {
+    path: result.path,
+    ok: true,
+    operation_id: result.operation_id,
+    media_type: result.media_type,
+    sha256: digest(result.data),
+    svg_structure_sha256: svgEvidence.structure_sha256,
+    svg_geometry_sha256: svgEvidence.geometry_sha256,
+    bytes: Buffer.byteLength(result.data),
+  };
+}
+
+function projectConcurrencyResult(raw, workload) {
+  const samples = raw.samples.map((sample) => ({
+    iteration: sample.iteration,
+    elapsed_ms: sample.elapsed_ms,
+    outcomes: sample.results.map(projectSvgOutcome),
+  }));
+  return {
+    representative: projectRepresentative(raw.samples[0].results[0], workload),
+    samples,
+    samplesMs: raw.batch_samples_ms,
+  };
+}
+
+function projectRepresentative(result, workload) {
+  return {
+    source_sha256: digest(workload.source),
+    raw_svg: result.data,
+  };
+}
+
+function digest(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function runWorker(temporaryRoot, input, id) {

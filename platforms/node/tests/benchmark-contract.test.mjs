@@ -10,12 +10,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { readBuildReceipt } from "../scripts/benchmark/build-receipt.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
+  computeCorpusDigest,
   computeInputDigest,
-  validateComparisonReport,
+  computeWorkloadComparison,
+  validateComparisonReport as validateComparisonReportContract,
 } from "../scripts/benchmark/report-contract.mjs";
+import { loadCorpus } from "../scripts/benchmark/corpus.mjs";
 import { collectHarnessInputFiles } from "../scripts/benchmark/harness-inputs.mjs";
 import {
   assertHarnessUnchanged,
+  buildCandidateWorkerInputs,
+  projectSvgOutcome,
   projectFootprint,
 } from "../scripts/benchmark/run.mjs";
 import { summarize } from "../scripts/benchmark/stats.mjs";
@@ -50,13 +55,60 @@ const provenance = {
   },
   commit: "0123456789abcdef0123456789abcdef01234567",
 };
-const COMPARISON_INPUT_DIGEST = `sha256:${"a".repeat(64)}`;
+const WORKLOADS = {
+  cold_svg: {
+    operation_id: "svg",
+    path: "@benchmark/cold-flowchart-smoke.mmd",
+    source: "flowchart TD\nA-->B",
+  },
+  concurrency_svg: {
+    operation_id: "svg",
+    path: "@benchmark/concurrency-flowchart-smoke.mmd",
+    source: "flowchart TD\nA-->B",
+  },
+};
+const CORPUS_CASES = [
+  { path: "a.mmd", source: "flowchart TD\nA-->B" },
+  { path: "b.mmd", source: "invalid" },
+];
+const BINDING_OPTIONS = {
+  version: 1,
+  runtime_policy: "deterministic",
+  resources: { profile: "trusted-native" },
+};
+const OPERATION_OPTIONS = { version: 1 };
+const CORPUS_DIGEST = computeCorpusDigest(CORPUS_CASES);
+const COMPARISON_INPUT_DIGEST = computeInputDigest({
+  corpusDigest: CORPUS_DIGEST,
+  bindingOptions: BINDING_OPTIONS,
+  operationOptions: OPERATION_OPTIONS,
+  workloads: WORKLOADS,
+});
+const TRUSTED_TEST_CORPUS = {
+  cases: CORPUS_CASES,
+  bindingOptions: BINDING_OPTIONS,
+  operationOptions: OPERATION_OPTIONS,
+  workloads: WORKLOADS,
+  corpusDigest: CORPUS_DIGEST,
+  digest: COMPARISON_INPUT_DIGEST,
+  manifestPath: path.join(repositoryRoot, "fixtures", "**", "*.mmd"),
+};
+const REPRESENTATIVE_SVG = '<svg viewBox="0 0 1 1"/>';
+const REPRESENTATIVE_SVG_SHA =
+  `sha256:${createHash("sha256").update(REPRESENTATIVE_SVG).digest("hex")}`;
+const REPRESENTATIVE_SVG_EVIDENCE = svgTransportEvidence(REPRESENTATIVE_SVG);
 const SAMPLING = {
   cold_processes: 2,
   warmup_iterations: 1,
   measured_iterations: 2,
   concurrency_iterations: 2,
 };
+
+function validateComparisonReport(report) {
+  return validateComparisonReportContract(report, {
+    trustedCorpus: TRUSTED_TEST_CORPUS,
+  });
+}
 const CAPABILITY_RECIPE = {
   default_features: false,
   capability_recipe: {
@@ -201,8 +253,24 @@ function timedSuccess(path) {
     ok: true,
     operation_id: "svg",
     media_type: "image/svg+xml",
-    sha256: `sha256:${"1".repeat(64)}`,
-    bytes: 10,
+    sha256: REPRESENTATIVE_SVG_SHA,
+    svg_structure_sha256: REPRESENTATIVE_SVG_EVIDENCE.structure_sha256,
+    svg_geometry_sha256: REPRESENTATIVE_SVG_EVIDENCE.geometry_sha256,
+    bytes: Buffer.byteLength(REPRESENTATIVE_SVG),
+  };
+}
+
+function timedSuccessForSvg(path, rawSvg) {
+  const evidence = svgTransportEvidence(rawSvg);
+  return {
+    path,
+    ok: true,
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    sha256: `sha256:${createHash("sha256").update(rawSvg).digest("hex")}`,
+    svg_structure_sha256: evidence.structure_sha256,
+    svg_geometry_sha256: evidence.geometry_sha256,
+    bytes: Buffer.byteLength(rawSvg),
   };
 }
 
@@ -213,6 +281,14 @@ function timedFailure(path) {
     kind: "parse-error",
     code_name: null,
     capability_id: null,
+  };
+}
+
+function workloadRepresentative(workload) {
+  return {
+    source_sha256:
+      `sha256:${createHash("sha256").update(workload.source).digest("hex")}`,
+    raw_svg: REPRESENTATIVE_SVG,
   };
 }
 
@@ -242,6 +318,14 @@ test("benchmark measurement rejects harness drift", () => {
   );
 });
 
+test("benchmark corpus rejects the superseded schema 1 manifest", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-corpus-schema-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const manifest = path.join(root, "corpus.json");
+  writeFileSync(manifest, JSON.stringify({ schema_version: 1, roots: [] }));
+  assert.throws(() => loadCorpus(manifest), /schema_version must be 2/i);
+});
+
 test("process shutdown probe uses a stable valid smoke diagram", (context) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-shutdown-probe-"));
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -257,7 +341,7 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
       "        error.kind = 'parse-error';",
       "        throw error;",
       "      }",
-      "      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '<svg/>' };",
+      `      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '${REPRESENTATIVE_SVG}' };`,
       "    },",
       "    async dispose() {},",
       "  };",
@@ -278,7 +362,6 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
         resources: { profile: "trusted-native" },
       },
       operationOptions: { version: 1 },
-      cases: [{ path: "invalid.mmd", source: "architecture-beta\ninvalid" }],
     }),
   );
   const result = spawnSync(
@@ -291,6 +374,99 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
     process_shutdown_passed: true,
     evidence: { render_succeeded: true, dispose_called: false },
   });
+});
+
+test("cold latency uses the declared successful workload, not the leading corpus error", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-workload-probe-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const productModule = path.join(root, "product.mjs");
+  writeFileSync(
+    productModule,
+    [
+      "export async function createNodeEngine() {",
+      "  return {",
+      "    async executeOperation({ source }) {",
+      "      if (source.startsWith('invalid')) {",
+      "        const error = new Error('intentional corpus error');",
+      "        error.kind = 'parse-error';",
+      "        throw error;",
+      "      }",
+      "      if (source.startsWith('not svg')) {",
+      "        return { operation_id: 'svg', media_type: 'image/svg+xml', data: 'plain text' };",
+      "      }",
+      `      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '${REPRESENTATIVE_SVG}' };`,
+      "    },",
+      "    async dispose() {},",
+      "  };",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const input = path.join(root, "cold.json");
+  writeFileSync(
+    input,
+    JSON.stringify({
+      mode: "cold",
+      candidate: "node-wasm",
+      productModule: pathToFileURL(productModule).href,
+      bindingOptions: {
+        version: 1,
+        runtime_policy: "deterministic",
+        resources: { profile: "trusted-native" },
+      },
+      operationOptions: { version: 1 },
+      workload: WORKLOADS.cold_svg,
+    }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [path.join(nodeRoot, "scripts", "benchmark", "worker.mjs"), input],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const rawResult = JSON.parse(result.stdout).result;
+  assert.equal(rawResult.path, WORKLOADS.cold_svg.path);
+  assert.equal(rawResult.data, REPRESENTATIVE_SVG);
+  assert.deepEqual(projectSvgOutcome(rawResult), timedSuccess(WORKLOADS.cold_svg.path));
+
+  const nonSvgInput = path.join(root, "non-svg.json");
+  writeFileSync(
+    nonSvgInput,
+    JSON.stringify({
+      ...JSON.parse(readFileSync(input, "utf8")),
+      workload: { ...WORKLOADS.cold_svg, source: "not svg" },
+    }),
+  );
+  const nonSvgResult = spawnSync(
+    process.execPath,
+    [path.join(nodeRoot, "scripts", "benchmark", "worker.mjs"), nonSvgInput],
+    { encoding: "utf8" },
+  );
+  assert.equal(nonSvgResult.status, 0, nonSvgResult.stderr);
+  assert.throws(
+    () => projectSvgOutcome(JSON.parse(nonSvgResult.stdout).result),
+    /Cannot inspect rendered SVG/i,
+  );
+});
+
+test("cold and concurrency workers receive no corpus payload", () => {
+  const inputs = buildCandidateWorkerInputs({
+    candidate: "node-wasm",
+    productModule: "file:///candidate.mjs",
+    corpus: TRUSTED_TEST_CORPUS,
+    options: {
+      iterations: 3,
+      warmupIterations: 1,
+      concurrencyIterations: 5,
+      concurrency: 4,
+      maxQueue: 64,
+    },
+  });
+  assert.equal(inputs.warm.cases, CORPUS_CASES);
+  for (const lane of [inputs.cold, inputs.concurrency, inputs.shutdown]) {
+    assert.equal("cases" in lane, false);
+    assert.equal("workloads" in lane, false);
+  }
 });
 
 function candidate(id) {
@@ -312,14 +488,7 @@ function candidate(id) {
       failed: 1,
       outcomes: [
         {
-          path: "a.mmd",
-          ok: true,
-          operation_id: "svg",
-          media_type: "image/svg+xml",
-          sha256: `sha256:${"1".repeat(64)}`,
-          svg_structure_sha256: `sha256:${"2".repeat(64)}`,
-          svg_geometry_sha256: `sha256:${"3".repeat(64)}`,
-          bytes: 10,
+          ...timedSuccess("a.mmd"),
           semantic: {
             ok: true,
             operation_id: "semantic-json",
@@ -339,6 +508,12 @@ function candidate(id) {
     },
     cold_process: {
       isolated_processes: true,
+      workload_id: "cold_svg",
+      timing_scope: "parent-dispatch-through-worker-raw-svg-result",
+      operation_timing_scope:
+        "worker-engine-init-through-first-svg-operation-result",
+      evidence_excluded: true,
+      representative: workloadRepresentative(WORKLOADS.cold_svg),
       samples_ms: [10, 11],
       samples: [
         {
@@ -346,27 +521,14 @@ function candidate(id) {
           operation_ms: 8,
           baseline_rss_bytes: 400,
           peak_rss_bytes: 900,
-          outcome: {
-            path: "a.mmd",
-            ok: true,
-            operation_id: "svg",
-            media_type: "image/svg+xml",
-            sha256: `sha256:${"1".repeat(64)}`,
-            bytes: 10,
-          },
+          outcome: timedSuccess(WORKLOADS.cold_svg.path),
         },
         {
           elapsed_ms: 11,
           operation_ms: 9,
           baseline_rss_bytes: 410,
           peak_rss_bytes: 910,
-          outcome: {
-            path: "b.mmd",
-            ok: false,
-            kind: "parse-error",
-            code_name: null,
-            capability_id: null,
-          },
+          outcome: timedSuccess(WORKLOADS.cold_svg.path),
         },
       ],
     },
@@ -398,6 +560,9 @@ function candidate(id) {
           outcome: timedFailure("b.mmd"),
         },
       ],
+      successful_svg: {
+        samples_ms: [1, 1.5],
+      },
     },
     rss: {
       method: "process.resourceUsage.maxRSS",
@@ -407,6 +572,10 @@ function candidate(id) {
     footprint: footprintFor(id, buildReceipt, target ?? "linux-x64-gnu"),
     queue_lifecycle: queueLifecycleEvidence(),
     concurrency: {
+      workload_id: "concurrency_svg",
+      timing_scope: "warmed-engine-raw-svg-operation-batch",
+      evidence_excluded: true,
+      representative: workloadRepresentative(WORKLOADS.concurrency_svg),
       workers: 4,
       requests_per_batch: 4,
       batch_samples_ms: [4, 5],
@@ -415,20 +584,20 @@ function candidate(id) {
           iteration: 0,
           elapsed_ms: 4,
           outcomes: [
-            timedSuccess("a.mmd"),
-            timedFailure("b.mmd"),
-            timedSuccess("a.mmd"),
-            timedFailure("b.mmd"),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
           ],
         },
         {
           iteration: 1,
           elapsed_ms: 5,
           outcomes: [
-            timedSuccess("a.mmd"),
-            timedFailure("b.mmd"),
-            timedSuccess("a.mmd"),
-            timedFailure("b.mmd"),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
+            timedSuccess(WORKLOADS.concurrency_svg.path),
           ],
         },
       ],
@@ -443,6 +612,9 @@ function candidate(id) {
   value.corpus.results_digest = digestJson(value.corpus.outcomes);
   value.cold_process.summary = summarize(value.cold_process.samples_ms);
   value.warm_latency.summary = summarize(value.warm_latency.samples_ms);
+  value.warm_latency.successful_svg.summary = summarize(
+    value.warm_latency.successful_svg.samples_ms,
+  );
   value.concurrency.summary = summarize(value.concurrency.batch_samples_ms);
   return value;
 }
@@ -703,33 +875,49 @@ function resignTargetEvidence(result) {
   result.evidence.digest = digestJson(payload);
 }
 
-test("the digest binds corpus bytes, binding policy, and operation options", () => {
+test("the digest binds corpus bytes, policy, operation options, and benchmark workloads", () => {
+  const firstCorpusDigest = computeCorpusDigest([
+    { path: "a.mmd", source: "flowchart TD\nA" },
+    { path: "b.mmd", source: "sequenceDiagram\nA->>B: hi" },
+  ]);
+  const secondCorpusDigest = computeCorpusDigest([
+    { path: "a.mmd", source: "flowchart TD\nA" },
+    { path: "b.mmd", source: "sequenceDiagram\nA->>B: changed" },
+  ]);
   const first = computeInputDigest({
-    cases: [
-      { path: "a.mmd", source: "flowchart TD\nA" },
-      { path: "b.mmd", source: "sequenceDiagram\nA->>B: hi" },
-    ],
-    bindingOptions: {
-      version: 1,
-      runtime_policy: "deterministic",
-      resources: { profile: "trusted-native" },
-    },
-    operationOptions: { version: 1 },
+    corpusDigest: firstCorpusDigest,
+    bindingOptions: BINDING_OPTIONS,
+    operationOptions: OPERATION_OPTIONS,
+    workloads: WORKLOADS,
   });
   const second = computeInputDigest({
-    cases: [
-      { path: "a.mmd", source: "flowchart TD\nA" },
-      { path: "b.mmd", source: "sequenceDiagram\nA->>B: changed" },
-    ],
-    bindingOptions: {
-      version: 1,
-      runtime_policy: "deterministic",
-      resources: { profile: "trusted-native" },
+    corpusDigest: secondCorpusDigest,
+    bindingOptions: BINDING_OPTIONS,
+    operationOptions: OPERATION_OPTIONS,
+    workloads: WORKLOADS,
+  });
+  const changedWorkload = computeInputDigest({
+    corpusDigest: firstCorpusDigest,
+    bindingOptions: BINDING_OPTIONS,
+    operationOptions: OPERATION_OPTIONS,
+    workloads: {
+      ...WORKLOADS,
+      cold_svg: { ...WORKLOADS.cold_svg, source: "flowchart TD\nA-->C" },
     },
-    operationOptions: { version: 1 },
   });
   assert.match(first, /^sha256:[0-9a-f]{64}$/);
+  assert.notEqual(firstCorpusDigest, secondCorpusDigest);
   assert.notEqual(first, second);
+  assert.notEqual(first, changedWorkload);
+  assert.equal(
+    first,
+    computeInputDigest({
+      corpusDigest: firstCorpusDigest,
+      bindingOptions: BINDING_OPTIONS,
+      operationOptions: OPERATION_OPTIONS,
+      workloads: WORKLOADS,
+    }),
+  );
 });
 
 test("comparison projection preserves installed SVG planning evidence", () => {
@@ -1006,10 +1194,11 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
 
 test("a comparison report rejects missing provenance and mismatched inputs", () => {
   const report = {
-    schema_version: 1,
+    schema_version: 2,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
+      corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
@@ -1018,12 +1207,45 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
         resources: { profile: "trusted-native" },
       },
       operation_options: { version: 1 },
+      workloads: WORKLOADS,
     },
     sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "inconclusive", selected: null, reasons: ["target matrix incomplete"] },
   };
+  report.workload_comparison = computeWorkloadComparison(report.candidates);
   assert.deepEqual(validateComparisonReport(report), report);
+  assert.throws(
+    () => validateComparisonReportContract(report),
+    /trusted corpus manifest/i,
+  );
+
+  const oldSchema = structuredClone(report);
+  oldSchema.schema_version = 1;
+  assert.throws(() => validateComparisonReport(oldSchema), /schema_version must be 2/i);
+
+  const forgedCorpusDigest = structuredClone(report);
+  forgedCorpusDigest.input.corpus_digest = `sha256:${"9".repeat(64)}`;
+  forgedCorpusDigest.input.digest = computeInputDigest({
+    corpusDigest: forgedCorpusDigest.input.corpus_digest,
+    bindingOptions: forgedCorpusDigest.input.binding_options,
+    operationOptions: forgedCorpusDigest.input.operation_options,
+    workloads: forgedCorpusDigest.input.workloads,
+  });
+  for (const candidateResult of forgedCorpusDigest.candidates) {
+    candidateResult.input_digest = forgedCorpusDigest.input.digest;
+  }
+  assert.throws(
+    () => validateComparisonReport(forgedCorpusDigest),
+    /trusted corpus manifest/i,
+  );
+
+  const forgedInputDigest = structuredClone(report);
+  forgedInputDigest.input.digest = `sha256:${"8".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(forgedInputDigest),
+    /input digest does not match the recorded corpus/i,
+  );
 
   const missingCommit = structuredClone(report);
   delete missingCommit.provenance.commit;
@@ -1051,6 +1273,13 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   const fakeCold = structuredClone(report);
   fakeCold.candidates[0].cold_process.isolated_processes = false;
   assert.throws(() => validateComparisonReport(fakeCold), /isolated process/i);
+
+  const forgedColdTimingScope = structuredClone(report);
+  forgedColdTimingScope.candidates[0].cold_process.evidence_excluded = false;
+  assert.throws(
+    () => validateComparisonReport(forgedColdTimingScope),
+    /cold timing scope.*exclude SVG evidence projection/i,
+  );
 
   const missingBuildReceipt = structuredClone(report);
   delete missingBuildReceipt.candidates[0].build_receipt.receipt_digest;
@@ -1100,6 +1329,23 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   delete missingOutcomes.candidates[0].corpus.outcomes;
   assert.throws(() => validateComparisonReport(missingOutcomes), /raw corpus outcomes/i);
 
+  const forgedCaseCount = structuredClone(report);
+  forgedCaseCount.input.cases += 1;
+  assert.throws(
+    () => validateComparisonReport(forgedCaseCount),
+    /case count.*trusted corpus manifest/i,
+  );
+
+  const forgedOutcomePath = structuredClone(report);
+  forgedOutcomePath.candidates[0].corpus.outcomes[1].path = "forged.mmd";
+  forgedOutcomePath.candidates[0].corpus.results_digest = digestJson(
+    forgedOutcomePath.candidates[0].corpus.outcomes,
+  );
+  assert.throws(
+    () => validateComparisonReport(forgedOutcomePath),
+    /outcome paths.*trusted corpus manifest/i,
+  );
+
   const missingColdSamples = structuredClone(report);
   delete missingColdSamples.candidates[0].cold_process.samples;
   assert.throws(() => validateComparisonReport(missingColdSamples), /raw cold-process samples/i);
@@ -1107,6 +1353,13 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   const missingWarmSamples = structuredClone(report);
   delete missingWarmSamples.candidates[0].warm_latency.samples;
   assert.throws(() => validateComparisonReport(missingWarmSamples), /raw warm-latency samples/i);
+
+  const missingSuccessfulSvgSummary = structuredClone(report);
+  delete missingSuccessfulSvgSummary.candidates[0].warm_latency.successful_svg;
+  assert.throws(
+    () => validateComparisonReport(missingSuccessfulSvgSummary),
+    /successful SVG latency/i,
+  );
 
   const missingPackageContents = structuredClone(report);
   delete missingPackageContents.candidates[0].footprint.packages;
@@ -1199,6 +1452,13 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
     /warm latency summary.*raw samples/i,
   );
 
+  const forgedSuccessfulSvgSummary = structuredClone(report);
+  forgedSuccessfulSvgSummary.candidates[0].warm_latency.successful_svg.summary.mean_ms += 1;
+  assert.throws(
+    () => validateComparisonReport(forgedSuccessfulSvgSummary),
+    /successful SVG latency summary.*raw samples/i,
+  );
+
   const duplicateWarmSample = structuredClone(report);
   duplicateWarmSample.candidates[0].warm_latency.samples[3] = {
     ...duplicateWarmSample.candidates[0].warm_latency.samples[2],
@@ -1223,6 +1483,97 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   assert.throws(
     () => validateComparisonReport(failedConcurrentOutcome),
     /concurrency sample 0.*failed outcome/i,
+  );
+
+  const coldEvidenceDrift = structuredClone(report);
+  coldEvidenceDrift.candidates[0].cold_process.samples[1]
+    .outcome.svg_geometry_sha256 = `sha256:${"4".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(coldEvidenceDrift),
+    /cold workload SVG evidence drifted/i,
+  );
+
+  const concurrencyEvidenceDrift = structuredClone(report);
+  concurrencyEvidenceDrift.candidates[0].concurrency.samples[1]
+    .outcomes[0].sha256 = `sha256:${"4".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(concurrencyEvidenceDrift),
+    /concurrency workload SVG evidence drifted/i,
+  );
+
+  const forgedRepresentativeSource = structuredClone(report);
+  forgedRepresentativeSource.candidates[0].cold_process.representative.source_sha256 =
+    `sha256:${"4".repeat(64)}`;
+  assert.throws(
+    () => validateComparisonReport(forgedRepresentativeSource),
+    /representative is not bound to its workload source/i,
+  );
+
+  const forgedRepresentativeRawSvg = structuredClone(report);
+  forgedRepresentativeRawSvg.candidates[0].cold_process.representative.raw_svg =
+    '<svg viewBox="0 0 9 9"/>';
+  assert.throws(
+    () => validateComparisonReport(forgedRepresentativeRawSvg),
+    /evidence does not match its representative raw SVG/i,
+  );
+
+  const forgedConcurrencyRepresentative = structuredClone(report);
+  forgedConcurrencyRepresentative.candidates[0].concurrency.representative.raw_svg =
+    "<svg><g/></svg>";
+  assert.throws(
+    () => validateComparisonReport(forgedConcurrencyRepresentative),
+    /evidence does not match its representative raw SVG/i,
+  );
+
+  const forgedWorkloadComparison = structuredClone(report);
+  forgedWorkloadComparison.workload_comparison.cold_svg.raw_svg_matched = false;
+  assert.throws(
+    () => validateComparisonReport(forgedWorkloadComparison),
+    /workload comparison does not match/i,
+  );
+
+  const recordedWorkloadDrift = structuredClone(report);
+  const geometryDriftSvg = '<svg viewBox="0 0 2 2"/>';
+  const geometryDriftOutcome = timedSuccessForSvg(
+    WORKLOADS.cold_svg.path,
+    geometryDriftSvg,
+  );
+  recordedWorkloadDrift.candidates[1].cold_process.representative.raw_svg =
+    geometryDriftSvg;
+  for (const sample of recordedWorkloadDrift.candidates[1].cold_process.samples) {
+    sample.outcome = { ...geometryDriftOutcome };
+  }
+  recordedWorkloadDrift.workload_comparison =
+    computeWorkloadComparison(recordedWorkloadDrift.candidates);
+  assert.deepEqual(recordedWorkloadDrift.workload_comparison.cold_svg, {
+    structure_matched: true,
+    geometry_matched: false,
+    raw_svg_matched: false,
+    bytes_matched: true,
+  });
+  assert.deepEqual(
+    validateComparisonReport(recordedWorkloadDrift),
+    recordedWorkloadDrift,
+  );
+
+  const crossCandidateStructureMismatch = structuredClone(report);
+  const structureDriftSvg = "<svg><g/></svg>";
+  const structureDriftOutcome = timedSuccessForSvg(
+    WORKLOADS.concurrency_svg.path,
+    structureDriftSvg,
+  );
+  crossCandidateStructureMismatch.candidates[1]
+    .concurrency.representative.raw_svg = structureDriftSvg;
+  for (const sample of crossCandidateStructureMismatch.candidates[1].concurrency.samples) {
+    for (const outcome of sample.outcomes) {
+      Object.assign(outcome, structureDriftOutcome);
+    }
+  }
+  crossCandidateStructureMismatch.workload_comparison =
+    computeWorkloadComparison(crossCandidateStructureMismatch.candidates);
+  assert.throws(
+    () => validateComparisonReport(crossCandidateStructureMismatch),
+    /concurrency_svg SVG structure differs/i,
   );
 
   const forgedOutcomeDigest = structuredClone(report);
@@ -1321,10 +1672,11 @@ function recordParseStatus(evidence) {
 
 test("the report cannot announce a winner without complete target evidence", () => {
   const report = {
-    schema_version: 1,
+    schema_version: 2,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
+      corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
@@ -1333,11 +1685,13 @@ test("the report cannot announce a winner without complete target evidence", () 
         resources: { profile: "trusted-native" },
       },
       operation_options: { version: 1 },
+      workloads: WORKLOADS,
     },
     sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "admitted", selected: "napi", reasons: ["complete evidence"] },
   };
+  report.workload_comparison = computeWorkloadComparison(report.candidates);
   assert.throws(
     () => validateComparisonReport(report),
     /selected targets.*runtime and installation evidence/i,
@@ -1456,10 +1810,11 @@ test("the report cannot announce a winner without complete target evidence", () 
 
 test("a rejected report records no selected transport", () => {
   const report = {
-    schema_version: 1,
+    schema_version: 2,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
+      corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
@@ -1468,10 +1823,12 @@ test("a rejected report records no selected transport", () => {
         resources: { profile: "trusted-native" },
       },
       operation_options: { version: 1 },
+      workloads: WORKLOADS,
     },
     sampling: SAMPLING,
     candidates: [candidate("node-wasm"), candidate("napi")],
     decision: { status: "rejected", selected: null, reasons: ["semantic corpus mismatch"] },
   };
+  report.workload_comparison = computeWorkloadComparison(report.candidates);
   assert.deepEqual(validateComparisonReport(report), report);
 });

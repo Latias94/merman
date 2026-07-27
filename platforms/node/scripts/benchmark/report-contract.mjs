@@ -1,10 +1,26 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { digestJson, stableJson } from "../stable-json.mjs";
-import { equivalentTransportOutcome } from "./svg-signature.mjs";
+import {
+  computeCorpusDigest,
+  computeInputDigest,
+  loadCorpus,
+  validateBenchmarkWorkloads,
+} from "./corpus.mjs";
+import {
+  equivalentTransportOutcome,
+  svgTransportEvidence,
+} from "./svg-signature.mjs";
 import { summarize } from "./stats.mjs";
+
+export {
+  computeCorpusDigest,
+  computeInputDigest,
+  validateBenchmarkWorkloads,
+} from "./corpus.mjs";
 
 const REQUIRED_TOOLS = [
   "node",
@@ -17,6 +33,8 @@ const REQUIRED_TOOLS = [
   "napi_cli",
 ];
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repositoryRoot = path.resolve(nodeRoot, "..", "..");
+const trustedCorpusManifest = path.join(nodeRoot, "benchmark", "corpus.json");
 const buildDescriptor = readJson(path.join(nodeRoot, "candidate-builds.json"));
 const packageDescriptor = readJson(path.join(nodeRoot, "package-surfaces.json"));
 const TARGET_CONTRACTS = loadTargetContracts();
@@ -77,24 +95,20 @@ function singleString(value, label) {
   return value[0];
 }
 
-export function computeInputDigest({ cases, bindingOptions, operationOptions }) {
-  const normalizedCases = [...cases]
-    .map(({ path, source }) => ({ path, source }))
-    .sort((left, right) => left.path.localeCompare(right.path));
-  return digestJson({
-    cases: normalizedCases,
-    binding_options: bindingOptions,
-    operation_options: operationOptions,
-  });
-}
-
-export function validateComparisonReport(report) {
+export function validateComparisonReport(
+  report,
+  { trustedCorpus = loadCorpus(trustedCorpusManifest) } = {},
+) {
+  const trusted = trustedCorpusEvidence(trustedCorpus);
   assertObject(report, "report");
-  if (report.schema_version !== 1) throw new Error("report schema_version must be 1.");
+  if (report.schema_version !== 2) throw new Error("report schema_version must be 2.");
   validateProvenance(report.provenance);
   assertObject(report.input, "input");
   if (!SHA256_DIGEST.test(report.input.digest ?? "")) {
     throw new Error("input digest must be a sha256 digest.");
+  }
+  if (!SHA256_DIGEST.test(report.input.corpus_digest ?? "")) {
+    throw new Error("input corpus_digest must be a sha256 digest.");
   }
   if (report.input.binding_options?.runtime_policy !== "deterministic") {
     throw new Error("comparison input must select deterministic runtime policy.");
@@ -104,6 +118,28 @@ export function validateComparisonReport(report) {
   if (typeof profile !== "string" || profile.length === 0) {
     throw new Error("comparison input must name one shared resource profile.");
   }
+  const reportedWorkloads = validateBenchmarkWorkloads(
+    report.input.workloads,
+    "comparison input workloads",
+  );
+  if (
+    report.input.corpus !== trusted.reportPath ||
+    report.input.corpus_digest !== trusted.corpusDigest ||
+    stableJson(report.input.binding_options) !== stableJson(trusted.bindingOptions) ||
+    stableJson(report.input.operation_options) !== stableJson(trusted.operationOptions) ||
+    stableJson(reportedWorkloads) !== stableJson(trusted.workloads)
+  ) {
+    throw new Error("comparison input does not match the trusted corpus manifest.");
+  }
+  const expectedInputDigest = computeInputDigest({
+    corpusDigest: trusted.corpusDigest,
+    bindingOptions: trusted.bindingOptions,
+    operationOptions: trusted.operationOptions,
+    workloads: trusted.workloads,
+  });
+  if (report.input.digest !== expectedInputDigest) {
+    throw new Error("input digest does not match the recorded corpus and benchmark options.");
+  }
   if (!Array.isArray(report.candidates) || report.candidates.length !== 2) {
     throw new Error("comparison must contain exactly the node-wasm and napi candidates.");
   }
@@ -111,8 +147,8 @@ export function validateComparisonReport(report) {
   if (stableJson(ids) !== stableJson(["napi", "node-wasm"])) {
     throw new Error("comparison must contain exactly the node-wasm and napi candidates.");
   }
-  if (!Number.isSafeInteger(report.input.cases) || report.input.cases < 1) {
-    throw new Error("comparison input case count is required.");
+  if (report.input.cases !== trusted.cases.length) {
+    throw new Error("comparison input case count does not match the trusted corpus manifest.");
   }
   validateSampling(report.sampling);
   for (const candidate of report.candidates) {
@@ -122,9 +158,12 @@ export function validateComparisonReport(report) {
       report.input.cases,
       report.sampling,
       report.provenance,
+      trusted.workloads,
+      trusted.paths,
     );
   }
   validateCrossCandidateEvidence(report.candidates);
+  validateWorkloadComparison(report.workload_comparison, report.candidates);
   const sourceDigests = new Set(
     report.candidates.map((candidate) => candidate.build_receipt.source_digest),
   );
@@ -157,6 +196,45 @@ export function validateComparisonReport(report) {
   }
   validateDecision(report.decision, report.candidates);
   return report;
+}
+
+function trustedCorpusEvidence(corpus) {
+  assertObject(corpus, "trusted corpus");
+  if (typeof corpus.manifestPath !== "string" || corpus.manifestPath.length === 0) {
+    throw new Error("trusted corpus manifest path is required.");
+  }
+  const corpusDigest = computeCorpusDigest(corpus.cases);
+  const workloads = validateBenchmarkWorkloads(
+    corpus.workloads,
+    "trusted corpus workloads",
+  );
+  assertObject(corpus.bindingOptions, "trusted corpus binding options");
+  assertObject(corpus.operationOptions, "trusted corpus operation options");
+  const digest = computeInputDigest({
+    corpusDigest,
+    bindingOptions: corpus.bindingOptions,
+    operationOptions: corpus.operationOptions,
+    workloads,
+  });
+  if (
+    (corpus.corpusDigest !== undefined && corpus.corpusDigest !== corpusDigest) ||
+    (corpus.digest !== undefined && corpus.digest !== digest)
+  ) {
+    throw new Error("trusted corpus contains a stale recorded digest.");
+  }
+  return {
+    cases: corpus.cases,
+    paths: corpus.cases.map((item) => item.path).sort(),
+    bindingOptions: corpus.bindingOptions,
+    operationOptions: corpus.operationOptions,
+    workloads,
+    corpusDigest,
+    digest,
+    reportPath: path
+      .relative(repositoryRoot, path.resolve(corpus.manifestPath))
+      .split(path.sep)
+      .join("/"),
+  };
 }
 
 function validateProvenance(provenance) {
@@ -195,7 +273,15 @@ function validateProvenance(provenance) {
   }
 }
 
-function validateCandidate(candidate, inputDigest, inputCases, sampling, provenance) {
+function validateCandidate(
+  candidate,
+  inputDigest,
+  inputCases,
+  sampling,
+  provenance,
+  workloads,
+  trustedPaths,
+) {
   assertObject(candidate, "candidate");
   validateBuildReceipt(candidate.build_receipt, candidate.id, provenance.commit);
   if (!SHA256_DIGEST.test(candidate.input_digest ?? "")) {
@@ -291,9 +377,29 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
     outcomePaths.add(outcome.path);
     outcomeByPath.set(outcome.path, outcome);
   }
+  if (stableJson([...outcomePaths].sort()) !== stableJson(trustedPaths)) {
+    throw new Error(`${candidate.id} corpus outcome paths do not match the trusted corpus manifest.`);
+  }
   if (candidate.cold_process?.isolated_processes !== true) {
     throw new Error(`${candidate.id} cold samples must use an isolated process per sample.`);
   }
+  if (candidate.cold_process.workload_id !== "cold_svg") {
+    throw new Error(`${candidate.id} cold samples must use the declared cold_svg workload.`);
+  }
+  if (
+    candidate.cold_process.timing_scope !==
+      "parent-dispatch-through-worker-raw-svg-result" ||
+    candidate.cold_process.operation_timing_scope !==
+      "worker-engine-init-through-first-svg-operation-result" ||
+    candidate.cold_process.evidence_excluded !== true
+  ) {
+    throw new Error(`${candidate.id} cold timing scope must exclude SVG evidence projection.`);
+  }
+  const coldRepresentative = validateWorkloadRepresentative(
+    candidate.cold_process.representative,
+    workloads.cold_svg,
+    `${candidate.id} cold workload`,
+  );
   validateSamples(candidate.cold_process?.samples_ms, `${candidate.id} cold process`);
   if (
     !Array.isArray(candidate.cold_process?.samples) ||
@@ -314,14 +420,16 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
       sample.baseline_rss_bytes < 0 ||
       !Number.isFinite(sample.peak_rss_bytes) ||
       sample.peak_rss_bytes < sample.baseline_rss_bytes ||
-      typeof sample.outcome?.path !== "string" ||
-      !outcomePaths.has(sample.outcome.path) ||
-      typeof sample.outcome.ok !== "boolean" ||
-      !matchesTimedOutcome(sample.outcome, outcomeByPath.get(sample.outcome.path))
+      !matchesBenchmarkWorkloadOutcome(sample.outcome, workloads.cold_svg)
     ) {
       throw new Error(`${candidate.id} raw cold-process sample ${index} is incomplete.`);
     }
   }
+  validateStableBenchmarkWorkloadOutcomes(
+    candidate.cold_process.samples.map((sample) => sample.outcome),
+    `${candidate.id} cold workload`,
+    coldRepresentative,
+  );
   validateSummary(
     candidate.cold_process.summary,
     candidate.cold_process.samples_ms,
@@ -336,6 +444,7 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
     throw new Error(`${candidate.id} raw warm-latency samples are required.`);
   }
   const warmKeys = new Set();
+  const successfulSvgSamplesMs = [];
   for (let index = 0; index < candidate.warm_latency.samples.length; index += 1) {
     const sample = candidate.warm_latency.samples[index];
     const key = `${sample?.iteration}\0${sample?.path}`;
@@ -357,12 +466,25 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
     ) {
       throw new Error(`${candidate.id} raw warm-latency sample ${index} is incomplete.`);
     }
+    if (sample.outcome.ok) successfulSvgSamplesMs.push(sample.elapsed_ms);
     warmKeys.add(key);
   }
   validateSummary(
     candidate.warm_latency.summary,
     candidate.warm_latency.samples_ms,
     `${candidate.id} warm latency`,
+  );
+  const successfulSvg = candidate.warm_latency.successful_svg;
+  if (
+    stableJson(successfulSvg?.samples_ms) !== stableJson(successfulSvgSamplesMs)
+  ) {
+    throw new Error(`${candidate.id} successful SVG latency must be derived from raw warm samples.`);
+  }
+  validateSamples(successfulSvg.samples_ms, `${candidate.id} successful SVG latency`);
+  validateSummary(
+    successfulSvg.summary,
+    successfulSvg.samples_ms,
+    `${candidate.id} successful SVG latency`,
   );
   if (candidate.rss?.method !== "process.resourceUsage.maxRSS") {
     throw new Error(`${candidate.id} RSS measurement method is required.`);
@@ -377,6 +499,20 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
   }
   validateFootprint(candidate.footprint, candidate.id, candidate.build_receipt);
   validateQueueLifecycle(candidate.queue_lifecycle, candidate.id);
+  if (candidate.concurrency?.workload_id !== "concurrency_svg") {
+    throw new Error(`${candidate.id} concurrency must use the declared concurrency_svg workload.`);
+  }
+  if (
+    candidate.concurrency.timing_scope !== "warmed-engine-raw-svg-operation-batch" ||
+    candidate.concurrency.evidence_excluded !== true
+  ) {
+    throw new Error(`${candidate.id} concurrency timing scope must exclude SVG evidence projection.`);
+  }
+  const concurrencyRepresentative = validateWorkloadRepresentative(
+    candidate.concurrency.representative,
+    workloads.concurrency_svg,
+    `${candidate.id} concurrency workload`,
+  );
   if (!Number.isSafeInteger(candidate.concurrency?.workers) || candidate.concurrency.workers < 1) {
     throw new Error(`${candidate.id} concurrency worker count is required.`);
   }
@@ -409,12 +545,21 @@ function validateCandidate(candidate, inputDigest, inputCases, sampling, provena
       throw new Error(`${candidate.id} raw concurrency sample ${index} is incomplete.`);
     }
     for (let outcomeIndex = 0; outcomeIndex < sample.outcomes.length; outcomeIndex += 1) {
-      const expected = candidate.corpus.outcomes[outcomeIndex % candidate.corpus.outcomes.length];
-      if (!matchesTimedOutcome(sample.outcomes[outcomeIndex], expected)) {
+      if (
+        !matchesBenchmarkWorkloadOutcome(
+          sample.outcomes[outcomeIndex],
+          workloads.concurrency_svg,
+        )
+      ) {
         throw new Error(`${candidate.id} concurrency sample ${index} contains a failed outcome.`);
       }
     }
   }
+  validateStableBenchmarkWorkloadOutcomes(
+    candidate.concurrency.samples.flatMap((sample) => sample.outcomes),
+    `${candidate.id} concurrency workload`,
+    concurrencyRepresentative,
+  );
   validateSummary(
     candidate.concurrency.summary,
     candidate.concurrency.batch_samples_ms,
@@ -505,6 +650,45 @@ function validateCrossCandidateEvidence(candidates) {
       }
     }
   }
+}
+
+export function computeWorkloadComparison(candidates) {
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const wasm = byId.get("node-wasm");
+  const napi = byId.get("napi");
+  return {
+    cold_svg: compareWorkloadOutcomes(
+      wasm.cold_process.samples[0].outcome,
+      napi.cold_process.samples[0].outcome,
+    ),
+    concurrency_svg: compareWorkloadOutcomes(
+      wasm.concurrency.samples[0].outcomes[0],
+      napi.concurrency.samples[0].outcomes[0],
+    ),
+  };
+}
+
+function validateWorkloadComparison(recorded, candidates) {
+  const expected = computeWorkloadComparison(candidates);
+  for (const [id, comparison] of Object.entries(expected)) {
+    if (!comparison.structure_matched) {
+      throw new Error(`${id} SVG structure differs across Node transports.`);
+    }
+  }
+  if (stableJson(recorded) !== stableJson(expected)) {
+    throw new Error("workload comparison does not match the recorded transport outcomes.");
+  }
+}
+
+function compareWorkloadOutcomes(left, right) {
+  return {
+    structure_matched:
+      left.svg_structure_sha256 === right.svg_structure_sha256,
+    geometry_matched:
+      left.svg_geometry_sha256 === right.svg_geometry_sha256,
+    raw_svg_matched: left.sha256 === right.sha256,
+    bytes_matched: left.bytes === right.bytes,
+  };
 }
 
 function validateBuildReceipt(receipt, candidateId, commit) {
@@ -1190,6 +1374,63 @@ function validateMismatchPaths(paths, expectedLength, label) {
   ) {
     throw new Error(`${label} mismatch paths are invalid.`);
   }
+}
+
+function matchesBenchmarkWorkloadOutcome(outcome, workload) {
+  return (
+    outcome?.path === workload.path &&
+    outcome.ok === true &&
+    outcome.operation_id === "svg" &&
+    outcome.media_type === "image/svg+xml" &&
+    SHA256_DIGEST.test(outcome.sha256 ?? "") &&
+    SHA256_DIGEST.test(outcome.svg_structure_sha256 ?? "") &&
+    SHA256_DIGEST.test(outcome.svg_geometry_sha256 ?? "") &&
+    Number.isSafeInteger(outcome.bytes) &&
+    outcome.bytes > 0
+  );
+}
+
+function validateStableBenchmarkWorkloadOutcomes(outcomes, label, representative) {
+  const expected = workloadOutputEvidence(outcomes[0]);
+  if (stableJson(expected) !== stableJson(representative)) {
+    throw new Error(`${label} evidence does not match its representative raw SVG.`);
+  }
+  for (let index = 1; index < outcomes.length; index += 1) {
+    if (stableJson(workloadOutputEvidence(outcomes[index])) !== stableJson(expected)) {
+      throw new Error(`${label} SVG evidence drifted across repetitions.`);
+    }
+  }
+}
+
+function validateWorkloadRepresentative(value, workload, label) {
+  assertObject(value, `${label} representative`);
+  if (
+    value.source_sha256 !== digest(workload.source) ||
+    typeof value.raw_svg !== "string" ||
+    value.raw_svg.length === 0
+  ) {
+    throw new Error(`${label} representative is not bound to its workload source.`);
+  }
+  const svgEvidence = svgTransportEvidence(value.raw_svg);
+  return {
+    sha256: digest(value.raw_svg),
+    bytes: Buffer.byteLength(value.raw_svg),
+    svg_structure_sha256: svgEvidence.structure_sha256,
+    svg_geometry_sha256: svgEvidence.geometry_sha256,
+  };
+}
+
+function workloadOutputEvidence(outcome) {
+  return {
+    sha256: outcome.sha256,
+    bytes: outcome.bytes,
+    svg_structure_sha256: outcome.svg_structure_sha256,
+    svg_geometry_sha256: outcome.svg_geometry_sha256,
+  };
+}
+
+function digest(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function matchesTimedOutcome(sample, corpus) {
