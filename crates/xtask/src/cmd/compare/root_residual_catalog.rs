@@ -815,6 +815,59 @@ mod tests {
 
     const REVIEWED_REFERENCE: &str = "docs/workstreams/PARITY_BOUNDARY.md";
 
+    fn formatted_count(count: usize) -> String {
+        let digits = count.to_string();
+        let mut groups = digits
+            .as_bytes()
+            .rchunks(3)
+            .map(|group| std::str::from_utf8(group).unwrap())
+            .collect::<Vec<_>>();
+        groups.reverse();
+        groups.join(",")
+    }
+
+    fn evidence_kind_id(kind: RootResidualEvidenceKind) -> &'static str {
+        match kind {
+            RootResidualEvidenceKind::BrowserMeasurement => "browser-measurement",
+            RootResidualEvidenceKind::SourceBackedLayoutApproximation => {
+                "source-backed-layout-approximation"
+            }
+            RootResidualEvidenceKind::RoughJsImplementation => "rough-js-implementation",
+            RootResidualEvidenceKind::Unreviewed => "unreviewed",
+        }
+    }
+
+    fn diagram_display_name(diagram: &str) -> &'static str {
+        match diagram {
+            "architecture" => "Architecture",
+            "block" => "Block",
+            "c4" => "C4",
+            "class" => "Class",
+            "er" => "ER",
+            "eventmodeling" => "Event Modeling",
+            "flowchart" => "Flowchart",
+            "gitgraph" => "GitGraph",
+            "ishikawa" => "Ishikawa",
+            "journey" => "Journey",
+            "kanban" => "Kanban",
+            "mindmap" => "Mindmap",
+            "pie" => "Pie",
+            "railroad" => "Railroad",
+            "railroadAbnf" => "Railroad ABNF",
+            "railroadEbnf" => "Railroad EBNF",
+            "railroadPeg" => "Railroad PEG",
+            "requirement" => "Requirement",
+            "sankey" => "Sankey",
+            "sequence" => "Sequence",
+            "state" => "State",
+            "swimlane" => "Swimlane",
+            "timeline" => "Timeline",
+            "treeView" => "TreeView",
+            "treemap" => "Treemap",
+            other => panic!("document display name is missing for diagram id `{other}`"),
+        }
+    }
+
     fn observation(fixture: &str, local_width: &str) -> RootResidualObservation {
         RootResidualObservation {
             diagram: "flowchart".to_string(),
@@ -912,6 +965,61 @@ mod tests {
             contract: RootResidualContract::current(3),
             evidence: [(entry.evidence_id.clone(), reviewed_evidence(kind))].into(),
             entries: vec![entry],
+        }
+    }
+
+    #[test]
+    fn review_document_matches_catalog_statistics() {
+        let catalog = load_catalog(3).unwrap();
+        let document_path =
+            crate::cmd::workspace_root().join("docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md");
+        let document = fs::read_to_string(&document_path).unwrap();
+
+        let family_count = catalog
+            .entries
+            .iter()
+            .map(|entry| entry.diagram.as_str())
+            .collect::<BTreeSet<_>>()
+            .len();
+        let summary = format!(
+            "candidate contains {} observations across {family_count} family ids",
+            formatted_count(catalog.entries.len())
+        );
+        assert!(
+            document.contains(&summary),
+            "{} is missing catalog summary `{summary}`",
+            document_path.display()
+        );
+
+        let mut evidence_counts = BTreeMap::<&str, BTreeMap<&str, usize>>::new();
+        for entry in &catalog.entries {
+            *evidence_counts
+                .entry(entry.evidence_id.as_str())
+                .or_default()
+                .entry(entry.diagram.as_str())
+                .or_default() += 1;
+        }
+
+        for (evidence_id, evidence) in &catalog.evidence {
+            let family_counts = evidence_counts
+                .get(evidence_id.as_str())
+                .unwrap_or_else(|| panic!("evidence `{evidence_id}` has no catalog entries"));
+            let entry_count = family_counts.values().sum::<usize>();
+            let family_summary = family_counts
+                .iter()
+                .map(|(diagram, count)| format!("{} {count}", diagram_display_name(diagram)))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let row_prefix = format!(
+                "| `{evidence_id}` | `{}` | {} | {family_summary} |",
+                evidence_kind_id(evidence.kind),
+                formatted_count(entry_count)
+            );
+            assert!(
+                document.lines().any(|line| line.starts_with(&row_prefix)),
+                "{} is missing catalog-derived row `{row_prefix}`",
+                document_path.display()
+            );
         }
     }
 
