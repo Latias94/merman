@@ -129,6 +129,16 @@ impl Default for RuntimePolicy {
 }
 
 impl RuntimePolicy {
+    /// System adapters selected by [`Self::try_native`].
+    ///
+    /// This list is a policy contract, not a report of what Cargo compiled. Consumers that
+    /// advertise a `native` policy should intersect it with [`compiled_system_adapter_ids`].
+    pub const NATIVE_SYSTEM_ADAPTER_IDS: &'static [&'static str] = &[
+        RuntimeCapability::SystemClock.id(),
+        RuntimeCapability::SystemTimeZone.id(),
+        RuntimeCapability::SystemRandom.id(),
+    ];
+
     /// Returns the deterministic, target-independent core policy.
     pub fn deterministic() -> Self {
         Self {
@@ -716,19 +726,22 @@ mod tests {
 
     #[test]
     fn native_policy_reports_the_first_missing_required_adapter() {
-        let expected = [
-            RuntimeCapability::SystemClock,
-            RuntimeCapability::SystemTimeZone,
-            RuntimeCapability::SystemRandom,
-        ]
-        .map(|capability| {
-            (
-                capability,
-                compiled_system_adapter_ids().contains(&capability.id()),
-            )
-        })
-        .into_iter()
-        .find_map(|(capability, available)| (!available).then_some(capability));
+        let expected = RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS
+            .iter()
+            .map(|id| {
+                RuntimeCapability::ALL
+                    .into_iter()
+                    .find(|capability| capability.id() == *id)
+                    .expect("native policy adapter IDs must use the runtime capability vocabulary")
+            })
+            .map(|capability| {
+                (
+                    capability,
+                    compiled_system_adapter_ids().contains(&capability.id()),
+                )
+            })
+            .into_iter()
+            .find_map(|(capability, available)| (!available).then_some(capability));
 
         match expected {
             Some(capability) => assert_eq!(
@@ -737,6 +750,18 @@ mod tests {
             ),
             None => assert!(RuntimePolicy::try_native().is_ok()),
         }
+    }
+
+    #[test]
+    fn native_policy_adapter_contract_excludes_timing() {
+        assert_eq!(
+            RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS,
+            ["system-clock", "system-timezone", "system-random"]
+        );
+        assert!(
+            !RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS
+                .contains(&RuntimeCapability::SystemTiming.id())
+        );
     }
 
     #[cfg(all(
