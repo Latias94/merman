@@ -80,7 +80,7 @@ fn mindmap_label_bbox_px(
 
     // Upstream `mindmapDb.flattenNodes()` assigns `labelType: 'markdown'` to every node. Measure
     // the same post-Markdown HTML fragment that `createText()` inserts into the foreignObject,
-    // including raw inline HTML. The parser has already applied Mermaid's security sanitizer.
+    // including raw inline HTML. SVG emission applies the configured sanitizer after rendering.
     let html = crate::text::mermaid_markdown_to_html_label_fragment(text, true);
     let wrapped = crate::text::measure_html_with_inline_styles(
         measurer,

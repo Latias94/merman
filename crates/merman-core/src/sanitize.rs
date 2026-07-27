@@ -744,6 +744,54 @@ fn effective_html_labels(config: &MermaidConfig) -> bool {
         .unwrap_or(true)
 }
 
+fn is_unformatted_ascii_paragraph(text: &str) -> bool {
+    let Some(body) = text
+        .strip_prefix("<p>")
+        .and_then(|text| text.strip_suffix("</p>"))
+    else {
+        return false;
+    };
+    let bytes = body.as_bytes();
+    bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b' ')
+}
+
+fn sanitizer_preserves_unformatted_ascii_paragraph(config: &MermaidConfig) -> bool {
+    if effective_html_labels(config)
+        && !matches!(
+            config.get_str("securityLevel"),
+            Some("antiscript" | "strict" | "sandbox" | "loose")
+        )
+    {
+        return false;
+    }
+
+    let dompurify = dompurify_config_object(config);
+    let list_contains = |key: &str, expected: &str| {
+        dompurify
+            .and_then(|object| object.get(key))
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|values| {
+                values
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .any(|value| value.eq_ignore_ascii_case(expected))
+            })
+    };
+    let replaces_default_allowed_tags = dompurify
+        .and_then(|object| object.get("ALLOWED_TAGS"))
+        .and_then(serde_json::Value::as_array)
+        .is_some();
+    let paragraph_is_allowed = !replaces_default_allowed_tags
+        || list_contains("ALLOWED_TAGS", "p")
+        || list_contains("ADD_TAGS", "p");
+
+    paragraph_is_allowed && !list_contains("FORBID_TAGS", "p")
+}
+
 fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
     let html_labels_enabled = effective_html_labels(config);
     if !html_labels_enabled {
@@ -764,6 +812,13 @@ fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
 
 pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     if text.is_empty() {
+        return text.to_string();
+    }
+    // This grammar contains no user-controlled markup. Skip DOM parsing only when the configured
+    // policy also guarantees that the sole generated `<p>` element is preserved unchanged.
+    if is_unformatted_ascii_paragraph(text)
+        && sanitizer_preserves_unformatted_ascii_paragraph(config)
+    {
         return text.to_string();
     }
 
@@ -1070,6 +1125,65 @@ mod tests {
         let malicious = "javajavascript:script:alert(1)";
         let out = sanitize_text(malicious, &cfg);
         assert!(!out.contains("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn unformatted_ascii_paragraph_fast_path_obeys_the_effective_sanitizer_policy() {
+        let input = "<p>ASCII 123  Label</p>";
+        for (config, expected) in [
+            (json!({ "securityLevel": "strict" }), input),
+            (json!({ "securityLevel": "antiscript" }), input),
+            (json!({ "securityLevel": "sandbox" }), input),
+            (json!({ "securityLevel": "loose" }), input),
+            (
+                json!({
+                    "securityLevel": "strict",
+                    "dompurifyConfig": { "FORBID_TAGS": ["p"] }
+                }),
+                "ASCII 123  Label",
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": { "ALLOWED_TAGS": [] }
+                }),
+                "ASCII 123  Label",
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": {
+                        "ALLOWED_TAGS": [],
+                        "ADD_TAGS": ["P"]
+                    }
+                }),
+                input,
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": {
+                        "FORBID_TAGS": ["p"],
+                        "KEEP_CONTENT": false
+                    }
+                }),
+                "",
+            ),
+            (
+                json!({
+                    "securityLevel": "custom",
+                    "htmlLabels": false
+                }),
+                input,
+            ),
+        ] {
+            let config = MermaidConfig::from_value(config);
+            assert_eq!(sanitize_text(input, &config), expected);
+        }
+
+        let unknown_security =
+            MermaidConfig::from_value(json!({ "securityLevel": "custom", "htmlLabels": true }));
+        assert_ne!(sanitize_text(input, &unknown_security), input);
     }
 
     #[test]

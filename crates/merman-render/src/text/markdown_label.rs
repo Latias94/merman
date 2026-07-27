@@ -14,6 +14,15 @@ struct MermaidMarkdownBlock {
     range: std::ops::Range<usize>,
 }
 
+fn is_unformatted_ascii_text(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b' ')
+}
+
 fn mermaid_markdown_block_options() -> pulldown_cmark::Options {
     pulldown_cmark::Options::ENABLE_TABLES
         | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
@@ -406,6 +415,14 @@ fn mermaid_markdown_to_label_fragment(
     if markdown.is_empty() {
         return String::new();
     }
+    // This grammar cannot open any enabled Markdown construct and needs no HTML/XML escaping.
+    if markdown_auto_wrap && is_unformatted_ascii_text(&markdown) {
+        let mut out = String::with_capacity(markdown.len() + "<p></p>".len());
+        out.push_str("<p>");
+        out.push_str(&markdown);
+        out.push_str("</p>");
+        return out;
+    }
 
     let mut out = String::new();
     for block in mermaid_markdown_top_level_blocks(&markdown) {
@@ -559,6 +576,45 @@ pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unformatted_ascii_projection_is_an_exact_paragraph() {
+        for text in [
+            "Root",
+            "Long history",
+            "Release 12",
+            "ASCII 123",
+            "Two  spaces",
+        ] {
+            assert!(is_unformatted_ascii_text(text));
+            assert_eq!(
+                mermaid_markdown_to_html_label_fragment(text, true),
+                format!("<p>{text}</p>")
+            );
+            assert_eq!(
+                mermaid_markdown_to_xhtml_label_fragment(text, true),
+                format!("<p>{text}</p>")
+            );
+        }
+
+        for text in [
+            "",
+            " leading",
+            "trailing ",
+            "two\nlines",
+            "# heading",
+            "Release 1.2",
+            "alpha/beta",
+            "it's ready",
+            "中文标签",
+            "<strong>html</strong>",
+            "Fish & Chips",
+            "fa:fa-user",
+            "$x$",
+        ] {
+            assert!(!is_unformatted_ascii_text(text));
+        }
+    }
 
     #[test]
     fn block_projection_matches_pinned_marked_16_3_0_top_level_tokens() {

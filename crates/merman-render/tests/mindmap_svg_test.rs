@@ -102,6 +102,22 @@ fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
 }
 
 #[test]
+fn mindmap_named_entity_placeholders_are_decoded_before_svg_emission() {
+    let svg =
+        render_mindmap_svg_from_text("mindmap\n  root[Root #quot;]\n", "mindmap-named-entity");
+
+    assert!(
+        svg.contains("<p>Root \"</p>"),
+        "expected the Mermaid quote placeholder to become visible text: {svg}"
+    );
+    assert!(
+        !svg.contains('ﬂ') && !svg.contains('¶'),
+        "Mermaid entity placeholders must not leak into SVG: {svg}"
+    );
+    roxmltree::Document::parse(&svg).expect("Mindmap SVG must be well-formed XML");
+}
+
+#[test]
 fn mindmap_typed_layout_handles_deep_chain() {
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
