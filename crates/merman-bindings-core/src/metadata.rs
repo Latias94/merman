@@ -313,6 +313,40 @@ impl ArtifactCapabilitySurface {
             text_measurement,
         )
     }
+
+    fn project_to_binding_runtime_policy(self) -> Result<Self, BindingError> {
+        let Self {
+            mut capability_ids,
+            output_ids,
+            operation_ids,
+            system_adapter_ids,
+            text_measurement,
+        } = self;
+        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
+        let native_policy_available = native_system_adapter_ids
+            .iter()
+            .all(|id| system_adapter_ids.contains(id));
+        let selected_system_adapter_ids = if native_policy_available {
+            system_adapter_ids
+                .iter()
+                .copied()
+                .filter(|id| native_system_adapter_ids.contains(id))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        capability_ids.retain(|id| {
+            !system_adapter_ids.contains(id) || selected_system_adapter_ids.contains(id)
+        });
+
+        Self::new_with_operation_ids(
+            capability_ids,
+            output_ids,
+            operation_ids,
+            selected_system_adapter_ids,
+            text_measurement,
+        )
+    }
 }
 
 /// Stable runtime capability report shared by every transport.
@@ -478,8 +512,10 @@ pub struct RuleCatalogEntry {
 
 /// Reports the exact capability surface compiled into the shared binding facade.
 ///
-/// Transport crates must construct their own [`ArtifactCapabilitySurface`] when they intentionally
-/// expose a strict subset of this facade. They must never mutate this report post hoc.
+/// This is the Rust owner's complete compiled fact set, including adapters selectable only through
+/// a custom [`merman::runtime::RuntimePolicy`]. Foreign transports must use
+/// [`binding_transport_capability_surface`] or construct their own checked
+/// [`ArtifactCapabilitySurface`] when they expose a smaller callable endpoint set.
 pub fn compiled_runtime_capability_surface() -> ArtifactCapabilitySurface {
     let mut capability_ids = Vec::new();
     let mut system_adapter_ids = merman::runtime::compiled_system_adapter_ids().to_vec();
@@ -504,8 +540,10 @@ pub fn compiled_runtime_capability_surface() -> ArtifactCapabilitySurface {
     capability_ids.push("jpeg");
     #[cfg(feature = "pdf")]
     capability_ids.push("pdf");
-    #[cfg(feature = "math")]
-    capability_ids.push("math");
+    #[cfg(feature = "svg")]
+    if compiled_math_available() {
+        capability_ids.push("math");
+    }
     capability_ids.extend(system_adapter_ids.iter().copied());
     capability_ids.sort_unstable();
     system_adapter_ids.sort_unstable();
@@ -541,6 +579,19 @@ pub fn compiled_runtime_capability_surface() -> ArtifactCapabilitySurface {
     .expect("the compiled binding surface uses descriptor-owned capability IDs")
 }
 
+/// Reports the exact capability surface selectable through the shared binding JSON policy.
+///
+/// Cargo feature unification can compile additional system adapters for Rust callers that supply
+/// a custom [`merman::runtime::RuntimePolicy`]. Foreign transports using [`crate::BindingEngine`]
+/// JSON options can select only `deterministic` or `native`. The native policy requires clock,
+/// time-zone, and randomness as one atomic set, while timing instrumentation is not selectable
+/// through binding JSON. The transport catalog therefore exposes all three native adapters or none.
+pub fn binding_transport_capability_surface() -> ArtifactCapabilitySurface {
+    compiled_runtime_capability_surface()
+        .project_to_binding_runtime_policy()
+        .expect("the binding runtime policy uses descriptor-owned system adapter IDs")
+}
+
 #[must_use]
 pub fn compiled_runtime_capabilities() -> RuntimeCapabilities {
     compiled_runtime_capability_surface().runtime_capabilities()
@@ -556,9 +607,17 @@ const fn compiled_layout_elk_available() -> bool {
     merman::svg::layout_elk_available()
 }
 
+#[cfg(feature = "svg")]
+const fn compiled_math_available() -> bool {
+    merman::svg::math_available()
+}
+
 #[must_use]
 pub fn runtime_catalog(transport_api_version: u32) -> RuntimeCatalog {
-    runtime_catalog_for(transport_api_version, compiled_runtime_capability_surface())
+    runtime_catalog_for(
+        transport_api_version,
+        binding_transport_capability_surface(),
+    )
 }
 
 #[must_use]
@@ -955,7 +1014,11 @@ mod tests {
             capabilities.has_capability("layout-elk"),
             cfg!(feature = "layout-elk")
         );
-        assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
+        #[cfg(feature = "svg")]
+        let expected_math = compiled_math_available();
+        #[cfg(not(feature = "svg"))]
+        let expected_math = false;
+        assert_eq!(capabilities.has_capability("math"), expected_math);
         assert!(!capabilities.has_capability("editor"));
         assert_eq!(capabilities.has_output("svg"), cfg!(feature = "svg"));
         assert_eq!(capabilities.has_output("png"), cfg!(feature = "png"));
@@ -1019,6 +1082,109 @@ mod tests {
     }
 
     #[test]
+    fn binding_transport_surface_matches_the_atomic_native_policy() {
+        let compiled = compiled_runtime_capabilities();
+        let transport = binding_transport_capability_surface().runtime_capabilities();
+        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
+        let native_policy_available = native_system_adapter_ids
+            .iter()
+            .all(|id| compiled.system_adapter_ids.contains(id));
+        let expected_system_adapter_ids = compiled
+            .system_adapter_ids
+            .iter()
+            .copied()
+            .filter(|id| native_policy_available && native_system_adapter_ids.contains(id))
+            .collect::<Vec<_>>();
+        let expected_capability_ids = compiled
+            .capability_ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                !compiled.system_adapter_ids.contains(id)
+                    || expected_system_adapter_ids.contains(id)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(transport.capability_ids, expected_capability_ids);
+        assert_eq!(transport.output_ids, compiled.output_ids);
+        assert_eq!(transport.operation_ids, compiled.operation_ids);
+        assert_eq!(transport.text_measurement, compiled.text_measurement);
+        assert_eq!(transport.system_adapter_ids, expected_system_adapter_ids);
+        for adapter_id in &compiled.system_adapter_ids {
+            assert_eq!(
+                transport.has_capability(adapter_id),
+                expected_system_adapter_ids.contains(adapter_id),
+                "binding catalog must report adapter `{adapter_id}` exactly when JSON policy can select it"
+            );
+        }
+        assert!(!transport.has_capability("system-timing"));
+        assert!(!transport.system_adapter_ids.contains(&"system-timing"));
+    }
+
+    fn system_adapter_surface(system_adapter_ids: Vec<&'static str>) -> ArtifactCapabilitySurface {
+        ArtifactCapabilitySurface::new(system_adapter_ids.clone(), vec![], system_adapter_ids, None)
+            .expect("test system-adapter surface must be valid")
+    }
+
+    #[test]
+    fn binding_transport_surface_exposes_the_complete_native_adapter_set() {
+        let transport =
+            system_adapter_surface(vec!["system-clock", "system-random", "system-timezone"])
+                .project_to_binding_runtime_policy()
+                .expect("the complete native adapter set must project")
+                .runtime_capabilities();
+
+        assert_eq!(
+            transport.system_adapter_ids,
+            ["system-clock", "system-random", "system-timezone"]
+        );
+        assert_eq!(
+            transport.capability_ids,
+            ["system-clock", "system-random", "system-timezone"]
+        );
+    }
+
+    #[test]
+    fn binding_transport_surface_hides_every_partial_native_adapter_set() {
+        for partial_adapter_ids in [
+            vec!["system-clock", "system-random"],
+            vec!["system-clock", "system-timezone"],
+            vec!["system-random", "system-timezone"],
+        ] {
+            let transport = system_adapter_surface(partial_adapter_ids)
+                .project_to_binding_runtime_policy()
+                .expect("a partial native adapter set must project to no selectable policy")
+                .runtime_capabilities();
+
+            assert!(transport.system_adapter_ids.is_empty());
+            assert!(transport.capability_ids.is_empty());
+        }
+    }
+
+    #[test]
+    fn binding_transport_surface_hides_externally_unified_timing() {
+        let transport = system_adapter_surface(vec![
+            "system-clock",
+            "system-random",
+            "system-timezone",
+            "system-timing",
+        ])
+        .project_to_binding_runtime_policy()
+        .expect("externally unified timing must not invalidate transport projection")
+        .runtime_capabilities();
+
+        assert_eq!(
+            transport.system_adapter_ids,
+            ["system-clock", "system-random", "system-timezone"]
+        );
+        assert_eq!(
+            transport.capability_ids,
+            ["system-clock", "system-random", "system-timezone"]
+        );
+        assert!(!transport.has_capability("system-timing"));
+    }
+
+    #[test]
     fn capability_surface_rejects_unknown_duplicate_and_incoherent_ids() {
         let unknown =
             ArtifactCapabilitySurface::new(vec!["not-a-capability"], vec![], vec![], None)
@@ -1078,7 +1244,10 @@ mod tests {
         assert_eq!(catalog.schema_version, RUNTIME_CATALOG_SCHEMA_VERSION);
         assert_eq!(catalog.transport_api_version, 2);
         assert_eq!(catalog.package_version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(catalog.capabilities, compiled_runtime_capabilities());
+        assert_eq!(
+            catalog.capabilities,
+            binding_transport_capability_surface().runtime_capabilities()
+        );
         assert_eq!(
             catalog.registry.diagram_family_count,
             diagram_family_capabilities().len()

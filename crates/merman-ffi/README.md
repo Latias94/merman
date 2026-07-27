@@ -88,7 +88,7 @@ Engine options select runtime state explicitly. Omitting `runtime_policy` uses M
 
 `MermanNativeOperationRequest.options_json` accepts the same generic options document for one operation. Request objects recursively override the reusable engine baseline, while omitted nested values remain inherited and the baseline itself is not mutated. `runtime_policy` remains constructor-owned and is rejected in request options.
 
-`api.runtime_catalog` returns the flat schema-1 catalog with package version, compiled capability, operation, and output IDs, registry facts, resource defaults/limits, and text-measurement providers. It is the source of truth for the loaded artifact; do not infer availability from Cargo feature names.
+`api.runtime_catalog` returns the flat schema-1 catalog with package version, transport-callable capability, operation, output, and system-adapter IDs, registry facts, resource defaults/limits, and text-measurement providers. The native clock, time-zone, and random adapters appear only as a complete selectable set, and timing instrumentation is never exposed through binding JSON. The catalog is the source of truth for the loaded artifact; do not infer availability from Cargo feature names.
 
 The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` further distinguishes `unknown-operation` from `missing-capability`; only the latter carries the exact descriptor `capability_id`. All other failures use `generic` with a null capability ID.
 

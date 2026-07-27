@@ -456,10 +456,12 @@ exact value or `null` for every profile. This avoids copying profile values into
 
 Query the loaded artifact rather than inferring capabilities or resource values from a package
 name. Runtime-contract schema `1` includes the transport API version, package and payload schema
-versions, compiled capability and output IDs, complete language-catalog facts, plus the resource
-descriptor for every compiled resource-aware operation. Render, analysis, and ASCII artifacts
-expose only the limit ids their operations can enforce; an artifact with none of those operations
-returns `resources: null`.
+versions, transport-callable capability and output IDs, complete language-catalog facts, plus the
+resource descriptor for every callable resource-aware operation. The system adapter IDs contain
+clock, time-zone, and randomness only when the all-or-nothing `native` policy is selectable;
+incomplete native sets and timing instrumentation unified by another Cargo user are omitted.
+Render, analysis, and ASCII artifacts expose only the limit ids their operations can enforce; an
+artifact with none of those operations returns `resources: null`.
 
 | Surface | API |
 | --- | --- |

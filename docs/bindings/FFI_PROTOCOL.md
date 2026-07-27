@@ -84,10 +84,13 @@ flat schema-1 JSON catalog:
 }
 ```
 
-`capabilities` is the exact compiled subset. The catalog intentionally does not repeat the global
-descriptor vocabulary; hosts should validate shape, sorted/unique IDs, and local relations without
-maintaining a second hand-written capability table. The returned JSON is not wrapped in a
-native-only envelope.
+`capabilities` is the exact subset callable through this transport. Ordinary capability, operation,
+and output IDs reflect compiled endpoints. System adapter IDs report clock, time-zone, and
+randomness only when the transport's all-or-nothing `native` policy is selectable; incomplete
+native sets and externally unified timing instrumentation are not callable through binding JSON
+and are omitted. The catalog intentionally does not repeat the global descriptor vocabulary; hosts
+should validate shape, sorted/unique IDs, and local relations without maintaining a second
+hand-written capability table. The returned JSON is not wrapped in a native-only envelope.
 
 ## Generic Operations
 
