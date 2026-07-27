@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 static CONTENT_ADDRESSED_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -501,48 +502,130 @@ pub(crate) fn spawn_timeout_managed_child(command: &mut Command) -> std::io::Res
     command.spawn()
 }
 
-pub(crate) fn terminate_child_process_tree(child: &mut Child) {
-    #[cfg(windows)]
-    let process_tree = windows_process_tree::ProcessTree::capture(child.id());
+struct CapturedProcessTree {
     #[cfg(unix)]
-    {
-        let process_group = libc::pid_t::try_from(child.id()).ok();
-        if let Some(process_group) = process_group.filter(|process_group| *process_group > 0) {
+    process_group: Option<libc::pid_t>,
+    #[cfg(windows)]
+    process_tree: windows_process_tree::ProcessTree,
+}
+
+impl CapturedProcessTree {
+    fn capture(child: &Child) -> Self {
+        Self {
+            #[cfg(unix)]
+            process_group: libc::pid_t::try_from(child.id())
+                .ok()
+                .filter(|process_group| *process_group > 0),
+            #[cfg(windows)]
+            process_tree: windows_process_tree::ProcessTree::capture(child.id()),
+        }
+    }
+
+    fn terminate(self, child: &mut Child) {
+        #[cfg(unix)]
+        if let Some(process_group) = self.process_group {
             // SAFETY: the positive PGID is converted without truncation from a child created by
             // spawn_timeout_managed_child with process_group(0). Negating it therefore targets
             // only that child's process group, never kill(0, ...) or kill(-1, ...).
             let _ = unsafe { libc::kill(-process_group, libc::SIGKILL) };
         }
+        let _ = child.kill();
+        #[cfg(windows)]
+        self.process_tree.terminate_descendants();
+        let _ = child.wait();
     }
-    let _ = child.kill();
-    #[cfg(windows)]
-    process_tree.terminate_descendants();
-    let _ = child.wait();
+}
+
+pub(crate) fn terminate_child_process_tree(child: &mut Child) {
+    CapturedProcessTree::capture(child).terminate(child);
+}
+
+fn terminate_captured_process_tree(
+    child: &mut Child,
+    process_tree: &mut Option<CapturedProcessTree>,
+) {
+    if let Some(process_tree) = process_tree.take() {
+        process_tree.terminate(child);
+    } else {
+        terminate_child_process_tree(child);
+    }
+}
+
+fn remaining_timeout(started: Instant, timeout: Duration) -> Option<Duration> {
+    timeout
+        .checked_sub(started.elapsed())
+        .filter(|value| !value.is_zero())
+}
+
+fn timeout_error(context: &str) -> XtaskError {
+    XtaskError::UpstreamSvgFailed(format!(
+        "upstream SVG render environment probe failed: process timed out {context}"
+    ))
+}
+
+fn receive_child_pipe(
+    receiver: &Receiver<Result<Vec<u8>, XtaskError>>,
+    description: &str,
+    started: Instant,
+    timeout: Duration,
+) -> Result<Vec<u8>, XtaskError> {
+    let Some(remaining) = remaining_timeout(started, timeout) else {
+        return Err(timeout_error(&format!("while draining {description}")));
+    };
+    match receiver.recv_timeout(remaining) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => {
+            Err(timeout_error(&format!("while draining {description}")))
+        }
+        Err(RecvTimeoutError::Disconnected) => Err(XtaskError::UpstreamSvgFailed(format!(
+            "upstream SVG render probe {description} reader panicked"
+        ))),
+    }
+}
+
+fn spawn_child_pipe_reader(
+    pipe: impl Read + Send + 'static,
+    description: &'static str,
+    max_bytes: u64,
+) -> std::io::Result<Receiver<Result<Vec<u8>, XtaskError>>> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let reader = std::thread::Builder::new()
+        .name(format!("upstream-svg-probe-{description}"))
+        .spawn(move || {
+            let result = read_bounded_child_pipe(pipe, description, max_bytes);
+            let _ = sender.send(result);
+        })?;
+    drop(reader);
+    Ok(receiver)
+}
+
+fn wait_for_child(child: &mut Child, timeout: Duration) -> std::io::Result<ExitStatus> {
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {}
+            Err(err) => return Err(err),
+        }
+        let Some(remaining) = remaining_timeout(start, timeout) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "process timed out",
+            ));
+        };
+        std::thread::sleep(remaining.min(Duration::from_millis(25)));
+    }
 }
 
 pub(crate) fn wait_with_timeout(
     child: &mut Child,
     timeout: Duration,
 ) -> std::io::Result<ExitStatus> {
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
-            Ok(None) => {}
-            Err(err) => {
-                terminate_child_process_tree(child);
-                return Err(err);
-            }
-        }
-        if start.elapsed() >= timeout {
-            terminate_child_process_tree(child);
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "process timed out",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(25));
+    let status = wait_for_child(child, timeout);
+    if status.is_err() {
+        terminate_child_process_tree(child);
     }
+    status
 }
 
 pub(crate) fn read_bounded_child_pipe(
@@ -580,71 +663,76 @@ pub(crate) fn read_bounded_child_pipe(
     Ok(bytes)
 }
 
-fn join_child_pipe_reader(
-    reader: std::thread::JoinHandle<Result<Vec<u8>, XtaskError>>,
-    description: &str,
-) -> Result<Vec<u8>, XtaskError> {
-    reader.join().map_err(|_| {
-        XtaskError::UpstreamSvgFailed(format!(
-            "upstream SVG render probe {description} reader panicked"
-        ))
-    })?
-}
-
 pub(crate) fn wait_with_bounded_output(
     child: &mut Child,
     timeout: Duration,
     max_bytes_per_pipe: u64,
 ) -> Result<Output, XtaskError> {
+    let started = Instant::now();
+    let mut process_tree = Some(CapturedProcessTree::capture(child));
     let stdout = child.stdout.take().ok_or_else(|| {
-        terminate_child_process_tree(child);
+        terminate_captured_process_tree(child, &mut process_tree);
         XtaskError::UpstreamSvgFailed(
             "upstream SVG render probe stdout was not captured".to_string(),
         )
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
-        terminate_child_process_tree(child);
+        terminate_captured_process_tree(child, &mut process_tree);
         XtaskError::UpstreamSvgFailed(
             "upstream SVG render probe stderr was not captured".to_string(),
         )
     })?;
 
-    let stdout_reader = std::thread::Builder::new()
-        .name("upstream-svg-probe-stdout".to_string())
-        .spawn(move || read_bounded_child_pipe(stdout, "stdout", max_bytes_per_pipe))
-        .map_err(|err| {
-            terminate_child_process_tree(child);
+    let stdout_receiver =
+        spawn_child_pipe_reader(stdout, "stdout", max_bytes_per_pipe).map_err(|err| {
+            terminate_captured_process_tree(child, &mut process_tree);
             XtaskError::UpstreamSvgFailed(format!(
                 "failed to start upstream SVG render probe stdout reader: {err}"
             ))
         })?;
-    let stderr_reader = match std::thread::Builder::new()
-        .name("upstream-svg-probe-stderr".to_string())
-        .spawn(move || read_bounded_child_pipe(stderr, "stderr", max_bytes_per_pipe))
-    {
-        Ok(reader) => reader,
-        Err(err) => {
-            terminate_child_process_tree(child);
-            let _ = stdout_reader.join();
-            return Err(XtaskError::UpstreamSvgFailed(format!(
+    let stderr_receiver =
+        spawn_child_pipe_reader(stderr, "stderr", max_bytes_per_pipe).map_err(|err| {
+            terminate_captured_process_tree(child, &mut process_tree);
+            XtaskError::UpstreamSvgFailed(format!(
                 "failed to start upstream SVG render probe stderr reader: {err}"
-            )));
+            ))
+        })?;
+
+    let status = remaining_timeout(started, timeout)
+        .ok_or_else(|| timeout_error("before the child wait started"))
+        .and_then(|remaining| {
+            wait_for_child(child, remaining).map_err(|err| {
+                XtaskError::UpstreamSvgFailed(format!(
+                    "upstream SVG render environment probe failed: {err}"
+                ))
+            })
+        });
+    let status = match status {
+        Ok(status) => status,
+        Err(error) => {
+            terminate_captured_process_tree(child, &mut process_tree);
+            return Err(error);
+        }
+    };
+    let stdout = match receive_child_pipe(&stdout_receiver, "stdout", started, timeout) {
+        Ok(stdout) => stdout,
+        Err(error) => {
+            terminate_captured_process_tree(child, &mut process_tree);
+            return Err(error);
+        }
+    };
+    let stderr = match receive_child_pipe(&stderr_receiver, "stderr", started, timeout) {
+        Ok(stderr) => stderr,
+        Err(error) => {
+            terminate_captured_process_tree(child, &mut process_tree);
+            return Err(error);
         }
     };
 
-    let status = wait_with_timeout(child, timeout);
-    let stdout = join_child_pipe_reader(stdout_reader, "stdout");
-    let stderr = join_child_pipe_reader(stderr_reader, "stderr");
-
-    let status = status.map_err(|err| {
-        XtaskError::UpstreamSvgFailed(format!(
-            "upstream SVG render environment probe failed: {err}"
-        ))
-    })?;
     Ok(Output {
         status,
-        stdout: stdout?,
-        stderr: stderr?,
+        stdout,
+        stderr,
     })
 }
 
@@ -873,6 +961,55 @@ mod tests {
     }
 
     #[test]
+    fn inherited_pipe_grandchild_helper() {
+        let Some(ready_path) =
+            std::env::var_os("MERMAN_XTASK_SUPPORT_INHERITED_PIPE_GRANDCHILD_READY")
+        else {
+            return;
+        };
+        let listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind inherited-pipe grandchild listener");
+        fs::write(
+            ready_path,
+            listener
+                .local_addr()
+                .expect("inherited-pipe grandchild address")
+                .to_string(),
+        )
+        .expect("write inherited-pipe ready file");
+        std::thread::sleep(Duration::from_secs(30));
+        drop(listener);
+    }
+
+    #[test]
+    fn inherited_pipe_parent_helper() {
+        let Some(ready_path) = std::env::var_os("MERMAN_XTASK_SUPPORT_INHERITED_PIPE_PARENT_READY")
+        else {
+            return;
+        };
+        let executable = std::env::current_exe().expect("current test executable");
+        let grandchild_test = exact_test_name("inherited_pipe_grandchild_helper");
+        let grandchild = Command::new(executable)
+            .args(["--exact", grandchild_test.as_str(), "--nocapture"])
+            .env(
+                "MERMAN_XTASK_SUPPORT_INHERITED_PIPE_GRANDCHILD_READY",
+                &ready_path,
+            )
+            .spawn()
+            .expect("spawn inherited-pipe grandchild");
+
+        let ready_deadline = Instant::now() + Duration::from_secs(1);
+        while !Path::new(&ready_path).is_file() && Instant::now() < ready_deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            Path::new(&ready_path).is_file(),
+            "inherited-pipe grandchild did not become ready"
+        );
+        drop(grandchild);
+    }
+
+    #[test]
     fn process_tree_grandchild_helper() {
         let Some(ready_path) = std::env::var_os("MERMAN_XTASK_SUPPORT_TREE_GRANDCHILD_READY")
         else {
@@ -1002,6 +1139,69 @@ mod tests {
         assert!(output.status.success());
         assert!(output.stdout.iter().filter(|byte| **byte == b'o').count() >= 512 * 1024);
         assert!(output.stderr.iter().filter(|byte| **byte == b'e').count() >= 512 * 1024);
+    }
+
+    #[test]
+    fn bounded_output_deadline_includes_inherited_pipe_drain() {
+        let root = unique_test_root("upstream-svg-support-inherited-pipe");
+        fs::create_dir_all(&root).expect("create inherited-pipe test root");
+        let ready_path = root.join("grandchild-ready.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let parent_test = exact_test_name("inherited_pipe_parent_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", parent_test.as_str(), "--nocapture"])
+            .env(
+                "MERMAN_XTASK_SUPPORT_INHERITED_PIPE_PARENT_READY",
+                &ready_path,
+            )
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child =
+            spawn_timeout_managed_child(&mut command).expect("spawn inherited-pipe parent");
+        let started = Instant::now();
+
+        let error = wait_with_bounded_output(&mut child, Duration::from_secs(2), 1024 * 1024)
+            .expect_err("an inherited writer must not outlive the shared deadline");
+
+        assert!(
+            error.to_string().contains("timed out while draining"),
+            "{error}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "pipe drain exceeded its hard deadline: {:?}",
+            started.elapsed()
+        );
+        assert!(
+            child
+                .try_wait()
+                .expect("query inherited-pipe parent")
+                .is_some(),
+            "the exited parent must remain reaped"
+        );
+
+        let address: SocketAddr = fs::read_to_string(&ready_path)
+            .expect("read inherited-pipe ready file")
+            .parse()
+            .expect("parse inherited-pipe grandchild address");
+        let release_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match TcpListener::bind(address) {
+                Ok(listener) => {
+                    drop(listener);
+                    break;
+                }
+                Err(_) if Instant::now() < release_deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(err) => {
+                    panic!("inherited-pipe grandchild remained alive after deadline: {err}")
+                }
+            }
+        }
+        fs::remove_file(&ready_path).expect("remove inherited-pipe ready file");
+        fs::remove_dir(&root).expect("remove inherited-pipe test root");
     }
 
     #[test]
