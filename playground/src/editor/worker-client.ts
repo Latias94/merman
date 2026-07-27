@@ -37,6 +37,11 @@ export interface MermanLanguageWorkerClient {
   dispose(): void;
 }
 
+export interface MermanLanguageWorkerStartup {
+  readonly client: MermanLanguageWorkerClient;
+  readonly ready: Promise<EditorLanguageIdentity>;
+}
+
 export interface EditorLanguageIdentity {
   readonly legend: EditorSemanticTokenLegend;
   readonly legendDigest: string;
@@ -59,25 +64,34 @@ interface PendingRequest {
 
 export class StaleLanguageSnapshotError extends Error {
   readonly code = "STALE_DOCUMENT" as const;
+  readonly detail: string | null;
 
   constructor(
     message = "The editor result belongs to an obsolete document or legend.",
-    readonly detail: string | null = null
+    detail: string | null = null
   ) {
     super(message);
     this.name = "StaleLanguageSnapshotError";
+    this.detail = detail;
   }
 }
 
 export class EditorWorkerProtocolError extends Error {
+  readonly code: EditorWorkerErrorCode | "CLIENT_PROTOCOL";
+  readonly detail: string | null;
+  readonly nativeCode: string | null;
+
   constructor(
     message: string,
-    readonly code: EditorWorkerErrorCode | "CLIENT_PROTOCOL" = "CLIENT_PROTOCOL",
-    readonly detail: string | null = null,
-    readonly nativeCode: string | null = null
+    code: EditorWorkerErrorCode | "CLIENT_PROTOCOL" = "CLIENT_PROTOCOL",
+    detail: string | null = null,
+    nativeCode: string | null = null
   ) {
     super(message);
     this.name = "EditorWorkerProtocolError";
+    this.code = code;
+    this.detail = detail;
+    this.nativeCode = nativeCode;
   }
 }
 
@@ -86,6 +100,24 @@ export function createMermanLanguageWorkerClient(
   expectedLegendDigest: string
 ): MermanLanguageWorkerClient {
   return new WorkerClient(worker, expectedLegendDigest);
+}
+
+export function startMermanLanguageWorkerClient(
+  worker: EditorWorkerPort,
+  expectedLegendDigest: string
+): MermanLanguageWorkerStartup {
+  let client: MermanLanguageWorkerClient;
+  try {
+    client = createMermanLanguageWorkerClient(worker, expectedLegendDigest);
+  } catch (error) {
+    worker.terminate();
+    throw error;
+  }
+  const ready = client.initialize().catch((error: unknown) => {
+    client.dispose();
+    throw error;
+  });
+  return Object.freeze({ client, ready });
 }
 
 class WorkerClient implements MermanLanguageWorkerClient {
@@ -97,6 +129,8 @@ class WorkerClient implements MermanLanguageWorkerClient {
   private initializePromise: Promise<EditorLanguageIdentity> | null = null;
   private nextRequestId = 1;
   private synchronization: Promise<void> = Promise.resolve();
+  private readonly worker: EditorWorkerPort;
+  private readonly expectedLegendDigest: string;
 
   private readonly handleError = (event: { message?: unknown }) => {
     const detail = typeof event.message === "string" ? `: ${event.message}` : "";
@@ -186,10 +220,9 @@ class WorkerClient implements MermanLanguageWorkerClient {
     pending.resolve(response.result);
   };
 
-  constructor(
-    private readonly worker: EditorWorkerPort,
-    private readonly expectedLegendDigest: string
-  ) {
+  constructor(worker: EditorWorkerPort, expectedLegendDigest: string) {
+    this.worker = worker;
+    this.expectedLegendDigest = expectedLegendDigest;
     if (!expectedLegendDigest) {
       throw new EditorWorkerProtocolError("A generated editor legend digest is required.");
     }
@@ -421,7 +454,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 
   private poison(error: Error): void {
-    if (this.failure) return;
+    if (this.failure || this.disposed) return;
     this.failure = error;
     this.failAll(error);
     this.worker.terminate();

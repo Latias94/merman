@@ -94,36 +94,45 @@ export function CodeEditor({ className }: CodeEditorProps) {
     languageGenerationRef.current = generation;
     let active = true;
     let registration: MermaidLanguageRegistration | null = null;
+    let client: ReturnType<typeof startMermanLanguageWorker>["client"] | null =
+      null;
 
-    void startMermanLanguageWorker()
-      .then(({ client, identity }) => {
-        if (!active || languageGenerationRef.current !== generation) {
-          client.dispose();
-          return;
-        }
-        registration = registerMermaidLanguage(
-          localMonaco,
-          client,
-          identity,
-          {
-            onRequestRejected: (rejection) => {
-              if (languageGenerationRef.current !== generation) return;
-              setRequestRejection(rejection);
+    try {
+      const startup = startMermanLanguageWorker();
+      client = startup.client;
+      void startup.ready
+        .then((identity) => {
+          if (!active || languageGenerationRef.current !== generation) {
+            startup.client.dispose();
+            return;
+          }
+          registration = registerMermaidLanguage(
+            localMonaco,
+            startup.client,
+            identity,
+            {
+              onRequestRejected: (rejection) => {
+                if (languageGenerationRef.current !== generation) return;
+                setRequestRejection(rejection);
+              },
+              onUnavailable: (error) =>
+                markLanguageUnavailable(error, generation),
             },
-            onUnavailable: (error) =>
-              markLanguageUnavailable(error, generation),
-          },
-        );
-        registrationRef.current = registration;
-        const model = editorRef.current?.getModel();
-        if (model) {
-          void bindLanguageService(registration, model, generation);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active || languageGenerationRef.current !== generation) return;
-        markLanguageUnavailable(error, generation);
-      });
+          );
+          registrationRef.current = registration;
+          const model = editorRef.current?.getModel();
+          if (model) {
+            void bindLanguageService(registration, model, generation);
+          }
+        })
+        .catch((error: unknown) => {
+          startup.client.dispose();
+          if (!active || languageGenerationRef.current !== generation) return;
+          markLanguageUnavailable(error, generation);
+        });
+    } catch (error) {
+      markLanguageUnavailable(error, generation);
+    }
 
     return () => {
       active = false;
@@ -135,6 +144,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
       } else {
         registration?.dispose();
       }
+      client?.dispose();
     };
   }, [
     bindLanguageService,
