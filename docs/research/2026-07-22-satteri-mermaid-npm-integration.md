@@ -1,190 +1,354 @@
-# Satteri Mermaid / Node SSG Integration Research
+# Satteri Mermaid and Merman Node/N-API Comparison
 
-**Date:** 2026-07-22
-**Status:** research and design input; no product behavior changed by this document.
+**Originally researched:** 2026-07-22
 
-## Scope and method
+**Revalidated and expanded:** 2026-07-27
 
-This investigates the migration described in [Satteri Mermaid NPM package](https://xingwangzhe.fun/posts/satteri-mermaid-npm-package/). The blog is useful context, but its claims were checked against the linked [patch](https://raw.githubusercontent.com/msfjarvis/msfjarvis.dev/10ff9777049434698de2374d051168cfd746aa84/patches/%40mermanjs__web%400.7.0.patch), published npm tarballs, the pinned historical Merman source, current Merman source, and primary Node, wasm-bindgen, and napi-rs documentation.
+**Status:** design and release evidence; neither Merman Node transport candidate is an admitted
+public product.
 
-The question is deliberately broader than whether one patch still applies. It asks whether a browser-oriented WASM package is a sound Node/SSG integration surface, and whether Merman should add a native Node-API transport without confusing transport with Mermaid semantic capability.
+## Scope and evidence boundary
+
+This report investigates the migration described in
+[the Satteri Mermaid article](https://xingwangzhe.fun/posts/satteri-mermaid-npm-package/) and compares
+the resulting `@xingwangzhe/satteri-mermaid@0.7.1` package with the current private
+`merman-node` / `@mermanjs/node` candidates.
+
+The article is treated as a lead, not as authoritative evidence. Package identity, API, targets,
+and size were checked against:
+
+- the immutable
+  [`satteri-mermaid` v0.7.1 source](https://github.com/xingwangzhe/satteri-mermaid/tree/53d6be9609ac2fb666dd73f93129e821fd3f95ea);
+- the
+  [npm registry record](https://registry.npmjs.org/@xingwangzhe%2Fsatteri-mermaid/0.7.1) and packed
+  tarball;
+- the pinned
+  [`mermaid-rs-renderer` v0.3.1 source](https://github.com/1jehuang/mermaid-rs-renderer/tree/2f993bd79a55235eb59a34d807852276ba25bea7);
+- Merman source at `71cb231c84bb5ec296f5bf55b1f999f7c1e68582`, plus the in-progress private
+  Node candidate files present in the working tree on 2026-07-27; and
+- Merman's dated, reproducible
+  [Node transport admission record](../performance/NODE_TRANSPORT_ADMISSION.md).
+
+The Merman candidate is actively changing and its recorded binary predates the final refactor
+state. Current API and target observations are therefore implementation-state facts, not release
+promises.
 
 ## Executive conclusion
 
-1. The Satteri patch fixed a real wasm-bindgen initializer **contract drift**, but it was not the complete Node solution. `@mermanjs/web@0.7.0` accepted a direct `WebAssembly.Module` only through a deprecated compatibility path. Passing `{ module_or_path: wasm }` used the generated API's preferred shape and removed the warning.
-2. The operational Node problem was deeper: Merman 0.7.0 was built with wasm-bindgen's `--target web`. Its default initializer resolves a `file:` URL relative to `import.meta.url`; Node's `fetch()` does not load that URL. A Node/SSG caller must resolve, read, and compile the asset itself, or consume a Node-targeted artifact. This was reproduced from the published 0.7.0 tarball.
-3. The current `@mermanjs/web` initializer correctly passes custom WASM values in the object form, so the exact patch is no longer needed. It remains a browser package, however, and does not make default Node/SSG initialization work. Its custom-asset README example is appropriate to a browser/bundler URL, not Node package resolution.
-4. A Node integration is justified as a separate **transport and distribution** after a small, measured admission prototype. It must not be a Mermaid diagram feature, a Cargo semantic capability, or a substitute for the browser package. The likely product is `@mermanjs/node`, backed by a private napi-rs crate and generated platform packages.
-5. Do not copy Satteri's distribution topology. Its published root tarball contains multiple native binaries, reports an unpacked size of 19,931,056 bytes, and has incomplete target coverage despite broader loader claims. The napi-rs recommended root-loader plus exact optional platform packages is the appropriate model.
+1. Satteri solved a real, narrow product problem well: trusted Mermaid fences in a Satteri/Astro
+   static site become inline SVG during the build, with no client-side Mermaid runtime. Its
+   MDAST-placeholder/HAST-render split is the most reusable part of the design.
+2. Satteri is not a general Mermaid Node SDK and does not bind Merman. It is a synchronous SSG
+   plugin over `mermaid-rs-renderer` (`mmdr`) through one napi-rs `render()` function.
+3. Merman's Node candidate is a substantially broader transport: 35 Mermaid 11.16 families,
+   semantic/layout/planning operations, math and two optional layout engines, typed errors,
+   deterministic resource profiles, async work, a bounded queue, disposal, and queued
+   cancellation. That breadth also makes its current native artifact much larger.
+4. There is no valid Satteri-versus-Merman speed winner yet. Satteri's `~3 ms` is an undocumented
+   author observation; mmdr's published numbers compare against fresh Chromium process cost; the
+   Merman numbers use a different 3,995-case corpus and capability set.
+5. The published Satteri package has several verifiable contract defects: a missing CommonJS export
+   file, a Node engine declaration inconsistent with its selected Node-API level, platform and
+   diagram-list drift, unsafe URI schemes in generated links, silent render-error fallback, and
+   size claims that do not match the tarball.
+6. Merman should borrow Satteri's Markdown integration pattern, not its binding or distribution
+   design. Keep the SSG plugin above a general Node engine and use the existing exact
+   optional-platform-package topology.
 
-## What the patch actually fixed
+## What Satteri actually ships
 
-The linked patch changes both source and generated distribution code from:
+`@xingwangzhe/satteri-mermaid@0.7.1` was published on 2026-07-19. The repository was created in June
+2026 and the tag contains eight commits, so it is active but very new. Its
+[`Cargo.toml`](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/Cargo.toml)
+depends on `mermaid-rs-renderer = "0.3.1"` and napi-rs, while its
+[`package.json`](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/package.json)
+declares `satteri >= 0.8.0` as a peer dependency.
 
-```ts
-await module.default(wasm);
+The call chain is:
+
+```text
+Markdown fence
+  -> Satteri MDAST visitor stores source in ctx.data and emits an empty placeholder
+  -> other Markdown transforms run without seeing the Mermaid source
+  -> Satteri HAST visitor restores the source
+  -> synchronous napi-rs render(code, options)
+  -> mermaid-rs-renderer 0.3.1 parse/layout/SVG pipeline
+  -> raw inline SVG
 ```
 
-to:
+The two-phase source preservation is implemented in
+[`src/plugin.ts`](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/src/plugin.ts).
+The native layer in
+[`src/lib.rs`](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/src/lib.rs)
+exports one synchronous function and converts every Rust error into a generic JavaScript error
+string. There is no renderer instance, async task, worker pool, cancellation token, resource
+profile, parse result, layout result, or typed error object.
 
-```ts
-await module.default({ module_or_path: wasm });
+## API and runtime comparison
+
+| Concern | Satteri Mermaid 0.7.1 | Current Merman Node candidate |
+| --- | --- | --- |
+| Product state | Published Satteri/Astro plugin | Private admission candidate; not published or supported |
+| Rust renderer | `mermaid-rs-renderer` 0.3.1 | Merman 0.8 alpha line, targeting `mermaid@11.16.0` |
+| Native bridge | napi-rs, one synchronous `render()` | napi-rs `NativeEngine` plus a Node-targeted WASM control candidate |
+| Main API | `mermaidMdast()`, `mermaidHast()`, `renderMermaidSVG()` | `createNodeEngine()`, async/sync SVG helpers, generic typed operations, runtime catalog, `dispose()` |
+| Scheduling | Runs on the calling Node thread | napi-rs `AsyncTask` for async work; explicit sync path for SSG |
+| Backpressure | None | Configurable `concurrency` and `maxQueue`; typed saturation error |
+| Cancellation | None | Removes queued work only; already-running Rust work is not preempted |
+| Error behavior | Direct API throws a generic error; plugin catches all errors and silently emits a code block | Versioned wire envelope and typed operation, capability, queue, target, and lifecycle errors |
+| Outputs | SVG only | Candidate recipe exposes SVG plus semantic JSON, layout JSON, and SVG capability planning |
+| Runtime policy | Implicit native process behavior | Deterministic by default; explicit binding options and runtime catalog |
+| Resource policy | None | Seven family-neutral limits with `interactive`, `constrained`, `trusted-native`, and explicit unbounded profiles |
+| Module surface | ESM import intended; declared CJS export is broken | ESM-only candidate surface |
+
+Merman's async behavior is visible in
+[`napi_transport.rs`](../../crates/merman-node/src/napi_transport.rs), while queue and lifecycle
+semantics are owned by
+[`bounded-executor.mjs`](../../platforms/node/src/bounded-executor.mjs). Both transports execute the
+same binding-core request in [`wire.rs`](../../crates/merman-node/src/wire.rs), rather than
+duplicating parse or render behavior in JavaScript.
+
+This extra machinery is useful for editors, servers, and batch tools, but a one-off trusted static
+blog build may reasonably prefer Satteri's much smaller synchronous API.
+
+## Diagram and rendering capability
+
+The authoritative `mermaid-rs-renderer` 0.3.1
+[`DiagramKind`](https://github.com/1jehuang/mermaid-rs-renderer/blob/2f993bd79a55235eb59a34d807852276ba25bea7/src/ir.rs)
+contains 23 families:
+
+`flowchart`, `sequence`, `class`, `state`, `er`, `pie`, `mindmap`, `journey`, `timeline`, `gantt`,
+`requirement`, `gitgraph`, `c4`, `sankey`, `quadrant`, `zenuml`, `block`, `packet`, `kanban`,
+`architecture`, `radar`, `treemap`, and `xychart`.
+
+Satteri does not add diagram implementations; it forwards source to that parser. Its README list is
+not authoritative: it contains 24 names, includes unsupported `info` and `venn`, and omits supported
+`zenuml`. The article's statement that the native version lost `xychart` is also stale for the
+published 0.7.1 dependency. Because the HAST plugin catches render errors, an unsupported family is
+quietly restored as a raw code block instead of failing the build.
+
+Merman's current catalog covers 35 Mermaid 11.16 families. Relative to the mmdr 0.3.1 list, Merman
+also includes `swimlane`, `info`, `eventmodeling`, `treeView`, `ishikawa`, four Railroad dialects,
+`venn`, `wardley`, and `cynefin`. The catalog is owned by
+[`family.rs`](../../crates/merman-core/src/family.rs), and Node exposes the count through its runtime
+catalog instead of maintaining a package-local list.
+
+The capability sets still are not equivalent:
+
+- Merman's Node recipe includes SVG, Cytoscape and ELK layouts, and math rendering.
+- Satteri exposes mmdr's five theme presets, selected colors, typography, spacing, aspect ratio,
+  and approximate text metrics.
+- Satteri's claim of "full mermaid-rs parameter coverage" is too broad. The wrapper does not expose
+  mmdr's complete nested configuration, and it has no general node-border-width option despite the
+  article's border-width claim.
+- mmdr explicitly describes itself as early development whose visual output may not match
+  Mermaid CLI. It does not declare a pinned Mermaid semantic compatibility release in its
+  [v0.3.1 README](https://github.com/1jehuang/mermaid-rs-renderer/blob/2f993bd79a55235eb59a34d807852276ba25bea7/README.md).
+  Merman's family and SVG evidence is instead organized around the pinned Mermaid 11.16 baseline.
+
+## Distribution, ABI, and dependency closure
+
+### Published Satteri package
+
+The npm tarball was measured on 2026-07-27 with `npm pack
+@xingwangzhe/satteri-mermaid@0.7.1 --json`:
+
+| Measure | Result |
+| --- | ---: |
+| Compressed tarball | 8,310,468 bytes |
+| Registry unpacked size | 19,931,056 bytes |
+| Files | 13 |
+| macOS arm64 `.node` | 4,206,544 bytes |
+| Linux arm64 glibc `.node` | 4,528,624 bytes |
+| Linux x64 glibc `.node` | 5,392,952 bytes |
+| Windows x64 `.node` | 5,768,704 bytes |
+
+All four binaries live in the root package, so every supported user installs roughly 19.9 MB. The
+article's `<1 MB` native-binary claim does not match any published 0.7.1 binary.
+
+Actual binary coverage is macOS arm64, Linux x64/arm64 glibc, and Windows x64. The README additionally
+claims macOS x64, while the loader additionally advertises Windows arm64; neither artifact exists.
+There is no musl build.
+
+The package declares Node `>=18.17.0`, but
+[`Cargo.toml`](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/Cargo.toml)
+selects napi-rs `napi10`. The official
+[Node-API version matrix](https://nodejs.org/api/n-api.html#node-api-version-matrix) places Node-API
+10 at Node 22.14.0+, while Node 18.17.0 introduces Node-API 9. The current binding may happen not to
+exercise every version-10 call, but the declared engine floor and compiled API choice are not a
+defensible compatibility contract without a Node 18/20 runtime matrix.
+
+The tarball has npm provenance, which is positive. Rust reproducibility is weaker: the tag commits
+no `Cargo.lock`, uses semver ranges for napi-rs and mmdr, and the release workflow builds without a
+recorded Rust dependency closure. It also enables mmdr's default `cli` and `png` features even
+though the binding exports only SVG; mmdr's own embedding guidance recommends disabling those
+defaults.
+
+### Merman candidate package
+
+Merman uses a thin ESM root package with exact optional dependencies on one package per target.
+The current declared matrix is macOS x64/arm64, Linux x64 glibc/musl, and Windows x64. It lacks
+Linux arm64, which Satteri does ship. Each platform package declares exact `os`, `cpu`, and, on
+Linux, `libc` metadata in [`package-surfaces.json`](../../platforms/node/package-surfaces.json).
+
+The 2026-07-23 admission run recorded 8,860,772 packed bytes and 22,718,975 installed bytes for the
+root plus one macOS arm64 target. Its native file is therefore materially larger than Satteri's
+same-host binary. That is expected from a broader implementation, but the current comparison is
+also unfairly pessimistic: the standalone Merman candidate manifest has no release LTO/strip
+profile, while Satteri explicitly enables LTO and symbol stripping.
+
+Merman's build receipt records the exact Cargo lock digest, dependency closure, artifact hashes,
+runtime capability catalog, and operation probes. The recorded artifact contained 195 resolved
+packages, but it predates the final refactor and must not be quoted as the current release closure.
+Rebuild after enabling release stripping and after the branch stabilizes before setting a size
+budget.
+
+The Merman candidate selects Node-API 8, but its JavaScript package does not yet declare
+`engines.node` even though it uses APIs such as `structuredClone`. The public minimum Node version
+must be chosen, declared, and tested before admission.
+
+## Performance evidence
+
+These measurements describe different workloads and must remain separate:
+
+| Evidence | Workload and result | What it does not prove |
+| --- | --- | --- |
+| Satteri article | Claims approximately 3 ms per diagram and approximately 0 ms native initialization | No machine, corpus, repetitions, raw samples, or plugin benchmark is published |
+| mmdr v0.3.1 README | Reports 2.71-4.67 ms CLI render times and 0.07-2.51 ms library times for four small families on an Intel Linux host | Its 100-1400x headline mostly compares with fresh Puppeteer/Chromium process cost, not warm `mermaid.render()` |
+| Merman admission run | On Apple M4 Pro: napi warm p50 0.722 ms, mean 1.354 ms, p95 2.750 ms; cold p50 47.07 ms; peak RSS 238,977,024 bytes across a 3,995-case corpus | Different host, diagrams, options, features, output, and error set; no Satteri result was collected |
+| Same-run Merman Node WASM | napi reduced warm mean by 8.7%, cold p50 by 41.2%, and peak RSS by 63.5% relative to the Node-targeted WASM candidate | One macOS arm64 host and stale pre-final-refactor artifacts; no transport was admitted |
+
+The Merman data does support one narrow conclusion: for Merman's own complete static-SVG recipe on
+that host, N-API improved cold start and memory substantially, while warm-render latency improved
+modestly. It does not show that N-API is universally faster than WASM or that Merman is faster than
+mmdr.
+
+A fair follow-up comparison should:
+
+1. use the intersection of the 23 mmdr families and identical source files;
+2. separate module import, first render, warm synchronous render, async batch throughput, RSS, and
+   installed footprint;
+3. record successful/failed inputs and well-formed SVG before comparing time;
+4. use only common options, while separately reporting Merman-only math/layout cases;
+5. run isolated processes on each shared published target; and
+6. publish the corpus digest, raw samples, tool versions, and package hashes.
+
+Do not require SVG byte equality between independent renderers, but do not count a failed or
+silently downgraded Satteri diagram as a fast render.
+
+## Security and reliability boundary
+
+Satteri is appropriate only for trusted build input in its current form.
+
+`mermaid-rs-renderer` escapes XML attribute syntax, but its
+[`parse_click_line`](https://github.com/1jehuang/mermaid-rs-renderer/blob/2f993bd79a55235eb59a34d807852276ba25bea7/src/parser.rs)
+accepts arbitrary URI schemes and its
+[`link_attrs`](https://github.com/1jehuang/mermaid-rs-renderer/blob/2f993bd79a55235eb59a34d807852276ba25bea7/src/render.rs)
+serializes them into both `href` and `xlink:href`. Therefore a `javascript:` click target can reach
+the inline SVG. The plugin adds no sanitizer after rendering.
+
+It also has no source/model/layout/output budgets, timeout, cancellation, or concurrency limit.
+Finally, `replaceWithSVG()` catches every render error without logging and emits a raw Mermaid code
+block. That keeps a personal blog build alive, but it hides unsupported syntax and can publish a
+page that depends on client Mermaid even when the site did not include it.
+
+Merman's default strict rendering paths sanitize dangerous link schemes and its binding contract
+exposes limits for source bytes, semantic items/text/depth, layout work, SVG bytes, and SVG
+elements. These are workload controls, not a sandbox. As
+[`OPTIONS_JSON.md`](../bindings/OPTIONS_JSON.md) states, public or multi-tenant services still need
+host timeouts, memory and concurrency quotas, and process-level preemption or isolation.
+
+## Use-case decision table
+
+| User need | Best current choice | Reason |
+| --- | --- | --- |
+| Trusted Sätteri/Astro static blog on a published target | Satteri, after accepting or fixing the listed package/security issues | Turnkey MDAST/HAST integration and zero client JS |
+| Generic Node SSG today | Neither Merman candidate is public; use a controlled Rust/CLI integration or a reviewed adapter | Do not present private admission code as a supported package |
+| Editor preview, lint, semantic tooling, or layout inspection | Merman architecture once Node is admitted | Typed semantic/layout operations, async queue, lifecycle, and resource catalog |
+| Public or multi-tenant rendering | Merman with `constrained` policy plus outer isolation; Satteri is not suitable as published | Satteri has no budgets and passes unsafe URI schemes |
+| Need `info`, Venn, Swimlane, Wardley, Cynefin, Event Modeling, TreeView, Ishikawa, or Railroad | Merman | These are outside mmdr 0.3.1's 23-family implementation |
+| Need Linux arm64 glibc now | Satteri | Merman's current candidate matrix lacks this target |
+| Need macOS x64 or Linux x64 musl | Merman candidate topology, after admission | Satteri publishes neither binary |
+| Small trusted SVG-only native binding | Satteri/mmdr has the smaller current native binary | Merman's complete recipe pays for broader semantics, layout, math, and policy |
+
+## What Merman should borrow
+
+1. Add a separate Satteri/Markdown integration package only if demand exists. Preserve Mermaid
+   source in MDAST data and render after transformations in HAST; do not put Markdown-specific
+   behavior in the Node transport.
+2. Offer a concise synchronous helper for explicit SSG builds alongside the engine API. Keep the
+   async engine as the server/editor default.
+3. Make fallback an explicit policy such as `onError: "fail" | "warn-and-code" | "code"`, with
+   failure as the release/build default. Never swallow a typed renderer error silently.
+4. Keep exact per-target optional packages. Do not aggregate every native binary into the root
+   tarball, and do not add postinstall downloads.
+5. Add release LTO/stripping to the standalone Node candidate, then rerun dependency, size, RSS,
+   and latency evidence. A native transport alone is not a size optimization.
+6. Declare and test a minimum Node version. Keep the napi-rs feature level at or below that
+   contract.
+7. Run lightweight loader/API/package contract tests on ordinary changes. Reserve the full corpus,
+   cross-platform install matrix, and comparative performance harness for admission and release
+   gates rather than every PR.
+
+## Actionable findings
+
+### Satteri package
+
+- **High:** `exports.require` points to `dist/index.cjs`, but the published tarball contains no such
+  file. CommonJS package loading is broken.
+- **High:** `engines.node >=18.17.0` conflicts with the selected `napi10` build contract; Node 18 and
+  20 support must not be claimed without correction and runtime evidence.
+- **High:** arbitrary click URI schemes, including `javascript:`, are serialized into inline SVG.
+- **High:** render failures are swallowed and silently converted to code blocks.
+- **Moderate:** README/platform claims exceed the actual binaries; the loader also advertises a
+  missing Windows arm64 binary.
+- **Moderate:** diagram documentation is internally inconsistent and disagrees with mmdr 0.3.1.
+- **Moderate:** `<1 MB`, general border-width control, and complete parameter-coverage claims do not
+  match the published artifact or binding source.
+- **Moderate:** the release has npm provenance but no locked or recorded Rust dependency closure.
+
+### Merman candidate
+
+- **High before admission:** the public Node minimum version is undeclared and only macOS arm64 has
+  runtime/install evidence.
+- **Moderate:** the standalone candidate lacks release LTO/stripping, so its current 21 MB-class
+  native file is not an acceptable final size baseline.
+- **Moderate:** Linux arm64 is absent, while the candidate declares targets that have not yet
+  passed their required runtime matrix.
+- **Evidence gap:** no controlled same-corpus benchmark against Satteri/mmdr exists.
+
+## Reproduction notes
+
+Commands used for this 2026-07-27 audit included:
+
+```console
+git clone --depth 1 --branch v0.7.1 https://github.com/xingwangzhe/satteri-mermaid.git
+git clone --depth 1 --branch v0.3.1 https://github.com/1jehuang/mermaid-rs-renderer.git
+npm view @xingwangzhe/satteri-mermaid@0.7.1 ... --json
+npm pack @xingwangzhe/satteri-mermaid@0.7.1 --json
+tar -xzf xingwangzhe-satteri-mermaid-0.7.1.tgz
+file package/*.node
+otool -L package/mermaid-rs.darwin-arm64.node
+xcrun dyld_info -exports package/mermaid-rs.darwin-arm64.node
+strings package/mermaid-rs.darwin-arm64.node
+shasum -a 256 xingwangzhe-satteri-mermaid-0.7.1.tgz package/*.node
 ```
 
-The generated `merman_wasm.js` in the published `@mermanjs/web@0.7.0` package accepts both forms. A direct `InitInput`, including a compiled `WebAssembly.Module`, takes a deprecated compatibility branch; the object form is the documented preferred call shape. Therefore the patch is a correct forward-compatibility and warning-removal fix, but not evidence that direct input could never initialize.
+The downloaded tarball SHA-256 was
+`5e1b9a21f1c85a90c376d0eee2dd9d6e8ce9c28e3df261acf665d9f5a4866535`.
+No third-party native addon was executed, no external Cargo build was run, and no Satteri
+performance number was independently reproduced. Avoiding unreviewed native-code execution means
+the Node 18/20 failure mode remains a contract finding rather than an observed runtime failure.
 
-The historical wrapper did not otherwise know how to locate a Node-installed WASM file. It was built with `wasm-pack build --target web`, and its default generated initializer derives `new URL("merman_wasm_bg.wasm", import.meta.url)`. On Node 26, importing the published package and calling `initMerman()` produced `TypeError: fetch failed` for that `file:` URL. Reading the exported `.wasm`, compiling it with `WebAssembly.compile`, and supplying both a custom JS glue loader and the compiled module initialized successfully. The direct-form experiment also emitted the generated deprecation warning; the object form did not.
+## Primary source inventory
 
-This matches wasm-bindgen's own deployment guidance: [`--target web`](https://rustwasm.github.io/docs/wasm-bindgen/reference/deployment.html) is for browser delivery, while Node should use a Node target such as `--target nodejs` or the documented ESM option. The [no-bundler example](https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html) also explains that web initialization derives the asset URL from the module URL.
-
-| Layer | 0.7.0 finding | Current Merman status | Correct ownership |
-| --- | --- | --- | --- |
-| wasm-bindgen call shape | Direct custom input used deprecated compatibility behavior. | Fixed in [`platforms/web/src/index.ts`](../../platforms/web/src/index.ts): custom input is wrapped as `{ module_or_path: wasm }`. | Browser WASM wrapper. |
-| Default asset loading | Browser `file:` URL path fails under Node's `fetch`. | Still browser-oriented by design. | A Node artifact or a documented Node-specific adapter, never filesystem crawling in an app. |
-| npm exports | The WASM subpath was exportable but callers still had to turn it into bytes/module. | Browser package exports remain a browser surface. | Node package loader should resolve its own native binary. |
-| TypeScript contract | Generated wasm-bindgen input shape was not reflected by the wrapper's invocation. | Wrapper call is aligned; custom inputs remain explicit. | Keep wrapper types synchronized with generated glue. |
-| Cache and engine reuse | The blog's manual initialization was a singleton workaround. | Browser runtime owns its cache and initialization state. | A Node renderer must own a bounded, explicit engine lifecycle. |
-| Mermaid capability | No diagram behavior was missing. | No semantic gap. | Do not introduce a Node-specific Mermaid feature. |
-
-`@mermanjs/web@0.7.0` was approximately 8.77 MB unpacked according to its [npm registry metadata](https://registry.npmjs.org/@mermanjs%2Fweb/0.7.0), including an 8,685,215-byte WASM file. That is evidence of the browser artifact's size, not evidence that a native addon is inherently smaller or faster.
-
-## Why the current web package should not become a hidden Node product
-
-The current package describes itself as browser rendering, and [`crates/merman-wasm/Cargo.toml`](../../crates/merman-wasm/Cargo.toml) likewise declares browser WASM bindings. That boundary is healthy. Extending it with Node-only `fs`, `createRequire`, or platform probing would make browser and SSR bundling behavior less predictable.
-
-There is one documentation issue to correct if no Node package exists yet: the current custom-input example uses:
-
-```ts
-new URL("@mermanjs/web/pkg/merman_wasm_bg.wasm", import.meta.url)
-```
-
-In Node, that is a URL relative to the caller's source file, not package-resolution syntax. Modern Node offers [`import.meta.resolve()`](https://nodejs.org/api/esm.html#importmetaresolvespecifier) for module-relative resolution, but a consumer still has to read/compile a browser-targeted WASM asset and choose the correct glue module. The web README should state plainly that the package is browser-only and should not prescribe this code as a Node recipe.
-
-The product choices are consequently:
-
-1. Keep `@mermanjs/web` browser-only and publish a Node-targeted WASM package.
-2. Keep `@mermanjs/web` browser-only and publish a native Node-API package.
-3. Publish both only if measured workload, support, and release cost justify two Node transports.
-
-The recommended order is an evidence-gated prototype of (1) and (2), then one deliberate public product. A browser package must not silently select a Node implementation, and a native package must never silently fall back to Mermaid.js or browser WASM because that changes output, resource, and environment behavior.
-
-## Assessment of Satteri's native package
-
-Satteri's source currently uses napi-rs target configuration and a JavaScript platform loader. Its [published 0.7.1 registry record](https://registry.npmjs.org/@xingwangzhe%2Fsatteri-mermaid/0.7.1) reports 19,931,056 bytes unpacked. The corresponding release workflow puts four compiled `.node` files in the root package before publishing. Their observed sizes range from about 4.2 MB to 5.8 MB.
-
-This disproves two broad conclusions that could otherwise be drawn from the blog:
-
-- The published package is not a sub-1 MB native module.
-- It does not demonstrate universal desktop support. Its target configuration includes Linux x64 GNU, Linux arm64 GNU, macOS arm64, and Windows x64; the loader has branches that exceed that actual artifact set.
-
-The blog's move to Node-API can still be a good product decision for an SSG. Its relevant value is predictable native initialization and a direct Node API, not a generally valid performance or package-size claim. It also used a different renderer and coverage set, so its timing data is not a Merman-vs-N-API benchmark.
-
-## Transport comparison for Merman
-
-| Surface | Appropriate caller | Initialization and ownership | Threading and large output | Fonts, time, and capabilities | Distribution trade-off |
-| --- | --- | --- | --- | --- | --- |
-| Rust facade | Rust applications, build tools | Direct `Engine` / renderer construction. | Native caller controls scheduling and buffers. | Canonical environment/resource policies. | No Node integration. |
-| C ABI | C/C++ or custom FFI hosts | Explicit ABI handles and buffers. The planned ABI 3 request/result/sink model is the right shared lower boundary. | Caller must respect ownership and callback rules. | Host callbacks are explicit, not automatic. | Node FFI wrappers would add unsafe dynamic-library packaging with no ergonomic gain. |
-| UniFFI | Swift, Kotlin, Python-style SDKs | Generated bindings around the binding core. | Language runtime controls call boundaries. | Good for declared SDK hosts, not Node. | Does not supply an npm-native runtime. |
-| Browser WASM | Browsers and browser bundlers | `wasm-bindgen --target web`; browser asset loading and browser runtime state. | JS/WASM boundary and browser lifecycle apply. | Browser text measurement integration where available. | Portable browser delivery, but not default Node asset loading. |
-| Node-API via napi-rs | Node SSG, CLIs, server-side Node workers | Native addon loader initializes a canonical binding engine. | Sync calls block the event loop; async work needs a bounded native task model. | Select an explicit Merman environment profile; N-API does not grant automatic font or timezone parity. | Requires per-platform binaries, support policy, and native-addon security documentation. |
-
-Node's [N-API documentation](https://nodejs.org/api/n-api.html) guarantees ABI stability for the Node-API interface across compatible Node versions. It does **not** make a compiled Rust binary portable across OS, CPU, libc, or alternative runtimes. napi-rs makes the same distinction in its [compatibility guidance](https://napi.rs/docs/more/support-compatibility). Merman must publish only an actually tested target matrix.
-
-## Recommended Node package architecture
-
-### Product boundary
-
-Add the following only after the admission prototype passes:
-
-- A private `crates/merman-node` transport crate using napi-rs.
-- A public `@mermanjs/node` JavaScript root package.
-- Private-or-public-but-not-user-installed `@mermanjs/node-<target>` platform packages, each containing exactly one native artifact and declaring exact `os`, `cpu`, and, where needed, `libc` constraints.
-
-`@mermanjs/node` is a runtime transport. It does not add a Mermaid family, parser mode, render capability, or configuration syntax. It must consume the same generated capability descriptor used by Rust, CLI, FFI, WASM, and documentation. Its build should select a named descriptor/preset, initially the complete native SDK closure, rather than inventing Node-only semantic flags.
-
-The addon should call [`merman-bindings-core`](../../crates/merman-bindings-core) and the planned typed render request/result model directly. Do not bridge Node through the C ABI, and do not duplicate parsing, configuration, capability detection, or error classification in JavaScript. The Node transport needs its own version/schema field, while Merman's native C ABI version and Node-API version remain separate compatibility contracts.
-
-### Public API and lifecycle
-
-The initial API should be intentionally small:
-
-```ts
-const renderer = createRenderer({
-  environment: "deterministic" | "native",
-  resourceProfile: "default" | "constrained",
-  maxConcurrentRenders: number,
-});
-
-const svg = await renderer.renderSvg(source, options);
-await renderer.dispose();
-```
-
-- `renderSvgSync()` may exist only as an explicit, documented event-loop-blocking convenience for one-off build tools.
-- The default should return a Promise backed by napi-rs `AsyncTask` or an equivalent bounded native scheduler. Node says asynchronous native work must not block the event loop; see [N-API async work](https://nodejs.org/api/n-api.html#asynchronous-work).
-- Accepting an `AbortSignal` must document the actual limit: napi-rs [cancellation](https://napi.rs/docs/concepts/async-task) can cancel queued work, not arbitrary in-progress native rendering. Full cancellation requires a future cooperative Merman operation token.
-- Cache engines per explicit renderer instance and compatible environment, with bounded concurrency and disposal. Do not make a process-global, unbounded cache keyed by arbitrary options.
-- Return a string or `Buffer` for ordinary SSG output. The future ABI sink is useful for cross-language ownership, but it does not by itself make an async JavaScript callback a safe streaming interface. A `renderToFile` API should be added only after a native worker can write atomically with verified memory and backpressure behavior.
-
-For text measurement, native Node should initially use Merman's deterministic vendored metrics. A JavaScript callback cannot transparently provide a synchronous, safe native font measurement service across async worker threads. System-font exactness needs a separately admitted native font backend and source-backed behavior evidence. Similarly, `environment: "native"` may opt into system clock/timezone/random adapters; `"deterministic"` must not read them. Neither decision belongs to N-API itself.
-
-### Packaging, installation, and security
-
-napi-rs recommends a thin root package with exact `optionalDependencies` on per-platform packages, avoiding postinstall downloads and a root tarball containing every binary; see its [release guide](https://napi.rs/docs/deep-dive/release). Merman should follow that model.
-
-Required distribution rules:
-
-- Publish a small loader package plus one binary per supported target, never all target binaries in the root package.
-- Pin root and platform package versions exactly, verify every expected package before moving a dist-tag, and recover safely from npm's non-atomic multi-package publication.
-- Start with only CI-built, clean-install-tested targets. A reasonable first matrix is macOS x64/arm64, Windows x64, Linux x64 GNU/musl, and Linux arm64 GNU/musl, but no target is public until it is actually built and tested.
-- Return a typed unsupported-platform error with OS, CPU, libc, and runtime evidence. Do not try an undocumented browser-WASM fallback.
-- Mark the package Node-only, ensure bundlers externalize it, and test that browser/client imports fail clearly rather than leaking a binary into a client build.
-- Document Node's [permission model](https://nodejs.org/api/permissions.html): with that model enabled, native addons require `--allow-addons`.
-- Produce SPDX/license notices, dependency provenance, artifact hashes, and an SBOM per platform release. Native packaging widens the release and supply-chain surface even when application logic is shared.
-
-## Admission prototype and release gates
-
-Before adding a permanent package, implement a private prototype that runs the same `merman-bindings-core` request/options/error contract through two transports:
-
-1. Node-targeted wasm-bindgen output, not the browser `--target web` artifact.
-2. napi-rs Node-API output.
-
-Measure on a clean Node process for the pinned 35-family corpus and representative large diagrams:
-
-- import plus first render, then warm render and batch render;
-- RSS/peak allocation, output size, and error behavior;
-- deterministic SVG semantic parity with direct Rust rendering;
-- package tarball and installed aggregate size, both compressed and unpacked;
-- supported Node versions and each proposed OS/CPU/libc target;
-- concurrent rendering, `dispose`, queued cancellation, and no event-loop starvation;
-- large SVG behavior and any proposed file-output path;
-- clean installation from npm-like packages, unsupported-target diagnostics, permission-model behavior, ESM/CJS loader behavior, and SSR/bundler externalization.
-
-Use these gates to choose one public Node transport. Do not use the blog's timing as an admission criterion, because it measures another renderer and a different coverage set. If Node-targeted WASM is adequate, it has lower native release burden; if N-API materially improves complete SSG workflow behavior and the platform matrix remains supportable, publish the native package. A decision must be based on measured end-to-end user value, not on a generic claim that native code is faster.
-
-## Required plan and documentation changes
-
-The capability-driven architecture plan currently covers browser WASM packages and native SDKs, but not Node/SSG as a first-class transport. Add a dedicated, gated work unit with these requirements:
-
-1. Record the prototype decision and exact supported Node/platform matrix in the capability/release descriptor without adding a Mermaid semantic capability.
-2. Add a `merman-node` transport crate and package generator only if the prototype admits N-API.
-3. Make every Node request use the canonical binding-core typed request, resource profile, environment policy, error schema, and capability report.
-4. Add artifact-level release verification for optional platform packages, target metadata, dist-tags, hashes, notices, SBOMs, and clean installs.
-5. Add fixture parity, lifecycle, concurrency, cancellation, large-output, native-environment, unsupported-platform, permission-model, and SSR externalization tests.
-6. Update the user-facing feature guide with a workflow matrix: browser applications use `@mermanjs/web`; Node SSG/build systems use `@mermanjs/node` only if published; Rust/CLI/native SDK users select their documented presets. State that transport selection does not alter Mermaid semantics.
-7. Correct the browser package README so its custom WASM example is not presented as a Node solution. Until a Node product exists, document that Node use is unsupported rather than asking users to search `node_modules` for an asset.
-
-This complements, rather than replaces, the planned capability and package architecture work in [`docs/plans/2026-07-22-001-refactor-capability-driven-feature-and-distribution-architecture-plan.md`](../plans/2026-07-22-001-refactor-capability-driven-feature-and-distribution-architecture-plan.md). The plan's browser package split, typed ABI work, and generated capability catalog are prerequisites for a correct Node transport; they are not themselves a Node/SSG integration contract.
-
-## Source inventory
-
-- [Satteri blog post](https://xingwangzhe.fun/posts/satteri-mermaid-npm-package/)
-- [Satteri patch for `@mermanjs/web@0.7.0`](https://raw.githubusercontent.com/msfjarvis/msfjarvis.dev/10ff9777049434698de2374d051168cfd746aa84/patches/%40mermanjs__web%400.7.0.patch)
-- [`@mermanjs/web@0.7.0` npm registry metadata](https://registry.npmjs.org/@mermanjs%2Fweb/0.7.0)
-- [Current Satteri native package registry metadata](https://registry.npmjs.org/@xingwangzhe%2Fsatteri-mermaid/0.7.1)
-- [Satteri package manifest](https://raw.githubusercontent.com/xingwangzhe/satteri-mermaid/53d6be9609ac2fb666dd73f93129e821fd3f95ea/package.json) and [release workflow](https://raw.githubusercontent.com/xingwangzhe/satteri-mermaid/53d6be9609ac2fb666dd73f93129e821fd3f95ea/.github/workflows/release.yml)
-- [wasm-bindgen deployment guidance](https://rustwasm.github.io/docs/wasm-bindgen/reference/deployment.html)
-- [Node ESM `import.meta.resolve`](https://nodejs.org/api/esm.html#importmetaresolvespecifier) and [package exports](https://nodejs.org/api/packages.html)
-- [Node-API documentation](https://nodejs.org/api/n-api.html), including [asynchronous work](https://nodejs.org/api/n-api.html#asynchronous-work)
-- [napi-rs release packaging](https://napi.rs/docs/deep-dive/release), [support compatibility](https://napi.rs/docs/more/support-compatibility), and [async task cancellation](https://napi.rs/docs/concepts/async-task)
-- Current [`platforms/web/src/index.ts`](../../platforms/web/src/index.ts), [`platforms/web/README.md`](../../platforms/web/README.md), [`crates/merman-wasm/Cargo.toml`](../../crates/merman-wasm/Cargo.toml), and [`crates/merman-bindings-core`](../../crates/merman-bindings-core)
+- [Satteri article](https://xingwangzhe.fun/posts/satteri-mermaid-npm-package/)
+- [`satteri-mermaid` v0.7.1 source](https://github.com/xingwangzhe/satteri-mermaid/tree/53d6be9609ac2fb666dd73f93129e821fd3f95ea)
+- [`satteri-mermaid` release workflow](https://github.com/xingwangzhe/satteri-mermaid/blob/53d6be9609ac2fb666dd73f93129e821fd3f95ea/.github/workflows/release.yml)
+- [`@xingwangzhe/satteri-mermaid@0.7.1` registry metadata](https://registry.npmjs.org/@xingwangzhe%2Fsatteri-mermaid/0.7.1)
+- [`mermaid-rs-renderer` v0.3.1 source](https://github.com/1jehuang/mermaid-rs-renderer/tree/2f993bd79a55235eb59a34d807852276ba25bea7)
+- [Node-API version matrix](https://nodejs.org/api/n-api.html#node-api-version-matrix)
+- [Merman Node candidate README](../../platforms/node/README.md)
+- [Merman Node transport admission evidence](../performance/NODE_TRANSPORT_ADMISSION.md)
+- [Merman Node package surface](../../platforms/node/package-surfaces.json)
+- [Merman binding options and resource contract](../bindings/OPTIONS_JSON.md)
