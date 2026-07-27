@@ -47,7 +47,7 @@ The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, 
 
 ## Text Measurement
 
-The default vendored measurer is appropriate for CI, server jobs, and deterministic output. Apple previews that must match their final font stack can install a generated `MermanTextMeasurer` on a reusable engine. Return `nil` for unhandled requests and avoid re-entering that engine during a measurement callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift) documents the protocol and lifecycle rules.
+The default vendored measurer is appropriate for CI, server jobs, and deterministic output. Apple previews that must match their final font stack can pass a generated `MermanTextMeasurer` when constructing a reusable engine. That callback is immutable for the engine. Return `nil` for unhandled requests and avoid re-entering the engine during a measurement callback. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `busy` or `reentrantCall` errors without waiting. Only errors returned through UniFFI's generated callback trampoline are converted; callback code must not unwind across the generated FFI boundary. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift) documents the protocol and lifecycle rules.
 
 ## Verify Locally
 

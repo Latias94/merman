@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
 - Replaced native ABI version checks with UniFFI binding API `3` and introduced runtime-contract schema `1`. The generated binding rejects a mismatched native library through its contract and API checksum checks.
 - Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
+- Made `MermanTextMeasurer` immutable after reusable-engine construction and removed generated callback mutation methods. Callback-free engines admit concurrent operations; callback engines report typed `.busy` or `.reentrantCall` errors without waiting.
 - Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
 - Added `optionsJson` to reusable convenience methods. Pass `nil` to inherit the engine baseline, or pass request-local options to deeply merge them for one operation; request options cannot change the constructor-owned runtime policy.
 

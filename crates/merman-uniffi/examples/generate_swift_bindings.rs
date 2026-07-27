@@ -197,6 +197,7 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "public var optionsJson: String?",
         "func execute(request: MermanOperationRequest) throws",
         "func renderSvg(source: String, optionsJson: String?) throws",
+        "func reusableEngineWithTextMeasurer(",
         "private final class VTableStorage: @unchecked Sendable",
     ] {
         if !source.contains(required) {
@@ -213,6 +214,8 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "public var outputId: String",
         "case unknownOutput",
         "nonisolated(unsafe) static let vtablePtr",
+        "func setTextMeasurer(",
+        "func clearTextMeasurer(",
     ] {
         if source.contains(removed) {
             return Err(format!(

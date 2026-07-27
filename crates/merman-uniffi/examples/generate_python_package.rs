@@ -131,8 +131,6 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "def execute(self, request: MermanOperationRequest) -> MermanOperationResult:",
         "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
         "def reusable_engine_with_text_measurer(",
-        "def set_text_measurer(",
-        "def clear_text_measurer(",
     ] {
         if !bindings.contains(required) {
             return Err(io::Error::new(
@@ -146,6 +144,8 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "def render_svg(self, source: str) -> str:",
         "self.output_id = output_id",
         "UNKNOWN_OUTPUT",
+        "def set_text_measurer(",
+        "def clear_text_measurer(",
     ] {
         if bindings.contains(removed) {
             return Err(io::Error::new(
@@ -453,9 +453,7 @@ mod tests {
              UNKNOWN_OPERATION\n\
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def reusable_engine_with_text_measurer(self):\n    pass\n\
-             def set_text_measurer(self):\n    pass\n\
-             def clear_text_measurer(self):\n    pass\n",
+             def reusable_engine_with_text_measurer(self):\n    pass\n",
         )
         .expect("stable callback API");
 
@@ -468,8 +466,6 @@ mod tests {
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
              def reusable_engine_with_text_measurer(self):\n    pass\n\
-             def set_text_measurer(self):\n    pass\n\
-             def clear_text_measurer(self):\n    pass\n\
              def execute(self, request: MermanOperationRequest,options_json: typing.Optional[str]):\n    pass\n",
         )
         .expect_err("generic options must not remain a parallel execute argument");

@@ -46,9 +46,9 @@ the named descriptor capability. Other failures use `Generic` and a null capabil
 The generated API shape is stable across feature profiles. A build without `analysis` still
 exposes `lint_rule_catalog()` and `configurable_lint_rule_catalog()`, but those calls return
 `MissingCapability` with capability ID `analysis`. A build without `svg` still exposes
-`MermanTextMeasurer` and the reusable-engine text-measurer constructor and mutation methods; those
-entrypoints return `MissingCapability` with capability ID `svg`. Consumers can therefore use one
-generated projection and handle artifact capability differences as typed runtime errors.
+`MermanTextMeasurer` and the reusable-engine text-measurer constructor; that constructor returns
+`MissingCapability` with capability ID `svg`. Consumers can therefore use one generated projection
+and handle artifact capability differences as typed runtime errors.
 
 ## Build Profiles
 
@@ -103,15 +103,19 @@ See [Apple Swift](APPLE_SWIFT.md) for the SwiftPM API and smoke command.
 
 ## Text Measurement
 
-Merman uses a deterministic vendored text measurer by default. A UI host can install a
-`MermanTextMeasurer` on a reusable engine when its Core Text, Android, or another platform font
-stack must determine the layout. The callback receives the independent text-measurement protocol
-version `1` and a typed operation. Return `None`/`nil` for work that is unavailable or cannot be
-answered synchronously; Merman falls back to its vendored implementation for that operation.
+Merman uses a deterministic vendored text measurer by default. A UI host can pass a
+`MermanTextMeasurer` when it constructs a reusable engine whose Core Text, Android, or other
+platform font stack must determine layout. The callback is immutable for that engine. It receives
+the independent text-measurement protocol version `1` and a typed operation. Return `None`/`nil`
+for work that is unavailable or cannot be answered synchronously; Merman falls back to its
+vendored implementation for that operation.
 
-Do not re-enter or replace a reusable engine while a measurement callback is active. See
-[host text measurement](HOST_TEXT_MEASUREMENT.md) for its operation, result-shape, and lifecycle
-contract.
+Callback-free reusable engines admit concurrent operations. A callback engine serializes operation
+admission and returns `Busy` to a competitor; an operation started while the same engine's callback
+is active returns `ReentrantCall`. UniFFI's generated trampoline can report a returned callback
+error to Rust, but Merman does not catch arbitrary foreign unwinds, exceptions, or longjmps that
+bypass that boundary. See [host text measurement](HOST_TEXT_MEASUREMENT.md) for the operation,
+result-shape, and lifecycle contract.
 
 ## Verification
 

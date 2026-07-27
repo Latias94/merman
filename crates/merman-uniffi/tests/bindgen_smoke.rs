@@ -128,12 +128,9 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose reusable_engine_with_text_measurer"
     );
     assert!(
-        generated.contains("def set_text_measurer"),
-        "generated binding should expose set_text_measurer"
-    );
-    assert!(
-        generated.contains("def clear_text_measurer"),
-        "generated binding should expose clear_text_measurer"
+        !generated.contains("def set_text_measurer")
+            && !generated.contains("def clear_text_measurer"),
+        "generated bindings must keep host callbacks immutable after construction"
     );
     assert!(
         generated.contains("def binding_api_version"),

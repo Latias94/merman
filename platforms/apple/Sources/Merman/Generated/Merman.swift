@@ -664,6 +664,9 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
 
     func reusableEngine(optionsJson: String?) throws  -> MermanReusableEngine
 
+    /**
+     * Constructs an immutable callback-enabled reusable engine.
+     */
     func reusableEngineWithTextMeasurer(optionsJson: String?, measurer: MermanTextMeasurer) throws  -> MermanReusableEngine
 
     /**
@@ -934,6 +937,9 @@ open func reusableEngine(optionsJson: String?)throws  -> MermanReusableEngine  {
 })
 }
 
+    /**
+     * Constructs an immutable callback-enabled reusable engine.
+     */
 open func reusableEngineWithTextMeasurer(optionsJson: String?, measurer: MermanTextMeasurer)throws  -> MermanReusableEngine  {
     return try  FfiConverterTypeMermanReusableEngine_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -1050,12 +1056,11 @@ public func FfiConverterTypeMermanEngine_lower(_ value: MermanEngine) -> UInt64 
 
 
 /**
- * A reusable engine with an engine-local host-callback safety boundary.
+ * An immutable reusable engine with transport-neutral operation admission.
  *
- * While one of this engine's host text-measurement callbacks is active, new operations and
- * text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
- * The boundary applies across threads because generated foreign bindings do not carry callback
- * causality when a host dispatches work to another thread.
+ * Callback-free engines admit concurrent operations. Engines constructed with a host text
+ * measurer serialize operations, and calls made while that engine's callback is active fail with
+ * [`MermanErrorKind::ReentrantCall`].
  */
 public protocol MermanReusableEngineProtocol: AnyObject, Sendable {
 
@@ -1064,8 +1069,6 @@ public protocol MermanReusableEngineProtocol: AnyObject, Sendable {
     func analyzeDocumentJson(source: String, optionsJson: String?, uri: String) throws  -> String
 
     func analyzeJson(source: String, optionsJson: String?) throws  -> String
-
-    func clearTextMeasurer() throws
 
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
@@ -1086,18 +1089,15 @@ public protocol MermanReusableEngineProtocol: AnyObject, Sendable {
 
     func renderSvg(source: String, optionsJson: String?) throws  -> String
 
-    func setTextMeasurer(measurer: MermanTextMeasurer) throws
-
     func validate(source: String, optionsJson: String?) throws  -> MermanValidationResult
 
 }
 /**
- * A reusable engine with an engine-local host-callback safety boundary.
+ * An immutable reusable engine with transport-neutral operation admission.
  *
- * While one of this engine's host text-measurement callbacks is active, new operations and
- * text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
- * The boundary applies across threads because generated foreign bindings do not carry callback
- * causality when a host dispatches work to another thread.
+ * Callback-free engines admit concurrent operations. Engines constructed with a host text
+ * measurer serialize operations, and calls made while that engine's callback is active fail with
+ * [`MermanErrorKind::ReentrantCall`].
  */
 open class MermanReusableEngine: MermanReusableEngineProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1159,6 +1159,9 @@ public convenience init(optionsJson: String?)throws  {
     }
 
 
+    /**
+     * Constructs an immutable reusable engine with a host text measurer.
+     */
 public static func withTextMeasurer(optionsJson: String?, measurer: MermanTextMeasurer)throws  -> MermanReusableEngine  {
     return try  FfiConverterTypeMermanReusableEngine_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -1204,14 +1207,6 @@ open func analyzeJson(source: String, optionsJson: String?)throws  -> String  {
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
-}
-
-open func clearTextMeasurer()throws   {try rustCallWithError(FfiConverterTypeMermanError_lift) {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_mermanreusableengine_clear_text_measurer(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
 }
 
     /**
@@ -1304,15 +1299,6 @@ open func renderSvg(source: String, optionsJson: String?)throws  -> String  {
 })
 }
 
-open func setTextMeasurer(measurer: MermanTextMeasurer)throws   {try rustCallWithError(FfiConverterTypeMermanError_lift) {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_mermanreusableengine_set_text_measurer(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMermanTextMeasurer_lower(measurer),uniffiCallStatus
-    )
-}
-}
-
 open func validate(source: String, optionsJson: String?)throws  -> MermanValidationResult  {
     return try  FfiConverterTypeMermanValidationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -1374,11 +1360,23 @@ public func FfiConverterTypeMermanReusableEngine_lower(_ value: MermanReusableEn
 
 
 
+/**
+ * Synchronous host text measurement supplied when a reusable engine is constructed.
+ *
+ * Foreign implementations return ordinary errors through UniFFI's generated trampoline. They
+ * must not unwind, throw, or otherwise perform a non-local exit across that FFI boundary.
+ */
 public protocol MermanTextMeasurer: AnyObject, Sendable {
 
     func measure(request: MermanTextMeasureRequest) throws  -> MermanTextMeasureResult?
 
 }
+/**
+ * Synchronous host text measurement supplied when a reusable engine is constructed.
+ *
+ * Foreign implementations return ordinary errors through UniFFI's generated trampoline. They
+ * must not unwind, throw, or otherwise perform a non-local exit across that FFI boundary.
+ */
 open class MermanTextMeasurerImpl: MermanTextMeasurer, @unchecked Sendable {
     fileprivate let handle: UInt64
 
@@ -2413,6 +2411,7 @@ public enum MermanErrorKind: Equatable, Hashable {
     case unknownOperation
     case missingCapability
     case reentrantCall
+    case busy
 
 
 
@@ -2442,6 +2441,8 @@ public struct FfiConverterTypeMermanErrorKind: FfiConverterRustBuffer {
 
         case 4: return .reentrantCall
 
+        case 5: return .busy
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2464,6 +2465,10 @@ public struct FfiConverterTypeMermanErrorKind: FfiConverterRustBuffer {
 
         case .reentrantCall:
             writeInt(&buf, Int32(4))
+
+
+        case .busy:
+            writeInt(&buf, Int32(5))
 
         }
     }
@@ -2671,8 +2676,6 @@ public func FfiConverterTypeMermanResourceProfile_lower(_ value: MermanResourceP
 public enum MermanTextDirection: Equatable, Hashable {
 
     case auto
-    case ltr
-    case rtl
 
 
 
@@ -2696,10 +2699,6 @@ public struct FfiConverterTypeMermanTextDirection: FfiConverterRustBuffer {
 
         case 1: return .auto
 
-        case 2: return .ltr
-
-        case 3: return .rtl
-
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2710,14 +2709,6 @@ public struct FfiConverterTypeMermanTextDirection: FfiConverterRustBuffer {
 
         case .auto:
             writeInt(&buf, Int32(1))
-
-
-        case .ltr:
-            writeInt(&buf, Int32(2))
-
-
-        case .rtl:
-            writeInt(&buf, Int32(3))
 
         }
     }
@@ -3091,7 +3082,6 @@ public enum MermanTextWhiteSpace: Equatable, Hashable {
     case normal
     case nowrap
     case breakSpaces
-    case preWrap
 
 
 
@@ -3119,8 +3109,6 @@ public struct FfiConverterTypeMermanTextWhiteSpace: FfiConverterRustBuffer {
 
         case 3: return .breakSpaces
 
-        case 4: return .preWrap
-
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -3139,10 +3127,6 @@ public struct FfiConverterTypeMermanTextWhiteSpace: FfiConverterRustBuffer {
 
         case .breakSpaces:
             writeInt(&buf, Int32(3))
-
-
-        case .preWrap:
-            writeInt(&buf, Int32(4))
 
         }
     }
@@ -3540,7 +3524,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_reusable_engine() != 44776) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_reusable_engine_with_text_measurer() != 37935) {
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_reusable_engine_with_text_measurer() != 60263) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_runtime_catalog_json() != 50295) {
@@ -3567,9 +3551,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_analyze_json() != 35851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_clear_text_measurer() != 2119) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_execute() != 60205) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3594,9 +3575,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_render_svg() != 2381) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_set_text_measurer() != 28167) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_merman_uniffi_checksum_method_mermanreusableengine_validate() != 61213) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3609,7 +3587,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_constructor_mermanreusableengine_new() != 10213) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_constructor_mermanreusableengine_with_text_measurer() != 3192) {
+    if (uniffi_merman_uniffi_checksum_constructor_mermanreusableengine_with_text_measurer() != 52764) {
         return InitializationResult.apiChecksumMismatch
     }
 

@@ -111,12 +111,6 @@ reusable_document_json = reusable.analyze_document_json(
     None,
     "file:///tmp/example.md",
 )
-reusable.set_text_measurer(PreviewMeasurer())
-svg_with_host_metrics = reusable.render_svg(
-    "flowchart TD\nA[Hello] --> B[World]",
-    None,
-)
-reusable.clear_text_measurer()
 ```
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
@@ -140,15 +134,16 @@ The Python UniFFI package uses Merman's built-in headless text measurer by defau
 right default for CLI tools, documentation generation, tests, and server-side batch rendering
 because it is deterministic and does not require GUI or browser dependencies.
 
-Python GUI or WebView hosts that need label geometry to match their own font stack can use
-`MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine, or call
-`MermanReusableEngine.set_text_measurer` on an existing reusable engine. Use
-`MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
-Inspect `request.phase` for the routing stage and `request.operation` for the exact platform
-primitive. Return a record tagged with the matching `MermanTextMeasurementResultKind`: metrics,
-length, horizontal extents, or wrapped metrics with raw width. `None`, wrong-kind or invalid
-results, and callback exceptions use the operation's vendored fallback for that request instead of
-failing the reusable render/layout call. Follow
+Python GUI or WebView hosts that need label geometry to match their own font stack use
+`MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine. The callback
+is immutable for that engine; construct another engine to change it or return to the built-in
+measurer. Inspect `request.phase` for the routing stage and `request.operation` for the exact
+platform primitive. Return a record tagged with the matching
+`MermanTextMeasurementResultKind`: metrics, length, horizontal extents, or wrapped metrics with raw
+width. `None`, wrong-kind or invalid results, and Python exceptions reported through UniFFI's
+generated callback trampoline use the operation's vendored fallback for that request instead of
+failing the reusable render/layout call. Merman does not catch arbitrary foreign unwinds that
+bypass that generated boundary. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
 Text-measurement protocol 1 exposes 19 operations with contiguous codes 0 through 18.
@@ -166,6 +161,12 @@ request-local overrides on each operation, such as `reusable.render_svg(source, 
 those overrides are deeply merged without changing the baseline or its runtime policy. Do not
 estimate width from character count in production; return `None` when the host cannot reproduce
 the requested operation with the display surface's real font API.
+
+Callback-free reusable engines admit concurrent calls. A callback engine serializes operation
+admission and raises typed `BUSY` for a competing call. Same-engine entry while the callback is
+active raises typed `REENTRANT_CALL`, including an attempted call dispatched from the callback to
+another thread. UniFFI object reference counting owns the callback lifetime; there is no separate
+close or callback-mutation lifecycle.
 
 ## Verification
 
@@ -187,8 +188,7 @@ against that fresh package. The executable example calls `MermanEngine.render_sv
 `MermanEngine.lint_rule_catalog`, `MermanEngine.configurable_lint_rule_catalog`,
 `MermanEngine.reusable_engine_with_text_measurer`,
 `MermanReusableEngine.analyze_document_json`,
-`MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
-`MermanReusableEngine.clear_text_measurer`, `MermanEngine.binding_api_version`,
+`MermanReusableEngine.analyze_document_facts_json`, `MermanEngine.binding_api_version`,
 `MermanEngine.runtime_catalog_json`, and `MermanEngine.package_version`, and checks
 `MermanError.Binding` fields for invalid options JSON.
 The generated-package smoke also asserts direct UniFFI binding API 3, flat runtime catalog schema 1,

@@ -5,13 +5,14 @@
 //! This crate exposes an idiomatic generated-binding surface over `merman-bindings-core`. It does
 //! not replace the canonical C ABI in `merman-ffi`.
 
-use merman_bindings_core::{BindingEngine, BindingError, BindingErrorKind, BindingStatus};
+use merman_bindings_core::{
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
+    BindingErrorKind, BindingStatus,
+};
 #[cfg(feature = "svg")]
 use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
 use serde_json::Value;
-#[cfg(feature = "svg")]
-use std::sync::Mutex;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
 
 /// Version of the direct UniFFI binding API.
 ///
@@ -98,155 +99,15 @@ include!("generated/resource_contract.rs");
 #[derive(Debug, Default, uniffi::Object)]
 pub struct MermanEngine;
 
-/// A reusable engine with an engine-local host-callback safety boundary.
+/// An immutable reusable engine with transport-neutral operation admission.
 ///
-/// While one of this engine's host text-measurement callbacks is active, new operations and
-/// text-measurer mutations on this same engine fail with [`MermanErrorKind::ReentrantCall`].
-/// The boundary applies across threads because generated foreign bindings do not carry callback
-/// causality when a host dispatches work to another thread.
+/// Callback-free engines admit concurrent operations. Engines constructed with a host text
+/// measurer serialize operations, and calls made while that engine's callback is active fail with
+/// [`MermanErrorKind::ReentrantCall`].
 #[derive(uniffi::Object)]
 pub struct MermanReusableEngine {
-    #[cfg(feature = "svg")]
-    base: BindingEngine,
-    #[cfg(feature = "svg")]
-    lifecycle: Arc<ReusableEngineLifecycle>,
-    inner: RwLock<BindingEngine>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default)]
-struct ReusableEngineLifecycle {
-    // This Arc is the reusable engine's opaque identity. The callback adapter holds the same
-    // lifecycle until it returns, so dropping a foreign object cannot invalidate its callback
-    // boundary or leak that boundary into another engine instance.
-    //
-    // The callback boundary is deliberately engine-wide rather than thread-local. UniFFI cannot
-    // distinguish an unrelated call from a foreign thread that a callback spawned and is waiting
-    // for. Rejecting both while a callback is active is the only no-new-ABI policy that guarantees
-    // the callback-derived call fails instead of deadlocking.
-    state: Mutex<ReusableEngineLifecycleState>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default)]
-struct ReusableEngineLifecycleState {
-    active_operations: usize,
-    active_callbacks: usize,
-    active_mutations: usize,
-}
-
-#[cfg(feature = "svg")]
-impl ReusableEngineLifecycle {
-    fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    fn lock_state(&self) -> std::sync::MutexGuard<'_, ReusableEngineLifecycleState> {
-        self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-}
-
-#[cfg(feature = "svg")]
-struct ReusableOperationGuard {
-    lifecycle: Arc<ReusableEngineLifecycle>,
-}
-
-#[cfg(feature = "svg")]
-struct ReusableMutationGuard {
-    lifecycle: Arc<ReusableEngineLifecycle>,
-}
-
-#[cfg(feature = "svg")]
-struct ReusableCallbackGuard {
-    lifecycle: Arc<ReusableEngineLifecycle>,
-}
-
-#[cfg(feature = "svg")]
-impl Drop for ReusableOperationGuard {
-    fn drop(&mut self) {
-        let mut state = self.lifecycle.lock_state();
-        debug_assert!(
-            state.active_operations > 0,
-            "operation guard must have an active operation"
-        );
-        state.active_operations = state.active_operations.saturating_sub(1);
-    }
-}
-
-#[cfg(feature = "svg")]
-impl Drop for ReusableMutationGuard {
-    fn drop(&mut self) {
-        let mut state = self.lifecycle.lock_state();
-        debug_assert!(
-            state.active_mutations > 0,
-            "mutation guard must have an active mutation"
-        );
-        state.active_mutations = state.active_mutations.saturating_sub(1);
-    }
-}
-
-#[cfg(feature = "svg")]
-impl Drop for ReusableCallbackGuard {
-    fn drop(&mut self) {
-        let mut state = self.lifecycle.lock_state();
-        debug_assert!(
-            state.active_callbacks > 0,
-            "callback guard must have an active callback"
-        );
-        state.active_callbacks = state.active_callbacks.saturating_sub(1);
-    }
-}
-
-#[cfg(feature = "svg")]
-impl ReusableOperationGuard {
-    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
-        let mut state = lifecycle.lock_state();
-        // This is an admission fence, not a claim that every rejected caller is causally
-        // reentrant. Calls already admitted before a callback starts may continue concurrently.
-        if state.active_callbacks > 0 || state.active_mutations > 0 {
-            return Err(reusable_engine_reentry_error());
-        }
-        state.active_operations = state
-            .active_operations
-            .checked_add(1)
-            .ok_or_else(|| MermanError::internal("reusable engine operation count overflow"))?;
-        Ok(Self {
-            lifecycle: Arc::clone(lifecycle),
-        })
-    }
-}
-
-#[cfg(feature = "svg")]
-impl ReusableMutationGuard {
-    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
-        let mut state = lifecycle.lock_state();
-        if state.active_operations > 0 || state.active_callbacks > 0 || state.active_mutations > 0 {
-            return Err(reusable_engine_reentry_error());
-        }
-        state.active_mutations = state
-            .active_mutations
-            .checked_add(1)
-            .ok_or_else(|| MermanError::internal("reusable engine mutation count overflow"))?;
-        Ok(Self {
-            lifecycle: Arc::clone(lifecycle),
-        })
-    }
-}
-
-#[cfg(feature = "svg")]
-impl ReusableCallbackGuard {
-    fn enter(lifecycle: &Arc<ReusableEngineLifecycle>) -> Result<Self, MermanError> {
-        let mut state = lifecycle.lock_state();
-        state.active_callbacks = state
-            .active_callbacks
-            .checked_add(1)
-            .ok_or_else(|| MermanError::internal("reusable engine callback count overflow"))?;
-        Ok(Self {
-            lifecycle: Arc::clone(lifecycle),
-        })
-    }
+    engine: BindingEngine,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -358,6 +219,10 @@ pub struct MermanTextMeasureResult {
     pub raw_width: Option<f64>,
 }
 
+/// Synchronous host text measurement supplied when a reusable engine is constructed.
+///
+/// Foreign implementations return ordinary errors through UniFFI's generated trampoline. They
+/// must not unwind, throw, or otherwise perform a non-local exit across that FFI boundary.
 #[uniffi::export(with_foreign)]
 pub trait MermanTextMeasurer: Send + Sync {
     fn measure(
@@ -369,15 +234,15 @@ pub trait MermanTextMeasurer: Send + Sync {
 #[cfg(feature = "svg")]
 struct UniffiHostTextMeasurer {
     callback: Arc<dyn MermanTextMeasurer>,
-    lifecycle: Arc<ReusableEngineLifecycle>,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[cfg(feature = "svg")]
 impl UniffiHostTextMeasurer {
-    fn new(callback: Arc<dyn MermanTextMeasurer>, lifecycle: Arc<ReusableEngineLifecycle>) -> Self {
+    fn new(callback: Arc<dyn MermanTextMeasurer>, admission: Arc<BindingEngineAdmission>) -> Self {
         Self {
             callback,
-            lifecycle,
+            admission,
         }
     }
 
@@ -385,7 +250,9 @@ impl UniffiHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
-        let _callback_guard = ReusableCallbackGuard::enter(&self.lifecycle)
+        let _callback_guard = self
+            .admission
+            .enter_callback()
             .map_err(|error| HostTextMeasurementError::new(error.to_string()))?;
         let result = match self.callback.measure(MermanTextMeasureRequest {
             operation: uniffi_measurement_operation(request.operation),
@@ -518,9 +385,7 @@ impl MermanEngine {
         &self,
         request: MermanOperationRequest,
     ) -> Result<MermanOperationResult, MermanError> {
-        let engine = binding_engine_for_transport(options_bytes(request.options_json.as_deref()))
-            .map_err(MermanError::from_binding)?;
-        execute_operation(&engine, &request, b"")
+        execute_once_operation(&request)
     }
 
     pub fn render_svg(
@@ -761,16 +626,11 @@ impl MermanEngine {
 impl MermanReusableEngine {
     #[uniffi::constructor]
     pub fn new(options_json: Option<String>) -> Result<Arc<Self>, MermanError> {
-        let inner = binding_engine_for_transport(options_bytes(options_json.as_deref()))
+        let engine = binding_engine_for_transport(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
-        #[cfg(feature = "svg")]
-        let lifecycle = ReusableEngineLifecycle::new();
         Ok(Arc::new(Self {
-            #[cfg(feature = "svg")]
-            base: inner.clone(),
-            #[cfg(feature = "svg")]
-            lifecycle,
-            inner: RwLock::new(inner),
+            engine,
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
         }))
     }
 
@@ -811,27 +671,13 @@ impl MermanReusableEngine {
         &self,
         request: MermanOperationRequest,
     ) -> Result<MermanOperationResult, MermanError> {
-        #[cfg(feature = "svg")]
-        {
-            // Every operation shares the same lifecycle admission fence, regardless of whether
-            // the selected output is vector, binary, layout JSON, or non-rendering.
-            self.with_reusable_operation(|inner| {
-                execute_operation(
-                    &inner,
-                    &request,
-                    options_bytes(request.options_json.as_deref()),
-                )
-            })
-        }
-        #[cfg(not(feature = "svg"))]
-        {
-            let inner = self.current_inner()?;
+        self.with_reusable_operation(|engine| {
             execute_operation(
-                &inner,
+                engine,
                 &request,
                 options_bytes(request.options_json.as_deref()),
             )
-        }
+        })
     }
 
     pub fn render_ascii(
@@ -921,6 +767,7 @@ impl MermanReusableEngine {
 
 #[uniffi::export]
 impl MermanEngine {
+    /// Constructs an immutable callback-enabled reusable engine.
     pub fn reusable_engine_with_text_measurer(
         &self,
         options_json: Option<String>,
@@ -932,6 +779,7 @@ impl MermanEngine {
 
 #[uniffi::export]
 impl MermanReusableEngine {
+    /// Constructs an immutable reusable engine with a host text measurer.
     #[uniffi::constructor]
     pub fn with_text_measurer(
         options_json: Option<String>,
@@ -939,19 +787,15 @@ impl MermanReusableEngine {
     ) -> Result<Arc<Self>, MermanError> {
         #[cfg(feature = "svg")]
         {
-            let base = binding_engine_for_transport(options_bytes(options_json.as_deref()))
+            let engine = binding_engine_for_transport(options_bytes(options_json.as_deref()))
                 .map_err(MermanError::from_binding)?;
-            let lifecycle = ReusableEngineLifecycle::new();
+            let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
             let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
                 measurer,
-                Arc::clone(&lifecycle),
+                Arc::clone(&admission),
             ));
-            let inner = base.with_host_text_measurer(host_text_measurer.clone());
-            Ok(Arc::new(Self {
-                base,
-                lifecycle,
-                inner: RwLock::new(inner),
-            }))
+            let engine = engine.with_host_text_measurer(host_text_measurer);
+            Ok(Arc::new(Self { engine, admission }))
         }
         #[cfg(not(feature = "svg"))]
         {
@@ -962,89 +806,19 @@ impl MermanReusableEngine {
             ))
         }
     }
-
-    pub fn set_text_measurer(
-        &self,
-        measurer: Arc<dyn MermanTextMeasurer>,
-    ) -> Result<(), MermanError> {
-        #[cfg(feature = "svg")]
-        {
-            let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
-                measurer,
-                Arc::clone(&self.lifecycle),
-            ));
-            self.replace_render_inner(self.base.with_host_text_measurer(host_text_measurer))
-        }
-        #[cfg(not(feature = "svg"))]
-        {
-            drop(measurer);
-            Err(missing_capability_error(
-                "svg",
-                "host text measurement requires the svg capability",
-            ))
-        }
-    }
-
-    pub fn clear_text_measurer(&self) -> Result<(), MermanError> {
-        #[cfg(feature = "svg")]
-        {
-            self.replace_render_inner(self.base.clone())
-        }
-        #[cfg(not(feature = "svg"))]
-        {
-            Err(missing_capability_error(
-                "svg",
-                "host text measurement requires the svg capability",
-            ))
-        }
-    }
 }
 
 impl MermanReusableEngine {
-    fn current_inner(&self) -> Result<BindingEngine, MermanError> {
-        self.inner
-            .read()
-            .map(|inner| inner.clone())
-            .map_err(|_| MermanError::internal("reusable engine lock poisoned"))
-    }
-
-    #[cfg(feature = "svg")]
-    fn replace_render_inner(&self, next_inner: BindingEngine) -> Result<(), MermanError> {
-        let _mutation_guard = self.enter_render_mutation()?;
-        let mut inner = self
-            .inner
-            .write()
-            .map_err(|_| MermanError::internal("reusable engine lock poisoned"))?;
-        *inner = next_inner;
-        Ok(())
-    }
-
-    #[cfg(feature = "svg")]
     fn with_reusable_operation<T>(
         &self,
-        run: impl FnOnce(BindingEngine) -> Result<T, MermanError>,
+        run: impl FnOnce(&BindingEngine) -> Result<T, MermanError>,
     ) -> Result<T, MermanError> {
-        let _operation_guard = self.enter_operation()?;
-        let inner = self.current_inner()?;
-        run(inner)
+        let _operation = self
+            .admission
+            .enter_operation()
+            .map_err(|error| MermanError::from_binding(error.into()))?;
+        run(&self.engine)
     }
-
-    #[cfg(feature = "svg")]
-    fn enter_operation(&self) -> Result<ReusableOperationGuard, MermanError> {
-        ReusableOperationGuard::enter(&self.lifecycle)
-    }
-
-    #[cfg(feature = "svg")]
-    fn enter_render_mutation(&self) -> Result<ReusableMutationGuard, MermanError> {
-        ReusableMutationGuard::enter(&self.lifecycle)
-    }
-}
-
-#[cfg(feature = "svg")]
-fn reusable_engine_reentry_error() -> MermanError {
-    MermanError::from_binding(BindingError::reentrant_call(
-        "reusable engine call rejected by the re-entry safety boundary",
-    ))
 }
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
@@ -1053,6 +827,17 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 
 fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
     BindingEngine::from_options(options_json)
+}
+
+fn execute_once_operation(
+    request: &MermanOperationRequest,
+) -> Result<MermanOperationResult, MermanError> {
+    let result = merman_bindings_core::execute_once(binding_operation_request(
+        request,
+        options_bytes(request.options_json.as_deref()),
+    ))
+    .map_err(MermanError::from_binding)?;
+    operation_result(result)
 }
 
 fn operation_request(
@@ -1088,13 +873,26 @@ fn execute_operation(
     options_json: &[u8],
 ) -> Result<MermanOperationResult, MermanError> {
     let result = engine
-        .execute(merman_bindings_core::BindingOperationRequest {
-            operation_id: &request.operation_id,
-            source: request.source.as_bytes(),
-            uri: request.uri.as_deref().map(str::as_bytes),
-            options_json,
-        })
+        .execute(binding_operation_request(request, options_json))
         .map_err(MermanError::from_binding)?;
+    operation_result(result)
+}
+
+fn binding_operation_request<'a>(
+    request: &'a MermanOperationRequest,
+    options_json: &'a [u8],
+) -> merman_bindings_core::BindingOperationRequest<'a> {
+    merman_bindings_core::BindingOperationRequest {
+        operation_id: &request.operation_id,
+        source: request.source.as_bytes(),
+        uri: request.uri.as_deref().map(str::as_bytes),
+        options_json,
+    }
+}
+
+fn operation_result(
+    result: merman_bindings_core::BindingOperationResult,
+) -> Result<MermanOperationResult, MermanError> {
     let metadata_json = String::from_utf8(result.metadata_json).map_err(|error| {
         MermanError::internal(format!("operation metadata was not UTF-8: {error}"))
     })?;
@@ -1190,7 +988,7 @@ mod tests {
     #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(feature = "svg")]
-    use std::sync::{Barrier, Condvar, Mutex as StdMutex, mpsc};
+    use std::sync::{Barrier, Condvar, Mutex as StdMutex, Weak, mpsc};
     #[cfg(feature = "svg")]
     use std::thread;
     #[cfg(feature = "svg")]
@@ -1232,7 +1030,22 @@ mod tests {
             BindingStatus::InvalidArgument.code_name()
         );
         assert_eq!(*kind, MermanErrorKind::ReentrantCall);
-        assert!(message.contains("re-entry safety boundary"));
+        assert!(message.contains("cannot be re-entered from its callback"));
+    }
+
+    #[cfg(feature = "svg")]
+    fn assert_busy_error(error: &MermanError) {
+        let MermanError::Binding {
+            code,
+            code_name,
+            kind,
+            message,
+            ..
+        } = error;
+        assert_eq!(*code, BindingStatus::Busy.code());
+        assert_eq!(code_name.as_str(), BindingStatus::Busy.code_name());
+        assert_eq!(*kind, MermanErrorKind::Busy);
+        assert!(message.contains("reusable engine is busy"));
     }
 
     #[cfg(feature = "svg")]
@@ -1263,18 +1076,13 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
-    struct ReentrantTextMeasurer {
-        engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
-    }
-
-    #[cfg(feature = "svg")]
     struct ReentrantRenderTextMeasurer {
-        engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
+        engine: StdMutex<Option<Weak<MermanReusableEngine>>>,
     }
 
     #[cfg(feature = "svg")]
     struct CrossThreadReentrantTextMeasurer {
-        engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
+        engine: StdMutex<Option<Weak<MermanReusableEngine>>>,
     }
 
     #[cfg(feature = "svg")]
@@ -1380,19 +1188,6 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
-    impl ReentrantTextMeasurer {
-        fn new() -> Arc<Self> {
-            Arc::new(Self {
-                engine: StdMutex::new(None),
-            })
-        }
-
-        fn set_engine(&self, engine: Arc<MermanReusableEngine>) {
-            *self.engine.lock().unwrap() = Some(engine);
-        }
-    }
-
-    #[cfg(feature = "svg")]
     impl ReentrantRenderTextMeasurer {
         fn new() -> Arc<Self> {
             Arc::new(Self {
@@ -1400,8 +1195,8 @@ mod tests {
             })
         }
 
-        fn set_engine(&self, engine: Arc<MermanReusableEngine>) {
-            *self.engine.lock().unwrap() = Some(engine);
+        fn set_engine(&self, engine: &Arc<MermanReusableEngine>) {
+            *self.engine.lock().unwrap() = Some(Arc::downgrade(engine));
         }
     }
 
@@ -1413,8 +1208,8 @@ mod tests {
             })
         }
 
-        fn set_engine(&self, engine: Arc<MermanReusableEngine>) {
-            *self.engine.lock().unwrap() = Some(engine);
+        fn set_engine(&self, engine: &Arc<MermanReusableEngine>) {
+            *self.engine.lock().unwrap() = Some(Arc::downgrade(engine));
         }
     }
 
@@ -1545,27 +1340,6 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
-    impl MermanTextMeasurer for ReentrantTextMeasurer {
-        fn measure(
-            &self,
-            _request: MermanTextMeasureRequest,
-        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
-            let engine = self
-                .engine
-                .lock()
-                .unwrap()
-                .as_ref()
-                .expect("reentrant measurer should have an engine")
-                .clone();
-            let error = engine
-                .clear_text_measurer()
-                .expect_err("reentrant clear should fail before taking the render lock");
-            assert_reentrant_error(&error);
-            Err(error)
-        }
-    }
-
-    #[cfg(feature = "svg")]
     impl MermanTextMeasurer for ReentrantRenderTextMeasurer {
         fn measure(
             &self,
@@ -1577,7 +1351,8 @@ mod tests {
                 .unwrap()
                 .as_ref()
                 .expect("reentrant render measurer should have an engine")
-                .clone();
+                .upgrade()
+                .expect("reentrant engine should remain alive during its callback");
             let error = engine
                 .render_svg("flowchart TD\nNested[Call]".to_string(), None)
                 .expect_err("same-engine callback reentry must be rejected");
@@ -1598,7 +1373,8 @@ mod tests {
                 .unwrap()
                 .as_ref()
                 .expect("cross-thread reentrant measurer should have an engine")
-                .clone();
+                .upgrade()
+                .expect("reentrant engine should remain alive during its callback");
             let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
                 let result = engine.render_svg("flowchart TD\nNested[Call]".to_string(), None);
@@ -1654,6 +1430,39 @@ mod tests {
         assert_eq!(metadata["operation_id"], "semantic-json");
         assert_eq!(metadata["version"], 1);
         assert_eq!(metadata["runtime_policy"], "deterministic");
+    }
+
+    #[test]
+    fn generic_transport_preserves_every_compiled_operation_result_contract() {
+        let one_shot = engine();
+        let reusable = MermanReusableEngine::new(None).unwrap();
+
+        for operation_id in merman_bindings_core::compiled_operation_kind_ids() {
+            let operation =
+                merman_bindings_core::BindingOperationKind::from_id(operation_id).unwrap();
+            let request = MermanOperationRequest {
+                operation_id: operation_id.to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: operation
+                    .requires_uri()
+                    .then(|| "file:///diagram.mmd".to_string()),
+                options_json: None,
+            };
+            let one_shot_result = one_shot
+                .execute(request.clone())
+                .unwrap_or_else(|error| panic!("one-shot `{operation_id}` failed: {error}"));
+            let reusable_result = reusable
+                .execute(request)
+                .unwrap_or_else(|error| panic!("reusable `{operation_id}` failed: {error}"));
+
+            assert_eq!(one_shot_result, reusable_result, "operation={operation_id}");
+            assert_eq!(one_shot_result.operation_id, operation_id);
+            assert_eq!(one_shot_result.media_type, operation.media_type());
+            let metadata: Value = serde_json::from_str(&one_shot_result.metadata_json).unwrap();
+            assert_eq!(metadata["operation_id"], operation_id);
+            assert_eq!(metadata["media_type"], operation.media_type());
+            assert_eq!(metadata["byte_length"], one_shot_result.data.len());
+        }
     }
 
     #[cfg(feature = "svg")]
@@ -1823,7 +1632,9 @@ mod tests {
         );
 
         let callback = CountingTextMeasurer::new();
-        let host = UniffiHostTextMeasurer::new(callback, ReusableEngineLifecycle::new());
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
+        let _operation = admission.enter_operation().expect("operation admission");
+        let host = UniffiHostTextMeasurer::new(callback, admission);
         let style = merman_bindings_core::TextStyle::default();
         let result = host
             .call_host(merman_bindings_core::HostTextMeasurementRequest {
@@ -1863,7 +1674,8 @@ mod tests {
     #[test]
     fn uniffi_checked_decoder_rejects_oversized_counts_and_half_extents() {
         let style = merman_bindings_core::TextStyle::default();
-        let lifecycle = ReusableEngineLifecycle::new();
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
+        let _operation = admission.enter_operation().expect("operation admission");
         let request = |operation| merman_bindings_core::HostTextMeasurementRequest {
             operation,
             phase: merman_bindings_core::TextMeasurementPhase::SvgBBox,
@@ -1886,7 +1698,7 @@ mod tests {
                     raw_width: None,
                 },
             }),
-            Arc::clone(&lifecycle),
+            Arc::clone(&admission),
         );
         assert!(
             oversized
@@ -1909,7 +1721,7 @@ mod tests {
                     raw_width: None,
                 },
             }),
-            lifecycle,
+            admission,
         );
         assert!(
             half_extents
@@ -2335,30 +2147,29 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_allows_concurrent_render_calls_when_no_callback_is_active() {
+    fn callback_free_reusable_engine_admits_concurrent_operations() {
         let reusable = MermanReusableEngine::new(None).unwrap();
-        let barrier = Arc::new(Barrier::new(8));
-        let nodes = (0..128)
-            .map(|idx| format!("N{idx}[Node {idx}]"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let source = format!("flowchart TD\n{nodes}\nN0-->N127\n");
-
-        let handles = (0..8)
+        let entered = Arc::new(Barrier::new(3));
+        let release = Arc::new(Barrier::new(3));
+        let handles = (0..2)
             .map(|_| {
                 let reusable = reusable.clone();
-                let barrier = barrier.clone();
-                let source = source.clone();
+                let entered = Arc::clone(&entered);
+                let release = Arc::clone(&release);
                 thread::spawn(move || {
-                    barrier.wait();
-                    reusable.render_svg(source, None)
+                    reusable.with_reusable_operation(|_| {
+                        entered.wait();
+                        release.wait();
+                        Ok(())
+                    })
                 })
             })
             .collect::<Vec<_>>();
 
+        entered.wait();
+        release.wait();
         for handle in handles {
-            let svg = handle.join().unwrap().unwrap();
-            assert!(svg.contains("<svg"));
+            handle.join().unwrap().unwrap();
         }
     }
 
@@ -2416,49 +2227,32 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_rejects_text_measurer_replacement_during_active_callback() {
-        let failing_measurer = BlockingFailingTextMeasurer::new();
+    fn callback_reusable_engine_serializes_operation_admission() {
         let reusable =
-            MermanReusableEngine::with_text_measurer(None, failing_measurer.clone()).unwrap();
-        let render_engine = reusable.clone();
-        let render_handle = thread::spawn(move || {
-            render_engine.render_svg(
-                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
-                None,
-            )
+            MermanReusableEngine::with_text_measurer(None, CountingTextMeasurer::new()).unwrap();
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let first = reusable.clone();
+        let first_entered = Arc::clone(&entered);
+        let first_release = Arc::clone(&release);
+        let first_handle = thread::spawn(move || {
+            first.with_reusable_operation(|_| {
+                first_entered.wait();
+                first_release.wait();
+                Ok(())
+            })
         });
 
-        failing_measurer.wait_until_entered();
-
-        let replacement = MissingTextMeasurer::new();
-        let set_engine = reusable.clone();
-        let (set_done_tx, set_done_rx) = mpsc::channel();
-        let set_handle = thread::spawn(move || {
-            set_done_tx
-                .send(set_engine.set_text_measurer(replacement))
-                .unwrap();
-        });
-
-        let set_result = set_done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        let error = set_result.expect_err("callback-active mutation must be rejected");
-        assert_reentrant_error(&error);
-        set_handle.join().unwrap();
-
-        failing_measurer.release();
-
-        let svg = render_handle.join().unwrap().unwrap();
-        assert!(svg.contains("<svg"));
-
+        entered.wait();
+        let error = reusable
+            .parse_json("flowchart TD\nA --> B".to_string(), None)
+            .expect_err("a callback engine must reject a competing operation");
+        assert_busy_error(&error);
+        release.wait();
+        first_handle.join().unwrap().unwrap();
         reusable
-            .set_text_measurer(MissingTextMeasurer::new())
-            .unwrap();
-        let svg = reusable
-            .render_svg(
-                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
-                None,
-            )
-            .unwrap();
-        assert!(svg.contains("<svg"));
+            .parse_json("flowchart TD\nA --> B".to_string(), None)
+            .expect("operation admission must be released when the first call returns");
     }
 
     #[cfg(feature = "svg")]
@@ -2498,10 +2292,6 @@ mod tests {
             .expect("independent engine render must not be rejected by another engine callback");
         assert!(first_svg.contains("<svg"));
         assert!(second_svg.contains("<svg"));
-
-        first
-            .clear_text_measurer()
-            .expect("callback completion must release the first engine lifecycle");
     }
 
     #[cfg(feature = "svg")]
@@ -2545,27 +2335,10 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_falls_back_after_reentrant_host_mutation_is_rejected() {
-        let measurer = ReentrantTextMeasurer::new();
-        let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
-        measurer.set_engine(reusable.clone());
-
-        let svg = reusable
-            .render_svg(
-                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
-                None,
-            )
-            .unwrap();
-
-        assert!(svg.contains("<svg"));
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
     fn reusable_engine_rejects_same_engine_render_reentry_from_callback() {
         let measurer = ReentrantRenderTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
-        measurer.set_engine(reusable.clone());
+        measurer.set_engine(&reusable);
 
         let svg = reusable
             .render_svg(
@@ -2582,7 +2355,7 @@ mod tests {
     fn reusable_engine_rejects_cross_thread_same_engine_render_reentry_without_blocking() {
         let measurer = CrossThreadReentrantTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
-        measurer.set_engine(reusable.clone());
+        measurer.set_engine(&reusable);
 
         let svg = reusable
             .render_svg(
@@ -2596,30 +2369,31 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn reusable_engine_can_set_and_clear_host_text_measurer() {
-        let reusable = MermanReusableEngine::new(None).unwrap();
-        let measurer = CountingTextMeasurer::new();
-
-        reusable.set_text_measurer(measurer.clone()).unwrap();
-        let svg = reusable
-            .render_svg(
+    fn reusable_engine_keeps_callback_alive_until_in_flight_operation_returns() {
+        let measurer = BlockingFailingTextMeasurer::new();
+        let weak_measurer = Arc::downgrade(&measurer);
+        let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
+        let render_engine = reusable.clone();
+        let render = thread::spawn(move || {
+            render_engine.render_svg(
                 "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
                 None,
             )
-            .unwrap();
-        assert!(svg.contains("<svg"));
-        let calls_after_set = measurer.calls();
-        assert!(calls_after_set > 0);
+        });
 
-        reusable.clear_text_measurer().unwrap();
-        let svg = reusable
-            .render_svg(
-                "flowchart TD\nA[Measured label] --> B[Done]".to_string(),
-                None,
-            )
-            .unwrap();
-        assert!(svg.contains("<svg"));
-        assert_eq!(measurer.calls(), calls_after_set);
+        measurer.wait_until_entered();
+        drop(measurer);
+        drop(reusable);
+        let retained_measurer = weak_measurer
+            .upgrade()
+            .expect("the in-flight operation must retain its callback");
+        retained_measurer.release();
+        drop(retained_measurer);
+        assert!(render.join().unwrap().unwrap().contains("<svg"));
+        assert!(
+            weak_measurer.upgrade().is_none(),
+            "the callback must be released after the operation and final engine owner return"
+        );
     }
 
     #[cfg(not(feature = "svg"))]
@@ -2640,14 +2414,6 @@ mod tests {
             Err(error) => error,
         };
         assert_missing_capability(&engine_error, "svg");
-
-        let reusable = MermanReusableEngine::new(None).unwrap();
-        let set_error = reusable
-            .set_text_measurer(Arc::new(UnavailableTextMeasurer))
-            .unwrap_err();
-        assert_missing_capability(&set_error, "svg");
-        let clear_error = reusable.clear_text_measurer().unwrap_err();
-        assert_missing_capability(&clear_error, "svg");
     }
 
     #[cfg(feature = "svg")]

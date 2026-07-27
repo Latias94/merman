@@ -395,7 +395,6 @@ def main() -> None:
     if "WRAPPED" not in operation_names:
         raise RuntimeError(f"expected concrete measurement operations, got {operation_names}")
 
-    setter_measurer = Measurer()
     reusable = engine.reusable_engine(
         '{"svg":{"diagram_id":"python-baseline","pipeline":"readable"}}'
     )
@@ -451,17 +450,10 @@ def main() -> None:
         or reusable_document_facts_json["source"]["kind"] != "markdown"
     ):
         raise RuntimeError("reusable document facts smoke failed")
-    reusable.set_text_measurer(setter_measurer)
-    if "Hello" not in reusable.render_svg(source, None):
-        raise RuntimeError("set text measurer smoke failed")
-    calls_after_set = setter_measurer.calls
-    if calls_after_set == 0:
-        raise RuntimeError("set text measurer callback smoke failed")
-    reusable.clear_text_measurer()
-    if "Hello" not in reusable.render_svg(source, None):
-        raise RuntimeError("clear text measurer smoke failed")
-    if setter_measurer.calls != calls_after_set:
-        raise RuntimeError("clear text measurer did not reset callback")
+    if hasattr(reusable, "set_text_measurer") or hasattr(
+        reusable, "clear_text_measurer"
+    ):
+        raise RuntimeError("reusable callbacks must be immutable after construction")
 
     class FailingMeasurer(merman.MermanTextMeasurer):
         def measure(self, request):
@@ -470,9 +462,6 @@ def main() -> None:
     failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
     if "Hello" not in failing.render_svg(source, None):
         raise RuntimeError("failing text measurer did not use vendored fallback")
-    failing.set_text_measurer(Measurer())
-    if "Hello" not in failing.render_svg(source, None):
-        raise RuntimeError("text measurer recovery smoke failed")
 
     try:
         engine.render_svg(source, "{")
