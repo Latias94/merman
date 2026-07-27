@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -14,7 +15,13 @@ import perf_runner
 import compare_self
 import compare_mermaid_renderers
 import render_perf_comment
-from corpus_utils import fixture_names_for_suite, load_corpus, select_corpus_fixtures
+import stage_spotcheck
+from corpus_utils import (
+    compare_mmdr_fixture_inputs,
+    fixture_names_for_suite,
+    load_corpus,
+    select_corpus_fixtures,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -258,6 +265,111 @@ class RendererComparisonContractsTest(unittest.TestCase):
     def test_formats_tiny_ratios_as_less_than_one_percent(self) -> None:
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.0025), "<0.01x")
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.025), "0.03x")
+
+    def test_excludes_nonidentical_fixture_inputs_from_mmdr_ratios(self) -> None:
+        runner = {
+            "times_ns": {"end_to_end/example": 200.0},
+            "errors": {},
+            "missing": [],
+            "skipped": {},
+        }
+        mmdr = {
+            "times_ns": {"end_to_end/example": 100.0},
+            "errors": {},
+            "missing": [],
+            "skipped": {},
+        }
+        mermaid_js = {
+            "kind": "browser_warm",
+            "times_ns": {},
+            "errors": {},
+            "missing": [],
+            "skipped": {},
+        }
+
+        rows = compare_mermaid_renderers.build_rows(
+            exact_benches=["end_to_end/example"],
+            fixtures_by_name={},
+            merman=runner,
+            mmdr=mmdr,
+            mermaid_js=mermaid_js,
+            fixture_inputs={"example": {"status": "different"}},
+        )
+
+        self.assertIsNone(rows[0]["ratios"]["merman_over_mermaid_rs_renderer"])
+        family_summary = compare_mermaid_renderers.build_family_summary(rows)[0]
+        self.assertEqual(family_summary["measured"]["mermaid_rs_renderer"], 1)
+        self.assertIsNone(
+            family_summary["geomean_ratios"]["merman_over_mermaid_rs_renderer"]
+        )
+
+        comparable_rows = compare_mermaid_renderers.build_rows(
+            exact_benches=["end_to_end/example"],
+            fixtures_by_name={},
+            merman=runner,
+            mmdr=mmdr,
+            mermaid_js=mermaid_js,
+            fixture_inputs={"example": {"status": "identical"}},
+        )
+        self.assertEqual(
+            comparable_rows[0]["ratios"]["merman_over_mermaid_rs_renderer"],
+            2.0,
+        )
+
+
+class StageSpotcheckContractsTest(unittest.TestCase):
+    def test_mmdr_command_enables_benchmark_feature(self) -> None:
+        command = stage_spotcheck.mmdr_bench_cmd(
+            sample_size=30,
+            warm_up=2,
+            measurement=3,
+            exact="parse/requirement_medium",
+            locked=True,
+            toolchain=None,
+        )
+
+        self.assertIn("--features", command)
+        feature_index = command.index("--features")
+        self.assertEqual(command[feature_index + 1], "benchmark")
+        self.assertIn("renderer", command)
+
+    def test_rejects_nonidentical_fixture_inputs_before_benchmarking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mmdr_dir = root / "mmdr"
+            merman_fixture = root / "crates" / "merman" / "benches" / "fixtures"
+            mmdr_fixture = mmdr_dir / "benches" / "fixtures"
+            merman_fixture.mkdir(parents=True)
+            mmdr_fixture.mkdir(parents=True)
+            (merman_fixture / "example.mmd").write_text("flowchart LR\nA-->B\n", encoding="utf-8")
+            (mmdr_fixture / "example.mmd").write_text("flowchart LR\nA-->C\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, r"example \(different\)"):
+                stage_spotcheck.validate_fixture_inputs(root, mmdr_dir, ["example"])
+
+    def test_fixture_comparison_records_identical_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mmdr_dir = root / "mmdr"
+            merman_fixture = root / "crates" / "merman" / "benches" / "fixtures"
+            mmdr_fixture = mmdr_dir / "benches" / "fixtures"
+            merman_fixture.mkdir(parents=True)
+            mmdr_fixture.mkdir(parents=True)
+            source = "mindmap\n  root((Merman))\n"
+            (merman_fixture / "example.mmd").write_text(source, encoding="utf-8")
+            (mmdr_fixture / "example.mmd").write_text(source, encoding="utf-8")
+
+            comparisons = compare_mmdr_fixture_inputs(
+                repo_root=root,
+                mmdr_dir=mmdr_dir,
+                fixture_names=["example"],
+            )
+
+        self.assertEqual(comparisons["example"]["status"], "identical")
+        self.assertEqual(
+            comparisons["example"]["merman"]["sha256"],
+            comparisons["example"]["mermaid_rs_renderer"]["sha256"],
+        )
 
 
 class PerfCommentContractsTest(unittest.TestCase):

@@ -5,9 +5,11 @@ Shared helpers for the corpus-driven benchmark scripts.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -101,3 +103,62 @@ def select_corpus_fixtures(corpus: Corpus, suite: str) -> list[CorpusFixture]:
 
 def fixture_names_for_suite(corpus: Corpus, suite: str) -> tuple[str, ...]:
     return tuple(f.name for f in select_corpus_fixtures(corpus, suite))
+
+
+def resolve_merman_fixture_path(
+    repo_root: Path,
+    name: str,
+    fixture: CorpusFixture | None = None,
+) -> Path:
+    candidates: list[Path] = []
+    if fixture is not None:
+        candidates.append(repo_root / fixture.source)
+    candidates.append(repo_root / "crates" / "merman" / "benches" / "fixtures" / f"{name}.mmd")
+    return next((path for path in candidates if path.exists()), candidates[0])
+
+
+def compare_mmdr_fixture_inputs(
+    *,
+    repo_root: Path,
+    mmdr_dir: Path,
+    fixture_names: Iterable[str],
+    fixtures_by_name: dict[str, CorpusFixture] | None = None,
+) -> dict[str, dict[str, object]]:
+    comparisons: dict[str, dict[str, object]] = {}
+    metadata = fixtures_by_name or {}
+
+    for name in dict.fromkeys(fixture_names):
+        merman_path = resolve_merman_fixture_path(repo_root, name, metadata.get(name))
+        mmdr_path = mmdr_dir / "benches" / "fixtures" / f"{name}.mmd"
+
+        def describe(path: Path, root: Path) -> dict[str, object]:
+            relative = str(path.relative_to(root)).replace("\\", "/")
+            if not path.exists():
+                return {"path": relative, "bytes": None, "sha256": None}
+            data = path.read_bytes()
+            return {
+                "path": relative,
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+
+        merman = describe(merman_path, repo_root)
+        mmdr = describe(mmdr_path, mmdr_dir)
+        if merman["sha256"] is None and mmdr["sha256"] is None:
+            status = "missing_both"
+        elif merman["sha256"] is None:
+            status = "missing_merman"
+        elif mmdr["sha256"] is None:
+            status = "missing_mmdr"
+        elif merman["sha256"] == mmdr["sha256"]:
+            status = "identical"
+        else:
+            status = "different"
+
+        comparisons[name] = {
+            "status": status,
+            "merman": merman,
+            "mermaid_rs_renderer": mmdr,
+        }
+
+    return comparisons

@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from corpus_utils import compare_mmdr_fixture_inputs
+
 
 @dataclass(frozen=True)
 class Duration:
@@ -173,6 +175,46 @@ def cargo_bench_cmd(
     return cmd
 
 
+def mmdr_bench_cmd(
+    *,
+    sample_size: int,
+    warm_up: int,
+    measurement: int,
+    exact: str,
+    locked: bool,
+    toolchain: str | None,
+) -> list[str]:
+    return cargo_bench_cmd(
+        sample_size=sample_size,
+        warm_up=warm_up,
+        measurement=measurement,
+        exact=exact,
+        package=None,
+        features="benchmark",
+        bench="renderer",
+        locked=locked,
+        toolchain=toolchain,
+    )
+
+
+def validate_fixture_inputs(repo_root: Path, mmdr_dir: Path, fixtures: list[str]) -> None:
+    comparisons = compare_mmdr_fixture_inputs(
+        repo_root=repo_root,
+        mmdr_dir=mmdr_dir,
+        fixture_names=fixtures,
+    )
+    invalid = [
+        f"{name} ({comparison['status']})"
+        for name, comparison in comparisons.items()
+        if comparison["status"] != "identical"
+    ]
+    if invalid:
+        raise ValueError(
+            "Cross-runner stage ratios require byte-identical fixture inputs; "
+            "cannot benchmark " + ", ".join(invalid)
+        )
+
+
 def main(argv: list[str]) -> int:
     # Windows consoles often default to a legacy code page (e.g. GBK/CP936). Our report contains
     # the micro sign ("µ") in timing units, which can raise UnicodeEncodeError when writing to
@@ -241,6 +283,10 @@ def main(argv: list[str]) -> int:
     fixtures = [x.strip() for x in args.fixtures.split(",") if x.strip()]
     if not fixtures:
         raise SystemExit("No fixtures specified.")
+    try:
+        validate_fixture_inputs(repo_root, mmdr_dir, fixtures)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
     stages_merman = ["parse", "layout", "render", "end_to_end"]
     stages_mmdr = ["parse", "layout", "render_svg", "end_to_end"]
@@ -271,14 +317,11 @@ def main(argv: list[str]) -> int:
             merman_mid = extract_mid_time(merman_out, expected_bench=merman_exact)
 
             mmdr_out = run(
-                cargo_bench_cmd(
+                mmdr_bench_cmd(
                     sample_size=args.sample_size,
                     warm_up=args.warm_up,
                     measurement=args.measurement,
                     exact=mmdr_exact,
-                    package=None,
-                    features=None,
-                    bench="renderer",
                     locked=mmdr_locked,
                     toolchain=args.mmdr_toolchain,
                 ),

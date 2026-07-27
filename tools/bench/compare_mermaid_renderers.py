@@ -25,7 +25,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from corpus_utils import Corpus, CorpusFixture, load_corpus, select_corpus_fixtures
+from corpus_utils import (
+    Corpus,
+    CorpusFixture,
+    compare_mmdr_fixture_inputs,
+    load_corpus,
+    resolve_merman_fixture_path,
+    select_corpus_fixtures,
+)
 
 
 DEFAULT_CORPUS = "tools/bench/corpus.json"
@@ -341,14 +348,8 @@ def split_exact_bench(exact: str) -> tuple[str, str]:
 
 
 def read_fixture_source(repo_root: Path, name: str, fixture: CorpusFixture | None) -> str | None:
-    candidates: list[Path] = []
-    if fixture is not None:
-        candidates.append(repo_root / fixture.source)
-    candidates.append(repo_root / "crates" / "merman" / "benches" / "fixtures" / f"{name}.mmd")
-    for path in candidates:
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-    return None
+    path = resolve_merman_fixture_path(repo_root, name, fixture)
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def bench_exact(
@@ -697,6 +698,7 @@ def build_rows(
     merman: dict[str, Any],
     mmdr: dict[str, Any],
     mermaid_js: dict[str, Any],
+    fixture_inputs: dict[str, dict[str, object]],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for exact in exact_benches:
@@ -705,9 +707,13 @@ def build_rows(
         merman_ns = merman.get("times_ns", {}).get(exact)
         mmdr_ns = mmdr.get("times_ns", {}).get(exact)
         mermaid_js_ns = mermaid_js.get("times_ns", {}).get(exact)
+        input_status = fixture_inputs.get(name, {}).get("status", "unknown")
         ratio_mmdr = (
             float(merman_ns) / float(mmdr_ns)
-            if isinstance(merman_ns, (int, float)) and isinstance(mmdr_ns, (int, float)) and mmdr_ns
+            if input_status == "identical"
+            and isinstance(merman_ns, (int, float))
+            and isinstance(mmdr_ns, (int, float))
+            and mmdr_ns
             else None
         )
         ratio_js = (
@@ -726,6 +732,7 @@ def build_rows(
                 "category": fixture.category if fixture else "adhoc",
                 "features": list(fixture.features) if fixture else [],
                 "quality": list(fixture.quality) if fixture else [],
+                "input_status": input_status,
                 "times_ns": {
                     "merman": merman_ns,
                     "mermaid_rs_renderer": mmdr_ns,
@@ -814,6 +821,14 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
             return pretty_time(float(ns))
         return status.replace("_", " ")
 
+    def fmt_mmdr_ratio(row: dict[str, Any]) -> str:
+        input_status = row.get("input_status")
+        if input_status == "different":
+            return "input differs"
+        if input_status not in (None, "identical"):
+            return str(input_status).replace("_", " ")
+        return fmt_ratio(row["ratios"]["merman_over_mermaid_rs_renderer"])
+
     lines: list[str] = []
     lines.append("# Renderer Performance Comparison")
     lines.append("")
@@ -866,6 +881,10 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
         "- `mermaid-rs-renderer` (mmdr): "
         "`cargo bench --features benchmark --bench renderer -- ...`"
     )
+    lines.append(
+        "- Merman/mmdr ratios require byte-identical fixture inputs; non-identical rows retain "
+        "their raw timings and measured coverage but are excluded from ratio and geomean aggregates."
+    )
     lines.append("- `mermaid-js`: warm `mermaid.render()` calls in one Puppeteer/Chromium process.")
     lines.append("")
     lines.append("## Coverage Summary")
@@ -880,6 +899,28 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
             f"{cov['measured']} | {cov['missing']} | {cov['errors']} | {cov['skipped']} |"
         )
     lines.append("")
+    fixture_inputs = report.get("fixture_inputs", {})
+    if fixture_inputs:
+        input_counts: dict[str, int] = {}
+        for comparison in fixture_inputs.values():
+            status = str(comparison.get("status") or "unknown")
+            input_counts[status] = input_counts.get(status, 0) + 1
+        lines.append("## Input Comparability")
+        lines.append("")
+        lines.append(
+            "- "
+            + ", ".join(
+                f"`{status}`: {count}" for status, count in sorted(input_counts.items())
+            )
+        )
+        non_identical = [
+            f"`{name}` ({comparison.get('status', 'unknown')})"
+            for name, comparison in fixture_inputs.items()
+            if comparison.get("status") != "identical"
+        ]
+        if non_identical:
+            lines.append("- Excluded from Merman/mmdr ratios: " + ", ".join(non_identical) + ".")
+        lines.append("")
     lines.append("## Results")
     lines.append("")
     lines.append(
@@ -892,7 +933,7 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
             lines.append(
                 f"| `{row['benchmark']}` | {row['family']} | {fmt_cell(row, 'merman')} | "
                 f"{fmt_cell(row, 'mermaid_rs_renderer')} | {fmt_cell(row, 'mermaid_js')} | "
-                f"{fmt_ratio(row['ratios']['merman_over_mermaid_rs_renderer'])} | "
+                f"{fmt_mmdr_ratio(row)} | "
                 f"{fmt_ratio(row['ratios']['merman_over_mermaid_js'])} |"
             )
     else:
@@ -922,6 +963,9 @@ def write_markdown(out_path: Path, report: dict[str, Any]) -> None:
     lines.append("")
     lines.append(
         "- Timings include only successful renders for each runner. Missing or errored fixtures reduce coverage; they are not folded into ratios."
+    )
+    lines.append(
+        "- Merman/mmdr ratios and family geomean columns include only byte-identical fixture inputs."
     )
     lines.append(
         "- `merman` is parity-focused and should still be paired with SVG DOM/resvg comparison gates before using performance numbers as a release signal."
@@ -1138,6 +1182,13 @@ def main(argv: list[str]) -> int:
     )
 
     fixtures_by_name = {f.name: f for f in corpus.fixtures}
+    fixture_names = [split_exact_bench(bench)[1] for bench in exact_benches]
+    fixture_inputs = compare_mmdr_fixture_inputs(
+        repo_root=repo_root,
+        mmdr_dir=mmdr_dir,
+        fixture_names=fixture_names,
+        fixtures_by_name=fixtures_by_name,
+    )
     mermaid_js = run_mermaid_js(
         repo_root=repo_root,
         mermaid_cli_dir=mermaid_cli_dir,
@@ -1160,11 +1211,12 @@ def main(argv: list[str]) -> int:
         merman=merman,
         mmdr=mmdr,
         mermaid_js=mermaid_js,
+        fixture_inputs=fixture_inputs,
     )
 
     ts = _dt.datetime.now(_dt.timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S %z")
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": ts,
         "mode": args.mode,
         "selection": selection,
@@ -1196,6 +1248,7 @@ def main(argv: list[str]) -> int:
             for f in corpus.fixtures
             if any(f.name == split_exact_bench(b)[1] for b in exact_benches)
         ],
+        "fixture_inputs": fixture_inputs,
         "runners": {
             "merman": merman,
             "mermaid_rs_renderer": mmdr,
