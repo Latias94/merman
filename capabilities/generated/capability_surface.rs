@@ -56,6 +56,209 @@ pub const BINDING_OPERATION_IDS: &[&str] = &[
     "validation-json",
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OperationKey {
+    AnalysisFactsJson,
+    AnalysisJson,
+    Ascii,
+    DocumentAnalysisFactsJson,
+    DocumentAnalysisJson,
+    Jpeg,
+    LayoutJson,
+    Pdf,
+    Png,
+    SemanticJson,
+    Svg,
+    SvgPlanJson,
+    ValidationJson,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OperationSpec {
+    pub key: OperationKey,
+    pub id: &'static str,
+    pub capability_id: Option<&'static str>,
+    pub description: &'static str,
+    pub media_type: &'static str,
+    pub requires_uri: bool,
+    pub targets: &'static [&'static str],
+}
+
+impl OperationKey {
+    pub const ALL: &'static [Self] = &[
+        Self::AnalysisFactsJson,
+        Self::AnalysisJson,
+        Self::Ascii,
+        Self::DocumentAnalysisFactsJson,
+        Self::DocumentAnalysisJson,
+        Self::Jpeg,
+        Self::LayoutJson,
+        Self::Pdf,
+        Self::Png,
+        Self::SemanticJson,
+        Self::Svg,
+        Self::SvgPlanJson,
+        Self::ValidationJson,
+    ];
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "analysis-facts-json" => Some(Self::AnalysisFactsJson),
+            "analysis-json" => Some(Self::AnalysisJson),
+            "ascii" => Some(Self::Ascii),
+            "document-analysis-facts-json" => Some(Self::DocumentAnalysisFactsJson),
+            "document-analysis-json" => Some(Self::DocumentAnalysisJson),
+            "jpeg" => Some(Self::Jpeg),
+            "layout-json" => Some(Self::LayoutJson),
+            "pdf" => Some(Self::Pdf),
+            "png" => Some(Self::Png),
+            "semantic-json" => Some(Self::SemanticJson),
+            "svg" => Some(Self::Svg),
+            "svg-plan-json" => Some(Self::SvgPlanJson),
+            "validation-json" => Some(Self::ValidationJson),
+            _ => None,
+        }
+    }
+
+    pub const fn spec(self) -> &'static OperationSpec {
+        match self {
+            Self::AnalysisFactsJson => &OPERATION_SPECS[0],
+            Self::AnalysisJson => &OPERATION_SPECS[1],
+            Self::Ascii => &OPERATION_SPECS[2],
+            Self::DocumentAnalysisFactsJson => &OPERATION_SPECS[3],
+            Self::DocumentAnalysisJson => &OPERATION_SPECS[4],
+            Self::Jpeg => &OPERATION_SPECS[5],
+            Self::LayoutJson => &OPERATION_SPECS[6],
+            Self::Pdf => &OPERATION_SPECS[7],
+            Self::Png => &OPERATION_SPECS[8],
+            Self::SemanticJson => &OPERATION_SPECS[9],
+            Self::Svg => &OPERATION_SPECS[10],
+            Self::SvgPlanJson => &OPERATION_SPECS[11],
+            Self::ValidationJson => &OPERATION_SPECS[12],
+        }
+    }
+}
+
+pub const OPERATION_SPECS: &[OperationSpec] = &[
+    OperationSpec {
+        key: OperationKey::AnalysisFactsJson,
+        id: "analysis-facts-json",
+        capability_id: Some("analysis"),
+        description: "Analyze Mermaid input and return semantic facts JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::AnalysisJson,
+        id: "analysis-json",
+        capability_id: Some("analysis"),
+        description: "Analyze Mermaid input and return diagnostics JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "typst", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::Ascii,
+        id: "ascii",
+        capability_id: Some("ascii"),
+        description: "Render Mermaid input as terminal text.",
+        media_type: "text/plain; charset=utf-8",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::DocumentAnalysisFactsJson,
+        id: "document-analysis-facts-json",
+        capability_id: Some("analysis"),
+        description: "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+        media_type: "application/json",
+        requires_uri: true,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::DocumentAnalysisJson,
+        id: "document-analysis-json",
+        capability_id: Some("analysis"),
+        description: "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+        media_type: "application/json",
+        requires_uri: true,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::Jpeg,
+        id: "jpeg",
+        capability_id: Some("jpeg"),
+        description: "Render Mermaid input as JPEG.",
+        media_type: "image/jpeg",
+        requires_uri: false,
+        targets: &["native"],
+    },
+    OperationSpec {
+        key: OperationKey::LayoutJson,
+        id: "layout-json",
+        capability_id: Some("svg"),
+        description: "Render Mermaid input into layout model JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::Pdf,
+        id: "pdf",
+        capability_id: Some("pdf"),
+        description: "Render Mermaid input as PDF.",
+        media_type: "application/pdf",
+        requires_uri: false,
+        targets: &["native"],
+    },
+    OperationSpec {
+        key: OperationKey::Png,
+        id: "png",
+        capability_id: Some("png"),
+        description: "Render Mermaid input as PNG.",
+        media_type: "image/png",
+        requires_uri: false,
+        targets: &["native"],
+    },
+    OperationSpec {
+        key: OperationKey::SemanticJson,
+        id: "semantic-json",
+        capability_id: None,
+        description: "Parse Mermaid input into canonical semantic JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::Svg,
+        id: "svg",
+        capability_id: Some("svg"),
+        description: "Render Mermaid input as SVG.",
+        media_type: "image/svg+xml",
+        requires_uri: false,
+        targets: &["native", "typst", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::SvgPlanJson,
+        id: "svg-plan-json",
+        capability_id: Some("svg"),
+        description: "Plan the capabilities required to render Mermaid input as SVG.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+    OperationSpec {
+        key: OperationKey::ValidationJson,
+        id: "validation-json",
+        capability_id: Some("analysis"),
+        description: "Validate Mermaid input and return validation JSON.",
+        media_type: "application/json",
+        requires_uri: false,
+        targets: &["native", "web"],
+    },
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetDescriptor {
     pub id: &'static str,
@@ -260,119 +463,5 @@ pub const OUTPUTS: &[OutputDescriptor] = &[
     },
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BindingOperationDescriptor {
-    pub id: &'static str,
-    pub capability_id: Option<&'static str>,
-    pub description: &'static str,
-    pub media_type: &'static str,
-    pub requires_uri: bool,
-    pub targets: &'static [&'static str],
-}
-
-pub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = &[
-    BindingOperationDescriptor {
-        id: "analysis-facts-json",
-        capability_id: Some("analysis"),
-        description: "Analyze Mermaid input and return semantic facts JSON.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "analysis-json",
-        capability_id: Some("analysis"),
-        description: "Analyze Mermaid input and return diagnostics JSON.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "typst", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "ascii",
-        capability_id: Some("ascii"),
-        description: "Render Mermaid input as terminal text.",
-        media_type: "text/plain; charset=utf-8",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "document-analysis-facts-json",
-        capability_id: Some("analysis"),
-        description: "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
-        media_type: "application/json",
-        requires_uri: true,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "document-analysis-json",
-        capability_id: Some("analysis"),
-        description: "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
-        media_type: "application/json",
-        requires_uri: true,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "jpeg",
-        capability_id: Some("jpeg"),
-        description: "Render Mermaid input as JPEG.",
-        media_type: "image/jpeg",
-        requires_uri: false,
-        targets: &["native"],
-    },
-    BindingOperationDescriptor {
-        id: "layout-json",
-        capability_id: Some("svg"),
-        description: "Render Mermaid input into layout model JSON.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "pdf",
-        capability_id: Some("pdf"),
-        description: "Render Mermaid input as PDF.",
-        media_type: "application/pdf",
-        requires_uri: false,
-        targets: &["native"],
-    },
-    BindingOperationDescriptor {
-        id: "png",
-        capability_id: Some("png"),
-        description: "Render Mermaid input as PNG.",
-        media_type: "image/png",
-        requires_uri: false,
-        targets: &["native"],
-    },
-    BindingOperationDescriptor {
-        id: "semantic-json",
-        capability_id: None,
-        description: "Parse Mermaid input into canonical semantic JSON.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "svg",
-        capability_id: Some("svg"),
-        description: "Render Mermaid input as SVG.",
-        media_type: "image/svg+xml",
-        requires_uri: false,
-        targets: &["native", "typst", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "svg-plan-json",
-        capability_id: Some("svg"),
-        description: "Plan the capabilities required to render Mermaid input as SVG.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-    BindingOperationDescriptor {
-        id: "validation-json",
-        capability_id: Some("analysis"),
-        description: "Validate Mermaid input and return validation JSON.",
-        media_type: "application/json",
-        requires_uri: false,
-        targets: &["native", "web"],
-    },
-];
+pub type BindingOperationDescriptor = OperationSpec;
+pub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = OPERATION_SPECS;

@@ -1,66 +1,51 @@
 use crate::{BindingEngine, BindingError, BindingStatus};
 use serde::Serialize;
 
-mod native_operations {
-    include!("generated/native_operations.rs");
+#[allow(dead_code)]
+mod capability_operations {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../capabilities/generated/capability_surface.rs"
+    ));
 }
 
-use native_operations::{
-    NATIVE_OPERATIONS, NativeOperationProjection, native_operation_by_code, native_operation_by_id,
-};
+pub use capability_operations::{OperationKey, OperationSpec};
 
 /// Stable schema version for binding operation metadata and per-operation options.
 pub const BINDING_OPERATION_SCHEMA_VERSION: u32 = 1;
 
 /// A stable, transport-neutral operation selected from the canonical capability descriptor.
 ///
-/// Native ABI numeric codes come from `abi/merman-v3.json`; operation IDs, capability
-/// prerequisites, media types, and URI requirements come from
-/// `capabilities/feature-surface-v1.json`. This wrapper intentionally does not expose a second
-/// enum with manually maintained semantics.
+/// Operation IDs, capability prerequisites, media types, and URI requirements come exclusively
+/// from `capabilities/feature-surface-v1.json`. Transport-specific numeric codes are deliberately
+/// outside this type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BindingOperationKind(&'static NativeOperationProjection);
+pub struct BindingOperationKind(OperationKey);
 
 impl BindingOperationKind {
     pub fn all() -> impl Iterator<Item = Self> + 'static {
-        NATIVE_OPERATIONS
-            .iter()
-            .filter(|operation| operation.operation_id.is_some())
-            .map(Self)
+        OperationKey::ALL.iter().copied().map(Self)
     }
 
     pub fn from_id(id: &str) -> Result<Self, BindingError> {
-        native_operation_by_id(id)
+        OperationKey::from_id(id)
             .map(Self)
             .ok_or_else(|| BindingError::unknown_operation(format!("unknown operation `{id}`")))
     }
 
-    pub fn from_native_code(code: i32) -> Result<Self, BindingError> {
-        native_operation_by_code(code)
-            .filter(|operation| operation.operation_id.is_some())
-            .map(Self)
-            .ok_or_else(|| {
-                BindingError::unknown_operation(format!("unknown operation code `{code}`"))
-            })
-    }
-
     #[must_use]
-    pub fn operation_id(self) -> &'static str {
+    pub const fn key(self) -> OperationKey {
         self.0
-            .operation_id
-            .expect("BindingOperationKind never wraps the native metadata-only operation")
     }
 
     #[must_use]
-    pub const fn native_code(self) -> i32 {
-        self.0.code
+    pub const fn operation_id(self) -> &'static str {
+        self.0.spec().id
     }
 
     #[must_use]
-    pub fn media_type(self) -> &'static str {
-        self.0
-            .media_type
-            .expect("BindingOperationKind always has a generated media type")
+    pub const fn media_type(self) -> &'static str {
+        self.0.spec().media_type
     }
 
     /// Returns the optional feature-surface capability required by this operation.
@@ -69,12 +54,12 @@ impl BindingOperationKind {
     /// not a fake `semantic` feature.
     #[must_use]
     pub const fn required_capability_id(self) -> Option<&'static str> {
-        self.0.capability_id
+        self.0.spec().capability_id
     }
 
     #[must_use]
     pub const fn requires_uri(self) -> bool {
-        self.0.requires_uri
+        self.0.spec().requires_uri
     }
 }
 
@@ -129,34 +114,26 @@ impl BindingEngine {
 
         let request_engine = self.for_request_options(request.options_json)?;
         let engine = request_engine.as_ref().unwrap_or(self);
-        let data = match operation.operation_id() {
-            "svg" => engine.render_svg(request.source),
-            "svg-plan-json" => engine.svg_plan_json(request.source),
-            "png" => engine.render_png(request.source),
-            "jpeg" => engine.render_jpeg(request.source),
-            "pdf" => engine.render_pdf(request.source),
-            "ascii" => engine.render_ascii(request.source),
-            "semantic-json" => engine.parse_json(request.source),
-            "layout-json" => engine.layout_json(request.source),
-            "analysis-json" => engine.analyze_json(request.source),
-            "analysis-facts-json" => engine.analysis_facts_json(request.source),
-            "validation-json" => engine.validate_json(request.source),
-            "document-analysis-json" => engine.analyze_document_json(
+        let data = match operation.key() {
+            OperationKey::Svg => engine.render_svg(request.source),
+            OperationKey::SvgPlanJson => engine.svg_plan_json(request.source),
+            OperationKey::Png => engine.render_png(request.source),
+            OperationKey::Jpeg => engine.render_jpeg(request.source),
+            OperationKey::Pdf => engine.render_pdf(request.source),
+            OperationKey::Ascii => engine.render_ascii(request.source),
+            OperationKey::SemanticJson => engine.parse_json(request.source),
+            OperationKey::LayoutJson => engine.layout_json(request.source),
+            OperationKey::AnalysisJson => engine.analyze_json(request.source),
+            OperationKey::AnalysisFactsJson => engine.analysis_facts_json(request.source),
+            OperationKey::ValidationJson => engine.validate_json(request.source),
+            OperationKey::DocumentAnalysisJson => engine.analyze_document_json(
                 request.source,
                 request.uri.expect("validated document URI presence"),
             ),
-            "document-analysis-facts-json" => engine.analyze_document_facts_json(
+            OperationKey::DocumentAnalysisFactsJson => engine.analyze_document_facts_json(
                 request.source,
                 request.uri.expect("validated document URI presence"),
             ),
-            operation_id => {
-                return Err(BindingError::new(
-                    BindingStatus::UnsupportedOperation,
-                    format!(
-                        "native ABI declares operation `{operation_id}` without a bindings-core dispatch"
-                    ),
-                ));
-            }
         }?;
 
         let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
@@ -190,24 +167,22 @@ pub fn compiled_operation_kind_ids() -> Vec<&'static str> {
 }
 
 impl BindingOperationKind {
-    fn is_compiled(self) -> bool {
-        let operation_id = self.operation_id();
-        operation_id == "semantic-json"
-            || (cfg!(feature = "svg")
-                && matches!(operation_id, "svg" | "layout-json" | "svg-plan-json"))
-            || (cfg!(feature = "png") && operation_id == "png")
-            || (cfg!(feature = "jpeg") && operation_id == "jpeg")
-            || (cfg!(feature = "pdf") && operation_id == "pdf")
-            || (cfg!(feature = "ascii") && operation_id == "ascii")
-            || (cfg!(feature = "analysis")
-                && matches!(
-                    operation_id,
-                    "analysis-json"
-                        | "analysis-facts-json"
-                        | "validation-json"
-                        | "document-analysis-json"
-                        | "document-analysis-facts-json"
-                ))
+    const fn is_compiled(self) -> bool {
+        match self.key() {
+            OperationKey::SemanticJson => true,
+            OperationKey::Svg | OperationKey::LayoutJson | OperationKey::SvgPlanJson => {
+                cfg!(feature = "svg")
+            }
+            OperationKey::Png => cfg!(feature = "png"),
+            OperationKey::Jpeg => cfg!(feature = "jpeg"),
+            OperationKey::Pdf => cfg!(feature = "pdf"),
+            OperationKey::Ascii => cfg!(feature = "ascii"),
+            OperationKey::AnalysisJson
+            | OperationKey::AnalysisFactsJson
+            | OperationKey::ValidationJson
+            | OperationKey::DocumentAnalysisJson
+            | OperationKey::DocumentAnalysisFactsJson => cfg!(feature = "analysis"),
+        }
     }
 }
 
@@ -224,10 +199,7 @@ mod tests {
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),
                 operation
             );
-            assert_eq!(
-                BindingOperationKind::from_native_code(operation.native_code()).unwrap(),
-                operation
-            );
+            assert_eq!(operation.key().spec().id, operation.operation_id());
             assert!(!operation.media_type().is_empty());
         }
     }

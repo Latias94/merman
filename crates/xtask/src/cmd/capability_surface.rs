@@ -644,6 +644,18 @@ fn sorted_string_refs(values: &[String]) -> Vec<&str> {
     values
 }
 
+fn rust_operation_variant(id: &str) -> String {
+    id.split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars
+                .next()
+                .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
 fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, String> {
     let digest = semantic_digest(descriptor)?;
     let mut out = String::from(
@@ -676,6 +688,94 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     out.push_str("];\n\npub const BINDING_OPERATION_IDS: &[&str] = &[\n");
     for operation in sorted_binding_operations(descriptor) {
         writeln!(out, "    {:?},", operation.id).unwrap();
+    }
+    out.push_str("];\n\n");
+
+    let operations = sorted_binding_operations(descriptor);
+    out.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\n\
+         pub enum OperationKey {\n",
+    );
+    for operation in &operations {
+        writeln!(out, "    {},", rust_operation_variant(&operation.id)).unwrap();
+    }
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
+         pub struct OperationSpec {\n\
+         \x20   pub key: OperationKey,\n\
+         \x20   pub id: &'static str,\n\
+         \x20   pub capability_id: Option<&'static str>,\n\
+         \x20   pub description: &'static str,\n\
+         \x20   pub media_type: &'static str,\n\
+         \x20   pub requires_uri: bool,\n\
+         \x20   pub targets: &'static [&'static str],\n\
+         }\n\n\
+         impl OperationKey {\n\
+         \x20   pub const ALL: &'static [Self] = &[\n",
+    );
+    for operation in &operations {
+        writeln!(
+            out,
+            "        Self::{},",
+            rust_operation_variant(&operation.id)
+        )
+        .unwrap();
+    }
+    out.push_str(
+        "    ];\n\n\
+         \x20   pub fn from_id(id: &str) -> Option<Self> {\n\
+         \x20       match id {\n",
+    );
+    for operation in &operations {
+        writeln!(
+            out,
+            "            {:?} => Some(Self::{}),",
+            operation.id,
+            rust_operation_variant(&operation.id)
+        )
+        .unwrap();
+    }
+    out.push_str(
+        "            _ => None,\n\
+         \x20       }\n\
+         \x20   }\n\n\
+         \x20   pub const fn spec(self) -> &'static OperationSpec {\n\
+         \x20       match self {\n",
+    );
+    for (index, operation) in operations.iter().enumerate() {
+        writeln!(
+            out,
+            "            Self::{} => &OPERATION_SPECS[{index}],",
+            rust_operation_variant(&operation.id)
+        )
+        .unwrap();
+    }
+    out.push_str("        }\n    }\n}\n\n");
+
+    out.push_str("pub const OPERATION_SPECS: &[OperationSpec] = &[\n");
+    for operation in &operations {
+        out.push_str("    OperationSpec {\n");
+        writeln!(
+            out,
+            "        key: OperationKey::{},",
+            rust_operation_variant(&operation.id)
+        )
+        .unwrap();
+        writeln!(out, "        id: {:?},", operation.id).unwrap();
+        writeln!(
+            out,
+            "        capability_id: {:?},",
+            operation.capability.0.as_deref()
+        )
+        .unwrap();
+        writeln!(out, "        description: {:?},", operation.description).unwrap();
+        writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
+        writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
+        out.push_str("        targets: &[");
+        write_quoted_list(&mut out, sorted_string_refs(&operation.targets));
+        out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
 
@@ -717,24 +817,10 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, Strin
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct BindingOperationDescriptor {\n    pub id: &'static str,\n    pub capability_id: Option<&'static str>,\n    pub description: &'static str,\n    pub media_type: &'static str,\n    pub requires_uri: bool,\n    pub targets: &'static [&'static str],\n}\n\npub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = &[\n");
-    for operation in sorted_binding_operations(descriptor) {
-        out.push_str("    BindingOperationDescriptor {\n");
-        writeln!(out, "        id: {:?},", operation.id).unwrap();
-        writeln!(
-            out,
-            "        capability_id: {:?},",
-            operation.capability.0.as_deref()
-        )
-        .unwrap();
-        writeln!(out, "        description: {:?},", operation.description).unwrap();
-        writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
-        writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
-        out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&operation.targets));
-        out.push_str("],\n    },\n");
-    }
-    out.push_str("];\n\n");
+    out.push_str(
+        "pub type BindingOperationDescriptor = OperationSpec;\n\
+         pub const BINDING_OPERATIONS: &[BindingOperationDescriptor] = OPERATION_SPECS;\n\n",
+    );
 
     while out.ends_with('\n') {
         out.pop();
@@ -1606,6 +1692,12 @@ mod tests {
                 "TypeScript projection missed {required}"
             );
         }
+        for required in ["OperationKey", "OperationSpec", "OPERATION_SPECS"] {
+            assert!(
+                rust.contains(required),
+                "Rust operation projection missed {required}"
+            );
+        }
         for forbidden in ["SURFACE_MAPPINGS", "@mermanjs/", "typst-publish"] {
             assert!(
                 !rust.contains(forbidden),
@@ -1629,6 +1721,19 @@ mod tests {
         assert!(typescript.contains("\"capability\": null"));
         assert!(web_typescript.contains("WEB_BINDING_OPERATIONS"));
         assert!(c.contains("MERMAN_BINDING_OPERATION_SEMANTIC_JSON"));
+        assert!(rust.contains("\"semantic-json\" => Some(Self::SemanticJson)"));
+        assert!(rust.contains("Self::SvgPlanJson => &OPERATION_SPECS["));
+        assert!(!rust.contains("native_code"));
+    }
+
+    #[test]
+    fn rust_operation_variants_are_stable_pascal_case() {
+        assert_eq!(rust_operation_variant("svg"), "Svg");
+        assert_eq!(rust_operation_variant("semantic-json"), "SemanticJson");
+        assert_eq!(
+            rust_operation_variant("document-analysis-facts-json"),
+            "DocumentAnalysisFactsJson"
+        );
     }
 
     #[test]
