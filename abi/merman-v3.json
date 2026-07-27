@@ -6,7 +6,7 @@
   "minimum_prefix": {
     "status_code_count": 17,
     "operation_code_count": 14,
-    "error_kind_count": 4,
+    "error_kind_count": 5,
     "callback_count": 1,
     "function_slot_count": 5,
     "record_count": 9
@@ -276,7 +276,7 @@
     }
   ],
   "ownership_rules": [
-    { "id": "result_buffers", "description": "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator." },
+    { "id": "result_buffers", "description": "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator." },
     { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },

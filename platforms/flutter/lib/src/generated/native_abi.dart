@@ -20,12 +20,15 @@ class MermanNativeBindings {
           lookup)
       : _lookup = lookup;
 
-  /// The descriptor digest identifies the complete declared wire layout before the function table
-  /// is returned. All public records are size-tagged; initialize caller-owned records with
-  /// MERMAN_NATIVE_STRUCT_SIZE(Type). MermanNativeResult is write-only on output: only its
-  /// struct_size must be initialized before a call, and a returned result must be passed to
-  /// result_free before that same record is reused. MERMAN_NATIVE_RESULT_INIT is the convenient
-  /// zeroed initializer.
+  /// The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
+  /// digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,
+  /// public records require exact struct_size. The caller supplies MermanNativeApi capacity and
+  /// receives the producer full size. MermanNativeResult must be fully zero-initialized with
+  /// MERMAN_NATIVE_RESULT_INIT before every producing call.
+  ///
+  /// Host callbacks MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local
+  /// exit across this boundary. Merman converts callback return statuses; it cannot catch foreign
+  /// exceptions.
   ///
   /// Ownership and concurrency rules from the ABI descriptor:
   /// - borrowed_slices: Input, media-type, and callback slices are borrowed. Hosts must not retain
@@ -34,19 +37,23 @@ class MermanNativeBindings {
   /// with kind missing-capability and the canonical capability_id before result allocation. An
   /// unknown operation code returns the same status with kind unknown-operation and a null
   /// capability_id.
-  /// - engine_tokens: Engine tokens are opaque u64 values. Any thread attempting to re-enter or retire
-  /// an engine while one of its host callbacks is active receives reentrant-call; this prevents
-  /// callback-induced cross-thread deadlock. Outside a callback, engine_free retires a token exactly
-  /// once, rejects new calls immediately, and lets an operation that already acquired the engine
-  /// retain its internal state until that call returns. The host must keep the retained text-measure
-  /// callback and user_data valid until all such operations return.
-  /// - result_buffers: Only result.data and result.metadata_or_error_json of a result previously
-  /// written by Merman are Merman-owned. Ownership is registered against the exact result record
-  /// address written by Merman: copying or moving a live result does not transfer ownership, and
-  /// result_free must receive that original address. Output records are write-only: initialize
-  /// struct_size, do not require zeroing, and release the original record before reuse. Repeated
-  /// result_free calls on the same record are harmless. No result buffer may be passed to a host
-  /// allocator.
+  /// - engine_tokens: Engine tokens are opaque u64 values. engine_try_close never waits:
+  /// callback-active returns reentrant-call, another active operation returns busy with the token
+  /// still valid, and quiescent success permanently closes admission before retiring the token. A
+  /// transport reference acquired before successful close cannot enter afterwards. Callback and
+  /// user_data are immutable constructor-owned state and may be released after successful close.
+  /// - host_callbacks: Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind,
+  /// throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary.
+  /// Merman converts returned status values only; it cannot catch foreign exceptions.
+  /// - result_buffers: Only result.data and result.metadata_or_error_json identified by a live
+  /// allocation_token are Merman-owned. Callers zero-initialize the complete result and set
+  /// struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero
+  /// token that is never reused. If token issuance is exhausted, the call returns internal-error and
+  /// leaves the caller's valid zero-initialized result untouched because no conforming result can be
+  /// written. Moving the complete record transfers ownership. result_free trusts only the token,
+  /// never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and
+  /// only clear the supplied record. Copying a live token is outside the same-process hostile-memory
+  /// threat boundary. No result buffer may be passed to a host allocator.
   int merman_get_native_api(
     ffi.Pointer<MermanNativeApiRequest> request,
     ffi.Pointer<MermanNativeApi> out_api,
@@ -220,6 +227,9 @@ final class MermanNativeResult extends ffi.Struct {
   @ffi.Uint32()
   external int struct_size;
 
+  @ffi.Uint64()
+  external int allocation_token;
+
   @MermanNativeStatus()
   external int status;
 
@@ -240,7 +250,7 @@ final class MermanNativeApiRequest extends ffi.Struct {
   @ffi.Uint32()
   external int expected_abi_version;
 
-  external MermanNativeSlice expected_layout_descriptor_digest;
+  external MermanNativeSlice expected_minimum_prefix_layout_digest;
 }
 
 typedef MermanNativeRuntimeCatalogFnFunction = MermanNativeStatus Function(
@@ -259,12 +269,12 @@ typedef DartMermanNativeEngineNewFnFunction = DartMermanNativeStatus Function(
     ffi.Pointer<MermanNativeResult> out_result);
 typedef MermanNativeEngineNewFn
     = ffi.Pointer<ffi.NativeFunction<MermanNativeEngineNewFnFunction>>;
-typedef MermanNativeEngineFreeFnFunction = MermanNativeStatus Function(
+typedef MermanNativeEngineTryCloseFnFunction = MermanNativeStatus Function(
     MermanNativeEngineToken engine);
-typedef DartMermanNativeEngineFreeFnFunction = DartMermanNativeStatus Function(
-    DartMermanNativeEngineToken engine);
-typedef MermanNativeEngineFreeFn
-    = ffi.Pointer<ffi.NativeFunction<MermanNativeEngineFreeFnFunction>>;
+typedef DartMermanNativeEngineTryCloseFnFunction = DartMermanNativeStatus
+    Function(DartMermanNativeEngineToken engine);
+typedef MermanNativeEngineTryCloseFn
+    = ffi.Pointer<ffi.NativeFunction<MermanNativeEngineTryCloseFnFunction>>;
 typedef MermanNativeExecuteCollectFnFunction = MermanNativeStatus Function(
     MermanNativeEngineToken engine,
     ffi.Pointer<MermanNativeOperationRequest> request,
@@ -290,7 +300,9 @@ final class MermanNativeApi extends ffi.Struct {
   @ffi.Uint32()
   external int abi_version;
 
-  external MermanNativeSlice layout_descriptor_digest;
+  external MermanNativeSlice minimum_prefix_layout_digest;
+
+  external MermanNativeSlice full_descriptor_digest;
 
   external MermanNativeSlice capability_catalog_digest;
 
@@ -300,12 +312,34 @@ final class MermanNativeApi extends ffi.Struct {
 
   external MermanNativeEngineNewFn engine_new;
 
-  external MermanNativeEngineFreeFn engine_free;
+  external MermanNativeEngineTryCloseFn engine_try_close;
 
   external MermanNativeExecuteCollectFn execute_collect;
 
   external MermanNativeResultFreeFn result_free;
 }
+
+const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE = 0;
+
+const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE_SINGLE_RUN = 1;
+
+const int MERMAN_TEXT_WRAP_MODE_HTML_LIKE = 2;
+
+const int MERMAN_TEXT_DIRECTION_AUTO = 0;
+
+const int MERMAN_TEXT_WHITE_SPACE_NORMAL = 0;
+
+const int MERMAN_TEXT_WHITE_SPACE_NOWRAP = 1;
+
+const int MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES = 2;
+
+const int MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0;
+
+const int MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1;
+
+const int MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2;
+
+const int MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3;
 
 const int MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE = 0;
 
@@ -387,6 +421,8 @@ const int MERMAN_NATIVE_STATUS_REENTRANT_CALL = 14;
 
 const int MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15;
 
+const int MERMAN_NATIVE_STATUS_BUSY = 16;
+
 const int MERMAN_NATIVE_OPERATION_NONE = 0;
 
 const int MERMAN_NATIVE_OPERATION_SVG = 1;
@@ -419,7 +455,7 @@ const int MERMAN_NATIVE_FUNCTION_RUNTIME_CATALOG = 0;
 
 const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW = 1;
 
-const int MERMAN_NATIVE_FUNCTION_ENGINE_FREE = 2;
+const int MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE = 2;
 
 const int MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT = 3;
 
@@ -429,10 +465,15 @@ const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 const int MERMAN_NATIVE_ABI_VERSION = 3;
 
-const String MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST =
-    'sha256:e12a6b40e1a612c1814ede314c89907fbcb844796646164f2112665a2488a61a';
+const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
+    'sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110';
+
+const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
+    'sha256:14c9d1b5b192e7ec09cf67e077dffceabaa82efaefed3fa9db82fbd531aec422';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
+
+const String MERMAN_NATIVE_ERROR_KIND_BUSY = 'busy';
 
 const String MERMAN_NATIVE_ERROR_KIND_GENERIC = 'generic';
 
@@ -560,3 +601,5 @@ const String MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON = 'svg';
 
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON =
     'application/json';
+
+const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 144;

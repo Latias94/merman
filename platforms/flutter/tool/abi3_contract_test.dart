@@ -1,10 +1,17 @@
 import 'dart:convert';
+import 'dart:ffi' as ffi;
+import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:merman/merman.dart';
 import 'package:merman/src/generated/native_abi.dart' as native;
+import 'package:merman/src/merman_ffi.dart' as ffi_transport;
 
 void main() {
+  projectsFrozenAbi3MinimumPrefix();
+  matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   projectsSvgPlanOperationFromGeneratedAbi();
   acceptsInvariantOnlyCatalog();
@@ -19,7 +26,56 @@ void main() {
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
   rejectsMismatchedNativeErrorSchema();
+  preservesAllocationTokenExhaustionStatus();
+  fuzzesNativeErrorPayloadDecoding();
   print('ABI 3 Dart contract tests passed');
+}
+
+void projectsFrozenAbi3MinimumPrefix() {
+  _expect(
+    native.MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.startsWith('sha256:'),
+    'ABI discovery must use the generated minimum-prefix digest',
+  );
+  _expect(
+    native.MERMAN_NATIVE_FUNCTION_RUNTIME_CATALOG == 0 &&
+        native.MERMAN_NATIVE_FUNCTION_ENGINE_NEW == 1 &&
+        native.MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE == 2 &&
+        native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT == 3 &&
+        native.MERMAN_NATIVE_FUNCTION_RESULT_FREE == 4,
+    'ABI 3 consumers must preserve the frozen five-slot function prefix',
+  );
+
+  final request = calloc<native.MermanNativeApiRequest>();
+  final api = calloc<native.MermanNativeApi>();
+  final result = calloc<native.MermanNativeResult>();
+  try {
+    request.ref.expected_minimum_prefix_layout_digest.struct_size =
+        ffi.sizeOf<native.MermanNativeSlice>();
+    _expect(
+      api.ref.engine_try_close.address == 0,
+      'zeroed ABI table should expose the engine_try_close slot',
+    );
+    result.ref.allocation_token = 1;
+    _expect(
+      result.ref.allocation_token == 1,
+      'native result ownership must be represented by an opaque token',
+    );
+  } finally {
+    calloc.free(request);
+    calloc.free(api);
+    calloc.free(result);
+  }
+}
+
+void matchesThePubPackageVersionProjection() {
+  final pubspec = File('pubspec.yaml').readAsStringSync();
+  final match =
+      RegExp(r'^version:\s*([^\s#]+)\s*$', multiLine: true).firstMatch(pubspec);
+  _expect(match != null, 'pubspec.yaml must declare one package version');
+  _expect(
+    match!.group(1) == mermanPackageVersion,
+    'the bundled native version pin must match pubspec.yaml',
+  );
 }
 
 void projectsSvgPlanOperationFromGeneratedAbi() {
@@ -218,8 +274,39 @@ void decodesMachineReadableNativeErrors() {
     ),
   );
   _expect(
-    reentrant.kind == MermanErrorKind.reentrantCall,
+    reentrant is MermanReentrantCallException &&
+        reentrant.kind == MermanErrorKind.reentrantCall,
     'reentrant classification should survive the Dart boundary',
+  );
+
+  final busy = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_BUSY,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_BUSY,
+          'status_name': 'busy',
+          'kind': 'busy',
+          'capability_id': null,
+          'message': 'engine has an active operation',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    busy is MermanBusyException && busy.kind == MermanErrorKind.busy,
+    'busy classification should survive the Dart boundary',
+  );
+
+  final busyWithoutResult = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_BUSY,
+    Uint8List(0),
+  );
+  _expect(
+    busyWithoutResult is MermanBusyException,
+    'result-free engine close status must preserve busy classification',
   );
 }
 
@@ -246,6 +333,73 @@ void rejectsMismatchedNativeErrorSchema() {
         error.capabilityId == null,
     'a stale native error schema should fail closed as a contract error',
   );
+}
+
+void preservesAllocationTokenExhaustionStatus() {
+  final result = calloc<native.MermanNativeResult>();
+  try {
+    result.ref.struct_size = ffi.sizeOf<native.MermanNativeResult>();
+    final exhausted = _expectMermanException(
+      () => ffi_transport.validateNativeResultForTesting(
+        result,
+        native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+      ),
+    );
+    _expect(
+      exhausted.code == native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR &&
+          exhausted.codeName != 'DART_NATIVE_CONTRACT_ERROR',
+      'token exhaustion must preserve the native internal-error status',
+    );
+
+    result.ref.operation = native.MERMAN_NATIVE_OPERATION_SEMANTIC_JSON;
+    final corrupted = _expectMermanException(
+      () => ffi_transport.validateNativeResultForTesting(
+        result,
+        native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+      ),
+    );
+    _expect(
+      corrupted.codeName == 'DART_NATIVE_CONTRACT_ERROR',
+      'a partially written zero-token result must fail closed',
+    );
+
+    result.ref.operation = 0;
+    final missingToken = _expectMermanException(
+      () => ffi_transport.validateNativeResultForTesting(
+        result,
+        native.MERMAN_NATIVE_STATUS_OK,
+      ),
+    );
+    _expect(
+      missingToken.codeName == 'DART_NATIVE_CONTRACT_ERROR',
+      'a successful producing call must return a nonzero allocation token',
+    );
+
+    result.ref.allocation_token = 1;
+    ffi_transport.validateNativeResultForTesting(
+      result,
+      native.MERMAN_NATIVE_STATUS_OK,
+    );
+  } finally {
+    calloc.free(result);
+  }
+}
+
+void fuzzesNativeErrorPayloadDecoding() {
+  final random = Random(0x4d45524d);
+  for (var iteration = 0; iteration < 512; iteration += 1) {
+    final payload = Uint8List.fromList(
+      List.generate(random.nextInt(128), (_) => random.nextInt(256)),
+    );
+    final status = random.nextBool()
+        ? native.MERMAN_NATIVE_STATUS_BUSY
+        : native.MERMAN_NATIVE_STATUS_REENTRANT_CALL;
+    final error = MermanException.fromNative(status, payload);
+    _expect(
+      error.code == status || error.code == -1,
+      'malformed native error payload escaped fail-closed decoding',
+    );
+  }
 }
 
 Map<String, Object?> _catalog({
@@ -300,4 +454,13 @@ void _expectThrows<T extends Object>(void Function() action) {
     return;
   }
   throw StateError('expected $T');
+}
+
+MermanException _expectMermanException(void Function() action) {
+  try {
+    action();
+  } on MermanException catch (error) {
+    return error;
+  }
+  throw StateError('expected MermanException');
 }

@@ -51,10 +51,17 @@ void _expectPrefix(Uint8List bytes, List<int> prefix, String label) {
 }
 
 void main(List<String> args) {
+  if (args.length > 1) {
+    throw ArgumentError('expected at most one native library path');
+  }
   final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
   try {
     const source = 'flowchart TD\nA[Hello] --> B[World]';
     final catalog = merman.runtimeCatalog;
+    _expect(
+      merman.packageVersion == catalog.packageVersion,
+      'table and runtime catalog package versions must agree',
+    );
     const expectedCapabilities = {
       'analysis',
       'ascii',
@@ -133,6 +140,44 @@ void main(List<String> args) {
       genericSvg.utf8Text.contains('id="flutter-request"'),
       'generic request options smoke failed',
     );
+    for (var iteration = 0; iteration < 32; iteration += 1) {
+      final semanticResult = merman.execute(
+        MermanOperation.semanticJson,
+        source,
+      );
+      _expect(
+        semanticResult.jsonObject['type'] == 'flowchart-v2',
+        'repeated generic execution failed at iteration $iteration',
+      );
+    }
+
+    if (args.isNotEmpty) {
+      final pinned = Merman.fromDynamicLibrary(
+        openMermanLibraryFromPath(args.single),
+        expectedPackageVersion: mermanPackageVersion,
+        textMeasurer: _measure,
+      );
+      try {
+        _expect(
+          pinned.renderSvg(source).contains('<svg'),
+          'exact-version constructor callback smoke failed',
+        );
+      } finally {
+        pinned.close();
+      }
+      try {
+        Merman.fromDynamicLibrary(
+          openMermanLibraryFromPath(args.single),
+          expectedPackageVersion: 'not-${merman.packageVersion}',
+        );
+        throw StateError('mismatched exact package version was accepted');
+      } on MermanException catch (error) {
+        _expect(
+          error.codeName == 'DART_NATIVE_CONTRACT_ERROR',
+          'exact package version mismatch returned the wrong error',
+        );
+      }
+    }
 
     final configured = merman.reusableEngine(
       optionsJson: '''
@@ -178,7 +223,22 @@ void main(List<String> args) {
     );
     _expect(document['valid'] == true, 'document analysis smoke failed');
 
-    final measured = merman.reusableEngine(textMeasurer: _measure);
+    late final MermanReusableEngine measured;
+    MermanException? callbackCloseError;
+    var callbackCount = 0;
+    measured = merman.reusableEngine(
+      textMeasurer: (request) {
+        callbackCount += 1;
+        if (callbackCloseError == null) {
+          try {
+            measured.close();
+          } on MermanException catch (error) {
+            callbackCloseError = error;
+          }
+        }
+        return _measure(request);
+      },
+    );
     try {
       _expect(
         measured
@@ -189,10 +249,18 @@ void main(List<String> args) {
             .contains('id="measured-request"'),
         'request options must preserve the host text measurement engine',
       );
+      _expect(callbackCount > 0, 'host text measurement callback was not used');
+      _expect(
+        callbackCloseError is MermanReentrantCallException &&
+            !measured.isDisposed,
+        'reentrant close must retain the native token and callback',
+      );
     } finally {
-      measured.dispose();
+      measured.close();
+      measured.close();
     }
+    _expect(measured.isDisposed, 'successful close must clear the Dart handle');
   } finally {
-    merman.dispose();
+    merman.close();
   }
 }

@@ -4,6 +4,7 @@
 
 ### Breaking changes
 
+- Rebuilt the Dart FFI transport against the frozen ABI 3 minimum prefix. The pre-freeze layout digest and `engine_free` table slot are no longer accepted; discovery now uses the minimum-prefix digest and `engine_try_close`.
 - Replaced the prerelease ABI 2 wrapper with ABI 3 table discovery. Direct `merman_*` symbol lookup, manually maintained raw Dart FFI records, and ABI 2 compatibility paths are removed. Upgrade the Dart package and its bundled native artifacts together.
 - Moved host text measurement to reusable-engine construction: pass `textMeasurer:` to `Merman.reusableEngine(...)`. The former post-construction callback installation API is removed.
 - Replaced format-specific option envelopes with generic `optionsJson` on `execute` and every convenience method. Request options deeply override the reusable engine baseline for one call; `runtime_policy` remains constructor-owned.
@@ -14,6 +15,7 @@
 
 ### Added
 
+- Added opaque native result allocation-token ownership, typed BUSY and REENTRANT exceptions, optional immutable text measurement on `Merman` construction, and ABI-compatible `openPath` loading.
 - Added ffigen-generated ABI 3 declarations, checked against the native table's version, digest,
   and function pointers before use.
 - Added a strict flat `MermanRuntimeCatalog` that validates the loaded artifact's capability,

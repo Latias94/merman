@@ -192,6 +192,7 @@ class ReleaseProjectionTests(unittest.TestCase):
             labels,
         )
         self.assertIn("Python package", labels)
+        self.assertIn("Flutter bundled native package version", labels)
         self.assertIn("Flutter Android package", labels)
         self.assertIn("Flutter iOS Podspec", labels)
         self.assertIn("Flutter macOS Podspec", labels)
@@ -414,6 +415,14 @@ class ReleaseProjectionTests(unittest.TestCase):
                 ),
             ),
             (
+                release_projection.FLUTTER_PACKAGE_VERSION,
+                lambda text: replace_once(
+                    text,
+                    f"const String mermanPackageVersion = '{canonical}';",
+                    "const String mermanPackageVersion = '9.9.9';",
+                ),
+            ),
+            (
                 release_projection.FLUTTER_ANDROID_MANIFEST,
                 lambda text: replace_once(
                     text,
@@ -497,6 +506,7 @@ class ReleaseProjectionTests(unittest.TestCase):
         for manifest_path in node_package_manifests():
             self.assertIn(manifest_path, updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
+        self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
         self.assertIn(release_projection.README, updates)
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)

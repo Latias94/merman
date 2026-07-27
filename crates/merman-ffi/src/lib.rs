@@ -370,12 +370,10 @@ fn owned_buffer_view(bytes: &mut Vec<u8>) -> MermanNativeBuffer {
 }
 
 fn register_result_allocation(
+    registry: &mut NativeAllocationRegistry,
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
 ) -> Result<(u64, MermanNativeBuffer, MermanNativeBuffer), NativeFailure> {
-    let mut registry = allocation_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let token = registry.register(data, metadata_or_error_json)?;
     let allocation = registry
         .results
@@ -429,22 +427,6 @@ fn initialized_native_result() -> MermanNativeResult {
             data: ptr::null_mut(),
             len: 0,
         },
-    }
-}
-
-fn completed_empty_native_result(
-    status: MermanNativeStatus,
-    operation: MermanNativeOperationCode,
-    media_type: Option<&'static str>,
-) -> MermanNativeResult {
-    MermanNativeResult {
-        struct_size: native_struct_size::<MermanNativeResult>(),
-        allocation_token: 0,
-        status,
-        operation: normalized_operation(operation),
-        media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
-        data: empty_buffer(),
-        metadata_or_error_json: empty_buffer(),
     }
 }
 
@@ -502,22 +484,35 @@ unsafe fn write_native_result(
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
 ) -> MermanNativeStatus {
+    let mut registry = allocation_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    unsafe {
+        write_native_result_with_registry(
+            &mut registry,
+            out_result,
+            status,
+            operation,
+            media_type,
+            data,
+            metadata_or_error_json,
+        )
+    }
+}
+
+unsafe fn write_native_result_with_registry(
+    registry: &mut NativeAllocationRegistry,
+    out_result: *mut MermanNativeResult,
+    status: MermanNativeStatus,
+    operation: MermanNativeOperationCode,
+    media_type: Option<&'static str>,
+    data: Vec<u8>,
+    metadata_or_error_json: Vec<u8>,
+) -> MermanNativeStatus {
     let (allocation_token, data, metadata_or_error_json) =
-        match register_result_allocation(data, metadata_or_error_json) {
+        match register_result_allocation(registry, data, metadata_or_error_json) {
             Ok(allocation) => allocation,
-            Err(failure) => {
-                unsafe {
-                    ptr::write(
-                        out_result,
-                        completed_empty_native_result(
-                            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
-                            operation,
-                            media_type,
-                        ),
-                    );
-                }
-                return failure.status;
-            }
+            Err(failure) => return failure.status,
         };
     unsafe {
         ptr::write(
@@ -557,10 +552,11 @@ unsafe fn write_failure_if_possible(
     out_result: *mut MermanNativeResult,
     operation: MermanNativeOperationCode,
     failure: &NativeFailure,
-) {
+) -> Option<MermanNativeStatus> {
     if unsafe { result_is_writable(out_result) }.is_ok() {
-        let _ = unsafe { write_native_failure(out_result, operation, failure) };
+        return Some(unsafe { write_native_failure(out_result, operation, failure) });
     }
+    None
 }
 
 unsafe fn native_slice_bytes<'a>(
@@ -861,8 +857,8 @@ unsafe fn result_status_boundary(
                 MERMAN_NATIVE_STATUS_PANIC,
                 "a Rust panic was caught at the native ABI boundary",
             );
-            unsafe { write_failure_if_possible(out_result, operation, &failure) };
-            failure.status
+            unsafe { write_failure_if_possible(out_result, operation, &failure) }
+                .unwrap_or(failure.status)
         }
     }
 }
@@ -1840,11 +1836,37 @@ mod tests {
             last_token: u64::MAX,
             results: BTreeMap::new(),
         };
-        let failure = registry
-            .register(Vec::new(), Vec::new())
-            .expect_err("exhausted tokens must not wrap to zero");
-        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
+        let mut result = native_result();
+        let status = unsafe {
+            write_native_result_with_registry(
+                &mut registry,
+                &mut result,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
         assert!(registry.results.is_empty());
+        assert_eq!(
+            result.struct_size,
+            native_struct_size::<MermanNativeResult>()
+        );
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+        assert_eq!(result.operation, 0);
+        assert_eq!(result.media_type.struct_size, 0);
+        assert!(result.media_type.data.is_null());
+        assert_eq!(result.media_type.len, 0);
+        assert_eq!(result.data.struct_size, 0);
+        assert!(result.data.data.is_null());
+        assert_eq!(result.data.len, 0);
+        assert_eq!(result.metadata_or_error_json.struct_size, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
+        assert_eq!(result.metadata_or_error_json.len, 0);
     }
 
     #[test]

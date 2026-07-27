@@ -4,9 +4,9 @@
 
 pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d";
+    "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:c49b74531c114254416d36d65373dab46783203d126bac48f5124ce818445ef6";
+    "sha256:14c9d1b5b192e7ec09cf67e077dffceabaa82efaefed3fa9db82fbd531aec422";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -465,6 +465,6 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     ),
     (
         "result_buffers",
-        "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator.",
+        "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator.",
     ),
 ];

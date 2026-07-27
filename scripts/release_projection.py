@@ -60,6 +60,9 @@ FLUTTER_ANDROID_MANIFEST = Path("platforms/flutter/android/build.gradle")
 FLUTTER_IOS_PODSPEC = Path("platforms/flutter/ios/merman.podspec")
 FLUTTER_MACOS_PODSPEC = Path("platforms/flutter/macos/merman.podspec")
 FLUTTER_IOS_BUILD = Path("platforms/flutter/build-ios.sh")
+FLUTTER_PACKAGE_VERSION = Path(
+    "platforms/flutter/lib/src/generated/package_version.dart"
+)
 
 
 class ReleaseProjectionError(ValueError):
@@ -998,6 +1001,14 @@ def _collect_platform_versions(
     _observe_assignment(
         view,
         observations,
+        "Flutter bundled native package version",
+        FLUTTER_PACKAGE_VERSION,
+        r"^const String mermanPackageVersion = '([^']+)';\s*$",
+        canonical,
+    )
+    _observe_assignment(
+        view,
+        observations,
         "Flutter Android package",
         FLUTTER_ANDROID_MANIFEST,
         r"^version\s*=\s*'([^']+)'\s*$",
@@ -1320,6 +1331,13 @@ def _plan_version_update(
         rf"\g<1>{release.canonical}\g<2>",
         FLUTTER_MANIFEST,
         "Flutter version",
+    )
+    updates[FLUTTER_PACKAGE_VERSION] = _replace_one(
+        view.text(FLUTTER_PACKAGE_VERSION),
+        r"^(const String mermanPackageVersion = ')[^']+(';\s*)$",
+        rf"\g<1>{release.canonical}\g<2>",
+        FLUTTER_PACKAGE_VERSION,
+        "Flutter bundled native package version",
     )
     updates[FLUTTER_ANDROID_MANIFEST] = _replace_one(
         view.text(FLUTTER_ANDROID_MANIFEST),

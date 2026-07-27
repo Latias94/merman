@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'generated/native_abi.dart' as native;
+import 'generated/package_version.dart';
 import 'generated/text_measurement_protocol.dart';
 
 const int _runtimeCatalogSchemaVersion = 1;
@@ -142,7 +143,8 @@ enum MermanErrorKind {
   generic(native.MERMAN_NATIVE_ERROR_KIND_GENERIC),
   unknownOperation(native.MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION),
   missingCapability(native.MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY),
-  reentrantCall(native.MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL);
+  reentrantCall(native.MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL),
+  busy(native.MERMAN_NATIVE_ERROR_KIND_BUSY);
 
   const MermanErrorKind(this.wireName);
 
@@ -177,38 +179,49 @@ class MermanException implements Exception {
       );
 
   factory MermanException.fromNative(int status, Uint8List metadata) {
-    var codeName = 'native-status-$status';
+    var codeName = switch (status) {
+      native.MERMAN_NATIVE_STATUS_REENTRANT_CALL => 'reentrant-call',
+      native.MERMAN_NATIVE_STATUS_BUSY => 'busy',
+      _ => 'native-status-$status',
+    };
     var message = 'native ABI operation failed';
-    var kind = MermanErrorKind.generic;
+    var kind = switch (status) {
+      native.MERMAN_NATIVE_STATUS_REENTRANT_CALL =>
+        MermanErrorKind.reentrantCall,
+      native.MERMAN_NATIVE_STATUS_BUSY => MermanErrorKind.busy,
+      _ => MermanErrorKind.generic,
+    };
     String? capabilityId;
-    try {
-      final decoded = _decodeJsonObject(metadata, 'native error metadata');
-      final decodedVersion = decoded['version'];
-      if (decodedVersion != native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION) {
-        return MermanException.contract(
-          'unsupported native error payload schema `$decodedVersion`; expected '
-          '${native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION}',
-        );
+    if (metadata.isNotEmpty) {
+      try {
+        final decoded = _decodeJsonObject(metadata, 'native error metadata');
+        final decodedVersion = decoded['version'];
+        if (decodedVersion != native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION) {
+          return MermanException.contract(
+            'unsupported native error payload schema `$decodedVersion`; expected '
+            '${native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION}',
+          );
+        }
+        final decodedCodeName = decoded['status_name'];
+        final decodedMessage = decoded['message'];
+        kind = MermanErrorKind.fromWireName(decoded['kind']);
+        final decodedCapabilityId = decoded['capability_id'];
+        if (decodedCapabilityId is String && decodedCapabilityId.isNotEmpty) {
+          capabilityId = decodedCapabilityId;
+        }
+        if (decodedCodeName is String) {
+          codeName = decodedCodeName;
+        }
+        if (decodedMessage is String) {
+          message = decodedMessage;
+        }
+      } on FormatException {
+        // Preserve the native numeric status when a broken library cannot encode
+        // its optional error metadata.
+      } on MermanException {
+        // Preserve the native numeric status when a broken library cannot encode
+        // its optional error metadata.
       }
-      final decodedCodeName = decoded['status_name'];
-      final decodedMessage = decoded['message'];
-      kind = MermanErrorKind.fromWireName(decoded['kind']);
-      final decodedCapabilityId = decoded['capability_id'];
-      if (decodedCapabilityId is String && decodedCapabilityId.isNotEmpty) {
-        capabilityId = decodedCapabilityId;
-      }
-      if (decodedCodeName is String) {
-        codeName = decodedCodeName;
-      }
-      if (decodedMessage is String) {
-        message = decodedMessage;
-      }
-    } on FormatException {
-      // Preserve the native numeric status when a broken library cannot encode
-      // its optional error metadata.
-    } on MermanException {
-      // Preserve the native numeric status when a broken library cannot encode
-      // its optional error metadata.
     }
     if (status == native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION) {
       if (kind == MermanErrorKind.unknownOperation) {
@@ -234,6 +247,20 @@ class MermanException implements Exception {
         capabilityId: capabilityId,
       );
     }
+    if (status == native.MERMAN_NATIVE_STATUS_REENTRANT_CALL) {
+      return MermanReentrantCallException(
+        code: status,
+        codeName: codeName,
+        message: message,
+      );
+    }
+    if (status == native.MERMAN_NATIVE_STATUS_BUSY) {
+      return MermanBusyException(
+        code: status,
+        codeName: codeName,
+        message: message,
+      );
+    }
     return MermanException(
       code: status,
       codeName: codeName,
@@ -245,6 +272,24 @@ class MermanException implements Exception {
 
   @override
   String toString() => 'MermanException($codeName, $code): $message';
+}
+
+/// The same engine was re-entered or closed while its callback was active.
+class MermanReentrantCallException extends MermanException {
+  const MermanReentrantCallException({
+    required super.code,
+    required super.codeName,
+    required super.message,
+  }) : super(kind: MermanErrorKind.reentrantCall);
+}
+
+/// The engine has an active operation and cannot admit or close immediately.
+class MermanBusyException extends MermanException {
+  const MermanBusyException({
+    required super.code,
+    required super.codeName,
+    required super.message,
+  }) : super(kind: MermanErrorKind.busy);
 }
 
 /// A typed native failure indicating an unknown or unavailable operation.
@@ -644,37 +689,61 @@ class MermanRuntimeCatalog {
 
 /// Native ABI 3 facade for Flutter and standalone Dart hosts.
 ///
-/// [dispose] is idempotent and must be called when the application is done
-/// with this object. Use [reusableEngine] for an independently configured
-/// lifecycle, including host text measurement.
+/// [close] is idempotent and must be called when the application is done with
+/// this object. A host text measurer is immutable constructor state. Use
+/// [reusableEngine] for additional independently configured engines.
 class Merman {
   Merman._(this._native, this.runtimeCatalog, this._defaultEngine);
 
   factory Merman.fromDynamicLibrary(
     ffi.DynamicLibrary library, {
     String? optionsJson,
+    MermanTextMeasurer? textMeasurer,
+    String? expectedPackageVersion,
   }) {
     final nativeApi = _NativeApi.discover(library);
+    if (expectedPackageVersion != null &&
+        nativeApi.packageVersion != expectedPackageVersion) {
+      throw MermanException.contract(
+        'native package version `${nativeApi.packageVersion}` does not match '
+        'the required `$expectedPackageVersion`',
+      );
+    }
     final catalog = nativeApi.loadRuntimeCatalog();
-    final defaultEngine = nativeApi.createEngine(optionsJson: optionsJson);
+    final defaultEngine = nativeApi.createEngine(
+      optionsJson: optionsJson,
+      textMeasurer: textMeasurer,
+    );
     return Merman._(nativeApi, catalog, defaultEngine);
   }
 
-  factory Merman.open({String? optionsJson}) => Merman.fromDynamicLibrary(
+  /// Opens the package-owned library and requires its exact package version.
+  factory Merman.open({
+    String? optionsJson,
+    MermanTextMeasurer? textMeasurer,
+  }) =>
+      Merman.fromDynamicLibrary(
         openMermanLibrary(),
         optionsJson: optionsJson,
+        textMeasurer: textMeasurer,
+        expectedPackageVersion: mermanPackageVersion,
       );
 
-  factory Merman.openPath(String path, {String? optionsJson}) =>
+  /// Opens an ABI-compatible library without pinning its package version.
+  factory Merman.openPath(
+    String path, {
+    String? optionsJson,
+    MermanTextMeasurer? textMeasurer,
+  }) =>
       Merman.fromDynamicLibrary(
         openMermanLibraryFromPath(path),
         optionsJson: optionsJson,
+        textMeasurer: textMeasurer,
       );
 
   final _NativeApi _native;
   final MermanRuntimeCatalog runtimeCatalog;
   final MermanReusableEngine _defaultEngine;
-  bool _disposed = false;
 
   /// Native package version reported by the discovered table.
   String get packageVersion => _native.packageVersion;
@@ -754,20 +823,17 @@ class Merman {
   MermanValidationResult validate(String source, {String? optionsJson}) =>
       _defaultEngine.validate(source, optionsJson: optionsJson);
 
-  /// Releases the default native engine. Safe to call more than once.
-  void dispose() {
-    if (_disposed) {
-      return;
-    }
-    _disposed = true;
-    _defaultEngine.dispose();
-  }
+  /// Tries to close the default engine without waiting.
+  ///
+  /// BUSY and REENTRANT failures leave this instance open so the caller can
+  /// retry after the active operation or callback returns.
+  void close() => _defaultEngine.close();
 
-  /// Alias for [dispose] for APIs that use `close` naming.
-  void close() => dispose();
+  /// Alias for [close] for APIs that use `dispose` naming.
+  void dispose() => close();
 
   void _ensureOpen() {
-    if (_disposed) {
+    if (_defaultEngine.isDisposed) {
       throw const MermanException(
         code: -1,
         codeName: 'DART_ENGINE_CLOSED',
@@ -782,12 +848,11 @@ class MermanReusableEngine {
   MermanReusableEngine._(this._native, this._token, this._textMeasurement);
 
   final _NativeApi _native;
-  final int _token;
+  int? _token;
   final _TextMeasurementRegistration? _textMeasurement;
   bool _activeCall = false;
-  bool _disposed = false;
 
-  bool get isDisposed => _disposed;
+  bool get isDisposed => _token == null;
 
   MermanOperationResult execute(
     MermanOperation operation,
@@ -795,7 +860,7 @@ class MermanReusableEngine {
     String? uri,
     String? optionsJson,
   }) {
-    _ensureCallable();
+    final token = _requireToken();
     if (operation.requiresUri != (uri != null)) {
       throw MermanException.contract(
         'operation `${operation.operationId}` ${operation.requiresUri ? 'requires' : 'does not accept'} a URI',
@@ -803,7 +868,7 @@ class MermanReusableEngine {
     }
     return _withNativeCall(
       () => _native.execute(
-        _token,
+        token,
         operation,
         source,
         uri: uri,
@@ -893,23 +958,28 @@ class MermanReusableEngine {
         optionsJson: optionsJson,
       ));
 
-  /// Releases the native engine and its optional callback. Safe to call twice.
-  void dispose() {
-    if (_disposed) {
+  /// Tries to close this engine without waiting. Safe to call more than once.
+  ///
+  /// A BUSY or REENTRANT failure retains the native token and the immutable
+  /// callback registration so [close] can be retried.
+  void close() {
+    final token = _token;
+    if (token == null) {
       return;
     }
     if (_activeCall) {
-      throw const MermanException(
+      throw const MermanReentrantCallException(
         code: native.MERMAN_NATIVE_STATUS_REENTRANT_CALL,
         codeName: 'reentrant-call',
-        message: 'Merman engine cannot be disposed from a native callback',
-        kind: MermanErrorKind.reentrantCall,
+        message: 'Merman engine cannot be closed from a native callback',
       );
     }
-    _disposeNow();
+    _native.tryCloseEngine(token);
+    _token = null;
+    _textMeasurement?.dispose();
   }
 
-  void close() => dispose();
+  void dispose() => close();
 
   Map<String, Object?> _json(
     MermanOperation operation,
@@ -926,11 +996,10 @@ class MermanReusableEngine {
 
   T _withNativeCall<T>(T Function() body) {
     if (_activeCall) {
-      throw const MermanException(
+      throw const MermanReentrantCallException(
         code: native.MERMAN_NATIVE_STATUS_REENTRANT_CALL,
         codeName: 'reentrant-call',
         message: 'Merman engine cannot be re-entered from a native callback',
-        kind: MermanErrorKind.reentrantCall,
       );
     }
     _activeCall = true;
@@ -941,23 +1010,16 @@ class MermanReusableEngine {
     }
   }
 
-  void _ensureCallable() {
-    if (_disposed) {
+  int _requireToken() {
+    final token = _token;
+    if (token == null) {
       throw const MermanException(
         code: -1,
         codeName: 'DART_ENGINE_CLOSED',
         message: 'Merman reusable engine is disposed',
       );
     }
-  }
-
-  void _disposeNow() {
-    if (_disposed) {
-      return;
-    }
-    _native.freeEngine(_token);
-    _disposed = true;
-    _textMeasurement?.dispose();
+    return token;
   }
 }
 
@@ -966,19 +1028,19 @@ class _NativeApi {
     required this.packageVersion,
     required native.DartMermanNativeRuntimeCatalogFnFunction runtimeCatalog,
     required native.DartMermanNativeEngineNewFnFunction engineNew,
-    required native.DartMermanNativeEngineFreeFnFunction engineFree,
+    required native.DartMermanNativeEngineTryCloseFnFunction engineTryClose,
     required native.DartMermanNativeExecuteCollectFnFunction executeCollect,
     required native.DartMermanNativeResultFreeFnFunction resultFree,
   })  : _runtimeCatalog = runtimeCatalog,
         _engineNew = engineNew,
-        _engineFree = engineFree,
+        _engineTryClose = engineTryClose,
         _executeCollect = executeCollect,
         _resultFree = resultFree;
 
   final String packageVersion;
   final native.DartMermanNativeRuntimeCatalogFnFunction _runtimeCatalog;
   final native.DartMermanNativeEngineNewFnFunction _engineNew;
-  final native.DartMermanNativeEngineFreeFnFunction _engineFree;
+  final native.DartMermanNativeEngineTryCloseFnFunction _engineTryClose;
   final native.DartMermanNativeExecuteCollectFnFunction _executeCollect;
   final native.DartMermanNativeResultFreeFnFunction _resultFree;
 
@@ -989,13 +1051,21 @@ class _NativeApi {
     final allocations = _NativeAllocationScope();
     try {
       _writeSlice(
-        request.ref.expected_layout_descriptor_digest,
-        utf8.encode(native.MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST),
+        request.ref.expected_minimum_prefix_layout_digest,
+        utf8.encode(
+          native.MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+        ),
         allocations,
       );
       request.ref.struct_size = ffi.sizeOf<native.MermanNativeApiRequest>();
       request.ref.expected_abi_version = native.MERMAN_NATIVE_ABI_VERSION;
-      api.ref.struct_size = ffi.sizeOf<native.MermanNativeApi>();
+      final consumerTableSize = ffi.sizeOf<native.MermanNativeApi>();
+      if (consumerTableSize < native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE) {
+        throw MermanException.contract(
+          'generated native API table is smaller than the ABI 3 minimum prefix',
+        );
+      }
+      api.ref.struct_size = consumerTableSize;
 
       final status = entry.merman_get_native_api(request, api);
       if (status != native.MERMAN_NATIVE_STATUS_OK) {
@@ -1007,9 +1077,9 @@ class _NativeApi {
       }
 
       final table = api.ref;
-      if (table.struct_size != ffi.sizeOf<native.MermanNativeApi>()) {
+      if (table.struct_size < native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE) {
         throw MermanException.contract(
-          'native API table size does not match ffigen output',
+          'native API table is smaller than the ABI 3 minimum prefix',
         );
       }
       if (table.abi_version != native.MERMAN_NATIVE_ABI_VERSION) {
@@ -1017,27 +1087,49 @@ class _NativeApi {
           'native API version `${table.abi_version}` is not ABI 3',
         );
       }
-      if (_utf8FromSlice(table.layout_descriptor_digest, 'layout digest') !=
-          native.MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST) {
+      final minimumPrefixLayoutDigest = _utf8FromSlice(
+        table.minimum_prefix_layout_digest,
+        'minimum-prefix layout digest',
+      );
+      if (minimumPrefixLayoutDigest !=
+          native.MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST) {
         throw MermanException.contract(
-          'native API layout descriptor digest does not match the generated header',
+          'native API minimum-prefix digest does not match the generated header',
+        );
+      }
+      final fullDescriptorDigest = _utf8FromSlice(
+        table.full_descriptor_digest,
+        'full descriptor digest',
+      );
+      final capabilityCatalogDigest = _utf8FromSlice(
+        table.capability_catalog_digest,
+        'capability catalog digest',
+      );
+      final packageVersion = _utf8FromSlice(
+        table.package_version,
+        'package version',
+      );
+      if (fullDescriptorDigest.isEmpty ||
+          capabilityCatalogDigest.isEmpty ||
+          packageVersion.isEmpty) {
+        throw MermanException.contract(
+          'native API provenance fields must not be empty',
         );
       }
       _requireFunctionPointer(table.runtime_catalog, 'runtime_catalog');
       _requireFunctionPointer(table.engine_new, 'engine_new');
-      _requireFunctionPointer(table.engine_free, 'engine_free');
+      _requireFunctionPointer(table.engine_try_close, 'engine_try_close');
       _requireFunctionPointer(table.execute_collect, 'execute_collect');
       _requireFunctionPointer(table.result_free, 'result_free');
 
       return _NativeApi._(
-        packageVersion:
-            _utf8FromSlice(table.package_version, 'package version'),
+        packageVersion: packageVersion,
         runtimeCatalog: table.runtime_catalog
             .asFunction<native.DartMermanNativeRuntimeCatalogFnFunction>(),
         engineNew: table.engine_new
             .asFunction<native.DartMermanNativeEngineNewFnFunction>(),
-        engineFree: table.engine_free
-            .asFunction<native.DartMermanNativeEngineFreeFnFunction>(),
+        engineTryClose: table.engine_try_close
+            .asFunction<native.DartMermanNativeEngineTryCloseFnFunction>(),
         executeCollect: table.execute_collect
             .asFunction<native.DartMermanNativeExecuteCollectFnFunction>(),
         resultFree: table.result_free
@@ -1051,17 +1143,25 @@ class _NativeApi {
   }
 
   MermanRuntimeCatalog loadRuntimeCatalog() {
-    final result = _newResult();
+    final result = _NativeResult.allocate(_resultFree);
     try {
-      final status = _runtimeCatalog(result);
-      final metadata = _copyBuffer(result.ref.metadata_or_error_json);
-      _ensureResultStatus(status, result.ref.status, metadata);
-      return MermanRuntimeCatalog.fromJson(
+      final status = _runtimeCatalog(result.pointer);
+      result.requireWritten(status);
+      final record = result.pointer.ref;
+      final metadata = _copyBuffer(record.metadata_or_error_json);
+      _ensureResultStatus(status, record.status, metadata);
+      final catalog = MermanRuntimeCatalog.fromJson(
         _decodeJsonObject(metadata, 'runtime catalog'),
       );
+      if (catalog.packageVersion != packageVersion) {
+        throw MermanException.contract(
+          'runtime catalog package version `${catalog.packageVersion}` does '
+          'not match the discovered table `$packageVersion`',
+        );
+      }
+      return catalog;
     } finally {
-      _resultFree(result);
-      calloc.free(result);
+      result.dispose();
     }
   }
 
@@ -1074,8 +1174,9 @@ class _NativeApi {
         : _TextMeasurementRegistration.create(textMeasurer);
     final config = calloc<native.MermanNativeEngineConfig>();
     final token = calloc<native.MermanNativeEngineToken>();
-    final result = _newResult();
+    final result = _NativeResult.allocate(_resultFree);
     final allocations = _NativeAllocationScope();
+    var unownedToken = 0;
     try {
       config.ref.struct_size = ffi.sizeOf<native.MermanNativeEngineConfig>();
       _writeSlice(
@@ -1090,35 +1191,52 @@ class _NativeApi {
       config.ref.text_measure_user_data =
           registration?.userData ?? ffi.nullptr.cast<ffi.Void>();
 
-      final status = _engineNew(config, token, result);
-      final metadata = _copyBuffer(result.ref.metadata_or_error_json);
-      _ensureResultStatus(status, result.ref.status, metadata);
+      final status = _engineNew(config, token, result.pointer);
+      unownedToken = token.value;
+      result.requireWritten(status);
+      final record = result.pointer.ref;
+      final metadata = _copyBuffer(record.metadata_or_error_json);
+      _ensureResultStatus(status, record.status, metadata);
       if (token.value == 0) {
         throw MermanException.contract(
           'native engine creation succeeded without an engine token',
         );
       }
-      return MermanReusableEngine._(this, token.value, registration);
+      final engine = MermanReusableEngine._(
+        this,
+        token.value,
+        registration,
+      );
+      unownedToken = 0;
+      return engine;
     } catch (_) {
+      if (unownedToken != 0) {
+        _engineTryClose(unownedToken);
+      }
       registration?.dispose();
       rethrow;
     } finally {
       allocations.dispose();
-      _resultFree(result);
+      result.dispose();
       calloc.free(config);
       calloc.free(token);
-      calloc.free(result);
     }
   }
 
-  void freeEngine(int token) {
-    final status = _engineFree(token);
-    if (status != native.MERMAN_NATIVE_STATUS_OK) {
-      throw MermanException(
-        code: status,
-        codeName: 'DART_ENGINE_FREE_FAILED',
-        message: 'native engine disposal failed',
-      );
+  void tryCloseEngine(int token) {
+    final status = _engineTryClose(token);
+    switch (status) {
+      case native.MERMAN_NATIVE_STATUS_OK:
+        return;
+      case native.MERMAN_NATIVE_STATUS_BUSY:
+      case native.MERMAN_NATIVE_STATUS_REENTRANT_CALL:
+        throw MermanException.fromNative(status, Uint8List(0));
+      default:
+        throw MermanException(
+          code: status,
+          codeName: 'DART_ENGINE_CLOSE_FAILED',
+          message: 'native engine close failed without retiring its token',
+        );
     }
   }
 
@@ -1135,25 +1253,30 @@ class _NativeApi {
       uri: uri,
       optionsJson: optionsJson,
     );
-    final result = _newResult();
+    final result = _NativeResult.allocate(_resultFree);
     try {
-      final status = _executeCollect(engine, request.pointer, result);
-      final metadata = _copyBuffer(result.ref.metadata_or_error_json);
-      _ensureResultStatus(status, result.ref.status, metadata);
-      if (result.ref.operation != operation.nativeCode) {
+      final status = _executeCollect(
+        engine,
+        request.pointer,
+        result.pointer,
+      );
+      result.requireWritten(status);
+      final record = result.pointer.ref;
+      final metadata = _copyBuffer(record.metadata_or_error_json);
+      _ensureResultStatus(status, record.status, metadata);
+      if (record.operation != operation.nativeCode) {
         throw MermanException.contract(
           'native operation does not match the requested `${operation.operationId}`',
         );
       }
       return MermanOperationResult(
         operation: operation,
-        mediaType: _utf8FromSlice(result.ref.media_type, 'result media type'),
-        bytes: _copyBuffer(result.ref.data),
+        mediaType: _utf8FromSlice(record.media_type, 'result media type'),
+        bytes: _copyBuffer(record.data),
         metadata: _decodeJsonObject(metadata, 'result metadata'),
       );
     } finally {
-      _resultFree(result);
-      calloc.free(result);
+      result.dispose();
       request.dispose();
     }
   }
@@ -1181,6 +1304,81 @@ class _NativeApi {
     );
     return _NativeRequest(request, allocations);
   }
+}
+
+class _NativeResult {
+  _NativeResult._(this.pointer, this._resultFree);
+
+  factory _NativeResult.allocate(
+    native.DartMermanNativeResultFreeFnFunction resultFree,
+  ) {
+    final pointer = calloc<native.MermanNativeResult>();
+    pointer.ref.struct_size = ffi.sizeOf<native.MermanNativeResult>();
+    return _NativeResult._(pointer, resultFree);
+  }
+
+  final ffi.Pointer<native.MermanNativeResult> pointer;
+  final native.DartMermanNativeResultFreeFnFunction _resultFree;
+  bool _disposed = false;
+
+  void requireWritten(int callStatus) {
+    _requireNativeResultWritten(pointer.ref, callStatus);
+  }
+
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _resultFree(pointer);
+    calloc.free(pointer);
+    _disposed = true;
+  }
+}
+
+/// Validates a native result write without requiring a live native library.
+///
+/// This package-internal test seam exercises the allocation-token exhaustion
+/// exception in the frozen ABI 3 ownership contract.
+void validateNativeResultForTesting(
+  ffi.Pointer<native.MermanNativeResult> pointer,
+  int callStatus,
+) {
+  _requireNativeResultWritten(pointer.ref, callStatus);
+}
+
+void _requireNativeResultWritten(
+  native.MermanNativeResult result,
+  int callStatus,
+) {
+  if (result.struct_size != ffi.sizeOf<native.MermanNativeResult>()) {
+    throw MermanException.contract(
+      'native result has an unexpected struct size `${result.struct_size}`',
+    );
+  }
+  if (result.allocation_token != 0) {
+    return;
+  }
+  if (callStatus == native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR &&
+      _isCallerInitializedResult(result)) {
+    throw MermanException.fromNative(callStatus, Uint8List(0));
+  }
+  throw MermanException.contract(
+    'native producing call returned without an allocation token',
+  );
+}
+
+bool _isCallerInitializedResult(native.MermanNativeResult result) {
+  return result.status == 0 &&
+      result.operation == 0 &&
+      result.media_type.struct_size == 0 &&
+      result.media_type.data.address == 0 &&
+      result.media_type.len == 0 &&
+      result.data.struct_size == 0 &&
+      result.data.data.address == 0 &&
+      result.data.len == 0 &&
+      result.metadata_or_error_json.struct_size == 0 &&
+      result.metadata_or_error_json.data.address == 0 &&
+      result.metadata_or_error_json.len == 0;
 }
 
 class _NativeRequest {
@@ -1307,12 +1505,6 @@ class _TextMeasurementRegistration {
     _callback.close();
     calloc.free(_key);
   }
-}
-
-ffi.Pointer<native.MermanNativeResult> _newResult() {
-  final result = calloc<native.MermanNativeResult>();
-  result.ref.struct_size = ffi.sizeOf<native.MermanNativeResult>();
-  return result;
 }
 
 void _writeSlice(
@@ -1442,13 +1634,14 @@ void _requireFunctionPointer<T extends ffi.NativeType>(
 }
 
 void _ensureResultStatus(int callStatus, int resultStatus, Uint8List metadata) {
+  if (callStatus != resultStatus) {
+    throw MermanException.contract(
+      'native call status `$callStatus` does not match result status '
+      '`$resultStatus`',
+    );
+  }
   if (callStatus != native.MERMAN_NATIVE_STATUS_OK) {
     throw MermanException.fromNative(callStatus, metadata);
-  }
-  if (resultStatus != native.MERMAN_NATIVE_STATUS_OK) {
-    throw MermanException.contract(
-      'native operation returned OK but result status was `$resultStatus`',
-    );
   }
 }
 

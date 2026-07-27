@@ -18,7 +18,7 @@ const ABI_VERSION: u32 = 3;
 const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
 const ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d";
+    "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
 
@@ -414,13 +414,13 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     let minimum_prefix = &descriptor.minimum_prefix;
     if minimum_prefix.status_code_count != 17
         || minimum_prefix.operation_code_count != 14
-        || minimum_prefix.error_kind_count != 4
+        || minimum_prefix.error_kind_count != 5
         || minimum_prefix.callback_count != 1
         || minimum_prefix.function_slot_count != 5
         || minimum_prefix.record_count != 9
     {
         return Err(descriptor_error(
-            "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 4 error kinds, 1 callback, 5 function slots, and 9 records",
+            "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 5 error kinds, 1 callback, 5 function slots, and 9 records",
         ));
     }
     if descriptor.error_kinds.len() < minimum_prefix.error_kind_count
@@ -1719,6 +1719,13 @@ mod tests {
         error_contract.error_kinds[0].json_name = "renamed-generic".to_string();
         assert_ne!(
             minimum_prefix_layout_digest(&error_contract).unwrap(),
+            original_prefix
+        );
+
+        let mut busy_contract = committed_descriptor();
+        busy_contract.error_kinds[4].json_name = "renamed-busy".to_string();
+        assert_ne!(
+            minimum_prefix_layout_digest(&busy_contract).unwrap(),
             original_prefix
         );
 

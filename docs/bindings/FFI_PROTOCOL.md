@@ -207,6 +207,10 @@ supplied record. Copying a live token and using the duplicate to free another li
 outside the same-process hostile-memory threat boundary. Never pass either buffer to a host
 allocator.
 
+If the process-lifetime token space itself is exhausted, the producing call returns
+`MERMAN_NATIVE_STATUS_INTERNAL_ERROR` and leaves a valid zero-initialized result record untouched;
+it cannot write a conforming owned result without a nonzero token.
+
 Engine values are opaque nonzero `uint64_t` tokens, not pointers.
 `api.engine_try_close(engine)` never waits:
 

@@ -11,6 +11,7 @@ export 'src/generated/resource_options.dart'
         MermanResourceOptions,
         MermanResourceOptionsBuilder,
         MermanResourceProfile;
+export 'src/generated/package_version.dart' show mermanPackageVersion;
 export 'src/generated/text_measurement_protocol.dart'
     show
         MermanTextDirection,
@@ -22,11 +23,13 @@ export 'src/generated/text_measurement_protocol.dart'
 export 'src/merman_ffi.dart'
     show
         Merman,
+        MermanBusyException,
         MermanErrorKind,
         MermanException,
         MermanMissingCapabilityException,
         MermanOperation,
         MermanOperationResult,
+        MermanReentrantCallException,
         MermanReusableEngine,
         MermanRuntimeCatalog,
         MermanTextMeasureRequest,

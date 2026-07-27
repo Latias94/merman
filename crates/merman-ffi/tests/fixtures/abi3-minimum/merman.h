@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
-#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d"
+#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110"
 #define MERMAN_NATIVE_STRUCT_SIZE(type) ((uint32_t)sizeof(type))
 
 typedef int32_t MermanNativeStatus;
