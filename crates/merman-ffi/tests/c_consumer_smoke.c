@@ -124,6 +124,7 @@ uint64_t merman_c_layout_fingerprint(void) {
 
     HASH_RECORD(hash, MermanNativeResult);
     HASH_FIELD(hash, MermanNativeResult, struct_size);
+    HASH_FIELD(hash, MermanNativeResult, allocation_token);
     HASH_FIELD(hash, MermanNativeResult, status);
     HASH_FIELD(hash, MermanNativeResult, operation);
     HASH_FIELD(hash, MermanNativeResult, media_type);
@@ -133,17 +134,18 @@ uint64_t merman_c_layout_fingerprint(void) {
     HASH_RECORD(hash, MermanNativeApiRequest);
     HASH_FIELD(hash, MermanNativeApiRequest, struct_size);
     HASH_FIELD(hash, MermanNativeApiRequest, expected_abi_version);
-    HASH_FIELD(hash, MermanNativeApiRequest, expected_layout_descriptor_digest);
+    HASH_FIELD(hash, MermanNativeApiRequest, expected_minimum_prefix_layout_digest);
 
     HASH_RECORD(hash, MermanNativeApi);
     HASH_FIELD(hash, MermanNativeApi, struct_size);
     HASH_FIELD(hash, MermanNativeApi, abi_version);
-    HASH_FIELD(hash, MermanNativeApi, layout_descriptor_digest);
+    HASH_FIELD(hash, MermanNativeApi, minimum_prefix_layout_digest);
+    HASH_FIELD(hash, MermanNativeApi, full_descriptor_digest);
     HASH_FIELD(hash, MermanNativeApi, capability_catalog_digest);
     HASH_FIELD(hash, MermanNativeApi, package_version);
     HASH_FIELD(hash, MermanNativeApi, runtime_catalog);
     HASH_FIELD(hash, MermanNativeApi, engine_new);
-    HASH_FIELD(hash, MermanNativeApi, engine_free);
+    HASH_FIELD(hash, MermanNativeApi, engine_try_close);
     HASH_FIELD(hash, MermanNativeApi, execute_collect);
     HASH_FIELD(hash, MermanNativeApi, result_free);
 
@@ -177,9 +179,9 @@ int merman_c_consumer_smoke(
     memset(&discovery, 0, sizeof(discovery));
     discovery.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
     discovery.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
-    discovery.expected_layout_descriptor_digest = borrowed_slice(
-        (const uint8_t *)MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST,
-        strlen(MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST)
+    discovery.expected_minimum_prefix_layout_digest = borrowed_slice(
+        (const uint8_t *)MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+        strlen(MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST)
     );
     memset(&api, 0, sizeof(api));
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
@@ -189,7 +191,7 @@ int merman_c_consumer_smoke(
         api.abi_version != MERMAN_NATIVE_ABI_VERSION ||
         api.runtime_catalog == NULL ||
         api.engine_new == NULL ||
-        api.engine_free == NULL ||
+        api.engine_try_close == NULL ||
         api.execute_collect == NULL ||
         api.result_free == NULL
     ) {
@@ -270,7 +272,7 @@ int merman_c_consumer_smoke(
             )
         ) {
             api.result_free(&result);
-            api.engine_free(engine);
+            api.engine_try_close(engine);
             return 5;
         }
         api.result_free(&result);
@@ -295,7 +297,7 @@ int merman_c_consumer_smoke(
             )
         ) {
             api.result_free(&result);
-            api.engine_free(engine);
+            api.engine_try_close(engine);
             return 51;
         }
         api.result_free(&result);
@@ -316,7 +318,7 @@ int merman_c_consumer_smoke(
         )
     ) {
         api.result_free(&result);
-        api.engine_free(engine);
+        api.engine_try_close(engine);
         return 6;
     }
     api.result_free(&result);
@@ -345,15 +347,15 @@ int merman_c_consumer_smoke(
         )
     ) {
         api.result_free(&result);
-        api.engine_free(engine);
+        api.engine_try_close(engine);
         return 7;
     }
     api.result_free(&result);
 
-    if (api.engine_free(engine) != MERMAN_NATIVE_STATUS_OK) {
+    if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) {
         return 8;
     }
-    if (api.engine_free(engine) != MERMAN_NATIVE_STATUS_INVALID_ENGINE) {
+    if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_INVALID_ENGINE) {
         return 9;
     }
     return 0;

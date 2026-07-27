@@ -74,7 +74,7 @@ MermanNativeStatus merman_get_native_api(
 );
 ```
 
-The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST`, then receives a size-tagged function table. Before consuming a record, initialize caller-owned input records with `MERMAN_NATIVE_STRUCT_SIZE(Type)`. The generated C header and release C smoke test carry the compile-run layout fingerprint; applications should not implement a second runtime offset probe. `MermanNativeResult` is a write-only output record: use `MERMAN_NATIVE_RESULT_INIT`, which initializes its required `struct_size` without requiring a host to initialize fields Merman will overwrite. This makes mixed headers, binaries, and foreign struct packing fail at discovery rather than during rendering.
+The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`, then receives the common prefix of a size-tagged function table. `MermanNativeApi.struct_size` is the host capacity on input and the producer's full size on output. The returned minimum-prefix digest is the compatibility key, the full descriptor digest records producer provenance, and the capability catalog digest identifies the loaded artifact. Every other record requires its exact generated size. Use `MERMAN_NATIVE_RESULT_INIT` to fully zero-initialize each result before a producing call; setting only `struct_size` in otherwise uninitialized storage is invalid. The generated C header and release C smoke tests carry the compile-run layout fingerprint, so applications should not implement a second runtime offset probe.
 
 Every operation follows the same path:
 
@@ -82,7 +82,7 @@ Every operation follows the same path:
 2. Create an engine token with `api.engine_new`.
 3. Set `MermanNativeOperationRequest.operation` to the requested operation enum.
 4. Call `api.execute_collect`.
-5. Release every result with `api.result_free`, then release the token with `api.engine_free`.
+5. Release every result with `api.result_free`, then close the token with `api.engine_try_close`.
 
 Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's deterministic clock, UTC time zone, and fixed random seed, even when native adapters are compiled. Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system clock, time-zone, and random adapters. If one is unavailable, engine creation returns the typed unsupported-operation status. Successful generic operation metadata includes `"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
 
@@ -90,17 +90,17 @@ Engine options select runtime state explicitly. Omitting `runtime_policy` uses M
 
 `api.runtime_catalog` returns the flat schema-1 catalog with package version, transport-callable capability, operation, output, and system-adapter IDs, registry facts, resource defaults/limits, and text-measurement providers. The native clock, time-zone, and random adapters appear only as a complete selectable set, and timing instrumentation is never exposed through binding JSON. The catalog is the source of truth for the loaded artifact; do not infer availability from Cargo feature names.
 
-The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` further distinguishes `unknown-operation` from `missing-capability`; only the latter carries the exact descriptor `capability_id`. All other failures use `generic` with a null capability ID.
+The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` distinguishes `unknown-operation`, `missing-capability`, `reentrant-call`, and `busy` from `generic`; only `missing-capability` carries a non-null descriptor `capability_id`.
 
 [`examples/render_svg.c`](examples/render_svg.c) is the minimal discovery-and-render program. [`examples/render_svg_engine.c`](examples/render_svg_engine.c) also shows a host text-measurement callback installed when the engine is created.
 
 ## Ownership And Callbacks
 
-`MermanNativeResult.data` and `metadata_or_error_json` are Merman-owned only after Merman has written the result, and only until `api.result_free(&result)`. Ownership is bound to the exact result record address Merman wrote; copying or moving a live result does not transfer ownership. Call `result_free` on that original record for each Merman-written result, including failures, before reuse. Repeated calls and calls on a full-size record with only `struct_size` initialized are harmless, and nested buffer fields are never treated as allocation authority. Inputs and callback request slices are borrowed for the call only.
+`MermanNativeResult.data` and `metadata_or_error_json` are Merman-owned only after Merman has written the result, and only until `api.result_free(&result)`. Ownership is identified by a process-lifetime monotonic nonzero `allocation_token`, never by the nested buffer pointers or record address. Moving the complete result transfers ownership when the source is cleared and no duplicate live token remains. Zero, unknown, stale, and random tokens release nothing. Fully zero-initialize every result before a producing call, release every Merman-written result including failures before reuse, and never pass its buffers to a host allocator. Inputs and callback request slices are borrowed for the call only.
 
-Engine values are opaque nonzero tokens, not pointers. `engine_free` retires a token immediately; an already active operation retains its internal state safely, but the host must not make another call with the retired token. It is not a quiescence barrier: keep the configured text-measurement callback and `user_data` valid until every operation started before retirement has returned. Any thread that re-enters or retires the same engine while a host text-measurement callback is active receives a typed reentrancy failure; other engine tokens remain usable.
+Engine values are opaque nonzero tokens, not pointers. `engine_try_close` never waits: it returns `MERMAN_NATIVE_STATUS_BUSY` while an operation is active and `MERMAN_NATIVE_STATUS_REENTRANT_CALL` while the engine is inside its host callback, retaining the token in both cases. A successful close permanently prevents new admissions before retiring the token and is the point after which the host may release the immutable callback and `user_data`. Callback-free engines admit concurrent operations; callback-configured engines reject a competing operation with the typed `busy` failure.
 
-Merman provides deterministic vendored text measurement by default. A preview host can set `MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will fall back for that request. The operation/result-kind contract is generated in [`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
+Merman provides deterministic vendored text measurement by default. A preview host can set `MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will fall back for that request. A callback must not unwind, throw, propagate SEH, call `longjmp`, or otherwise cross the ABI through a non-local exit; catch host-language failures and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. The operation/result-kind and request vocabulary contracts are generated in [`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
 
 ## Feature Selection
 
@@ -113,7 +113,7 @@ The public feature names describe callable capabilities:
 
 This crate exports only the native C ABI discovery surface. Android JNI transport code lives in the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a feature combination.
 
-Use the generated runtime catalog to determine what the loaded artifact actually supports. The full wire contract, status semantics, callback rules, and C snippets are in [the FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md).
+Use the generated runtime catalog to determine what the loaded artifact actually supports. The full wire contract, status semantics, callback rules, and C snippets are in [the FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md); ABI 2 and pre-freeze ABI 3 hosts must follow [the ABI 3 migration guide](https://github.com/Latias94/merman/blob/main/docs/bindings/ABI3_MIGRATION.md).
 
 ## Platform Wrappers
 

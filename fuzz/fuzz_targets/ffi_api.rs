@@ -102,16 +102,21 @@ fn borrowed_slice(bytes: &[u8]) -> MermanNativeSlice {
 fn empty_result() -> MermanNativeResult {
     MermanNativeResult {
         struct_size: native_struct_size::<MermanNativeResult>(),
-        status: MERMAN_NATIVE_STATUS_OK,
-        operation: MERMAN_NATIVE_OPERATION_NONE,
-        media_type: borrowed_slice(&[]),
+        allocation_token: 0,
+        status: 0,
+        operation: 0,
+        media_type: MermanNativeSlice {
+            struct_size: 0,
+            data: ptr::null(),
+            len: 0,
+        },
         data: MermanNativeBuffer {
-            struct_size: native_struct_size::<MermanNativeBuffer>(),
+            struct_size: 0,
             data: ptr::null_mut(),
             len: 0,
         },
         metadata_or_error_json: MermanNativeBuffer {
-            struct_size: native_struct_size::<MermanNativeBuffer>(),
+            struct_size: 0,
             data: ptr::null_mut(),
             len: 0,
         },
@@ -126,8 +131,8 @@ fn discover_api() -> MermanNativeApi {
     let request = MermanNativeApiRequest {
         struct_size: native_struct_size::<MermanNativeApiRequest>(),
         expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
-        expected_layout_descriptor_digest: borrowed_slice(
-            MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+        expected_minimum_prefix_layout_digest: borrowed_slice(
+            MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
         ),
     };
     let mut raw_api = MaybeUninit::<MermanNativeApi>::uninit();
@@ -141,9 +146,10 @@ fn discover_api() -> MermanNativeApi {
     );
     let api = unsafe { raw_api.assume_init() };
     assert_eq!(api.abi_version, MERMAN_NATIVE_ABI_VERSION);
+    assert_eq!(api.struct_size, native_struct_size::<MermanNativeApi>());
     assert!(api.runtime_catalog.is_some());
     assert!(api.engine_new.is_some());
-    assert!(api.engine_free.is_some());
+    assert!(api.engine_try_close.is_some());
     assert!(api.execute_collect.is_some());
     assert!(api.result_free.is_some());
     api
@@ -153,8 +159,8 @@ fn verify_discovery_rejects_a_stale_version() {
     let request = MermanNativeApiRequest {
         struct_size: native_struct_size::<MermanNativeApiRequest>(),
         expected_abi_version: MERMAN_NATIVE_ABI_VERSION.saturating_sub(1),
-        expected_layout_descriptor_digest: borrowed_slice(
-            MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+        expected_minimum_prefix_layout_digest: borrowed_slice(
+            MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
         ),
     };
     let mut raw_api = MaybeUninit::<MermanNativeApi>::uninit();
@@ -207,7 +213,7 @@ fn execute_operation(api: &MermanNativeApi, input: FuzzInput<'_>, selector: u8) 
     let output_status = unsafe { api.execute_collect.unwrap()(engine, &request, &mut output) };
     consume_result(api, &mut output, output_status);
     assert_eq!(
-        unsafe { api.engine_free.unwrap()(engine) },
+        unsafe { api.engine_try_close.unwrap()(engine) },
         MERMAN_NATIVE_STATUS_OK
     );
 }
@@ -252,9 +258,11 @@ fn consume_result(
         result.struct_size,
         native_struct_size::<MermanNativeResult>()
     );
+    assert_ne!(result.allocation_token, 0);
     assert_native_buffer(result.data);
     assert_native_buffer(result.metadata_or_error_json);
     unsafe { api.result_free.unwrap()(result) };
+    assert_eq!(result.allocation_token, 0);
     assert!(result.data.data.is_null());
     assert!(result.metadata_or_error_json.data.is_null());
 }

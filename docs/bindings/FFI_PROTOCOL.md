@@ -27,19 +27,20 @@ the loaded artifact's runtime catalog describes what is actually callable.
 
 ## Discovery
 
-`merman_get_native_api` is the sole C ABI entry symbol. It returns a size-tagged function table
-only after the host proves it understands the declared ABI version and descriptor digest.
+`merman_get_native_api` is the sole C ABI entry symbol. It returns the common prefix of a
+size-tagged function table only after the host proves it understands the declared ABI version and
+frozen minimum-prefix layout.
 
 ```c
-MermanNativeSlice digest = {
+MermanNativeSlice prefix_digest = {
     .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
-    .data = (const uint8_t *)MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST,
-    .len = strlen(MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST),
+    .data = (const uint8_t *)MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+    .len = strlen(MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST),
 };
 MermanNativeApiRequest request = {
     .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest),
     .expected_abi_version = MERMAN_NATIVE_ABI_VERSION,
-    .expected_layout_descriptor_digest = digest,
+    .expected_minimum_prefix_layout_digest = prefix_digest,
 };
 MermanNativeApi api = {
     .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi),
@@ -50,17 +51,30 @@ if (merman_get_native_api(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
 }
 ```
 
-The table supplies `runtime_catalog`, `engine_new`, `engine_free`, `execute_collect`, and
-`result_free`. A host must verify each function pointer it will call. Do not reconstruct function
-names or dynamically look up per-operation exports.
+`api.struct_size` is input capacity and reports the producer's full table size on success. The ABI 3
+minimum prefix ends after the five ordered slots `runtime_catalog`, `engine_new`,
+`engine_try_close`, `execute_collect`, and `result_free`. A newer producer may append fields after
+that prefix. An older consumer supplies its own table capacity, consumes only fields that fit in
+that capacity, and verifies every function pointer it calls. Do not reconstruct function names or
+dynamically look up per-operation exports.
 
-All public records begin with `struct_size`. Initialize caller-owned input records with
-`MERMAN_NATIVE_STRUCT_SIZE(Type)`. `MermanNativeResult` is deliberately different: it is a
-write-only output record. Initialize only its `struct_size` before a call, preferably with
-`MERMAN_NATIVE_RESULT_INIT`; Merman never reads the remaining fields and writes the entire record.
-The generated header and release C smoke test carry a compile-run layout fingerprint. Application
-bindings should consume the generated declarations rather than implementing a second runtime
-offset probe.
+The returned digests have separate roles:
+
+- `minimum_prefix_layout_digest` is the compatibility key checked by discovery. Its frozen
+  structure includes the ABI 3 minimum records, codes, callback, and five function slots.
+- `full_descriptor_digest` identifies the producer's complete descriptor. It can change after
+  append-only additions without making the frozen prefix incompatible.
+- `capability_catalog_digest` identifies the loaded artifact's runtime capability catalog. Two
+  ABI-compatible artifacts can intentionally have different capability digests.
+
+All public records begin with `struct_size`. Except for `MermanNativeApi`, which uses `struct_size`
+as table capacity, ABI 3 records require the exact generated size. Initialize caller-owned input
+records with `MERMAN_NATIVE_STRUCT_SIZE(Type)`. Fully zero-initialize every
+`MermanNativeResult` before a producing call, preferably with `MERMAN_NATIVE_RESULT_INIT`; setting
+only the first word in otherwise uninitialized storage is invalid because Merman must safely
+inspect the ownership token. The generated header and release C smoke tests carry the compile-run
+layout fingerprint. Application bindings should consume the generated declarations rather than
+implementing a second runtime offset probe.
 
 ## Runtime Catalog
 
@@ -172,30 +186,39 @@ nullable `capability_id`:
 }
 ```
 
-The closed kinds are `generic`, `unknown-operation`, `missing-capability`, and `reentrant-call`.
+The closed kinds are `generic`, `unknown-operation`, `missing-capability`, `reentrant-call`, and
+`busy`.
 Unknown operation IDs or numeric codes use `unknown-operation` with a null `capability_id`. A valid operation whose backend is
 absent uses `missing-capability` with the exact descriptor capability ID. Both cases retain status
 `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`, so consumers must not infer the distinction from
-the numeric status or message text. `reentrant-call` is returned when a host callback re-enters or
-retires the same engine; it is a distinct invalid-argument status so a host can reject that call
-without confusing it with a missing renderer.
+the numeric status or message text. `reentrant-call` uses
+`MERMAN_NATIVE_STATUS_REENTRANT_CALL` when a host callback re-enters or tries to close the same
+engine. `busy` uses `MERMAN_NATIVE_STATUS_BUSY` when a callback-configured engine cannot admit a
+competing operation or any engine still has an active operation during a close attempt.
 
 `data` and `metadata_or_error_json` are Merman-owned buffers only after Merman has written the
-result record. Their ownership is registered against that exact `MermanNativeResult` address.
-Call `api.result_free(&result)` after every operation that wrote a result, including errors and
-engine-creation responses, and before reusing that same record. Do not copy or move a live result
-and then free the copy: copying the fields does not transfer ownership, and only the original
-record address can release its allocation. `result_free` never trusts the nested buffer pointers;
-it reads only the size prefix, releases an allocation registered for the record address, and
-clears the complete record. Calling it repeatedly, or on a full-size output record with only
-`struct_size` initialized, is harmless. Never pass either buffer to a host allocator.
+result record. Every Merman-written result owns a process-lifetime monotonic, nonzero
+`allocation_token`; tokens are never reused. Call `api.result_free(&result)` after every producing
+call that wrote a result, including failures and engine-creation responses, and before reusing that
+record. Moving the complete record transfers ownership, provided the source is cleared and no
+second live copy remains. `result_free` trusts only `allocation_token`, never nested buffer
+pointers. Zero, unknown, random, or already-freed tokens release nothing and only clear the
+supplied record. Copying a live token and using the duplicate to free another live record is
+outside the same-process hostile-memory threat boundary. Never pass either buffer to a host
+allocator.
 
-Engine values are opaque nonzero `uint64_t` tokens, not pointers. `api.engine_free(engine)` retires
-the token; a subsequent call returns `MERMAN_NATIVE_STATUS_INVALID_ENGINE`. If a host retires an
-engine while an operation is already running, that operation keeps its internal state until it
-finishes, but the host must make no further calls using the token. `engine_free` is not a
-quiescence barrier: the host must keep the configured text-measurement callback and `user_data`
-valid until every operation started before retirement has returned.
+Engine values are opaque nonzero `uint64_t` tokens, not pointers.
+`api.engine_try_close(engine)` never waits:
+
+- If a host callback is active, it returns `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
+- If another operation is active, it returns `MERMAN_NATIVE_STATUS_BUSY`.
+- In both failure cases the token remains valid and the host can retry after the operation returns.
+- On success, admission is permanently closed before the token is retired. No operation holding a
+  previously acquired internal reference can enter after that point, and later calls return
+  `MERMAN_NATIVE_STATUS_INVALID_ENGINE`.
+
+The callback and `user_data` are immutable constructor state. The host may release them only after
+`engine_try_close` succeeds.
 
 ## Host Text Measurement
 
@@ -211,15 +234,28 @@ operation accurately should initialize the result, set `handled = 0`, and return
 `MERMAN_NATIVE_STATUS_OK`; Merman falls back to its vendored measurer for that request. While a
 host callback is active, any thread that re-enters or retires that same engine receives
 `MERMAN_NATIVE_STATUS_REENTRANT_CALL`; calls using other engines remain independent. Callback
-panics, exceptions, malformed records, and wrong result kinds become typed callback failures or
-per-request fallback rather than crossing the native boundary.
+records, returned statuses, and result values are validated by the shared host-measurement decoder;
+malformed responses become typed callback failures and use the configured fallback.
+
+The callback itself must return normally. It **MUST NOT** unwind, throw a C++ or foreign-language
+exception, propagate SEH, call `longjmp`, or otherwise perform a non-local exit across the ABI
+boundary. Merman can convert only a status value that the callback actually returns; it cannot
+catch a foreign exception. A language binding must catch callback failures on the host side and
+return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. In C++17 and newer, the generated callback and
+function-pointer types are declared `noexcept` to make this contract visible to the type system.
 
 ## Compatibility Rules
 
-- Native ABI 3 is the current contract; ship headers and libraries from the same package.
-- Treat ABI version, descriptor digest, record size, and the generated C-consumer layout fingerprint
-  as one compatibility check. The package's C smoke test compiles and runs this fingerprint; an
-  application does not need to duplicate a runtime offset probe.
+- Native ABI 3 is the current contract. Rebuild ABI 2 and pre-freeze ABI 3 consumers against this
+  header; see [ABI 3 migration](ABI3_MIGRATION.md).
+- Treat the ABI version and minimum-prefix layout digest as the runtime compatibility check. Treat
+  the full descriptor digest, capability catalog digest, package version, and generated
+  C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
+- Function slots and codes may only be appended. The frozen minimum prefix cannot change within
+  ABI 3; changing its layout requires ABI 4.
+- Except for the API table's capacity negotiation, records require exact generated sizes. The
+  package's C smoke tests compile and run both the current header and the frozen minimum-prefix
+  consumer; applications do not need to duplicate a runtime offset probe.
 - Treat `MERMAN_NATIVE_RESULT_SCHEMA_VERSION`, error kind strings, and `capability_id` as one
   machine-readable failure contract.
 - Treat diagnostics and analysis-facts payload schema versions as independent contracts.

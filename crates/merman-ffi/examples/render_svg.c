@@ -39,9 +39,9 @@ int main(void) {
     memset(&discovery, 0, sizeof(discovery));
     discovery.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
     discovery.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
-    discovery.expected_layout_descriptor_digest = borrowed_slice(
-        (const uint8_t *)MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST,
-        strlen(MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST)
+    discovery.expected_minimum_prefix_layout_digest = borrowed_slice(
+        (const uint8_t *)MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+        strlen(MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST)
     );
     memset(&api, 0, sizeof(api));
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
@@ -74,12 +74,12 @@ int main(void) {
     if (api.execute_collect(engine, &request, &result) != MERMAN_NATIVE_STATUS_OK) {
         print_failure("SVG render", &result);
         api.result_free(&result);
-        api.engine_free(engine);
+        api.engine_try_close(engine);
         return 1;
     }
 
     fwrite(result.data.data, 1, result.data.len, stdout);
     fputc('\n', stdout);
     api.result_free(&result);
-    return api.engine_free(engine) == MERMAN_NATIVE_STATUS_OK ? 0 : 1;
+    return api.engine_try_close(engine) == MERMAN_NATIVE_STATUS_OK ? 0 : 1;
 }

@@ -45,6 +45,29 @@ fn c_consumer_smoke() {
     }
 }
 
+#[test]
+fn abi3_minimum_header_consumer_smoke() {
+    let library_path = compile_c_library(
+        "tests/abi3_minimum_consumer.c",
+        "merman_abi3_minimum_consumer",
+        "tests/fixtures/abi3-minimum",
+    );
+
+    unsafe {
+        let library = Library::new(&library_path).unwrap_or_else(|error| {
+            panic!(
+                "failed to load ABI3 minimum consumer {}: {error}",
+                library_path.display()
+            )
+        });
+        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi) -> i32> = library
+            .get(b"merman_abi3_minimum_consumer_smoke")
+            .expect("load ABI3 minimum consumer symbol");
+        let result = smoke(merman_ffi::merman_get_native_api);
+        assert_eq!(result, 0, "ABI3 minimum consumer returned {result}");
+    }
+}
+
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",
@@ -190,6 +213,7 @@ fn rust_layout_fingerprint() -> u64 {
 
     hash_record!(hash, merman_ffi::MermanNativeResult);
     hash_field!(hash, merman_ffi::MermanNativeResult, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeResult, allocation_token);
     hash_field!(hash, merman_ffi::MermanNativeResult, status);
     hash_field!(hash, merman_ffi::MermanNativeResult, operation);
     hash_field!(hash, merman_ffi::MermanNativeResult, media_type);
@@ -206,18 +230,23 @@ fn rust_layout_fingerprint() -> u64 {
     hash_field!(
         hash,
         merman_ffi::MermanNativeApiRequest,
-        expected_layout_descriptor_digest
+        expected_minimum_prefix_layout_digest
     );
 
     hash_record!(hash, merman_ffi::MermanNativeApi);
     hash_field!(hash, merman_ffi::MermanNativeApi, struct_size);
     hash_field!(hash, merman_ffi::MermanNativeApi, abi_version);
-    hash_field!(hash, merman_ffi::MermanNativeApi, layout_descriptor_digest);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApi,
+        minimum_prefix_layout_digest
+    );
+    hash_field!(hash, merman_ffi::MermanNativeApi, full_descriptor_digest);
     hash_field!(hash, merman_ffi::MermanNativeApi, capability_catalog_digest);
     hash_field!(hash, merman_ffi::MermanNativeApi, package_version);
     hash_field!(hash, merman_ffi::MermanNativeApi, runtime_catalog);
     hash_field!(hash, merman_ffi::MermanNativeApi, engine_new);
-    hash_field!(hash, merman_ffi::MermanNativeApi, engine_free);
+    hash_field!(hash, merman_ffi::MermanNativeApi, engine_try_close);
     hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
     hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
 
@@ -310,11 +339,11 @@ fn string_ids(value: &Value) -> Vec<&str> {
 }
 
 fn runtime_catalog_through_function_table() -> Value {
-    let digest = merman_ffi::MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes();
+    let digest = merman_ffi::MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes();
     let request = merman_ffi::MermanNativeApiRequest {
         struct_size: u32::try_from(size_of::<merman_ffi::MermanNativeApiRequest>()).unwrap(),
         expected_abi_version: merman_ffi::MERMAN_NATIVE_ABI_VERSION,
-        expected_layout_descriptor_digest: merman_ffi::MermanNativeSlice {
+        expected_minimum_prefix_layout_digest: merman_ffi::MermanNativeSlice {
             struct_size: u32::try_from(size_of::<merman_ffi::MermanNativeSlice>()).unwrap(),
             data: digest.as_ptr(),
             len: digest.len(),
@@ -332,7 +361,7 @@ fn runtime_catalog_through_function_table() -> Value {
     );
     let api = unsafe { api.assume_init() };
 
-    let mut result = MaybeUninit::<merman_ffi::MermanNativeResult>::uninit();
+    let mut result = MaybeUninit::<merman_ffi::MermanNativeResult>::zeroed();
     unsafe {
         result
             .as_mut_ptr()
@@ -356,16 +385,21 @@ fn runtime_catalog_through_function_table() -> Value {
 }
 
 fn compile_c_consumer() -> PathBuf {
+    compile_c_library(
+        "tests/c_consumer_smoke.c",
+        "merman_c_consumer_smoke",
+        "include",
+    )
+}
+
+fn compile_c_library(source: &str, stem: &str, include_dir: &str) -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out_dir = std::env::temp_dir().join(format!(
-        "merman-ffi-c-consumer-smoke-{}",
-        std::process::id()
-    ));
+    let out_dir = std::env::temp_dir().join(format!("{stem}-{}", std::process::id()));
     std::fs::create_dir_all(&out_dir).expect("create C consumer smoke output directory");
 
-    let source = manifest_dir.join("tests/c_consumer_smoke.c");
-    let include_dir = manifest_dir.join("include");
-    let library_path = out_dir.join(shared_library_name("merman_c_consumer_smoke"));
+    let source = manifest_dir.join(source);
+    let include_dir = manifest_dir.join(include_dir);
+    let library_path = out_dir.join(shared_library_name(stem));
     let mut build = cc::Build::new();
     let target = current_target();
     build.opt_level(0).target(target).host(target);
@@ -380,7 +414,7 @@ fn compile_c_consumer() -> PathBuf {
             .arg(format!("/Fe:{}", library_path.display()))
             .arg(format!(
                 "/Fo:{}",
-                out_dir.join("merman_c_consumer_smoke.obj").display()
+                out_dir.join(format!("{stem}.obj")).display()
             ))
             .arg(&source);
     } else {

@@ -22,23 +22,26 @@ ownership rules, and each format's `requires_uri` contract. Capability semantic 
 `capabilities/feature-surface-v1.json`; generation validates every non-null native capability
 reference against that authority.
 
-Regenerate the native C header, Rust ABI definitions, and bindings-core operation projection with:
+Regenerate the native C header and Rust ABI definitions with:
 
 ```sh
 cargo run -p xtask -- gen-native-abi
 ```
 
 `cargo run -p xtask -- verify-native-abi` and `verify-generated` reject descriptor or projection
-drift. The generated ABI layout descriptor digest identifies the declared wire contract; hosts
-validate generated record sizes and field offsets through their surface-owned compile-run tests.
-The ABI table's `runtime_catalog` result is the flat bindings-core catalog. Native hosts must
-validate its capability, output, operation, system-adapter, text-measurement, and resource
-relations before accepting the compiled contract; this avoids maintaining a second
-language-specific list of capability IDs.
+drift. The generated minimum-prefix layout digest is ABI 3's frozen compatibility key. The full
+descriptor digest identifies complete producer provenance, while the capability catalog digest
+identifies the loaded artifact. Hosts validate generated record sizes and field offsets through
+their surface-owned compile-run tests. The ABI table's `runtime_catalog` result is the flat
+bindings-core catalog. Native hosts must validate its capability, output, operation,
+system-adapter, text-measurement, and resource relations before accepting the compiled contract;
+this avoids maintaining a second language-specific list of capability IDs.
 
 Native result schema `1` owns the closed failure kinds `generic`, `unknown-operation`,
-`missing-capability`, and `reentrant-call`. Every failure JSON includes a nullable `capability_id`;
-it is non-null only for `missing-capability` and names the capability directly from the descriptor
-vocabulary.
-Result-buffer ownership is registered against the exact `MermanNativeResult` address written by
-Merman; copying or moving a live result does not transfer ownership to the new record address.
+`missing-capability`, `reentrant-call`, and `busy`. Every failure JSON includes a nullable
+`capability_id`; it is non-null only for `missing-capability` and names the capability directly
+from the descriptor vocabulary.
+
+Result-buffer ownership is identified only by a process-lifetime monotonic, nonzero
+`allocation_token`. Moving a complete result transfers ownership when the source is cleared;
+`result_free` never trusts nested pointers or the result record address.

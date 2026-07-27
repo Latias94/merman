@@ -1190,6 +1190,7 @@ dependencies = [
  "base64",
  "chrono",
  "cssparser",
+ "data-url",
  "dugong",
  "icu_collator",
  "icu_locale_core",

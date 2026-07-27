@@ -17,10 +17,10 @@ const PROTOCOL_ID: &str = "merman-native";
 const ABI_VERSION: u32 = 3;
 const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
+const ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
+    "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d";
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
-const BINDINGS_OPERATION_OUTPUT: &str =
-    "crates/merman-bindings-core/src/generated/native_operations.rs";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -29,6 +29,7 @@ struct NativeAbiDescriptor {
     protocol_id: String,
     abi_version: u32,
     result_schema_version: u32,
+    minimum_prefix: MinimumPrefixDescriptor,
     error_kinds: Vec<ErrorKindDescriptor>,
     entry_point: EntryPoint,
     status_codes: Vec<CodeDescriptor>,
@@ -41,9 +42,21 @@ struct NativeAbiDescriptor {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct MinimumPrefixDescriptor {
+    status_code_count: usize,
+    operation_code_count: usize,
+    error_kind_count: usize,
+    callback_count: usize,
+    function_slot_count: usize,
+    record_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct EntryPoint {
     c_name: String,
     rust_name: String,
+    calling_convention: String,
     description: String,
 }
 
@@ -398,6 +411,26 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             descriptor.result_schema_version
         )));
     }
+    let minimum_prefix = &descriptor.minimum_prefix;
+    if minimum_prefix.status_code_count != 17
+        || minimum_prefix.operation_code_count != 14
+        || minimum_prefix.error_kind_count != 4
+        || minimum_prefix.callback_count != 1
+        || minimum_prefix.function_slot_count != 5
+        || minimum_prefix.record_count != 9
+    {
+        return Err(descriptor_error(
+            "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 4 error kinds, 1 callback, 5 function slots, and 9 records",
+        ));
+    }
+    if descriptor.error_kinds.len() < minimum_prefix.error_kind_count
+        || descriptor.callbacks.len() < minimum_prefix.callback_count
+        || descriptor.records.len() < minimum_prefix.record_count
+    {
+        return Err(descriptor_error(
+            "native ABI descriptor is shorter than its frozen error, callback, or record prefix",
+        ));
+    }
     validate_unique(
         descriptor.error_kinds.iter().map(|kind| kind.id.as_str()),
         "native ABI error kind ids",
@@ -419,26 +452,26 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     let expected_error_kinds = [
         ("generic", "MERMAN_NATIVE_ERROR_KIND_GENERIC", "generic"),
         (
-            "missing_capability",
-            "MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY",
-            "missing-capability",
-        ),
-        (
             "unknown_operation",
             "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION",
             "unknown-operation",
+        ),
+        (
+            "missing_capability",
+            "MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY",
+            "missing-capability",
         ),
         (
             "reentrant_call",
             "MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL",
             "reentrant-call",
         ),
-    ]
-    .into_iter()
-    .collect::<BTreeSet<_>>();
+        ("busy", "MERMAN_NATIVE_ERROR_KIND_BUSY", "busy"),
+    ];
     let actual_error_kinds = descriptor
         .error_kinds
         .iter()
+        .take(expected_error_kinds.len())
         .map(|kind| {
             (
                 kind.id.as_str(),
@@ -446,10 +479,10 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
                 kind.json_name.as_str(),
             )
         })
-        .collect::<BTreeSet<_>>();
+        .collect::<Vec<_>>();
     if actual_error_kinds != expected_error_kinds {
         return Err(descriptor_error(format!(
-            "native ABI error kind ID, C name, and JSON name mappings changed; found {actual_error_kinds:?}"
+            "native ABI error kinds must preserve generic, unknown-operation, missing-capability, reentrant-call, and appended busy in order; found {actual_error_kinds:?}"
         )));
     }
     for kind in &descriptor.error_kinds {
@@ -470,9 +503,10 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     }
     if descriptor.entry_point.c_name != "merman_get_native_api"
         || descriptor.entry_point.rust_name != "merman_get_native_api"
+        || descriptor.entry_point.calling_convention != "C"
     {
         return Err(descriptor_error(
-            "native ABI must use `merman_get_native_api` as its only direct entry point",
+            "native ABI must use `merman_get_native_api` with the C calling convention as its only direct entry point",
         ));
     }
     if descriptor.entry_point.description.trim().is_empty() {
@@ -486,6 +520,11 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI status codes",
         "MERMAN_NATIVE_STATUS_",
     )?;
+    if descriptor.status_codes.len() < minimum_prefix.status_code_count {
+        return Err(descriptor_error(
+            "native ABI status vocabulary is shorter than the frozen minimum prefix",
+        ));
+    }
     if descriptor.operation_codes.is_empty() {
         return Err(descriptor_error(
             "native ABI operation codes must not be empty",
@@ -512,6 +551,11 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|operation| operation.code),
         "native ABI operation codes",
     )?;
+    if descriptor.operation_codes.len() < minimum_prefix.operation_code_count {
+        return Err(descriptor_error(
+            "native ABI operation vocabulary is shorter than the frozen minimum prefix",
+        ));
+    }
     for operation in &descriptor.operation_codes {
         validate_identifier(&operation.id, "native ABI operation code")?;
         if !operation.c_name.starts_with("MERMAN_NATIVE_OPERATION_")
@@ -574,24 +618,30 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         descriptor.function_slots.iter().map(|slot| slot.code),
         "native ABI function slots",
     )?;
+    if descriptor.function_slots.len() < minimum_prefix.function_slot_count {
+        return Err(descriptor_error(
+            "native ABI function table is shorter than the frozen minimum prefix",
+        ));
+    }
     for slot in &descriptor.function_slots {
         validate_callable(slot, "native ABI function slot", true)?;
     }
     let expected_slots = [
         "runtime_catalog",
         "engine_new",
-        "engine_free",
+        "engine_try_close",
         "execute_collect",
         "result_free",
     ];
     let actual_slots = descriptor
         .function_slots
         .iter()
+        .take(minimum_prefix.function_slot_count)
         .map(|slot| slot.id.as_str())
-        .collect::<BTreeSet<_>>();
-    if actual_slots != expected_slots.into_iter().collect() {
+        .collect::<Vec<_>>();
+    if actual_slots != expected_slots {
         return Err(descriptor_error(
-            "native ABI 3 function slots must be the required fixed operation table",
+            "native ABI 3 minimum function slots must remain in their frozen order",
         ));
     }
 
@@ -819,17 +869,59 @@ fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor
     canonical
 }
 
-fn layout_descriptor_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
+fn descriptor_digest(
+    descriptor: &NativeAbiDescriptor,
+    context: &str,
+) -> Result<String, XtaskError> {
     let bytes = serde_json::to_vec(&canonical_descriptor(descriptor)).map_err(|error| {
         native_abi_error(format!(
-            "failed to serialize canonical native ABI descriptor: {error}"
+            "failed to serialize canonical native ABI {context}: {error}"
         ))
     })?;
     Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
 }
 
+fn full_descriptor_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
+    descriptor_digest(descriptor, "full descriptor")
+}
+
+fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
+    let minimum = &descriptor.minimum_prefix;
+    let mut prefix = descriptor.clone();
+    prefix.status_codes.sort_by_key(|status| status.code);
+    prefix.status_codes.truncate(minimum.status_code_count);
+    prefix
+        .operation_codes
+        .sort_by_key(|operation| operation.code);
+    prefix
+        .operation_codes
+        .truncate(minimum.operation_code_count);
+    prefix.error_kinds.truncate(minimum.error_kind_count);
+    prefix.callbacks.sort_by_key(|callback| callback.code);
+    prefix.callbacks.truncate(minimum.callback_count);
+    prefix.function_slots.sort_by_key(|slot| slot.code);
+    prefix.function_slots.truncate(minimum.function_slot_count);
+    prefix.records.truncate(minimum.record_count);
+    prefix.ownership_rules.clear();
+    descriptor_digest(&prefix, "minimum-prefix layout")
+}
+
 fn upper_snake(value: &str) -> String {
     value.replace('-', "_").to_ascii_uppercase()
+}
+
+fn upper_camel(value: &str) -> String {
+    value
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut characters = part.chars();
+            match characters.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + characters.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 fn sorted_codes(values: &[CodeDescriptor]) -> Vec<&CodeDescriptor> {
@@ -922,11 +1014,12 @@ fn render_rust_callable_type(out: &mut String, callable: &CallableDescriptor) {
 
 fn render_c_header(
     descriptor: &NativeAbiDescriptor,
-    digest: &str,
+    minimum_prefix_digest: &str,
+    full_descriptor_digest: &str,
     operations: &[ResolvedOperation],
 ) -> String {
     let mut out = String::from(
-        "/* @generated by `cargo run -p xtask -- gen-native-abi`. */\n/* Sources: abi/merman-v3.json and capabilities/feature-surface-v1.json. */\n/* Do not edit directly. */\n\n#ifndef MERMAN_H\n#define MERMAN_H\n\n#include <stddef.h>\n#include <stdint.h>\n\n#include \"merman_text_measurement_abi.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
+        "/* @generated by `cargo run -p xtask -- gen-native-abi`. */\n/* Sources: abi/merman-v3.json and capabilities/feature-surface-v1.json. */\n/* Do not edit directly. */\n\n#ifndef MERMAN_H\n#define MERMAN_H\n\n#include <stddef.h>\n#include <stdint.h>\n\n#include \"merman_text_measurement_abi.h\"\n\n#if defined(__cplusplus) && __cplusplus >= 201703L\n#define MERMAN_NATIVE_NOEXCEPT noexcept\n#else\n#define MERMAN_NATIVE_NOEXCEPT\n#endif\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
     );
     writeln!(
         out,
@@ -936,7 +1029,12 @@ fn render_c_header(
     .unwrap();
     writeln!(
         out,
-        "#define MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST \"{digest}\""
+        "#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST \"{minimum_prefix_digest}\""
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST \"{full_descriptor_digest}\""
     )
     .unwrap();
     writeln!(
@@ -949,7 +1047,7 @@ fn render_c_header(
         writeln!(out, "#define {} {:?}", kind.c_name, kind.json_name).unwrap();
     }
     out.push_str(
-        "#define MERMAN_NATIVE_STRUCT_SIZE(type) ((uint32_t)sizeof(type))\n#ifdef __cplusplus\n#define MERMAN_NATIVE_RESULT_INIT { MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult), 0, 0, {}, {}, {} }\n#else\n#define MERMAN_NATIVE_RESULT_INIT { .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) }\n#endif\n\n",
+        "#define MERMAN_NATIVE_STRUCT_SIZE(type) ((uint32_t)sizeof(type))\n#ifdef __cplusplus\n#define MERMAN_NATIVE_RESULT_INIT { MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult), 0, 0, 0, {}, {}, {} }\n#else\n#define MERMAN_NATIVE_RESULT_INIT { .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) }\n#endif\n\n",
     );
 
     render_c_code_type(
@@ -970,7 +1068,7 @@ fn render_c_header(
     for callback in &descriptor.callbacks {
         writeln!(
             out,
-            "typedef {} (*{})({});",
+            "typedef {} (*{})({}) MERMAN_NATIVE_NOEXCEPT;",
             callback.return_c_type,
             callback.c_name,
             c_parameter_list(&callback.parameters)
@@ -982,7 +1080,7 @@ fn render_c_header(
     for slot in sorted_slots(&descriptor.function_slots) {
         writeln!(
             out,
-            "typedef {} (*{})({});",
+            "typedef {} (*{})({}) MERMAN_NATIVE_NOEXCEPT;",
             slot.return_c_type,
             slot.c_name,
             c_parameter_list(&slot.parameters)
@@ -1003,9 +1101,12 @@ fn render_c_header(
         }
         out.push_str("};\n\n");
     }
+    out.push_str(
+        "#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))\n\n",
+    );
 
     out.push_str(
-        "/*\n * The descriptor digest identifies the complete declared wire layout before the function table\n * is returned. All public records are size-tagged; initialize caller-owned records with\n * MERMAN_NATIVE_STRUCT_SIZE(Type). MermanNativeResult is write-only on output: only its\n * struct_size must be initialized before a call, and a returned result must be passed to\n * result_free before that same record is reused. MERMAN_NATIVE_RESULT_INIT is the convenient\n * zeroed initializer.\n *\n * Ownership and concurrency rules from the ABI descriptor:\n",
+        "/*\n * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability\n * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,\n * public records require exact struct_size. The caller supplies MermanNativeApi capacity and\n * receives the producer full size. MermanNativeResult must be fully zero-initialized with\n * MERMAN_NATIVE_RESULT_INIT before every producing call.\n *\n * Host callbacks MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local\n * exit across this boundary. Merman converts callback return statuses; it cannot catch foreign\n * exceptions.\n *\n * Ownership and concurrency rules from the ABI descriptor:\n",
     );
     let mut ownership_rules = descriptor.ownership_rules.iter().collect::<Vec<_>>();
     ownership_rules.sort_by(|left, right| left.id.cmp(&right.id));
@@ -1015,7 +1116,7 @@ fn render_c_header(
     out.push_str(" */\n");
     writeln!(
         out,
-        "MermanNativeStatus {}(const MermanNativeApiRequest *request, MermanNativeApi *out_api);",
+        "MermanNativeStatus {}(const MermanNativeApiRequest *request, MermanNativeApi *out_api) MERMAN_NATIVE_NOEXCEPT;",
         descriptor.entry_point.c_name
     )
     .unwrap();
@@ -1125,7 +1226,8 @@ fn render_c_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
 
 fn render_rust(
     descriptor: &NativeAbiDescriptor,
-    digest: &str,
+    minimum_prefix_digest: &str,
+    full_descriptor_digest: &str,
     operations: &[ResolvedOperation],
 ) -> String {
     let mut out = String::from(
@@ -1139,8 +1241,13 @@ fn render_rust(
     .unwrap();
     render_rust_string_constant(
         &mut out,
-        "MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST",
-        digest,
+        "MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST",
+        minimum_prefix_digest,
+    );
+    render_rust_string_constant(
+        &mut out,
+        "MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST",
+        full_descriptor_digest,
     );
     writeln!(
         out,
@@ -1193,7 +1300,11 @@ fn render_rust(
     for slot in sorted_slots(&descriptor.function_slots) {
         render_rust_callable_type(&mut out, slot);
     }
-    out.push('\n');
+    out.push_str(
+        "\npub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =\n\
+         \x20   (std::mem::offset_of!(MermanNativeApi, result_free)\n\
+         \x20       + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;\n\n",
+    );
 
     out.push_str("pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[\n");
     let mut rules = descriptor.ownership_rules.iter().collect::<Vec<_>>();
@@ -1236,7 +1347,16 @@ fn render_rust_code_type(out: &mut String, type_name: &str, values: &[&CodeDescr
         )
         .unwrap();
     }
-    out.push('\n');
+    out.push_str("\npub const MERMAN_NATIVE_STATUSES: &[MermanNativeStatus] = &[\n");
+    for value in values {
+        writeln!(out, "    {},", value.c_name).unwrap();
+    }
+    out.push_str(
+        "];\n\n\
+         pub fn merman_native_status_is_known(status: MermanNativeStatus) -> bool {\n\
+         \x20   MERMAN_NATIVE_STATUSES.contains(&status)\n\
+         }\n\n",
+    );
 }
 
 fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
@@ -1314,8 +1434,40 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
          \x20   MERMAN_NATIVE_OPERATION_DESCRIPTORS\n\
          \x20       .iter()\n\
          \x20       .find(|descriptor| descriptor.code == code)\n\
-         }\n\n",
+         }\n\n\
+         pub fn merman_native_operation_key(\n\
+         \x20   code: MermanNativeOperationCode,\n\
+         ) -> Option<merman_bindings_core::OperationKey> {\n\
+         \x20   match code {\n",
     );
+    for value in values.iter().filter(|value| value.id != "none") {
+        writeln!(
+            out,
+            "        {} => Some(merman_bindings_core::OperationKey::{}),",
+            value.c_name,
+            upper_camel(&value.id)
+        )
+        .unwrap();
+    }
+    out.push_str(
+        "        _ => None,\n\
+         \x20   }\n\
+         }\n\n\
+         pub const fn merman_native_operation_code(\n\
+         \x20   key: merman_bindings_core::OperationKey,\n\
+         ) -> MermanNativeOperationCode {\n\
+         \x20   match key {\n",
+    );
+    for value in values.iter().filter(|value| value.id != "none") {
+        writeln!(
+            out,
+            "        merman_bindings_core::OperationKey::{} => {},",
+            upper_camel(&value.id),
+            value.c_name
+        )
+        .unwrap();
+    }
+    out.push_str("    }\n}\n\n");
 }
 
 fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
@@ -1332,73 +1484,31 @@ fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
     out.push('\n');
 }
 
-fn render_bindings_operations(operations: &[ResolvedOperation]) -> String {
-    let mut out = String::from(
-        "// @generated by `cargo run -p xtask -- gen-native-abi`.\n// Sources: abi/merman-v3.json and capabilities/feature-surface-v1.json.\n// Do not edit directly.\n\n",
-    );
-    out.push_str(
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
-         pub(crate) struct NativeOperationProjection {\n\
-         \x20   pub(crate) code: i32,\n\
-         \x20   pub(crate) operation_id: Option<&'static str>,\n\
-         \x20   pub(crate) capability_id: Option<&'static str>,\n\
-         \x20   pub(crate) media_type: Option<&'static str>,\n\
-         \x20   pub(crate) requires_uri: bool,\n\
-         }\n\n\
-         pub(crate) const NATIVE_OPERATIONS: &[NativeOperationProjection] = &[\n",
-    );
-    for operation in operations {
-        writeln!(out, "    NativeOperationProjection {{").unwrap();
-        writeln!(out, "        code: {},", operation.code).unwrap();
-        writeln!(
-            out,
-            "        operation_id: {:?},",
-            operation.binding_operation_id
-        )
-        .unwrap();
-        writeln!(out, "        capability_id: {:?},", operation.capability_id).unwrap();
-        writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
-        writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
-        writeln!(out, "    }},").unwrap();
-    }
-    out.push_str(
-        "];\n\n\
-         pub(crate) fn native_operation_by_code(\n\
-         \x20   code: i32,\n\
-         ) -> Option<&'static NativeOperationProjection> {\n\
-         \x20   NATIVE_OPERATIONS\n\
-         \x20       .iter()\n\
-         \x20       .find(|operation| operation.code == code)\n\
-         }\n\n\
-         pub(crate) fn native_operation_by_id(\n\
-         \x20   operation_id: &str,\n\
-         ) -> Option<&'static NativeOperationProjection> {\n\
-         \x20   NATIVE_OPERATIONS\n\
-         \x20       .iter()\n\
-         \x20       .find(|operation| operation.operation_id == Some(operation_id))\n\
-         }\n",
-    );
-    out
-}
-
 fn generated_artifacts(
     root: &Path,
     descriptor: &NativeAbiDescriptor,
 ) -> Result<Vec<(PathBuf, String)>, XtaskError> {
-    let digest = layout_descriptor_digest(descriptor)?;
+    let minimum_prefix_digest = minimum_prefix_layout_digest(descriptor)?;
+    let full_descriptor_digest = full_descriptor_digest(descriptor)?;
     let operations = resolve_operations(root, descriptor)?;
     Ok(vec![
         (
             PathBuf::from(FFI_RUST_OUTPUT),
-            render_rust(descriptor, &digest, &operations),
+            render_rust(
+                descriptor,
+                &minimum_prefix_digest,
+                &full_descriptor_digest,
+                &operations,
+            ),
         ),
         (
             PathBuf::from(FFI_HEADER_OUTPUT),
-            render_c_header(descriptor, &digest, &operations),
-        ),
-        (
-            PathBuf::from(BINDINGS_OPERATION_OUTPUT),
-            render_bindings_operations(&operations),
+            render_c_header(
+                descriptor,
+                &minimum_prefix_digest,
+                &full_descriptor_digest,
+                &operations,
+            ),
         ),
     ])
 }
@@ -1420,6 +1530,12 @@ fn write_artifact(root: &Path, path: &Path, contents: &str) -> Result<(), XtaskE
 fn load_and_validate(root: &Path) -> Result<NativeAbiDescriptor, XtaskError> {
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     resolve_operations(root, &descriptor)?;
+    let actual_prefix_digest = minimum_prefix_layout_digest(&descriptor)?;
+    if actual_prefix_digest != ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST {
+        return Err(native_abi_error(format!(
+            "native ABI 3 minimum prefix changed: expected {ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST}, found {actual_prefix_digest}; incompatible changes require a new ABI version"
+        )));
+    }
     Ok(descriptor)
 }
 
@@ -1488,33 +1604,32 @@ mod tests {
                 .error_kinds
                 .iter()
                 .map(|kind| kind.json_name.as_str())
-                .collect::<BTreeSet<_>>(),
+                .collect::<Vec<_>>(),
             [
                 "generic",
+                "unknown-operation",
                 "missing-capability",
                 "reentrant-call",
-                "unknown-operation"
+                "busy",
             ]
-            .into_iter()
-            .collect()
         );
         assert_eq!(descriptor.entry_point.c_name, "merman_get_native_api");
+        assert_eq!(descriptor.entry_point.calling_convention, "C");
         assert_eq!(
             descriptor
                 .function_slots
                 .iter()
                 .map(|slot| slot.id.as_str())
-                .collect::<BTreeSet<_>>(),
+                .collect::<Vec<_>>(),
             [
-                "engine_free",
+                "runtime_catalog",
                 "engine_new",
+                "engine_try_close",
                 "execute_collect",
                 "result_free",
-                "runtime_catalog",
             ]
-            .into_iter()
-            .collect()
         );
+        assert_eq!(descriptor.status_codes.last().unwrap().id, "busy");
         assert_eq!(descriptor.operation_codes.len(), 14);
         assert_eq!(
             descriptor
@@ -1572,41 +1687,93 @@ mod tests {
     }
 
     #[test]
-    fn layout_digest_tracks_wire_structure_not_explanatory_prose() {
+    fn prefix_and_full_digests_separate_compatibility_from_provenance() {
         let descriptor = committed_descriptor();
-        let original = layout_descriptor_digest(&descriptor).unwrap();
+        let original_prefix = minimum_prefix_layout_digest(&descriptor).unwrap();
+        let original_full = full_descriptor_digest(&descriptor).unwrap();
 
         let mut prose_only = descriptor.clone();
         prose_only.records[0].description = "Reworded documentation only.".to_string();
         prose_only.records[0].fields[0].ownership = "Also documentation only.".to_string();
-        assert_eq!(layout_descriptor_digest(&prose_only).unwrap(), original);
+        assert_eq!(
+            minimum_prefix_layout_digest(&prose_only).unwrap(),
+            original_prefix
+        );
+        assert_eq!(full_descriptor_digest(&prose_only).unwrap(), original_full);
 
-        let mut structural = descriptor;
+        let mut structural = descriptor.clone();
         structural.records[0].fields[1].rust_type = "*mut u8".to_string();
-        assert_ne!(layout_descriptor_digest(&structural).unwrap(), original);
+        assert_ne!(
+            minimum_prefix_layout_digest(&structural).unwrap(),
+            original_prefix
+        );
 
         let mut result_contract = committed_descriptor();
         result_contract.result_schema_version += 1;
         assert_ne!(
-            layout_descriptor_digest(&result_contract).unwrap(),
-            original
+            minimum_prefix_layout_digest(&result_contract).unwrap(),
+            original_prefix
         );
 
         let mut error_contract = committed_descriptor();
         error_contract.error_kinds[0].json_name = "renamed-generic".to_string();
-        assert_ne!(layout_descriptor_digest(&error_contract).unwrap(), original);
+        assert_ne!(
+            minimum_prefix_layout_digest(&error_contract).unwrap(),
+            original_prefix
+        );
+
+        let mut appended = descriptor;
+        appended.status_codes.push(CodeDescriptor {
+            id: "future_status".to_string(),
+            c_name: "MERMAN_NATIVE_STATUS_FUTURE_STATUS".to_string(),
+            code: 17,
+            description: "Future append-only status.".to_string(),
+        });
+        appended.error_kinds.push(ErrorKindDescriptor {
+            id: "future_kind".to_string(),
+            c_name: "MERMAN_NATIVE_ERROR_KIND_FUTURE_KIND".to_string(),
+            json_name: "future-kind".to_string(),
+            description: "Future append-only failure kind.".to_string(),
+        });
+        let mut future_slot = appended.function_slots.last().unwrap().clone();
+        future_slot.id = "future_slot".to_string();
+        future_slot.c_name = "MermanNativeFutureSlotFn".to_string();
+        future_slot.rust_name = "MermanNativeFutureSlotFn".to_string();
+        future_slot.code = 5;
+        appended.function_slots.push(future_slot);
+        assert_eq!(
+            minimum_prefix_layout_digest(&appended).unwrap(),
+            original_prefix
+        );
+        assert_ne!(full_descriptor_digest(&appended).unwrap(), original_full);
     }
 
     #[test]
     fn generated_header_has_only_the_abi3_entry_and_pointer_callbacks() {
         let descriptor = committed_descriptor();
-        let digest = layout_descriptor_digest(&descriptor).unwrap();
+        let minimum_prefix_digest = minimum_prefix_layout_digest(&descriptor).unwrap();
+        let full_digest = full_descriptor_digest(&descriptor).unwrap();
         let root = crate::cmd::workspace_root();
         let operations = resolve_operations(&root, &descriptor).unwrap();
-        let header = render_c_header(&descriptor, &digest, &operations);
-        let rust = render_rust(&descriptor, &digest, &operations);
-        let operation_projection = render_bindings_operations(&operations);
+        let header = render_c_header(
+            &descriptor,
+            &minimum_prefix_digest,
+            &full_digest,
+            &operations,
+        );
+        let rust = render_rust(
+            &descriptor,
+            &minimum_prefix_digest,
+            &full_digest,
+            &operations,
+        );
         assert!(header.contains("MERMAN_NATIVE_ABI_VERSION 3u"));
+        assert!(header.contains("MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST"));
+        assert!(header.contains("MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST"));
+        assert!(header.contains("MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE"));
+        assert!(header.contains("MermanNativeEngineTryCloseFn"));
+        assert!(header.contains("MERMAN_NATIVE_STATUS_BUSY = 16"));
+        assert!(header.contains("MERMAN_NATIVE_NOEXCEPT"));
         assert!(header.contains("MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u"));
         assert!(header.contains("MERMAN_NATIVE_ERROR_KIND_GENERIC \"generic\""));
         assert!(
@@ -1625,10 +1792,8 @@ mod tests {
         assert!(header.contains("MermanNativeSlice options_json;"));
         assert!(header.contains("MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON"));
         assert!(header.contains("MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_JSON 1"));
-        assert!(operation_projection.contains("semantic-json"));
-        assert!(operation_projection.contains("analysis-facts-json"));
-        assert!(operation_projection.contains("requires_uri: true"));
-        assert!(operation_projection.contains("native_operation_by_code"));
+        assert!(rust.contains("merman_native_operation_key"));
+        assert!(rust.contains("merman_native_operation_code"));
         assert!(rust.contains("#[repr(C)]\npub struct MermanNativeResult"));
         assert!(
             !rust.contains("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct MermanNativeResult")

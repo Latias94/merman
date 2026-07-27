@@ -102,9 +102,20 @@ int merman_header_smoke(void) {
         &cpp_source,
         r#"
 #include "merman.h"
+#include <type_traits>
 
 static_assert(MERMAN_NATIVE_ABI_VERSION == 3u, "unexpected native ABI version");
 static_assert(MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1u, "unexpected result schema version");
+static_assert(
+    std::is_nothrow_invocable_r_v<
+        MermanNativeStatus,
+        MermanNativeTextMeasureCallback,
+        const MermanNativeTextMeasureRequest *,
+        MermanNativeTextMeasureResult *,
+        void *
+    >,
+    "C++ callback type must be noexcept"
+);
 
 int merman_cpp_header_smoke() {
     MermanNativeApiRequest request{};
@@ -124,6 +135,8 @@ int merman_cpp_header_smoke() {
     .expect("write C++ header smoke source");
     cc::Build::new()
         .cpp(true)
+        .flag_if_supported("-std=c++17")
+        .flag_if_supported("/std:c++17")
         .target(target)
         .host(target)
         .opt_level(0)

@@ -3,9 +3,12 @@
 // Do not edit directly.
 
 pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
-pub const MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST: &str =
-    "sha256:e12a6b40e1a612c1814ede314c89907fbcb844796646164f2112665a2488a61a";
+pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
+    "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d";
+pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
+    "sha256:c49b74531c114254416d36d65373dab46783203d126bac48f5124ce818445ef6";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
+pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
 pub const MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY: &str = "missing-capability";
 pub const MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL: &str = "reentrant-call";
@@ -29,6 +32,31 @@ pub const MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH: MermanNativeStatus = 12;
 pub const MERMAN_NATIVE_STATUS_CALLBACK_ERROR: MermanNativeStatus = 13;
 pub const MERMAN_NATIVE_STATUS_REENTRANT_CALL: MermanNativeStatus = 14;
 pub const MERMAN_NATIVE_STATUS_INVALID_ENGINE: MermanNativeStatus = 15;
+pub const MERMAN_NATIVE_STATUS_BUSY: MermanNativeStatus = 16;
+
+pub const MERMAN_NATIVE_STATUSES: &[MermanNativeStatus] = &[
+    MERMAN_NATIVE_STATUS_OK,
+    MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+    MERMAN_NATIVE_STATUS_UTF8_ERROR,
+    MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR,
+    MERMAN_NATIVE_STATUS_NO_DIAGRAM,
+    MERMAN_NATIVE_STATUS_PARSE_ERROR,
+    MERMAN_NATIVE_STATUS_RENDER_ERROR,
+    MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+    MERMAN_NATIVE_STATUS_PANIC,
+    MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+    MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+    MERMAN_NATIVE_STATUS_ABI_MISMATCH,
+    MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH,
+    MERMAN_NATIVE_STATUS_CALLBACK_ERROR,
+    MERMAN_NATIVE_STATUS_REENTRANT_CALL,
+    MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+    MERMAN_NATIVE_STATUS_BUSY,
+];
+
+pub fn merman_native_status_is_known(status: MermanNativeStatus) -> bool {
+    MERMAN_NATIVE_STATUSES.contains(&status)
+}
 
 pub type MermanNativeOperationCode = i32;
 pub const MERMAN_NATIVE_OPERATION_NONE: MermanNativeOperationCode = 0;
@@ -218,10 +246,51 @@ pub fn merman_native_operation_descriptor(
         .find(|descriptor| descriptor.code == code)
 }
 
+pub fn merman_native_operation_key(
+    code: MermanNativeOperationCode,
+) -> Option<merman_bindings_core::OperationKey> {
+    match code {
+        MERMAN_NATIVE_OPERATION_SVG => Some(merman_bindings_core::OperationKey::Svg),
+        MERMAN_NATIVE_OPERATION_PNG => Some(merman_bindings_core::OperationKey::Png),
+        MERMAN_NATIVE_OPERATION_JPEG => Some(merman_bindings_core::OperationKey::Jpeg),
+        MERMAN_NATIVE_OPERATION_PDF => Some(merman_bindings_core::OperationKey::Pdf),
+        MERMAN_NATIVE_OPERATION_ASCII => Some(merman_bindings_core::OperationKey::Ascii),
+        MERMAN_NATIVE_OPERATION_SEMANTIC_JSON => Some(merman_bindings_core::OperationKey::SemanticJson),
+        MERMAN_NATIVE_OPERATION_LAYOUT_JSON => Some(merman_bindings_core::OperationKey::LayoutJson),
+        MERMAN_NATIVE_OPERATION_ANALYSIS_JSON => Some(merman_bindings_core::OperationKey::AnalysisJson),
+        MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON => Some(merman_bindings_core::OperationKey::AnalysisFactsJson),
+        MERMAN_NATIVE_OPERATION_VALIDATION_JSON => Some(merman_bindings_core::OperationKey::ValidationJson),
+        MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisJson),
+        MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisFactsJson),
+        MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON => Some(merman_bindings_core::OperationKey::SvgPlanJson),
+        _ => None,
+    }
+}
+
+pub const fn merman_native_operation_code(
+    key: merman_bindings_core::OperationKey,
+) -> MermanNativeOperationCode {
+    match key {
+        merman_bindings_core::OperationKey::Svg => MERMAN_NATIVE_OPERATION_SVG,
+        merman_bindings_core::OperationKey::Png => MERMAN_NATIVE_OPERATION_PNG,
+        merman_bindings_core::OperationKey::Jpeg => MERMAN_NATIVE_OPERATION_JPEG,
+        merman_bindings_core::OperationKey::Pdf => MERMAN_NATIVE_OPERATION_PDF,
+        merman_bindings_core::OperationKey::Ascii => MERMAN_NATIVE_OPERATION_ASCII,
+        merman_bindings_core::OperationKey::SemanticJson => MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+        merman_bindings_core::OperationKey::LayoutJson => MERMAN_NATIVE_OPERATION_LAYOUT_JSON,
+        merman_bindings_core::OperationKey::AnalysisJson => MERMAN_NATIVE_OPERATION_ANALYSIS_JSON,
+        merman_bindings_core::OperationKey::AnalysisFactsJson => MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON,
+        merman_bindings_core::OperationKey::ValidationJson => MERMAN_NATIVE_OPERATION_VALIDATION_JSON,
+        merman_bindings_core::OperationKey::DocumentAnalysisJson => MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON,
+        merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
+        merman_bindings_core::OperationKey::SvgPlanJson => MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
+    }
+}
+
 pub type MermanNativeFunctionSlot = i32;
 pub const MERMAN_NATIVE_FUNCTION_RUNTIME_CATALOG: MermanNativeFunctionSlot = 0;
 pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW: MermanNativeFunctionSlot = 1;
-pub const MERMAN_NATIVE_FUNCTION_ENGINE_FREE: MermanNativeFunctionSlot = 2;
+pub const MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE: MermanNativeFunctionSlot = 2;
 pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT: MermanNativeFunctionSlot = 3;
 pub const MERMAN_NATIVE_FUNCTION_RESULT_FREE: MermanNativeFunctionSlot = 4;
 
@@ -307,15 +376,15 @@ pub struct MermanNativeOperationRequest {
     pub options_json: MermanNativeSlice,
 }
 
-/// A write-only size-tagged operation result with borrowed static media type and two Merman-owned
-/// buffers. Before an operation, callers initialize only struct_size; Merman never reads any other
-/// field and writes the complete record. Buffer ownership is bound to the exact result record
-/// address written by Merman, so copying or moving a live result does not transfer ownership.
-/// Release that original record before reuse. Failure JSON follows result schema v1 and carries
-/// kind plus a nullable capability_id.
+/// A zero-initialized size-tagged operation result with an opaque process-lifetime allocation
+/// token, borrowed static media type, and two Merman-owned buffers. Every result written by Merman
+/// receives a nonzero token, including empty success and failure payloads. Moving the complete
+/// record transfers ownership. Failure JSON follows result schema v1 and carries kind plus a
+/// nullable capability_id.
 #[repr(C)]
 pub struct MermanNativeResult {
     pub struct_size: u32,
+    pub allocation_token: u64,
     pub status: MermanNativeStatus,
     pub operation: MermanNativeOperationCode,
     pub media_type: MermanNativeSlice,
@@ -329,21 +398,24 @@ pub struct MermanNativeResult {
 pub struct MermanNativeApiRequest {
     pub struct_size: u32,
     pub expected_abi_version: u32,
-    pub expected_layout_descriptor_digest: MermanNativeSlice,
+    pub expected_minimum_prefix_layout_digest: MermanNativeSlice,
 }
 
-/// A size-tagged ABI function table. Function slots are appended in their stable code order.
+/// A size-tagged ABI function table. The caller supplies buffer capacity in struct_size; Merman
+/// writes the common prefix, then reports the producer full size in struct_size. Function slots
+/// append in stable code order.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MermanNativeApi {
     pub struct_size: u32,
     pub abi_version: u32,
-    pub layout_descriptor_digest: MermanNativeSlice,
+    pub minimum_prefix_layout_digest: MermanNativeSlice,
+    pub full_descriptor_digest: MermanNativeSlice,
     pub capability_catalog_digest: MermanNativeSlice,
     pub package_version: MermanNativeSlice,
     pub runtime_catalog: Option<MermanNativeRuntimeCatalogFn>,
     pub engine_new: Option<MermanNativeEngineNewFn>,
-    pub engine_free: Option<MermanNativeEngineFreeFn>,
+    pub engine_try_close: Option<MermanNativeEngineTryCloseFn>,
     pub execute_collect: Option<MermanNativeExecuteCollectFn>,
     pub result_free: Option<MermanNativeResultFreeFn>,
 }
@@ -361,7 +433,7 @@ pub type MermanNativeEngineNewFn = unsafe extern "C" fn(
     out_engine: *mut MermanNativeEngineToken,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
-pub type MermanNativeEngineFreeFn =
+pub type MermanNativeEngineTryCloseFn =
     unsafe extern "C" fn(engine: MermanNativeEngineToken) -> MermanNativeStatus;
 pub type MermanNativeExecuteCollectFn = unsafe extern "C" fn(
     engine: MermanNativeEngineToken,
@@ -369,6 +441,10 @@ pub type MermanNativeExecuteCollectFn = unsafe extern "C" fn(
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
 pub type MermanNativeResultFreeFn = unsafe extern "C" fn(result: *mut MermanNativeResult) -> ();
+
+pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, result_free)
+        + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     (
@@ -381,10 +457,14 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     ),
     (
         "engine_tokens",
-        "Engine tokens are opaque u64 values. Any thread attempting to re-enter or retire an engine while one of its host callbacks is active receives reentrant-call; this prevents callback-induced cross-thread deadlock. Outside a callback, engine_free retires a token exactly once, rejects new calls immediately, and lets an operation that already acquired the engine retain its internal state until that call returns. The host must keep the retained text-measure callback and user_data valid until all such operations return.",
+        "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close.",
+    ),
+    (
+        "host_callbacks",
+        "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions.",
     ),
     (
         "result_buffers",
-        "Only result.data and result.metadata_or_error_json of a result previously written by Merman are Merman-owned. Ownership is registered against the exact result record address written by Merman: copying or moving a live result does not transfer ownership, and result_free must receive that original address. Output records are write-only: initialize struct_size, do not require zeroing, and release the original record before reuse. Repeated result_free calls on the same record are harmless. No result buffer may be passed to a host allocator.",
+        "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator.",
     ),
 ];

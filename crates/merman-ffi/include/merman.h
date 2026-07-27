@@ -10,20 +10,28 @@
 
 #include "merman_text_measurement_abi.h"
 
+#if defined(__cplusplus) && __cplusplus >= 201703L
+#define MERMAN_NATIVE_NOEXCEPT noexcept
+#else
+#define MERMAN_NATIVE_NOEXCEPT
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
-#define MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST "sha256:e12a6b40e1a612c1814ede314c89907fbcb844796646164f2112665a2488a61a"
+#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:26c9571ef2afa173aab5bd2562d1823f2d28c4cff5bbe9f9fdf4e3fc2b894a8d"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c49b74531c114254416d36d65373dab46783203d126bac48f5124ce818445ef6"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
+#define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
 #define MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY "missing-capability"
 #define MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL "reentrant-call"
 #define MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION "unknown-operation"
 #define MERMAN_NATIVE_STRUCT_SIZE(type) ((uint32_t)sizeof(type))
 #ifdef __cplusplus
-#define MERMAN_NATIVE_RESULT_INIT { MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult), 0, 0, {}, {}, {} }
+#define MERMAN_NATIVE_RESULT_INIT { MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult), 0, 0, 0, {}, {}, {} }
 #else
 #define MERMAN_NATIVE_RESULT_INIT { .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) }
 #endif
@@ -45,7 +53,8 @@ enum {
     MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH = 12,
     MERMAN_NATIVE_STATUS_CALLBACK_ERROR = 13,
     MERMAN_NATIVE_STATUS_REENTRANT_CALL = 14,
-    MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15
+    MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15,
+    MERMAN_NATIVE_STATUS_BUSY = 16
 };
 
 typedef int32_t MermanNativeOperationCode;
@@ -122,7 +131,7 @@ typedef int32_t MermanNativeFunctionSlot;
 enum {
     MERMAN_NATIVE_FUNCTION_RUNTIME_CATALOG = 0,
     MERMAN_NATIVE_FUNCTION_ENGINE_NEW = 1,
-    MERMAN_NATIVE_FUNCTION_ENGINE_FREE = 2,
+    MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE = 2,
     MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT = 3,
     MERMAN_NATIVE_FUNCTION_RESULT_FREE = 4
 };
@@ -139,13 +148,13 @@ typedef struct MermanNativeResult MermanNativeResult;
 typedef struct MermanNativeApiRequest MermanNativeApiRequest;
 typedef struct MermanNativeApi MermanNativeApi;
 
-typedef MermanNativeStatus (*MermanNativeTextMeasureCallback)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResult *out_result, void *user_data);
+typedef MermanNativeStatus (*MermanNativeTextMeasureCallback)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResult *out_result, void *user_data) MERMAN_NATIVE_NOEXCEPT;
 
-typedef MermanNativeStatus (*MermanNativeRuntimeCatalogFn)(MermanNativeResult *out_result);
-typedef MermanNativeStatus (*MermanNativeEngineNewFn)(const MermanNativeEngineConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result);
-typedef MermanNativeStatus (*MermanNativeEngineFreeFn)(MermanNativeEngineToken engine);
-typedef MermanNativeStatus (*MermanNativeExecuteCollectFn)(MermanNativeEngineToken engine, const MermanNativeOperationRequest *request, MermanNativeResult *out_result);
-typedef void (*MermanNativeResultFreeFn)(MermanNativeResult *result);
+typedef MermanNativeStatus (*MermanNativeRuntimeCatalogFn)(MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeEngineNewFn)(const MermanNativeEngineConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeEngineTryCloseFn)(MermanNativeEngineToken engine) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeExecuteCollectFn)(MermanNativeEngineToken engine, const MermanNativeOperationRequest *request, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef void (*MermanNativeResultFreeFn)(MermanNativeResult *result) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -210,6 +219,7 @@ struct MermanNativeOperationRequest {
 
 struct MermanNativeResult {
     uint32_t struct_size;
+    uint64_t allocation_token;
     MermanNativeStatus status;
     MermanNativeOperationCode operation;
     MermanNativeSlice media_type;
@@ -220,29 +230,35 @@ struct MermanNativeResult {
 struct MermanNativeApiRequest {
     uint32_t struct_size;
     uint32_t expected_abi_version;
-    MermanNativeSlice expected_layout_descriptor_digest;
+    MermanNativeSlice expected_minimum_prefix_layout_digest;
 };
 
 struct MermanNativeApi {
     uint32_t struct_size;
     uint32_t abi_version;
-    MermanNativeSlice layout_descriptor_digest;
+    MermanNativeSlice minimum_prefix_layout_digest;
+    MermanNativeSlice full_descriptor_digest;
     MermanNativeSlice capability_catalog_digest;
     MermanNativeSlice package_version;
     MermanNativeRuntimeCatalogFn runtime_catalog;
     MermanNativeEngineNewFn engine_new;
-    MermanNativeEngineFreeFn engine_free;
+    MermanNativeEngineTryCloseFn engine_try_close;
     MermanNativeExecuteCollectFn execute_collect;
     MermanNativeResultFreeFn result_free;
 };
 
+#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))
+
 /*
- * The descriptor digest identifies the complete declared wire layout before the function table
- * is returned. All public records are size-tagged; initialize caller-owned records with
- * MERMAN_NATIVE_STRUCT_SIZE(Type). MermanNativeResult is write-only on output: only its
- * struct_size must be initialized before a call, and a returned result must be passed to
- * result_free before that same record is reused. MERMAN_NATIVE_RESULT_INIT is the convenient
- * zeroed initializer.
+ * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
+ * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,
+ * public records require exact struct_size. The caller supplies MermanNativeApi capacity and
+ * receives the producer full size. MermanNativeResult must be fully zero-initialized with
+ * MERMAN_NATIVE_RESULT_INIT before every producing call.
+ *
+ * Host callbacks MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local
+ * exit across this boundary. Merman converts callback return statuses; it cannot catch foreign
+ * exceptions.
  *
  * Ownership and concurrency rules from the ABI descriptor:
  * - borrowed_slices: Input, media-type, and callback slices are borrowed. Hosts must not retain
@@ -251,21 +267,23 @@ struct MermanNativeApi {
  *   with kind missing-capability and the canonical capability_id before result allocation. An
  *   unknown operation code returns the same status with kind unknown-operation and a null
  *   capability_id.
- * - engine_tokens: Engine tokens are opaque u64 values. Any thread attempting to re-enter or retire
- *   an engine while one of its host callbacks is active receives reentrant-call; this prevents
- *   callback-induced cross-thread deadlock. Outside a callback, engine_free retires a token exactly
- *   once, rejects new calls immediately, and lets an operation that already acquired the engine
- *   retain its internal state until that call returns. The host must keep the retained text-measure
- *   callback and user_data valid until all such operations return.
- * - result_buffers: Only result.data and result.metadata_or_error_json of a result previously
- *   written by Merman are Merman-owned. Ownership is registered against the exact result record
- *   address written by Merman: copying or moving a live result does not transfer ownership, and
- *   result_free must receive that original address. Output records are write-only: initialize
- *   struct_size, do not require zeroing, and release the original record before reuse. Repeated
- *   result_free calls on the same record are harmless. No result buffer may be passed to a host
- *   allocator.
+ * - engine_tokens: Engine tokens are opaque u64 values. engine_try_close never waits:
+ *   callback-active returns reentrant-call, another active operation returns busy with the token
+ *   still valid, and quiescent success permanently closes admission before retiring the token. A
+ *   transport reference acquired before successful close cannot enter afterwards. Callback and
+ *   user_data are immutable constructor-owned state and may be released after successful close.
+ * - host_callbacks: Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind,
+ *   throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary.
+ *   Merman converts returned status values only; it cannot catch foreign exceptions.
+ * - result_buffers: Only result.data and result.metadata_or_error_json identified by a live
+ *   allocation_token are Merman-owned. Callers zero-initialize the complete result and set
+ *   struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero
+ *   token that is never reused. Moving the complete record transfers ownership. result_free trusts
+ *   only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release
+ *   nothing and only clear the supplied record. Copying a live token is outside the same-process
+ *   hostile-memory threat boundary. No result buffer may be passed to a host allocator.
  */
-MermanNativeStatus merman_get_native_api(const MermanNativeApiRequest *request, MermanNativeApi *out_api);
+MermanNativeStatus merman_get_native_api(const MermanNativeApiRequest *request, MermanNativeApi *out_api) MERMAN_NATIVE_NOEXCEPT;
 
 #ifdef __cplusplus
 }

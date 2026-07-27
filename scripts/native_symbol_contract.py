@@ -16,16 +16,34 @@ CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 class NativeSymbolContract:
     required: frozenset[str]
     forbidden: frozenset[str]
+    owned_prefixes: tuple[str, ...]
+    allowed_owned: frozenset[str]
 
 
 ANDROID_JNI_SYMBOL_CONTRACT = NativeSymbolContract(
     required=frozenset({"JNI_OnLoad"}),
     forbidden=frozenset({"merman_get_native_api"}),
+    owned_prefixes=("merman_", "Java_io_merman_"),
+    allowed_owned=frozenset(),
 )
 C_ABI_SYMBOL_CONTRACT = NativeSymbolContract(
     required=frozenset({"merman_get_native_api"}),
     forbidden=frozenset({"JNI_OnLoad"}),
+    owned_prefixes=("merman_",),
+    allowed_owned=frozenset({"merman_get_native_api"}),
 )
+
+
+def canonicalize_owned_symbol(symbol: str) -> str:
+    """Canonicalize leading decoration only when the remainder is Merman-owned."""
+    candidate = symbol.lstrip("_")
+    if (
+        candidate == "JNI_OnLoad"
+        or candidate.startswith("merman_")
+        or candidate.startswith("Java_io_merman_")
+    ):
+        return candidate
+    return symbol
 
 
 def parse_llvm_nm_posix(output: str) -> set[str]:
@@ -39,7 +57,7 @@ def parse_llvm_nm_posix(output: str) -> set[str]:
         if len(fields) < 2 or len(fields[1]) != 1:
             malformed.append(line_number)
             continue
-        symbols.add(fields[0])
+        symbols.add(canonicalize_owned_symbol(fields[0]))
     if malformed:
         rendered = ", ".join(str(line) for line in malformed)
         raise RuntimeError(f"llvm-nm emitted malformed symbol rows: {rendered}")
@@ -59,13 +77,18 @@ def read_defined_dynamic_symbols(
         raise RuntimeError(f"native library does not exist: {library}")
     if not llvm_nm.is_file():
         raise RuntimeError(f"llvm-nm does not exist: {llvm_nm}")
-    command = [
-        str(llvm_nm),
-        "--dynamic",
-        "--defined-only",
-        "--format=posix",
-        str(library),
-    ]
+    command = [str(llvm_nm)]
+    if library.suffix == ".dylib":
+        command.append("--extern-only")
+    else:
+        command.append("--dynamic")
+    command.extend(
+        [
+            "--defined-only",
+            "--format=posix",
+            str(library),
+        ]
+    )
     completed = runner(
         command,
         check=False,
@@ -87,13 +110,23 @@ def assert_symbol_contract(
     label: str,
 ) -> None:
     """Fail closed when a transport lacks its entry point or exposes the other transport."""
-    observed = set(symbols)
+    observed = {canonicalize_owned_symbol(symbol) for symbol in symbols}
     missing = sorted(contract.required - observed)
     forbidden = sorted(contract.forbidden & observed)
+    unexpected_owned = sorted(
+        symbol
+        for symbol in observed
+        if symbol.startswith(contract.owned_prefixes)
+        and symbol not in contract.allowed_owned
+    )
     failures: list[str] = []
     if missing:
         failures.append("missing required symbols: " + ", ".join(missing))
     if forbidden:
         failures.append("forbidden symbols present: " + ", ".join(forbidden))
+    if unexpected_owned:
+        failures.append(
+            "unexpected Merman-owned symbols present: " + ", ".join(unexpected_owned)
+        )
     if failures:
         raise RuntimeError(f"{label} symbol contract failed: {'; '.join(failures)}")

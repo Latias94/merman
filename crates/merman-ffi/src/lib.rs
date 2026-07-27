@@ -9,15 +9,15 @@
 #[cfg(feature = "svg")]
 use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
-    BindingEngine, BindingError, BindingErrorKind, BindingOperationRequest, BindingStatus,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingError, BindingErrorKind, BindingOperationRequest, BindingStatus,
 };
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 include!("generated/text_measurement_abi.rs");
 include!("generated/abi3.rs");
@@ -51,6 +51,11 @@ impl NativeFailure {
         }
     }
 
+    fn with_kind(mut self, kind: BindingErrorKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
     #[cfg(not(feature = "svg"))]
     fn missing_capability(capability_id: &'static str, message: impl Into<String>) -> Self {
         Self {
@@ -72,7 +77,7 @@ struct NativeExecution {
 
 struct NativeEngineState {
     engine: BindingEngine,
-    coordinator: Arc<NativeExecutionCoordinator>,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[derive(Default)]
@@ -98,7 +103,6 @@ impl NativeEngineRegistry {
                 "native engine token space is exhausted",
             ));
         }
-        engine.coordinator.bind_token(token);
         self.last_token = token;
         let previous = self.engines.insert(token, engine);
         debug_assert!(previous.is_none(), "native engine tokens are never reused");
@@ -116,7 +120,8 @@ impl NativeEngineRegistry {
 
 #[derive(Default)]
 struct NativeAllocationRegistry {
-    results: BTreeMap<usize, NativeResultAllocation>,
+    last_token: u64,
+    results: BTreeMap<u64, NativeResultAllocation>,
 }
 
 struct NativeResultAllocation {
@@ -124,168 +129,70 @@ struct NativeResultAllocation {
     metadata_or_error_json: Vec<u8>,
 }
 
+impl NativeAllocationRegistry {
+    fn register(
+        &mut self,
+        data: Vec<u8>,
+        metadata_or_error_json: Vec<u8>,
+    ) -> Result<u64, NativeFailure> {
+        let token = self.last_token.checked_add(1).ok_or_else(|| {
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                "native result allocation token space is exhausted",
+            )
+        })?;
+        if token == 0 {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                "native result allocation token space is exhausted",
+            ));
+        }
+        self.last_token = token;
+        let previous = self.results.insert(
+            token,
+            NativeResultAllocation {
+                data,
+                metadata_or_error_json,
+            },
+        );
+        debug_assert!(
+            previous.is_none(),
+            "native result allocation tokens are never reused"
+        );
+        Ok(token)
+    }
+}
+
 static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
-static ACTIVE_CALLBACK_TOKENS: OnceLock<Mutex<BTreeSet<MermanNativeEngineToken>>> = OnceLock::new();
-// Serializes the callback-active transition with engine retirement. Without this
-// lifecycle lock, `engine_free` can observe the callback token before the
-// callback entry has published it (or vice versa) and retire an engine during
-// the small publication window.
-static ENGINE_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-#[derive(Default)]
-struct NativeExecutionState {
-    operation_active: bool,
-    callback_active: bool,
-}
-
-struct NativeExecutionCoordinator {
-    token: AtomicU64,
-    state: Mutex<NativeExecutionState>,
-    ready: Condvar,
-}
-
-impl NativeExecutionCoordinator {
-    fn new() -> Self {
-        Self {
-            token: AtomicU64::new(0),
-            state: Mutex::new(NativeExecutionState::default()),
-            ready: Condvar::new(),
-        }
-    }
-
-    fn bind_token(&self, token: MermanNativeEngineToken) {
-        assert_ne!(token, 0);
-        assert_eq!(
-            self.token
-                .compare_exchange(0, token, Ordering::AcqRel, Ordering::Acquire),
-            Ok(0),
-            "a native execution coordinator is bound exactly once",
-        );
-    }
-
-    fn enter_operation(&self) -> Result<NativeOperationGuard<'_>, NativeFailure> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        loop {
-            if state.callback_active {
-                return Err(reentrant_call_failure());
-            }
-            if !state.operation_active {
-                state.operation_active = true;
-                return Ok(NativeOperationGuard { coordinator: self });
-            }
-            state = self
-                .ready
-                .wait(state)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    fn invoke_host_callback<T>(&self, callback: impl FnOnce() -> T) -> T {
-        let token = self.token.load(Ordering::Acquire);
-        debug_assert_ne!(token, 0, "host callbacks require a bound engine token");
-
-        {
-            let _lifecycle_guard = engine_lifecycle_lock()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            debug_assert!(
-                state.operation_active,
-                "host callbacks run inside an operation"
-            );
-            debug_assert!(
-                !state.callback_active,
-                "host callbacks are not recursively nested"
-            );
-            state.callback_active = true;
-            active_callback_tokens()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .insert(token);
-            self.ready.notify_all();
-        }
-
-        struct CallbackGuard<'a> {
-            coordinator: &'a NativeExecutionCoordinator,
-            token: MermanNativeEngineToken,
-        }
-
-        impl Drop for CallbackGuard<'_> {
-            fn drop(&mut self) {
-                let _lifecycle_guard = engine_lifecycle_lock()
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                {
-                    let mut state = self
-                        .coordinator
-                        .state
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state.callback_active = false;
-                    self.coordinator.ready.notify_all();
-                }
-                active_callback_tokens()
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .remove(&self.token);
-            }
-        }
-
-        let _guard = CallbackGuard {
-            coordinator: self,
-            token,
-        };
-        callback()
-    }
-}
-
-struct NativeOperationGuard<'a> {
-    coordinator: &'a NativeExecutionCoordinator,
-}
-
-impl Drop for NativeOperationGuard<'_> {
-    fn drop(&mut self) {
-        let mut state = self
-            .coordinator
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        debug_assert!(
-            !state.callback_active,
-            "operation cannot end during a host callback"
-        );
-        state.operation_active = false;
-        self.coordinator.ready.notify_all();
-    }
-}
-
-fn active_callback_tokens() -> &'static Mutex<BTreeSet<MermanNativeEngineToken>> {
-    ACTIVE_CALLBACK_TOKENS.get_or_init(|| Mutex::new(BTreeSet::new()))
-}
-
-fn engine_lifecycle_lock() -> &'static Mutex<()> {
-    ENGINE_LIFECYCLE_LOCK.get_or_init(|| Mutex::new(()))
-}
-
-fn callback_is_active(token: MermanNativeEngineToken) -> bool {
-    active_callback_tokens()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(&token)
-}
 
 fn reentrant_call_failure() -> NativeFailure {
     NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")
+}
+
+fn native_failure_from_admission(error: BindingEngineAdmissionError) -> NativeFailure {
+    match error {
+        BindingEngineAdmissionError::Busy => NativeFailure::new(
+            MERMAN_NATIVE_STATUS_BUSY,
+            "the native engine has an active operation",
+        )
+        .with_kind(BindingErrorKind::Busy),
+        BindingEngineAdmissionError::ReentrantCall => reentrant_call_failure(),
+        BindingEngineAdmissionError::Closed => NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+            "engine token is closed",
+        ),
+        BindingEngineAdmissionError::InvalidCallbackState => NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+            "host callback admission was requested outside its engine operation",
+        ),
+        BindingEngineAdmissionError::CounterExhausted => NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+            "native engine operation counter is exhausted",
+        ),
+    }
 }
 
 fn native_struct_size<T>() -> u32 {
@@ -310,6 +217,7 @@ fn native_status_name(status: MermanNativeStatus) -> &'static str {
         MERMAN_NATIVE_STATUS_CALLBACK_ERROR => "callback-error",
         MERMAN_NATIVE_STATUS_REENTRANT_CALL => "reentrant-call",
         MERMAN_NATIVE_STATUS_INVALID_ENGINE => "invalid-engine",
+        MERMAN_NATIVE_STATUS_BUSY => "busy",
         _ => "unknown-status",
     }
 }
@@ -319,6 +227,7 @@ fn native_error_kind_name(kind: BindingErrorKind) -> &'static str {
         BindingErrorKind::Generic => MERMAN_NATIVE_ERROR_KIND_GENERIC,
         BindingErrorKind::UnknownOperation => MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
         BindingErrorKind::MissingCapability => MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY,
+        BindingErrorKind::Busy => MERMAN_NATIVE_ERROR_KIND_BUSY,
         BindingErrorKind::ReentrantCall => MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL,
     }
 }
@@ -364,6 +273,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::Panic => MERMAN_NATIVE_STATUS_PANIC,
         BindingStatus::InternalError => MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
         BindingStatus::ResourceLimitExceeded => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+        BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
     };
     NativeFailure {
         status,
@@ -460,34 +370,30 @@ fn owned_buffer_view(bytes: &mut Vec<u8>) -> MermanNativeBuffer {
 }
 
 fn register_result_allocation(
-    result: *mut MermanNativeResult,
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
-) -> (MermanNativeBuffer, MermanNativeBuffer) {
+) -> Result<(u64, MermanNativeBuffer, MermanNativeBuffer), NativeFailure> {
     let mut registry = allocation_registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.results.insert(
-        result as usize,
-        NativeResultAllocation {
-            data,
-            metadata_or_error_json,
-        },
-    );
+    let token = registry.register(data, metadata_or_error_json)?;
     let allocation = registry
         .results
-        .get_mut(&(result as usize))
+        .get_mut(&token)
         .expect("result allocation was inserted");
     let data = owned_buffer_view(&mut allocation.data);
     let metadata_or_error_json = owned_buffer_view(&mut allocation.metadata_or_error_json);
-    (data, metadata_or_error_json)
+    Ok((token, data, metadata_or_error_json))
 }
 
-fn release_result_allocation(result: *mut MermanNativeResult) {
+fn release_result_allocation(token: u64) {
+    if token == 0 {
+        return;
+    }
     let mut registry = allocation_registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let _ = registry.results.remove(&(result as usize));
+    let _ = registry.results.remove(&token);
 }
 
 fn operation_media_type(operation: MermanNativeOperationCode) -> Option<&'static str> {
@@ -502,13 +408,38 @@ fn normalized_operation(operation: MermanNativeOperationCode) -> MermanNativeOpe
     }
 }
 
-fn empty_native_result(
+fn initialized_native_result() -> MermanNativeResult {
+    MermanNativeResult {
+        struct_size: native_struct_size::<MermanNativeResult>(),
+        allocation_token: 0,
+        status: 0,
+        operation: 0,
+        media_type: MermanNativeSlice {
+            struct_size: 0,
+            data: ptr::null(),
+            len: 0,
+        },
+        data: MermanNativeBuffer {
+            struct_size: 0,
+            data: ptr::null_mut(),
+            len: 0,
+        },
+        metadata_or_error_json: MermanNativeBuffer {
+            struct_size: 0,
+            data: ptr::null_mut(),
+            len: 0,
+        },
+    }
+}
+
+fn completed_empty_native_result(
     status: MermanNativeStatus,
     operation: MermanNativeOperationCode,
     media_type: Option<&'static str>,
 ) -> MermanNativeResult {
     MermanNativeResult {
         struct_size: native_struct_size::<MermanNativeResult>(),
+        allocation_token: 0,
         status,
         operation: normalized_operation(operation),
         media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
@@ -519,10 +450,10 @@ fn empty_native_result(
 
 fn validate_struct_size<T>(actual: u32, name: &str) -> Result<(), NativeFailure> {
     let required = native_struct_size::<T>();
-    if actual < required {
+    if actual != required {
         return Err(NativeFailure::new(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
-            format!("{name}.struct_size is {actual}; expected at least {required}"),
+            format!("{name}.struct_size is {actual}; expected exactly {required}"),
         ));
     }
     Ok(())
@@ -540,7 +471,27 @@ unsafe fn result_is_writable(out_result: *mut MermanNativeResult) -> Result<(), 
         ));
     }
     let struct_size = unsafe { read_record_struct_size(out_result) };
-    validate_struct_size::<MermanNativeResult>(struct_size, "out_result")
+    validate_struct_size::<MermanNativeResult>(struct_size, "out_result")?;
+    let result = unsafe { &*out_result };
+    let is_zero_initialized = result.allocation_token == 0
+        && result.status == 0
+        && result.operation == 0
+        && result.media_type.struct_size == 0
+        && result.media_type.data.is_null()
+        && result.media_type.len == 0
+        && result.data.struct_size == 0
+        && result.data.data.is_null()
+        && result.data.len == 0
+        && result.metadata_or_error_json.struct_size == 0
+        && result.metadata_or_error_json.data.is_null()
+        && result.metadata_or_error_json.len == 0;
+    if !is_zero_initialized {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_result must be fully zero-initialized with only struct_size set",
+        ));
+    }
+    Ok(())
 }
 
 unsafe fn write_native_result(
@@ -550,14 +501,30 @@ unsafe fn write_native_result(
     media_type: Option<&'static str>,
     data: Vec<u8>,
     metadata_or_error_json: Vec<u8>,
-) {
-    let (data, metadata_or_error_json) =
-        register_result_allocation(out_result, data, metadata_or_error_json);
+) -> MermanNativeStatus {
+    let (allocation_token, data, metadata_or_error_json) =
+        match register_result_allocation(data, metadata_or_error_json) {
+            Ok(allocation) => allocation,
+            Err(failure) => {
+                unsafe {
+                    ptr::write(
+                        out_result,
+                        completed_empty_native_result(
+                            MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                            operation,
+                            media_type,
+                        ),
+                    );
+                }
+                return failure.status;
+            }
+        };
     unsafe {
         ptr::write(
             out_result,
             MermanNativeResult {
                 struct_size: native_struct_size::<MermanNativeResult>(),
+                allocation_token,
                 status,
                 operation: normalized_operation(operation),
                 media_type: static_slice(media_type.unwrap_or_default().as_bytes()),
@@ -566,13 +533,14 @@ unsafe fn write_native_result(
             },
         );
     }
+    status
 }
 
 unsafe fn write_native_failure(
     out_result: *mut MermanNativeResult,
     operation: MermanNativeOperationCode,
     failure: &NativeFailure,
-) {
+) -> MermanNativeStatus {
     unsafe {
         write_native_result(
             out_result,
@@ -581,7 +549,7 @@ unsafe fn write_native_failure(
             operation_media_type(operation),
             Vec::new(),
             native_error_json(failure),
-        );
+        )
     }
 }
 
@@ -591,7 +559,7 @@ unsafe fn write_failure_if_possible(
     failure: &NativeFailure,
 ) {
     if unsafe { result_is_writable(out_result) }.is_ok() {
-        unsafe { write_native_failure(out_result, operation, failure) };
+        let _ = unsafe { write_native_failure(out_result, operation, failure) };
     }
 }
 
@@ -689,18 +657,23 @@ fn execute_with_engine<T>(
     request: NativeOperationRequest<'_>,
     consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
 ) -> Result<T, NativeFailure> {
-    if callback_is_active(token) {
-        return Err(reentrant_call_failure());
-    }
     let state = acquire_engine(token)?;
-    let _operation = state.coordinator.enter_operation()?;
+    let _operation = state
+        .admission
+        .enter_operation()
+        .map_err(native_failure_from_admission)?;
 
-    let operation = merman_bindings_core::BindingOperationKind::from_native_code(request.operation)
-        .map_err(native_failure_from_binding)?;
+    let operation =
+        merman_native_operation_key(request.operation).ok_or_else(|| NativeFailure {
+            status: MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+            kind: BindingErrorKind::UnknownOperation,
+            capability_id: None,
+            message: format!("unknown native operation code `{}`", request.operation),
+        })?;
     let result = state
         .engine
         .execute(BindingOperationRequest {
-            operation_id: operation.operation_id(),
+            operation_id: operation.spec().id,
             source: request.source,
             uri: request.uri,
             options_json: request.options_json,
@@ -708,7 +681,7 @@ fn execute_with_engine<T>(
         .map_err(native_failure_from_binding)?;
 
     consume(NativeExecution {
-        operation: result.operation.native_code(),
+        operation: merman_native_operation_code(result.operation.key()),
         media_type: result.media_type,
         data: result.data,
         metadata_json: result.metadata_json,
@@ -720,7 +693,7 @@ fn execute_with_engine<T>(
 struct NativeHostTextMeasurer {
     callback: MermanNativeTextMeasureCallback,
     user_data: usize,
-    coordinator: Arc<NativeExecutionCoordinator>,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[cfg(feature = "svg")]
@@ -731,12 +704,12 @@ impl NativeHostTextMeasurer {
     fn new(
         callback: MermanNativeTextMeasureCallback,
         user_data: *mut std::ffi::c_void,
-        coordinator: Arc<NativeExecutionCoordinator>,
+        admission: Arc<BindingEngineAdmission>,
     ) -> Self {
         Self {
             callback,
             user_data: user_data as usize,
-            coordinator,
+            admission,
         }
     }
 
@@ -790,13 +763,27 @@ impl NativeHostTextMeasurer {
             raw_width: 0.0,
             line_count: 0,
         };
-        let status = self.coordinator.invoke_host_callback(|| unsafe {
+        let _callback = self
+            .admission
+            .enter_callback()
+            .map_err(native_failure_from_admission)
+            .map_err(|failure| {
+                merman_bindings_core::HostTextMeasurementError::new(failure.message)
+            })?;
+        let status = unsafe {
             (self.callback)(
                 &native_request,
                 &mut native_result,
                 self.user_data as *mut std::ffi::c_void,
             )
-        });
+        };
+        if !merman_native_status_is_known(status) {
+            return Err(
+                merman_bindings_core::HostTextMeasurementError::invalid_value(format!(
+                    "host text-measure callback returned unknown status {status}"
+                )),
+            );
+        }
         if status != MERMAN_NATIVE_STATUS_OK {
             return Err(merman_bindings_core::HostTextMeasurementError::new(
                 "host text-measure callback returned an error status",
@@ -810,46 +797,38 @@ impl NativeHostTextMeasurer {
             || native_result.handled > 1
             || native_result.has_raw_width > 1
         {
-            return Err(merman_bindings_core::HostTextMeasurementError::new(
-                "host text-measure callback returned an invalid result record",
-            ));
+            return Err(
+                merman_bindings_core::HostTextMeasurementError::invalid_value(
+                    "host text-measure callback returned an invalid result record",
+                ),
+            );
         }
         if native_result.handled == 0 {
             return Ok(None);
         }
 
-        let Some(kind) = merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
-            native_result.result_kind,
-        ) else {
-            return Err(merman_bindings_core::HostTextMeasurementError::new(
-                "host text-measure callback returned an unknown result kind",
-            ));
-        };
-        if kind
-            != merman_bindings_core::HostTextMeasurementResultKind::expected_for_operation(
-                request.operation,
-            )
-        {
-            return Err(merman_bindings_core::HostTextMeasurementError::new(
-                "host text-measure callback returned the wrong result kind",
-            ));
-        }
-
-        Ok(Some(
-            merman_bindings_core::host_text_measurement_from_values(
-                Some(kind),
-                merman_bindings_core::HostTextMeasurementValues {
-                    width: native_result.width,
-                    height: native_result.height,
-                    line_count: native_result.line_count,
-                    length: native_result.length,
-                    bbox_left: native_result.bbox_left,
-                    bbox_right: native_result.bbox_right,
-                    raw_width: (native_result.has_raw_width != 0)
-                        .then_some(native_result.raw_width),
-                },
+        use merman_bindings_core::HostTextMeasurementResultKind as ResultKind;
+        let kind = ResultKind::from_external_code(native_result.result_kind);
+        let metrics = matches!(
+            kind,
+            Some(ResultKind::Metrics | ResultKind::WrappedWithRawWidth)
+        );
+        let length = matches!(kind, Some(ResultKind::Length));
+        let extents = matches!(kind, Some(ResultKind::HorizontalExtents));
+        let record = merman_bindings_core::HostTextMeasurementRecord {
+            result_kind: kind,
+            width: metrics.then_some(native_result.width),
+            height: metrics.then_some(native_result.height),
+            line_count: metrics.then_some(
+                i128::try_from(native_result.line_count)
+                    .expect("C size_t line counts fit in an i128"),
             ),
-        ))
+            length: length.then_some(native_result.length),
+            bbox_left: extents.then_some(native_result.bbox_left),
+            bbox_right: extents.then_some(native_result.bbox_right),
+            raw_width: (native_result.has_raw_width != 0).then_some(native_result.raw_width),
+        };
+        merman_bindings_core::decode_host_text_measurement(request, record).map(Some)
     }
 }
 
@@ -925,8 +904,15 @@ unsafe fn get_native_api_impl(
             "request",
         )?;
         let request = unsafe { ptr::read(request) };
-        let output_size = unsafe { read_record_struct_size(out_api) };
-        validate_struct_size::<MermanNativeApi>(output_size, "out_api")?;
+        let output_capacity = unsafe { read_record_struct_size(out_api) };
+        if output_capacity < MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                format!(
+                    "out_api.struct_size capacity is {output_capacity}; expected at least the ABI 3 minimum prefix size {MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE}"
+                ),
+            ));
+        }
         if request.expected_abi_version != MERMAN_NATIVE_ABI_VERSION {
             return Err(NativeFailure::new(
                 MERMAN_NATIVE_STATUS_ABI_MISMATCH,
@@ -936,16 +922,16 @@ unsafe fn get_native_api_impl(
                 ),
             ));
         }
-        let expected_digest = unsafe {
+        let expected_prefix_digest = unsafe {
             native_slice_bytes(
-                request.expected_layout_descriptor_digest,
-                "request.expected_layout_descriptor_digest",
+                request.expected_minimum_prefix_layout_digest,
+                "request.expected_minimum_prefix_layout_digest",
             )
         }?;
-        if expected_digest != MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes() {
+        if expected_prefix_digest != MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes() {
             return Err(NativeFailure::new(
                 MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH,
-                "native ABI descriptor digest does not match this library",
+                "native ABI minimum-prefix layout digest does not match this library",
             ));
         }
 
@@ -953,18 +939,31 @@ unsafe fn get_native_api_impl(
         let api = MermanNativeApi {
             struct_size: native_struct_size::<MermanNativeApi>(),
             abi_version: MERMAN_NATIVE_ABI_VERSION,
-            layout_descriptor_digest: static_slice(
-                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            minimum_prefix_layout_digest: static_slice(
+                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
+            ),
+            full_descriptor_digest: static_slice(
+                MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST.as_bytes(),
             ),
             capability_catalog_digest: static_slice(capability_catalog_digest),
             package_version: static_slice(PACKAGE_VERSION),
             runtime_catalog: Some(native_runtime_catalog),
             engine_new: Some(native_engine_new),
-            engine_free: Some(native_engine_free),
+            engine_try_close: Some(native_engine_try_close),
             execute_collect: Some(native_execute_collect),
             result_free: Some(native_result_free),
         };
-        unsafe { ptr::write(out_api, api) };
+        let producer_size = size_of::<MermanNativeApi>();
+        let copy_len = usize::min(output_capacity as usize, producer_size);
+        unsafe {
+            ptr::copy_nonoverlapping(
+                ptr::addr_of!(api).cast::<u8>(),
+                out_api.cast::<u8>(),
+                copy_len,
+            );
+            ptr::addr_of_mut!((*out_api).struct_size)
+                .write(native_struct_size::<MermanNativeApi>());
+        }
         Ok(())
     })();
 
@@ -989,23 +988,19 @@ fn runtime_catalog_impl(out_result: *mut MermanNativeResult) -> MermanNativeStat
         return failure.status;
     }
     match runtime_catalog_bytes() {
-        Ok(catalog) => {
-            unsafe {
-                write_native_result(
-                    out_result,
-                    MERMAN_NATIVE_STATUS_OK,
-                    MERMAN_NATIVE_OPERATION_NONE,
-                    None,
-                    Vec::new(),
-                    catalog.to_vec(),
-                );
-            }
-            MERMAN_NATIVE_STATUS_OK
-        }
-        Err(failure) => {
-            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-            failure.status
-        }
+        Ok(catalog) => unsafe {
+            write_native_result(
+                out_result,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                catalog.to_vec(),
+            )
+        },
+        Err(failure) => unsafe {
+            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+        },
     }
 }
 
@@ -1034,8 +1029,7 @@ unsafe fn engine_new_impl(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
             "out_engine must not be null",
         );
-        unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-        return failure.status;
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
     unsafe { ptr::write(out_engine, 0) };
 
@@ -1043,7 +1037,11 @@ unsafe fn engine_new_impl(
         let config = unsafe { read_engine_config(config) }?;
         let options_json =
             unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
-        let coordinator = Arc::new(NativeExecutionCoordinator::new());
+        let admission = BindingEngineAdmission::new(if config.text_measure.is_some() {
+            BindingEngineAdmissionMode::HostCallback
+        } else {
+            BindingEngineAdmissionMode::Concurrent
+        });
         let engine =
             binding_engine_for_transport(options_json).map_err(native_failure_from_binding)?;
 
@@ -1052,7 +1050,7 @@ unsafe fn engine_new_impl(
             let measurer = NativeHostTextMeasurer::new(
                 callback,
                 config.text_measure_user_data,
-                Arc::clone(&coordinator),
+                Arc::clone(&admission),
             );
             engine.with_host_text_measurer(Arc::new(measurer))
         } else {
@@ -1070,10 +1068,7 @@ unsafe fn engine_new_impl(
             engine
         };
 
-        let state = Arc::new(NativeEngineState {
-            engine,
-            coordinator: Arc::clone(&coordinator),
-        });
+        let state = Arc::new(NativeEngineState { engine, admission });
         let token = engine_registry()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1083,8 +1078,7 @@ unsafe fn engine_new_impl(
 
     match outcome {
         Ok(token) => {
-            unsafe { ptr::write(out_engine, token) };
-            unsafe {
+            let result_status = unsafe {
                 write_native_result(
                     out_result,
                     MERMAN_NATIVE_STATUS_OK,
@@ -1092,33 +1086,47 @@ unsafe fn engine_new_impl(
                     None,
                     Vec::new(),
                     native_success_json("engine-new"),
-                );
+                )
+            };
+            if result_status != MERMAN_NATIVE_STATUS_OK {
+                let mut registry = engine_registry()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if let Some(state) = registry.acquire(token) {
+                    let _ = state.admission.try_close();
+                }
+                let _ = registry.retire(token);
+                return result_status;
             }
-            MERMAN_NATIVE_STATUS_OK
+            unsafe { ptr::write(out_engine, token) };
+            result_status
         }
-        Err(failure) => {
-            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-            failure.status
-        }
+        Err(failure) => unsafe {
+            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+        },
     }
 }
 
-unsafe extern "C" fn native_engine_free(engine: MermanNativeEngineToken) -> MermanNativeStatus {
+unsafe extern "C" fn native_engine_try_close(
+    engine: MermanNativeEngineToken,
+) -> MermanNativeStatus {
     status_boundary(|| {
-        let _lifecycle_guard = engine_lifecycle_lock()
+        if engine == 0 {
+            return MERMAN_NATIVE_STATUS_INVALID_ENGINE;
+        }
+        let mut registry = engine_registry()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if callback_is_active(engine) {
-            return MERMAN_NATIVE_STATUS_REENTRANT_CALL;
-        }
-        let retired = engine_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .retire(engine);
-        if retired.is_some() {
-            MERMAN_NATIVE_STATUS_OK
-        } else {
-            MERMAN_NATIVE_STATUS_INVALID_ENGINE
+        let Some(state) = registry.acquire(engine) else {
+            return MERMAN_NATIVE_STATUS_INVALID_ENGINE;
+        };
+        match state.admission.try_close() {
+            Ok(()) => {
+                let retired = registry.retire(engine);
+                debug_assert!(retired.is_some(), "close retires the acquired engine token");
+                MERMAN_NATIVE_STATUS_OK
+            }
+            Err(error) => native_failure_from_admission(error).status,
         }
     })
 }
@@ -1146,13 +1154,14 @@ unsafe fn execute_collect_impl(
     let request = match unsafe { read_operation_request(request) } {
         Ok(request) => request,
         Err(failure) => {
-            unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-            return failure.status;
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
         }
     };
     let operation = normalized_operation(request.operation);
     match execute_with_engine(engine, request, |execution| {
-        unsafe {
+        let status = unsafe {
             write_native_result(
                 out_result,
                 MERMAN_NATIVE_STATUS_OK,
@@ -1160,15 +1169,12 @@ unsafe fn execute_collect_impl(
                 Some(execution.media_type),
                 execution.data,
                 execution.metadata_json,
-            );
-        }
-        Ok(())
+            )
+        };
+        Ok(status)
     }) {
-        Ok(()) => MERMAN_NATIVE_STATUS_OK,
-        Err(failure) => {
-            unsafe { write_native_failure(out_result, operation, &failure) };
-            failure.status
-        }
+        Ok(status) => status,
+        Err(failure) => unsafe { write_native_failure(out_result, operation, &failure) },
     }
 }
 
@@ -1182,41 +1188,45 @@ unsafe extern "C" fn native_result_free(result: *mut MermanNativeResult) {
         {
             return;
         }
-        release_result_allocation(result);
-        ptr::write(
-            result,
-            empty_native_result(MERMAN_NATIVE_STATUS_OK, MERMAN_NATIVE_OPERATION_NONE, None),
-        );
+        let allocation_token = ptr::addr_of!((*result).allocation_token).read();
+        release_result_allocation(allocation_token);
+        ptr::write(result, initialized_native_result());
     }));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[repr(C)]
     struct StructSizeOnly {
         struct_size: u32,
     }
 
-    fn api_table() -> MermanNativeApi {
-        let mut api = MermanNativeApi {
+    fn empty_api() -> MermanNativeApi {
+        MermanNativeApi {
             struct_size: native_struct_size::<MermanNativeApi>(),
             abi_version: 0,
-            layout_descriptor_digest: static_slice(&[]),
+            minimum_prefix_layout_digest: static_slice(&[]),
+            full_descriptor_digest: static_slice(&[]),
             capability_catalog_digest: static_slice(&[]),
             package_version: static_slice(&[]),
             runtime_catalog: None,
             engine_new: None,
-            engine_free: None,
+            engine_try_close: None,
             execute_collect: None,
             result_free: None,
-        };
+        }
+    }
+
+    fn api_table() -> MermanNativeApi {
+        let mut api = empty_api();
         let request = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
             expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
-            expected_layout_descriptor_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            expected_minimum_prefix_layout_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
             ),
         };
         let status = unsafe { merman_get_native_api(&request, &mut api) };
@@ -1225,7 +1235,7 @@ mod tests {
     }
 
     fn native_result() -> MermanNativeResult {
-        empty_native_result(MERMAN_NATIVE_STATUS_OK, MERMAN_NATIVE_OPERATION_NONE, None)
+        initialized_native_result()
     }
 
     fn result_json(result: &MermanNativeResult) -> serde_json::Value {
@@ -1325,7 +1335,7 @@ mod tests {
             .windows(b"\"status_name\":\"reentrant-call\"".len())
             .any(|window| window == b"\"status_name\":\"reentrant-call\"");
         unsafe { native_result_free(&mut nested_result) };
-        context.free_status = unsafe { native_engine_free(context.token) };
+        context.free_status = unsafe { native_engine_try_close(context.token) };
 
         let mut other_result = native_result();
         context.other_engine_status = unsafe {
@@ -1388,23 +1398,12 @@ mod tests {
 
     #[test]
     fn api_discovery_requires_exact_version_and_digest() {
-        let mut api = MermanNativeApi {
-            struct_size: native_struct_size::<MermanNativeApi>(),
-            abi_version: 0,
-            layout_descriptor_digest: static_slice(&[]),
-            capability_catalog_digest: static_slice(&[]),
-            package_version: static_slice(&[]),
-            runtime_catalog: None,
-            engine_new: None,
-            engine_free: None,
-            execute_collect: None,
-            result_free: None,
-        };
+        let mut api = empty_api();
         let wrong_version = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
             expected_abi_version: 2,
-            expected_layout_descriptor_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            expected_minimum_prefix_layout_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
             ),
         };
         assert_eq!(
@@ -1415,7 +1414,7 @@ mod tests {
         let wrong_digest = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
             expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
-            expected_layout_descriptor_digest: borrowed_slice(b"sha256:wrong"),
+            expected_minimum_prefix_layout_digest: borrowed_slice(b"sha256:wrong"),
         };
         assert_eq!(
             unsafe { merman_get_native_api(&wrong_digest, &mut api) },
@@ -1427,6 +1426,62 @@ mod tests {
         assert!(api.engine_new.is_some());
         assert!(api.execute_collect.is_some());
         assert!(api.result_free.is_some());
+    }
+
+    #[test]
+    fn discovery_writes_only_the_common_prefix_and_reports_producer_size() {
+        #[repr(C)]
+        struct ExtendedApiBuffer {
+            api: MermanNativeApi,
+            suffix: [u8; 32],
+        }
+
+        let request = MermanNativeApiRequest {
+            struct_size: native_struct_size::<MermanNativeApiRequest>(),
+            expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
+            expected_minimum_prefix_layout_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
+            ),
+        };
+        let mut buffer = ExtendedApiBuffer {
+            api: empty_api(),
+            suffix: [0xa5; 32],
+        };
+        buffer.api.struct_size = native_struct_size::<ExtendedApiBuffer>();
+
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, &mut buffer.api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            buffer.api.struct_size,
+            native_struct_size::<MermanNativeApi>()
+        );
+        assert_eq!(
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+            native_struct_size::<MermanNativeApi>()
+        );
+        assert_eq!(buffer.suffix, [0xa5; 32]);
+        let prefix_digest = unsafe {
+            std::slice::from_raw_parts(
+                buffer.api.minimum_prefix_layout_digest.data,
+                buffer.api.minimum_prefix_layout_digest.len,
+            )
+        };
+        let full_digest = unsafe {
+            std::slice::from_raw_parts(
+                buffer.api.full_descriptor_digest.data,
+                buffer.api.full_descriptor_digest.len,
+            )
+        };
+        assert_eq!(
+            prefix_digest,
+            MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes()
+        );
+        assert_eq!(
+            full_digest,
+            MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST.as_bytes()
+        );
     }
 
     #[test]
@@ -1448,8 +1503,8 @@ mod tests {
         let discovery = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
             expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
-            expected_layout_descriptor_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_LAYOUT_DESCRIPTOR_DIGEST.as_bytes(),
+            expected_minimum_prefix_layout_digest: borrowed_slice(
+                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
             ),
         };
         assert_eq!(
@@ -1501,14 +1556,14 @@ mod tests {
             )
         };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
 
     #[test]
     fn native_slices_reject_lengths_larger_than_isize_max() {
-        let slice = MermanNativeSlice {
+        let mut slice = MermanNativeSlice {
             struct_size: native_struct_size::<MermanNativeSlice>(),
             data: ptr::NonNull::<u8>::dangling().as_ptr(),
             len: (isize::MAX as usize).saturating_add(1),
@@ -1521,6 +1576,12 @@ mod tests {
             failure.message,
             "request.source.len must not exceed isize::MAX"
         );
+
+        slice.struct_size = slice.struct_size.saturating_add(1);
+        let failure = unsafe { native_slice_bytes(slice, "request.source") }
+            .expect_err("oversized records must not silently negotiate a prefix");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert!(failure.message.contains("expected exactly"));
     }
 
     #[test]
@@ -1560,6 +1621,20 @@ mod tests {
         assert_eq!(catalog["package_version"], env!("CARGO_PKG_VERSION"));
         assert!(catalog.get("runtime_contract").is_none());
         assert!(catalog.get("capability_vocabulary").is_none());
+        assert_eq!(
+            catalog["capabilities"],
+            serde_json::to_value(
+                merman_bindings_core::binding_transport_capability_surface().runtime_capabilities()
+            )
+            .unwrap()
+        );
+        assert!(
+            !catalog["capabilities"]["system_adapter_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|id| id == "system-timing")
+        );
 
         for field in [
             "capability_ids",
@@ -1600,121 +1675,176 @@ mod tests {
     }
 
     #[test]
-    fn result_output_only_requires_an_initialized_struct_size() {
+    fn result_output_requires_a_fully_zero_initialized_record() {
         let api = api_table();
-        let mut raw_result = std::mem::MaybeUninit::<MermanNativeResult>::uninit();
-        unsafe {
-            ptr::addr_of_mut!((*raw_result.as_mut_ptr()).struct_size)
-                .write(native_struct_size::<MermanNativeResult>());
-        }
+        let mut result = native_result();
+        result.status = MERMAN_NATIVE_STATUS_INTERNAL_ERROR;
 
         assert_eq!(
-            unsafe { api.runtime_catalog.unwrap()(raw_result.as_mut_ptr()) },
+            unsafe { api.runtime_catalog.unwrap()(&mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.allocation_token, 0);
+
+        result = native_result();
+        assert_eq!(
+            unsafe { api.runtime_catalog.unwrap()(&mut result) },
             MERMAN_NATIVE_STATUS_OK
         );
-
-        let result = unsafe { raw_result.assume_init_mut() };
         assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK);
+        let allocation_token = result.allocation_token;
         assert!(!result.metadata_or_error_json.data.is_null());
-        unsafe { api.result_free.unwrap()(result) };
+        assert_eq!(
+            unsafe { api.runtime_catalog.unwrap()(&mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.allocation_token, allocation_token);
+        unsafe { api.result_free.unwrap()(&mut result) };
     }
 
     #[test]
-    fn result_ownership_is_bound_to_the_written_record_address() {
+    fn moving_a_result_transfers_opaque_token_ownership() {
         let mut original = native_result();
-        unsafe {
-            write_native_result(
-                &mut original,
-                MERMAN_NATIVE_STATUS_OK,
-                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
-                Some("application/json"),
-                b"owned by Merman".to_vec(),
-                b"{\"ok\":true}".to_vec(),
-            );
-        }
-        let original_key = (&mut original as *mut MermanNativeResult) as usize;
+        assert_eq!(
+            unsafe {
+                write_native_result(
+                    &mut original,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                    Some("application/json"),
+                    b"owned by Merman".to_vec(),
+                    b"{\"ok\":true}".to_vec(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let allocation_token = original.allocation_token;
+        assert_ne!(allocation_token, 0);
         assert!(
             allocation_registry()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .results
-                .contains_key(&original_key)
+                .contains_key(&allocation_token)
         );
 
-        let mut copied = unsafe { ptr::read(&original) };
-        unsafe { native_result_free(&mut copied) };
-        assert!(
-            allocation_registry()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .results
-                .contains_key(&original_key)
-        );
-        let original_data =
-            unsafe { std::slice::from_raw_parts(original.data.data, original.data.len) };
-        assert_eq!(original_data, b"owned by Merman");
-
-        unsafe { native_result_free(&mut original) };
+        let mut moved = unsafe { ptr::read(&original) };
+        original = native_result();
+        let moved_data = unsafe { std::slice::from_raw_parts(moved.data.data, moved.data.len) };
+        assert_eq!(moved_data, b"owned by Merman");
+        unsafe { native_result_free(&mut moved) };
         assert!(
             !allocation_registry()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .results
-                .contains_key(&original_key)
+                .contains_key(&allocation_token)
         );
+        assert_eq!(moved.allocation_token, 0);
+        unsafe { native_result_free(&mut original) };
     }
 
     #[test]
-    fn result_free_is_idempotent_and_ignores_unowned_buffer_fields() {
+    fn result_free_trusts_only_the_token_and_ignores_buffer_fields() {
         let mut current = native_result();
-        unsafe {
-            write_native_result(
-                &mut current,
-                MERMAN_NATIVE_STATUS_OK,
-                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
-                Some("application/json"),
-                b"current allocation".to_vec(),
-                Vec::new(),
-            );
-        }
-        let mut forged_copy = native_result();
-        forged_copy.data = current.data;
-        unsafe { native_result_free(&mut forged_copy) };
-        let current_data =
-            unsafe { std::slice::from_raw_parts(current.data.data, current.data.len) };
-        assert_eq!(current_data, b"current allocation");
+        assert_eq!(
+            unsafe {
+                write_native_result(
+                    &mut current,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                    Some("application/json"),
+                    b"current allocation".to_vec(),
+                    Vec::new(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let token = current.allocation_token;
 
         let mut foreign = b"host allocation".to_vec();
-        let mut result = native_result();
-        result.data = MermanNativeBuffer {
+        current.data = MermanNativeBuffer {
             struct_size: native_struct_size::<MermanNativeBuffer>(),
             data: foreign.as_mut_ptr(),
             len: foreign.len(),
         };
 
-        unsafe { native_result_free(&mut result) };
-        assert_eq!(foreign, b"host allocation");
-        assert!(result.data.data.is_null());
-        assert!(result.metadata_or_error_json.data.is_null());
-
-        unsafe { native_result_free(&mut result) };
-        assert_eq!(foreign, b"host allocation");
-
         unsafe { native_result_free(&mut current) };
+        assert_eq!(foreign, b"host allocation");
+        assert_eq!(current.allocation_token, 0);
+        assert!(
+            !allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&token)
+        );
     }
 
     #[test]
-    fn result_free_reads_only_the_initialized_struct_size_prefix() {
-        let mut raw_result = std::mem::MaybeUninit::<MermanNativeResult>::uninit();
-        unsafe {
-            ptr::addr_of_mut!((*raw_result.as_mut_ptr()).struct_size)
-                .write(native_struct_size::<MermanNativeResult>());
-            native_result_free(raw_result.as_mut_ptr());
-        }
-        let result = unsafe { raw_result.assume_init() };
-        assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK);
-        assert!(result.data.data.is_null());
-        assert!(result.metadata_or_error_json.data.is_null());
+    fn stale_and_random_non_live_tokens_release_nothing_and_tokens_never_reuse() {
+        let mut first = native_result();
+        assert_eq!(
+            unsafe {
+                write_native_result(
+                    &mut first,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_NONE,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let first_token = first.allocation_token;
+        unsafe { native_result_free(&mut first) };
+
+        let mut second = native_result();
+        assert_eq!(
+            unsafe {
+                write_native_result(
+                    &mut second,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_NONE,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert!(second.allocation_token > first_token);
+
+        let mut stale = native_result();
+        stale.allocation_token = first_token;
+        unsafe { native_result_free(&mut stale) };
+        assert!(
+            allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&second.allocation_token)
+        );
+
+        let mut random = native_result();
+        random.allocation_token = u64::MAX;
+        unsafe { native_result_free(&mut random) };
+        assert_eq!(random.allocation_token, 0);
+        unsafe { native_result_free(&mut second) };
+    }
+
+    #[test]
+    fn allocation_token_exhaustion_is_checked_without_reuse() {
+        let mut registry = NativeAllocationRegistry {
+            last_token: u64::MAX,
+            results: BTreeMap::new(),
+        };
+        let failure = registry
+            .register(Vec::new(), Vec::new())
+            .expect_err("exhausted tokens must not wrap to zero");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
+        assert!(registry.results.is_empty());
     }
 
     #[test]
@@ -1751,11 +1881,11 @@ mod tests {
         assert!(result.data.data.is_null());
 
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_INVALID_ENGINE
         );
     }
@@ -1790,7 +1920,7 @@ mod tests {
         );
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
@@ -1819,13 +1949,13 @@ mod tests {
         assert!(error["capability_id"].is_null());
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
 
     #[test]
-    fn acquired_engine_state_survives_token_retirement() {
+    fn acquired_engine_reference_cannot_enter_after_successful_close() {
         let api = api_table();
         let mut config_result = native_result();
         let mut token = 0;
@@ -1837,12 +1967,7 @@ mod tests {
 
         let acquired = acquire_engine(token).expect("live token must be acquirable");
         assert_eq!(
-            acquired.coordinator.token.load(Ordering::Acquire),
-            token,
-            "the callback guard must use the published token in every build profile"
-        );
-        assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
         let failure = match acquire_engine(token) {
@@ -1851,15 +1976,47 @@ mod tests {
         };
         assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ENGINE);
 
-        let operation = acquired
-            .coordinator
-            .enter_operation()
-            .expect("an already acquired engine remains alive after retirement");
-        drop(operation);
+        assert!(matches!(
+            acquired.admission.enter_operation(),
+            Err(BindingEngineAdmissionError::Closed)
+        ));
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_INVALID_ENGINE
         );
+    }
+
+    #[test]
+    fn try_close_returns_busy_without_retiring_an_active_engine() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let acquired = acquire_engine(token).expect("live token");
+        let operation = acquired
+            .admission
+            .enter_operation()
+            .expect("active operation");
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_BUSY
+        );
+        assert!(
+            acquire_engine(token).is_ok(),
+            "busy close must retain the token"
+        );
+
+        drop(operation);
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert!(acquire_engine(token).is_err());
     }
 
     #[test]
@@ -1887,7 +2044,7 @@ mod tests {
                 assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
                 assert_ne!(token, 0);
                 assert_eq!(
-                    unsafe { api.engine_free.unwrap()(token) },
+                    unsafe { api.engine_try_close.unwrap()(token) },
                     MERMAN_NATIVE_STATUS_OK
                 );
             }
@@ -1960,11 +2117,58 @@ mod tests {
 
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(other_token) },
+            unsafe { api.engine_try_close.unwrap()(other_token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn callback_enabled_engine_rejects_a_competing_operation_as_busy() {
+        let api = api_table();
+        let context = Box::new(ConcurrentFreeTextMeasureContext {
+            blocked_once: std::sync::atomic::AtomicBool::new(true),
+            entered: std::sync::Barrier::new(1),
+            proceed: std::sync::Barrier::new(1),
+        });
+        let mut config = native_config();
+        config.text_measure = Some(concurrent_free_text_measure_callback);
+        config.text_measure_user_data = (&*context as *const ConcurrentFreeTextMeasureContext)
+            .cast_mut()
+            .cast();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let acquired = acquire_engine(token).expect("live callback engine");
+        let operation = acquired
+            .admission
+            .enter_operation()
+            .expect("first operation");
+        let request = native_request(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nA --> B",
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_BUSY
+        );
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_BUSY);
+        assert_eq!(result_json(&result)["kind"], MERMAN_NATIVE_ERROR_KIND_BUSY);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        drop(operation);
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
@@ -2003,14 +2207,14 @@ mod tests {
 
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
 
     #[cfg(feature = "svg")]
     #[test]
-    fn engine_free_is_rejected_while_any_thread_is_in_a_host_callback() {
+    fn try_close_is_reentrant_while_any_thread_is_in_a_host_callback() {
         let api = api_table();
         let context = Box::new(ConcurrentFreeTextMeasureContext {
             blocked_once: std::sync::atomic::AtomicBool::new(false),
@@ -2048,7 +2252,7 @@ mod tests {
 
         context.entered.wait();
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_REENTRANT_CALL
         );
         context.proceed.wait();
@@ -2057,7 +2261,7 @@ mod tests {
         assert!(rendered_svg.starts_with(b"<svg"));
 
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
@@ -2097,7 +2301,7 @@ mod tests {
         }
 
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }
@@ -2127,7 +2331,7 @@ mod tests {
         assert_eq!(error["capability_id"], "svg");
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
-            unsafe { api.engine_free.unwrap()(token) },
+            unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
     }

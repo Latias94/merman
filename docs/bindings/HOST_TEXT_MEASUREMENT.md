@@ -204,15 +204,18 @@ host text API needs owned strings.
 ## Lifecycle And Threading Rules
 
 - The callback and `user_data` are fixed at engine creation; ABI 3 has no callback setter or clearer.
-- Keep the callback and `user_data` alive until the engine token is retired and every operation that
-  already acquired it has returned.
-- Outside a callback, `engine_free` rejects future calls immediately but does not wait for an
-  already-acquired operation. Coordinate those operations before destroying host-side state.
+- Keep the callback and `user_data` alive until `engine_try_close` succeeds.
+- `engine_try_close` never waits. It returns `MERMAN_NATIVE_STATUS_BUSY` while an operation is
+  active and leaves the token valid for a later retry. Success permanently closes admission before
+  retiring the token, so host-side callback state may then be destroyed.
 - Treat callbacks as synchronous and latency-sensitive. They run during layout.
 - If the same reusable engine can render on multiple threads, the callback and all shared font
   caches must be thread-safe.
 - Do not execute on or retire the same engine from inside its callback. ABI 3 rejects same-thread
   and cross-thread callback re-entry with `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
+- A raw C callback must return normally. It must not unwind, throw, propagate SEH, call `longjmp`,
+  or otherwise perform a non-local exit across the native boundary. Catch host-language failures
+  and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`.
 - Return `handled=0` when a request cannot be measured faithfully. A bad "handled" value is worse
   than falling back.
 
