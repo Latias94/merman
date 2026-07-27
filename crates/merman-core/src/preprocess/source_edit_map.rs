@@ -156,6 +156,9 @@ struct SourceEditMap {
     output_len: usize,
     segments: Vec<EditMapSegment>,
     gaps: Vec<EditMapGap>,
+    // Boundary mappings are frequent (notably CRLF normalization) but do not make a span
+    // unmappable. Keep only the relevant regions in a searchable index for fact lookups.
+    unmapped_output_ranges: Vec<Range<usize>>,
     #[cfg(test)]
     scan_stats: EditMapScanStats,
 }
@@ -175,6 +178,7 @@ impl SourceEditMap {
             output_len: source_len,
             segments,
             gaps: Vec::new(),
+            unmapped_output_ranges: Vec::new(),
             #[cfg(test)]
             scan_stats: EditMapScanStats::default(),
         }
@@ -269,14 +273,30 @@ impl SourceEditMap {
     }
 
     fn has_unmapped_overlap(&self, start: usize, end: usize) -> bool {
-        self.segments.iter().any(|segment| {
-            segment.mapping == SegmentMapping::Unmapped
-                && if start == end {
-                    segment.output.start < start && start < segment.output.end
-                } else {
-                    segment.output.start < end && start < segment.output.end
-                }
+        let first = self
+            .unmapped_output_ranges
+            .partition_point(|range| range.end <= start);
+        self.unmapped_output_ranges.get(first).is_some_and(|range| {
+            if start == end {
+                range.start < start && start < range.end
+            } else {
+                range.start < end && start < range.end
+            }
         })
+    }
+
+    fn unmapped_ranges_match_segments(&self) -> bool {
+        self.unmapped_output_ranges.iter().eq(self
+            .segments
+            .iter()
+            .filter(|segment| segment.mapping == SegmentMapping::Unmapped)
+            .map(|segment| &segment.output))
+    }
+
+    fn unmapped_ranges_are_ordered(&self) -> bool {
+        self.unmapped_output_ranges
+            .windows(2)
+            .all(|pair| pair[0].end <= pair[1].start)
     }
 
     fn is_well_formed(&self) -> bool {
@@ -291,6 +311,8 @@ impl SourceEditMap {
                 .gaps
                 .windows(2)
                 .all(|pair| pair[0].output_offset < pair[1].output_offset)
+            && self.unmapped_ranges_are_ordered()
+            && self.unmapped_ranges_match_segments()
             && self
                 .segments
                 .last()
@@ -746,11 +768,18 @@ impl EditMapBuilder {
 
     fn finish(self, output_len: usize) -> SourceEditMap {
         debug_assert_eq!(self.output_len, output_len);
+        let segments = self.segments;
+        let unmapped_output_ranges = segments
+            .iter()
+            .filter(|segment| segment.mapping == SegmentMapping::Unmapped)
+            .map(|segment| segment.output.clone())
+            .collect();
         SourceEditMap {
             original_len: self.original_len,
             output_len,
-            segments: self.segments,
+            segments,
             gaps: self.gaps,
+            unmapped_output_ranges,
             #[cfg(test)]
             scan_stats: self.cursor.scan_stats,
         }
@@ -875,6 +904,8 @@ mod tests {
             "!",
             ReplacementMapping::ExactBytes,
         )]);
+        assert!(source.edit_map.unmapped_ranges_match_segments());
+        assert!(!source.edit_map.unmapped_output_ranges.is_empty());
 
         let generated = source.text().find('ﬂ').unwrap();
         assert_eq!(
@@ -913,6 +944,10 @@ mod tests {
         let mut source = PreprocessedSource::new(&original);
         source.apply_edits(crlf_normalization_edits(source.text()));
         assert!(!source.text().contains('\r'));
+        assert!(
+            source.edit_map.unmapped_output_ranges.is_empty(),
+            "CRLF boundary mappings must not make every fact lookup scan every line"
+        );
 
         let even_comments = comment_line_deletions(source.text(), "%% even-comment-");
         source.apply_edits(even_comments);
