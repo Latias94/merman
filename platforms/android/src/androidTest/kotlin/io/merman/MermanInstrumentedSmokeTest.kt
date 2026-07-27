@@ -16,19 +16,24 @@ class MermanInstrumentedSmokeTest {
 
     @Test
     fun rejectsCoercedRuntimeCatalogVersionFields() {
-        for ((path, value) in listOf(
-            listOf("schema_version") to "1",
-            listOf("schema_version") to 1.0,
-            listOf("transport_api_version") to "1",
-            listOf("transport_api_version") to 1.0,
-            listOf("package_version") to 1,
-            listOf("capabilities", "text_measurement", "protocol_version") to "1",
-            listOf("capabilities", "text_measurement", "protocol_version") to 1.0,
+        val canonical = MermanEngine.runtimeCatalogJson()
+        for ((expected, replacement) in listOf(
+            "\"schema_version\":1" to "\"schema_version\":\"1\"",
+            "\"schema_version\":1" to "\"schema_version\":1.0",
+            "\"transport_api_version\":1" to "\"transport_api_version\":\"1\"",
+            "\"transport_api_version\":1" to "\"transport_api_version\":1.0",
+            "\"protocol_version\":1" to "\"protocol_version\":\"1\"",
+            "\"protocol_version\":1" to "\"protocol_version\":1.0",
         )) {
-            val catalog = JSONObject(MermanEngine.runtimeCatalogJson())
-            putNested(catalog, path, value)
+            val catalog = canonical.replaceFirst(expected, replacement)
+            check(catalog != canonical) {
+                "runtime catalog fixture did not contain $expected"
+            }
             checkCatalogRejected(catalog)
         }
+
+        val catalog = JSONObject(canonical).put("package_version", 1)
+        checkCatalogRejected(catalog.toString())
     }
 
     @Test
@@ -39,24 +44,16 @@ class MermanInstrumentedSmokeTest {
                 .getJSONObject("capabilities")
                 .getJSONObject("text_measurement")
                 .put("provider_ids", JSONArray(providers))
-            checkCatalogRejected(catalog)
+            checkCatalogRejected(catalog.toString())
         }
     }
 
-    private fun checkCatalogRejected(catalog: JSONObject) {
+    private fun checkCatalogRejected(catalog: String) {
         val error = runCatching {
-            MermanEngine.validateRuntimeCatalogPayload(catalog.toString())
+            MermanEngine.validateRuntimeCatalogPayload(catalog)
         }.exceptionOrNull()
         check(error is MermanException) {
             "malformed runtime catalog was accepted: $catalog"
         }
-    }
-
-    private fun putNested(root: JSONObject, path: List<String>, value: Any) {
-        var target = root
-        for (key in path.dropLast(1)) {
-            target = target.getJSONObject(key)
-        }
-        target.put(path.last(), value)
     }
 }
