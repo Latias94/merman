@@ -1,19 +1,16 @@
 use crate::common::{
-    BindingError, BindingStatus, InputResourceOperation, binding_input_resource_policy,
-    binding_runtime_policy_from, binding_site_config, no_diagram_error, parse_options,
-    selected_runtime_policy, source_text,
+    BindingError, BindingStatus, binding_input_resource_policy, binding_runtime_policy_from,
+    binding_site_config, no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    let options = parse_options(options_json)?;
-    let (_, runtime_policy) = selected_runtime_policy(&options)?;
-    let renderer = build_ascii_renderer_with_runtime_policy(
-        &options,
-        InputResourceOperation::Ascii,
-        runtime_policy,
-    )?;
-    render_ascii_with_renderer(&renderer, source)
+    crate::execute_once(crate::BindingOperationRequest {
+        operation_id: "ascii",
+        source,
+        uri: None,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[derive(Clone)]
@@ -27,11 +24,7 @@ impl CachedAsciiEngine {
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         Ok(Self {
-            renderer: build_ascii_renderer_with_runtime_policy(
-                options,
-                InputResourceOperation::ArtifactUnion,
-                runtime_policy,
-            )?,
+            renderer: build_ascii_renderer_with_runtime_policy(options, runtime_policy)?,
         })
     }
 
@@ -43,7 +36,6 @@ impl CachedAsciiEngine {
 
 fn build_ascii_renderer_with_runtime_policy(
     options: &crate::common::BindingOptions,
-    resource_operation: InputResourceOperation,
     runtime_policy: merman::runtime::RuntimePolicy,
 ) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
@@ -63,7 +55,6 @@ fn build_ascii_renderer_with_runtime_policy(
         .with_ascii_options(ascii_options_from_json(options)?)
         .with_resource_policy(binding_input_resource_policy(
             options.analysis.resources.as_ref(),
-            resource_operation,
         )?);
     if let Some(site_config) = binding_site_config(options)? {
         renderer = renderer.with_site_config(site_config);

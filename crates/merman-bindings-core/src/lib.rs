@@ -8,6 +8,7 @@
 
 mod common;
 mod engine;
+mod lifecycle;
 mod metadata;
 mod operation;
 mod svg_plan;
@@ -26,6 +27,10 @@ pub use common::{
     render_resource_options_unavailable, resource_options_json,
 };
 pub use engine::BindingEngine;
+pub use lifecycle::{
+    BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
+    BindingEngineAdmissionMode, BindingOperationAdmission,
+};
 pub use metadata::{
     ArtifactCapabilitySurface, BindingAsciiCapability, BindingAsciiCapabilityEvidence,
     BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
@@ -44,19 +49,17 @@ pub use metadata::{
 };
 pub use operation::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
-    BindingOperationResult, compiled_operation_kind_ids,
+    BindingOperationResult, OperationKey, OperationSpec, compiled_operation_kind_ids, execute_once,
 };
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    BindingEngine::from_options(options_json)?.parse_json(source)
+    execute_once_data("semantic-json", source, None, options_json)
 }
 
 #[cfg(feature = "analysis")]
 pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION};
-#[cfg(feature = "analysis")]
-use merman_analysis::{AnalysisFactsPayload, AnalysisOptions, AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
@@ -82,184 +85,80 @@ pub use text_measurement::{
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("ASCII rendering", "ascii"))
+    execute_once_data("ascii", source, None, options_json)
 }
 
-#[cfg(feature = "analysis")]
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    analysis_payload(source, options_json)
-        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+    execute_once_data("analysis-json", source, None, options_json)
 }
 
-#[cfg(not(feature = "analysis"))]
-pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("analysis", "analysis"))
-}
-
-#[cfg(feature = "analysis")]
 pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    analysis_facts_payload(source, options_json)
-        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+    execute_once_data("analysis-facts-json", source, None, options_json)
 }
 
-#[cfg(not(feature = "analysis"))]
-pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("analysis facts", "analysis"))
-}
-
-#[cfg(feature = "analysis")]
 pub fn analyze_document_json(
     source: &[u8],
     options_json: &[u8],
     uri: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
-    document_analysis_payload(source, options_json, uri)
-        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+    execute_once_data("document-analysis-json", source, Some(uri), options_json)
 }
 
-#[cfg(not(feature = "analysis"))]
-pub fn analyze_document_json(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json, uri);
-    Err(common::feature_required_error(
-        "document analysis",
-        "analysis",
-    ))
-}
-
-#[cfg(feature = "analysis")]
 pub fn analyze_document_facts_json(
     source: &[u8],
     options_json: &[u8],
     uri: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
-    document_analysis_facts_payload(source, options_json, uri)
-        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+    execute_once_data(
+        "document-analysis-facts-json",
+        source,
+        Some(uri),
+        options_json,
+    )
 }
 
-#[cfg(not(feature = "analysis"))]
-pub fn analyze_document_facts_json(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json, uri);
-    Err(common::feature_required_error(
-        "document analysis facts",
-        "analysis",
-    ))
-}
-
-#[cfg(feature = "analysis")]
 pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    common::validation_payload_json_from_analysis(&analysis_payload(source, options_json)?)
-}
-
-#[cfg(not(feature = "analysis"))]
-pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("validation", "analysis"))
+    execute_once_data("validation-json", source, None, options_json)
 }
 
 #[cfg(not(feature = "svg"))]
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("SVG rendering", "svg"))
+    execute_once_data("svg", source, None, options_json)
 }
 
 #[cfg(not(feature = "svg"))]
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("layout_json", "svg"))
+    execute_once_data("layout-json", source, None, options_json)
 }
 
 #[cfg(not(feature = "png"))]
 pub fn render_png(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("PNG rendering", "png"))
+    execute_once_data("png", source, None, options_json)
 }
 
 #[cfg(not(feature = "jpeg"))]
 pub fn render_jpeg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("JPEG rendering", "jpeg"))
+    execute_once_data("jpeg", source, None, options_json)
 }
 
 #[cfg(not(feature = "pdf"))]
 pub fn render_pdf(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let _ = (source, options_json);
-    Err(common::feature_required_error("PDF rendering", "pdf"))
+    execute_once_data("pdf", source, None, options_json)
 }
 
-#[cfg(feature = "analysis")]
-fn analysis_payload(source: &[u8], options_json: &[u8]) -> Result<AnalysisPayload, BindingError> {
-    let source = common::source_text_utf8(source)?;
-    let options = common::parse_options(options_json)?;
-    Ok(Analyzer::with_options(selected_analysis_options(&options)?).analyze(source))
-}
-
-#[cfg(feature = "analysis")]
-fn analysis_facts_payload(
+fn execute_once_data(
+    operation_id: &str,
     source: &[u8],
+    uri: Option<&[u8]>,
     options_json: &[u8],
-) -> Result<AnalysisFactsPayload, BindingError> {
-    let source = common::source_text_utf8(source)?;
-    let options = common::parse_options(options_json)?;
-    Ok(Analyzer::with_options(selected_analysis_options(&options)?).analyze_facts(source))
-}
-
-#[cfg(feature = "analysis")]
-fn document_analysis_payload(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<AnalysisPayload, BindingError> {
-    let source = common::source_text_utf8(source)?;
-    let uri = common::source_text_utf8(uri)?;
-    let descriptor = common::source_descriptor_for_uri(uri);
-    let options = common::parse_options(options_json)?;
-    let analyzer = Analyzer::with_options(
-        selected_analysis_options(&options)?.with_source(descriptor.clone()),
-    );
-    Ok(merman_analysis::analyze_document(
-        source, &analyzer, descriptor,
-    ))
-}
-
-#[cfg(feature = "analysis")]
-fn document_analysis_facts_payload(
-    source: &[u8],
-    options_json: &[u8],
-    uri: &[u8],
-) -> Result<AnalysisFactsPayload, BindingError> {
-    let source = common::source_text_utf8(source)?;
-    let uri = common::source_text_utf8(uri)?;
-    let descriptor = common::source_descriptor_for_uri(uri);
-    let options = common::parse_options(options_json)?;
-    let analyzer = Analyzer::with_options(
-        selected_analysis_options(&options)?.with_source(descriptor.clone()),
-    );
-    Ok(merman_analysis::analyze_document_facts(
-        source, &analyzer, descriptor,
-    ))
-}
-
-#[cfg(feature = "analysis")]
-fn selected_analysis_options(
-    options: &common::BindingOptions,
-) -> Result<AnalysisOptions, BindingError> {
-    let (_, runtime_policy) = common::selected_runtime_policy(options)?;
-    Ok(
-        common::analysis_options(options)?.with_runtime_policy(
-            common::binding_runtime_policy_from(options, runtime_policy)?,
-        ),
-    )
+) -> Result<Vec<u8>, BindingError> {
+    execute_once(BindingOperationRequest {
+        operation_id,
+        source,
+        uri,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[cfg(all(

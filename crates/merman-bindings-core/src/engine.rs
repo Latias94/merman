@@ -117,13 +117,18 @@ impl BindingEngine {
 
     pub(crate) fn for_request_options(
         &self,
+        operation: crate::BindingOperationKind,
         options_json: &[u8],
     ) -> Result<Option<Self>, BindingError> {
         if options_json.is_empty() {
             return Ok(None);
         }
 
-        let merged_json = common::merge_request_options(&self.base_options_json, options_json)?;
+        let merged_json = common::merge_request_options(
+            &self.base_options_json,
+            options_json,
+            operation.resource_scope(),
+        )?;
         let options = common::parse_options(&merged_json)?;
         let engine = Self::with_parsed_options(
             &options,
@@ -405,10 +410,7 @@ impl SemanticOperationEngine {
         } else {
             merman::ParseOptions::strict()
         };
-        let resources = common::binding_input_resource_policy(
-            options.analysis.resources.as_ref(),
-            common::InputResourceOperation::ArtifactUnion,
-        )?;
+        let resources = common::binding_input_resource_policy(options.analysis.resources.as_ref())?;
 
         Ok(Self {
             engine,
@@ -458,7 +460,6 @@ fn classify_semantic_error(error: merman::Error) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(any(not(feature = "svg"), feature = "analysis"))]
     use serde_json::Value;
     use std::sync::Arc;
 

@@ -11,7 +11,9 @@ Reusable engines keep construction options as an immutable baseline. Each operat
 request options that deeply merge over that baseline: nested objects merge recursively, while
 arrays and scalar leaves replace the baseline value. Request-local overrides do not mutate later
 operations. Runtime policy is engine-owned, so reusable requests cannot set it; one-shot operations
-may select it while constructing their temporary engine.
+may select it while constructing their temporary engine. Resource options are deliberately
+stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
+explicit limit must belong to the selected operation.
 
 Unknown top-level fields are ignored. The `layout` and `environment` service objects reject unknown
 fields so removed service paths cannot be silently ignored. Invalid JSON, invalid UTF-8,
@@ -402,6 +404,15 @@ The seven public limits are intentionally family-neutral. Each family performs s
 deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
 candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
 choose a workload profile instead of maintaining diagram-specific threshold tables.
+
+A reusable engine constructor accepts the union of resource limits enforced by its compiled
+operations. Per-request overlays are operation-specific: analysis accepts the source budget;
+semantic JSON, ASCII, and SVG planning accept source/model budgets; layout JSON additionally
+accepts layout work; SVG and export operations accept the complete render budget. An overlay may
+select a stricter effective profile or lower a limit, but it cannot raise a constructor limit,
+replace a finite ceiling with an unbounded value, clear `resources`, or set an unrelated limit.
+One-shot operations may choose any valid profile, but their explicit limits follow the same
+operation ownership.
 
 `interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
 the Typst plugin for every call; caller-provided `resources.limits` may tighten that transport

@@ -1,3 +1,4 @@
+use crate::common::BindingResourceScope;
 use crate::{BindingEngine, BindingError, BindingStatus};
 use serde::Serialize;
 
@@ -61,6 +62,23 @@ impl BindingOperationKind {
     pub const fn requires_uri(self) -> bool {
         self.0.spec().requires_uri
     }
+
+    pub(crate) const fn resource_scope(self) -> BindingResourceScope {
+        match self.key() {
+            OperationKey::AnalysisJson
+            | OperationKey::AnalysisFactsJson
+            | OperationKey::ValidationJson
+            | OperationKey::DocumentAnalysisJson
+            | OperationKey::DocumentAnalysisFactsJson => BindingResourceScope::Analysis,
+            OperationKey::SemanticJson | OperationKey::Ascii | OperationKey::SvgPlanJson => {
+                BindingResourceScope::Model
+            }
+            OperationKey::LayoutJson => BindingResourceScope::Layout,
+            OperationKey::Svg | OperationKey::Png | OperationKey::Jpeg | OperationKey::Pdf => {
+                BindingResourceScope::Render
+            }
+        }
+    }
 }
 
 /// Borrowed request consumed by the shared binding execution path.
@@ -90,57 +108,64 @@ struct BindingOperationMetadata<'a> {
     byte_length: usize,
 }
 
+/// Executes one operation through the same transport-neutral semantics as a reusable engine.
+pub fn execute_once(
+    request: BindingOperationRequest<'_>,
+) -> Result<BindingOperationResult, BindingError> {
+    let operation = resolve_operation_request(&request)?;
+    crate::common::validate_one_shot_resource_options(
+        request.options_json,
+        operation.resource_scope(),
+    )?;
+    BindingEngine::from_options(request.options_json)?.execute_resolved(
+        operation,
+        request.source,
+        request.uri,
+    )
+}
+
 impl BindingEngine {
-    /// Executes the one transport-neutral operation path used by native and generated bindings.
+    /// Executes one operation against this immutable reusable engine.
     pub fn execute(
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
-        let operation = BindingOperationKind::from_id(request.operation_id)?;
-        if operation.requires_uri() != request.uri.is_some() {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "operation `{}` {} a document URI",
-                    operation.operation_id(),
-                    if operation.requires_uri() {
-                        "requires"
-                    } else {
-                        "does not accept"
-                    }
-                ),
-            ));
-        }
-
-        let request_engine = self.for_request_options(request.options_json)?;
+        let operation = resolve_operation_request(&request)?;
+        let request_engine = self.for_request_options(operation, request.options_json)?;
         let engine = request_engine.as_ref().unwrap_or(self);
+        engine.execute_resolved(operation, request.source, request.uri)
+    }
+
+    fn execute_resolved(
+        &self,
+        operation: BindingOperationKind,
+        source: &[u8],
+        uri: Option<&[u8]>,
+    ) -> Result<BindingOperationResult, BindingError> {
         let data = match operation.key() {
-            OperationKey::Svg => engine.render_svg(request.source),
-            OperationKey::SvgPlanJson => engine.svg_plan_json(request.source),
-            OperationKey::Png => engine.render_png(request.source),
-            OperationKey::Jpeg => engine.render_jpeg(request.source),
-            OperationKey::Pdf => engine.render_pdf(request.source),
-            OperationKey::Ascii => engine.render_ascii(request.source),
-            OperationKey::SemanticJson => engine.parse_json(request.source),
-            OperationKey::LayoutJson => engine.layout_json(request.source),
-            OperationKey::AnalysisJson => engine.analyze_json(request.source),
-            OperationKey::AnalysisFactsJson => engine.analysis_facts_json(request.source),
-            OperationKey::ValidationJson => engine.validate_json(request.source),
-            OperationKey::DocumentAnalysisJson => engine.analyze_document_json(
-                request.source,
-                request.uri.expect("validated document URI presence"),
-            ),
-            OperationKey::DocumentAnalysisFactsJson => engine.analyze_document_facts_json(
-                request.source,
-                request.uri.expect("validated document URI presence"),
-            ),
+            OperationKey::Svg => self.render_svg(source),
+            OperationKey::SvgPlanJson => self.svg_plan_json(source),
+            OperationKey::Png => self.render_png(source),
+            OperationKey::Jpeg => self.render_jpeg(source),
+            OperationKey::Pdf => self.render_pdf(source),
+            OperationKey::Ascii => self.render_ascii(source),
+            OperationKey::SemanticJson => self.parse_json(source),
+            OperationKey::LayoutJson => self.layout_json(source),
+            OperationKey::AnalysisJson => self.analyze_json(source),
+            OperationKey::AnalysisFactsJson => self.analysis_facts_json(source),
+            OperationKey::ValidationJson => self.validate_json(source),
+            OperationKey::DocumentAnalysisJson => {
+                self.analyze_document_json(source, uri.expect("validated document URI presence"))
+            }
+            OperationKey::DocumentAnalysisFactsJson => self
+                .analyze_document_facts_json(source, uri.expect("validated document URI presence")),
         }?;
 
         let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
             version: BINDING_OPERATION_SCHEMA_VERSION,
             operation_id: operation.operation_id(),
             media_type: operation.media_type(),
-            runtime_policy: engine.runtime_policy_id(),
+            runtime_policy: self.runtime_policy_id(),
             byte_length: data.len(),
         })
         .map_err(|error| {
@@ -157,6 +182,27 @@ impl BindingEngine {
             metadata_json,
         })
     }
+}
+
+fn resolve_operation_request(
+    request: &BindingOperationRequest<'_>,
+) -> Result<BindingOperationKind, BindingError> {
+    let operation = BindingOperationKind::from_id(request.operation_id)?;
+    if operation.requires_uri() != request.uri.is_some() {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "operation `{}` {} a document URI",
+                operation.operation_id(),
+                if operation.requires_uri() {
+                    "requires"
+                } else {
+                    "does not accept"
+                }
+            ),
+        ));
+    }
+    Ok(operation)
 }
 
 pub fn compiled_operation_kind_ids() -> Vec<&'static str> {
@@ -281,6 +327,119 @@ mod tests {
             })
             .unwrap();
         assert!(!result.data.is_empty());
+    }
+
+    #[test]
+    fn execute_once_uses_the_same_operation_result_contract() {
+        let request = BindingOperationRequest {
+            operation_id: "semantic-json",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: b"",
+        };
+        let one_shot = execute_once(request).unwrap();
+        let reusable = BindingEngine::from_options(b"")
+            .unwrap()
+            .execute(request)
+            .unwrap();
+
+        assert_eq!(one_shot, reusable);
+    }
+
+    #[test]
+    fn one_shot_options_reject_limits_owned_by_another_operation() {
+        let error = execute_once(BindingOperationRequest {
+            operation_id: "semantic-json",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#,
+        })
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("max_svg_bytes"));
+        assert!(error.message().contains("semantic-model"));
+    }
+
+    #[test]
+    fn reusable_request_resource_overlays_only_tighten_the_constructor_ceiling() {
+        let engine = BindingEngine::from_options(
+            br#"{"resources":{"profile":"constrained","limits":{"max_source_bytes":64}}}"#,
+        )
+        .unwrap();
+
+        for options_json in [
+            br#"{"resources":{"profile":"trusted-native"}}"#.as_slice(),
+            br#"{"resources":{"limits":{"max_source_bytes":65}}}"#.as_slice(),
+            br#"{"resources":null}"#.as_slice(),
+        ] {
+            let error = engine
+                .execute(BindingOperationRequest {
+                    operation_id: "semantic-json",
+                    source: b"flowchart TD\nA --> B",
+                    uri: None,
+                    options_json,
+                })
+                .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        }
+    }
+
+    #[test]
+    fn request_resource_tightening_does_not_mutate_the_reusable_engine() {
+        let engine = BindingEngine::from_options(
+            br#"{"resources":{"profile":"constrained","limits":{"max_source_bytes":64}}}"#,
+        )
+        .unwrap();
+        let request = BindingOperationRequest {
+            operation_id: "semantic-json",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{"resources":{"limits":{"max_source_bytes":4}}}"#,
+        };
+        let error = engine.execute(request).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+
+        let baseline = engine
+            .execute(BindingOperationRequest {
+                options_json: b"",
+                ..request
+            })
+            .unwrap();
+        assert!(!baseline.data.is_empty());
+    }
+
+    #[test]
+    fn one_shot_operation_may_choose_a_nondefault_profile() {
+        let result = execute_once(BindingOperationRequest {
+            operation_id: "semantic-json",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{"resources":{"profile":"trusted-native"}}"#,
+        })
+        .unwrap();
+
+        assert!(!result.data.is_empty());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_constructor_accepts_artifact_union_but_request_scope_rejects_sibling_limit() {
+        let engine = BindingEngine::from_options(
+            br#"{"resources":{"profile":"constrained","limits":{"max_svg_bytes":1048576}}}"#,
+        )
+        .unwrap();
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: br#"{"resources":{"limits":{"max_svg_bytes":524288}}}"#,
+            })
+            .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("max_svg_bytes"));
     }
 
     #[test]

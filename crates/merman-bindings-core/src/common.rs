@@ -40,6 +40,7 @@ pub enum BindingErrorKind {
     Generic,
     UnknownOperation,
     MissingCapability,
+    Busy,
     ReentrantCall,
 }
 
@@ -50,6 +51,7 @@ impl BindingErrorKind {
             Self::Generic => "generic",
             Self::UnknownOperation => "unknown-operation",
             Self::MissingCapability => "missing-capability",
+            Self::Busy => "busy",
             Self::ReentrantCall => "reentrant-call",
         }
     }
@@ -69,6 +71,7 @@ pub enum BindingStatus {
     Panic = 8,
     InternalError = 9,
     ResourceLimitExceeded = 10,
+    Busy = 11,
 }
 
 impl BindingStatus {
@@ -89,6 +92,7 @@ impl BindingStatus {
             Self::Panic => "MERMAN_PANIC",
             Self::InternalError => "MERMAN_INTERNAL_ERROR",
             Self::ResourceLimitExceeded => "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+            Self::Busy => "MERMAN_BUSY",
         }
     }
 }
@@ -133,6 +137,15 @@ impl BindingError {
         Self {
             status: BindingStatus::InvalidArgument,
             kind: BindingErrorKind::ReentrantCall,
+            capability_id: None,
+            message: message.into(),
+        }
+    }
+
+    pub fn busy(message: impl Into<String>) -> Self {
+        Self {
+            status: BindingStatus::Busy,
+            kind: BindingErrorKind::Busy,
             capability_id: None,
             message: message.into(),
         }
@@ -487,12 +500,33 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
         ));
     }
     options.analysis = binding_analysis_options_json_from_json_value(&value)?;
+    validate_resource_contract_ids(options.analysis.resources.as_ref())?;
     Ok(options)
+}
+
+fn validate_resource_contract_ids(
+    resources: Option<&ResourceOptionsJson>,
+) -> Result<(), BindingError> {
+    let Some(resources) = resources else {
+        return Ok(());
+    };
+    if let Some(id) = resources
+        .limits
+        .keys()
+        .find(|id| !BindingResourceScope::is_known_limit(id))
+    {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("resource limit id `{id}` is not part of resource contract schema 1"),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn merge_request_options(
     base_options_json: &[u8],
     request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
 ) -> Result<Vec<u8>, BindingError> {
     parse_options(request_options_json)?;
     let request_value: Value = serde_json::from_slice(request_options_json).map_err(|err| {
@@ -507,7 +541,8 @@ pub(crate) fn merge_request_options(
             "request options_json cannot set runtime_policy; configure it when creating the engine",
         ));
     }
-    let request_value = normalize_analysis_wrapper(request_value);
+    let mut request_value = normalize_analysis_wrapper(request_value);
+    let requested_resources = take_request_resource_options(&mut request_value, resource_scope)?;
 
     let mut merged = if base_options_json.is_empty() {
         Value::Object(Map::new())
@@ -522,7 +557,78 @@ pub(crate) fn merge_request_options(
             .map(normalize_analysis_wrapper)?
     };
     merge_json_value(&mut merged, request_value);
+    if let Some(requested_resources) = requested_resources {
+        let ceiling = parse_options(base_options_json)?
+            .analysis
+            .resources
+            .unwrap_or_default();
+        let resources = tighten_resource_options(&ceiling, &requested_resources)?;
+        merged
+            .as_object_mut()
+            .expect("validated binding options always normalize to an object")
+            .insert(
+                "resources".to_string(),
+                serde_json::to_value(resources).map_err(internal_json_error)?,
+            );
+    }
     serde_json::to_vec(&merged).map_err(internal_json_error)
+}
+
+pub(crate) fn validate_one_shot_resource_options(
+    options_json: &[u8],
+    resource_scope: BindingResourceScope,
+) -> Result<(), BindingError> {
+    let mut value = normalize_analysis_wrapper(options_json_value(options_json)?);
+    let _ = take_request_resource_options(&mut value, resource_scope)?;
+    Ok(())
+}
+
+fn take_request_resource_options(
+    value: &mut Value,
+    resource_scope: BindingResourceScope,
+) -> Result<Option<ResourceOptionsJson>, BindingError> {
+    let root = value.as_object_mut().ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "invalid request options_json: options root must be an object",
+        )
+    })?;
+    let Some(resources) = root.remove("resources") else {
+        return Ok(None);
+    };
+    if resources.is_null() {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "request options_json cannot clear the engine resource ceiling",
+        ));
+    }
+    let resources = serde_json::from_value::<ResourceOptionsJson>(resources).map_err(|error| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid request options_json resources: {error}"),
+        )
+    })?;
+    validate_resource_limits_for_scope(&resources, resource_scope)?;
+    Ok(Some(resources))
+}
+
+fn validate_resource_limits_for_scope(
+    resources: &ResourceOptionsJson,
+    resource_scope: BindingResourceScope,
+) -> Result<(), BindingError> {
+    for id in resources.limits.keys() {
+        if !BindingResourceScope::is_known_limit(id) || resource_scope.accepts(id) {
+            continue;
+        }
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resource limit id `{id}` is not available for the {} operation",
+                resource_scope.description()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn request_selects_runtime_policy(value: &Value) -> bool {
@@ -805,27 +911,11 @@ pub(crate) fn reject_selected_runtime_policy(
 }
 
 #[cfg(feature = "analysis")]
-pub(crate) fn analysis_options(
-    options: &BindingOptions,
-) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    analysis_options_for_resource_operation(options, InputResourceOperation::Analysis)
-}
-
-#[cfg(feature = "analysis")]
 pub(crate) fn artifact_analysis_options(
     options: &BindingOptions,
 ) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    analysis_options_for_resource_operation(options, InputResourceOperation::ArtifactUnion)
-}
-
-#[cfg(feature = "analysis")]
-fn analysis_options_for_resource_operation(
-    options: &BindingOptions,
-    operation: InputResourceOperation,
-) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    let max_source_bytes =
-        binding_input_resource_policy(options.analysis.resources.as_ref(), operation)?
-            .value(merman::resources::InputResourceLimitId::MaxSourceBytes);
+    let max_source_bytes = binding_input_resource_policy(options.analysis.resources.as_ref())?
+        .value(merman::resources::InputResourceLimitId::MaxSourceBytes);
 
     let analysis = merman_analysis::AnalysisOptionsJson {
         fixed_today: options.analysis.fixed_today.clone(),
@@ -842,14 +932,46 @@ fn analysis_options_for_resource_operation(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InputResourceOperation {
-    // A cached multi-operation engine accepts the artifact union and projects only limits owned
-    // by the selected operation. The ABI 3 generic request carries that selection explicitly.
-    #[cfg(feature = "analysis")]
+pub(crate) enum BindingResourceScope {
     Analysis,
-    #[cfg(feature = "ascii")]
-    Ascii,
-    ArtifactUnion,
+    Model,
+    Layout,
+    Render,
+}
+
+impl BindingResourceScope {
+    fn is_known_limit(stable_id: &str) -> bool {
+        merman::resources::InputResourceLimitId::from_stable_id(stable_id).is_some()
+            || Self::is_render_limit(stable_id)
+    }
+
+    fn is_render_limit(stable_id: &str) -> bool {
+        matches!(
+            stable_id,
+            "max_layout_work_units" | "max_svg_bytes" | "max_svg_elements"
+        )
+    }
+
+    fn accepts(self, stable_id: &str) -> bool {
+        let input = merman::resources::InputResourceLimitId::from_stable_id(stable_id);
+        match self {
+            Self::Analysis => {
+                input == Some(merman::resources::InputResourceLimitId::MaxSourceBytes)
+            }
+            Self::Model => input.is_some(),
+            Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
+            Self::Render => input.is_some() || Self::is_render_limit(stable_id),
+        }
+    }
+
+    const fn description(self) -> &'static str {
+        match self {
+            Self::Analysis => "analysis",
+            Self::Model => "semantic-model",
+            Self::Layout => "layout",
+            Self::Render => "render",
+        }
+    }
 }
 
 pub(crate) const fn input_resource_limit_available_for_build(
@@ -857,31 +979,6 @@ pub(crate) const fn input_resource_limit_available_for_build(
 ) -> bool {
     // semantic-json is a base operation in every build and enforces the complete input policy.
     true
-}
-
-const fn input_resource_limit_available_for_operation(
-    operation: InputResourceOperation,
-    id: merman::resources::InputResourceLimitId,
-) -> bool {
-    match operation {
-        InputResourceOperation::ArtifactUnion => input_resource_limit_available_for_build(id),
-        #[cfg(feature = "analysis")]
-        InputResourceOperation::Analysis => {
-            cfg!(feature = "analysis")
-                && matches!(id, merman::resources::InputResourceLimitId::MaxSourceBytes)
-        }
-        #[cfg(feature = "ascii")]
-        InputResourceOperation::Ascii => {
-            cfg!(feature = "ascii")
-                && matches!(
-                    id,
-                    merman::resources::InputResourceLimitId::MaxSourceBytes
-                        | merman::resources::InputResourceLimitId::MaxModelItems
-                        | merman::resources::InputResourceLimitId::MaxModelTextBytes
-                        | merman::resources::InputResourceLimitId::MaxModelNestingDepth
-                )
-        }
-    }
 }
 
 fn resource_limit_available_for_build(id: &str) -> bool {
@@ -901,7 +998,6 @@ fn resource_limit_available_for_build(id: &str) -> bool {
 
 pub(crate) fn binding_input_resource_policy(
     resources: Option<&ResourceOptionsJson>,
-    operation: InputResourceOperation,
 ) -> Result<merman::resources::InputResourcePolicy, BindingError> {
     let profile = resources
         .and_then(|resources| resources.profile.as_deref())
@@ -919,12 +1015,10 @@ pub(crate) fn binding_input_resource_policy(
     if let Some(resources) = resources {
         for (id, value) in &resources.limits {
             if let Some(input_id) = merman::resources::InputResourceLimitId::from_stable_id(id) {
-                if !input_resource_limit_available_for_operation(operation, input_id) {
+                if !input_resource_limit_available_for_build(input_id) {
                     return Err(BindingError::new(
                         BindingStatus::InvalidArgument,
-                        format!(
-                            "resource limit id `{id}` is not available for the {operation:?} operation"
-                        ),
+                        format!("resource limit id `{id}` is not available for this artifact"),
                     ));
                 }
                 policy.apply_limit(input_id, *value).map_err(|error| {
@@ -932,16 +1026,12 @@ pub(crate) fn binding_input_resource_policy(
                 })?;
                 continue;
             }
-            if operation == InputResourceOperation::ArtifactUnion
-                && resource_limit_available_for_build(id)
-            {
+            if resource_limit_available_for_build(id) {
                 continue;
             }
             return Err(BindingError::new(
                 BindingStatus::InvalidArgument,
-                format!(
-                    "resource limit id `{id}` is not available for the {operation:?} operation"
-                ),
+                format!("resource limit id `{id}` is not available for this artifact"),
             ));
         }
     }
@@ -1198,8 +1288,7 @@ fn effective_resource_limits(
 fn effective_resource_limits(
     resources: &ResourceOptionsJson,
 ) -> Result<BTreeMap<&'static str, Option<usize>>, BindingError> {
-    let policy =
-        binding_input_resource_policy(Some(resources), InputResourceOperation::ArtifactUnion)?;
+    let policy = binding_input_resource_policy(Some(resources))?;
     Ok(merman::resources::InputResourceLimitId::ALL
         .into_iter()
         .filter(|id| input_resource_limit_available_for_build(*id))
@@ -1347,6 +1436,7 @@ mod tests {
                     "limits": { "max_source_bytes": 2048 }
                 }
             }"#,
+            BindingResourceScope::Model,
         )
         .unwrap();
         let value: Value = serde_json::from_slice(&merged).unwrap();
@@ -1363,6 +1453,7 @@ mod tests {
         let error = merge_request_options(
             br#"{"runtime_policy":"deterministic"}"#,
             br#"{"runtime_policy":"native"}"#,
+            BindingResourceScope::Model,
         )
         .unwrap_err();
 
@@ -1374,7 +1465,9 @@ mod tests {
     fn wrapped_request_options_cannot_hide_runtime_policy() {
         for wrapper in ["analysis", "merman"] {
             let request = format!(r#"{{"{wrapper}":{{"runtime_policy":"native"}}}}"#);
-            let error = merge_request_options(b"", request.as_bytes()).unwrap_err();
+            let error =
+                merge_request_options(b"", request.as_bytes(), BindingResourceScope::Analysis)
+                    .unwrap_err();
 
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
             assert!(error.message().contains("cannot set runtime_policy"));
@@ -1386,6 +1479,7 @@ mod tests {
         let merged = merge_request_options(
             br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#,
             br#"{"analysis":{"lint":{"profile":"recommended"}}}"#,
+            BindingResourceScope::Analysis,
         )
         .unwrap();
         let value: Value = serde_json::from_slice(&merged).unwrap();
@@ -1413,6 +1507,7 @@ mod tests {
         let merged = merge_request_options(
             br#"{"merman":{"resources":{"profile":"interactive","limits":{"max_source_bytes":4096}}}}"#,
             br#"{"resources":{"limits":{"max_source_bytes":2048,"max_model_items":128}}}"#,
+            BindingResourceScope::Model,
         )
         .unwrap();
         let value: Value = serde_json::from_slice(&merged).unwrap();
@@ -1585,30 +1680,6 @@ mod tests {
         let value: Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
         assert_eq!(value["resources"]["limits"]["max_model_items"], 1);
-    }
-
-    #[cfg(all(feature = "analysis", feature = "ascii", not(feature = "svg")))]
-    #[test]
-    fn operation_scope_rejects_sibling_limits_but_artifact_union_accepts_them() {
-        let options = parse_options(
-            br#"{ "resources": { "profile": "constrained", "limits": { "max_model_items": 1 } } }"#,
-        )
-        .unwrap();
-
-        let error = analysis_options(&options).unwrap_err();
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("Analysis operation"));
-
-        artifact_analysis_options(&options).unwrap();
-        let ascii = binding_input_resource_policy(
-            options.analysis.resources.as_ref(),
-            InputResourceOperation::Ascii,
-        )
-        .unwrap();
-        assert_eq!(
-            ascii.value(merman::resources::InputResourceLimitId::MaxModelItems),
-            Some(1)
-        );
     }
 
     #[cfg(all(

@@ -105,7 +105,13 @@ impl SvgPlanPayload {
 /// Builds without the `svg` feature preserve the API shape and return a typed
 /// `missing-capability(svg)` error.
 pub fn svg_plan_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    crate::BindingEngine::from_options(options_json)?.svg_plan_json(source)
+    crate::execute_once(crate::BindingOperationRequest {
+        operation_id: "svg-plan-json",
+        source,
+        uri: None,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[cfg(test)]
@@ -143,32 +149,41 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "svg", not(feature = "layout-elk")))]
+    #[cfg(feature = "svg")]
     #[test]
-    fn elk_flowchart_plan_reports_the_missing_backend() {
+    fn elk_flowchart_plan_follows_the_resolved_dependency_feature_set() {
         let value = plan(
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
             b"",
         );
+        let expected_missing = if merman::svg::layout_elk_available() {
+            serde_json::json!([])
+        } else {
+            serde_json::json!(["layout-elk"])
+        };
 
         assert_eq!(
             value["required_capability_ids"],
             serde_json::json!(["layout-elk"])
         );
-        assert_eq!(
-            value["missing_capability_ids"],
-            serde_json::json!(["layout-elk"])
-        );
-        assert_eq!(value["ready"], false);
+        assert_eq!(value["missing_capability_ids"], expected_missing);
+        assert_eq!(value["ready"], merman::svg::layout_elk_available());
     }
 
-    #[cfg(all(feature = "svg", not(feature = "layout-elk"), not(feature = "math")))]
+    #[cfg(feature = "svg")]
     #[test]
     fn capability_ids_are_sorted_unique_and_missing_is_a_required_subset() {
         let value = plan(
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B",
             b"",
         );
+        let expected_missing = [
+            (!merman::svg::layout_elk_available()).then_some("layout-elk"),
+            (!merman::svg::math_available()).then_some("math"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
         assert_eq!(
             value["required_capability_ids"],
@@ -176,9 +191,9 @@ mod tests {
         );
         assert_eq!(
             value["missing_capability_ids"],
-            serde_json::json!(["layout-elk", "math"])
+            serde_json::json!(expected_missing)
         );
-        assert_eq!(value["ready"], false);
+        assert_eq!(value["ready"], expected_missing.is_empty());
     }
 
     #[cfg(all(

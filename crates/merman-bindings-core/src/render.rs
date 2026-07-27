@@ -1,19 +1,17 @@
 mod request;
 
-use crate::common::{
-    BindingError, BindingOptions, parse_options, selected_runtime_policy, source_text,
-};
+#[cfg(test)]
+use crate::common::parse_options;
+use crate::common::{BindingError, BindingOptions, source_text};
 use request::RenderRequestPlan;
 use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_svg(source)
+    execute_once_data("svg", source, options_json)
 }
 
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.layout_json(source)
+    execute_once_data("layout-json", source, options_json)
 }
 
 #[derive(Clone)]
@@ -76,26 +74,31 @@ impl CachedRenderEngine {
 
 #[cfg(feature = "png")]
 pub fn render_png(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_png(source)
+    execute_once_data("png", source, options_json)
 }
 
 #[cfg(feature = "jpeg")]
 pub fn render_jpeg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_jpeg(source)
+    execute_once_data("jpeg", source, options_json)
 }
 
 #[cfg(feature = "pdf")]
 pub fn render_pdf(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_pdf(source)
+    execute_once_data("pdf", source, options_json)
 }
 
-fn request_plan_from_options_json(options_json: &[u8]) -> Result<RenderRequestPlan, BindingError> {
-    let options = parse_options(options_json)?;
-    let (_, runtime_policy) = selected_runtime_policy(&options)?;
-    RenderRequestPlan::from_options_with_runtime_policy(&options, runtime_policy)
+fn execute_once_data(
+    operation_id: &str,
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    crate::execute_once(crate::BindingOperationRequest {
+        operation_id,
+        source,
+        uri: None,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[cfg(test)]
@@ -200,7 +203,7 @@ mod tests {
         let source = b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
         let default = render_svg(source, b"");
 
-        if cfg!(feature = "math") {
+        if merman::svg::math_available() {
             assert!(
                 default.is_ok(),
                 "the compiled math capability must be usable by default"
@@ -1081,7 +1084,7 @@ Missing ref: id2,after missing,1d
             br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
-        if cfg!(feature = "math") {
+        if merman::svg::math_available() {
             assert!(result.is_ok());
         } else {
             let err = result.unwrap_err();
