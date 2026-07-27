@@ -190,17 +190,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn callback_free_operations_are_concurrent() {
+    fn callback_free_operations_are_concurrent_across_threads() {
         let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent);
+        let release = Arc::new(std::sync::Barrier::new(3));
+        let (entered_sender, entered_receiver) = std::sync::mpsc::channel();
+        let mut threads = Vec::new();
 
-        let first = admission.enter_operation().expect("first operation");
-        let second = admission.enter_operation().expect("concurrent operation");
+        for _ in 0..2 {
+            let admission = Arc::clone(&admission);
+            let release = Arc::clone(&release);
+            let entered_sender = entered_sender.clone();
+            threads.push(std::thread::spawn(move || {
+                let operation = admission.enter_operation().expect("concurrent operation");
+                entered_sender.send(()).expect("report operation admission");
+                release.wait();
+                drop(operation);
+            }));
+        }
+        drop(entered_sender);
+        entered_receiver.recv().expect("first operation admission");
+        entered_receiver.recv().expect("second operation admission");
         assert_eq!(
             admission.try_close(),
             Err(BindingEngineAdmissionError::Busy)
         );
 
-        drop((first, second));
+        release.wait();
+        for thread in threads {
+            thread.join().expect("operation thread");
+        }
         admission.try_close().expect("quiescent close");
     }
 

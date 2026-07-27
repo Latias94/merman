@@ -330,20 +330,57 @@ mod tests {
     }
 
     #[test]
-    fn execute_once_uses_the_same_operation_result_contract() {
-        let request = BindingOperationRequest {
-            operation_id: "semantic-json",
-            source: b"flowchart TD\nA --> B",
-            uri: None,
-            options_json: b"",
-        };
-        let one_shot = execute_once(request).unwrap();
-        let reusable = BindingEngine::from_options(b"")
-            .unwrap()
-            .execute(request)
-            .unwrap();
+    fn every_compiled_operation_shares_one_shot_and_reusable_result_contracts() {
+        let engine = BindingEngine::from_options(b"").unwrap();
 
-        assert_eq!(one_shot, reusable);
+        for operation in BindingOperationKind::all().filter(|operation| operation.is_compiled()) {
+            let request = BindingOperationRequest {
+                operation_id: operation.operation_id(),
+                source: b"flowchart TD\nA --> B",
+                uri: operation
+                    .requires_uri()
+                    .then_some(b"file:///diagram.mmd".as_slice()),
+                options_json: b"",
+            };
+            let one_shot = execute_once(request).unwrap_or_else(|error| {
+                panic!(
+                    "one-shot operation `{}` failed: {}",
+                    operation.operation_id(),
+                    error.message()
+                )
+            });
+            let reusable = engine.execute(request).unwrap_or_else(|error| {
+                panic!(
+                    "reusable operation `{}` failed: {}",
+                    operation.operation_id(),
+                    error.message()
+                )
+            });
+
+            assert_eq!(one_shot, reusable, "operation={}", operation.operation_id());
+            assert_eq!(one_shot.operation, operation);
+            assert_eq!(one_shot.media_type, operation.media_type());
+            let metadata: serde_json::Value =
+                serde_json::from_slice(&one_shot.metadata_json).unwrap();
+            assert_eq!(
+                metadata["operation_id"],
+                operation.operation_id(),
+                "operation={}",
+                operation.operation_id()
+            );
+            assert_eq!(
+                metadata["media_type"],
+                operation.media_type(),
+                "operation={}",
+                operation.operation_id()
+            );
+            assert_eq!(
+                metadata["byte_length"],
+                one_shot.data.len(),
+                "operation={}",
+                operation.operation_id()
+            );
+        }
     }
 
     #[test]
