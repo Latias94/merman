@@ -2,6 +2,80 @@
   "schema_version": 1,
   "protocol_id": "merman-text-measurement",
   "protocol_version": 1,
+  "wrap_modes": [
+    {
+      "id": "svg_like",
+      "external_name": "svg-like",
+      "rust_variant": "SvgLike",
+      "code": 0
+    },
+    {
+      "id": "svg_like_single_run",
+      "external_name": "svg-like-single-run",
+      "rust_variant": "SvgLikeSingleRun",
+      "code": 1
+    },
+    {
+      "id": "html_like",
+      "external_name": "html-like",
+      "rust_variant": "HtmlLike",
+      "code": 2
+    }
+  ],
+  "directions": [
+    {
+      "id": "auto",
+      "external_name": "auto",
+      "rust_variant": "Auto",
+      "code": 0
+    }
+  ],
+  "white_spaces": [
+    {
+      "id": "normal",
+      "external_name": "normal",
+      "rust_variant": "Normal",
+      "code": 0
+    },
+    {
+      "id": "nowrap",
+      "external_name": "nowrap",
+      "rust_variant": "Nowrap",
+      "code": 1
+    },
+    {
+      "id": "break_spaces",
+      "external_name": "break-spaces",
+      "rust_variant": "BreakSpaces",
+      "code": 2
+    }
+  ],
+  "phases": [
+    {
+      "id": "layout",
+      "external_name": "layout",
+      "rust_variant": "Layout",
+      "code": 0
+    },
+    {
+      "id": "wrap",
+      "external_name": "wrap",
+      "rust_variant": "Wrap",
+      "code": 1
+    },
+    {
+      "id": "svg_bbox",
+      "external_name": "svg-bbox",
+      "rust_variant": "SvgBBox",
+      "code": 2
+    },
+    {
+      "id": "computed_length",
+      "external_name": "computed-length",
+      "rust_variant": "ComputedLength",
+      "code": 3
+    }
+  ],
   "result_kinds": [
     {
       "id": "metrics",

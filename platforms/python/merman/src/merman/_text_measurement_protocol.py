@@ -3,6 +3,29 @@
 
 TEXT_MEASUREMENT_PROTOCOL_VERSION = 1
 
+TEXT_MEASUREMENT_WRAP_MODES = (
+    (0, "svg-like"),
+    (1, "svg-like-single-run"),
+    (2, "html-like"),
+)
+
+TEXT_MEASUREMENT_DIRECTIONS = (
+    (0, "auto"),
+)
+
+TEXT_MEASUREMENT_WHITE_SPACES = (
+    (0, "normal"),
+    (1, "nowrap"),
+    (2, "break-spaces"),
+)
+
+TEXT_MEASUREMENT_PHASES = (
+    (0, "layout"),
+    (1, "wrap"),
+    (2, "svg-bbox"),
+    (3, "computed-length"),
+)
+
 TEXT_MEASUREMENT_RESULT_KINDS = (
     (0, "metrics"),
     (1, "length"),

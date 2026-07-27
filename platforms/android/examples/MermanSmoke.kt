@@ -114,6 +114,13 @@ private fun smokeTextMeasurementResult(
 fun runMermanSmoke() {
     val source = "flowchart TD\nA[Hello] --> B[World]"
     val textMeasureSource = "flowchart TD\nA[Start] --> B{Condition?}"
+    val textMeasureCoverageSource = """
+        architecture-beta
+          group app(cloud)[Application platform]
+          service api(server)[API service] in app
+          service db(database)[Data store] in app
+          api:R -[request path]- L:db
+    """.trimIndent()
 
     check(textMeasurementOperations.contentEquals(IntArray(19) { it })) {
         "text measurement operation constants are not the contiguous ABI range 0..18"
@@ -337,9 +344,9 @@ fun runMermanSmoke() {
                 seenMeasureTexts += request.text
             }
             if (seenWrapModes.size < 8) {
-                seenWrapModes += request.wrapMode
+                seenWrapModes += request.wrapMode.code
             }
-            seenPhases += request.phase
+            seenPhases += request.phase.code
             seenOperations += request.operation
             if (seenMaxWidthStates.size < 8) {
                 seenMaxWidthStates += if (request.maxWidth == null) "none" else "some"
@@ -363,6 +370,10 @@ fun runMermanSmoke() {
         val reusableSvg = engine.renderSvg(textMeasureSource)
         check(reusableSvg.contains("<svg") && reusableSvg.contains("Condition?")) {
             "reusable engine SVG smoke failed"
+        }
+        val coverageSvg = engine.renderSvg(textMeasureCoverageSource)
+        check(coverageSvg.contains("<svg")) {
+            "multi-phase text measurement SVG smoke failed"
         }
         check(measureCalls > 0) {
             "text measurer callback smoke failed: ${textMeasureSummary()}"

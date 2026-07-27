@@ -11,13 +11,23 @@ import type {
   LintRuleSeverity,
   RuntimeCapabilities,
 } from "./public-catalog.js";
-import type { HostTextMeasurementOperation } from "./generated/text-measurement-abi.js";
+import type {
+  HostTextDirection,
+  HostTextMeasurementOperation,
+  HostTextMeasurementPhase,
+  HostTextWhiteSpace,
+  HostTextWrapMode,
+} from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
 import type { ResourceOptions } from "./generated/resource-contract.js";
 
 export type {
+  HostTextDirection,
   HostTextMeasurementOperation,
+  HostTextMeasurementPhase,
   HostTextMeasurementResultKind,
+  HostTextWhiteSpace,
+  HostTextWrapMode,
 } from "./generated/text-measurement-abi.js";
 export type { ResourceOptions } from "./generated/resource-contract.js";
 
@@ -219,20 +229,9 @@ export interface SvgBindingOptions extends CommonBindingOptions {
 
 export type BindingOptions = SvgBindingOptions;
 
-export type HostTextWrapMode =
-  | "svg-like"
-  | "svg-like-single-run"
-  | "html-like";
-
-export type HostTextWhiteSpace =
-  | "normal"
-  | "nowrap"
-  | "break-spaces"
-  | "pre-wrap";
-
 export interface HostTextMeasureRequest {
   operation: HostTextMeasurementOperation;
-  phase: "layout" | "wrap" | "svg-bbox" | "computed-length";
+  phase: HostTextMeasurementPhase;
   text: string;
   font_family?: string | null;
   font_size: number;
@@ -244,7 +243,7 @@ export interface HostTextMeasureRequest {
   letter_spacing: number;
   word_spacing: number;
   wrap_mode: HostTextWrapMode;
-  direction: "auto" | "ltr" | "rtl";
+  direction: HostTextDirection;
   white_space: HostTextWhiteSpace;
 }
 

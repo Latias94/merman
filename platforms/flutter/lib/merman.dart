@@ -11,6 +11,14 @@ export 'src/generated/resource_options.dart'
         MermanResourceOptions,
         MermanResourceOptionsBuilder,
         MermanResourceProfile;
+export 'src/generated/text_measurement_protocol.dart'
+    show
+        MermanTextDirection,
+        MermanTextMeasurementOperation,
+        MermanTextMeasurementPhase,
+        MermanTextMeasurementResultKind,
+        MermanTextWhiteSpace,
+        MermanTextWrapMode;
 export 'src/merman_ffi.dart'
     show
         Merman,
@@ -21,8 +29,6 @@ export 'src/merman_ffi.dart'
         MermanOperationResult,
         MermanReusableEngine,
         MermanRuntimeCatalog,
-        MermanTextMeasurementOperation,
-        MermanTextMeasurementResultKind,
         MermanTextMeasureRequest,
         MermanTextMeasureResult,
         MermanTextMeasurer,

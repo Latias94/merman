@@ -2,17 +2,7 @@ use crate::{
     HostTextMeasurement, HostTextMeasurementRequest, TextMeasurementPhase, TextMetrics, WrapMode,
 };
 
-const HOST_WRAP_MODE_SVG_LIKE: i32 = 0;
-const HOST_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
-const HOST_WRAP_MODE_HTML_LIKE: i32 = 2;
-const HOST_TEXT_DIRECTION_AUTO: i32 = 0;
-const HOST_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
-const HOST_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
-const HOST_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
-const HOST_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
-const HOST_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
-const HOST_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
-const HOST_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
+include!("generated/text_measurement_abi.rs");
 
 /// Stable result-shape discriminator shared by all host text-measurement transports.
 pub use merman::svg::TextMeasurementResultKind as HostTextMeasurementResultKind;
@@ -34,32 +24,32 @@ pub fn host_text_measurement_transport_fields(
     request: HostTextMeasurementRequest<'_>,
 ) -> HostTextMeasurementTransportFields {
     let wrap_mode = match request.wrap_mode {
-        WrapMode::SvgLike => HOST_WRAP_MODE_SVG_LIKE,
-        WrapMode::SvgLikeSingleRun => HOST_WRAP_MODE_SVG_LIKE_SINGLE_RUN,
-        WrapMode::HtmlLike => HOST_WRAP_MODE_HTML_LIKE,
+        WrapMode::SvgLike => HostTextWrapModeCode::SvgLike,
+        WrapMode::SvgLikeSingleRun => HostTextWrapModeCode::SvgLikeSingleRun,
+        WrapMode::HtmlLike => HostTextWrapModeCode::HtmlLike,
     };
     let line_height_factor = match request.wrap_mode {
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
         WrapMode::HtmlLike => 1.5,
     };
     let white_space = match request.wrap_mode {
-        WrapMode::HtmlLike if request.max_width.is_some() => HOST_TEXT_WHITE_SPACE_BREAK_SPACES,
-        WrapMode::HtmlLike => HOST_TEXT_WHITE_SPACE_NOWRAP,
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => HOST_TEXT_WHITE_SPACE_NORMAL,
+        WrapMode::HtmlLike if request.max_width.is_some() => HostTextWhiteSpaceCode::BreakSpaces,
+        WrapMode::HtmlLike => HostTextWhiteSpaceCode::Nowrap,
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => HostTextWhiteSpaceCode::Normal,
     };
     let phase = match request.phase {
-        TextMeasurementPhase::Layout => HOST_TEXT_MEASUREMENT_PHASE_LAYOUT,
-        TextMeasurementPhase::Wrap => HOST_TEXT_MEASUREMENT_PHASE_WRAP,
-        TextMeasurementPhase::SvgBBox => HOST_TEXT_MEASUREMENT_PHASE_SVG_BBOX,
-        TextMeasurementPhase::ComputedLength => HOST_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH,
+        TextMeasurementPhase::Layout => HostTextMeasurementPhaseCode::Layout,
+        TextMeasurementPhase::Wrap => HostTextMeasurementPhaseCode::Wrap,
+        TextMeasurementPhase::SvgBBox => HostTextMeasurementPhaseCode::SvgBBox,
+        TextMeasurementPhase::ComputedLength => HostTextMeasurementPhaseCode::ComputedLength,
     };
 
     HostTextMeasurementTransportFields {
         line_height: request.style.font_size.max(1.0) * line_height_factor,
-        wrap_mode,
-        direction: HOST_TEXT_DIRECTION_AUTO,
-        white_space,
-        phase,
+        wrap_mode: wrap_mode.external_code(),
+        direction: HostTextDirectionCode::Auto.external_code(),
+        white_space: white_space.external_code(),
+        phase: phase.external_code(),
         operation: request.operation.external_code(),
     }
 }

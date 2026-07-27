@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'generated/native_abi.dart' as native;
+import 'generated/text_measurement_protocol.dart';
 
 const int _runtimeCatalogSchemaVersion = 1;
 
@@ -303,79 +304,6 @@ class MermanValidationResult {
   }
 }
 
-/// Text-measurement operations exposed by the separately versioned protocol.
-///
-/// The values below reference ffigen-generated constants from the public C
-/// header, so this Dart facade never owns numeric protocol codes.
-enum MermanTextMeasurementOperation {
-  measure(native.MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE),
-  computedLength(native.MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH),
-  bboxX(native.MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X),
-  bboxXWithAsciiOverhang(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG,
-  ),
-  titleBBoxX(native.MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X),
-  simpleBBoxWidth(native.MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH),
-  rawBBoxWidth(native.MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH),
-  tspanBBoxWidth(native.MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH),
-  tspanBBoxHeight(native.MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT),
-  wrapProbeBBoxWidth(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH,
-  ),
-  simpleBBoxHeight(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT,
-  ),
-  wrapped(native.MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED),
-  wrappedWithRawWidth(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH,
-  ),
-  boundingClientRectWidth(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH,
-  ),
-  createTextBBoxYOffset(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET,
-  ),
-  mermaidCalculateTextDimensions(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS,
-  ),
-  canvasMeasureTextWidth(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH,
-  ),
-  createTextMiddleBBoxYOffset(
-    native.MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
-  ),
-  rawBBoxHeight(native.MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT);
-
-  const MermanTextMeasurementOperation(this.code);
-
-  final int code;
-
-  static MermanTextMeasurementOperation? fromCode(int code) {
-    for (final operation in values) {
-      if (operation.code == code) {
-        return operation;
-      }
-    }
-    return null;
-  }
-}
-
-/// Shapes accepted for handled host text-measurement responses.
-enum MermanTextMeasurementResultKind {
-  metrics(native.MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS),
-  length(native.MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH),
-  horizontalExtents(
-    native.MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS,
-  ),
-  wrappedWithRawWidth(
-    native.MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH,
-  );
-
-  const MermanTextMeasurementResultKind(this.code);
-
-  final int code;
-}
-
 /// A Dart view of one synchronous text-measurement request.
 class MermanTextMeasureRequest {
   MermanTextMeasureRequest._(native.MermanNativeTextMeasureRequest request)
@@ -397,10 +325,10 @@ class MermanTextMeasureRequest {
         lineHeight = request.line_height,
         letterSpacing = request.letter_spacing,
         wordSpacing = request.word_spacing,
-        wrapModeCode = request.wrap_mode,
-        directionCode = request.direction,
-        whiteSpaceCode = request.white_space,
-        phaseCode = request.phase,
+        wrapMode = MermanTextWrapMode.requireCode(request.wrap_mode),
+        direction = MermanTextDirection.requireCode(request.direction),
+        whiteSpace = MermanTextWhiteSpace.requireCode(request.white_space),
+        phase = MermanTextMeasurementPhase.requireCode(request.phase),
         operationCode = request.operation,
         operation = MermanTextMeasurementOperation.fromCode(request.operation) {
     if (request.text_measurement_protocol_version !=
@@ -422,12 +350,10 @@ class MermanTextMeasureRequest {
   final double letterSpacing;
   final double wordSpacing;
 
-  /// Native CSS wrap-mode code. It remains transport data rather than a
-  /// duplicated Flutter enum because it is not a public capability catalog.
-  final int wrapModeCode;
-  final int directionCode;
-  final int whiteSpaceCode;
-  final int phaseCode;
+  final MermanTextWrapMode wrapMode;
+  final MermanTextDirection direction;
+  final MermanTextWhiteSpace whiteSpace;
+  final MermanTextMeasurementPhase phase;
   final int operationCode;
   final MermanTextMeasurementOperation? operation;
 }

@@ -3,6 +3,41 @@
 
 export const MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
 
+export const HOST_TEXT_WRAP_MODES = [
+  { code: 0, name: "svg-like" },
+  { code: 1, name: "svg-like-single-run" },
+  { code: 2, name: "html-like" },
+] as const;
+
+export type HostTextWrapMode =
+  (typeof HOST_TEXT_WRAP_MODES)[number]["name"];
+
+export const HOST_TEXT_DIRECTIONS = [
+  { code: 0, name: "auto" },
+] as const;
+
+export type HostTextDirection =
+  (typeof HOST_TEXT_DIRECTIONS)[number]["name"];
+
+export const HOST_TEXT_WHITE_SPACES = [
+  { code: 0, name: "normal" },
+  { code: 1, name: "nowrap" },
+  { code: 2, name: "break-spaces" },
+] as const;
+
+export type HostTextWhiteSpace =
+  (typeof HOST_TEXT_WHITE_SPACES)[number]["name"];
+
+export const HOST_TEXT_MEASUREMENT_PHASES = [
+  { code: 0, name: "layout" },
+  { code: 1, name: "wrap" },
+  { code: 2, name: "svg-bbox" },
+  { code: 3, name: "computed-length" },
+] as const;
+
+export type HostTextMeasurementPhase =
+  (typeof HOST_TEXT_MEASUREMENT_PHASES)[number]["name"];
+
 export const HOST_TEXT_MEASUREMENT_RESULT_KINDS = [
   { code: 0, name: "metrics" },
   { code: 1, name: "length" },

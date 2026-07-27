@@ -1,7 +1,7 @@
 //! Generation of the cross-platform host text-measurement protocol contract.
 
 use crate::XtaskError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
@@ -13,11 +13,21 @@ const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
 const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;
 const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 19;
 const TEXT_MEASUREMENT_RESULT_KIND_COUNT: usize = 4;
+const TEXT_MEASUREMENT_WRAP_MODE_COUNT: usize = 3;
+const TEXT_MEASUREMENT_DIRECTION_COUNT: usize = 1;
+const TEXT_MEASUREMENT_WHITE_SPACE_COUNT: usize = 3;
+const TEXT_MEASUREMENT_PHASE_COUNT: usize = 4;
+const TEXT_MEASUREMENT_V1_VOCABULARY_SHA256: &str =
+    "45104e3baf4d17e3b16626c5693dc21181abc8b8b680c3b482b1e286b379b2b6";
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
         "crates/merman-render/src/generated/text_measurement_abi.rs",
         ArtifactKind::RenderRust,
+    ),
+    (
+        "crates/merman-bindings-core/src/generated/text_measurement_abi.rs",
+        ArtifactKind::BindingsCoreRust,
     ),
     (
         "crates/merman-uniffi/src/generated/text_measurement_abi.rs",
@@ -40,6 +50,14 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
         ArtifactKind::KotlinResultKinds,
     ),
     (
+        "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementVocabulary.kt",
+        ArtifactKind::KotlinVocabulary,
+    ),
+    (
+        "platforms/flutter/lib/src/generated/text_measurement_protocol.dart",
+        ArtifactKind::Dart,
+    ),
+    (
         "platforms/web/src/generated/text-measurement-abi.ts",
         ArtifactKind::TypeScript,
     ),
@@ -55,8 +73,21 @@ struct TextMeasurementProtocolDescriptor {
     schema_version: u32,
     protocol_id: String,
     protocol_version: u32,
+    wrap_modes: Vec<VocabularyValue>,
+    directions: Vec<VocabularyValue>,
+    white_spaces: Vec<VocabularyValue>,
+    phases: Vec<VocabularyValue>,
     result_kinds: Vec<ResultKind>,
     operations: Vec<Operation>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct VocabularyValue {
+    id: String,
+    external_name: String,
+    rust_variant: String,
+    code: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,11 +113,14 @@ struct Operation {
 #[derive(Debug, Clone, Copy)]
 enum ArtifactKind {
     RenderRust,
+    BindingsCoreRust,
     UniffiRust,
     FfiRust,
     CHeader,
     KotlinOperations,
     KotlinResultKinds,
+    KotlinVocabulary,
+    Dart,
     TypeScript,
     Python,
 }
@@ -95,11 +129,14 @@ impl ArtifactKind {
     fn render(self, descriptor: &TextMeasurementProtocolDescriptor) -> String {
         match self {
             Self::RenderRust => render_render_rust(descriptor),
+            Self::BindingsCoreRust => render_bindings_core_rust(descriptor),
             Self::UniffiRust => render_uniffi_rust(descriptor),
             Self::FfiRust => render_ffi_rust(descriptor),
             Self::CHeader => render_c_header(descriptor),
             Self::KotlinOperations => render_kotlin_operations(descriptor),
             Self::KotlinResultKinds => render_kotlin_result_kinds(descriptor),
+            Self::KotlinVocabulary => render_kotlin_vocabulary(descriptor),
+            Self::Dart => render_dart(descriptor),
             Self::TypeScript => render_typescript(descriptor),
             Self::Python => render_python(descriptor),
         }
@@ -206,6 +243,52 @@ fn validate_contiguous_codes(
     }
 }
 
+fn validate_vocabulary(
+    values: &[VocabularyValue],
+    expected_count: usize,
+    context: &str,
+) -> Result<(), XtaskError> {
+    if values.len() != expected_count {
+        return Err(descriptor_error(format!(
+            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {expected_count} {context} values; found {}",
+            values.len()
+        )));
+    }
+    for value in values {
+        validate_identifier(&value.id, context)?;
+        validate_external_name(&value.external_name, context)?;
+        validate_rust_variant(&value.rust_variant, context)?;
+    }
+    validate_unique(
+        values.iter().map(|value| value.id.as_str()),
+        &format!("{context} id"),
+    )?;
+    validate_unique(
+        values.iter().map(|value| value.external_name.as_str()),
+        &format!("{context} external name"),
+    )?;
+    validate_unique(
+        values.iter().map(|value| value.rust_variant.as_str()),
+        &format!("{context} Rust variant"),
+    )?;
+    validate_contiguous_codes(
+        values.iter().map(|value| value.code),
+        expected_count,
+        context,
+    )
+}
+
+fn vocabulary_sha256(descriptor: &TextMeasurementProtocolDescriptor) -> String {
+    let bytes = serde_json::to_vec(&(
+        &descriptor.wrap_modes,
+        &descriptor.directions,
+        &descriptor.white_spaces,
+        &descriptor.phases,
+    ))
+    .expect("text-measurement vocabulary is serializable");
+    crate::util::sha256_hex(&bytes)
+}
+
 fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result<(), XtaskError> {
     if descriptor.schema_version != TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION {
         return Err(descriptor_error(format!(
@@ -235,6 +318,28 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
         return Err(descriptor_error(format!(
             "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_RESULT_KIND_COUNT} result kinds; found {}",
             descriptor.result_kinds.len()
+        )));
+    }
+    validate_vocabulary(
+        &descriptor.wrap_modes,
+        TEXT_MEASUREMENT_WRAP_MODE_COUNT,
+        "wrap-mode",
+    )?;
+    validate_vocabulary(
+        &descriptor.directions,
+        TEXT_MEASUREMENT_DIRECTION_COUNT,
+        "direction",
+    )?;
+    validate_vocabulary(
+        &descriptor.white_spaces,
+        TEXT_MEASUREMENT_WHITE_SPACE_COUNT,
+        "white-space",
+    )?;
+    validate_vocabulary(&descriptor.phases, TEXT_MEASUREMENT_PHASE_COUNT, "phase")?;
+    let vocabulary_sha256 = vocabulary_sha256(descriptor);
+    if vocabulary_sha256 != TEXT_MEASUREMENT_V1_VOCABULARY_SHA256 {
+        return Err(descriptor_error(format!(
+            "text-measurement protocol 1 vocabulary is immutable; expected sha256:{TEXT_MEASUREMENT_V1_VOCABULARY_SHA256}, found sha256:{vocabulary_sha256}; add a new protocol version before changing an emitted value"
         )));
     }
 
@@ -332,6 +437,12 @@ fn sorted_operations(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<&Ope
     values
 }
 
+fn sorted_vocabulary(values: &[VocabularyValue]) -> Vec<&VocabularyValue> {
+    let mut values = values.iter().collect::<Vec<_>>();
+    values.sort_by_key(|value| value.code);
+    values
+}
+
 fn result_kind<'a>(descriptor: &'a TextMeasurementProtocolDescriptor, id: &str) -> &'a ResultKind {
     descriptor
         .result_kinds
@@ -342,6 +453,23 @@ fn result_kind<'a>(descriptor: &'a TextMeasurementProtocolDescriptor, id: &str) 
 
 fn upper_snake(id: &str) -> String {
     id.to_ascii_uppercase()
+}
+
+fn lower_camel(id: &str) -> String {
+    let mut parts = id.split('_');
+    let mut output = parts.next().unwrap_or_default().to_string();
+    for part in parts {
+        if part == "bbox" {
+            output.push_str("BBox");
+            continue;
+        }
+        let mut bytes = part.bytes();
+        if let Some(first) = bytes.next() {
+            output.push(char::from(first.to_ascii_uppercase()));
+            output.extend(bytes.map(char::from));
+        }
+    }
+    output
 }
 
 fn generated_preamble(comment: &str) -> String {
@@ -420,6 +548,40 @@ fn render_render_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String 
     output
 }
 
+fn render_rust_code_enum(output: &mut String, enum_name: &str, values: &[VocabularyValue]) {
+    let values = sorted_vocabulary(values);
+    writeln!(
+        output,
+        "#[repr(i32)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\npub enum {enum_name} {{"
+    )
+    .unwrap();
+    for value in &values {
+        writeln!(output, "    {} = {},", value.rust_variant, value.code).unwrap();
+    }
+    writeln!(output, "}}\n\nimpl {enum_name} {{").unwrap();
+    output.push_str(
+        "    pub const fn external_code(self) -> i32 {\n        self as i32\n    }\n}\n\n",
+    );
+}
+
+fn render_bindings_core_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
+    let mut output = generated_preamble("//");
+    render_rust_code_enum(&mut output, "HostTextWrapModeCode", &descriptor.wrap_modes);
+    render_rust_code_enum(&mut output, "HostTextDirectionCode", &descriptor.directions);
+    render_rust_code_enum(
+        &mut output,
+        "HostTextWhiteSpaceCode",
+        &descriptor.white_spaces,
+    );
+    render_rust_code_enum(
+        &mut output,
+        "HostTextMeasurementPhaseCode",
+        &descriptor.phases,
+    );
+    output.pop();
+    output
+}
+
 fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
@@ -436,6 +598,22 @@ fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String 
         render_python(descriptor)
     )
     .unwrap();
+    for (enum_name, values) in [
+        ("MermanTextWrapMode", descriptor.wrap_modes.as_slice()),
+        ("MermanTextDirection", descriptor.directions.as_slice()),
+        ("MermanTextWhiteSpace", descriptor.white_spaces.as_slice()),
+        ("MermanTextMeasurementPhase", descriptor.phases.as_slice()),
+    ] {
+        writeln!(
+            output,
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum {enum_name} {{"
+        )
+        .unwrap();
+        for value in sorted_vocabulary(values) {
+            writeln!(output, "    {},", value.rust_variant).unwrap();
+        }
+        output.push_str("}\n\n");
+    }
     output.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum MermanTextMeasurementOperation {\n");
     for operation in &operations {
         writeln!(output, "    {},", operation.rust_variant).unwrap();
@@ -462,6 +640,26 @@ fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String 
         )
         .unwrap();
     }
+    output.push_str("    }\n}\n\n");
+    output.push_str("#[cfg(feature = \"svg\")]\nfn uniffi_measurement_phase(\n    phase: merman_bindings_core::TextMeasurementPhase,\n) -> MermanTextMeasurementPhase {\n    match phase {\n");
+    for value in sorted_vocabulary(&descriptor.phases) {
+        writeln!(
+            output,
+            "        merman_bindings_core::TextMeasurementPhase::{} => MermanTextMeasurementPhase::{},",
+            value.rust_variant, value.rust_variant
+        )
+        .unwrap();
+    }
+    output.push_str("    }\n}\n\n");
+    output.push_str("#[cfg(feature = \"svg\")]\nfn uniffi_wrap_mode(\n    wrap_mode: merman_bindings_core::WrapMode,\n) -> MermanTextWrapMode {\n    match wrap_mode {\n");
+    for value in sorted_vocabulary(&descriptor.wrap_modes) {
+        writeln!(
+            output,
+            "        merman_bindings_core::WrapMode::{} => MermanTextWrapMode::{},",
+            value.rust_variant, value.rust_variant
+        )
+        .unwrap();
+    }
     output.push_str("    }\n}\n");
     output
 }
@@ -476,6 +674,29 @@ fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         descriptor.protocol_version
     )
     .unwrap();
+    for (prefix, values) in [
+        ("MERMAN_TEXT_WRAP_MODE", descriptor.wrap_modes.as_slice()),
+        ("MERMAN_TEXT_DIRECTION", descriptor.directions.as_slice()),
+        (
+            "MERMAN_TEXT_WHITE_SPACE",
+            descriptor.white_spaces.as_slice(),
+        ),
+        (
+            "MERMAN_TEXT_MEASUREMENT_PHASE",
+            descriptor.phases.as_slice(),
+        ),
+    ] {
+        for value in sorted_vocabulary(values) {
+            writeln!(
+                output,
+                "pub const {prefix}_{}: i32 = {};",
+                upper_snake(&value.id),
+                value.code
+            )
+            .unwrap();
+        }
+        output.push('\n');
+    }
     for operation in &operations {
         writeln!(
             output,
@@ -540,6 +761,33 @@ fn render_c_header(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         descriptor.protocol_version
     )
     .unwrap();
+    for (prefix, values) in [
+        ("MERMAN_TEXT_WRAP_MODE", descriptor.wrap_modes.as_slice()),
+        ("MERMAN_TEXT_DIRECTION", descriptor.directions.as_slice()),
+        (
+            "MERMAN_TEXT_WHITE_SPACE",
+            descriptor.white_spaces.as_slice(),
+        ),
+        (
+            "MERMAN_TEXT_MEASUREMENT_PHASE",
+            descriptor.phases.as_slice(),
+        ),
+    ] {
+        output.push_str("enum {\n");
+        let values = sorted_vocabulary(values);
+        for (index, value) in values.iter().enumerate() {
+            let suffix = if index + 1 == values.len() { "" } else { "," };
+            writeln!(
+                output,
+                "    {prefix}_{} = {}{}",
+                upper_snake(&value.id),
+                value.code,
+                suffix
+            )
+            .unwrap();
+        }
+        output.push_str("};\n\n");
+    }
     output.push_str("enum {\n");
     for (index, operation) in operations.iter().enumerate() {
         let suffix = if index + 1 == operations.len() {
@@ -660,6 +908,120 @@ fn render_kotlin_result_kinds(descriptor: &TextMeasurementProtocolDescriptor) ->
     output
 }
 
+fn render_kotlin_vocabulary(descriptor: &TextMeasurementProtocolDescriptor) -> String {
+    let mut output = generated_preamble("//");
+    output.push_str("package io.merman\n\n");
+    for (enum_name, values) in [
+        ("MermanTextWrapMode", descriptor.wrap_modes.as_slice()),
+        ("MermanTextDirection", descriptor.directions.as_slice()),
+        ("MermanTextWhiteSpace", descriptor.white_spaces.as_slice()),
+        ("MermanTextMeasurementPhase", descriptor.phases.as_slice()),
+    ] {
+        writeln!(
+            output,
+            "enum class {enum_name}(val code: Int, val externalName: String) {{"
+        )
+        .unwrap();
+        let values = sorted_vocabulary(values);
+        for (index, value) in values.iter().enumerate() {
+            let suffix = if index + 1 == values.len() { ";" } else { "," };
+            writeln!(
+                output,
+                "    {}({}, {:?}){}",
+                upper_snake(&value.id),
+                value.code,
+                value.external_name,
+                suffix
+            )
+            .unwrap();
+        }
+        output.push_str(
+            "\n    companion object {\n        @JvmStatic\n        fun fromCode(code: Int): ",
+        );
+        output.push_str(enum_name);
+        output.push_str("? = entries.firstOrNull { it.code == code }\n    }\n}\n\n");
+    }
+    output.pop();
+    output
+}
+
+fn render_dart_enum(output: &mut String, enum_name: &str, values: &[VocabularyValue]) {
+    writeln!(output, "enum {enum_name} {{").unwrap();
+    let values = sorted_vocabulary(values);
+    for (index, value) in values.iter().enumerate() {
+        let suffix = if index + 1 == values.len() { ";" } else { "," };
+        writeln!(
+            output,
+            "  {}({}, {:?}){}",
+            lower_camel(&value.id),
+            value.code,
+            value.external_name,
+            suffix
+        )
+        .unwrap();
+    }
+    writeln!(
+        output,
+        "\n  const {enum_name}(this.code, this.externalName);\n\n  final int code;\n  final String externalName;\n\n  static {enum_name}? fromCode(int code) {{\n    for (final value in values) {{\n      if (value.code == code) return value;\n    }}\n    return null;\n  }}\n\n  static {enum_name} requireCode(int code) {{\n    final value = fromCode(code);\n    if (value == null) {{\n      throw ArgumentError.value(\n          code, 'code', 'unknown {enum_name} code');\n    }}\n    return value;\n  }}\n}}\n"
+    )
+    .unwrap();
+}
+
+fn render_dart(descriptor: &TextMeasurementProtocolDescriptor) -> String {
+    let mut output = generated_preamble("//");
+    render_dart_enum(&mut output, "MermanTextWrapMode", &descriptor.wrap_modes);
+    render_dart_enum(&mut output, "MermanTextDirection", &descriptor.directions);
+    render_dart_enum(
+        &mut output,
+        "MermanTextWhiteSpace",
+        &descriptor.white_spaces,
+    );
+    render_dart_enum(
+        &mut output,
+        "MermanTextMeasurementPhase",
+        &descriptor.phases,
+    );
+
+    output.push_str("enum MermanTextMeasurementOperation {\n");
+    let operations = sorted_operations(descriptor);
+    for (index, operation) in operations.iter().enumerate() {
+        let suffix = if index + 1 == operations.len() {
+            ";"
+        } else {
+            ","
+        };
+        writeln!(
+            output,
+            "  {}({}){}",
+            lower_camel(&operation.id),
+            operation.code,
+            suffix
+        )
+        .unwrap();
+    }
+    output.push_str(
+        "\n  const MermanTextMeasurementOperation(this.code);\n\n  final int code;\n\n  static MermanTextMeasurementOperation? fromCode(int code) {\n    for (final operation in values) {\n      if (operation.code == code) return operation;\n    }\n    return null;\n  }\n}\n\n",
+    );
+
+    output.push_str("enum MermanTextMeasurementResultKind {\n");
+    let kinds = sorted_result_kinds(descriptor);
+    for (index, kind) in kinds.iter().enumerate() {
+        let suffix = if index + 1 == kinds.len() { ";" } else { "," };
+        writeln!(
+            output,
+            "  {}({}){}",
+            lower_camel(&kind.id),
+            kind.code,
+            suffix
+        )
+        .unwrap();
+    }
+    output.push_str(
+        "\n  const MermanTextMeasurementResultKind(this.code);\n\n  final int code;\n}\n",
+    );
+    output
+}
+
 fn render_typescript(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let kinds = sorted_result_kinds(descriptor);
     let operations = sorted_operations(descriptor);
@@ -670,6 +1032,43 @@ fn render_typescript(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         descriptor.protocol_version
     )
     .unwrap();
+    for (constant_name, type_name, values) in [
+        (
+            "HOST_TEXT_WRAP_MODES",
+            "HostTextWrapMode",
+            descriptor.wrap_modes.as_slice(),
+        ),
+        (
+            "HOST_TEXT_DIRECTIONS",
+            "HostTextDirection",
+            descriptor.directions.as_slice(),
+        ),
+        (
+            "HOST_TEXT_WHITE_SPACES",
+            "HostTextWhiteSpace",
+            descriptor.white_spaces.as_slice(),
+        ),
+        (
+            "HOST_TEXT_MEASUREMENT_PHASES",
+            "HostTextMeasurementPhase",
+            descriptor.phases.as_slice(),
+        ),
+    ] {
+        writeln!(output, "export const {constant_name} = [").unwrap();
+        for value in sorted_vocabulary(values) {
+            writeln!(
+                output,
+                "  {{ code: {}, name: {:?} }},",
+                value.code, value.external_name
+            )
+            .unwrap();
+        }
+        writeln!(
+            output,
+            "] as const;\n\nexport type {type_name} =\n  (typeof {constant_name})[number][\"name\"];\n"
+        )
+        .unwrap();
+    }
     output.push_str("export const HOST_TEXT_MEASUREMENT_RESULT_KINDS = [\n");
     for kind in &kinds {
         writeln!(
@@ -703,6 +1102,27 @@ fn render_python(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         descriptor.protocol_version
     )
     .unwrap();
+    for (constant_name, values) in [
+        (
+            "TEXT_MEASUREMENT_WRAP_MODES",
+            descriptor.wrap_modes.as_slice(),
+        ),
+        (
+            "TEXT_MEASUREMENT_DIRECTIONS",
+            descriptor.directions.as_slice(),
+        ),
+        (
+            "TEXT_MEASUREMENT_WHITE_SPACES",
+            descriptor.white_spaces.as_slice(),
+        ),
+        ("TEXT_MEASUREMENT_PHASES", descriptor.phases.as_slice()),
+    ] {
+        writeln!(output, "{constant_name} = (").unwrap();
+        for value in sorted_vocabulary(values) {
+            writeln!(output, "    ({}, {:?}),", value.code, value.external_name).unwrap();
+        }
+        output.push_str(")\n\n");
+    }
     output.push_str("TEXT_MEASUREMENT_RESULT_KINDS = (\n");
     for kind in sorted_result_kinds(descriptor) {
         writeln!(output, "    ({}, {:?}),", kind.code, kind.external_name).unwrap();
@@ -826,6 +1246,14 @@ mod tests {
         assert_eq!(descriptor.protocol_version, 1);
         assert_eq!(descriptor.operations.len(), 19);
         assert_eq!(descriptor.result_kinds.len(), 4);
+        assert_eq!(descriptor.wrap_modes.len(), 3);
+        assert_eq!(descriptor.directions.len(), 1);
+        assert_eq!(descriptor.white_spaces.len(), 3);
+        assert_eq!(descriptor.phases.len(), 4);
+        assert_eq!(
+            vocabulary_sha256(&descriptor),
+            TEXT_MEASUREMENT_V1_VOCABULARY_SHA256
+        );
         assert_eq!(
             sorted_operations(&descriptor)
                 .into_iter()
@@ -872,6 +1300,14 @@ mod tests {
         let mut invalid_signed = committed_descriptor();
         invalid_signed.operations[0].accepts_signed_length = true;
         assert!(validate_descriptor(&invalid_signed).is_err());
+
+        let mut changed_vocabulary = committed_descriptor();
+        changed_vocabulary.directions[0].external_name = "ltr".to_string();
+        assert!(validate_descriptor(&changed_vocabulary).is_err());
+
+        let mut vocabulary_gap = committed_descriptor();
+        vocabulary_gap.phases[3].code = 4;
+        assert!(validate_descriptor(&vocabulary_gap).is_err());
     }
 
     #[test]
@@ -899,6 +1335,10 @@ mod tests {
 
         let ffi = ArtifactKind::FfiRust.render(&descriptor);
         assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS"));
+        assert!(ffi.contains("MERMAN_TEXT_WRAP_MODE_HTML_LIKE"));
+        assert!(ffi.contains("MERMAN_TEXT_DIRECTION_AUTO"));
+        assert!(ffi.contains("MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES"));
+        assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH"));
         for operation in sorted_operations(&descriptor) {
             let expected = format!(
                 "MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{}",
@@ -909,6 +1349,18 @@ mod tests {
                 "FFI projection omitted `{expected}`"
             );
         }
+
+        let uniffi = ArtifactKind::UniffiRust.render(&descriptor);
+        assert!(uniffi.contains("pub enum MermanTextDirection {\n    Auto,\n}"));
+        assert!(!uniffi.contains("    Ltr,"));
+        assert!(!uniffi.contains("    Rtl,"));
+        assert!(!uniffi.contains("    PreWrap,"));
+
+        let dart = ArtifactKind::Dart.render(&descriptor);
+        assert!(dart.contains("enum MermanTextWrapMode"));
+        assert!(dart.contains("enum MermanTextMeasurementPhase"));
+        assert!(dart.contains("svgBBox(2,"));
+        assert!(dart.contains("titleBBoxX(4)"));
     }
 
     #[test]

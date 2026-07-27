@@ -31,6 +31,7 @@ pub enum MermanErrorKind {
     UnknownOperation,
     MissingCapability,
     ReentrantCall,
+    Busy,
 }
 
 impl From<BindingErrorKind> for MermanErrorKind {
@@ -40,6 +41,7 @@ impl From<BindingErrorKind> for MermanErrorKind {
             BindingErrorKind::UnknownOperation => Self::UnknownOperation,
             BindingErrorKind::MissingCapability => Self::MissingCapability,
             BindingErrorKind::ReentrantCall => Self::ReentrantCall,
+            BindingErrorKind::Busy => Self::Busy,
         }
     }
 }
@@ -324,36 +326,6 @@ pub struct MermanAsciiCapability {
     pub evidence: Vec<MermanAsciiCapabilityEvidence>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextWrapMode {
-    SvgLike,
-    SvgLikeSingleRun,
-    HtmlLike,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextDirection {
-    Auto,
-    Ltr,
-    Rtl,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextWhiteSpace {
-    Normal,
-    Nowrap,
-    BreakSpaces,
-    PreWrap,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextMeasurementPhase {
-    Layout,
-    Wrap,
-    SvgBBox,
-    ComputedLength,
-}
-
 include!("generated/text_measurement_abi.rs");
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -464,29 +436,6 @@ impl HostTextMeasurer for UniffiHostTextMeasurer {
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
         self.call_host(request)
-    }
-}
-
-#[cfg(feature = "svg")]
-fn uniffi_measurement_phase(
-    phase: merman_bindings_core::TextMeasurementPhase,
-) -> MermanTextMeasurementPhase {
-    match phase {
-        merman_bindings_core::TextMeasurementPhase::Layout => MermanTextMeasurementPhase::Layout,
-        merman_bindings_core::TextMeasurementPhase::Wrap => MermanTextMeasurementPhase::Wrap,
-        merman_bindings_core::TextMeasurementPhase::SvgBBox => MermanTextMeasurementPhase::SvgBBox,
-        merman_bindings_core::TextMeasurementPhase::ComputedLength => {
-            MermanTextMeasurementPhase::ComputedLength
-        }
-    }
-}
-
-#[cfg(feature = "svg")]
-fn uniffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> MermanTextWrapMode {
-    match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike => MermanTextWrapMode::SvgLike,
-        merman_bindings_core::WrapMode::SvgLikeSingleRun => MermanTextWrapMode::SvgLikeSingleRun,
-        merman_bindings_core::WrapMode::HtmlLike => MermanTextWrapMode::HtmlLike,
     }
 }
 
@@ -2167,8 +2116,17 @@ mod tests {
         assert_eq!(
             runtime_catalog["capabilities"]["system_adapter_ids"],
             serde_json::json!(
-                merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids
+                merman_bindings_core::binding_transport_capability_surface()
+                    .runtime_capabilities()
+                    .system_adapter_ids
             )
+        );
+        assert!(
+            !runtime_catalog["capabilities"]["system_adapter_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|id| id == "system-timing")
         );
         assert_eq!(
             runtime_catalog["capabilities"]["capability_ids"]
