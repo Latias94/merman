@@ -25,7 +25,7 @@ pub use editor_language::{
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use merman_bindings_core::{TextStyle, WrapMode};
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 use serde::Deserialize;
 
 /// Breaking API version for the wasm-bindgen transport.
@@ -342,18 +342,41 @@ struct WasmHostTextMeasureRequest<'a> {
     white_space: &'static str,
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 #[derive(Debug, Deserialize)]
 struct WasmHostTextMeasureResult {
-    handled: Option<bool>,
     kind: Option<String>,
     width: Option<f64>,
     height: Option<f64>,
     length: Option<f64>,
-    line_count: Option<usize>,
+    line_count: Option<i64>,
     bbox_left: Option<f64>,
     bbox_right: Option<f64>,
     raw_width: Option<f64>,
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+fn decode_wasm_host_text_measurement(
+    request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+    result: WasmHostTextMeasureResult,
+) -> Result<merman_bindings_core::HostTextMeasurement, merman_bindings_core::HostTextMeasurementError>
+{
+    merman_bindings_core::decode_host_text_measurement(
+        request,
+        merman_bindings_core::HostTextMeasurementRecord {
+            result_kind: result
+                .kind
+                .as_deref()
+                .and_then(merman_bindings_core::HostTextMeasurementResultKind::from_external_name),
+            width: result.width,
+            height: result.height,
+            line_count: result.line_count.map(i128::from),
+            length: result.length,
+            bbox_left: result.bbox_left,
+            bbox_right: result.bbox_right,
+            raw_width: result.raw_width,
+        },
+    )
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -398,30 +421,23 @@ impl WasmHostTextMeasurer {
                 return Ok(None);
             }
 
-            let result: WasmHostTextMeasureResult =
-                serde_wasm_bindgen::from_value(value).map_err(|err| {
-                    merman_bindings_core::HostTextMeasurementError::new(err.to_string())
+            #[derive(Deserialize)]
+            struct HostDisposition {
+                handled: Option<bool>,
+            }
+            let disposition: HostDisposition = serde_wasm_bindgen::from_value(value.clone())
+                .map_err(|err| {
+                    merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
                 })?;
-            if result.handled == Some(false) {
+            if disposition.handled == Some(false) {
                 return Ok(None);
             }
 
-            Ok(Some(
-                merman_bindings_core::host_text_measurement_from_values(
-                    result.kind.as_deref().and_then(
-                        merman_bindings_core::HostTextMeasurementResultKind::from_external_name,
-                    ),
-                    merman_bindings_core::HostTextMeasurementValues {
-                        width: result.width.unwrap_or(f64::NAN),
-                        height: result.height.unwrap_or(f64::NAN),
-                        line_count: result.line_count.unwrap_or(0),
-                        length: result.length.unwrap_or(f64::NAN),
-                        bbox_left: result.bbox_left.unwrap_or(f64::NAN),
-                        bbox_right: result.bbox_right.unwrap_or(f64::NAN),
-                        raw_width: result.raw_width,
-                    },
-                ),
-            ))
+            let result: WasmHostTextMeasureResult =
+                serde_wasm_bindgen::from_value(value).map_err(|err| {
+                    merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
+                })?;
+            decode_wasm_host_text_measurement(request, result).map(Some)
         })
     }
 }
@@ -547,6 +563,33 @@ mod tests {
                 (18, "raw-bbox-height"),
             ]
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_checked_decoder_rejects_missing_fields_and_oversized_counts() {
+        let style = merman_bindings_core::TextStyle::default();
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::Measure,
+            phase: merman_bindings_core::TextMeasurementPhase::Layout,
+            text: "x",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::SvgLike,
+        };
+        let result = |height, line_count| WasmHostTextMeasureResult {
+            kind: Some("metrics".to_string()),
+            width: Some(1.0),
+            height,
+            length: None,
+            line_count,
+            bbox_left: None,
+            bbox_right: None,
+            raw_width: None,
+        };
+
+        assert!(decode_wasm_host_text_measurement(request, result(None, Some(1))).is_err());
+        assert!(decode_wasm_host_text_measurement(request, result(Some(1.0), Some(3))).is_err());
     }
 
     #[test]

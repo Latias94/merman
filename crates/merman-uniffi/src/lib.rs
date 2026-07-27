@@ -412,20 +412,20 @@ impl UniffiHostTextMeasurer {
             Err(error) => return Err(HostTextMeasurementError::new(error.to_string())),
         };
 
-        Ok(Some(
-            merman_bindings_core::host_text_measurement_from_values(
-                Some(uniffi_result_kind(result.result_kind)),
-                merman_bindings_core::HostTextMeasurementValues {
-                    width: result.width,
-                    height: result.height,
-                    line_count: usize::try_from(result.line_count).unwrap_or(0),
-                    length: result.length,
-                    bbox_left: result.bbox_left.unwrap_or(f64::NAN),
-                    bbox_right: result.bbox_right.unwrap_or(f64::NAN),
-                    raw_width: result.raw_width,
-                },
-            ),
-        ))
+        merman_bindings_core::decode_host_text_measurement(
+            request,
+            merman_bindings_core::HostTextMeasurementRecord {
+                result_kind: Some(uniffi_result_kind(result.result_kind)),
+                width: Some(result.width),
+                height: Some(result.height),
+                line_count: Some(i128::from(result.line_count)),
+                length: Some(result.length),
+                bbox_left: result.bbox_left,
+                bbox_right: result.bbox_right,
+                raw_width: result.raw_width,
+            },
+        )
+        .map(Some)
     }
 }
 
@@ -1253,6 +1253,11 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    struct FixedTextMeasurer {
+        result: MermanTextMeasureResult,
+    }
+
+    #[cfg(feature = "svg")]
     struct BlockingFailingTextMeasurer {
         state: (StdMutex<BlockingFailingTextMeasurerState>, Condvar),
     }
@@ -1509,6 +1514,16 @@ mod tests {
         ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(None)
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    impl MermanTextMeasurer for FixedTextMeasurer {
+        fn measure(
+            &self,
+            _request: MermanTextMeasureRequest,
+        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
+            Ok(Some(self.result))
         }
     }
 
@@ -1842,6 +1857,67 @@ mod tests {
             panic!("raw bbox height must use the length result shape");
         };
         assert!(raw_height > 0.0);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn uniffi_checked_decoder_rejects_oversized_counts_and_half_extents() {
+        let style = merman_bindings_core::TextStyle::default();
+        let lifecycle = ReusableEngineLifecycle::new();
+        let request = |operation| merman_bindings_core::HostTextMeasurementRequest {
+            operation,
+            phase: merman_bindings_core::TextMeasurementPhase::SvgBBox,
+            text: "x",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::SvgLike,
+        };
+
+        let oversized = UniffiHostTextMeasurer::new(
+            Arc::new(FixedTextMeasurer {
+                result: MermanTextMeasureResult {
+                    result_kind: MermanTextMeasurementResultKind::Metrics,
+                    width: 1.0,
+                    height: 1.0,
+                    length: 0.0,
+                    line_count: u64::MAX,
+                    bbox_left: None,
+                    bbox_right: None,
+                    raw_width: None,
+                },
+            }),
+            Arc::clone(&lifecycle),
+        );
+        assert!(
+            oversized
+                .call_host(request(
+                    merman_bindings_core::TextMeasurementOperation::Measure,
+                ))
+                .is_err()
+        );
+
+        let half_extents = UniffiHostTextMeasurer::new(
+            Arc::new(FixedTextMeasurer {
+                result: MermanTextMeasureResult {
+                    result_kind: MermanTextMeasurementResultKind::HorizontalExtents,
+                    width: 0.0,
+                    height: 0.0,
+                    length: 0.0,
+                    line_count: 0,
+                    bbox_left: Some(1.0),
+                    bbox_right: None,
+                    raw_width: None,
+                },
+            }),
+            lifecycle,
+        );
+        assert!(
+            half_extents
+                .call_host(request(
+                    merman_bindings_core::TextMeasurementOperation::BBoxX,
+                ))
+                .is_err()
+        );
     }
 
     #[cfg(feature = "svg")]

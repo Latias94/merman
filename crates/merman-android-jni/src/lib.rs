@@ -223,7 +223,7 @@ impl JniHostTextMeasurer {
         let result = self
             .vm
             .attach_current_thread(
-                |env| -> JniResult<Option<merman_bindings_core::HostTextMeasurement>> {
+                |env| -> JniResult<Option<merman_bindings_core::HostTextMeasurementRecord>> {
                     let request_object = new_text_measure_request(env, request)?;
                     let result = env
                         .call_method(
@@ -298,20 +298,19 @@ impl JniHostTextMeasurer {
                         return Ok(None);
                     };
 
-                    Ok(Some(merman_bindings_core::host_text_measurement_from_values(
-                        merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
-                            result_kind,
-                        ),
-                        merman_bindings_core::HostTextMeasurementValues {
-                            width,
-                            height,
-                            line_count: usize::try_from(line_count).unwrap_or(0),
-                            length,
-                            bbox_left,
-                            bbox_right,
-                            raw_width: has_raw_width.then_some(raw_width),
-                        },
-                    )))
+                    Ok(Some(merman_bindings_core::HostTextMeasurementRecord {
+                        result_kind:
+                            merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
+                                result_kind,
+                            ),
+                        width: Some(width),
+                        height: Some(height),
+                        line_count: Some(i128::from(line_count)),
+                        length: Some(length),
+                        bbox_left: Some(bbox_left),
+                        bbox_right: Some(bbox_right),
+                        raw_width: has_raw_width.then_some(raw_width),
+                    }))
                 },
             )
             .map_err(|error| {
@@ -324,7 +323,9 @@ impl JniHostTextMeasurer {
                 "JNI host text measurer callback failed or returned invalid metrics",
             ));
         }
-        Ok(result)
+        result
+            .map(|record| merman_bindings_core::decode_host_text_measurement(request, record))
+            .transpose()
     }
 }
 

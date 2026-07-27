@@ -362,22 +362,38 @@ impl TextMeasurementRecorder {
     }
 }
 
-/// A host callback failure converted to explicit fallback provenance by the policy.
+/// A host callback failure or invalid result converted to explicit fallback provenance.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct HostTextMeasurementError {
     message: Arc<str>,
+    fallback_reason: HostFallbackReason,
 }
 
 impl HostTextMeasurementError {
+    /// Creates an error reported by the host callback or its transport.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: Arc::from(message.into()),
+            fallback_reason: HostFallbackReason::Error,
+        }
+    }
+
+    /// Creates an error for a callback value that violates the measurement contract.
+    #[doc(hidden)]
+    pub fn invalid_value(message: impl Into<String>) -> Self {
+        Self {
+            message: Arc::from(message.into()),
+            fallback_reason: HostFallbackReason::Invalid,
         }
     }
 
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    fn fallback_reason(&self) -> HostFallbackReason {
+        self.fallback_reason
     }
 }
 
@@ -592,7 +608,7 @@ impl RoutedTextMeasurer<'_> {
             } => {
                 let attempt = backend.measure(request);
                 let decoded = match &attempt {
-                    Ok(Some(value)) if valid_host_measurement(operation, value) => {
+                    Ok(Some(value)) if validate_host_text_measurement(&request, value).is_ok() => {
                         decode_host(*value)
                     }
                     Ok(None) | Err(_) => None,
@@ -607,7 +623,7 @@ impl RoutedTextMeasurer<'_> {
                 let reason = match attempt {
                     Ok(Some(_)) => HostFallbackReason::Invalid,
                     Ok(None) => HostFallbackReason::Missing,
-                    Err(_) => HostFallbackReason::Error,
+                    Err(error) => error.fallback_reason(),
                 };
                 let value = profile_call(fallback.backend.as_ref());
                 self.recorder.record(
@@ -963,49 +979,71 @@ fn decode_host_wrapped_with_raw_width(
     }
 }
 
-fn valid_host_measurement(
-    operation: TextMeasurementOperation,
+/// Checks a host callback value against the complete operation request.
+///
+/// The validator is the single authority for result shape and numeric bounds across direct
+/// renderer hosts and every binding transport.
+pub fn validate_host_text_measurement(
+    request: &HostTextMeasurementRequest<'_>,
     measurement: &HostTextMeasurement,
-) -> bool {
-    match measurement {
-        HostTextMeasurement::Metrics(metrics) => {
-            operation.required_result_kind() == TextMeasurementResultKind::Metrics
-                && valid_metrics(metrics)
+) -> Result<(), HostTextMeasurementError> {
+    let result_kind = match measurement {
+        HostTextMeasurement::Metrics(_) => TextMeasurementResultKind::Metrics,
+        HostTextMeasurement::Length(_) => TextMeasurementResultKind::Length,
+        HostTextMeasurement::HorizontalExtents { .. } => {
+            TextMeasurementResultKind::HorizontalExtents
         }
+        HostTextMeasurement::WrappedWithRawWidth { .. } => {
+            TextMeasurementResultKind::WrappedWithRawWidth
+        }
+    };
+    let required_kind = request.operation.required_result_kind();
+    if result_kind != required_kind {
+        return Err(HostTextMeasurementError::invalid_value(format!(
+            "host text measurement operation `{}` requires `{}` but returned `{}`",
+            request.operation.external_name(),
+            required_kind.external_name(),
+            result_kind.external_name(),
+        )));
+    }
+
+    let valid = match measurement {
+        HostTextMeasurement::Metrics(metrics) => valid_metrics(request, metrics),
         HostTextMeasurement::Length(value) => {
-            operation.required_result_kind() == TextMeasurementResultKind::Length
-                && value.is_finite()
-                && (operation.accepts_signed_length() || *value >= 0.0)
+            value.is_finite() && (request.operation.accepts_signed_length() || *value >= 0.0)
         }
-        HostTextMeasurement::HorizontalExtents { left, right } => {
-            operation.required_result_kind() == TextMeasurementResultKind::HorizontalExtents
-                && valid_extents(&(*left, *right))
-        }
+        HostTextMeasurement::HorizontalExtents { left, right } => valid_extents(*left, *right),
         HostTextMeasurement::WrappedWithRawWidth { metrics, raw_width } => {
-            operation.required_result_kind() == TextMeasurementResultKind::WrappedWithRawWidth
-                && valid_wrapped_with_raw_width(&(*metrics, *raw_width))
+            valid_metrics(request, metrics)
+                && raw_width.is_none_or(|value| value.is_finite() && value >= 0.0)
         }
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(HostTextMeasurementError::invalid_value(format!(
+            "host text measurement operation `{}` returned an invalid `{}` value",
+            request.operation.external_name(),
+            result_kind.external_name(),
+        )))
     }
 }
 
-fn valid_metrics(metrics: &TextMetrics) -> bool {
+fn valid_metrics(request: &HostTextMeasurementRequest<'_>, metrics: &TextMetrics) -> bool {
     metrics.width.is_finite()
         && metrics.height.is_finite()
         && metrics.width >= 0.0
         && metrics.height >= 0.0
         && metrics.line_count > 0
+        && metrics.line_count <= request.text.len().saturating_add(1)
 }
 
-fn valid_length(value: &f64) -> bool {
-    value.is_finite() && *value >= 0.0
-}
-
-fn valid_extents(value: &(f64, f64)) -> bool {
-    value.0.is_finite() && value.1.is_finite() && value.0 >= 0.0 && value.1 >= 0.0
-}
-
-fn valid_wrapped_with_raw_width(value: &(TextMetrics, Option<f64>)) -> bool {
-    valid_metrics(&value.0) && value.1.as_ref().is_none_or(valid_length)
+fn valid_extents(left: f64, right: f64) -> bool {
+    left.is_finite()
+        && right.is_finite()
+        && left >= 0.0
+        && right >= 0.0
+        && (left + right).is_finite()
 }
 
 #[cfg(feature = "math")]
@@ -1308,6 +1346,15 @@ mod tests {
 
     #[test]
     fn descriptor_drives_host_result_validation_for_every_operation() {
+        let style = TextStyle::default();
+        let request = |operation| HostTextMeasurementRequest {
+            operation,
+            phase: TextMeasurementPhase::Layout,
+            text: "contract",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
         let valid_metrics_value = HostTextMeasurement::Metrics(metrics(10.0));
         let valid_length = HostTextMeasurement::Length(10.0);
         let negative_length = HostTextMeasurement::Length(-10.0);
@@ -1324,39 +1371,145 @@ mod tests {
         for operation in TextMeasurementOperation::ALL {
             let required = operation.required_result_kind();
             assert_eq!(
-                valid_host_measurement(operation, &valid_metrics_value),
+                validate_host_text_measurement(&request(operation), &valid_metrics_value).is_ok(),
                 required == TextMeasurementResultKind::Metrics,
                 "{} metrics contract",
                 operation.external_name()
             );
             assert_eq!(
-                valid_host_measurement(operation, &valid_length),
+                validate_host_text_measurement(&request(operation), &valid_length).is_ok(),
                 required == TextMeasurementResultKind::Length,
                 "{} length contract",
                 operation.external_name()
             );
             assert_eq!(
-                valid_host_measurement(operation, &negative_length),
+                validate_host_text_measurement(&request(operation), &negative_length).is_ok(),
                 required == TextMeasurementResultKind::Length && operation.accepts_signed_length(),
                 "{} signed-length contract",
                 operation.external_name()
             );
             assert!(
-                !valid_host_measurement(operation, &invalid_length),
+                validate_host_text_measurement(&request(operation), &invalid_length).is_err(),
                 "{} accepted a non-finite length",
                 operation.external_name()
             );
             assert_eq!(
-                valid_host_measurement(operation, &valid_extents),
+                validate_host_text_measurement(&request(operation), &valid_extents).is_ok(),
                 required == TextMeasurementResultKind::HorizontalExtents,
                 "{} extents contract",
                 operation.external_name()
             );
             assert_eq!(
-                valid_host_measurement(operation, &valid_wrapped),
+                validate_host_text_measurement(&request(operation), &valid_wrapped).is_ok(),
                 required == TextMeasurementResultKind::WrappedWithRawWidth,
                 "{} wrapped contract",
                 operation.external_name()
+            );
+        }
+    }
+
+    #[test]
+    fn checked_host_measurement_rejects_malformed_numeric_boundaries() {
+        let style = TextStyle::default();
+        let request = |operation, text| HostTextMeasurementRequest {
+            operation,
+            phase: TextMeasurementPhase::Layout,
+            text,
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
+        let metrics_value = |width, height, line_count| {
+            HostTextMeasurement::Metrics(TextMetrics {
+                width,
+                height,
+                line_count,
+            })
+        };
+
+        let metrics_request = request(TextMeasurementOperation::Measure, "abc");
+        assert!(
+            validate_host_text_measurement(&metrics_request, &metrics_value(1.0, 2.0, 4)).is_ok()
+        );
+        for invalid in [
+            metrics_value(f64::NAN, 2.0, 1),
+            metrics_value(f64::INFINITY, 2.0, 1),
+            metrics_value(-1.0, 2.0, 1),
+            metrics_value(1.0, f64::NAN, 1),
+            metrics_value(1.0, f64::INFINITY, 1),
+            metrics_value(1.0, -2.0, 1),
+            metrics_value(1.0, 2.0, 0),
+            metrics_value(1.0, 2.0, 5),
+        ] {
+            assert!(validate_host_text_measurement(&metrics_request, &invalid).is_err());
+        }
+
+        let length_request = request(TextMeasurementOperation::ComputedLength, "abc");
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            assert!(
+                validate_host_text_measurement(
+                    &length_request,
+                    &HostTextMeasurement::Length(value),
+                )
+                .is_err()
+            );
+        }
+        for operation in [
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+            TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
+        ] {
+            assert!(
+                validate_host_text_measurement(
+                    &request(operation, "abc"),
+                    &HostTextMeasurement::Length(-1.0),
+                )
+                .is_ok()
+            );
+        }
+
+        let extents_request = request(TextMeasurementOperation::BBoxX, "abc");
+        for (left, right) in [
+            (f64::NAN, 1.0),
+            (1.0, f64::INFINITY),
+            (-1.0, 1.0),
+            (1.0, -1.0),
+            (f64::MAX, f64::MAX),
+        ] {
+            assert!(
+                validate_host_text_measurement(
+                    &extents_request,
+                    &HostTextMeasurement::HorizontalExtents { left, right },
+                )
+                .is_err()
+            );
+        }
+
+        let wrapped_request = request(TextMeasurementOperation::WrappedWithRawWidth, "abc");
+        assert!(
+            validate_host_text_measurement(
+                &wrapped_request,
+                &HostTextMeasurement::WrappedWithRawWidth {
+                    metrics: TextMetrics {
+                        width: 10.0,
+                        height: 20.0,
+                        line_count: 1,
+                    },
+                    raw_width: Some(1.0),
+                },
+            )
+            .is_ok(),
+            "raw width may be smaller than wrapped width"
+        );
+        for raw_width in [f64::NAN, f64::INFINITY, -1.0] {
+            assert!(
+                validate_host_text_measurement(
+                    &wrapped_request,
+                    &HostTextMeasurement::WrappedWithRawWidth {
+                        metrics: metrics(10.0),
+                        raw_width: Some(raw_width),
+                    },
+                )
+                .is_err()
             );
         }
     }
@@ -1775,6 +1928,7 @@ mod tests {
         Measured(TextMetrics),
         Length(f64),
         Missing,
+        Invalid,
         Error,
     }
 
@@ -1790,6 +1944,9 @@ mod tests {
                 HostOutcome::Measured(metrics) => Ok(Some(HostTextMeasurement::Metrics(metrics))),
                 HostOutcome::Length(length) => Ok(Some(HostTextMeasurement::Length(length))),
                 HostOutcome::Missing => Ok(None),
+                HostOutcome::Invalid => Err(HostTextMeasurementError::invalid_value(
+                    "invalid host value",
+                )),
                 HostOutcome::Error => Err(HostTextMeasurementError::new("host failed")),
             }
         }
@@ -1852,6 +2009,11 @@ mod tests {
                     height: 10.0,
                     line_count: 1,
                 }),
+                Some(HostFallbackReason::Invalid),
+                41.0,
+            ),
+            (
+                HostOutcome::Invalid,
                 Some(HostFallbackReason::Invalid),
                 41.0,
             ),

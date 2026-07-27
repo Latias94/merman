@@ -1,6 +1,7 @@
 use crate::{
     HostTextMeasurement, HostTextMeasurementRequest, TextMeasurementPhase, TextMetrics, WrapMode,
 };
+use merman::svg::validate_host_text_measurement;
 
 include!("generated/text_measurement_abi.rs");
 
@@ -55,46 +56,95 @@ pub fn host_text_measurement_transport_fields(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct HostTextMeasurementValues {
-    pub width: f64,
-    pub height: f64,
-    pub line_count: usize,
-    pub length: f64,
-    pub bbox_left: f64,
-    pub bbox_right: f64,
+pub struct HostTextMeasurementRecord {
+    pub result_kind: Option<HostTextMeasurementResultKind>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub line_count: Option<i128>,
+    pub length: Option<f64>,
+    pub bbox_left: Option<f64>,
+    pub bbox_right: Option<f64>,
     pub raw_width: Option<f64>,
 }
 
-pub fn host_text_measurement_from_values(
-    result_kind: Option<HostTextMeasurementResultKind>,
-    values: HostTextMeasurementValues,
-) -> HostTextMeasurement {
-    let metrics = || TextMetrics {
-        width: values.width,
-        height: values.height,
-        line_count: values.line_count,
-    };
-    match result_kind {
-        Some(HostTextMeasurementResultKind::Metrics) => HostTextMeasurement::Metrics(metrics()),
-        Some(HostTextMeasurementResultKind::Length) => HostTextMeasurement::Length(values.length),
-        Some(HostTextMeasurementResultKind::HorizontalExtents) => {
-            HostTextMeasurement::HorizontalExtents {
-                left: values.bbox_left,
-                right: values.bbox_right,
-            }
-        }
-        Some(HostTextMeasurementResultKind::WrappedWithRawWidth) => {
-            HostTextMeasurement::WrappedWithRawWidth {
-                metrics: metrics(),
-                raw_width: values.raw_width,
-            }
-        }
-        None => HostTextMeasurement::Metrics(TextMetrics {
-            width: f64::NAN,
-            height: f64::NAN,
-            line_count: 0,
-        }),
+pub fn decode_host_text_measurement(
+    request: HostTextMeasurementRequest<'_>,
+    record: HostTextMeasurementRecord,
+) -> Result<HostTextMeasurement, crate::HostTextMeasurementError> {
+    if record.bbox_left.is_some() != record.bbox_right.is_some() {
+        return Err(invalid_record(
+            "bbox_left and bbox_right must either both be present or both be absent",
+        ));
     }
+
+    let Some(result_kind) = record.result_kind else {
+        return Err(invalid_record(
+            "host text measurement result kind is missing or unknown",
+        ));
+    };
+    let required_kind = HostTextMeasurementResultKind::expected_for_operation(request.operation);
+    if result_kind != required_kind {
+        return Err(invalid_record(format!(
+            "operation `{}` requires `{}` but returned `{}`",
+            request.operation.external_name(),
+            required_kind.external_name(),
+            result_kind.external_name(),
+        )));
+    }
+    if record.raw_width.is_some()
+        && result_kind != HostTextMeasurementResultKind::WrappedWithRawWidth
+    {
+        return Err(invalid_record(
+            "raw_width is only valid for wrapped-with-raw-width results",
+        ));
+    }
+
+    let measurement = match result_kind {
+        HostTextMeasurementResultKind::Metrics => {
+            HostTextMeasurement::Metrics(decode_metrics(&record)?)
+        }
+        HostTextMeasurementResultKind::Length => {
+            HostTextMeasurement::Length(required_field(record.length, "length")?)
+        }
+        HostTextMeasurementResultKind::HorizontalExtents => {
+            HostTextMeasurement::HorizontalExtents {
+                left: required_field(record.bbox_left, "bbox_left")?,
+                right: required_field(record.bbox_right, "bbox_right")?,
+            }
+        }
+        HostTextMeasurementResultKind::WrappedWithRawWidth => {
+            HostTextMeasurement::WrappedWithRawWidth {
+                metrics: decode_metrics(&record)?,
+                raw_width: record.raw_width,
+            }
+        }
+    };
+    validate_host_text_measurement(&request, &measurement)?;
+    Ok(measurement)
+}
+
+fn decode_metrics(
+    record: &HostTextMeasurementRecord,
+) -> Result<TextMetrics, crate::HostTextMeasurementError> {
+    let raw_line_count = required_field(record.line_count, "line_count")?;
+    let line_count = usize::try_from(raw_line_count)
+        .map_err(|_| invalid_record("line_count cannot be represented losslessly as usize"))?;
+    Ok(TextMetrics {
+        width: required_field(record.width, "width")?,
+        height: required_field(record.height, "height")?,
+        line_count,
+    })
+}
+
+fn required_field<T: Copy>(
+    value: Option<T>,
+    field: &str,
+) -> Result<T, crate::HostTextMeasurementError> {
+    value.ok_or_else(|| invalid_record(format!("required field `{field}` is missing")))
+}
+
+fn invalid_record(message: impl Into<String>) -> crate::HostTextMeasurementError {
+    crate::HostTextMeasurementError::invalid_value(message)
 }
 
 #[cfg(test)]
@@ -102,14 +152,30 @@ mod tests {
     use super::*;
     use crate::{TextMeasurementOperation, TextStyle};
 
-    fn values() -> HostTextMeasurementValues {
-        HostTextMeasurementValues {
-            width: 21.0,
-            height: 13.0,
-            line_count: 2,
-            length: 17.0,
-            bbox_left: 3.0,
-            bbox_right: 18.0,
+    fn request<'a>(
+        operation: TextMeasurementOperation,
+        text: &'a str,
+        style: &'a TextStyle,
+    ) -> HostTextMeasurementRequest<'a> {
+        HostTextMeasurementRequest {
+            operation,
+            phase: TextMeasurementPhase::Layout,
+            text,
+            style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        }
+    }
+
+    fn record(result_kind: Option<HostTextMeasurementResultKind>) -> HostTextMeasurementRecord {
+        HostTextMeasurementRecord {
+            result_kind,
+            width: Some(21.0),
+            height: Some(13.0),
+            line_count: Some(2),
+            length: Some(17.0),
+            bbox_left: Some(3.0),
+            bbox_right: Some(18.0),
             raw_width: Some(34.0),
         }
     }
@@ -233,10 +299,15 @@ mod tests {
 
     #[test]
     fn external_values_decode_by_declared_result_kind() {
-        let HostTextMeasurement::Metrics(metrics) = host_text_measurement_from_values(
-            Some(HostTextMeasurementResultKind::Metrics),
-            values(),
-        ) else {
+        let style = TextStyle::default();
+        let HostTextMeasurement::Metrics(metrics) = decode_host_text_measurement(
+            request(TextMeasurementOperation::Measure, "abc", &style),
+            HostTextMeasurementRecord {
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::Metrics))
+            },
+        )
+        .expect("valid metrics record") else {
             panic!("metrics kind should decode as metrics");
         };
         assert_eq!(
@@ -244,29 +315,36 @@ mod tests {
             (21.0, 13.0, 2)
         );
 
-        let HostTextMeasurement::Length(length) = host_text_measurement_from_values(
-            Some(HostTextMeasurementResultKind::Length),
-            values(),
-        ) else {
+        let HostTextMeasurement::Length(length) = decode_host_text_measurement(
+            request(TextMeasurementOperation::ComputedLength, "abc", &style),
+            HostTextMeasurementRecord {
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::Length))
+            },
+        )
+        .expect("valid length record") else {
             panic!("length kind should decode as a length");
         };
         assert_eq!(length, 17.0);
 
-        let HostTextMeasurement::HorizontalExtents { left, right } =
-            host_text_measurement_from_values(
-                Some(HostTextMeasurementResultKind::HorizontalExtents),
-                values(),
-            )
-        else {
+        let HostTextMeasurement::HorizontalExtents { left, right } = decode_host_text_measurement(
+            request(TextMeasurementOperation::BBoxX, "abc", &style),
+            HostTextMeasurementRecord {
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::HorizontalExtents))
+            },
+        )
+        .expect("valid horizontal-extents record") else {
             panic!("horizontal-extents kind should decode as extents");
         };
         assert_eq!((left, right), (3.0, 18.0));
 
         let HostTextMeasurement::WrappedWithRawWidth { metrics, raw_width } =
-            host_text_measurement_from_values(
-                Some(HostTextMeasurementResultKind::WrappedWithRawWidth),
-                values(),
+            decode_host_text_measurement(
+                request(TextMeasurementOperation::WrappedWithRawWidth, "abc", &style),
+                record(Some(HostTextMeasurementResultKind::WrappedWithRawWidth)),
             )
+            .expect("valid wrapped record")
         else {
             panic!("wrapped-with-raw-width kind should preserve both values");
         };
@@ -278,14 +356,90 @@ mod tests {
     }
 
     #[test]
-    fn unknown_external_result_kind_decodes_to_an_always_invalid_value() {
-        let HostTextMeasurement::Metrics(metrics) =
-            host_text_measurement_from_values(None, values())
-        else {
-            panic!("unknown kind should use the invalid metrics sentinel");
-        };
-        assert!(metrics.width.is_nan());
-        assert!(metrics.height.is_nan());
-        assert_eq!(metrics.line_count, 0);
+    fn checked_decoder_rejects_unknown_and_operation_mismatched_result_kinds() {
+        let style = TextStyle::default();
+        let request = request(TextMeasurementOperation::Measure, "abc", &style);
+
+        assert!(decode_host_text_measurement(request, record(None)).is_err());
+        assert!(
+            decode_host_text_measurement(
+                request,
+                HostTextMeasurementRecord {
+                    raw_width: None,
+                    ..record(Some(HostTextMeasurementResultKind::Length))
+                },
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn checked_decoder_requires_active_fields_and_preserves_presence_rules() {
+        let style = TextStyle::default();
+        let metrics_request = request(TextMeasurementOperation::Measure, "abc", &style);
+        for missing in [
+            HostTextMeasurementRecord {
+                width: None,
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::Metrics))
+            },
+            HostTextMeasurementRecord {
+                height: None,
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::Metrics))
+            },
+            HostTextMeasurementRecord {
+                line_count: None,
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::Metrics))
+            },
+        ] {
+            assert!(decode_host_text_measurement(metrics_request, missing).is_err());
+        }
+
+        let extent_request = request(TextMeasurementOperation::BBoxX, "abc", &style);
+        for half_extent in [
+            HostTextMeasurementRecord {
+                bbox_left: None,
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::HorizontalExtents))
+            },
+            HostTextMeasurementRecord {
+                bbox_right: None,
+                raw_width: None,
+                ..record(Some(HostTextMeasurementResultKind::HorizontalExtents))
+            },
+        ] {
+            assert!(decode_host_text_measurement(extent_request, half_extent).is_err());
+        }
+
+        assert!(
+            decode_host_text_measurement(
+                metrics_request,
+                record(Some(HostTextMeasurementResultKind::Metrics)),
+            )
+            .is_err(),
+            "raw_width presence is exclusive to wrapped results"
+        );
+    }
+
+    #[test]
+    fn checked_decoder_rejects_lossy_or_out_of_range_line_counts() {
+        let style = TextStyle::default();
+        let request = request(TextMeasurementOperation::Measure, "abc", &style);
+
+        for line_count in [-1, i128::MAX, 5] {
+            assert!(
+                decode_host_text_measurement(
+                    request,
+                    HostTextMeasurementRecord {
+                        line_count: Some(line_count),
+                        raw_width: None,
+                        ..record(Some(HostTextMeasurementResultKind::Metrics))
+                    },
+                )
+                .is_err()
+            );
+        }
     }
 }

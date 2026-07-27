@@ -53,6 +53,7 @@ pub use merman_render::environment::{
     TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementResultKind,
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
+    validate_host_text_measurement,
 };
 pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 #[cfg(feature = "math")]

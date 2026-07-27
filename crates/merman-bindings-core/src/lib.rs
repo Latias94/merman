@@ -67,7 +67,7 @@ pub use ascii::render_ascii;
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation, TextMeasurementPhase,
-    TextMetrics, TextStyle, WrapMode,
+    TextMetrics, TextStyle, WrapMode, validate_host_text_measurement,
 };
 #[cfg(feature = "jpeg")]
 pub use render::render_jpeg;
@@ -79,8 +79,8 @@ pub use render::render_png;
 pub use render::{layout_json, render_svg};
 #[cfg(feature = "svg")]
 pub use text_measurement::{
-    HostTextMeasurementResultKind, HostTextMeasurementTransportFields, HostTextMeasurementValues,
-    host_text_measurement_from_values, host_text_measurement_transport_fields,
+    HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
+    decode_host_text_measurement, host_text_measurement_transport_fields,
 };
 
 #[cfg(not(feature = "ascii"))]
