@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -8,10 +8,12 @@ import { loadNativeTransport } from "../src/candidates/native.mjs";
 import { loadNodeWasmTransport } from "../src/candidates/wasm.mjs";
 import {
   loadNativeBinding,
+  nativeLoaderPackageVersion,
   nativePackageName,
   resolveNodeTarget,
 } from "../src/native-loader.mjs";
 import {
+  MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
   MermanOperationError,
   MermanUnsupportedTargetError,
@@ -71,6 +73,62 @@ test("the loader resolves one target-specific package and no browser package", (
   assert.equal(loaded, binding);
   assert.deepEqual(requested, ["@mermanjs/node-darwin-arm64"]);
   assert.equal(nativePackageName("linux-x64-musl"), "@mermanjs/node-linux-x64-musl");
+});
+
+test("the native loader reads its expected version from its own package manifest", () => {
+  const manifest = JSON.parse(readFileSync(path.join(nodeRoot, "package.json"), "utf8"));
+  assert.equal(nativeLoaderPackageVersion(), manifest.version);
+});
+
+test("the native loader accepts and caches an exact-version runtime catalog", async () => {
+  let catalogReads = 0;
+  class NativeEngine {
+    execute() {}
+    executeSync() {}
+    runtimeCatalogJson() {
+      catalogReads += 1;
+      return JSON.stringify({ package_version: nativeLoaderPackageVersion() });
+    }
+  }
+
+  const transport = await loadNativeTransport("{}", {
+    loadPackage: () => ({ NativeEngine }),
+  });
+  assert.equal(catalogReads, 1);
+  assert.equal(
+    JSON.parse(transport.runtimeCatalogJson()).package_version,
+    nativeLoaderPackageVersion(),
+  );
+  assert.equal(catalogReads, 1);
+  await transport.dispose();
+});
+
+test("the native loader rejects a stale binary runtime catalog", async () => {
+  let disposed = false;
+  class NativeEngine {
+    execute() {}
+    executeSync() {}
+    runtimeCatalogJson() {
+      return JSON.stringify({ package_version: "0.0.0-stale" });
+    }
+    dispose() {
+      disposed = true;
+    }
+  }
+
+  await assert.rejects(
+    loadNativeTransport("{}", {
+      loadPackage: () => ({ NativeEngine }),
+    }),
+    (error) => {
+      assert.ok(error instanceof MermanInvalidTransportError);
+      assert.match(error.message, /native runtime package version.*loader package/i);
+      assert.match(error.message, /0\.0\.0-stale/);
+      assert.match(error.message, new RegExp(nativeLoaderPackageVersion().replaceAll(".", "\\.")));
+      return true;
+    },
+  );
+  assert.equal(disposed, true);
 });
 
 test("a corrupt browser WASM package cannot become a silent fallback", () => {

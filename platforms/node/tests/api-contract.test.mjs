@@ -17,6 +17,9 @@ import {
 } from "../src/errors.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+).version;
 
 function deferred() {
   let resolve;
@@ -88,7 +91,7 @@ function runtimeCatalog(overrides = {}) {
   return {
     schema_version: 1,
     transport_api_version: 1,
-    package_version: "0.8.0-alpha.3",
+    package_version: PACKAGE_VERSION,
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
@@ -306,6 +309,69 @@ test("construction validates and exposes the loaded artifact runtime catalog", a
     createNodeEngine({}, { loadTransport: malformed.loadTransport }),
     MermanInvalidTransportError,
   );
+});
+
+test("construction disposes every unusable transport exactly once", async () => {
+  const cases = [
+    {
+      name: "transport shape",
+      options: {},
+      overrides: { executeSync: undefined },
+      expected: MermanInvalidTransportError,
+    },
+    {
+      name: "runtime catalog",
+      options: {},
+      overrides: {
+        runtimeCatalogJson() {
+          return JSON.stringify(runtimeCatalog({ schema_version: 2 }));
+        },
+      },
+      expected: MermanInvalidTransportError,
+    },
+    {
+      name: "engine construction",
+      options: { concurrency: 0 },
+      overrides: {},
+      expected: RangeError,
+    },
+  ];
+
+  for (const item of cases) {
+    let disposeCalls = 0;
+    const factory = transportFactory({
+      ...item.overrides,
+      async dispose() {
+        disposeCalls += 1;
+      },
+    });
+    await assert.rejects(
+      createNodeEngine(item.options, { loadTransport: factory.loadTransport }),
+      item.expected,
+      item.name,
+    );
+    assert.equal(disposeCalls, 1, item.name);
+  }
+});
+
+test("construction cleanup never obscures the primary transport failure", async () => {
+  const primary = new Error("runtime catalog probe failed");
+  let disposeCalls = 0;
+  const factory = transportFactory({
+    runtimeCatalogJson() {
+      throw primary;
+    },
+    async dispose() {
+      disposeCalls += 1;
+      throw new Error("dispose failed");
+    },
+  });
+
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: factory.loadTransport }),
+    (error) => error === primary,
+  );
+  assert.equal(disposeCalls, 1);
 });
 
 test("runtime catalog validates text measurement and resource local relations", async () => {

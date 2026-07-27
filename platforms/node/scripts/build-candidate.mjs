@@ -24,6 +24,8 @@ import { digestJson, stableJson } from "./stable-json.mjs";
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const descriptor = readJson(path.join(nodeRoot, "candidate-builds.json"));
+const packageSurfacePath = path.join(nodeRoot, "package-surfaces.json");
+const packageSurface = readJson(packageSurfacePath);
 assertDescriptor();
 const capabilityDescriptorPath = path.join(
   repositoryRoot,
@@ -50,6 +52,7 @@ export function buildCandidate({ candidate, target = null }) {
   const resolvedTarget = candidate === "napi" ? target ?? resolveNodeTarget() : null;
   const recipe = resolveCandidateRecipe(candidate, resolvedTarget);
   const metadata = cargoMetadata(recipe);
+  validateCandidatePackageVersions(metadata);
   const dependencyClosure = candidateDependencyClosure(metadata, recipe);
   const before = collectLocalInputEntries(metadata);
   const stage = mkdtempSync(path.join(artifactsRoot, `.stage-${candidate}-`));
@@ -273,8 +276,7 @@ export function probeCandidateRuntime(stage, recipe) {
     if (
       catalog.schema_version !== 1 ||
       catalog.transport_api_version !== 1 ||
-      typeof catalog.package_version !== "string" ||
-      catalog.package_version.length === 0 ||
+      catalog.package_version !== packageSurface.version ||
       stableJson(capabilityIds) !== stableJson(expectedRuntime.capabilityIds) ||
       stableJson(outputIds) !== stableJson(expectedRuntime.outputIds) ||
       stableJson(operationIds) !== stableJson(expectedRuntime.operationIds) ||
@@ -459,6 +461,7 @@ function collectLocalInputEntries(metadata) {
     path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock"),
     capabilityDescriptorPath,
     path.join(nodeRoot, "candidate-builds.json"),
+    packageSurfacePath,
     path.join(nodeRoot, "package.json"),
     path.join(nodeRoot, "package-lock.json"),
     path.join(nodeRoot, "scripts", "benchmark", "svg-signature.mjs"),
@@ -672,12 +675,39 @@ export function candidateDependencyClosure(metadata, recipe) {
 
 export function resolveCandidateBuildEvidence(recipe) {
   const metadata = cargoMetadata(recipe);
+  validateCandidatePackageVersions(metadata);
   const inputEntries = collectLocalInputEntries(metadata);
   return {
     source_digest: digestJson(inputEntries),
     binding_contract_digest: digestJson(collectBindingContractEntries(inputEntries)),
     dependency_closure_digest: candidateDependencyClosure(metadata, recipe).digest,
   };
+}
+
+export function validateCandidateCargoMetadata(recipe) {
+  const metadata = cargoMetadata(recipe);
+  validateCandidatePackageVersions(metadata);
+  candidateDependencyClosure(metadata, recipe);
+  return packageSurface.version;
+}
+
+export function validateCandidatePackageVersions(metadata) {
+  if (!metadata || !Array.isArray(metadata.packages)) {
+    throw new Error("Cargo metadata lacks candidate package versions.");
+  }
+  for (const name of ["merman-node-candidate", "merman-bindings-core"]) {
+    const matches = metadata.packages.filter((item) => item.name === name);
+    if (
+      matches.length !== 1 ||
+      matches[0].source !== null ||
+      matches[0].version !== packageSurface.version
+    ) {
+      throw new Error(
+        `${name} must be the local ${packageSurface.version} package for this Node candidate.`,
+      );
+    }
+  }
+  return packageSurface.version;
 }
 
 export function validateCandidateDependencyPackages(packages, candidate) {
@@ -706,8 +736,19 @@ export function validateCandidateDependencyPackages(packages, candidate) {
     throw new Error("Node candidate dependency closure packages must be sorted and unique.");
   }
   const names = new Set(packages.map((item) => item.name));
-  if (!names.has("merman-node-candidate")) {
-    throw new Error("merman-node-candidate is missing from the Node candidate dependency closure.");
+  for (const name of ["merman-node-candidate", "merman-bindings-core"]) {
+    const matches = packages.filter((item) => item.name === name);
+    if (matches.length !== 1) {
+      throw new Error(`${name} is missing or ambiguous in the Node candidate dependency closure.`);
+    }
+    if (
+      matches[0].version !== packageSurface.version ||
+      !matches[0].source.startsWith("path:")
+    ) {
+      throw new Error(
+        `${name} must be the local ${packageSurface.version} package in the Node candidate dependency closure.`,
+      );
+    }
   }
   if (candidate === "node-wasm") {
     for (const forbidden of ["napi", "napi-build", "napi-derive"]) {
@@ -770,7 +811,11 @@ function assertDescriptor() {
     descriptor.cargo.default_features !== false ||
     descriptor.cargo.manifest !== "crates/merman-node/Cargo.toml" ||
     descriptor.capability_recipe?.descriptor !== "capabilities/feature-surface-v1.json" ||
-    descriptor.capability_recipe?.target !== "native"
+    descriptor.capability_recipe?.target !== "native" ||
+    packageSurface.schema_version !== 1 ||
+    packageSurface.admission_status !== "candidate" ||
+    typeof packageSurface.version !== "string" ||
+    packageSurface.version.length === 0
   ) {
     throw new Error("Node candidate build descriptor is invalid.");
   }

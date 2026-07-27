@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-win32-x64-msvc",
-  "version": "0.8.0-alpha.3",
+  "version": "0.8.0-alpha.4",
   "private": true,
   "description": "Private Merman Node native candidate for Windows x64 MSVC.",
   "main": "./merman.node",

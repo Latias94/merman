@@ -9,13 +9,16 @@ import {
   resolveCandidateRecipe,
   resolveCandidateRuntimeContract,
   validateCandidateDependencyPackages,
-} from "../build-candidate.mjs";
-import { digestJson, stableJson } from "../stable-json.mjs";
-import { validateRuntimeCatalog } from "../../src/engine.mjs";
+} from "./build-candidate.mjs";
+import { digestJson, stableJson } from "./stable-json.mjs";
+import { validateRuntimeCatalog } from "../src/engine.mjs";
 
-const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
+const packageVersion = JSON.parse(
+  readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+).version;
 
 export function readBuildReceipt(
   artifact,
@@ -208,8 +211,7 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
     digestJson(catalog) !== runtime.catalog_digest ||
     catalog.schema_version !== 1 ||
     catalog.transport_api_version !== 1 ||
-    typeof catalog.package_version !== "string" ||
-    catalog.package_version.length === 0 ||
+    catalog.package_version !== packageVersion ||
     !Number.isSafeInteger(catalog.registry?.diagram_family_count) ||
     catalog.registry.diagram_family_count < 1
   ) {

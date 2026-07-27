@@ -1,6 +1,6 @@
 [package]
 name = "merman-node-candidate"
-version = "0.8.0-alpha.3"
+version = "0.8.0-alpha.4"
 edition = "2024"
 rust-version = "1.95"
 publish = false
@@ -25,7 +25,7 @@ merman-bindings-core = { path = "../merman-bindings-core", default-features = fa
 napi = { version = "=3.11.0", default-features = false, features = ["napi8", "dyn-symbols"], optional = true }
 napi-derive = { version = "=3.6.0", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.150", features = ["preserve_order"] }
+serde_json = "1.0.150"
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
 wasm-bindgen = { version = "0.2.126", optional = true }
 

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   inspectPackageManifests,
@@ -43,6 +43,7 @@ test("private candidate manifests preserve the intended napi package shape", asy
     assert.equal(item.manifest.private, true);
     assert.equal(item.nodeArtifact, "merman.node");
     assert.equal(item.manifest.version, descriptor.version);
+    assert.equal(item.manifest.files.includes("build-receipt.json"), false);
     assert.equal(
       inspected.root.manifest.optionalDependencies[item.manifest.name],
       descriptor.version,
@@ -143,10 +144,20 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
 test("assembled native packages pass real npm pack ownership inspection", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-pack-test-"));
   try {
+    const descriptor = JSON.parse(
+      await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+    );
     const binary = path.join(temporaryRoot, "candidate.node");
     const output = path.join(temporaryRoot, "packages");
+    const preflightCalls = [];
     await writeFile(binary, "synthetic native candidate");
-    assembleNativePackages("darwin-arm64", output, binary);
+    assembleNativePackages("darwin-arm64", output, binary, {
+      readReceipt(artifact) {
+        preflightCalls.push(artifact);
+        return { candidate: "napi", target: "darwin-arm64" };
+      },
+    });
+    assert.deepEqual(preflightCalls, [binary]);
 
     const rootPack = npmPackDryRun(path.join(output, "node"));
     const targetPack = npmPackDryRun(path.join(output, "darwin-arm64"));
@@ -160,9 +171,54 @@ test("assembled native packages pass real npm pack ownership inspection", async 
       role: "platform",
       files: targetPack.files,
     });
+    assert.equal(targetPack.files.some((item) => item.path === "build-receipt.json"), false);
+
+    const assembledLoader = await import(
+      `${pathToFileURL(path.join(output, "node", "dist", "native-loader.mjs")).href}?assembled`
+    );
+    assert.equal(assembledLoader.nativeLoaderPackageVersion(), descriptor.version);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
+});
+
+test("native package assembly requires canonical candidate and target provenance", async (context) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-provenance-test-"));
+  context.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const binary = path.join(temporaryRoot, "merman.node");
+  const output = path.join(temporaryRoot, "packages");
+  await writeFile(binary, "synthetic native candidate");
+
+  assert.throws(
+    () => assembleNativePackages("darwin-arm64", output, binary),
+    /missing.*candidate build receipt/i,
+  );
+
+  for (const [receipt, expected] of [
+    [{ candidate: "node-wasm", target: null }, /candidate.*napi/i],
+    [{ candidate: "napi", target: "darwin-x64" }, /target.*darwin-arm64/i],
+  ]) {
+    assert.throws(
+      () =>
+        assembleNativePackages("darwin-arm64", output, binary, {
+          readReceipt: () => receipt,
+        }),
+      expected,
+    );
+  }
+
+  const staleSource = new Error(
+    "candidate build receipt source_digest is stale for the current source tree.",
+  );
+  assert.throws(
+    () =>
+      assembleNativePackages("darwin-arm64", output, binary, {
+        readReceipt() {
+          throw staleSource;
+        },
+      }),
+    (error) => error === staleSource,
+  );
 });
 
 function npmPackDryRun(packageRoot) {

@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveNodeTarget } from "../../src/native-loader.mjs";
 import { loadCorpus } from "./corpus.mjs";
-import { readBuildReceipt } from "./build-receipt.mjs";
+import { readBuildReceipt } from "../build-receipt.mjs";
 import { withCandidateInstallation } from "./footprint.mjs";
 import { computeHarnessDigest } from "./harness-inputs.mjs";
 import {

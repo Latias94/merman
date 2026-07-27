@@ -10,6 +10,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readBuildReceipt } from "./build-receipt.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,11 +32,15 @@ export function assembleNativePackages(
   target,
   outputRoot = path.join(nodeRoot, "dist-packages"),
   binaryOverride = null,
+  { readReceipt = readBuildReceipt } = {},
 ) {
   const targetDescriptor = descriptor.targets.find((item) => item.target === target);
   if (!targetDescriptor) throw new Error(`Unknown Node target: ${target}.`);
+  assertAssemblyPackageManifest(descriptor.root);
+  assertAssemblyPackageManifest(targetDescriptor);
   const binary = binaryOverride ?? path.join(nodeRoot, "artifacts", "napi", target, "merman.node");
   assertFile(binary, "native candidate binary");
+  assertNativeBuildProvenance(targetDescriptor, readReceipt(binary));
 
   const stage = `${outputRoot}.stage-${process.pid}`;
   rmSync(stage, { recursive: true, force: true });
@@ -74,12 +79,44 @@ function assemblePlatformPackage(targetDescriptor, binary, output) {
   const source = path.join(nodeRoot, targetDescriptor.directory);
   mkdirSync(output, { recursive: true });
   cpSync(path.join(source, "package.json"), path.join(output, "package.json"));
-  cpSync(binary, path.join(output, "merman.node"));
+  cpSync(binary, path.join(output, targetDescriptor.node_artifact));
   writeFileSync(
     path.join(output, "README.md"),
     `# ${targetDescriptor.name}\n\nPrivate U14 native candidate for ${targetDescriptor.target}.\n`,
   );
   projectLegalMaterial(output);
+}
+
+function assertNativeBuildProvenance(targetDescriptor, receipt) {
+  if (receipt?.candidate !== "napi") {
+    throw new Error(
+      `Native candidate build receipt candidate ${JSON.stringify(receipt?.candidate)} must be napi.`,
+    );
+  }
+  if (receipt.target !== targetDescriptor.target) {
+    throw new Error(
+      `Native candidate build receipt target ${JSON.stringify(receipt?.target)} does not match ${targetDescriptor.target}.`,
+    );
+  }
+}
+
+function assertAssemblyPackageManifest(packageDescriptor) {
+  const manifestPath = path.join(nodeRoot, packageDescriptor.directory, "package.json");
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (cause) {
+    throw new Error(`Invalid Node candidate package manifest: ${manifestPath}.`, { cause });
+  }
+  if (
+    manifest?.name !== packageDescriptor.name ||
+    manifest.version !== descriptor.version ||
+    manifest.private !== true
+  ) {
+    throw new Error(
+      `${packageDescriptor.name} manifest must be the private ${descriptor.version} candidate package.`,
+    );
+  }
 }
 
 export function projectLegalMaterial(output) {

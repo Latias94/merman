@@ -52,7 +52,7 @@ pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, Binding
 }
 
 pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {
-    let surface = merman_bindings_core::compiled_runtime_capability_surface()
+    let surface = merman_bindings_core::binding_transport_capability_surface()
         .project_to_descriptor_target("native", TextMeasurementProviderProjection::VendoredOnly)?;
     serde_json::to_string(&merman_bindings_core::runtime_catalog_for(
         NODE_WIRE_VERSION,
@@ -81,10 +81,7 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
         operation_id: &request.operation_id,
         source: request.source.as_bytes(),
         uri: request.uri.as_deref().map(str::as_bytes),
-        options_json: request
-            .options_json
-            .as_deref()
-            .map_or(b"", str::as_bytes),
+        options_json: request.options_json.as_deref().map_or(b"", str::as_bytes),
     });
 
     match result {
@@ -160,6 +157,20 @@ mod tests {
         assert_eq!(
             catalog["capabilities"]["text_measurement"]["provider_ids"],
             serde_json::json!(["vendored"])
+        );
+        assert!(
+            !catalog["capabilities"]["capability_ids"]
+                .as_array()
+                .expect("runtime capability IDs")
+                .iter()
+                .any(|id| id == "system-timing")
+        );
+        assert!(
+            !catalog["capabilities"]["system_adapter_ids"]
+                .as_array()
+                .expect("runtime system adapter IDs")
+                .iter()
+                .any(|id| id == "system-timing")
         );
     }
 }

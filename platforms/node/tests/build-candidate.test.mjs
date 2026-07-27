@@ -8,10 +8,15 @@ import {
   candidateDependencyClosure,
   candidateBuildInvocation,
   resolveCandidateRecipe,
+  validateCandidateCargoMetadata,
+  validateCandidatePackageVersions,
 } from "../scripts/build-candidate.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
+const PACKAGE_VERSION = JSON.parse(
+  await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+).version;
 
 test("candidate builds project its private capability recipe plus one transport", async () => {
   const descriptor = await readJson(path.join(nodeRoot, "candidate-builds.json"));
@@ -140,6 +145,39 @@ test("candidate dependency closures isolate transport-only packages", () => {
   );
 });
 
+test("candidate Cargo packages stay aligned with the private package surface version", () => {
+  const metadata = metadataWithPackages([
+    ["root", "merman-node-candidate"],
+    ["bindings", "merman-bindings-core"],
+  ]);
+  assert.equal(validateCandidatePackageVersions(metadata), PACKAGE_VERSION);
+
+  const staleCandidate = structuredClone(metadata);
+  staleCandidate.packages.find((item) => item.name === "merman-node-candidate").version =
+    "0.8.0-alpha.3";
+  assert.throws(
+    () => validateCandidatePackageVersions(staleCandidate),
+    /merman-node-candidate.*0\.8\.0-alpha\.4/i,
+  );
+
+  const staleBindings = structuredClone(metadata);
+  staleBindings.packages.find((item) => item.name === "merman-bindings-core").version =
+    "0.8.0-alpha.3";
+  assert.throws(
+    () => validateCandidatePackageVersions(staleBindings),
+    /merman-bindings-core.*0\.8\.0-alpha\.4/i,
+  );
+});
+
+test("real locked Cargo metadata matches both candidate transport recipes", () => {
+  for (const recipe of [
+    resolveCandidateRecipe("node-wasm", null),
+    resolveCandidateRecipe("napi", "linux-x64-gnu"),
+  ]) {
+    assert.equal(validateCandidateCargoMetadata(recipe), PACKAGE_VERSION);
+  }
+});
+
 async function readJson(file) {
   return JSON.parse(await readFile(file, "utf8"));
 }
@@ -149,7 +187,7 @@ function metadataWithPackages(entries) {
     packages: entries.map(([id, name]) => ({
       id,
       name,
-      version: "1.0.0",
+      version: name.startsWith("merman-") ? PACKAGE_VERSION : "1.0.0",
       source: name.startsWith("merman-") ? null : "registry+test",
       manifest_path: path.join(repositoryRoot, "crates", name, "Cargo.toml"),
     })),

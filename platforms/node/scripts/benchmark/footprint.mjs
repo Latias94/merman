@@ -23,6 +23,9 @@ import { digestJson } from "../stable-json.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const packageVersion = JSON.parse(
+  readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+).version;
 export function measureFootprint({ candidate, artifact, target }) {
   return withCandidateInstallation(
     { candidate, artifact, target },
@@ -66,7 +69,7 @@ export function stageWasmPackage(temporaryRoot, artifact) {
     path.join(packageRoot, "package.json"),
     `${JSON.stringify({
       name: "@mermanjs/node-wasm-candidate",
-      version: "0.8.0-alpha.3",
+      version: packageVersion,
       private: true,
       type: "module",
       main: "./index.mjs",

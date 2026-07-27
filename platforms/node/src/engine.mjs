@@ -24,9 +24,14 @@ export async function createNodeEngine(
   }
   const normalizedOptions = normalizeBindingOptions(bindingOptions);
   const transport = await loadTransport(JSON.stringify(normalizedOptions));
-  assertTransport(transport);
-  const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
-  return new MermanNodeEngine(transport, runtimeCatalog, { concurrency, maxQueue });
+  try {
+    assertTransport(transport);
+    const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
+    return new MermanNodeEngine(transport, runtimeCatalog, { concurrency, maxQueue });
+  } catch (error) {
+    await disposeUnusableTransport(transport);
+    throw error;
+  }
 }
 
 export function normalizeBindingOptions(value = {}) {
@@ -146,6 +151,14 @@ function assertTransport(transport) {
     throw new MermanInvalidTransportError(
       "Merman transport must provide runtimeCatalogJson(), execute(), and executeSync().",
     );
+  }
+}
+
+async function disposeUnusableTransport(transport) {
+  try {
+    await transport?.dispose?.();
+  } catch {
+    // Preserve the construction failure that made the transport unusable.
   }
 }
 

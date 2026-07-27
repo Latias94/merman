@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-darwin-arm64",
-  "version": "0.8.0-alpha.3",
+  "version": "0.8.0-alpha.4",
   "private": true,
   "description": "Private Merman Node native candidate for macOS arm64.",
   "main": "./merman.node",

@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { readBuildReceipt } from "../scripts/benchmark/build-receipt.mjs";
+import { readBuildReceipt } from "../scripts/build-receipt.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
   computeCorpusDigest,
@@ -29,6 +29,9 @@ import { digestJson } from "../scripts/stable-json.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+).version;
 
 const provenance = {
   measured_at_utc: "2026-07-23T12:00:00.000Z",
@@ -121,7 +124,7 @@ const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
 const RUNTIME_CATALOG = {
   schema_version: 1,
   transport_api_version: 1,
-  package_version: "0.8.0-alpha.3",
+  package_version: PACKAGE_VERSION,
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
     output_ids: ["svg"],
@@ -200,7 +203,6 @@ const TARGETS = {
   },
 };
 const INITIAL_TARGETS = Object.keys(TARGETS);
-const PACKAGE_VERSION = "0.8.0-alpha.3";
 const RUNTIME_EVIDENCE = {
   catalog_digest: RUNTIME_CATALOG_DIGEST,
   catalog: RUNTIME_CATALOG,
@@ -1001,8 +1003,13 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     dependency_closure: {
       digest: digestJson([
         {
+          name: "merman-bindings-core",
+          version: PACKAGE_VERSION,
+          source: "path:crates/merman-bindings-core",
+        },
+        {
           name: "merman-node-candidate",
-          version: "0.8.0-alpha.3",
+          version: PACKAGE_VERSION,
           source: "path:crates/merman-node",
         },
         { name: "napi", version: "3.11.0", source: "registry+test" },
@@ -1011,8 +1018,13 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       ]),
       packages: [
         {
+          name: "merman-bindings-core",
+          version: PACKAGE_VERSION,
+          source: "path:crates/merman-bindings-core",
+        },
+        {
           name: "merman-node-candidate",
-          version: "0.8.0-alpha.3",
+          version: PACKAGE_VERSION,
           source: "path:crates/merman-node",
         },
         { name: "napi", version: "3.11.0", source: "registry+test" },
@@ -1135,6 +1147,13 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   delete unparsedSvgEvidence.runtime.probe.svg_structure_sha256;
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(unparsedSvgEvidence));
   assert.throws(() => readReceipt(), /runtime probe/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const staleRuntimePackage = structuredClone(receipt);
+  staleRuntimePackage.runtime.catalog.package_version = "0.8.0-alpha.3";
+  staleRuntimePackage.runtime.catalog_digest = digestJson(staleRuntimePackage.runtime.catalog);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(staleRuntimePackage));
+  assert.throws(() => readReceipt(), /runtime evidence/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const phantomRuntimeOperation = structuredClone(receipt);
