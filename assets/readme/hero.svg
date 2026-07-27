@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="360" viewBox="0 0 1200 360"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Merman, Mermaid rebuilt in Rust</title>
+  <desc id="desc">Merman is a parity-focused, headless Rust implementation of Mermaid 11.16 with 35 primary SVG diagram families.</desc>
+
+  <rect width="1200" height="360" rx="12" fill="#0B0F14"/>
+  <rect y="270" width="1200" height="90" rx="12" fill="#10161D"/>
+  <rect y="270" width="1200" height="12" fill="#10161D"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif"
+     letter-spacing="0">
+    <g id="metadata">
+      <rect x="64" y="35" width="38" height="4" rx="2" fill="#FF8063"/>
+      <text x="116" y="43" fill="#93A0AC" font-size="17" font-weight="700">
+        MERMAID 11.16
+      </text>
+      <text x="1136" y="43" text-anchor="end" fill="#93A0AC"
+            font-size="17" font-weight="700">
+        HEADLESS RUST ENGINE
+      </text>
+      <path d="M64 60H1136" stroke="#27313B" stroke-width="2"/>
+    </g>
+
+    <g id="title-block">
+      <text x="60" y="154" fill="#F4F7FA" font-size="100" font-weight="760">
+        Merman
+      </text>
+      <text x="64" y="204" fill="#F4F7FA" font-size="35" font-weight="650">
+        Mermaid, rebuilt in
+      </text>
+      <text x="360" y="204" fill="#FF8063" font-size="35" font-weight="750">
+        Rust.
+      </text>
+      <text x="64" y="241" fill="#93A0AC" font-size="21">
+        Parity-focused parsing, layout, rendering, and tooling without a browser.
+      </text>
+    </g>
+
+    <g id="coverage-proof">
+      <path d="M840 93V231" stroke="#27313B" stroke-width="2"/>
+      <text x="884" y="169" fill="#FF8063" font-size="88" font-weight="780">
+        35
+      </text>
+      <text x="1028" y="124" fill="#F4F7FA" font-size="19" font-weight="750">
+        PRIMARY
+      </text>
+      <text x="1028" y="153" fill="#F4F7FA" font-size="19" font-weight="750">
+        SVG FAMILIES
+      </text>
+      <path d="M1028 171H1136" stroke="#3A4652" stroke-width="2"/>
+      <text x="1136" y="201" text-anchor="end" fill="#59D2B5"
+            font-size="18" font-weight="700">
+        RUST · CLI · WASM
+      </text>
+      <text x="1136" y="229" text-anchor="end" fill="#93A0AC" font-size="18">
+        Native SDKs
+      </text>
+    </g>
+
+    <g id="capability-rail">
+      <g transform="translate(64 0)">
+        <circle cx="4" cy="315" r="4" fill="#59D2B5"/>
+        <text x="20" y="303" fill="#758391" font-size="15" font-weight="700">
+          MERMAID SOURCE
+        </text>
+        <text x="20" y="333" fill="#59D2B5"
+              font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+              font-size="21" font-weight="650">
+          flowchart LR
+        </text>
+      </g>
+
+      <text x="312" y="327" text-anchor="middle" fill="#6F7D8A"
+            font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="21" font-weight="700">--&gt;</text>
+
+      <g transform="translate(370 0)">
+        <circle cx="4" cy="315" r="4" fill="#FF8063"/>
+        <text x="20" y="303" fill="#758391" font-size="15" font-weight="700">
+          SEMANTIC CORE
+        </text>
+        <text x="20" y="333" fill="#F4F7FA" font-size="21" font-weight="650">
+          parse · layout · render
+        </text>
+      </g>
+
+      <text x="693" y="327" text-anchor="middle" fill="#6F7D8A"
+            font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="21" font-weight="700">--&gt;</text>
+
+      <g transform="translate(751 0)">
+        <circle cx="4" cy="315" r="4" fill="#59D2B5"/>
+        <text x="20" y="303" fill="#758391" font-size="15" font-weight="700">
+          EXPLICIT OUTPUTS
+        </text>
+        <text x="20" y="333" fill="#F4F7FA" font-size="21" font-weight="650">
+          SVG · PNG · PDF · ASCII · TOOLS
+        </text>
+      </g>
+    </g>
+  </g>
+</svg>
