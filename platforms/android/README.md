@@ -56,10 +56,13 @@ check(svg.startsWith("<svg"))
 Use the generic API when the host chooses output dynamically:
 
 ```kotlin
-val bytes = MermanEngine.executeBytes("png", source)
+val result = MermanEngine.execute("png", source)
+check(result.operationId == "png")
+check(result.mediaType == "image/png")
+val bytes = result.data
 ```
 
-Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, validation, and document analysis. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; `capabilityId` is non-null only for the latter and is the stable descriptor ID.
+Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, validation, and document analysis. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
 
 ## Options And Capabilities
 
@@ -97,7 +100,7 @@ MermanReusableEngine().use { engine ->
 }
 ```
 
-Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Native Android previews can call `setTextMeasurer` when layout must match the final `TextPaint`/`StaticLayout` font stack. Return `null` for requests that cannot be answered faithfully; the engine falls back per request. Reusable calls are serialized and the same engine must not be called or closed from its measurement callback. Those operations return a typed reentrant-call error; retry `close()` after the active call returns.
+Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Provide an Android text measurer when constructing `MermanReusableEngine` when layout must match the final `TextPaint`/`StaticLayout` font stack. Return `null` for requests that cannot be answered faithfully; the engine falls back per request. A callback-free reusable engine permits concurrent calls. An engine with a callback rejects a competing call immediately with `BUSY`, and calls or close attempts from its measurement callback return `REENTRANT_CALL`. A failed `close()` preserves the handle; retry it after the active call returns.
 
 ## Verify Locally
 

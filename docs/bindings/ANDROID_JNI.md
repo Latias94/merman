@@ -12,7 +12,7 @@ not linked into the Kotlin AAR.
 ## Layers
 
 ```text
-Kotlin MermanEngine / MermanReusableEngine
+Kotlin MermanEngine / MermanReusableEngine / MermanOperationResult
                  |
                  v
 JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
@@ -26,24 +26,19 @@ WASM transport versions.
 
 ## Kotlin Surface
 
-The primary API is generic and byte-preserving:
+The primary API is generic and returns a complete operation envelope:
 
 ```kotlin
-val bytes = MermanEngine.executeBytes(
+val result = MermanEngine.execute(
     operationId = "svg",
     source = "flowchart TD\nA --> B",
 )
+val svg = result.data.toString(Charsets.UTF_8)
 ```
 
-`MermanEngine` also exposes convenience methods for SVG, ASCII, PNG, JPEG, PDF, semantic JSON,
-layout JSON, analysis JSON, document analysis, facts, and validation. Binary methods return
-`ByteArray`; JSON/SVG/ASCII methods decode the output as UTF-8.
+`MermanOperationResult` contains `operationId`, `mediaType`, `data`, and `metadataJson`. `MermanEngine` also exposes convenience methods for SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis JSON, document analysis, facts, and validation. Binary methods return `ByteArray`; JSON/SVG/ASCII methods decode the output as UTF-8.
 
-Use `MermanReusableEngine(optionsJson)` when calls share base options. Its `executeBytes` method
-accepts per-call `optionsJson` overrides and uses the same operation IDs while retaining a native
-engine for its lifetime. The reusable engine is serialized, implements `AutoCloseable`, and must
-not be re-entered or closed from a text-measurement callback. Those operations return a typed
-`REENTRANT_CALL` error; retry `close()` after the active call returns.
+Use `MermanReusableEngine(optionsJson, textMeasurer)` when calls share base options. Its `execute` method accepts per-call `optionsJson` overlays and uses the same operation IDs while retaining a native engine for its lifetime. `textMeasurer` is immutable after construction. A callback-free reusable engine accepts concurrent calls. An engine with a callback rejects a competing operation immediately with `BUSY`; a call or close from its callback returns `REENTRANT_CALL`. `close()` is nonblocking and retains the Kotlin handle when it fails, so callers can retry after the active operation returns.
 
 ## Runtime Catalog
 
@@ -79,17 +74,14 @@ This is the boundary used to decide whether an installed AAR can render a reques
 infer support from Kotlin method presence or Cargo feature names. A missing output reports a typed
 `MermanException` instead of silently selecting a fallback format.
 
-`MermanException.kind` is `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `REENTRANT_CALL`, or `GENERIC`.
+`MermanException.kind` is `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, `REENTRANT_CALL`, or `GENERIC`.
 `capabilityId` is non-null only for `MISSING_CAPABILITY` and preserves the descriptor ID emitted by
 bindings-core. Local wrapper and lifecycle failures remain `GENERIC`; consumers should branch on
 these fields rather than parse `message`.
 
 ## Text Measurement
 
-`MermanReusableEngine.setTextMeasurer` installs a synchronous `MermanTextMeasurer` callback.
-Use it only when Android text geometry must match the final surface. Native previews should measure
-with the same `TextPaint`/`StaticLayout` configuration used for display; WebView previews should
-use a prepared DOM/canvas cache rather than block a render thread on UI work.
+Pass a synchronous `MermanTextMeasurer` to `MermanReusableEngine` at construction only when Android text geometry must match the final surface. Native previews should measure with the same `TextPaint`/`StaticLayout` configuration used for display; WebView previews should use a prepared DOM/canvas cache rather than block a render thread on UI work.
 
 The independent text-measurement protocol has 19 operations (`0..18`). Construct handled results
 with `MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or

@@ -7,6 +7,9 @@ import io.merman.MermanReusableEngine
 import io.merman.MermanTextMeasureResult
 import io.merman.MermanTextMeasurementOperation
 import io.merman.MermanTextMeasurementResultKind
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -217,8 +220,18 @@ fun runMermanSmoke() {
         "semantic JSON smoke failed"
     }
 
+    val operationResult = MermanEngine.execute("svg", source)
+    check(
+        operationResult.operationId == "svg" &&
+            operationResult.mediaType == "image/svg+xml" &&
+            operationResult.data.contentEquals(svg.toByteArray()) &&
+            JSONObject(operationResult.metadataJson).getString("operation_id") == "svg",
+    ) {
+        "structured operation result smoke failed"
+    }
+
     val unknownOperationError = runCatching {
-        MermanEngine.executeBytes("not-an-operation", source)
+        MermanEngine.execute("not-an-operation", source)
     }.exceptionOrNull()
     check(
         unknownOperationError is MermanException &&
@@ -310,35 +323,27 @@ fun runMermanSmoke() {
         "host theme presets smoke failed"
     }
 
-    val engine = MermanReusableEngine()
-    try {
-        val perCallOptionsSvg = engine.renderSvg(
-            source,
-            """{"svg":{"diagram_id":"android-reusable-options"}}""",
-        )
-        check(perCallOptionsSvg.contains("""id="android-reusable-options"""")) {
-            "reusable engine did not apply per-call options"
-        }
-        var measureCalls = 0
-        var sawCondition = false
-        var sawNowrap = false
-        var sawBreakSpaces = false
-        var sawFontStyle = false
-        var sawSpacingDefaults = false
-        val seenMeasureTexts = linkedSetOf<String>()
-        val seenWrapModes = linkedSetOf<Int>()
-        val seenPhases = linkedSetOf<Int>()
-        val seenOperations = linkedSetOf<Int>()
-        val seenMaxWidthStates = linkedSetOf<String>()
+    var measureCalls = 0
+    var sawCondition = false
+    var sawNowrap = false
+    var sawBreakSpaces = false
+    var sawFontStyle = false
+    var sawSpacingDefaults = false
+    val seenMeasureTexts = linkedSetOf<String>()
+    val seenWrapModes = linkedSetOf<Int>()
+    val seenPhases = linkedSetOf<Int>()
+    val seenOperations = linkedSetOf<Int>()
+    val seenMaxWidthStates = linkedSetOf<String>()
 
-        fun textMeasureSummary(): String =
-            "calls=$measureCalls, texts=${seenMeasureTexts.joinToString("|")}, " +
-                "wrapModes=${seenWrapModes.joinToString("|")}, " +
-                "phases=${seenPhases.joinToString("|")}, " +
-                "operations=${seenOperations.joinToString("|")}, " +
-                "maxWidth=${seenMaxWidthStates.joinToString("|")}"
+    fun textMeasureSummary(): String =
+        "calls=$measureCalls, texts=${seenMeasureTexts.joinToString("|")}, " +
+            "wrapModes=${seenWrapModes.joinToString("|")}, " +
+            "phases=${seenPhases.joinToString("|")}, " +
+            "operations=${seenOperations.joinToString("|")}, " +
+            "maxWidth=${seenMaxWidthStates.joinToString("|")}"
 
-        engine.setTextMeasurer { request ->
+    val engine = MermanReusableEngine(
+        textMeasurer = { request ->
             measureCalls += 1
             if (seenMeasureTexts.size < 8) {
                 seenMeasureTexts += request.text
@@ -366,6 +371,15 @@ fun runMermanSmoke() {
             } else {
                 null
             }
+        },
+    )
+    try {
+        val perCallOptionsSvg = engine.renderSvg(
+            source,
+            """{"svg":{"diagram_id":"android-reusable-options"}}""",
+        )
+        check(perCallOptionsSvg.contains("""id="android-reusable-options"""")) {
+            "reusable engine did not apply per-call options"
         }
         val reusableSvg = engine.renderSvg(textMeasureSource)
         check(reusableSvg.contains("<svg") && reusableSvg.contains("Condition?")) {
@@ -410,15 +424,14 @@ fun runMermanSmoke() {
         ) {
             "reusable document facts JSON smoke failed"
         }
-        engine.setTextMeasurer(null)
     } finally {
         engine.close()
     }
 
-    val reentrantEngine = MermanReusableEngine()
-    try {
-        var reentryRejected = false
-        reentrantEngine.setTextMeasurer {
+    lateinit var reentrantEngine: MermanReusableEngine
+    var reentryRejected = false
+    reentrantEngine = MermanReusableEngine(
+        textMeasurer = {
             if (!reentryRejected) {
                 try {
                     reentrantEngine.renderSvg(textMeasureSource)
@@ -431,7 +444,9 @@ fun runMermanSmoke() {
                 }
             }
             null
-        }
+        },
+    )
+    try {
         val reentrantSvg = reentrantEngine.renderSvg(textMeasureSource)
         check(reentrantSvg.contains("<svg") && reentryRejected) {
             "reentrant text measurer guard smoke failed"
@@ -440,10 +455,10 @@ fun runMermanSmoke() {
         reentrantEngine.close()
     }
 
-    val closingEngine = MermanReusableEngine()
+    lateinit var closingEngine: MermanReusableEngine
     var closeFromCallbackRejected = false
-    try {
-        closingEngine.setTextMeasurer {
+    closingEngine = MermanReusableEngine(
+        textMeasurer = {
             if (!closeFromCallbackRejected) {
                 try {
                     closingEngine.close()
@@ -456,7 +471,9 @@ fun runMermanSmoke() {
                 }
             }
             null
-        }
+        },
+    )
+    try {
         val closingSvg = closingEngine.renderSvg(textMeasureSource)
         check(closingSvg.contains("<svg") && closeFromCallbackRejected) {
             "callback-time close guard smoke failed"
@@ -468,10 +485,10 @@ fun runMermanSmoke() {
         closingEngine.close()
     }
 
-    val crossThreadEngine = MermanReusableEngine()
-    try {
-        var crossThreadChecked = false
-        crossThreadEngine.setTextMeasurer {
+    lateinit var crossThreadEngine: MermanReusableEngine
+    var crossThreadChecked = false
+    crossThreadEngine = MermanReusableEngine(
+        textMeasurer = {
             if (!crossThreadChecked) {
                 var nestedError: Throwable? = null
                 val nested = Thread {
@@ -493,7 +510,9 @@ fun runMermanSmoke() {
                 crossThreadChecked = true
             }
             null
-        }
+        },
+    )
+    try {
         val outerSvg = crossThreadEngine.renderSvg(textMeasureSource)
         check(outerSvg.contains("<svg") && crossThreadChecked) {
             "cross-thread callback guard smoke failed"
@@ -502,17 +521,18 @@ fun runMermanSmoke() {
         crossThreadEngine.close()
     }
 
-    val callbackEngine = MermanReusableEngine()
+    var independentEngineRendered = false
     val independentEngine = MermanReusableEngine()
-    try {
-        var independentEngineRendered = false
-        callbackEngine.setTextMeasurer {
+    val callbackEngine = MermanReusableEngine(
+        textMeasurer = {
             if (!independentEngineRendered) {
                 independentEngineRendered =
                     independentEngine.renderSvg(textMeasureSource).contains("<svg")
             }
             null
-        }
+        },
+    )
+    try {
         val callbackSvg = callbackEngine.renderSvg(textMeasureSource)
         check(callbackSvg.contains("<svg") && independentEngineRendered) {
             "independent engine did not remain callable during a host callback"
@@ -522,22 +542,123 @@ fun runMermanSmoke() {
         independentEngine.close()
     }
 
-    val throwingEngine = MermanReusableEngine()
-    try {
-        throwingEngine.setTextMeasurer {
+    val throwingEngine = MermanReusableEngine(
+        textMeasurer = {
             throw IllegalStateException("host measurement failed")
-        }
+        },
+    )
+    try {
         val fallbackSvg = throwingEngine.renderSvg(textMeasureSource)
         check(fallbackSvg.contains("<svg") && fallbackSvg.contains("Condition?")) {
             "throwing text measurer fallback smoke failed"
         }
-        throwingEngine.setTextMeasurer(null)
         val afterExceptionSvg = throwingEngine.renderSvg(textMeasureSource)
         check(afterExceptionSvg.contains("<svg") && afterExceptionSvg.contains("Condition?")) {
             "JNI exception cleanup smoke failed"
         }
     } finally {
         throwingEngine.close()
+    }
+
+    val concurrentEngine = MermanReusableEngine()
+    try {
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        val failures = Collections.synchronizedList(mutableListOf<Throwable>())
+        repeat(2) {
+            Thread {
+                try {
+                    start.await()
+                    check(concurrentEngine.parseJson(source).contains("flowchart-v2"))
+                } catch (error: Throwable) {
+                    failures += error
+                } finally {
+                    done.countDown()
+                }
+            }.start()
+        }
+        start.countDown()
+        check(done.await(10, TimeUnit.SECONDS)) {
+            "callback-free concurrent operations did not complete"
+        }
+        check(failures.isEmpty()) {
+            "callback-free concurrent operations failed: $failures"
+        }
+    } finally {
+        concurrentEngine.close()
+    }
+
+    val admissionSource = buildString {
+        append("flowchart TD\n")
+        repeat(8_000) { index ->
+            append("n")
+            append(index)
+            append("-->n")
+            append(index + 1)
+            append('\n')
+        }
+    }
+    val busyEngine = MermanReusableEngine(textMeasurer = { null })
+    try {
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        val outcomes = Collections.synchronizedList(mutableListOf<Throwable?>())
+        repeat(2) {
+            Thread {
+                start.await()
+                outcomes += runCatching {
+                    busyEngine.analyzeJson(admissionSource)
+                }.exceptionOrNull()
+                done.countDown()
+            }.start()
+        }
+        start.countDown()
+        check(done.await(30, TimeUnit.SECONDS)) {
+            "callback-enabled admission smoke timed out"
+        }
+        check(
+            outcomes.count { it == null } == 1 &&
+                outcomes.count {
+                    it is MermanException && it.kind == MermanErrorKind.BUSY
+                } == 1,
+        ) {
+            "callback-enabled engine did not reject its competitor with BUSY: $outcomes"
+        }
+    } finally {
+        busyEngine.close()
+    }
+
+    var closeBusyObserved = false
+    repeat(3) {
+        if (closeBusyObserved) return@repeat
+        val closeEngine = MermanReusableEngine(textMeasurer = { null })
+        val started = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val worker = Thread {
+            started.countDown()
+            runCatching {
+                closeEngine.analyzeJson(admissionSource)
+            }
+            finished.countDown()
+        }
+        worker.start()
+        check(started.await(2, TimeUnit.SECONDS))
+        Thread.sleep(2)
+        val closeError = runCatching {
+            closeEngine.close()
+        }.exceptionOrNull()
+        check(finished.await(30, TimeUnit.SECONDS)) {
+            "operation did not finish after a close attempt"
+        }
+        if (closeError is MermanException && closeError.kind == MermanErrorKind.BUSY) {
+            closeBusyObserved = true
+            closeEngine.close()
+        } else if (closeError != null) {
+            throw closeError
+        }
+    }
+    check(closeBusyObserved) {
+        "nonblocking close did not expose BUSY during an active operation"
     }
 }
 

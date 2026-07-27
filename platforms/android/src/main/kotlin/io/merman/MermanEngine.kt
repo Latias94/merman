@@ -54,14 +54,14 @@ object MermanEngine {
         metadataJson("supported-host-theme-presets")
     }
 
-    /** Executes any operation ID exposed by [runtimeCatalogJson] and returns its original bytes. */
+    /** Executes any operation ID exposed by [runtimeCatalogJson]. */
     @JvmStatic
-    fun executeBytes(
+    fun execute(
         operationId: String,
         source: String,
         optionsJson: String? = null,
         uri: String? = null,
-    ): ByteArray = nativeExecute(operationId, source, optionsJson, uri)
+    ): MermanOperationResult = nativeExecute(operationId, source, optionsJson, uri)
 
     @JvmStatic
     fun renderSvg(source: String, optionsJson: String? = null): String =
@@ -73,15 +73,15 @@ object MermanEngine {
 
     @JvmStatic
     fun renderPng(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("png", source, optionsJson)
+        execute("png", source, optionsJson).data
 
     @JvmStatic
     fun renderJpeg(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("jpeg", source, optionsJson)
+        execute("jpeg", source, optionsJson).data
 
     @JvmStatic
     fun renderPdf(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("pdf", source, optionsJson)
+        execute("pdf", source, optionsJson).data
 
     @JvmStatic
     fun parseJson(source: String, optionsJson: String? = null): String =
@@ -134,7 +134,7 @@ object MermanEngine {
         source: String,
         optionsJson: String? = null,
         uri: String? = null,
-    ): String = executeBytes(operationId, source, optionsJson, uri).toString(Charsets.UTF_8)
+    ): String = execute(operationId, source, optionsJson, uri).data.toString(Charsets.UTF_8)
 
     private fun metadataJson(id: String): String = nativeMetadataJson(id)
 
@@ -350,7 +350,7 @@ object MermanEngine {
         source: String,
         optionsJson: String?,
         uri: String?,
-    ): ByteArray
+    ): MermanOperationResult
 
     @JvmStatic
     private external fun nativeMetadataJson(id: String): String

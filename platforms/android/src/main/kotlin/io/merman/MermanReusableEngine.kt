@@ -1,22 +1,21 @@
 package io.merman
 
-/** Reusable Android engine with an optional host text-measurement callback. */
-class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
+/** Reusable Android engine with an immutable optional host text-measurement callback. */
+class MermanReusableEngine(
+    optionsJson: String? = null,
+    textMeasurer: MermanTextMeasurer? = null,
+) : AutoCloseable {
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val lifecycleLock = Object()
-    private var handle: Long = nativeNew(optionsJson)
-
-    fun setTextMeasurer(measurer: MermanTextMeasurer?) {
-        withLiveHandle { nativeSetTextMeasurer(it, measurer) }
-    }
+    private var handle: Long = nativeNew(optionsJson, textMeasurer)
 
     /** Executes any operation ID advertised by [MermanEngine.runtimeCatalogJson]. */
-    fun executeBytes(
+    fun execute(
         operationId: String,
         source: String,
         optionsJson: String? = null,
         uri: String? = null,
-    ): ByteArray = withLiveHandle {
+    ): MermanOperationResult = withLiveHandle {
         nativeExecute(it, operationId, source, optionsJson, uri)
     }
 
@@ -27,13 +26,13 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
         executeText("ascii", source, optionsJson)
 
     fun renderPng(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("png", source, optionsJson)
+        execute("png", source, optionsJson).data
 
     fun renderJpeg(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("jpeg", source, optionsJson)
+        execute("jpeg", source, optionsJson).data
 
     fun renderPdf(source: String, optionsJson: String? = null): ByteArray =
-        executeBytes("pdf", source, optionsJson)
+        execute("pdf", source, optionsJson).data
 
     fun parseJson(source: String, optionsJson: String? = null): String =
         executeText("semantic-json", source, optionsJson)
@@ -56,8 +55,9 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
     override fun close() {
         synchronized(lifecycleLock) {
             if (handle == 0L) return
-            nativeFree(handle)
-            handle = 0L
+            if (nativeTryClose(handle)) {
+                handle = 0L
+            }
         }
     }
 
@@ -66,7 +66,7 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
         source: String,
         optionsJson: String? = null,
         uri: String? = null,
-    ): String = executeBytes(operationId, source, optionsJson, uri).toString(Charsets.UTF_8)
+    ): String = execute(operationId, source, optionsJson, uri).data.toString(Charsets.UTF_8)
 
     private inline fun <T> withLiveHandle(call: (Long) -> T): T {
         val current = synchronized(lifecycleLock) {
@@ -82,13 +82,13 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
         }
 
         @JvmStatic
-        private external fun nativeNew(optionsJson: String?): Long
+        private external fun nativeNew(
+            optionsJson: String?,
+            textMeasurer: MermanTextMeasurer?,
+        ): Long
 
         @JvmStatic
-        private external fun nativeFree(handle: Long)
-
-        @JvmStatic
-        private external fun nativeSetTextMeasurer(handle: Long, measurer: MermanTextMeasurer?)
+        private external fun nativeTryClose(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativeExecute(
@@ -97,6 +97,6 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
             source: String,
             optionsJson: String?,
             uri: String?,
-        ): ByteArray
+        ): MermanOperationResult
     }
 }

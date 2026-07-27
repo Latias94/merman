@@ -10,16 +10,16 @@
 use jni::{
     Env, EnvUnowned, JavaVM, NativeMethod,
     errors::{Result as JniResult, ThrowRuntimeExAndDefault},
-    objects::{JClass, JObject, JString},
+    objects::{JClass, JObject, JString, JValue},
     strings::JNIString,
-    sys::{JNI_ERR, JNI_VERSION_1_6, jbyteArray, jint, jlong, jstring},
+    sys::{JNI_ERR, JNI_VERSION_1_6, jboolean, jint, jlong, jobject, jstring},
 };
 #[cfg(feature = "svg")]
-use jni::{
-    errors::Error as JniError,
-    objects::{Global, JValue},
+use jni::{errors::Error as JniError, objects::Global};
+use merman_bindings_core::{
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
+    BindingOperationRequest, BindingOperationResult, BindingStatus, execute_once,
 };
-use merman_bindings_core::{BindingEngine, BindingError, BindingOperationRequest, BindingStatus};
 #[cfg(feature = "svg")]
 use std::cell::Cell;
 use std::{
@@ -27,132 +27,13 @@ use std::{
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
     ptr,
-    sync::{Arc, Condvar, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
 struct JniReusableEngine {
-    #[cfg(feature = "svg")]
-    base: BindingEngine,
-    inner: Mutex<BindingEngine>,
-    coordinator: Arc<JniExecutionCoordinator>,
-}
-
-#[derive(Default)]
-struct JniExecutionState {
-    operation_active: bool,
-    callback_active: bool,
-    retired: bool,
-}
-
-#[derive(Default)]
-struct JniExecutionCoordinator {
-    state: Mutex<JniExecutionState>,
-    ready: Condvar,
-}
-
-impl JniExecutionCoordinator {
-    fn enter_operation(&self) -> Result<JniOperationGuard<'_>, BindingError> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        loop {
-            if state.retired {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    "Merman reusable engine is closed",
-                ));
-            }
-            if state.callback_active {
-                return Err(BindingError::reentrant_call(
-                    "Merman reusable engine cannot be re-entered from a native callback",
-                ));
-            }
-            if !state.operation_active {
-                state.operation_active = true;
-                return Ok(JniOperationGuard { coordinator: self });
-            }
-            state = self
-                .ready
-                .wait(state)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    fn enter_callback(&self) -> JniCallbackGuard<'_> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        debug_assert!(
-            state.operation_active,
-            "Android host callbacks run inside an engine operation"
-        );
-        debug_assert!(
-            !state.callback_active,
-            "Android host callbacks are not recursively nested"
-        );
-        state.callback_active = true;
-        self.ready.notify_all();
-        JniCallbackGuard { coordinator: self }
-    }
-
-    fn retire(&self) -> Result<(), BindingError> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if state.callback_active {
-            return Err(BindingError::reentrant_call(
-                "Merman reusable engine cannot be closed from a native callback",
-            ));
-        }
-        if state.retired {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "Merman reusable engine is closed",
-            ));
-        }
-        state.retired = true;
-        Ok(())
-    }
-}
-
-struct JniOperationGuard<'a> {
-    coordinator: &'a JniExecutionCoordinator,
-}
-
-impl Drop for JniOperationGuard<'_> {
-    fn drop(&mut self) {
-        let mut state = self
-            .coordinator
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        debug_assert!(!state.callback_active);
-        state.operation_active = false;
-        self.coordinator.ready.notify_all();
-    }
-}
-
-#[cfg(feature = "svg")]
-struct JniCallbackGuard<'a> {
-    coordinator: &'a JniExecutionCoordinator,
-}
-
-#[cfg(feature = "svg")]
-impl Drop for JniCallbackGuard<'_> {
-    fn drop(&mut self) {
-        let mut state = self
-            .coordinator
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.callback_active = false;
-        self.coordinator.ready.notify_all();
-    }
+    engine: BindingEngine,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[derive(Default)]
@@ -194,7 +75,7 @@ static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
 struct JniHostTextMeasurer {
     vm: JavaVM,
     callback: Global<JObject<'static>>,
-    coordinator: Arc<JniExecutionCoordinator>,
+    admission: Arc<BindingEngineAdmission>,
 }
 
 #[cfg(feature = "svg")]
@@ -205,12 +86,12 @@ impl JniHostTextMeasurer {
     fn new(
         vm: JavaVM,
         callback: Global<JObject<'static>>,
-        coordinator: Arc<JniExecutionCoordinator>,
+        admission: Arc<BindingEngineAdmission>,
     ) -> Self {
         Self {
             vm,
             callback,
-            coordinator,
+            admission,
         }
     }
 
@@ -218,7 +99,9 @@ impl JniHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
-        let _callback = self.coordinator.enter_callback();
+        let _callback = self.admission.enter_callback().map_err(|error| {
+            merman_bindings_core::HostTextMeasurementError::new(error.to_string())
+        })?;
         let callback_failed = Cell::new(false);
         let result = self
             .vm
@@ -464,7 +347,7 @@ fn register_native_methods(env: &mut Env<'_>) -> JniResult<()> {
         ),
         native_method!(
             "nativeExecute",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/merman/MermanOperationResult;",
             native_execute
         ),
         native_method!(
@@ -479,16 +362,15 @@ fn register_native_methods(env: &mut Env<'_>) -> JniResult<()> {
 
     let reusable_class = env.find_class(jni::jni_str!("io/merman/MermanReusableEngine"))?;
     let reusable_methods = [
-        native_method!("nativeNew", "(Ljava/lang/String;)J", native_engine_new),
-        native_method!("nativeFree", "(J)V", native_engine_free),
         native_method!(
-            "nativeSetTextMeasurer",
-            "(JLio/merman/MermanTextMeasurer;)V",
-            native_engine_set_text_measurer
+            "nativeNew",
+            "(Ljava/lang/String;Lio/merman/MermanTextMeasurer;)J",
+            native_engine_new
         ),
+        native_method!("nativeTryClose", "(J)Z", native_engine_try_close),
         native_method!(
             "nativeExecute",
-            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B",
+            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/merman/MermanOperationResult;",
             native_engine_execute
         ),
     ];
@@ -514,7 +396,7 @@ pub extern "system" fn native_execute(
     source: JString<'_>,
     options_json: JObject<'_>,
     uri: JObject<'_>,
-) -> jbyteArray {
+) -> jobject {
     with_env_resolved(&mut unowned_env, |env| {
         let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
             return Ok(ptr::null_mut());
@@ -528,16 +410,13 @@ pub extern "system" fn native_execute(
         let Some(uri) = nullable_java_string(env, uri, "uri") else {
             return Ok(ptr::null_mut());
         };
-        let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
-            execute_operation(
-                &engine,
-                &operation_id,
-                source.as_bytes(),
-                b"",
-                uri.as_deref(),
-            )
+        let result = execute_once(BindingOperationRequest {
+            operation_id: &operation_id,
+            source: source.as_bytes(),
+            uri: uri.as_deref().map(str::as_bytes),
+            options_json: options_json.as_bytes(),
         });
-        Ok(result_to_java_bytes(env, result))
+        Ok(result_to_java_operation_result(env, result))
     })
 }
 
@@ -558,19 +437,43 @@ pub extern "system" fn native_engine_new(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
     options_json: JObject<'_>,
+    measurer: JObject<'_>,
 ) -> jlong {
     with_env_resolved(&mut unowned_env, |env| {
         let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
             return Ok(0);
         };
         let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
-            let coordinator = Arc::new(JniExecutionCoordinator::default());
-            let state = Arc::new(JniReusableEngine {
-                #[cfg(feature = "svg")]
-                base: engine.clone(),
-                inner: Mutex::new(engine),
-                coordinator,
+            let admission = BindingEngineAdmission::new(if measurer.is_null() {
+                BindingEngineAdmissionMode::Concurrent
+            } else {
+                BindingEngineAdmissionMode::HostCallback
             });
+
+            #[cfg(feature = "svg")]
+            let engine = if measurer.is_null() {
+                engine
+            } else {
+                let callback = env.new_global_ref(&measurer).map_err(jni_binding_error)?;
+                let vm = env.get_java_vm().map_err(jni_binding_error)?;
+                engine.with_host_text_measurer(Arc::new(JniHostTextMeasurer::new(
+                    vm,
+                    callback,
+                    Arc::clone(&admission),
+                )))
+            };
+
+            #[cfg(not(feature = "svg"))]
+            let engine = if measurer.is_null() {
+                engine
+            } else {
+                return Err(BindingError::missing_capability(
+                    "svg",
+                    "host text measurement requires the svg capability",
+                ));
+            };
+
+            let state = Arc::new(JniReusableEngine { engine, admission });
             engine_registry()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -586,21 +489,21 @@ pub extern "system" fn native_engine_new(
     })
 }
 
-pub extern "system" fn native_engine_free(
+pub extern "system" fn native_engine_try_close(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) {
+) -> jboolean {
     with_env_resolved(&mut unowned_env, |env| {
         let Some(token) = engine_token(env, handle) else {
-            return Ok(());
+            return Ok(false);
         };
         let Some(state) = acquire_engine(env, token) else {
-            return Ok(());
+            return Ok(false);
         };
-        if let Err(error) = state.coordinator.retire() {
-            throw_merman_exception(env, binding_error_text(error));
-            return Ok(());
+        if let Err(error) = state.admission.try_close() {
+            throw_merman_exception(env, binding_error_text(error.into()));
+            return Ok(false);
         }
         let retired = engine_registry()
             .lock()
@@ -608,66 +511,9 @@ pub extern "system" fn native_engine_free(
             .retire(token);
         if retired.is_none() {
             throw_merman_exception(env, "Merman reusable engine is closed");
+            return Ok(false);
         }
-        Ok(())
-    })
-}
-
-pub extern "system" fn native_engine_set_text_measurer(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    measurer: JObject<'_>,
-) {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(token) = engine_token(env, handle) else {
-            return Ok(());
-        };
-        let Some(state) = acquire_engine(env, token) else {
-            return Ok(());
-        };
-        let _operation = match state.coordinator.enter_operation() {
-            Ok(operation) => operation,
-            Err(error) => {
-                throw_merman_exception(env, binding_error_text(error));
-                return Ok(());
-            }
-        };
-
-        #[cfg(feature = "svg")]
-        {
-            let replacement = if measurer.is_null() {
-                state.base.clone()
-            } else {
-                let callback = env.new_global_ref(&measurer)?;
-                let vm = env.get_java_vm()?;
-                state
-                    .base
-                    .clone()
-                    .with_host_text_measurer(Arc::new(JniHostTextMeasurer::new(
-                        vm,
-                        callback,
-                        Arc::clone(&state.coordinator),
-                    )))
-            };
-            *state
-                .inner
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = replacement;
-        }
-
-        #[cfg(not(feature = "svg"))]
-        {
-            let _ = &measurer;
-            throw_merman_exception(
-                env,
-                binding_error_text(BindingError::missing_capability(
-                    "svg",
-                    "host text measurement requires the svg capability",
-                )),
-            );
-        }
-        Ok(())
+        Ok(true)
     })
 }
 
@@ -679,7 +525,7 @@ pub extern "system" fn native_engine_execute(
     source: JString<'_>,
     options_json: JObject<'_>,
     uri: JObject<'_>,
-) -> jbyteArray {
+) -> jobject {
     with_env_resolved(&mut unowned_env, |env| {
         let Some(token) = engine_token(env, handle) else {
             return Ok(ptr::null_mut());
@@ -699,21 +545,19 @@ pub extern "system" fn native_engine_execute(
         let Some(state) = acquire_engine(env, token) else {
             return Ok(ptr::null_mut());
         };
-        let result = state.coordinator.enter_operation().and_then(|_operation| {
-            let engine = state
-                .inner
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clone();
-            execute_operation(
-                &engine,
-                &operation_id,
-                source.as_bytes(),
-                options_json.as_bytes(),
-                uri.as_deref(),
-            )
-        });
-        Ok(result_to_java_bytes(env, result))
+        let result = state
+            .admission
+            .enter_operation()
+            .map_err(BindingError::from)
+            .and_then(|_operation| {
+                state.engine.execute(BindingOperationRequest {
+                    operation_id: &operation_id,
+                    source: source.as_bytes(),
+                    uri: uri.as_deref().map(str::as_bytes),
+                    options_json: options_json.as_bytes(),
+                })
+            });
+        Ok(result_to_java_operation_result(env, result))
     })
 }
 
@@ -738,23 +582,6 @@ fn acquire_engine(env: &mut Env<'_>, token: u64) -> Option<Arc<JniReusableEngine
         throw_merman_exception(env, "Merman reusable engine is closed");
     }
     engine
-}
-
-fn execute_operation(
-    engine: &BindingEngine,
-    operation_id: &str,
-    source: &[u8],
-    options_json: &[u8],
-    uri: Option<&str>,
-) -> Result<Vec<u8>, BindingError> {
-    engine
-        .execute(BindingOperationRequest {
-            operation_id,
-            source,
-            uri: uri.map(str::as_bytes),
-            options_json,
-        })
-        .map(|result| result.data)
 }
 
 fn metadata_json(id: &str) -> Result<Vec<u8>, BindingError> {
@@ -824,12 +651,18 @@ fn java_string(env: &mut Env<'_>, value: JString<'_>) -> Option<String> {
     }
 }
 
-fn result_to_java_bytes(env: &mut Env<'_>, result: Result<Vec<u8>, BindingError>) -> jbyteArray {
+fn result_to_java_operation_result(
+    env: &mut Env<'_>,
+    result: Result<BindingOperationResult, BindingError>,
+) -> jobject {
     match result {
-        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-            Ok(array) => array.into_raw(),
+        Ok(result) => match new_operation_result(env, result) {
+            Ok(result) => result.into_raw(),
             Err(error) => {
-                throw_merman_exception(env, format!("failed to allocate Java byte array: {error}"));
+                throw_merman_exception(
+                    env,
+                    format!("failed to allocate Java operation result: {error}"),
+                );
                 ptr::null_mut()
             }
         },
@@ -838,6 +671,46 @@ fn result_to_java_bytes(env: &mut Env<'_>, result: Result<Vec<u8>, BindingError>
             ptr::null_mut()
         }
     }
+}
+
+fn new_operation_result<'local>(
+    env: &mut Env<'local>,
+    result: BindingOperationResult,
+) -> Result<JObject<'local>, String> {
+    let operation_id = env
+        .new_string(result.operation.operation_id())
+        .map_err(|error| error.to_string())?;
+    let media_type = env
+        .new_string(result.media_type)
+        .map_err(|error| error.to_string())?;
+    let data = env
+        .byte_array_from_slice(&result.data)
+        .map_err(|error| error.to_string())?;
+    let metadata_json = std::str::from_utf8(&result.metadata_json)
+        .map_err(|error| format!("native operation metadata was not UTF-8: {error}"))?;
+    let metadata_json = env
+        .new_string(metadata_json)
+        .map_err(|error| error.to_string())?;
+
+    env.new_object(
+        jni::jni_str!("io/merman/MermanOperationResult"),
+        jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;[BLjava/lang/String;)V"),
+        &[
+            JValue::Object(&JObject::from(operation_id)),
+            JValue::Object(&JObject::from(media_type)),
+            JValue::Object(&JObject::from(data)),
+            JValue::Object(&JObject::from(metadata_json)),
+        ],
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(feature = "svg")]
+fn jni_binding_error(error: JniError) -> BindingError {
+    BindingError::new(
+        BindingStatus::InternalError,
+        format!("failed to retain Android text measurer: {error}"),
+    )
 }
 
 fn result_to_java_string(env: &mut Env<'_>, result: Result<Vec<u8>, BindingError>) -> jstring {
@@ -875,13 +748,10 @@ fn new_java_string(env: &mut Env<'_>, value: &str) -> jstring {
 
 fn throw_merman_exception(env: &mut Env<'_>, message: impl AsRef<str>) {
     let message = JNIString::new(message.as_ref());
-    if env
-        .throw_new(jni::jni_str!("io/merman/MermanException"), &message)
-        .is_ok()
-    {
+    let _ = env.throw_new(jni::jni_str!("io/merman/MermanException"), &message);
+    if env.exception_check() {
         return;
     }
-    env.exception_clear();
     let _ = env.throw_new(jni::jni_str!("java/lang/RuntimeException"), &message);
 }
 

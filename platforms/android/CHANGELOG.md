@@ -12,9 +12,9 @@ The format is based on Keep a Changelog, and this package follows the merman wor
   transport over `merman-bindings-core` in a dedicated internal crate. Kotlin classes and the new
   `libmerman_android_jni.so` from this release must be upgraded together; older
   `libmerman_ffi.so` JNI slices are incompatible.
-- Replaced per-output native methods with `executeBytes(operationId, source, optionsJson, uri)` for
-  both one-shot and reusable engines. SVG, ASCII, JSON, PNG, JPEG, and PDF
-  convenience methods delegate to the same operation path.
+- Replaced byte-only generic execution with `execute(operationId, source, optionsJson, uri)`, which returns `MermanOperationResult(operationId, mediaType, data, metadataJson)` for both one-shot and reusable engines. SVG, ASCII, JSON, PNG, JPEG, and PDF convenience methods delegate to the same operation path and unpack `data`.
+- Replaced mutable `setTextMeasurer` with an immutable `textMeasurer` constructor argument. Callback-free reusable engines permit concurrent calls; callback-enabled engines return `BUSY` for a competing call and `REENTRANT_CALL` for callback reentry.
+- Replaced blocking/destructive `nativeFree` close with nonblocking `nativeTryClose`. A failed `close()` preserves the Kotlin handle and can be retried after the active call completes.
 - Replaced `runtimeContractJson()` with `runtimeCatalogJson()`. The new direct catalog is a flat
   schema-1 document containing package identity, sorted capability/output/operation IDs, registry
   facts, resource descriptors, and text-measurement providers; it validates Android transport API
