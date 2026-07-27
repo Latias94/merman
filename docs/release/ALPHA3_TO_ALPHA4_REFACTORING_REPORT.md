@@ -3,7 +3,7 @@
 ## Scope and verdict
 
 This report compares `v0.8.0-alpha.3` (`56227a541011a3929b808bb3555d67372d630aae`)
-with `a7026ea2da2ce2cb156e87b40d788fd91779c314`, the current alpha.4 candidate.
+with `d2698d0a365b905bb65a58a7690c74075878a4f9`, the current alpha.4 candidate.
 It was measured on an Apple M4 Pro with Rust 1.95.0, Cargo 1.95.0, Node 26.5.0, and
 the same local source corpus on 2026-07-27.
 
@@ -14,12 +14,13 @@ dependency closure falls by 63.06%.
 
 It is not a universal size or performance reduction. Complete products now carry the Mermaid
 11.16 contract and, depending on the surface, both layout engines and math, so their total
-artifacts are larger. More importantly, the native minimal-SVG pipeline regressed on the
-unchanged standard corpus. The median current/alpha.3 end-to-end ratio is 1.93x across 32 shared
-fixtures, with a large fixed-cost SVG emit regression for Info and Packet. An isolated A/B traced
-most of that cost to a shared deep clone of the effective Mermaid configuration when the default
-`handDrawnSeed` is resolved. The target revision still contains the regression; the root cause
-and safe repair boundary are recorded in
+artifacts are larger. A pre-release benchmark pass also exposed a recursive clone of the full
+effective Mermaid configuration on every default/zero-seed SVG render. Commit `d2698d0a3`
+removed that fixed cost without changing hand-drawn seed semantics. After the repair, the
+minimal same-capability pipeline has a 1.12x median and 1.07x geometric-mean current/alpha.3
+ratio across 32 fixtures: 10 are faster, 22 are slower, and seven are within 5%. That is a
+substantial recovery, but not a universal native performance win. Remaining family-local
+regressions are recorded in
 [`FEARLESS_REFACTORING.md`](../performance/FEARLESS_REFACTORING.md).
 
 ## At a glance
@@ -34,7 +35,7 @@ and safe repair boundary are recorded in
 | Browser full WASM | 6,911,512 bytes | 12,339,868 bytes | Not like-for-like: current full adds Cytoscape, math, and the expanded Mermaid 11.16 contract. |
 | Browser analysis WASM | 1,914,582 bytes | 3,373,026 bytes | 76.18% larger source rebuild; the analysis capability now covers the expanded semantic baseline. |
 | Current complete browser renderer | not comparable | 11,665,436 bytes | `@mermanjs/web-render` removes analysis, editor, and ASCII APIs while retaining SVG, Cytoscape, ELK, and math. |
-| Minimal native SVG end-to-end | baseline | median 1.93x alpha.3 | Regression remains in the candidate; a diagnostic no-clone A/B removed most of the Info/Packet fixed cost. |
+| Minimal native SVG end-to-end | baseline | median 1.12x alpha.3 | The shared configuration-clone regression is fixed; 10 of 32 fixtures are faster and seven are within 5%, with family-local hotspots still visible. |
 
 The CLI sizes are unstripped macOS arm64 Cargo release executables. The WASM values are
 `wasm-pack 0.15.0` optimized package artifacts rebuilt from source where historical output was
@@ -148,7 +149,7 @@ what those packages promise.
 
 The checked-in comparison harness ran the `standard` suite: 34 end-to-end fixtures across 24
 families, 20 Criterion samples, one-second warm-up, and one-second measurement windows. It used
-Merman at `a7026ea`, `mermaid-rs-renderer` at `7ff1196`, and Mermaid.js 11.16.0 in one warm
+Merman at `d2698d0a3`, `mermaid-rs-renderer` at `7ff1196`, and Mermaid.js 11.16.0 in one warm
 Headless Chromium 131 process.
 
 | Runner | Requested | Measured | Missing | Result |
@@ -157,26 +158,28 @@ Headless Chromium 131 process.
 | Mermaid.js browser | 34 | 34 | 0 | Complete suite coverage. |
 | mermaid-rs-renderer native | 34 | 32 | 2 | Missing `flowchart_large` and `info_medium`. |
 
-On this host, Merman's median `Merman / Mermaid.js` warm end-to-end ratio was 0.0388 across all
-34 rows: approximately 25.7x lower latency. This is a native Rust pipeline compared with a warm
-browser renderer, not an intrinsic language benchmark or a browser-WASM claim.
+On this host, Merman's median `Merman / Mermaid.js` warm end-to-end ratio was 0.0237 across all
+34 rows: Mermaid.js's median latency was approximately 42.2x Merman's. This is a native Rust
+pipeline compared with a warm browser renderer, not an intrinsic language benchmark or a
+browser-WASM claim.
 
-Against the 32 shared `mermaid-rs-renderer` rows, Merman was faster on 11 and slower on 21; the
-median `Merman / mmdr` ratio was 1.85. The result is workload-dependent:
+Against the 32 shared `mermaid-rs-renderer` rows, Merman was faster on 19 and slower on 13; the
+median `Merman / mmdr` ratio was 0.697. The result is workload-dependent:
 
 | Fixture | Merman | mermaid-rs-renderer | Mermaid.js |
 | --- | ---: | ---: | ---: |
-| `flowchart_medium` | 3.81 ms | 106.65 ms | 57.80 ms |
-| `flowchart_ports_heavy` | 1.20 ms | 1.28 s | 33.10 ms |
-| `class_medium` | 1.01 ms | 2.39 ms | 45.10 ms |
-| `mindmap_medium` | 719.40 us | 77.07 us | 15.50 ms |
-| `kanban_medium` | 199.10 us | 28.88 us | 6.30 ms |
+| `flowchart_medium` | 3.68 ms | 105.62 ms | 57.65 ms |
+| `flowchart_ports_heavy` | 1.13 ms | 1.28 s | 32.30 ms |
+| `class_medium` | 949.54 us | 2.38 ms | 44.70 ms |
+| `mindmap_medium` | 685.48 us | 76.79 us | 15.40 ms |
+| `kanban_medium` | 153.33 us | 29.38 us | 6.20 ms |
 
-Merman is particularly strong on the measured complex Flowchart cases, but it does not yet win
-the broad native comparison. The harness confirms successful execution and aligned fixture
-selection; it does not claim byte, DOM, or Mermaid-semantic equivalence for
-`mermaid-rs-renderer`. These ratios measure latency for each implementation's output, not a
-quality-adjusted winner. That distinction matters more than a single geometric mean.
+Merman is particularly strong on the measured complex Flowchart cases and wins the median native
+comparison, while `mermaid-rs-renderer` remains much faster on Mindmap and Kanban. The harness
+confirms successful execution and aligned fixture selection; it does not claim byte, DOM, or
+Mermaid-semantic equivalence for `mermaid-rs-renderer`. These ratios measure latency for each
+implementation's output, not a quality-adjusted winner. That distinction matters more than a
+single geometric mean.
 
 ### Alpha.3 to alpha.4 native pipeline
 
@@ -185,8 +188,8 @@ two lanes so product-default cost is not confused with an implementation-only de
 
 | Revision A/B lane | Shared rows | Median current / alpha.3 | Geometric mean | Current faster / slower |
 | --- | ---: | ---: | ---: | ---: |
-| Revision-complete SVG product | 34 | 1.84x | 1.95x | 7 / 27 |
-| Minimal same-capability SVG | 32 | 1.93x | 2.12x | 4 / 28 |
+| Revision-complete SVG product | 34 | 1.10x | 1.09x | 13 / 21 |
+| Minimal same-capability SVG | 32 | 1.12x | 1.07x | 10 / 22 |
 
 The complete lane enables each revision's documented full SVG/layout/math product and therefore
 includes deliberate capability changes. The minimal lane disables defaults and selects only the
@@ -202,51 +205,70 @@ cargo bench --locked -p merman --no-default-features \
 | Metric | Result |
 | --- | --- |
 | Shared minimal-SVG rows | 32 |
-| Rows within 5% | 3 |
+| Rows within 5% | 7 |
 
-The regression is not uniform. State medium improved from 1.13 ms to 555.1 us end-to-end, while
-large and medium Flowchart cases remain within about 3.5%. The highest-priority fixed-cost
-regressions are:
+The remaining delta is not uniform. State medium improved from 1.12 ms to 501.4 us end-to-end,
+while large and medium Flowchart cases remain within about 1.7%. The largest minimal-lane
+regressions are Kanban (4.08x), Requirement (2.25x), Info (1.99x), Packet (1.93x), and Radar
+(1.31x). The complete-product lane additionally exposes a 4.78x Mindmap regression.
+
+An additional focused run used 30 samples, a one-second warm-up, and two-second measurement
+windows to verify the repaired small-diagram path:
 
 | Stage | Info medium: alpha.3 -> current | Packet medium: alpha.3 -> current |
 | --- | ---: | ---: |
-| Parse | 0.5 us -> 0.7 us | 0.9 us -> 1.8 us |
-| Layout | 0.1 us -> 0.4 us | 0.2 us -> 0.6 us |
-| SVG emit | 1.7 us -> 43.7 us | 2.2 us -> 44.4 us |
-| End-to-end | 2.4 us -> 52.1 us | 3.6 us -> 54.3 us |
+| SVG emit | 1.68 us -> 2.37 us (1.41x) | 2.28 us -> 3.17 us (1.39x) |
+| End-to-end | 2.45 us -> 4.84 us (1.97x) | 3.60 us -> 6.87 us (1.91x) |
 
 Criterion's `iter_batched` excludes the `family::prepare` setup from the timed render routine.
-The emit measurements therefore isolate SVG emission/finalization. Packet output is byte-identical
-between revisions; Info differs only by the `v11.15.0` to `v11.16.0` text. The issue is an
-implementation cost regression, not an output-contract expansion.
+The emit measurements therefore isolate SVG emission/finalization. Packet output is
+byte-identical between revisions; Info differs only by the `v11.15.0` to `v11.16.0` text.
 
-#### Confirmed Info and Packet root cause
+#### Fixed Info and Packet root cause
 
-The shared SVG dispatch calls `SvgExecution::effective_config` before selecting a diagram
-family. Mermaid's generated default configuration sets `handDrawnSeed` to `0`, which means
-"derive a seed for this operation." The current implementation resolves that sentinel by cloning
-the full top-level `serde_json::Map`, inserting the derived seed, and rebuilding a
-`MermaidConfig`. The measured default config is 15,409 bytes, with 49 top-level keys and 461
-scalar values. Info and Packet do not consume that seed, but every default render still pays for
-the recursive clone and its drop. Alpha.3 passed the effective configuration by reference.
+The pre-fix shared SVG dispatch called `SvgExecution::effective_config` before selecting a
+diagram family. Mermaid's generated default configuration sets `handDrawnSeed` to `0`, which
+means "derive a seed for this operation." Resolving that sentinel cloned the full top-level
+`serde_json::Map`, inserted the derived seed, and rebuilt a `MermaidConfig`. The measured default
+config is 15,409 bytes, with 49 top-level keys and 461 scalar values. Info and Packet do not
+consume the seed, but every default render paid for the recursive clone and its drop.
 
 The path was introduced in commit `84477e467` (`refactor(render): own operation render
-environment`). A detached-worktree experiment changed only the zero-seed path to borrow the
-configuration. That intentionally incomplete diagnostic produced:
+environment`). Before committing the repair, a same-worktree A/B based on the unfixed parent
+`1bd6f9b90` and the eventual `d2698d0a3` patch used 30 samples, a one-second warm-up, and
+two-second measurement windows:
 
-| Benchmark | Candidate | Diagnostic no-clone branch | Candidate / diagnostic |
+```console
+cargo bench --locked -p merman --no-default-features --features svg --bench pipeline -- \
+  'render/(info_medium|packet_medium)|end_to_end/(info_medium|packet_medium)' \
+  --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
+```
+
+| Benchmark | Unfixed candidate | Formal fix | Improvement |
 | --- | ---: | ---: | ---: |
-| `render/info_medium` | 43.7 us | 2.44 us | 17.9x |
-| `render/packet_medium` | 44.4 us | 3.08 us | 14.4x |
-| `end_to_end/info_medium` | 52.1 us | 4.35 us | 12.0x |
-| `end_to_end/packet_medium` | 54.3 us | 6.29 us | 8.6x |
+| `render/info_medium` | 45.28 us | 2.36 us | 19.2x lower latency |
+| `render/packet_medium` | 45.48 us | 3.01 us | 15.1x lower latency |
+| `end_to_end/info_medium` | 47.38 us | 4.26 us | 11.1x lower latency |
+| `end_to_end/packet_medium` | 49.60 us | 6.22 us | 8.0x lower latency |
 
-This A/B confirms causality but is not a valid production patch: treating zero as an ordinary
-borrowed value would discard the operation-derived seed required by deterministic hand-drawn
-rendering. The durable fix is to keep the resolved seed in `SvgExecution` and expose it directly
-to the renderers that use randomness, or provide a borrowed configuration overlay. Either design
-must preserve explicit non-zero seeds and the runtime determinism tests without materializing the
-entire configuration for diagrams that never inspect the seed.
+Commit `d2698d0a3` makes shared dispatch borrow the effective configuration directly and resolves
+only the `0`/`-0` sentinel inside `SvgExecution::rough_randomness`. Explicit non-zero negative,
+fractional, and large-number JavaScript seed semantics remain unchanged, as does the
+domain-separated operation stream. Every production RoughJS/hand-drawn randomness consumer uses
+that central method, so the repair needs no diagram-family allow-list.
+
+Focused validation after the change covered:
+
+- `cargo fmt --all -- --check`.
+- `merman-render` library tests: 796 passed.
+- Hand-drawn seed, State, Ishikawa, and Venn integration tests: 32 passed.
+- Architecture integration tests with Cytoscape: 12 passed and one skipped.
+- Runtime determinism tests: two passed.
+
+The full workspace `nextest`, SVG DOM parity, and complete golden gates were not rerun for this
+focused repair. The final clean alpha.3 comparison above shows that the catastrophic fixed cost
+is gone; the remaining roughly 1.9x end-to-end delta on these ultra-small fixtures is a separate,
+much smaller profiling target.
 
 ## Node candidate evidence
 
@@ -309,9 +331,9 @@ as semantic parity evidence.
 
 ## Risks and next work
 
-1. Remove the per-render effective-configuration clone while preserving operation-derived
-   hand-drawn seeds before presenting alpha.4 as a native performance release. The confirmed
-   cause, diagnostic A/B, and validation gate are in the fearless-refactoring backlog.
+1. Profile the remaining family-local regressions: Mindmap, Kanban, and Requirement are the
+   clearest suite outliers. Treat the residual Info/Packet parse, layout, and session fixed costs
+   as a separate small-diagram target rather than reopening the repaired seed path.
 2. Regenerate and commit the Node nested lockfile, then run the official locked harness on every
    declared target. Investigate the 426 geometry digest differences before admission.
 3. Treat browser full and analysis growth as an explicit release cost. A future size win requires
@@ -331,4 +353,6 @@ as semantic parity evidence.
 - Reduced the measured lint/analysis CLI binary by 67.95% and its normal dependency closure by
   63.06% compared with alpha.3's historical lean build.
 - Added capability discovery and artifact-profile contracts for safer native and browser embedding.
-- See this report for current native SVG performance and private Node candidate limitations.
+- Removed the default/zero-seed full-configuration clone while preserving deterministic
+  hand-drawn seeds; see this report for the final native SVG comparison and private Node
+  candidate limitations.

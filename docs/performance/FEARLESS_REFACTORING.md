@@ -33,20 +33,27 @@ while preserving correctness.
 - Prefer stage breakdown (parse vs layout vs SVG emission), then end-to-end.
 - For SVG emission hotspots, use internal breakdown timings when available (see “Micro-timing” below).
 
-## Current Gap (last checked 2026-02-15)
+## Release-range status (measured 2026-07-27)
 
 Performance ratios have improved significantly since the early 2026-02-12 baseline numbers below
-(which were recorded during earlier alignment work). Treat the items in this doc as a *backlog*,
-and use the latest numbers in:
+(which were recorded during earlier alignment work). Treat the items in this doc as a *backlog*.
+The current release-range authority is:
+
+- `docs/release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md` (same-capability and product lanes)
+
+The older rolling implementation comparisons were last measured on 2026-05-10. They remain
+useful for fixture history, but do not supersede that release-range measurement:
 
 - `docs/performance/PERF_MILESTONES.md` (stage-attributed canaries + priorities)
 - `docs/performance/COMPARISON.md` (single-filter end-to-end comparison)
+
+### Historical rolling stage guidance (last measured 2026-05-10)
 
 For a quick local stage attribution spotcheck (mid estimates):
 
 - `python3 tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 1`
 
-Typical current interpretation on this fixture set:
+The interpretation recorded for that snapshot was:
 
 - `render/*` remains the most consistent stage gap (notably `flowchart_medium` + `class_medium`).
 - `parse/*` still lags for `sequence_*` (fixed overhead + allocations).
@@ -172,6 +179,16 @@ Exit criteria:
 - Reduced flowchart node render allocations by borrowing node inputs and avoiding style string cloning.
 - Cached RoughJS path generation within state leaf-node rendering (per-render cache; avoids repeated `roughr` work).
 - Optimized state `parity-root` bbox scan to skip `<style>/<defs>` and reuse transform parse buffers.
+- Removed a recursive clone of the full effective Mermaid configuration from every default or
+  zero-seed SVG render (`d2698d0a3`). Zero-valued hand-drawn seeds are now resolved only when a
+  RoughJS/hand-drawn randomness consumer requests them, while explicit non-zero JavaScript number
+  semantics and domain separation remain unchanged. In the same-worktree A/B, the repair reduced
+  Info/Packet SVG-emission latency by 19.2x/15.1x and end-to-end latency by 11.1x/8.0x. The final
+  clean comparison measured current/alpha.3 latency ratios of 1.41x/1.39x for rendering and
+  1.97x/1.91x end-to-end. Focused validation passed 796 renderer library tests, 32 hand-drawn
+  seed/family tests, 12 Architecture tests (with one skipped), and two runtime-determinism tests.
+  The full workspace `nextest`, SVG DOM parity, and complete golden gates were not rerun for this
+  focused repair.
 
 ## Prioritized Backlog
 
@@ -227,50 +244,31 @@ Legend:
    - Risk: medium (easy to accidentally change normalization behavior).
    - Validation: guardrails + snapshot comparisons.
 
-6) Restore Info and Packet SVG emit performance after the alpha.3 to alpha.4 refactor
-   - Why: same-host Criterion evidence on the unchanged `standard` fixtures found a large
-     end-to-end regression for small fixed-cost diagrams:
-     - `end_to_end/info_medium`: 2.4 us -> 52.1 us (21.3x).
-     - `end_to_end/packet_medium`: 3.6 us -> 54.3 us (15.0x).
-     - `render/info_medium`: 1.7 us -> 43.7 us (25.8x).
-     - `render/packet_medium`: 2.2 us -> 44.4 us (19.9x).
-   - Attribution boundary: current `render/*` uses Criterion 0.8.2 `iter_batched`; its
-     `family::prepare` setup runs outside the timed routine. The regression is therefore in
-     SVG emission/finalization, not parse or layout preparation.
-   - Output evidence: the alpha.3 and alpha.4 Packet SVGs are byte-identical (3,091 bytes,
-     17 XML elements). Info is the same 1,649 bytes and 5 XML elements, differing only in
-     `v11.15.0` versus `v11.16.0`. Do not explain this regression as a larger output contract.
-   - Confirmed root cause:
-     - Mermaid's generated default config sets `handDrawnSeed` to `0`.
-     - Shared SVG dispatch calls `SvgExecution::effective_config` before selecting the family.
-       The zero-seed path deep-clones the full effective JSON config, inserts the
-       operation-derived seed, rebuilds `MermaidConfig`, and drops it after every render.
-       The measured default config is 15,409 bytes with 49 top-level keys and 461 scalars.
-     - Info and Packet never consume the seed, but still pay this shared fixed cost. Alpha.3
-       borrowed the effective config directly.
-     - The path originated in `84477e467` (`refactor(render): own operation render
-       environment`).
-   - Isolated A/B: a detached-worktree diagnostic that only borrowed the config on the
-     zero-seed path changed:
-     - `render/info_medium`: 43.7 us -> 2.44 us.
-     - `render/packet_medium`: 44.4 us -> 3.08 us.
-     - `end_to_end/info_medium`: 52.1 us -> 4.35 us.
-     - `end_to_end/packet_medium`: 54.3 us -> 6.29 us.
-     This proves causality, but the diagnostic is not a production fix because zero requests an
-     operation-derived seed for deterministic hand-drawn output.
+6) Profile the remaining alpha.4 family-local and ultra-small fixed costs
+   - Why: after removing the shared configuration clone, the minimal same-capability suite has a
+     1.12x median and 1.07x geometric-mean current/alpha.3 ratio. The catastrophic common cost is
+     gone, but several independent outliers remain:
+     - Complete-product Mindmap: 4.78x alpha.3.
+     - Minimal Kanban: 4.08x alpha.3.
+     - Minimal Requirement: 2.25x alpha.3.
+     - Focused Info/Packet end-to-end: 1.97x/1.91x alpha.3, while SVG emission is only
+       1.41x/1.39x.
+   - Attribution boundary:
+     - Profile Mindmap, Kanban, and Requirement independently; do not infer one shared cause from
+       their ratios.
+     - Re-run parse, layout, render, and end-to-end stages for Info/Packet to isolate their
+       residual session and model fixed costs.
+     - Keep complete-product and minimal same-capability lanes separate.
    - Change:
-     - Keep the resolved operation seed in `SvgExecution` and let randomness consumers access
-       it directly, or introduce a borrowed overlay that does not clone the full config.
-     - Do not special-case Info and Packet or maintain a family allow-list: that list would drift
-       when a new rough renderer is added. Do not make `handDrawnSeed: 0` behave like a literal
-       zero seed.
-     - Preserve explicit non-zero seeds and the current deterministic operation stream.
-   - Impact: high for high-volume small-diagram rendering; negligible layout benefit.
+     - Use source-backed family-local repairs after profiling.
+     - Do not add diagram allow-lists, bypass deterministic runtime policy, or tune layout
+       constants solely to improve a benchmark ratio.
+   - Impact: medium for broad suite consistency; high for applications dominated by an affected
+     family or very small diagrams.
    - Effort: medium.
-   - Risk: medium (seed resolution and hand-drawn parity are behavior-sensitive).
-   - Validation: rerun the exact four Criterion fixtures above on the same host, compare
-     output SHA-256/element counts, run `runtime_determinism` and
-     `hand_drawn_seed_svg_test`, then run the SVG DOM parity gate and focused goldens.
+   - Risk: medium (Mindmap and graph-family layout changes can affect parity).
+   - Validation: focused Criterion stage runs first, then family goldens, runtime determinism,
+     SVG DOM parity, and the full standard suite.
 
 ### P2 (High impact, higher risk; do only with discipline)
 
