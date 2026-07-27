@@ -1,5 +1,7 @@
 use crate::error::CliError;
-use std::io::{Read, Write};
+use crate::input::{InputLimit, InputReadError, read_utf8};
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::path::PathBuf;
@@ -11,8 +13,19 @@ pub(crate) enum OutputTarget {
     File(PathBuf),
 }
 
-pub(crate) fn read_input(path: Option<&Path>, quiet: bool) -> Result<String, CliError> {
-    let mut buf = String::new();
+pub(crate) fn read_input(
+    path: Option<&Path>,
+    quiet: bool,
+    limit: InputLimit,
+) -> Result<String, CliError> {
+    read_primary_input(path, quiet, limit).map_err(CliError::primary_input)
+}
+
+pub(crate) fn read_primary_input(
+    path: Option<&Path>,
+    quiet: bool,
+    limit: InputLimit,
+) -> Result<String, InputReadError> {
     match path {
         None => {
             if !quiet {
@@ -20,44 +33,78 @@ pub(crate) fn read_input(path: Option<&Path>, quiet: bool) -> Result<String, Cli
                     "No input file specified, reading from stdin. Use -i <input> to suppress this warning."
                 );
             }
-            std::io::stdin().read_to_string(&mut buf)?;
+            read_utf8(std::io::stdin().lock(), "stdin", limit, None)
         }
         Some(path) if path == Path::new("-") => {
-            std::io::stdin().read_to_string(&mut buf)?;
+            read_utf8(std::io::stdin().lock(), "stdin", limit, None)
         }
         Some(path) => {
-            if !path.exists() {
-                return Err(CliError::InvalidInput(format!(
-                    "Input file \"{}\" doesn't exist",
-                    path.display()
-                )));
+            let resource = format!("Input file \"{}\"", path.display());
+            let file = File::open(path).map_err(|source| {
+                if source.kind() == std::io::ErrorKind::NotFound {
+                    InputReadError::NotFound {
+                        resource: resource.clone(),
+                    }
+                } else {
+                    InputReadError::Io {
+                        resource: resource.clone(),
+                        source,
+                    }
+                }
+            })?;
+            let metadata = file.metadata().map_err(|source| InputReadError::Io {
+                resource: resource.clone(),
+                source,
+            })?;
+            if !metadata.file_type().is_file() {
+                return Err(InputReadError::NotRegularFile { resource });
             }
-            std::fs::File::open(path)?.read_to_string(&mut buf)?;
+            read_utf8(file, resource, limit, Some(metadata.len()))
         }
     }
-    Ok(buf)
 }
 
 #[cfg(feature = "svg")]
 pub(crate) fn read_optional_text_file(
     path: Option<&Path>,
     label: &str,
+    limit: InputLimit,
 ) -> Result<Option<String>, CliError> {
-    path.map(|p| read_named_text_file(p, label)).transpose()
+    path.map(|p| read_named_text_file(p, label, limit))
+        .transpose()
 }
 
 pub(crate) fn read_named_text_file(
     path: impl AsRef<Path>,
     label: &str,
+    limit: InputLimit,
 ) -> Result<String, CliError> {
     let path = path.as_ref();
-    if !path.exists() {
-        return Err(CliError::InvalidInput(format!(
-            "{label} \"{}\" does not exist",
-            path.display()
-        )));
+    let resource = format!("{label} \"{}\"", path.display());
+    let file = File::open(path).map_err(|source| {
+        CliError::auxiliary_input(if source.kind() == std::io::ErrorKind::NotFound {
+            InputReadError::NotFound {
+                resource: resource.clone(),
+            }
+        } else {
+            InputReadError::Io {
+                resource: resource.clone(),
+                source,
+            }
+        })
+    })?;
+    let metadata = file.metadata().map_err(|source| {
+        CliError::auxiliary_input(InputReadError::Io {
+            resource: resource.clone(),
+            source,
+        })
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(CliError::auxiliary_input(InputReadError::NotRegularFile {
+            resource,
+        }));
     }
-    Ok(std::fs::read_to_string(path)?)
+    read_utf8(file, resource, limit, Some(metadata.len())).map_err(CliError::auxiliary_input)
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]

@@ -4,6 +4,7 @@ use crate::io::OutputTarget;
 use crate::io::write_file;
 use crate::markdown::{self, MarkdownImage};
 use crate::render::plan::RenderPlan;
+use crate::resources::CountLedgerKind;
 #[cfg(feature = "parallel-markdown")]
 use rayon::prelude::*;
 use std::path::Path;
@@ -41,7 +42,22 @@ impl<'a> RenderRequest<'a> {
             }
         };
 
-        let charts = markdown::extract_charts(text);
+        let mut chart_counter = self
+            .plan
+            .resources
+            .checked_count(CountLedgerKind::MarkdownCharts);
+        let charts = match markdown::extract_charts_limited(text, chart_counter.max()) {
+            Ok(charts) => charts,
+            Err(error) => {
+                let limit_error = chart_counter
+                    .try_add(error.observed)
+                    .expect_err("the scanner reported a count above this same policy limit");
+                return Err(limit_error.into());
+            }
+        };
+        let chart_count = u64::try_from(charts.len())
+            .map_err(|_| CliError::InvalidInput("Markdown chart count overflow".to_string()))?;
+        chart_counter.try_add(chart_count)?;
 
         if charts.is_empty() {
             self.info("No mermaid charts found in Markdown input");
@@ -56,6 +72,7 @@ impl<'a> RenderRequest<'a> {
 
         if markdown::is_markdown_path(output_path) {
             let rewritten = markdown::replace_charts_with_images(text, &images);
+            self.charge_staged_bytes(rewritten.len())?;
             write_file(output_path, rewritten.as_bytes())?;
             self.info(&format!(" ✅ {}", output_path.display()));
         }
@@ -119,6 +136,7 @@ impl<'a> RenderRequest<'a> {
             self.plan.artefacts.as_deref(),
         );
         let artifact = self.render_artifact(&chart.definition)?;
+        self.charge_staged_bytes(artifact.bytes.len())?;
         write_file(&output_file, &artifact.bytes)?;
 
         let url = markdown::relative_markdown_url(output_path, &output_file)?;

@@ -6,6 +6,7 @@ use crate::cli::{ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind};
 #[cfg(feature = "ascii")]
 use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
+use crate::input::InputLimit;
 #[cfg(feature = "markdown")]
 use crate::invocation::ResolvedBatchRender;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -22,6 +23,7 @@ use crate::invocation::{
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
 #[cfg(feature = "markdown")]
 use crate::markdown;
+use crate::resources::ResolvedResourcePolicy;
 #[cfg(feature = "icons")]
 use merman::svg::IconRegistry;
 #[cfg(feature = "ascii")]
@@ -49,6 +51,7 @@ pub(crate) struct RenderPlan {
     pub(super) format: RenderFormat,
     pub(super) parse: ParseCliArgs,
     pub(super) render: RenderCliArgs,
+    pub(super) resources: ResolvedResourcePolicy,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(super) scale: f32,
     #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -66,11 +69,6 @@ pub(crate) struct RenderPlan {
     pub(super) artefacts: Option<PathBuf>,
     #[cfg(feature = "parallel-markdown")]
     pub(super) jobs: usize,
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    pub(super) encoding_parallel_budget_bytes: Option<u64>,
     #[cfg(feature = "pdf")]
     pub(super) pdf_fit: bool,
     pub(super) quiet: bool,
@@ -92,26 +90,27 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
     } else {
         None
     };
-    validate_puppeteer_config_file(resolved.compatibility.puppeteer_config_file.as_deref())?;
+    let common = resolved.common;
+    let resources = common.resources;
+    validate_puppeteer_config_file(
+        resolved.compatibility.puppeteer_config_file.as_deref(),
+        resources.files().puppeteer_config_bytes,
+    )?;
     let input = resolved
         .input_was_explicit
         .then(|| resolved.input.to_path_buf());
     let output = project_output(resolved.output);
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolved.jobs;
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    let encoding_parallel_budget_bytes =
-        markdown_batch.then_some(resolved.encoding_parallel_budget_bytes);
-    let common = resolved.common;
     #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
         &common.icons.packages,
         &common.icons.named_sources,
+        &resources,
         #[cfg(feature = "network-icons")]
         common.icons.allow_network,
+        #[cfg(feature = "network-icons")]
+        common.icons.allow_private_network,
     )?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
@@ -126,6 +125,7 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
         format: output.format,
         parse,
         render,
+        resources,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -135,7 +135,14 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         embedded_images: output.embedded_images,
         background: common.background,
-        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        css: read_optional_text_file(
+            common.css_file.as_deref(),
+            "CSS file",
+            InputLimit::new(
+                crate::resources::CliResourceLimitId::MaxCssBytes.as_str(),
+                resources.files().css_bytes,
+            ),
+        )?,
         svg_pipeline: output.svg_pipeline,
         #[cfg(feature = "icons")]
         icon_registry,
@@ -143,11 +150,6 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
         artefacts,
         #[cfg(feature = "parallel-markdown")]
         jobs,
-        #[cfg(all(
-            feature = "parallel-markdown",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        encoding_parallel_budget_bytes,
         #[cfg(feature = "pdf")]
         pdf_fit: output.pdf_fit,
         quiet: common.quiet,
@@ -166,12 +168,16 @@ pub(crate) fn render_plan_for_native(
     let input_kind = resolved.input_kind;
     let output = project_output(resolved.output);
     let common = resolved.common;
+    let resources = common.resources;
     #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
         &common.icons.packages,
         &common.icons.named_sources,
+        &resources,
         #[cfg(feature = "network-icons")]
         common.icons.allow_network,
+        #[cfg(feature = "network-icons")]
+        common.icons.allow_private_network,
     )?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
@@ -186,6 +192,7 @@ pub(crate) fn render_plan_for_native(
         format: output.format,
         parse,
         render,
+        resources,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -195,7 +202,14 @@ pub(crate) fn render_plan_for_native(
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         embedded_images: output.embedded_images,
         background: common.background,
-        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        css: read_optional_text_file(
+            common.css_file.as_deref(),
+            "CSS file",
+            InputLimit::new(
+                crate::resources::CliResourceLimitId::MaxCssBytes.as_str(),
+                resources.files().css_bytes,
+            ),
+        )?,
         svg_pipeline: output.svg_pipeline,
         #[cfg(feature = "icons")]
         icon_registry,
@@ -203,11 +217,6 @@ pub(crate) fn render_plan_for_native(
         artefacts: None,
         #[cfg(feature = "parallel-markdown")]
         jobs: 1,
-        #[cfg(all(
-            feature = "parallel-markdown",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        encoding_parallel_budget_bytes: None,
         #[cfg(feature = "pdf")]
         pdf_fit: output.pdf_fit,
         quiet: common.quiet,
@@ -225,12 +234,16 @@ pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<Ren
     std::fs::create_dir_all(&output_root)?;
     let output = project_output(resolved.output);
     let common = resolved.common;
+    let resources = common.resources;
     #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
         &common.icons.packages,
         &common.icons.named_sources,
+        &resources,
         #[cfg(feature = "network-icons")]
         common.icons.allow_network,
+        #[cfg(feature = "network-icons")]
+        common.icons.allow_private_network,
     )?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
@@ -245,6 +258,7 @@ pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<Ren
         format: output.format,
         parse,
         render,
+        resources,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -254,18 +268,20 @@ pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<Ren
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         embedded_images: output.embedded_images,
         background: common.background,
-        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        css: read_optional_text_file(
+            common.css_file.as_deref(),
+            "CSS file",
+            InputLimit::new(
+                crate::resources::CliResourceLimitId::MaxCssBytes.as_str(),
+                resources.files().css_bytes,
+            ),
+        )?,
         svg_pipeline: output.svg_pipeline,
         #[cfg(feature = "icons")]
         icon_registry,
         artefacts: Some(output_root),
         #[cfg(feature = "parallel-markdown")]
         jobs: resolved.jobs,
-        #[cfg(all(
-            feature = "parallel-markdown",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        encoding_parallel_budget_bytes: Some(resolved.encoding_parallel_budget_bytes),
         #[cfg(feature = "pdf")]
         pdf_fit: output.pdf_fit,
         quiet: common.quiet,
@@ -406,6 +422,17 @@ fn project_output(output: ResolvedOutput) -> ProjectedOutput {
 }
 
 impl RenderPlan {
+    pub(super) const fn input_kind_is_raw_svg(&self) -> bool {
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        {
+            matches!(self.input_kind, RenderInputKind::Svg)
+        }
+        #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
+        {
+            false
+        }
+    }
+
     #[cfg(feature = "icons")]
     pub(super) fn icon_registry(&self) -> Option<Arc<IconRegistry>> {
         self.icon_registry.clone()
@@ -584,12 +611,22 @@ fn prepare_artefacts_dir(
     Ok(Some(path.to_path_buf()))
 }
 
-fn validate_puppeteer_config_file(path: Option<&Path>) -> Result<(), CliError> {
+fn validate_puppeteer_config_file(
+    path: Option<&Path>,
+    max_bytes: Option<usize>,
+) -> Result<(), CliError> {
     let Some(path) = path else {
         return Ok(());
     };
 
-    let text = read_named_text_file(path, "Puppeteer configuration file")?;
+    let text = read_named_text_file(
+        path,
+        "Puppeteer configuration file",
+        InputLimit::new(
+            crate::resources::CliResourceLimitId::MaxPuppeteerConfigBytes.as_str(),
+            max_bytes,
+        ),
+    )?;
     let _: serde_json::Value = serde_json::from_str(&text)?;
     Ok(())
 }

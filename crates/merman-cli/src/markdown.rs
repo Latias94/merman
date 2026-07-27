@@ -17,6 +17,12 @@ pub(crate) struct MarkdownImage {
     pub(crate) alt: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MarkdownChartLimitExceeded {
+    pub(crate) observed: u64,
+    pub(crate) max: u64,
+}
+
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -32,6 +38,13 @@ pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
 }
 
 pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
+    extract_charts_limited(source, None).expect("an unbounded scan cannot exceed its chart limit")
+}
+
+pub(crate) fn extract_charts_limited(
+    source: &str,
+    max_charts: Option<u64>,
+) -> Result<Vec<MarkdownChart>, MarkdownChartLimitExceeded> {
     let mut charts = Vec::new();
     let mut cursor = 0;
 
@@ -55,6 +68,7 @@ pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
             let closing_end = next_line_end(source, search_start);
             let closing_line = trim_line_ending(&source[search_start..closing_end]);
             if matching_closing_fence(closing_line, opening.delimiter) {
+                admit_chart(&charts, max_charts)?;
                 charts.push(MarkdownChart {
                     start: cursor,
                     end: closing_end,
@@ -67,6 +81,7 @@ pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
         }
 
         if search_start == source.len() {
+            admit_chart(&charts, max_charts)?;
             charts.push(MarkdownChart {
                 start: cursor,
                 end: source.len(),
@@ -76,7 +91,22 @@ pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
         }
     }
 
-    charts
+    Ok(charts)
+}
+
+fn admit_chart(
+    charts: &[MarkdownChart],
+    max_charts: Option<u64>,
+) -> Result<(), MarkdownChartLimitExceeded> {
+    let observed = u64::try_from(charts.len())
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    if let Some(max) = max_charts
+        && observed > max
+    {
+        return Err(MarkdownChartLimitExceeded { observed, max });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy)]

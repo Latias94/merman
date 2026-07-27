@@ -23,7 +23,8 @@ use crate::cli::RuntimePolicyKind;
 #[cfg(feature = "ascii")]
 use crate::cli::TextOutputCliArgs;
 use crate::cli::{
-    CapabilitiesArgs, Cli, DetectArgs, ParseArgs, ParseCliArgs, RawCommand, RuntimeCliArgs,
+    CapabilitiesArgs, Cli, DetectArgs, ParseArgs, ParseCliArgs, RawCommand, ResourceCliArgs,
+    RuntimeCliArgs,
 };
 #[cfg(feature = "analysis")]
 use crate::cli::{FixArgs, LintArgs, LintRulesArgs};
@@ -32,11 +33,10 @@ use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::cli::{NativeRenderOptions, RenderArgs, RenderCliArgs, RenderFormat};
 use crate::error::CliError;
+use crate::resources::ResolvedResourcePolicy;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct InvocationFacts {
@@ -72,14 +72,14 @@ impl ColorEnvironment {
 #[derive(Debug)]
 pub(crate) enum ResolvedInvocation {
     Capabilities(CapabilitiesArgs),
-    Detect(DetectArgs),
-    Parse(ParseArgs),
+    Detect(ResolvedDetect),
+    Parse(ResolvedParse),
     #[cfg(feature = "svg")]
-    Layout(LayoutArgs),
+    Layout(ResolvedLayout),
     #[cfg(feature = "analysis")]
-    Lint(LintArgs),
+    Lint(ResolvedLint),
     #[cfg(feature = "analysis")]
-    Fix(FixArgs),
+    Fix(ResolvedFix),
     #[cfg(feature = "analysis")]
     LintRules(LintRulesArgs),
     #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -92,6 +92,55 @@ pub(crate) enum ResolvedInvocation {
     Completion(CompletionArgs),
 }
 
+#[derive(Debug)]
+pub(crate) struct ResolvedDetect {
+    pub(crate) input: ResolvedInput,
+    pub(crate) engine: crate::cli::EngineCliArgs,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[derive(Debug)]
+pub(crate) struct ResolvedParse {
+    pub(crate) input: ResolvedInput,
+    pub(crate) pretty: bool,
+    pub(crate) meta: bool,
+    pub(crate) parse: ParseCliArgs,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug)]
+pub(crate) struct ResolvedLayout {
+    pub(crate) input: ResolvedInput,
+    pub(crate) pretty: bool,
+    pub(crate) parse: ParseCliArgs,
+    pub(crate) render: crate::cli::LayoutRenderCliArgs,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[cfg(feature = "analysis")]
+#[derive(Debug)]
+pub(crate) struct ResolvedLint {
+    pub(crate) input: ResolvedInput,
+    pub(crate) stdin_file_name: Option<PathBuf>,
+    pub(crate) format: crate::cli::LintOutputFormat,
+    pub(crate) pretty: bool,
+    pub(crate) analysis: crate::cli::AnalysisCliArgs,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[cfg(feature = "analysis")]
+#[derive(Debug)]
+pub(crate) struct ResolvedFix {
+    pub(crate) input: ResolvedInput,
+    pub(crate) stdin_file_name: Option<PathBuf>,
+    pub(crate) write: bool,
+    pub(crate) output: Option<PathBuf>,
+    pub(crate) all: bool,
+    pub(crate) analysis: crate::cli::AnalysisCliArgs,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
 #[cfg(all(feature = "svg", feature = "markdown"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResolvedWorkflow {
@@ -100,15 +149,14 @@ pub(crate) enum ResolvedWorkflow {
     MarkdownBatch,
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ResolvedInput {
     File(PathBuf),
     Stdin,
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
 impl ResolvedInput {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) fn to_path_buf(&self) -> PathBuf {
         match self {
             Self::File(path) => path.clone(),
@@ -216,6 +264,7 @@ pub(crate) struct ResolvedEmbeddedImageOptions {
 pub(crate) struct ResolvedRenderCommon {
     pub(crate) parse: ResolvedParseOptions,
     pub(crate) render: ResolvedRenderOptions,
+    pub(crate) resources: ResolvedResourcePolicy,
     #[cfg(feature = "svg")]
     pub(crate) background: Option<String>,
     #[cfg(feature = "svg")]
@@ -265,7 +314,6 @@ pub(crate) struct ResolvedRenderOptions {
     pub(crate) svg_id: Option<String>,
     #[cfg(feature = "svg")]
     pub(crate) hand_drawn_seed: Option<u64>,
-    pub(crate) resource_profile: crate::cli::ResourceProfile,
 }
 
 #[cfg(feature = "ascii")]
@@ -288,6 +336,8 @@ pub(crate) struct ResolvedIconSources {
     pub(crate) named_sources: Vec<String>,
     #[cfg(feature = "network-icons")]
     pub(crate) allow_network: bool,
+    #[cfg(feature = "network-icons")]
+    pub(crate) allow_private_network: bool,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -309,11 +359,6 @@ pub(crate) struct ResolvedBatchRender {
     pub(crate) common: ResolvedRenderCommon,
     #[cfg(feature = "parallel-markdown")]
     pub(crate) jobs: usize,
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    pub(crate) encoding_parallel_budget_bytes: u64,
 }
 
 #[cfg(feature = "svg")]
@@ -329,11 +374,6 @@ pub(crate) struct ResolvedMmdcRender {
     pub(crate) warn_on_implicit_stdin: bool,
     #[cfg(feature = "parallel-markdown")]
     pub(crate) jobs: usize,
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    pub(crate) encoding_parallel_budget_bytes: u64,
 }
 
 #[cfg(feature = "svg")]
@@ -344,17 +384,6 @@ pub(crate) struct MmdcCompatibilityInputs {
     pub(crate) artefacts: Option<PathBuf>,
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-const DEFAULT_MARKDOWN_ENCODING_PARALLEL_BUDGET_MIB: u64 = 512;
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-const MIB: u64 = 1024 * 1024;
-
 pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvocation, CliError> {
     let _ = (
         &facts.cwd,
@@ -363,47 +392,14 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
     );
     match cli.command {
         RawCommand::Capabilities(args) => Ok(ResolvedInvocation::Capabilities(args)),
-        RawCommand::Detect(mut args) => {
-            validate_runtime_args(&args.engine.runtime)?;
-            normalize_raw_native_input(&mut args.input, facts.stdin_is_terminal, "detect", false)?;
-            Ok(ResolvedInvocation::Detect(args))
-        }
-        RawCommand::Parse(mut args) => {
-            validate_parse_args(&args.parse)?;
-            normalize_raw_native_input(&mut args.input, facts.stdin_is_terminal, "parse", false)?;
-            Ok(ResolvedInvocation::Parse(args))
-        }
+        RawCommand::Detect(args) => normalize_detect(args, facts).map(ResolvedInvocation::Detect),
+        RawCommand::Parse(args) => normalize_parse(args, facts).map(ResolvedInvocation::Parse),
         #[cfg(feature = "svg")]
-        RawCommand::Layout(mut args) => {
-            validate_parse_args(&args.parse)?;
-            normalize_raw_native_input(&mut args.input, facts.stdin_is_terminal, "layout", false)?;
-            Ok(ResolvedInvocation::Layout(args))
-        }
+        RawCommand::Layout(args) => normalize_layout(args, facts).map(ResolvedInvocation::Layout),
         #[cfg(feature = "analysis")]
-        RawCommand::Lint(mut args) => {
-            validate_analysis_args(&args.analysis)?;
-            validate_analysis_output(args.format, args.pretty)?;
-            normalize_raw_native_input(
-                &mut args.input,
-                facts.stdin_is_terminal,
-                "lint",
-                args.stdin_file_name.is_some(),
-            )?;
-            validate_stdin_file_name(args.input.as_deref(), args.stdin_file_name.as_deref())?;
-            Ok(ResolvedInvocation::Lint(args))
-        }
+        RawCommand::Lint(args) => normalize_lint(args, facts).map(ResolvedInvocation::Lint),
         #[cfg(feature = "analysis")]
-        RawCommand::Fix(mut args) => {
-            validate_analysis_args(&args.analysis)?;
-            normalize_raw_native_input(
-                &mut args.input,
-                facts.stdin_is_terminal,
-                "fix",
-                args.stdin_file_name.is_some(),
-            )?;
-            validate_stdin_file_name(args.input.as_deref(), args.stdin_file_name.as_deref())?;
-            Ok(ResolvedInvocation::Fix(args))
-        }
+        RawCommand::Fix(args) => normalize_fix(args, facts).map(ResolvedInvocation::Fix),
         #[cfg(feature = "analysis")]
         RawCommand::LintRules(args) => {
             validate_analysis_output(args.format, args.pretty)?;
@@ -424,19 +420,78 @@ fn validate_parse_args(args: &ParseCliArgs) -> Result<(), CliError> {
     validate_runtime_args(&args.runtime)
 }
 
-fn normalize_raw_native_input(
-    input: &mut Option<PathBuf>,
-    stdin_is_terminal: bool,
-    command: &'static str,
-    stdin_was_selected_by_option: bool,
-) -> Result<(), CliError> {
-    if input.is_none() {
-        if stdin_is_terminal && !stdin_was_selected_by_option {
-            return Err(CliError::MissingInput { command });
-        }
-        *input = Some(PathBuf::from("-"));
-    }
-    Ok(())
+fn normalize_detect(args: DetectArgs, facts: &InvocationFacts) -> Result<ResolvedDetect, CliError> {
+    validate_runtime_args(&args.engine.runtime)?;
+    Ok(ResolvedDetect {
+        input: resolve_native_input(args.input, facts.stdin_is_terminal, "detect")?,
+        engine: args.engine,
+        resources: resolve_resource_policy(args.resources)?,
+    })
+}
+
+fn normalize_parse(args: ParseArgs, facts: &InvocationFacts) -> Result<ResolvedParse, CliError> {
+    validate_parse_args(&args.parse)?;
+    Ok(ResolvedParse {
+        input: resolve_native_input(args.input, facts.stdin_is_terminal, "parse")?,
+        pretty: args.pretty,
+        meta: args.meta,
+        parse: args.parse,
+        resources: resolve_resource_policy(args.resources)?,
+    })
+}
+
+#[cfg(feature = "svg")]
+fn normalize_layout(args: LayoutArgs, facts: &InvocationFacts) -> Result<ResolvedLayout, CliError> {
+    validate_parse_args(&args.parse)?;
+    Ok(ResolvedLayout {
+        input: resolve_native_input(args.input, facts.stdin_is_terminal, "layout")?,
+        pretty: args.pretty,
+        parse: args.parse,
+        render: args.render,
+        resources: resolve_resource_policy(args.resources)?,
+    })
+}
+
+#[cfg(feature = "analysis")]
+fn normalize_lint(args: LintArgs, facts: &InvocationFacts) -> Result<ResolvedLint, CliError> {
+    validate_analysis_args(&args.analysis)?;
+    validate_analysis_output(args.format, args.pretty)?;
+    let input = resolve_native_input_with_named_stdin(
+        args.input,
+        facts.stdin_is_terminal,
+        "lint",
+        args.stdin_file_name.is_some(),
+    )?;
+    validate_stdin_file_name(&input, args.stdin_file_name.as_deref())?;
+    Ok(ResolvedLint {
+        input,
+        stdin_file_name: args.stdin_file_name,
+        format: args.format,
+        pretty: args.pretty,
+        analysis: args.analysis,
+        resources: resolve_resource_policy(args.resources)?,
+    })
+}
+
+#[cfg(feature = "analysis")]
+fn normalize_fix(args: FixArgs, facts: &InvocationFacts) -> Result<ResolvedFix, CliError> {
+    validate_analysis_args(&args.analysis)?;
+    let input = resolve_native_input_with_named_stdin(
+        args.input,
+        facts.stdin_is_terminal,
+        "fix",
+        args.stdin_file_name.is_some(),
+    )?;
+    validate_stdin_file_name(&input, args.stdin_file_name.as_deref())?;
+    Ok(ResolvedFix {
+        input,
+        stdin_file_name: args.stdin_file_name,
+        write: args.write,
+        output: args.output,
+        all: args.all,
+        analysis: args.analysis,
+        resources: resolve_resource_policy(args.resources)?,
+    })
 }
 
 #[cfg(feature = "analysis")]
@@ -454,10 +509,10 @@ fn validate_analysis_output(
 
 #[cfg(feature = "analysis")]
 fn validate_stdin_file_name(
-    input: Option<&Path>,
+    input: &ResolvedInput,
     stdin_file_name: Option<&Path>,
 ) -> Result<(), CliError> {
-    if stdin_file_name.is_some() && input.is_some_and(|path| path != Path::new("-")) {
+    if stdin_file_name.is_some() && !matches!(input, ResolvedInput::Stdin) {
         return Err(CliError::InvalidInput(
             "--stdin-file-name is only valid when reading from stdin".to_string(),
         ));
@@ -489,6 +544,38 @@ fn validate_runtime_args(args: &RuntimeCliArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+fn resolve_resource_policy(args: ResourceCliArgs) -> Result<ResolvedResourcePolicy, CliError> {
+    let mut policy = ResolvedResourcePolicy::for_profile(args.profile);
+    let mut applied = std::collections::HashSet::new();
+
+    for resource_override in args.limits {
+        apply_resource_override(
+            &mut policy,
+            &mut applied,
+            &resource_override.stable_id,
+            resource_override.value,
+        )?;
+    }
+
+    Ok(policy)
+}
+
+fn apply_resource_override(
+    policy: &mut ResolvedResourcePolicy,
+    applied: &mut std::collections::HashSet<String>,
+    stable_id: &str,
+    value: u64,
+) -> Result<(), CliError> {
+    if !applied.insert(stable_id.to_string()) {
+        return Err(CliError::InvalidInput(format!(
+            "resource limit `{stable_id}` was specified more than once"
+        )));
+    }
+    policy
+        .apply_override(stable_id, value)
+        .map_err(|error| CliError::InvalidInput(error.to_string()))
+}
+
 #[cfg(feature = "analysis")]
 fn validate_analysis_args(args: &crate::cli::AnalysisCliArgs) -> Result<(), CliError> {
     validate_runtime_args(&args.runtime)?;
@@ -508,6 +595,7 @@ fn normalize_render(
     facts: &InvocationFacts,
 ) -> Result<ResolvedSingleRender, CliError> {
     validate_parse_args(&args.options.parse)?;
+    let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "render")?;
     if input.file().is_some_and(is_native_markdown_path) {
         return Err(CliError::InvalidInput(
@@ -530,7 +618,7 @@ fn normalize_render(
     validate_native_output_options(format, &args.options)?;
     let destination = resolve_single_destination(args.output, &input, format);
     let output = resolved_native_output(format, destination, &args.options)?;
-    let common = resolve_native_common(args.options);
+    let common = resolve_native_common(args.options, resources);
 
     Ok(ResolvedSingleRender {
         input,
@@ -547,6 +635,7 @@ fn normalize_batch(
     facts: &InvocationFacts,
 ) -> Result<ResolvedBatchRender, CliError> {
     validate_parse_args(&args.options.parse)?;
+    let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "batch")?;
     if let Some(path) = input.file()
         && !is_native_markdown_path(path)
@@ -608,28 +697,15 @@ fn normalize_batch(
         ));
     }
     validate_native_output_options(format, &args.options)?;
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    if args.encoding_parallel_budget_mib.is_some() && !format.requires_svg_encoding() {
-        return Err(CliError::InvalidInput(
-            "--encoding-parallel-budget-mib requires PNG, JPEG, or PDF output".to_string(),
-        ));
-    }
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    let encoding_parallel_budget_bytes =
-        resolve_encoding_parallel_budget(args.encoding_parallel_budget_mib)?;
     let output_path = output_dir.join(&source_file_name);
     let output = resolved_native_output(
         format,
         ResolvedDestination::File(output_path),
         &args.options,
     )?;
-    let common = resolve_native_common(args.options);
+    #[cfg(feature = "parallel-markdown")]
+    let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
+    let common = resolve_native_common(args.options, resources);
 
     Ok(ResolvedBatchRender {
         input,
@@ -637,17 +713,13 @@ fn normalize_batch(
         output,
         common,
         #[cfg(feature = "parallel-markdown")]
-        jobs: args.jobs.unwrap_or_else(default_jobs),
-        #[cfg(all(
-            feature = "parallel-markdown",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        encoding_parallel_budget_bytes,
+        jobs,
     })
 }
 
 #[cfg(feature = "svg")]
 fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
+    let resources = resolve_resource_policy(args.resources.clone())?;
     let input_was_explicit = args.input_file.is_some();
     let warn_on_implicit_stdin = !input_was_explicit && !args.quiet;
     let parse = ParseCliArgs {
@@ -664,7 +736,6 @@ fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
         container_height: Some(args.render.container_height),
         svg_id: args.render.svg_id.clone(),
         hand_drawn_seed: args.render.hand_drawn_seed,
-        resource_profile: args.render.resource_profile,
     };
 
     let input = match args.input_file.as_deref() {
@@ -706,24 +777,7 @@ fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
         ));
     }
     #[cfg(feature = "markdown")]
-    if !markdown_input
-        && (args.artefacts.is_some() || {
-            #[cfg(all(
-                feature = "parallel-markdown",
-                any(feature = "png", feature = "jpeg", feature = "pdf")
-            ))]
-            {
-                args.encoding_parallel_budget_mib.is_some()
-            }
-            #[cfg(not(all(
-                feature = "parallel-markdown",
-                any(feature = "png", feature = "jpeg", feature = "pdf")
-            )))]
-            {
-                false
-            }
-        })
-    {
+    if !markdown_input && args.artefacts.is_some() {
         return Err(CliError::InvalidInput(
             "Markdown batch options require Markdown input".to_string(),
         ));
@@ -737,24 +791,15 @@ fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
         ));
     }
     validate_mmdc_output_options(format, &args)?;
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    if args.encoding_parallel_budget_mib.is_some() && !format.requires_svg_encoding() {
-        return Err(CliError::InvalidInput(
-            "--encoding-parallel-budget-mib requires PNG or PDF output".to_string(),
-        ));
-    }
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    let encoding_parallel_budget_bytes =
-        resolve_encoding_parallel_budget(args.encoding_parallel_budget_mib)?;
     let output_is_stdout = matches!(destination, ResolvedDestination::Stdout);
     let output = resolved_mmdc_output(format, destination, &args)?;
-    let common = resolve_mmdc_common(parse, render, &args, output_is_stdout);
+    #[cfg(feature = "parallel-markdown")]
+    let jobs = if markdown_input {
+        resolve_parallel_jobs(args.jobs, &resources)?
+    } else {
+        1
+    };
+    let common = resolve_mmdc_common(parse, render, &args, output_is_stdout, resources);
     let compatibility = MmdcCompatibilityInputs {
         puppeteer_config_file: args.puppeteer_config_file.clone(),
         #[cfg(feature = "markdown")]
@@ -771,16 +816,10 @@ fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
         input_was_explicit,
         warn_on_implicit_stdin,
         #[cfg(feature = "parallel-markdown")]
-        jobs: args.jobs.unwrap_or_else(default_jobs),
-        #[cfg(all(
-            feature = "parallel-markdown",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        encoding_parallel_budget_bytes,
+        jobs,
     })
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_native_input(
     input: Option<PathBuf>,
     stdin_is_terminal: bool,
@@ -792,6 +831,19 @@ fn resolve_native_input(
         None if stdin_is_terminal => Err(CliError::MissingInput { command }),
         None => Ok(ResolvedInput::Stdin),
     }
+}
+
+#[cfg(feature = "analysis")]
+fn resolve_native_input_with_named_stdin(
+    input: Option<PathBuf>,
+    stdin_is_terminal: bool,
+    command: &'static str,
+    stdin_was_selected_by_option: bool,
+) -> Result<ResolvedInput, CliError> {
+    if input.is_none() && stdin_was_selected_by_option {
+        return Ok(ResolvedInput::Stdin);
+    }
+    resolve_native_input(input, stdin_is_terminal, command)
 }
 
 #[cfg(feature = "svg")]
@@ -1000,10 +1052,14 @@ fn resolved_mmdc_output(
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
-fn resolve_native_common(options: NativeRenderOptions) -> ResolvedRenderCommon {
+fn resolve_native_common(
+    options: NativeRenderOptions,
+    resources: ResolvedResourcePolicy,
+) -> ResolvedRenderCommon {
     ResolvedRenderCommon {
         parse: resolve_parse_options(options.parse),
         render: resolve_render_options(options.render),
+        resources,
         #[cfg(feature = "svg")]
         background: options.background_color,
         #[cfg(feature = "svg")]
@@ -1015,6 +1071,8 @@ fn resolve_native_common(options: NativeRenderOptions) -> ResolvedRenderCommon {
             named_sources: options.icons.icon_packs_names_and_urls,
             #[cfg(feature = "network-icons")]
             allow_network: options.icons.allow_network,
+            #[cfg(feature = "network-icons")]
+            allow_private_network: options.icons.allow_private_network,
         },
     }
 }
@@ -1025,10 +1083,12 @@ fn resolve_mmdc_common(
     render: RenderCliArgs,
     args: &MmdcArgs,
     output_is_stdout: bool,
+    resources: ResolvedResourcePolicy,
 ) -> ResolvedRenderCommon {
     ResolvedRenderCommon {
         parse: resolve_parse_options(parse),
         render: resolve_render_options(render),
+        resources,
         background: Some(
             args.background_color
                 .clone()
@@ -1042,6 +1102,8 @@ fn resolve_mmdc_common(
             named_sources: args.icons.icon_packs_names_and_urls.clone(),
             #[cfg(feature = "network-icons")]
             allow_network: args.icons.allow_network,
+            #[cfg(feature = "network-icons")]
+            allow_private_network: args.icons.allow_private_network,
         },
     }
 }
@@ -1090,7 +1152,6 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         svg_id: args.svg_id,
         #[cfg(feature = "svg")]
         hand_drawn_seed: args.hand_drawn_seed,
-        resource_profile: args.resource_profile,
     }
 }
 
@@ -1141,7 +1202,6 @@ impl ResolvedRenderOptions {
             svg_id: self.svg_id,
             #[cfg(feature = "svg")]
             hand_drawn_seed: self.hand_drawn_seed,
-            resource_profile: self.resource_profile,
         }
     }
 }
@@ -1182,19 +1242,6 @@ fn resolve_raster_options(args: &RasterCliArgs) -> Result<ResolvedRasterOptions,
         max_pixels: args.raster_max_pixels,
         unbounded: args.raster_unbounded,
     })
-}
-
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-fn resolve_encoding_parallel_budget(value_mib: Option<u64>) -> Result<u64, CliError> {
-    value_mib
-        .unwrap_or(DEFAULT_MARKDOWN_ENCODING_PARALLEL_BUDGET_MIB)
-        .checked_mul(MIB)
-        .ok_or_else(|| {
-            CliError::InvalidInput("--encoding-parallel-budget-mib is too large".to_string())
-        })
 }
 
 #[cfg(feature = "pdf")]
@@ -1361,7 +1408,7 @@ fn validate_native_output_options(
             || {
                 #[cfg(feature = "network-icons")]
                 {
-                    options.icons.allow_network
+                    options.icons.allow_network || options.icons.allow_private_network
                 }
                 #[cfg(not(feature = "network-icons"))]
                 {
@@ -1414,7 +1461,7 @@ fn validate_raw_svg_options(options: &NativeRenderOptions) -> Result<(), CliErro
         || {
             #[cfg(feature = "network-icons")]
             {
-                options.icons.allow_network
+                options.icons.allow_network || options.icons.allow_private_network
             }
             #[cfg(not(feature = "network-icons"))]
             {
@@ -1544,11 +1591,20 @@ fn default_mmdc_output(input: &ResolvedInput, format: RenderFormat) -> PathBuf {
 }
 
 #[cfg(feature = "parallel-markdown")]
-fn default_jobs() -> usize {
-    std::thread::available_parallelism()
-        .map(usize::from)
-        .map(|jobs| (jobs / 2).max(1))
-        .unwrap_or(1)
+fn resolve_parallel_jobs(
+    requested: Option<usize>,
+    resources: &ResolvedResourcePolicy,
+) -> Result<usize, CliError> {
+    let batch = resources.batch();
+    let jobs = requested.unwrap_or(batch.default_jobs);
+    if jobs > batch.max_jobs {
+        return Err(CliError::InvalidInput(format!(
+            "--jobs {jobs} exceeds the resolved maximum of {} for the {} profile",
+            batch.max_jobs,
+            resources.profile()
+        )));
+    }
+    Ok(jobs)
 }
 
 #[cfg(test)]
@@ -1563,6 +1619,209 @@ mod tests {
             stdout_is_terminal: false,
             color: ColorEnvironment::default(),
         }
+    }
+
+    #[test]
+    fn content_commands_resolve_one_canonical_resource_policy() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "parse",
+            "-",
+            "--resource-profile",
+            "constrained",
+            "--resource-limit",
+            "max_source_bytes=17",
+            "--resource-limit",
+            "max_config_bytes=29",
+        ])
+        .expect("parse resource options");
+
+        let ResolvedInvocation::Parse(resolved) =
+            resolve(cli, &facts(false)).expect("resolve resource policy")
+        else {
+            panic!("expected parse invocation");
+        };
+
+        assert_eq!(
+            resolved.resources.profile(),
+            merman::resources::ResourceProfile::Constrained
+        );
+        assert_eq!(
+            resolved
+                .resources
+                .input_policy()
+                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+            Some(17)
+        );
+        assert_eq!(resolved.resources.files().config_bytes, Some(29));
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn render_common_owns_the_resolved_resource_policy() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "render",
+            "-",
+            "--resource-profile",
+            "interactive",
+            "--resource-limit",
+            "max_source_bytes=31",
+        ])
+        .expect("parse render resource options");
+
+        let ResolvedInvocation::Render(resolved) =
+            resolve(cli, &facts(false)).expect("resolve render resources")
+        else {
+            panic!("expected render invocation");
+        };
+
+        assert_eq!(
+            resolved.common.resources.profile(),
+            merman::resources::ResourceProfile::Interactive
+        );
+        assert_eq!(
+            resolved
+                .common
+                .resources
+                .input_policy()
+                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+            Some(31)
+        );
+    }
+
+    #[test]
+    fn resource_overrides_reject_unknown_and_duplicate_stable_ids() {
+        let unknown = Cli::try_parse_from([
+            "merman-cli",
+            "parse",
+            "-",
+            "--resource-limit",
+            "future_limit=1",
+        ])
+        .expect("parse unknown resource id");
+        let error = resolve(unknown, &facts(false)).expect_err("unknown id must fail");
+        assert!(
+            error.to_string().contains("future_limit"),
+            "unexpected error: {error}"
+        );
+
+        let duplicate = Cli::try_parse_from([
+            "merman-cli",
+            "parse",
+            "definitely-missing.mmd",
+            "--resource-limit",
+            "max_source_bytes=17",
+            "--resource-limit",
+            "max_source_bytes=23",
+        ])
+        .expect("parse duplicate resource ids");
+        let error = resolve(duplicate, &facts(false)).expect_err("duplicate id must fail");
+        assert!(
+            error.to_string().contains("max_source_bytes")
+                && error.to_string().contains("specified more than once"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn removed_source_limit_alias_is_not_parsed() {
+        assert!(
+            Cli::try_parse_from(["merman-cli", "parse", "-", "--max-source-bytes", "23"]).is_err()
+        );
+    }
+
+    #[cfg(all(
+        feature = "parallel-markdown",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    #[test]
+    fn removed_encoding_budget_aliases_are_not_parsed() {
+        for option in [
+            "--encoding-parallel-budget-mib",
+            "--encoding-memory-budget-mib",
+        ] {
+            assert!(
+                Cli::try_parse_from(["merman-cli", "batch", "input.md", option, "7"]).is_err(),
+                "{option} must be replaced by --resource-limit"
+            );
+        }
+    }
+
+    #[cfg(feature = "parallel-markdown")]
+    #[test]
+    fn batch_jobs_use_the_profile_default_and_maximum() {
+        let defaulted = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--resource-profile",
+            "constrained",
+        ])
+        .expect("parse constrained batch");
+        let ResolvedInvocation::Batch(defaulted) =
+            resolve(defaulted, &facts(false)).expect("resolve constrained batch")
+        else {
+            panic!("expected batch invocation");
+        };
+        assert_eq!(defaulted.jobs, 1);
+
+        let exact = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--resource-profile",
+            "constrained",
+            "--jobs",
+            "2",
+        ])
+        .expect("parse jobs at profile maximum");
+        let ResolvedInvocation::Batch(exact) =
+            resolve(exact, &facts(false)).expect("profile maximum should be accepted")
+        else {
+            panic!("expected batch invocation");
+        };
+        assert_eq!(exact.jobs, 2);
+
+        let excessive = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--resource-profile",
+            "constrained",
+            "--jobs",
+            "3",
+        ])
+        .expect("parse excessive jobs");
+        let error = resolve(excessive, &facts(false)).expect_err("profile maximum must apply");
+        assert!(
+            error.to_string().contains("resolved maximum of 2"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[cfg(feature = "parallel-markdown")]
+    #[test]
+    fn scheduling_weight_uses_the_unified_resource_override() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--resource-limit",
+            "max_scheduling_weight_bytes=7340032",
+        ])
+        .expect("parse scheduling weight");
+
+        let ResolvedInvocation::Batch(resolved) =
+            resolve(cli, &facts(false)).expect("resolve scheduling weight")
+        else {
+            panic!("expected batch invocation");
+        };
+
+        assert_eq!(
+            resolved.common.resources.batch().scheduling_weight_bytes,
+            Some(7 * 1024 * 1024)
+        );
     }
 
     #[test]

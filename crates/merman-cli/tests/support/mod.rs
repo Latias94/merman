@@ -17,6 +17,25 @@ pub fn run_with_stdin(args: &[&str], input: &str) -> Output {
     run_with_stdin_in_dir(args, input, None)
 }
 
+pub fn run_with_stdin_bytes(args: &[&str], input: &[u8]) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command.spawn().expect("spawn cli");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(input)
+        .expect("write stdin");
+    child.wait_with_output().expect("wait cli")
+}
+
 pub fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let mut command = Command::new(exe);

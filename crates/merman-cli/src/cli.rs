@@ -1,4 +1,3 @@
-#[cfg(any(feature = "ascii", feature = "svg"))]
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 #[cfg(feature = "analysis")]
@@ -63,6 +62,46 @@ pub(crate) struct CapabilitiesArgs {
     pub(crate) json: bool,
 }
 
+#[derive(Debug, Clone, ClapArgs)]
+pub(crate) struct ResourceCliArgs {
+    /// Resource policy for input, semantic models, output, and CLI acquisition.
+    ///
+    /// Use interactive for cooperative editor-like workloads, constrained for
+    /// untrusted or multi-tenant input, and trusted-native for controlled local
+    /// workloads. The unbounded profile retains hard implementation and protocol guards.
+    #[arg(
+        long = "resource-profile",
+        value_parser = resource_profile_value_parser(),
+        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        help_heading = "Resource controls"
+    )]
+    pub(crate) profile: ResourceProfile,
+
+    /// Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated.
+    #[arg(
+        long = "resource-limit",
+        value_name = "STABLE_ID=POSITIVE_U64",
+        value_parser = parse_resource_limit_override,
+        help_heading = "Resource controls"
+    )]
+    pub(crate) limits: Vec<ResourceLimitOverride>,
+}
+
+impl Default for ResourceCliArgs {
+    fn default() -> Self {
+        Self {
+            profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+            limits: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResourceLimitOverride {
+    pub(crate) stable_id: String,
+    pub(crate) value: u64,
+}
+
 #[derive(Debug, ClapArgs)]
 pub(crate) struct DetectArgs {
     /// Input Mermaid file. Use `-` for stdin.
@@ -71,6 +110,9 @@ pub(crate) struct DetectArgs {
 
     #[command(flatten)]
     pub(crate) engine: EngineCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -89,6 +131,9 @@ pub(crate) struct ParseArgs {
 
     #[command(flatten)]
     pub(crate) parse: ParseCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "svg")]
@@ -107,6 +152,9 @@ pub(crate) struct LayoutArgs {
 
     #[command(flatten)]
     pub(crate) render: LayoutRenderCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "analysis")]
@@ -139,6 +187,9 @@ pub(crate) struct LintArgs {
 
     #[command(flatten)]
     pub(crate) analysis: AnalysisCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "analysis")]
@@ -175,6 +226,9 @@ pub(crate) struct FixArgs {
 
     #[command(flatten)]
     pub(crate) analysis: AnalysisCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "analysis")]
@@ -195,14 +249,6 @@ pub(crate) struct AnalysisCliArgs {
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
-
-    /// Maximum source bytes accepted by the analyzer.
-    #[arg(
-        long = "max-source-bytes",
-        value_parser = parse_positive_usize,
-        help_heading = "Analysis options"
-    )]
-    pub(crate) max_source_bytes: Option<usize>,
 
     /// Built-in lint rule profile: core, recommended, or strict.
     #[arg(
@@ -305,6 +351,9 @@ pub(crate) struct RenderArgs {
 
     #[command(flatten)]
     pub(crate) options: NativeRenderOptions,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "markdown")]
@@ -341,21 +390,11 @@ pub(crate) struct BatchArgs {
     )]
     pub(crate) jobs: Option<usize>,
 
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    /// Aggregate scheduling budget for parallel PNG/JPEG/PDF encoding, in MiB.
-    #[arg(
-        long = "encoding-parallel-budget-mib",
-        visible_alias = "encoding-memory-budget-mib",
-        value_parser = parse_positive_u64,
-        help_heading = "Batch resource controls"
-    )]
-    pub(crate) encoding_parallel_budget_mib: Option<u64>,
-
     #[command(flatten)]
     pub(crate) options: NativeRenderOptions,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(feature = "shell-completions")]
@@ -529,19 +568,6 @@ pub(crate) struct RenderCliArgs {
     /// Stabilize rough/hand-drawn rendering where supported.
     #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
     pub(crate) hand_drawn_seed: Option<u64>,
-
-    /// Render resource profile for source, semantic model, and compiled output budgets.
-    ///
-    /// The CLI defaults to trusted-native for mmdc-compatible local workloads. Use interactive for
-    /// cooperative local editing and constrained for untrusted, public, or multi-tenant input.
-    /// The unbounded profile only removes policy budgets; hard backend capabilities still apply.
-    #[arg(
-        long = "resource-profile",
-        value_parser = resource_profile_value_parser(),
-        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
-        help_heading = "Merman resource controls"
-    )]
-    pub(crate) resource_profile: ResourceProfile,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -560,7 +586,6 @@ impl Default for RenderCliArgs {
             svg_id: None,
             #[cfg(feature = "svg")]
             hand_drawn_seed: None,
-            resource_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
         }
     }
 }
@@ -598,15 +623,6 @@ pub(crate) struct LayoutRenderCliArgs {
         help_heading = "Layout viewport"
     )]
     pub(crate) container_height: Option<f64>,
-
-    /// Render resource profile for source, semantic model, and layout budgets.
-    #[arg(
-        long = "resource-profile",
-        value_parser = resource_profile_value_parser(),
-        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
-        help_heading = "Merman resource controls"
-    )]
-    pub(crate) resource_profile: ResourceProfile,
 }
 
 #[cfg(feature = "svg")]
@@ -619,7 +635,6 @@ impl LayoutRenderCliArgs {
             container_height: self.container_height,
             svg_id: None,
             hand_drawn_seed: None,
-            resource_profile: self.resource_profile,
         }
     }
 }
@@ -719,15 +734,6 @@ pub(crate) struct MmdcRenderCliArgs {
     /// Stabilize rough/hand-drawn rendering where supported.
     #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
     pub(crate) hand_drawn_seed: Option<u64>,
-
-    /// Render resource profile.
-    #[arg(
-        long = "resource-profile",
-        value_parser = resource_profile_value_parser(),
-        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
-        help_heading = "Merman resource controls"
-    )]
-    pub(crate) resource_profile: ResourceProfile,
 }
 
 #[cfg(feature = "svg")]
@@ -740,7 +746,6 @@ impl Default for MmdcRenderCliArgs {
             container_height: 600.0,
             svg_id: None,
             hand_drawn_seed: None,
-            resource_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
         }
     }
 }
@@ -781,7 +786,7 @@ pub(crate) struct MmdcArgs {
     pub(crate) artefacts: Option<PathBuf>,
 
     #[cfg(feature = "parallel-markdown")]
-    /// Parallel jobs for Markdown input. Defaults to half available CPUs, minimum 1.
+    /// Parallel jobs for Markdown input. Defaults and maxima come from the resource profile.
     #[arg(
         short = 'j',
         long = "jobs",
@@ -789,19 +794,6 @@ pub(crate) struct MmdcArgs {
         help_heading = "Markdown batch export"
     )]
     pub(crate) jobs: Option<usize>,
-
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    /// Aggregate scheduling budget for parallel PNG/JPEG/PDF encoding, in MiB.
-    #[arg(
-        long = "encoding-parallel-budget-mib",
-        visible_alias = "encoding-memory-budget-mib",
-        value_parser = parse_positive_u64,
-        help_heading = "Markdown batch export"
-    )]
-    pub(crate) encoding_parallel_budget_mib: Option<u64>,
 
     /// Output format. Defaults to the output extension, then SVG.
     #[arg(
@@ -887,6 +879,9 @@ pub(crate) struct MmdcArgs {
 
     #[command(flatten)]
     pub(crate) render: MmdcRenderCliArgs,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -1109,6 +1104,15 @@ pub(crate) struct MmdcIconCliArgs {
     #[arg(long = "allow-network", help_heading = "Icon packs")]
     pub(crate) allow_network: bool,
 
+    #[cfg(feature = "network-icons")]
+    /// Allow explicitly configured icon URLs to resolve to private or loopback addresses.
+    #[arg(
+        long = "allow-private-network",
+        requires = "allow_network",
+        help_heading = "Icon packs"
+    )]
+    pub(crate) allow_private_network: bool,
+
     /// Iconify package names.
     #[arg(long = "iconPacks", num_args = 1.., help_heading = "Icon packs")]
     pub(crate) icon_packs: Vec<String>,
@@ -1129,6 +1133,15 @@ pub(crate) struct NativeIconCliArgs {
     /// Allow icon pack loading from public HTTP(S) destinations.
     #[arg(long = "allow-network", help_heading = "Icon packs")]
     pub(crate) allow_network: bool,
+
+    #[cfg(feature = "network-icons")]
+    /// Allow explicitly configured icon URLs to resolve to private or loopback addresses.
+    #[arg(
+        long = "allow-private-network",
+        requires = "allow_network",
+        help_heading = "Icon packs"
+    )]
+    pub(crate) allow_private_network: bool,
 
     /// Iconify package name or local package path. Can be repeated.
     #[arg(
@@ -1252,10 +1265,8 @@ pub(crate) enum SvgPipelineKind {
     ResvgSafe,
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) type ResourceProfile = merman::resources::ResourceProfile;
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
 fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProfile> {
     PossibleValuesParser::new(
         merman::resources::RESOURCE_PROFILE_DESCRIPTORS
@@ -1264,6 +1275,24 @@ fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProf
     )
     .map(|id| {
         ResourceProfile::from_id(&id).expect("possible values come from the resource descriptor")
+    })
+}
+
+fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
+    let Some((stable_id, raw_value)) = value.split_once('=') else {
+        return Err("expected STABLE_ID=POSITIVE_U64".to_string());
+    };
+    if stable_id.is_empty() || stable_id.trim() != stable_id {
+        return Err(
+            "resource limit id must be non-empty and contain no surrounding whitespace".to_string(),
+        );
+    }
+    if raw_value.trim() != raw_value {
+        return Err("resource limit value must contain no surrounding whitespace".to_string());
+    }
+    Ok(ResourceLimitOverride {
+        stable_id: stable_id.to_string(),
+        value: parse_positive_u64(raw_value)?,
     })
 }
 
@@ -1354,7 +1383,7 @@ impl RenderFormat {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "ascii", feature = "parallel-markdown"))]
+#[cfg(any(feature = "ascii", feature = "parallel-markdown"))]
 fn parse_positive_usize(value: &str) -> Result<usize, String> {
     let parsed = value
         .parse::<usize>()
@@ -1430,7 +1459,6 @@ fn parse_positive_u32(value: &str) -> Result<u32, String> {
     Ok(parsed)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn parse_positive_u64(value: &str) -> Result<u64, String> {
     let parsed = value
         .parse::<u64>()
@@ -1524,7 +1552,7 @@ mod tests {
 
     #[cfg(all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg")))]
     #[test]
-    fn documented_encoding_budget_flag_is_accepted() {
+    fn unified_scheduling_weight_limit_is_accepted() {
         #[cfg(feature = "png")]
         let format = "png";
         #[cfg(all(not(feature = "png"), feature = "jpeg"))]
@@ -1535,12 +1563,12 @@ mod tests {
             "input.md",
             "--format",
             format,
-            "--encoding-memory-budget-mib",
-            "1",
+            "--resource-limit",
+            "max_scheduling_weight_bytes=1048576",
         ];
         assert!(
             Cli::try_parse_from(args).is_ok(),
-            "documented encoding budget flag must parse"
+            "unified scheduling weight must parse"
         );
     }
 }

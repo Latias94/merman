@@ -85,6 +85,7 @@ tracing-subscriber = { version = "0.3.20", default-features = false, features = 
 uniffi = { version = "0.32.0", default-features = false }
 futures = { version = "0.3.31", default-features = false }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
+hickory-resolver = { version = "0.26.1", default-features = false, features = ["tokio", "system-config"] }
 icu_collator = "2.2.1"
 icu_locale_core = "2.2.0"
 lol_html = "3.0"

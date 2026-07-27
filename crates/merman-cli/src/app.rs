@@ -60,6 +60,13 @@ fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
     match command.try_get_matches_from_mut(args) {
         Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches),
         Err(error) => {
+            if let Some(argument) = superseded_resource_flag(error.kind(), args) {
+                return Err(clap::Error::raw(
+                    ErrorKind::UnknownArgument,
+                    superseded_resource_message(argument),
+                )
+                .with_cmd(&command));
+            }
             if let Some(argument) = removed_root_render_flag(error.kind(), args) {
                 return Err(clap::Error::raw(
                     ErrorKind::UnknownArgument,
@@ -69,6 +76,33 @@ fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
             }
             Err(error)
         }
+    }
+}
+
+fn superseded_resource_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> {
+    if kind != ErrorKind::UnknownArgument {
+        return None;
+    }
+    args.iter()
+        .filter_map(|argument| argument.to_str())
+        .find_map(
+            |argument| match argument.split_once('=').map_or(argument, |(name, _)| name) {
+                "--max-source-bytes" => Some("--max-source-bytes"),
+                "--encoding-parallel-budget-mib" => Some("--encoding-parallel-budget-mib"),
+                "--encoding-memory-budget-mib" => Some("--encoding-memory-budget-mib"),
+                _ => None,
+            },
+        )
+}
+
+fn superseded_resource_message(argument: &str) -> String {
+    match argument {
+        "--max-source-bytes" => {
+            format!("`{argument}` was removed; use `--resource-limit max_source_bytes=BYTES`")
+        }
+        _ => format!(
+            "`{argument}` was removed; use `--resource-limit max_scheduling_weight_bytes=BYTES` and `--jobs` to control raster/PDF concurrency"
+        ),
     }
 }
 

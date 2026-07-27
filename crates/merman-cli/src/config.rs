@@ -1,6 +1,8 @@
 use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
+use crate::input::InputLimit;
 use crate::io::read_named_text_file;
+use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
 use serde_json::Value;
@@ -15,9 +17,12 @@ use merman::svg::{
 #[cfg(feature = "svg")]
 use std::sync::Arc;
 
-pub(crate) fn engine_for(parse: &ParseCliArgs) -> Result<Engine, CliError> {
+pub(crate) fn engine_for(
+    parse: &ParseCliArgs,
+    resources: &ResolvedResourcePolicy,
+) -> Result<Engine, CliError> {
     let runtime = ResolvedCliRuntimePolicy::new(&parse.runtime)?;
-    Ok(runtime.apply_engine(Engine::new().with_site_config(site_config_for(parse)?)))
+    Ok(runtime.apply_engine(Engine::new().with_site_config(site_config_for(parse, resources)?)))
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +95,10 @@ pub(crate) fn runtime_policy_for(parse: &ParseCliArgs) -> Result<RuntimePolicy, 
     Ok(ResolvedCliRuntimePolicy::new(&parse.runtime)?.runtime_policy)
 }
 
-pub(crate) fn site_config_for(parse: &ParseCliArgs) -> Result<MermaidConfig, CliError> {
+pub(crate) fn site_config_for(
+    parse: &ParseCliArgs,
+    resources: &ResolvedResourcePolicy,
+) -> Result<MermaidConfig, CliError> {
     let mut cfg = MermaidConfig::empty_object();
 
     if let Some(theme) = parse
@@ -103,7 +111,14 @@ pub(crate) fn site_config_for(parse: &ParseCliArgs) -> Result<MermaidConfig, Cli
     }
 
     if let Some(path) = parse.config_file.as_deref() {
-        let text = read_named_text_file(path, "configuration file")?;
+        let text = read_named_text_file(
+            path,
+            "configuration file",
+            InputLimit::new(
+                crate::resources::CliResourceLimitId::MaxConfigBytes.as_str(),
+                resources.files().config_bytes,
+            ),
+        )?;
         let value: Value = serde_json::from_str(&text)?;
         if !value.is_object() {
             return Err(CliError::InvalidInput(
@@ -127,6 +142,7 @@ pub(crate) fn renderer_for(
     parse: &ParseCliArgs,
     render: &RenderCliArgs,
     icon_registry: Option<Arc<IconRegistry>>,
+    resources: &ResolvedResourcePolicy,
 ) -> Result<HeadlessRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::new(&parse.runtime)?;
     let mut environment = RenderEnvironment::deterministic()
@@ -135,9 +151,7 @@ pub(crate) fn renderer_for(
                 .text_measurer
                 .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
         ))
-        .with_resource_policy(merman::svg::RenderResourcePolicy::for_profile(
-            render.resource_profile,
-        ));
+        .with_resource_policy(resources.render_policy());
     if let Some(kind) = render.math_renderer {
         environment = match math_renderer(kind)? {
             Some(renderer) => environment.with_math_renderer(renderer),
@@ -154,7 +168,7 @@ pub(crate) fn renderer_for(
         ..SvgRenderOptions::default()
     };
 
-    let mut site_config = site_config_for(parse)?;
+    let mut site_config = site_config_for(parse, resources)?;
     if let Some(seed) = render.hand_drawn_seed {
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
@@ -194,6 +208,10 @@ fn math_renderer(
 mod tests {
     use super::*;
 
+    fn default_resources() -> ResolvedResourcePolicy {
+        ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn none_math_renderer_disables_the_compiled_default() {
@@ -201,7 +219,13 @@ mod tests {
             math_renderer: Some(MathRendererKind::None),
             ..RenderCliArgs::default()
         };
-        let renderer = renderer_for(&ParseCliArgs::default(), &render, None).expect("CLI renderer");
+        let renderer = renderer_for(
+            &ParseCliArgs::default(),
+            &render,
+            None,
+            &default_resources(),
+        )
+        .expect("CLI renderer");
         let error = renderer
             .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
             .expect_err("explicitly disabling math must reject math labels");
@@ -218,8 +242,13 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "math"))]
     #[test]
     fn unspecified_math_renderer_uses_the_compiled_default() {
-        let renderer = renderer_for(&ParseCliArgs::default(), &RenderCliArgs::default(), None)
-            .expect("CLI renderer");
+        let renderer = renderer_for(
+            &ParseCliArgs::default(),
+            &RenderCliArgs::default(),
+            None,
+            &default_resources(),
+        )
+        .expect("CLI renderer");
         let svg = renderer
             .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
             .expect("the default CLI renderer should use compiled RaTeX support")

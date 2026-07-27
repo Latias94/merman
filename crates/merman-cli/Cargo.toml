@@ -79,9 +79,9 @@ system-random = ["merman/system-random", "merman-analysis?/system-random"]
 system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
 
 # Tool leaves own both their user-visible surface and their direct dependency.
-icons = ["svg"]
+icons = ["svg", "dep:url"]
 markdown = ["svg"]
-network-icons = ["icons", "dep:reqwest"]
+network-icons = ["icons", "dep:hickory-resolver", "dep:reqwest", "dep:tokio"]
 parallel-markdown = ["markdown", "dep:rayon"]
 shell-completions = ["dep:clap_complete"]
 
@@ -90,6 +90,7 @@ shell-completions = ["dep:clap_complete"]
 clap.workspace = true
 clap_complete = { workspace = true, optional = true }
 chrono.workspace = true
+hickory-resolver = { workspace = true, optional = true }
 merman = { workspace = true, default-features = false }
 merman-analysis = { workspace = true, optional = true, default-features = false }
 rayon = { workspace = true, optional = true }
@@ -97,6 +98,8 @@ reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["rt", "time"] }
+url = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
@@ -159,6 +162,18 @@ required-features = [
     "network-icons",
     "parallel-markdown",
     "shell-completions",
+]
+
+[[test]]
+name = "resource_limits"
+required-features = [
+    "analysis",
+    "svg",
+    "png",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
 ]
 
 [[test]]

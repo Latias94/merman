@@ -1,6 +1,7 @@
 use crate::cli::{RenderFormat, TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
+use crate::input::InputLimit;
 use crate::invocation::{ResolvedDestination, ResolvedOutput, ResolvedSingleRender};
 use crate::io::{OutputTarget, read_input, write_output};
 use std::env;
@@ -20,18 +21,28 @@ pub(crate) fn run_ascii_render(args: ResolvedSingleRender) -> Result<(), CliErro
         ResolvedDestination::File(path) => Some(OutputTarget::File(path)),
     };
     let quiet = args.common.quiet;
+    let resources = args.common.resources;
     let parse = args.common.parse.into_legacy_cli_args();
-    let render = args.common.render.into_legacy_cli_args();
-    let text = read_input(Some(&input), quiet)?;
+    let source_limit = resources
+        .input_policy()
+        .value(merman::resources::InputResourceLimitId::MaxSourceBytes);
+    let text = read_input(
+        Some(&input),
+        quiet,
+        InputLimit::new(
+            merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            source_limit,
+        ),
+    )?;
     let options = apply_text_options(
         text_options_for_output(text_options, output.as_ref()),
         format,
     )?;
     let renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_engine(engine_for(&parse)?)
+        .with_engine(engine_for(&parse, &resources)?)
         .with_parse_options(parse_options(&parse))
         .with_ascii_options(options)
-        .with_resource_profile(render.resource_profile);
+        .with_resource_policy(*resources.input_policy());
     let Some(rendered) = renderer.render_ascii_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };

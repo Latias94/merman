@@ -5,24 +5,32 @@ use super::svg_pipeline::svg_output_policy;
 use crate::cli::{RenderFormat, SvgPipelineKind};
 use crate::config::renderer_for;
 use crate::error::CliError;
+use crate::input::InputLimit;
 use crate::io::write_output;
+#[cfg(feature = "markdown")]
+use crate::resources::{ByteLedgerKind, CheckedBytes};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::resources::{CheckedSchedulingWeight, ResourceLedgerError};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman::svg::ResvgCompatibleSvg;
 use merman::svg::{HeadlessRenderer, SvgPipeline};
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use std::sync::Condvar;
+#[cfg(any(
+    feature = "markdown",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
 ))]
-use std::sync::{Condvar, Mutex};
+use std::sync::Mutex;
 
 pub(super) struct RenderRequest<'a> {
     pub(super) plan: &'a RenderPlan,
     pub(super) renderer: HeadlessRenderer,
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    pub(super) encoding_parallel_budget: Option<EncodingParallelBudget>,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    pub(super) scheduling_weight_budget: Option<SchedulingWeightBudget>,
+    #[cfg(feature = "markdown")]
+    pub(super) staged_bytes: Mutex<CheckedBytes>,
     pipeline: SvgPipeline,
 }
 
@@ -36,17 +44,57 @@ pub(super) struct RenderedArtifact {
 
 pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     plan.warn_for_accepted_compat_options();
-    let text = crate::io::read_input(plan.input.as_deref(), !plan.warn_on_implicit_stdin)?;
-    let renderer = renderer_for(&plan.parse, &plan.render, plan.icon_registry())?;
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    let request = RenderRequest::new(&plan, renderer, encoding_parallel_budget(&plan));
-    #[cfg(not(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    )))]
+    #[cfg(feature = "markdown")]
+    let input_limit = if plan.is_markdown_input() {
+        InputLimit::new(
+            crate::resources::CliResourceLimitId::MaxMarkdownDocumentBytes.as_str(),
+            plan.resources.files().markdown_document_bytes,
+        )
+    } else if plan.input_kind_is_raw_svg() {
+        InputLimit::new(
+            merman::svg::ResourceLimitId::MaxSvgBytes.as_str(),
+            plan.resources
+                .render_policy()
+                .value(merman::svg::ResourceLimitId::MaxSvgBytes),
+        )
+    } else {
+        InputLimit::new(
+            merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            plan.resources
+                .input_policy()
+                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+        )
+    };
+    #[cfg(not(feature = "markdown"))]
+    let input_limit = if plan.input_kind_is_raw_svg() {
+        InputLimit::new(
+            merman::svg::ResourceLimitId::MaxSvgBytes.as_str(),
+            plan.resources
+                .render_policy()
+                .value(merman::svg::ResourceLimitId::MaxSvgBytes),
+        )
+    } else {
+        InputLimit::new(
+            merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            plan.resources
+                .input_policy()
+                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+        )
+    };
+    let text = crate::io::read_input(
+        plan.input.as_deref(),
+        !plan.warn_on_implicit_stdin,
+        input_limit,
+    )?;
+    let renderer = renderer_for(
+        &plan.parse,
+        &plan.render,
+        plan.icon_registry(),
+        &plan.resources,
+    )?;
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    let request = RenderRequest::new(&plan, renderer, scheduling_weight_budget(&plan));
+    #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     let request = RenderRequest::new(&plan, renderer);
 
     #[cfg(feature = "markdown")]
@@ -57,16 +105,14 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     request.render(&text)
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-fn encoding_parallel_budget(plan: &RenderPlan) -> Option<EncodingParallelBudget> {
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn scheduling_weight_budget(plan: &RenderPlan) -> Option<SchedulingWeightBudget> {
     if !plan.format.requires_svg_encoding() {
         return None;
     }
-    plan.encoding_parallel_budget_bytes
-        .map(EncodingParallelBudget::new)
+    Some(SchedulingWeightBudget::new(
+        plan.resources.checked_scheduling_weight(),
+    ))
 }
 
 fn pipeline_kind(plan: &RenderPlan) -> SvgPipelineKind {
@@ -78,14 +124,11 @@ fn pipeline_kind(plan: &RenderPlan) -> SvgPipelineKind {
 }
 
 impl<'a> RenderRequest<'a> {
-    #[cfg(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) fn new(
         plan: &'a RenderPlan,
         renderer: HeadlessRenderer,
-        encoding_parallel_budget: Option<EncodingParallelBudget>,
+        scheduling_weight_budget: Option<SchedulingWeightBudget>,
     ) -> Self {
         let kind = pipeline_kind(plan);
         let pipeline =
@@ -93,15 +136,14 @@ impl<'a> RenderRequest<'a> {
         Self {
             plan,
             renderer,
-            encoding_parallel_budget,
+            scheduling_weight_budget,
+            #[cfg(feature = "markdown")]
+            staged_bytes: Mutex::new(plan.resources.checked_bytes(ByteLedgerKind::StagedOutput)),
             pipeline,
         }
     }
 
-    #[cfg(not(all(
-        feature = "parallel-markdown",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    )))]
+    #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     pub(super) fn new(plan: &'a RenderPlan, renderer: HeadlessRenderer) -> Self {
         let kind = pipeline_kind(plan);
         let pipeline =
@@ -109,6 +151,8 @@ impl<'a> RenderRequest<'a> {
         Self {
             plan,
             renderer,
+            #[cfg(feature = "markdown")]
+            staged_bytes: Mutex::new(plan.resources.checked_bytes(ByteLedgerKind::StagedOutput)),
             pipeline,
         }
     }
@@ -193,7 +237,7 @@ impl<'a> RenderRequest<'a> {
             .with_engine(self.renderer.engine().clone())
             .with_parse_options(self.renderer.parse_options())
             .with_ascii_options(options)
-            .with_resource_profile(self.plan.render.resource_profile);
+            .with_resource_policy(*self.plan.resources.input_policy());
         let Some(rendered) = ascii_renderer.render_ascii_sync(text)? else {
             return Err(CliError::NoDiagram);
         };
@@ -217,6 +261,17 @@ impl<'a> RenderRequest<'a> {
             eprintln!("{message}");
         }
     }
+
+    #[cfg(feature = "markdown")]
+    pub(super) fn charge_staged_bytes(&self, bytes: usize) -> Result<(), CliError> {
+        let bytes = u64::try_from(bytes)
+            .map_err(|_| CliError::InvalidOutput("staged output size overflow".to_string()))?;
+        self.staged_bytes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .try_add(bytes)?;
+        Ok(())
+    }
 }
 
 impl RenderedArtifact {
@@ -233,83 +288,74 @@ impl RenderedArtifact {
     }
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-pub(super) struct EncodingParallelBudget {
-    capacity: u64,
-    in_flight: Mutex<u64>,
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(super) struct SchedulingWeightBudget {
+    in_flight: Mutex<CheckedSchedulingWeight>,
     capacity_changed: Condvar,
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-impl EncodingParallelBudget {
-    pub(super) fn new(capacity: u64) -> Self {
-        let capacity = capacity.max(1);
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl SchedulingWeightBudget {
+    pub(super) fn new(in_flight: CheckedSchedulingWeight) -> Self {
         Self {
-            capacity,
-            in_flight: Mutex::new(0),
+            in_flight: Mutex::new(in_flight),
             capacity_changed: Condvar::new(),
         }
     }
 
-    pub(super) fn acquire(&self, requested: u64) -> EncodingParallelPermit<'_> {
-        let weight = requested.min(self.capacity);
+    pub(super) fn acquire(
+        &self,
+        requested: u64,
+    ) -> Result<SchedulingWeightPermit<'_>, ResourceLedgerError> {
         let mut in_flight = self
             .in_flight
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while in_flight.saturating_add(weight) > self.capacity {
-            in_flight = self
-                .capacity_changed
-                .wait(in_flight)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        in_flight.check_single(requested)?;
+        loop {
+            match in_flight.try_acquire(requested) {
+                Ok(()) => break,
+                Err(ResourceLedgerError::LimitExceeded { .. }) => {
+                    in_flight = self
+                        .capacity_changed
+                        .wait(in_flight)
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                }
+                Err(error) => return Err(error),
+            }
         }
-        *in_flight += weight;
-        EncodingParallelPermit {
+        Ok(SchedulingWeightPermit {
             budget: self,
-            weight,
-        }
+            weight: requested,
+        })
     }
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-pub(super) struct EncodingParallelPermit<'a> {
-    budget: &'a EncodingParallelBudget,
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(super) struct SchedulingWeightPermit<'a> {
+    budget: &'a SchedulingWeightBudget,
     #[cfg(test)]
     pub(super) weight: u64,
     #[cfg(not(test))]
     weight: u64,
 }
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-impl Drop for EncodingParallelPermit<'_> {
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl Drop for SchedulingWeightPermit<'_> {
     fn drop(&mut self) {
         let mut in_flight = self
             .budget
             .in_flight
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *in_flight = in_flight.saturating_sub(self.weight);
+        in_flight
+            .release(self.weight)
+            .expect("a live scheduling permit must own its charged weight");
         self.budget.capacity_changed.notify_all();
     }
 }
 
-#[cfg(all(
-    test,
-    feature = "parallel-markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 mod tests {
     use super::*;
     use std::sync::Arc;
@@ -317,15 +363,23 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn encoding_parallel_budget_blocks_until_weight_is_released() {
-        let budget = Arc::new(EncodingParallelBudget::new(10));
-        let first = budget.acquire(8);
+    fn scheduling_weight_budget_blocks_until_weight_is_released() {
+        let mut policy = crate::resources::ResolvedResourcePolicy::for_profile(
+            merman::resources::ResourceProfile::Constrained,
+        );
+        policy
+            .apply_override("max_scheduling_weight_bytes", 10)
+            .unwrap();
+        let budget = Arc::new(SchedulingWeightBudget::new(
+            policy.checked_scheduling_weight(),
+        ));
+        let first = budget.acquire(8).unwrap();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (acquired_tx, acquired_rx) = mpsc::channel();
         let worker_budget = Arc::clone(&budget);
         let worker = std::thread::spawn(move || {
             ready_tx.send(()).unwrap();
-            let _second = worker_budget.acquire(6);
+            let _second = worker_budget.acquire(6).unwrap();
             acquired_tx.send(()).unwrap();
         });
         ready_rx.recv().unwrap();
@@ -341,10 +395,26 @@ mod tests {
     }
 
     #[test]
-    fn oversized_encoding_job_uses_the_budget_exclusively() {
-        let budget = EncodingParallelBudget::new(10);
-        let permit = budget.acquire(100);
-        assert_eq!(permit.weight, 10);
-        assert_eq!(*budget.in_flight.lock().unwrap(), 10);
+    fn oversized_scheduling_job_is_rejected() {
+        let mut policy = crate::resources::ResolvedResourcePolicy::for_profile(
+            merman::resources::ResourceProfile::Constrained,
+        );
+        policy
+            .apply_override("max_scheduling_weight_bytes", 10)
+            .unwrap();
+        let budget = SchedulingWeightBudget::new(policy.checked_scheduling_weight());
+        let error = match budget.acquire(100) {
+            Ok(_) => panic!("oversized work item should be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ResourceLedgerError::LimitExceeded {
+                limit: "max_scheduling_weight_bytes",
+                actual: 100,
+                max: 10,
+                ..
+            }
+        ));
     }
 }

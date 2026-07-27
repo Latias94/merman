@@ -53,7 +53,7 @@ impl ResolvedPdfOptions {
 impl RenderPlan {
     fn conversion_limits(&self) -> merman::svg::export::SvgConversionLimits {
         if matches!(
-            self.render.resource_profile,
+            self.resources.profile(),
             ResourceProfile::UnboundedForTrustedInput
         ) {
             merman::svg::export::SvgConversionLimits::unbounded()
@@ -107,11 +107,11 @@ impl<'a> RenderRequest<'a> {
                 let prepared =
                     merman::svg::export::prepare_raster(svg, &self.plan.raster_options())?;
                 self.report_raster_plan(prepared.plan());
-                #[cfg(feature = "parallel-markdown")]
                 let _permit = self
-                    .encoding_parallel_budget
+                    .scheduling_weight_budget
                     .as_ref()
-                    .map(|budget| budget.acquire(prepared.png_scheduling_weight_bytes()));
+                    .map(|budget| budget.acquire(prepared.png_scheduling_weight_bytes()))
+                    .transpose()?;
                 prepared.encode_png()?
             }
             #[cfg(feature = "jpeg")]
@@ -119,11 +119,11 @@ impl<'a> RenderRequest<'a> {
                 let prepared =
                     merman::svg::export::prepare_raster(svg, &self.plan.raster_options())?;
                 self.report_raster_plan(prepared.plan());
-                #[cfg(feature = "parallel-markdown")]
                 let _permit = self
-                    .encoding_parallel_budget
+                    .scheduling_weight_budget
                     .as_ref()
-                    .map(|budget| budget.acquire(prepared.jpeg_scheduling_weight_bytes()));
+                    .map(|budget| budget.acquire(prepared.jpeg_scheduling_weight_bytes()))
+                    .transpose()?;
                 prepared.encode_jpeg()?
             }
             #[cfg(feature = "pdf")]
@@ -139,11 +139,11 @@ impl<'a> RenderRequest<'a> {
                 options.conversion_limits = self.plan.conversion_limits();
                 let prepared = merman::svg::export::prepare_pdf(svg, &options)?;
                 self.report_pdf_filter_plan(prepared.filter_plan());
-                #[cfg(feature = "parallel-markdown")]
                 let _permit = self
-                    .encoding_parallel_budget
+                    .scheduling_weight_budget
                     .as_ref()
-                    .map(|budget| budget.acquire(prepared.scheduling_weight_bytes()));
+                    .map(|budget| budget.acquire(prepared.scheduling_weight_bytes()))
+                    .transpose()?;
                 prepared.encode()?
             }
             _ => {

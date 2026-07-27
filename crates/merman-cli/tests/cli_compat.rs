@@ -203,11 +203,6 @@ fn cli_rejects_non_positive_numeric_options() {
             "0",
             "expected a positive integer",
         ),
-        (
-            "--encoding-parallel-budget-mib",
-            "0",
-            "expected a positive integer",
-        ),
     ] {
         let output = Command::new(exe)
             .args(["mmdc", "-i", "-", "-o", "-", flag, value])
@@ -661,8 +656,8 @@ fn cli_lint_rejects_resource_limit_rule_configuration() {
             "lint",
             "--format",
             "json",
-            "--max-source-bytes",
-            "8",
+            "--resource-limit",
+            "max_source_bytes=8",
             "--disable-rule",
             "merman.resource.source_bytes_exceeded",
             "-",
@@ -671,8 +666,8 @@ fn cli_lint_rejects_resource_limit_rule_configuration() {
             "lint",
             "--format",
             "json",
-            "--max-source-bytes",
-            "8",
+            "--resource-limit",
+            "max_source_bytes=8",
             "--rule-severity",
             "merman.resource.source_bytes_exceeded=hint",
             "-",
@@ -1805,6 +1800,7 @@ fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
             "-o",
             "-",
             "--allow-network",
+            "--allow-private-network",
             "--iconPacksNamesAndUrls",
             &icon_arg,
         ],

@@ -25,6 +25,7 @@ mod tests {
     use crate::invocation::ResolvedPdfOptions;
     use crate::invocation::{ResolvedEmbeddedImageOptions, ResolvedRasterOptions};
     use crate::io::OutputTarget;
+    use crate::resources::ResolvedResourcePolicy;
     use merman::svg::{HeadlessRenderer, RenderEnvironment};
 
     fn assert_root_background(svg: &str, expected: &str) {
@@ -54,6 +55,9 @@ mod tests {
             format,
             parse: ParseCliArgs::default(),
             render: RenderCliArgs::default(),
+            resources: ResolvedResourcePolicy::for_profile(
+                merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+            ),
             scale: 1.0,
             raster: ResolvedRasterOptions::default(),
             #[cfg(feature = "pdf")]
@@ -68,11 +72,6 @@ mod tests {
             artefacts: None,
             #[cfg(feature = "parallel-markdown")]
             jobs: 1,
-            #[cfg(all(
-                feature = "parallel-markdown",
-                any(feature = "png", feature = "jpeg", feature = "pdf")
-            ))]
-            encoding_parallel_budget_bytes: None,
             #[cfg(feature = "pdf")]
             pdf_fit: true,
             quiet: true,

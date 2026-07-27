@@ -1,23 +1,25 @@
-use crate::cli::{CapabilitiesArgs, DetectArgs, ParseArgs};
+use crate::cli::CapabilitiesArgs;
 use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
-use crate::invocation::ResolvedInvocation;
+use crate::input::InputLimit;
+use crate::invocation::{ResolvedDetect, ResolvedInput, ResolvedInvocation, ResolvedParse};
 #[cfg(any(feature = "analysis", feature = "shell-completions"))]
 use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
+use crate::resources::ResolvedResourcePolicy;
 use serde::Serialize;
 use serde_json::Value;
 
 #[cfg(feature = "analysis")]
 use crate::cli::ParseCliArgs;
 #[cfg(feature = "analysis")]
-use crate::cli::{
-    AnalysisCliArgs, FixArgs, LintArgs, LintOutputFormat, LintRuleSeverityOverride, LintRulesArgs,
-};
+use crate::cli::{AnalysisCliArgs, LintOutputFormat, LintRuleSeverityOverride, LintRulesArgs};
 #[cfg(feature = "analysis")]
 use crate::config::{runtime_policy_for, site_config_for};
 #[cfg(feature = "analysis")]
-use crate::io::write_file;
+use crate::input::{InputReadError, ObservedSize};
+#[cfg(feature = "analysis")]
+use crate::io::{read_primary_input, write_file};
 #[cfg(feature = "analysis")]
 use merman_analysis::document::analyze_document;
 #[cfg(feature = "analysis")]
@@ -26,7 +28,6 @@ use merman_analysis::{
 };
 #[cfg(feature = "analysis")]
 use std::fmt::Write as _;
-#[cfg(feature = "analysis")]
 use std::path::Path;
 
 #[cfg(all(feature = "ascii", not(feature = "svg")))]
@@ -34,9 +35,11 @@ use crate::ascii_render::run_ascii_render;
 #[cfg(feature = "shell-completions")]
 use crate::cli::CompletionArgs;
 #[cfg(feature = "svg")]
-use crate::cli::LayoutArgs;
-#[cfg(feature = "svg")]
 use crate::config::renderer_for;
+#[cfg(feature = "svg")]
+use crate::invocation::ResolvedLayout;
+#[cfg(feature = "analysis")]
+use crate::invocation::{ResolvedFix, ResolvedLint};
 #[cfg(feature = "markdown")]
 use crate::render::render_plan_for_batch;
 #[cfg(feature = "svg")]
@@ -122,17 +125,17 @@ fn run_capabilities(args: CapabilitiesArgs) -> Result<(), CliError> {
     crate::capabilities::write_compiled_capabilities(args.json)
 }
 
-fn run_detect(args: DetectArgs) -> Result<(), CliError> {
-    let text = read_input(args.input.as_deref(), false)?;
-    let engine = engine_for(&args.engine.into_parse_args())?;
+fn run_detect(args: ResolvedDetect) -> Result<(), CliError> {
+    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+    let engine = engine_for(&args.engine.into_parse_args(), &args.resources)?;
     let meta = engine.parse_metadata_sync(&text)?;
     write_stdout_line(&meta.diagram_type)?;
     Ok(())
 }
 
-fn run_parse(args: ParseArgs) -> Result<(), CliError> {
-    let text = read_input(args.input.as_deref(), false)?;
-    let engine = engine_for(&args.parse)?;
+fn run_parse(args: ResolvedParse) -> Result<(), CliError> {
+    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+    let engine = engine_for(&args.parse, &args.resources)?;
     let Some(parsed) = engine.parse_diagram_sync(&text, parse_options(&args.parse))? else {
         return Err(CliError::NoDiagram);
     };
@@ -155,9 +158,14 @@ fn run_parse(args: ParseArgs) -> Result<(), CliError> {
 }
 
 #[cfg(feature = "svg")]
-fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
-    let text = read_input(args.input.as_deref(), false)?;
-    let renderer = renderer_for(&args.parse, &args.render.into_render_args(), None)?;
+fn run_layout(args: ResolvedLayout) -> Result<(), CliError> {
+    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+    let renderer = renderer_for(
+        &args.parse,
+        &args.render.into_render_args(),
+        None,
+        &args.resources,
+    )?;
     let Some(layout_json) = renderer.layout_json_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
@@ -165,13 +173,33 @@ fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
 }
 
 #[cfg(feature = "analysis")]
-fn run_lint(args: LintArgs) -> Result<i32, CliError> {
-    let (text, source) = read_analysis_input(
-        args.input.as_deref(),
-        args.stdin_file_name.as_deref(),
+fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
+    let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
+    let max_source_bytes = source_limit(&args.resources);
+    let text = match read_analysis_input(&args.input, max_source_bytes) {
+        Ok(text) => text,
+        Err(InputReadError::LimitExceeded { actual, limit, .. }) => {
+            let source_len = observed_size_as_usize(actual);
+            let payload = AnalysisPayload::new(
+                source,
+                vec![merman_analysis::source_limit_diagnostic_for_len(
+                    source_len, limit,
+                )],
+            );
+            match args.format {
+                LintOutputFormat::Json => print_json(&payload, args.pretty)?,
+                LintOutputFormat::Text => print_lint_text(&payload)?,
+            }
+            return Ok(1);
+        }
+        Err(error) => return Err(CliError::primary_input(error)),
+    };
+    let analyzer = analyzer_for(
         &args.analysis,
+        source.clone(),
+        max_source_bytes,
+        &args.resources,
     )?;
-    let analyzer = analyzer_for(&args.analysis, source.clone())?;
     let payload = analyze_document(&text, &analyzer, source);
 
     match args.format {
@@ -183,18 +211,22 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
 }
 
 #[cfg(feature = "analysis")]
-fn run_fix(args: FixArgs) -> Result<i32, CliError> {
-    let (text, source) = read_analysis_input(
-        args.input.as_deref(),
-        args.stdin_file_name.as_deref(),
+fn run_fix(args: ResolvedFix) -> Result<i32, CliError> {
+    let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
+    let max_source_bytes = source_limit(&args.resources);
+    let text =
+        read_analysis_input(&args.input, max_source_bytes).map_err(CliError::primary_input)?;
+    let analyzer = analyzer_for(
         &args.analysis,
+        source.clone(),
+        max_source_bytes,
+        &args.resources,
     )?;
-    let analyzer = analyzer_for(&args.analysis, source.clone())?;
     let payload = analyze_document(&text, &analyzer, source.clone());
     let fixed = apply_diagnostic_fixes(&text, &payload, args.all)?;
 
     if args.write {
-        let Some(path) = args.input.as_deref().filter(|path| *path != Path::new("-")) else {
+        let Some(path) = args.input.file() else {
             return Err(CliError::InvalidInput(
                 "--write requires a file input, not stdin".to_string(),
             ));
@@ -311,30 +343,73 @@ fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
 
 #[cfg(feature = "analysis")]
 fn read_analysis_input(
-    input: Option<&Path>,
-    stdin_file_name: Option<&Path>,
-    args: &AnalysisCliArgs,
-) -> Result<(String, SourceDescriptor), CliError> {
-    let input_path = match input {
-        Some(path) => Some(path),
-        None if stdin_file_name.is_some() => Some(Path::new("-")),
-        None => None,
-    };
-    let text = read_input(input_path, false)?;
-    let source_path = match input {
-        Some(path) if path == Path::new("-") => stdin_file_name.map(Path::to_path_buf),
-        None => stdin_file_name.map(Path::to_path_buf),
-        Some(path) => Some(path.to_path_buf()),
-    };
-    let markdown_mode = args.markdown || is_markdown_input(source_path.as_deref());
-    Ok((
-        text,
-        analysis_source_descriptor(markdown_mode, source_path.as_deref()),
-    ))
+    input: &ResolvedInput,
+    max_source_bytes: Option<usize>,
+) -> Result<String, InputReadError> {
+    read_primary_input(
+        Some(resolved_input_path(input)),
+        true,
+        source_input_limit(max_source_bytes),
+    )
 }
 
 #[cfg(feature = "analysis")]
-fn analyzer_for(args: &AnalysisCliArgs, source: SourceDescriptor) -> Result<Analyzer, CliError> {
+fn analysis_source_for(
+    input: &ResolvedInput,
+    stdin_file_name: Option<&Path>,
+    args: &AnalysisCliArgs,
+) -> SourceDescriptor {
+    let source_path = input
+        .file()
+        .map(Path::to_path_buf)
+        .or_else(|| stdin_file_name.map(Path::to_path_buf));
+    let markdown_mode = args.markdown || is_markdown_input(source_path.as_deref());
+    analysis_source_descriptor(markdown_mode, source_path.as_deref())
+}
+
+fn source_limit(resources: &ResolvedResourcePolicy) -> Option<usize> {
+    resources
+        .input_policy()
+        .value(merman::resources::InputResourceLimitId::MaxSourceBytes)
+}
+
+fn resolved_input_path(input: &ResolvedInput) -> &Path {
+    input.file().unwrap_or_else(|| Path::new("-"))
+}
+
+fn read_resolved_input(
+    input: &ResolvedInput,
+    max_source_bytes: Option<usize>,
+) -> Result<String, CliError> {
+    read_input(
+        Some(resolved_input_path(input)),
+        true,
+        source_input_limit(max_source_bytes),
+    )
+}
+
+fn source_input_limit(max_source_bytes: Option<usize>) -> InputLimit {
+    InputLimit::new(
+        merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+        max_source_bytes,
+    )
+}
+
+#[cfg(feature = "analysis")]
+fn observed_size_as_usize(actual: ObservedSize) -> usize {
+    let bytes = match actual {
+        ObservedSize::Exact(bytes) | ObservedSize::AtLeast(bytes) => bytes,
+    };
+    usize::try_from(bytes).unwrap_or(usize::MAX)
+}
+
+#[cfg(feature = "analysis")]
+fn analyzer_for(
+    args: &AnalysisCliArgs,
+    source: SourceDescriptor,
+    max_source_bytes: Option<usize>,
+    resources: &ResolvedResourcePolicy,
+) -> Result<Analyzer, CliError> {
     let parse = ParseCliArgs {
         config_file: args.config_file.clone(),
         theme: None,
@@ -342,13 +417,13 @@ fn analyzer_for(args: &AnalysisCliArgs, source: SourceDescriptor) -> Result<Anal
         ..Default::default()
     };
     let runtime_policy = runtime_policy_for(&parse)?;
-    let site_config = site_config_for(&parse)?;
+    let site_config = site_config_for(&parse, resources)?;
     Ok(Analyzer::with_options(
         merman_analysis::AnalysisOptions::default()
             .with_source(source)
             .with_site_config(site_config)
             .with_runtime_policy(runtime_policy)
-            .with_max_source_bytes(args.max_source_bytes)
+            .with_max_source_bytes(max_source_bytes)
             .with_rule_config(lint_rule_config(args)),
     ))
 }
