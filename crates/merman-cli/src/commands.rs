@@ -1,6 +1,7 @@
-use crate::cli::{CapabilitiesArgs, Cli, Command, DetectArgs, ParseArgs};
+use crate::cli::{CapabilitiesArgs, DetectArgs, ParseArgs};
 use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
+use crate::invocation::ResolvedInvocation;
 #[cfg(any(feature = "analysis", feature = "shell-completions"))]
 use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
@@ -36,12 +37,12 @@ use crate::cli::CompletionArgs;
 use crate::cli::LayoutArgs;
 #[cfg(feature = "svg")]
 use crate::config::renderer_for;
+#[cfg(feature = "markdown")]
+use crate::render::render_plan_for_batch;
 #[cfg(feature = "svg")]
 use crate::render::render_plan_for_mmdc;
 #[cfg(feature = "svg")]
-use crate::render::{render_plan_for_subcommand, run_render};
-#[cfg(feature = "shell-completions")]
-use clap::CommandFactory;
+use crate::render::{render_plan_for_native, run_render};
 
 #[derive(Serialize)]
 struct MetaOut<'a> {
@@ -57,58 +58,62 @@ struct ParseOut<'a> {
     model: &'a Value,
 }
 
-pub(crate) fn run(cli: Cli) -> Result<i32, CliError> {
-    let exit_code = match cli.command {
-        Some(Command::Capabilities(args)) => {
+pub(crate) fn run(invocation: ResolvedInvocation) -> Result<i32, CliError> {
+    let exit_code = match invocation {
+        ResolvedInvocation::Capabilities(args) => {
             run_capabilities(args)?;
             0
         }
-        Some(Command::Detect(args)) => {
+        ResolvedInvocation::Detect(args) => {
             run_detect(args)?;
             0
         }
-        Some(Command::Parse(args)) => {
+        ResolvedInvocation::Parse(args) => {
             run_parse(args)?;
             0
         }
         #[cfg(feature = "svg")]
-        Some(Command::Layout(args)) => {
+        ResolvedInvocation::Layout(args) => {
             run_layout(args)?;
             0
         }
         #[cfg(feature = "analysis")]
-        Some(Command::Lint(args)) => run_lint(args)?,
+        ResolvedInvocation::Lint(args) => run_lint(args)?,
         #[cfg(feature = "analysis")]
-        Some(Command::Fix(args)) => run_fix(args)?,
+        ResolvedInvocation::Fix(args) => run_fix(args)?,
         #[cfg(feature = "analysis")]
-        Some(Command::LintRules(args)) => {
+        ResolvedInvocation::LintRules(args) => {
             run_lint_rules(args)?;
             0
         }
         #[cfg(feature = "svg")]
-        Some(Command::Render(args)) => {
-            let plan = render_plan_for_subcommand(args)?;
+        ResolvedInvocation::Render(args) => {
+            let plan = render_plan_for_native(args)?;
             run_render(plan)?;
             0
         }
         #[cfg(all(feature = "ascii", not(feature = "svg")))]
-        Some(Command::Render(args)) => {
+        ResolvedInvocation::Render(args) => {
             run_ascii_render(args)?;
             0
         }
-        #[cfg(feature = "shell-completions")]
-        Some(Command::Completion(args)) => {
-            run_completion(args)?;
-            0
-        }
-        #[cfg(feature = "svg")]
-        None => {
-            let plan = render_plan_for_mmdc(cli.input, cli.export)?;
+        #[cfg(feature = "markdown")]
+        ResolvedInvocation::Batch(args) => {
+            let plan = render_plan_for_batch(args)?;
             run_render(plan)?;
             0
         }
-        #[cfg(not(feature = "svg"))]
-        None => unreachable!("clap requires a subcommand when SVG top-level mode is absent"),
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::Mmdc(args) => {
+            let plan = render_plan_for_mmdc(args)?;
+            run_render(plan)?;
+            0
+        }
+        #[cfg(feature = "shell-completions")]
+        ResolvedInvocation::Completion(args) => {
+            run_completion(args)?;
+            0
+        }
     };
     Ok(exit_code)
 }
@@ -119,7 +124,7 @@ fn run_capabilities(args: CapabilitiesArgs) -> Result<(), CliError> {
 
 fn run_detect(args: DetectArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
-    let engine = engine_for(&args.parse)?;
+    let engine = engine_for(&args.engine.into_parse_args())?;
     let meta = engine.parse_metadata_sync(&text)?;
     write_stdout_line(&meta.diagram_type)?;
     Ok(())
@@ -152,7 +157,7 @@ fn run_parse(args: ParseArgs) -> Result<(), CliError> {
 #[cfg(feature = "svg")]
 fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
-    let renderer = renderer_for(&args.parse, &args.render, None)?;
+    let renderer = renderer_for(&args.parse, &args.render.into_render_args(), None)?;
     let Some(layout_json) = renderer.layout_json_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
@@ -189,14 +194,14 @@ fn run_fix(args: FixArgs) -> Result<i32, CliError> {
     let fixed = apply_diagnostic_fixes(&text, &payload, args.all)?;
 
     if args.write {
-        let Some(path) = args.input.as_deref().filter(|path| *path != "-") else {
+        let Some(path) = args.input.as_deref().filter(|path| *path != Path::new("-")) else {
             return Err(CliError::InvalidInput(
                 "--write requires a file input, not stdin".to_string(),
             ));
         };
-        write_file(Path::new(path), fixed.as_bytes())?;
+        write_file(path, fixed.as_bytes())?;
     } else if let Some(path) = args.output.as_deref() {
-        write_file(Path::new(path), fixed.as_bytes())?;
+        write_file(path, fixed.as_bytes())?;
     } else {
         write_stdout(fixed.as_bytes())?;
     }
@@ -229,7 +234,7 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
 
 #[cfg(feature = "shell-completions")]
 fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
-    let mut command = Cli::command();
+    let mut command = crate::app::cli_command();
     let mut output = Vec::new();
     clap_complete::generate(args.shell, &mut command, "merman-cli", &mut output);
     write_stdout(&output)
@@ -306,19 +311,20 @@ fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
 
 #[cfg(feature = "analysis")]
 fn read_analysis_input(
-    input: Option<&str>,
-    stdin_file_name: Option<&str>,
+    input: Option<&Path>,
+    stdin_file_name: Option<&Path>,
     args: &AnalysisCliArgs,
 ) -> Result<(String, SourceDescriptor), CliError> {
     let input_path = match input {
         Some(path) => Some(path),
-        None if stdin_file_name.is_some() => Some("-"),
+        None if stdin_file_name.is_some() => Some(Path::new("-")),
         None => None,
     };
     let text = read_input(input_path, false)?;
     let source_path = match input {
-        Some("-") | None => stdin_file_name.map(ToString::to_string),
-        Some(path) => Some(path.to_string()),
+        Some(path) if path == Path::new("-") => stdin_file_name.map(Path::to_path_buf),
+        None => stdin_file_name.map(Path::to_path_buf),
+        Some(path) => Some(path.to_path_buf()),
     };
     let markdown_mode = args.markdown || is_markdown_input(source_path.as_deref());
     Ok((
@@ -366,22 +372,22 @@ fn lint_rule_config(args: &AnalysisCliArgs) -> AnalysisRuleConfig {
 }
 
 #[cfg(feature = "analysis")]
-fn analysis_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDescriptor {
+fn analysis_source_descriptor(markdown_mode: bool, path: Option<&Path>) -> SourceDescriptor {
+    let path = path.map(|path| path.to_string_lossy());
     if markdown_mode {
-        return merman_analysis::source_descriptor_for_markdown_path(path);
+        return merman_analysis::source_descriptor_for_markdown_path(path.as_deref());
     }
 
     let mut source = SourceDescriptor::diagram();
-    if let Some(path) = path {
+    if let Some(path) = path.as_deref() {
         source = source.with_path(path);
     }
     source
 }
 
 #[cfg(feature = "analysis")]
-fn is_markdown_input(input: Option<&str>) -> bool {
+fn is_markdown_input(input: Option<&Path>) -> bool {
     input
-        .map(Path::new)
         .map(merman_analysis::markdown::is_markdown_path)
         .unwrap_or(false)
 }

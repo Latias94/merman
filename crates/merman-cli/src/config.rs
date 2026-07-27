@@ -29,10 +29,34 @@ impl ResolvedCliRuntimePolicy {
     fn new(args: &RuntimeCliArgs) -> Result<Self, CliError> {
         let mut runtime_policy = match args.policy {
             RuntimePolicyKind::Deterministic => RuntimePolicy::deterministic(),
+            #[cfg(all(
+                feature = "system-clock",
+                feature = "system-timezone",
+                feature = "system-random"
+            ))]
             RuntimePolicyKind::Native => RuntimePolicy::try_native().map_err(|err| {
                 CliError::InvalidInput(format!("--runtime native is unavailable: {err}"))
             })?,
         };
+        #[cfg(feature = "system-clock")]
+        if args.system_clock {
+            runtime_policy = runtime_policy.try_with_system_clock().map_err(|err| {
+                CliError::InvalidInput(format!("--system-clock is unavailable: {err}"))
+            })?;
+        }
+        #[cfg(feature = "system-timezone")]
+        if args.system_timezone {
+            runtime_policy = runtime_policy.try_with_system_time_zone().map_err(|err| {
+                CliError::InvalidInput(format!("--system-timezone is unavailable: {err}"))
+            })?;
+        }
+        #[cfg(feature = "system-random")]
+        if args.system_random {
+            runtime_policy = runtime_policy.try_with_system_random().map_err(|err| {
+                CliError::InvalidInput(format!("--system-random is unavailable: {err}"))
+            })?;
+        }
+        #[cfg(feature = "system-timing")]
         if args.system_timing {
             runtime_policy = runtime_policy.try_with_system_timing().map_err(|err| {
                 CliError::InvalidInput(format!("--system-timing is unavailable: {err}"))
@@ -106,7 +130,11 @@ pub(crate) fn renderer_for(
 ) -> Result<HeadlessRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::new(&parse.runtime)?;
     let mut environment = RenderEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
+        .with_text_measurement_policy(text_measurement_policy(
+            render
+                .text_measurer
+                .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
+        ))
         .with_resource_policy(merman::svg::RenderResourcePolicy::for_profile(
             render.resource_profile,
         ));
@@ -157,20 +185,8 @@ fn math_renderer(
 ) -> Result<Option<Arc<dyn MathRenderer + Send + Sync>>, CliError> {
     match kind {
         MathRendererKind::None => Ok(None),
-        MathRendererKind::Ratex => {
-            #[cfg(feature = "math")]
-            {
-                Ok(Some(Arc::new(merman::svg::RatexMathRenderer)))
-            }
-
-            #[cfg(not(feature = "math"))]
-            {
-                Err(CliError::InvalidInput(
-                    "RaTeX math rendering requires building merman-cli with --features math."
-                        .to_string(),
-                ))
-            }
-        }
+        #[cfg(feature = "math")]
+        MathRendererKind::Ratex => Ok(Some(Arc::new(merman::svg::RatexMathRenderer))),
     }
 }
 
@@ -267,29 +283,6 @@ mod tests {
         assert!(context.timing().is_none());
     }
 
-    #[cfg(not(all(
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random"
-    )))]
-    #[test]
-    fn unavailable_native_runtime_is_an_invalid_cli_configuration() {
-        let args = RuntimeCliArgs {
-            policy: RuntimePolicyKind::Native,
-            ..Default::default()
-        };
-        let error =
-            ResolvedCliRuntimePolicy::new(&args).expect_err("native policy must be unavailable");
-
-        assert!(matches!(error, CliError::InvalidInput(_)));
-        assert!(
-            error
-                .to_string()
-                .contains("--runtime native is unavailable")
-        );
-        assert!(error.to_string().contains("is not compiled"));
-    }
-
     #[cfg(feature = "system-timing")]
     #[test]
     fn system_timing_is_an_independent_explicit_runtime_choice() {
@@ -308,20 +301,6 @@ mod tests {
             merman::runtime::RuntimeValueSource::Fixed
         );
         assert!(context.timing().is_some());
-    }
-
-    #[cfg(not(feature = "system-timing"))]
-    #[test]
-    fn unavailable_system_timing_is_an_invalid_cli_configuration() {
-        let args = RuntimeCliArgs {
-            system_timing: true,
-            ..Default::default()
-        };
-        let error = ResolvedCliRuntimePolicy::new(&args).expect_err("timing must be unavailable");
-
-        assert!(matches!(error, CliError::InvalidInput(_)));
-        assert!(error.to_string().contains("--system-timing is unavailable"));
-        assert!(error.to_string().contains("`system-timing`"));
     }
 
     #[test]

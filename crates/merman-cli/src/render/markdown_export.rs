@@ -9,19 +9,23 @@ use rayon::prelude::*;
 use std::path::Path;
 
 impl RenderPlan {
-    pub(super) fn is_mmdc_markdown_input(&self) -> bool {
-        matches!(self.mode, super::plan::RenderMode::MmdcCompat)
-            && self
+    pub(super) fn is_markdown_input(&self) -> bool {
+        match self.mode {
+            super::plan::RenderMode::MmdcCompat => self
                 .input
                 .as_deref()
-                .filter(|path| *path != "-")
-                .map(|path| markdown::is_markdown_path(Path::new(path)))
-                .unwrap_or(false)
+                .filter(|path| *path != Path::new("-"))
+                .map(markdown::is_markdown_path)
+                .unwrap_or(false),
+            super::plan::RenderMode::NativeBatch => true,
+            super::plan::RenderMode::NativeSingle => false,
+        }
     }
 }
 
 impl<'a> RenderRequest<'a> {
     pub(super) fn render_markdown(&self, text: &str) -> Result<(), CliError> {
+        #[cfg(feature = "ascii")]
         if self.plan.format.is_text() {
             return Err(CliError::InvalidOutput(
                 "Markdown input does not support ASCII/Unicode output".to_string(),

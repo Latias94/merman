@@ -4,64 +4,19 @@ use super::plan::RenderMode;
 use super::plan::RenderPlan;
 #[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
-#[cfg(feature = "pdf")]
-use crate::cli::PdfCliArgs;
-#[cfg(any(feature = "png", feature = "jpeg"))]
-use crate::cli::RasterCliArgs;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use crate::cli::{EmbeddedImageCliArgs, RenderFormat, ResourceProfile};
+use crate::cli::{RenderFormat, ResourceProfile};
 use crate::error::CliError;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::invocation::ResolvedEmbeddedImageOptions;
+#[cfg(feature = "pdf")]
+use crate::invocation::ResolvedPdfOptions;
 
 #[cfg(feature = "pdf")]
 const MMDC_DEFAULT_PDF_WIDTH_PT: f32 = 612.0;
 #[cfg(feature = "pdf")]
 const MMDC_DEFAULT_PDF_HEIGHT_PT: f32 = 792.0;
-#[cfg(all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg")))]
-const DEFAULT_MARKDOWN_ENCODING_PARALLEL_BUDGET_MIB: u64 = 512;
-#[cfg(all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg")))]
-const MIB: u64 = 1024 * 1024;
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-#[derive(Debug, Clone, Copy)]
-pub(super) struct RasterCliOptions {
-    fit_width: Option<u32>,
-    fit_height: Option<u32>,
-    max_width: Option<u32>,
-    max_height: Option<u32>,
-    max_pixels: Option<u64>,
-    #[cfg(feature = "parallel-markdown")]
-    parallel_budget_bytes: u64,
-    unbounded: bool,
-}
-
-#[cfg(feature = "pdf")]
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct PdfCliOptions {
-    filter_scale: Option<f32>,
-    max_filter_image_pixels: Option<u64>,
-    filter_images_unbounded: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct EmbeddedImageCliOptions {
-    max_bytes_per_image: Option<u64>,
-    max_total_bytes: Option<u64>,
-    max_pixels_per_image: Option<u64>,
-    max_total_pixels: Option<u64>,
-    unbounded: bool,
-}
-
-impl EmbeddedImageCliOptions {
-    pub(super) const fn from_args(args: &EmbeddedImageCliArgs) -> Self {
-        Self {
-            max_bytes_per_image: args.max_image_bytes,
-            max_total_bytes: args.max_total_bytes,
-            max_pixels_per_image: args.max_image_pixels,
-            max_total_pixels: args.max_total_pixels,
-            unbounded: args.embedded_images_unbounded,
-        }
-    }
-
+impl ResolvedEmbeddedImageOptions {
     fn limit(self) -> merman::svg::export::EmbeddedImageLimit {
         if self.unbounded {
             return merman::svg::export::EmbeddedImageLimit::unbounded();
@@ -77,15 +32,7 @@ impl EmbeddedImageCliOptions {
 }
 
 #[cfg(feature = "pdf")]
-impl PdfCliOptions {
-    pub(super) const fn from_args(args: &PdfCliArgs) -> Self {
-        Self {
-            filter_scale: args.filter_scale,
-            max_filter_image_pixels: args.max_filter_image_pixels,
-            filter_images_unbounded: args.filter_images_unbounded,
-        }
-    }
-
+impl ResolvedPdfOptions {
     fn apply_to(
         self,
         mut options: merman::svg::export::PdfOptions,
@@ -100,60 +47,6 @@ impl PdfCliOptions {
                 merman::svg::export::PdfFilterImageLimit::new(Some(max_filter_image_pixels));
         }
         options
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-impl Default for RasterCliOptions {
-    fn default() -> Self {
-        Self {
-            fit_width: None,
-            fit_height: None,
-            max_width: None,
-            max_height: None,
-            max_pixels: None,
-            #[cfg(feature = "parallel-markdown")]
-            parallel_budget_bytes: DEFAULT_MARKDOWN_ENCODING_PARALLEL_BUDGET_MIB * MIB,
-            unbounded: false,
-        }
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-impl RasterCliOptions {
-    pub(super) fn from_args(args: &RasterCliArgs) -> Result<Self, CliError> {
-        if args.raster_unbounded
-            && (args.raster_max_width.is_some()
-                || args.raster_max_height.is_some()
-                || args.raster_max_pixels.is_some())
-        {
-            return Err(CliError::InvalidInput(
-                "--raster-unbounded cannot be combined with --raster-max-* limits".to_string(),
-            ));
-        }
-        #[cfg(feature = "parallel-markdown")]
-        let parallel_budget_bytes = args
-            .encoding_parallel_budget_mib
-            .unwrap_or(DEFAULT_MARKDOWN_ENCODING_PARALLEL_BUDGET_MIB)
-            .checked_mul(MIB)
-            .ok_or_else(|| {
-                CliError::InvalidInput("--encoding-parallel-budget-mib is too large".to_string())
-            })?;
-        Ok(Self {
-            fit_width: args.raster_fit_width,
-            fit_height: args.raster_fit_height,
-            max_width: args.raster_max_width,
-            max_height: args.raster_max_height,
-            max_pixels: args.raster_max_pixels,
-            #[cfg(feature = "parallel-markdown")]
-            parallel_budget_bytes,
-            unbounded: args.raster_unbounded,
-        })
-    }
-
-    #[cfg(feature = "parallel-markdown")]
-    pub(super) const fn encoding_parallel_budget_bytes(self) -> u64 {
-        self.parallel_budget_bytes
     }
 }
 
@@ -318,7 +211,7 @@ mod tests {
 
     #[test]
     fn embedded_image_options_preserve_unspecified_safe_defaults() {
-        let options = EmbeddedImageCliOptions {
+        let options = ResolvedEmbeddedImageOptions {
             max_pixels_per_image: Some(123),
             ..Default::default()
         };
@@ -335,7 +228,7 @@ mod tests {
 
     #[test]
     fn embedded_image_unbounded_mode_removes_all_limits() {
-        let options = EmbeddedImageCliOptions {
+        let options = ResolvedEmbeddedImageOptions {
             max_bytes_per_image: Some(12),
             max_total_bytes: Some(34),
             max_pixels_per_image: Some(123),

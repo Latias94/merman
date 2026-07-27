@@ -15,14 +15,6 @@ use merman::svg::{HeadlessRenderer, SvgPipeline};
 ))]
 use std::sync::{Condvar, Mutex};
 
-#[cfg(all(
-    feature = "parallel-markdown",
-    feature = "pdf",
-    not(feature = "png"),
-    not(feature = "jpeg")
-))]
-const DEFAULT_ENCODING_PARALLEL_BUDGET_BYTES: u64 = 512 * 1024 * 1024;
-
 pub(super) struct RenderRequest<'a> {
     pub(super) plan: &'a RenderPlan,
     pub(super) renderer: HeadlessRenderer,
@@ -44,7 +36,7 @@ pub(super) struct RenderedArtifact {
 
 pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     plan.warn_for_accepted_compat_options();
-    let text = crate::io::read_input(plan.input.as_deref(), plan.quiet)?;
+    let text = crate::io::read_input(plan.input.as_deref(), !plan.warn_on_implicit_stdin)?;
     let renderer = renderer_for(&plan.parse, &plan.render, plan.icon_registry())?;
     #[cfg(all(
         feature = "parallel-markdown",
@@ -58,7 +50,7 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     let request = RenderRequest::new(&plan, renderer);
 
     #[cfg(feature = "markdown")]
-    if plan.is_mmdc_markdown_input() {
+    if plan.is_markdown_input() {
         return request.render_markdown(&text);
     }
 
@@ -73,18 +65,8 @@ fn encoding_parallel_budget(plan: &RenderPlan) -> Option<EncodingParallelBudget>
     if !plan.format.requires_svg_encoding() {
         return None;
     }
-    #[cfg(any(feature = "png", feature = "jpeg"))]
-    {
-        Some(EncodingParallelBudget::new(
-            plan.raster.encoding_parallel_budget_bytes(),
-        ))
-    }
-    #[cfg(all(not(feature = "png"), not(feature = "jpeg"), feature = "pdf"))]
-    {
-        Some(EncodingParallelBudget::new(
-            DEFAULT_ENCODING_PARALLEL_BUDGET_BYTES,
-        ))
-    }
+    plan.encoding_parallel_budget_bytes
+        .map(EncodingParallelBudget::new)
 }
 
 fn pipeline_kind(plan: &RenderPlan) -> SvgPipelineKind {
@@ -143,7 +125,9 @@ impl<'a> RenderRequest<'a> {
         }
 
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        if text.trim_start().starts_with("<svg") && self.plan.format.requires_svg_encoding() {
+        if self.plan.input_kind == crate::cli::RenderInputKind::Svg
+            && self.plan.format.requires_svg_encoding()
+        {
             let svg = self.prepare_raw_svg_for_encoding(text)?;
             return self.encode_prepared_svg(&svg);
         }
@@ -362,11 +346,5 @@ mod tests {
         let permit = budget.acquire(100);
         assert_eq!(permit.weight, 10);
         assert_eq!(*budget.in_flight.lock().unwrap(), 10);
-    }
-
-    #[cfg(all(feature = "pdf", not(feature = "png"), not(feature = "jpeg")))]
-    #[test]
-    fn default_parallel_budget_stays_bounded() {
-        assert_eq!(DEFAULT_ENCODING_PARALLEL_BUDGET_BYTES, 512 * 1024 * 1024);
     }
 }

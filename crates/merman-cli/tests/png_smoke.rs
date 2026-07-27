@@ -30,7 +30,7 @@ fn cli_renders_png_smoke() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])
@@ -65,7 +65,7 @@ fn cli_rasterizes_svg_input_to_png() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -102,11 +102,11 @@ fn cli_rasterizes_raw_svg_after_resvg_safe_boundary() {
             "render",
             "--format",
             "png",
-            "--backgroundColor",
+            "--background",
             "#f8fafc",
-            "--cssFile",
+            "--css-file",
             css.to_string_lossy().as_ref(),
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -142,7 +142,7 @@ fn cli_rasterizes_svg_input_to_png_with_fit_width_and_scale() {
             "250",
             "--scale",
             "2",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -176,7 +176,7 @@ fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
             "png",
             "--raster-max-width",
             "128",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -242,7 +242,7 @@ fn cli_renders_png_for_negative_viewbox_diagrams() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])

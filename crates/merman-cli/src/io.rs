@@ -11,18 +11,7 @@ pub(crate) enum OutputTarget {
     File(PathBuf),
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
-impl OutputTarget {
-    pub(crate) fn from_cli(raw: String) -> Self {
-        if raw == "-" {
-            Self::Stdout
-        } else {
-            Self::File(PathBuf::from(raw))
-        }
-    }
-}
-
-pub(crate) fn read_input(path: Option<&str>, quiet: bool) -> Result<String, CliError> {
+pub(crate) fn read_input(path: Option<&Path>, quiet: bool) -> Result<String, CliError> {
     let mut buf = String::new();
     match path {
         None => {
@@ -33,11 +22,10 @@ pub(crate) fn read_input(path: Option<&str>, quiet: bool) -> Result<String, CliE
             }
             std::io::stdin().read_to_string(&mut buf)?;
         }
-        Some("-") => {
+        Some(path) if path == Path::new("-") => {
             std::io::stdin().read_to_string(&mut buf)?;
         }
-        Some(p) => {
-            let path = Path::new(p);
+        Some(path) => {
             if !path.exists() {
                 return Err(CliError::InvalidInput(format!(
                     "Input file \"{}\" doesn't exist",
@@ -52,21 +40,24 @@ pub(crate) fn read_input(path: Option<&str>, quiet: bool) -> Result<String, CliE
 
 #[cfg(feature = "svg")]
 pub(crate) fn read_optional_text_file(
-    path: Option<&str>,
+    path: Option<&Path>,
     label: &str,
 ) -> Result<Option<String>, CliError> {
     path.map(|p| read_named_text_file(p, label)).transpose()
 }
 
-pub(crate) fn read_named_text_file(path: &str, label: &str) -> Result<String, CliError> {
-    let path_ref = Path::new(path);
-    if !path_ref.exists() {
+pub(crate) fn read_named_text_file(
+    path: impl AsRef<Path>,
+    label: &str,
+) -> Result<String, CliError> {
+    let path = path.as_ref();
+    if !path.exists() {
         return Err(CliError::InvalidInput(format!(
             "{label} \"{}\" does not exist",
-            path_ref.display()
+            path.display()
         )));
     }
-    Ok(std::fs::read_to_string(path_ref)?)
+    Ok(std::fs::read_to_string(path)?)
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]

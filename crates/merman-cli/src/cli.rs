@@ -3,46 +3,33 @@ use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "merman-cli",
     version,
-    subcommand_precedence_over_arg = true,
-    override_usage = "merman-cli [OPTIONS] [INPUT]\n       merman-cli <COMMAND> [ARGS]",
+    propagate_version = true,
+    subcommand_required = true,
+    arg_required_else_help = true,
+    override_usage = "merman-cli <COMMAND> [ARGS]",
     about = "Headless Mermaid CLI with parse, analysis, and optional rendering capabilities.",
     long_about = "Headless Mermaid CLI with parse, analysis, and optional rendering capabilities.\n\nThe commands and formats shown below are exactly those compiled into this artifact. Use `capabilities --json` for the machine-readable capability contract."
 )]
-#[cfg_attr(
-    not(feature = "svg"),
-    command(subcommand_required = true, arg_required_else_help = true)
-)]
 pub(crate) struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Option<Command>,
-
-    #[cfg(feature = "svg")]
-    #[command(flatten)]
-    pub(crate) export: ExportArgs,
-
-    #[cfg(feature = "svg")]
-    /// Input Mermaid file for top-level render mode. Use `-` for stdin.
-    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) command: RawCommand,
 }
 
 #[derive(Debug, Subcommand)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum Command {
-    /// Print the compiled capabilities from the canonical capability descriptor.
-    Capabilities(CapabilitiesArgs),
-    /// Detect the Mermaid diagram type.
-    Detect(DetectArgs),
-    /// Parse Mermaid source and print the semantic JSON model.
-    Parse(ParseArgs),
-    #[cfg(feature = "svg")]
-    /// Parse and layout Mermaid source, then print layout JSON.
-    Layout(LayoutArgs),
+pub(crate) enum RawCommand {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    /// Render one Mermaid diagram with Merman's native interface.
+    Render(RenderArgs),
+    #[cfg(feature = "markdown")]
+    /// Render every Mermaid diagram in one Markdown document.
+    Batch(BatchArgs),
     #[cfg(feature = "analysis")]
     /// Analyze Mermaid source and print diagnostics JSON or text.
     Lint(LintArgs),
@@ -52,9 +39,18 @@ pub(crate) enum Command {
     #[cfg(feature = "analysis")]
     /// List lint rule metadata.
     LintRules(LintRulesArgs),
-    #[cfg(any(feature = "svg", feature = "ascii"))]
-    /// Render Mermaid source using the compiled output formats.
-    Render(RenderArgs),
+    #[cfg(feature = "svg")]
+    /// Render through the pinned mmdc-compatible interface.
+    Mmdc(MmdcArgs),
+    /// Detect the Mermaid diagram type.
+    Detect(DetectArgs),
+    /// Parse Mermaid source and print the semantic JSON model.
+    Parse(ParseArgs),
+    #[cfg(feature = "svg")]
+    /// Parse and layout Mermaid source, then print layout JSON.
+    Layout(LayoutArgs),
+    /// Print the compiled capabilities from the canonical capability descriptor.
+    Capabilities(CapabilitiesArgs),
     #[cfg(feature = "shell-completions")]
     /// Generate shell completion scripts.
     Completion(CompletionArgs),
@@ -71,17 +67,17 @@ pub(crate) struct CapabilitiesArgs {
 pub(crate) struct DetectArgs {
     /// Input Mermaid file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
 
     #[command(flatten)]
-    pub(crate) parse: ParseCliArgs,
+    pub(crate) engine: EngineCliArgs,
 }
 
 #[derive(Debug, ClapArgs)]
 pub(crate) struct ParseArgs {
     /// Input Mermaid file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
 
     /// Pretty-print JSON output.
     #[arg(long)]
@@ -100,7 +96,7 @@ pub(crate) struct ParseArgs {
 pub(crate) struct LayoutArgs {
     /// Input Mermaid file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
 
     /// Pretty-print JSON output.
     #[arg(long)]
@@ -110,7 +106,7 @@ pub(crate) struct LayoutArgs {
     pub(crate) parse: ParseCliArgs,
 
     #[command(flatten)]
-    pub(crate) render: RenderCliArgs,
+    pub(crate) render: LayoutRenderCliArgs,
 }
 
 #[cfg(feature = "analysis")]
@@ -118,7 +114,7 @@ pub(crate) struct LayoutArgs {
 pub(crate) struct LintArgs {
     /// Input Mermaid or Markdown file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
 
     /// Optional file name to use when linting stdin.
     #[arg(
@@ -126,7 +122,7 @@ pub(crate) struct LintArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "Input handling"
     )]
-    pub(crate) stdin_file_name: Option<String>,
+    pub(crate) stdin_file_name: Option<PathBuf>,
 
     /// Output format for diagnostics.
     #[arg(
@@ -150,7 +146,7 @@ pub(crate) struct LintArgs {
 pub(crate) struct FixArgs {
     /// Input Mermaid or Markdown file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
 
     /// Optional file name to use when fixing stdin.
     #[arg(
@@ -158,7 +154,7 @@ pub(crate) struct FixArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "Input handling"
     )]
-    pub(crate) stdin_file_name: Option<String>,
+    pub(crate) stdin_file_name: Option<PathBuf>,
 
     /// Write the result back to the input file instead of stdout.
     #[arg(long, conflicts_with = "output", help_heading = "Output")]
@@ -171,7 +167,7 @@ pub(crate) struct FixArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "Output"
     )]
-    pub(crate) output: Option<String>,
+    pub(crate) output: Option<PathBuf>,
 
     /// Apply every non-conflicting fix instead of one preferred fix per diagnostic.
     #[arg(long, help_heading = "Fix selection")]
@@ -191,12 +187,11 @@ pub(crate) struct AnalysisCliArgs {
     /// JSON Mermaid configuration file.
     #[arg(
         short = 'c',
-        long = "configFile",
-        alias = "config-file",
+        long = "config-file",
         value_hint = ValueHint::FilePath,
         help_heading = "Mermaid configuration"
     )]
-    pub(crate) config_file: Option<String>,
+    pub(crate) config_file: Option<PathBuf>,
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
@@ -287,10 +282,80 @@ pub(crate) struct LintRuleSeverityOverride {
 pub(crate) struct RenderArgs {
     /// Input Mermaid file. Use `-` for stdin.
     #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
-    pub(crate) input: Option<String>,
+    pub(crate) input: Option<PathBuf>,
+
+    /// Output file. Use `-` for stdout.
+    #[arg(
+        short = 'o',
+        long,
+        value_name = "OUTPUT",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Render input and output"
+    )]
+    pub(crate) output: Option<PathBuf>,
+
+    /// Interpret the input as Mermaid source or an existing SVG document.
+    #[cfg(feature = "svg")]
+    #[arg(
+        long = "input-kind",
+        value_enum,
+        help_heading = "Render input and output"
+    )]
+    pub(crate) input_kind: Option<RenderInputKind>,
 
     #[command(flatten)]
-    pub(crate) export: RenderExportArgs,
+    pub(crate) options: NativeRenderOptions,
+}
+
+#[cfg(feature = "markdown")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct BatchArgs {
+    /// Input Markdown file. Use `-` for stdin.
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
+    pub(crate) input: Option<PathBuf>,
+
+    /// Logical source file name for Markdown read from stdin.
+    #[arg(
+        long = "stdin-file-name",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Batch input and output"
+    )]
+    pub(crate) stdin_file_name: Option<PathBuf>,
+
+    /// Tool-owned directory for the rewritten document and generated artifacts.
+    #[arg(
+        short = 'o',
+        long = "output-dir",
+        value_hint = ValueHint::DirPath,
+        help_heading = "Batch input and output"
+    )]
+    pub(crate) output_dir: Option<PathBuf>,
+
+    #[cfg(feature = "parallel-markdown")]
+    /// Maximum number of Markdown charts rendered concurrently.
+    #[arg(
+        short = 'j',
+        long = "jobs",
+        value_parser = parse_positive_usize,
+        help_heading = "Batch input and output"
+    )]
+    pub(crate) jobs: Option<usize>,
+
+    #[cfg(all(
+        feature = "parallel-markdown",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    /// Aggregate scheduling budget for parallel PNG/JPEG/PDF encoding, in MiB.
+    #[arg(
+        long = "encoding-parallel-budget-mib",
+        visible_alias = "encoding-memory-budget-mib",
+        value_parser = parse_positive_u64,
+        help_heading = "Batch resource controls"
+    )]
+    pub(crate) encoding_parallel_budget_mib: Option<u64>,
+
+    #[command(flatten)]
+    pub(crate) options: NativeRenderOptions,
 }
 
 #[cfg(feature = "shell-completions")]
@@ -310,12 +375,11 @@ pub(crate) struct ParseCliArgs {
     /// JSON Mermaid configuration file.
     #[arg(
         short = 'c',
-        long = "configFile",
-        alias = "config-file",
+        long = "config-file",
         value_hint = ValueHint::FilePath,
         help_heading = "Mermaid configuration"
     )]
-    pub(crate) config_file: Option<String>,
+    pub(crate) config_file: Option<PathBuf>,
 
     /// Mermaid theme override.
     #[arg(short = 't', long, help_heading = "Mermaid configuration")]
@@ -323,6 +387,36 @@ pub(crate) struct ParseCliArgs {
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct EngineCliArgs {
+    /// JSON Mermaid configuration file.
+    #[arg(
+        short = 'c',
+        long = "config-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Mermaid configuration"
+    )]
+    pub(crate) config_file: Option<PathBuf>,
+
+    /// Mermaid theme override.
+    #[arg(short = 't', long, help_heading = "Mermaid configuration")]
+    pub(crate) theme: Option<String>,
+
+    #[command(flatten)]
+    pub(crate) runtime: RuntimeCliArgs,
+}
+
+impl EngineCliArgs {
+    pub(crate) fn into_parse_args(self) -> ParseCliArgs {
+        ParseCliArgs {
+            suppress_errors: false,
+            config_file: self.config_file,
+            theme: self.theme,
+            runtime: self.runtime,
+        }
+    }
 }
 
 #[derive(Debug, Clone, ClapArgs, Default)]
@@ -336,6 +430,22 @@ pub(crate) struct RuntimeCliArgs {
     )]
     pub(crate) policy: RuntimePolicyKind,
 
+    #[cfg(feature = "system-clock")]
+    /// Use the system clock while keeping other runtime sources deterministic.
+    #[arg(long = "system-clock", help_heading = "Runtime policy")]
+    pub(crate) system_clock: bool,
+
+    #[cfg(feature = "system-timezone")]
+    /// Use the system local timezone while keeping other runtime sources deterministic.
+    #[arg(long = "system-timezone", help_heading = "Runtime policy")]
+    pub(crate) system_timezone: bool,
+
+    #[cfg(feature = "system-random")]
+    /// Use system randomness while keeping other runtime sources deterministic.
+    #[arg(long = "system-random", help_heading = "Runtime policy")]
+    pub(crate) system_random: bool,
+
+    #[cfg(feature = "system-timing")]
     /// Enable operation timing diagnostics through the compiled system timing adapter.
     #[arg(long = "system-timing", help_heading = "Runtime policy")]
     pub(crate) system_timing: bool,
@@ -361,6 +471,11 @@ pub(crate) struct RuntimeCliArgs {
 pub(crate) enum RuntimePolicyKind {
     #[default]
     Deterministic,
+    #[cfg(all(
+        feature = "system-clock",
+        feature = "system-timezone",
+        feature = "system-random"
+    ))]
     Native,
 }
 
@@ -372,10 +487,9 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "text-measurer",
         value_enum,
-        default_value_t = TextMeasurerKind::Vendored,
         help_heading = "Merman renderer controls"
     )]
-    pub(crate) text_measurer: TextMeasurerKind,
+    pub(crate) text_measurer: Option<TextMeasurerKind>,
 
     #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
@@ -392,7 +506,7 @@ pub(crate) struct RenderCliArgs {
         short = 'w',
         long = "width",
         value_parser = parse_positive_f64,
-        help_heading = "mmdc-compatible export"
+        help_heading = "Layout viewport"
     )]
     pub(crate) container_width: Option<f64>,
 
@@ -402,19 +516,13 @@ pub(crate) struct RenderCliArgs {
         short = 'H',
         long = "height",
         value_parser = parse_positive_f64,
-        help_heading = "mmdc-compatible export"
+        help_heading = "Layout viewport"
     )]
     pub(crate) container_height: Option<f64>,
 
     #[cfg(feature = "svg")]
     /// Root SVG id and internal marker prefix.
-    #[arg(
-        short = 'I',
-        long = "svgId",
-        alias = "svg-id",
-        alias = "id",
-        help_heading = "mmdc-compatible export"
-    )]
+    #[arg(short = 'I', long = "svg-id", help_heading = "SVG output")]
     pub(crate) svg_id: Option<String>,
 
     #[cfg(feature = "svg")]
@@ -441,7 +549,7 @@ impl Default for RenderCliArgs {
     fn default() -> Self {
         Self {
             #[cfg(feature = "svg")]
-            text_measurer: TextMeasurerKind::Vendored,
+            text_measurer: None,
             #[cfg(feature = "svg")]
             math_renderer: None,
             #[cfg(feature = "svg")]
@@ -458,8 +566,188 @@ impl Default for RenderCliArgs {
 }
 
 #[cfg(feature = "svg")]
+#[derive(Debug, Clone, ClapArgs)]
+pub(crate) struct LayoutRenderCliArgs {
+    /// Text measurement strategy.
+    #[arg(
+        long = "text-measurer",
+        value_enum,
+        default_value_t = TextMeasurerKind::Vendored,
+        help_heading = "Layout controls"
+    )]
+    pub(crate) text_measurer: TextMeasurerKind,
+
+    /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
+    #[arg(long = "math-renderer", value_enum, help_heading = "Layout controls")]
+    pub(crate) math_renderer: Option<MathRendererKind>,
+
+    /// Available container width for size-sensitive layouts.
+    #[arg(
+        short = 'w',
+        long = "width",
+        value_parser = parse_positive_f64,
+        help_heading = "Layout viewport"
+    )]
+    pub(crate) container_width: Option<f64>,
+
+    /// Available container height for size-sensitive layouts.
+    #[arg(
+        short = 'H',
+        long = "height",
+        value_parser = parse_positive_f64,
+        help_heading = "Layout viewport"
+    )]
+    pub(crate) container_height: Option<f64>,
+
+    /// Render resource profile for source, semantic model, and layout budgets.
+    #[arg(
+        long = "resource-profile",
+        value_parser = resource_profile_value_parser(),
+        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        help_heading = "Merman resource controls"
+    )]
+    pub(crate) resource_profile: ResourceProfile,
+}
+
+#[cfg(feature = "svg")]
+impl LayoutRenderCliArgs {
+    pub(crate) fn into_render_args(self) -> RenderCliArgs {
+        RenderCliArgs {
+            text_measurer: Some(self.text_measurer),
+            math_renderer: self.math_renderer,
+            container_width: self.container_width,
+            container_height: self.container_height,
+            svg_id: None,
+            hand_drawn_seed: None,
+            resource_profile: self.resource_profile,
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum MmdcTheme {
+    #[default]
+    Default,
+    Forest,
+    Dark,
+    Neutral,
+}
+
+#[cfg(feature = "svg")]
+impl MmdcTheme {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Forest => "forest",
+            Self::Dark => "dark",
+            Self::Neutral => "neutral",
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs, Default)]
-pub(crate) struct ExportArgs {
+pub(crate) struct MmdcParseCliArgs {
+    /// JSON Mermaid configuration file.
+    #[arg(
+        short = 'c',
+        long = "configFile",
+        value_hint = ValueHint::FilePath,
+        help_heading = "mmdc-compatible export"
+    )]
+    pub(crate) config_file: Option<PathBuf>,
+
+    /// Theme of the chart.
+    #[arg(
+        short = 't',
+        long,
+        value_enum,
+        default_value_t = MmdcTheme::Default,
+        help_heading = "mmdc-compatible export"
+    )]
+    pub(crate) theme: MmdcTheme,
+
+    #[command(flatten)]
+    pub(crate) runtime: RuntimeCliArgs,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, ClapArgs)]
+pub(crate) struct MmdcRenderCliArgs {
+    /// Text measurement strategy.
+    #[arg(
+        long = "text-measurer",
+        value_enum,
+        default_value_t = TextMeasurerKind::Vendored,
+        help_heading = "Merman renderer controls"
+    )]
+    pub(crate) text_measurer: TextMeasurerKind,
+
+    /// Math renderer override. Unspecified uses the compiled default.
+    #[arg(
+        long = "math-renderer",
+        value_enum,
+        help_heading = "Merman renderer controls"
+    )]
+    pub(crate) math_renderer: Option<MathRendererKind>,
+
+    /// Width of the page.
+    #[arg(
+        short = 'w',
+        long = "width",
+        value_parser = parse_positive_f64,
+        default_value_t = 800.0,
+        help_heading = "mmdc-compatible export"
+    )]
+    pub(crate) container_width: f64,
+
+    /// Height of the page.
+    #[arg(
+        short = 'H',
+        long = "height",
+        value_parser = parse_positive_f64,
+        default_value_t = 600.0,
+        help_heading = "mmdc-compatible export"
+    )]
+    pub(crate) container_height: f64,
+
+    /// Root SVG id and internal marker prefix.
+    #[arg(short = 'I', long = "svgId", help_heading = "mmdc-compatible export")]
+    pub(crate) svg_id: Option<String>,
+
+    /// Stabilize rough/hand-drawn rendering where supported.
+    #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
+    pub(crate) hand_drawn_seed: Option<u64>,
+
+    /// Render resource profile.
+    #[arg(
+        long = "resource-profile",
+        value_parser = resource_profile_value_parser(),
+        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        help_heading = "Merman resource controls"
+    )]
+    pub(crate) resource_profile: ResourceProfile,
+}
+
+#[cfg(feature = "svg")]
+impl Default for MmdcRenderCliArgs {
+    fn default() -> Self {
+        Self {
+            text_measurer: TextMeasurerKind::Vendored,
+            math_renderer: None,
+            container_width: 800.0,
+            container_height: 600.0,
+            svg_id: None,
+            hand_drawn_seed: None,
+            resource_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct MmdcArgs {
     /// Input Mermaid file. Use `-` for stdin.
     #[arg(
         short = 'i',
@@ -468,7 +756,7 @@ pub(crate) struct ExportArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "mmdc-compatible export"
     )]
-    pub(crate) input_file: Option<String>,
+    pub(crate) input_file: Option<PathBuf>,
 
     /// Output file. Use `-` for stdout.
     #[arg(
@@ -479,7 +767,7 @@ pub(crate) struct ExportArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "mmdc-compatible export"
     )]
-    pub(crate) output: Option<String>,
+    pub(crate) output: Option<PathBuf>,
 
     #[cfg(feature = "markdown")]
     /// Output artefacts directory for Markdown input.
@@ -490,7 +778,7 @@ pub(crate) struct ExportArgs {
         value_hint = ValueHint::DirPath,
         help_heading = "Markdown batch export"
     )]
-    pub(crate) artefacts: Option<String>,
+    pub(crate) artefacts: Option<PathBuf>,
 
     #[cfg(feature = "parallel-markdown")]
     /// Parallel jobs for Markdown input. Defaults to half available CPUs, minimum 1.
@@ -502,6 +790,19 @@ pub(crate) struct ExportArgs {
     )]
     pub(crate) jobs: Option<usize>,
 
+    #[cfg(all(
+        feature = "parallel-markdown",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    /// Aggregate scheduling budget for parallel PNG/JPEG/PDF encoding, in MiB.
+    #[arg(
+        long = "encoding-parallel-budget-mib",
+        visible_alias = "encoding-memory-budget-mib",
+        value_parser = parse_positive_u64,
+        help_heading = "Markdown batch export"
+    )]
+    pub(crate) encoding_parallel_budget_mib: Option<u64>,
+
     /// Output format. Defaults to the output extension, then SVG.
     #[arg(
         short = 'e',
@@ -511,7 +812,7 @@ pub(crate) struct ExportArgs {
         value_enum,
         help_heading = "mmdc-compatible export"
     )]
-    pub(crate) output_format: Option<RenderFormat>,
+    pub(crate) output_format: Option<MmdcOutputFormat>,
 
     /// SVG output pipeline. Compiled binary exports always start from resvg-safe.
     #[arg(
@@ -539,7 +840,7 @@ pub(crate) struct ExportArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "Mermaid configuration"
     )]
-    pub(crate) css_file: Option<String>,
+    pub(crate) css_file: Option<PathBuf>,
 
     #[cfg(feature = "pdf")]
     /// Scale PDF to fit chart. Accepted for mmdc compatibility.
@@ -563,9 +864,9 @@ pub(crate) struct ExportArgs {
         value_hint = ValueHint::FilePath,
         help_heading = "Accepted browser compatibility flags"
     )]
-    pub(crate) puppeteer_config_file: Option<String>,
+    pub(crate) puppeteer_config_file: Option<PathBuf>,
 
-    #[cfg(any(feature = "png", feature = "jpeg"))]
+    #[cfg(feature = "png")]
     #[command(flatten)]
     pub(crate) raster: RasterCliArgs,
 
@@ -573,59 +874,32 @@ pub(crate) struct ExportArgs {
     #[command(flatten)]
     pub(crate) pdf: PdfCliArgs,
 
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[cfg(any(feature = "png", feature = "pdf"))]
     #[command(flatten)]
     pub(crate) embedded_images: EmbeddedImageCliArgs,
 
     #[cfg(feature = "icons")]
     #[command(flatten)]
-    pub(crate) icons: IconCliArgs,
+    pub(crate) icons: MmdcIconCliArgs,
 
     #[command(flatten)]
-    pub(crate) parse: ParseCliArgs,
+    pub(crate) parse: MmdcParseCliArgs,
 
     #[command(flatten)]
-    pub(crate) render: RenderCliArgs,
-
-    #[cfg(feature = "ascii")]
-    #[command(flatten)]
-    pub(crate) text: TextOutputCliArgs,
+    pub(crate) render: MmdcRenderCliArgs,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, ClapArgs, Default)]
-pub(crate) struct RenderExportArgs {
-    /// Input Mermaid file. Use `-` for stdin.
-    #[arg(
-        short = 'i',
-        long = "input",
-        value_name = "INPUT",
-        value_hint = ValueHint::FilePath,
-        help_heading = "Render input and output"
-    )]
-    pub(crate) input_file: Option<String>,
-
-    /// Output file. Use `-` for stdout.
-    #[arg(
-        short = 'o',
-        long = "output",
-        alias = "out",
-        value_name = "OUTPUT",
-        value_hint = ValueHint::FilePath,
-        help_heading = "Render input and output"
-    )]
-    pub(crate) output: Option<String>,
-
+pub(crate) struct NativeRenderOptions {
     /// Output format. Defaults to the first compiled output format.
     #[arg(
         short = 'e',
-        long = "outputFormat",
-        alias = "output-format",
-        visible_alias = "format",
+        long = "format",
         value_enum,
         help_heading = "Render input and output"
     )]
-    pub(crate) output_format: Option<RenderFormat>,
+    pub(crate) format: Option<RenderFormat>,
 
     #[cfg(feature = "svg")]
     /// SVG output pipeline. Compiled binary exports always start from resvg-safe.
@@ -638,25 +912,18 @@ pub(crate) struct RenderExportArgs {
 
     #[cfg(feature = "svg")]
     /// Background color for the selected rendered output.
-    #[arg(
-        short = 'b',
-        long = "backgroundColor",
-        alias = "background-color",
-        alias = "background",
-        help_heading = "mmdc-compatible export"
-    )]
+    #[arg(short = 'b', long = "background", help_heading = "SVG-based output")]
     pub(crate) background_color: Option<String>,
 
     #[cfg(feature = "svg")]
     /// CSS file injected into SVG output before export.
     #[arg(
         short = 'C',
-        long = "cssFile",
-        alias = "css-file",
+        long = "css-file",
         value_hint = ValueHint::FilePath,
         help_heading = "Mermaid configuration"
     )]
-    pub(crate) css_file: Option<String>,
+    pub(crate) css_file: Option<PathBuf>,
 
     /// Suppress non-error log output.
     #[arg(short = 'q', long = "quiet", help_heading = "Render input and output")]
@@ -676,7 +943,7 @@ pub(crate) struct RenderExportArgs {
 
     #[cfg(feature = "icons")]
     #[command(flatten)]
-    pub(crate) icons: IconCliArgs,
+    pub(crate) icons: NativeIconCliArgs,
 
     #[command(flatten)]
     pub(crate) parse: ParseCliArgs,
@@ -740,16 +1007,6 @@ pub(crate) struct RasterCliArgs {
         help_heading = "Merman raster controls"
     )]
     pub(crate) raster_max_pixels: Option<u64>,
-
-    #[cfg(feature = "parallel-markdown")]
-    /// Parallel encoding scheduling budget for Markdown jobs, in MiB. Defaults to 512.
-    #[arg(
-        long = "encoding-parallel-budget-mib",
-        visible_alias = "encoding-memory-budget-mib",
-        value_parser = parse_positive_u64,
-        help_heading = "Merman resource controls"
-    )]
-    pub(crate) encoding_parallel_budget_mib: Option<u64>,
 
     /// Disable PNG/JPG raster size limits. Use only for trusted oversized exports.
     #[arg(
@@ -846,7 +1103,7 @@ pub(crate) struct EmbeddedImageCliArgs {
 
 #[cfg(feature = "icons")]
 #[derive(Debug, Clone, ClapArgs, Default)]
-pub(crate) struct IconCliArgs {
+pub(crate) struct MmdcIconCliArgs {
     #[cfg(feature = "network-icons")]
     /// Allow icon pack loading from HTTP(S) URLs.
     #[arg(long = "allow-network", help_heading = "Icon packs")]
@@ -860,6 +1117,33 @@ pub(crate) struct IconCliArgs {
     #[arg(
         long = "iconPacksNamesAndUrls",
         num_args = 1..,
+        help_heading = "Icon packs"
+    )]
+    pub(crate) icon_packs_names_and_urls: Vec<String>,
+}
+
+#[cfg(feature = "icons")]
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct NativeIconCliArgs {
+    #[cfg(feature = "network-icons")]
+    /// Allow icon pack loading from public HTTP(S) destinations.
+    #[arg(long = "allow-network", help_heading = "Icon packs")]
+    pub(crate) allow_network: bool,
+
+    /// Iconify package name or local package path. Can be repeated.
+    #[arg(
+        long = "icon-pack",
+        value_name = "PACKAGE_OR_PATH",
+        action = clap::ArgAction::Append,
+        help_heading = "Icon packs"
+    )]
+    pub(crate) icon_packs: Vec<String>,
+
+    /// Iconify prefix and source as PREFIX#SOURCE. Can be repeated.
+    #[arg(
+        long = "icon-pack-source",
+        value_name = "PREFIX#SOURCE",
+        action = clap::ArgAction::Append,
         help_heading = "Icon packs"
     )]
     pub(crate) icon_packs_names_and_urls: Vec<String>,
@@ -955,6 +1239,7 @@ pub(crate) enum TextMeasurerKind {
 pub(crate) enum MathRendererKind {
     #[default]
     None,
+    #[cfg(feature = "math")]
     Ratex,
 }
 
@@ -1003,6 +1288,24 @@ pub(crate) enum RenderFormat {
 }
 
 #[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum MmdcOutputFormat {
+    #[default]
+    Svg,
+    #[cfg(feature = "png")]
+    Png,
+    #[cfg(feature = "pdf")]
+    Pdf,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum RenderInputKind {
+    Mermaid,
+    Svg,
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
 impl RenderFormat {
     pub(crate) fn extension(self) -> &'static str {
         match self {
@@ -1019,7 +1322,7 @@ impl RenderFormat {
         }
     }
 
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[cfg(feature = "svg")]
     pub(crate) fn requires_svg_encoding(self) -> bool {
         match self {
             #[cfg(feature = "png")]
@@ -1028,15 +1331,25 @@ impl RenderFormat {
             Self::Jpeg => true,
             #[cfg(feature = "pdf")]
             Self::Pdf => true,
-            _ => false,
+            #[cfg(feature = "svg")]
+            Self::Svg => false,
+            #[cfg(feature = "ascii")]
+            Self::Ascii | Self::Unicode => false,
         }
     }
 
+    #[cfg(feature = "ascii")]
     pub(crate) fn is_text(self) -> bool {
         match self {
-            #[cfg(feature = "ascii")]
             Self::Ascii | Self::Unicode => true,
-            _ => false,
+            #[cfg(feature = "svg")]
+            Self::Svg => false,
+            #[cfg(feature = "png")]
+            Self::Png => false,
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg => false,
+            #[cfg(feature = "pdf")]
+            Self::Pdf => false,
         }
     }
 }
@@ -1168,7 +1481,13 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "pdf",
+        all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg"))
+    )
+))]
 mod tests {
     use super::*;
 
@@ -1176,8 +1495,25 @@ mod tests {
     #[test]
     fn documented_pdf_budget_flags_are_accepted() {
         for args in [
-            ["merman-cli", "--pdf-max-filter-pixels", "1", "-"].as_slice(),
-            ["merman-cli", "--pdf-filter-unbounded", "-"].as_slice(),
+            [
+                "merman-cli",
+                "render",
+                "-",
+                "--format",
+                "pdf",
+                "--pdf-max-filter-pixels",
+                "1",
+            ]
+            .as_slice(),
+            [
+                "merman-cli",
+                "render",
+                "-",
+                "--format",
+                "pdf",
+                "--pdf-filter-unbounded",
+            ]
+            .as_slice(),
         ] {
             assert!(
                 Cli::try_parse_from(args).is_ok(),
@@ -1186,10 +1522,22 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "parallel-markdown")]
+    #[cfg(all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg")))]
     #[test]
     fn documented_encoding_budget_flag_is_accepted() {
-        let args = ["merman-cli", "--encoding-memory-budget-mib", "1", "-"];
+        #[cfg(feature = "png")]
+        let format = "png";
+        #[cfg(all(not(feature = "png"), feature = "jpeg"))]
+        let format = "jpg";
+        let args = [
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--format",
+            format,
+            "--encoding-memory-budget-mib",
+            "1",
+        ];
         assert!(
             Cli::try_parse_from(args).is_ok(),
             "documented encoding budget flag must parse"
@@ -1386,8 +1734,22 @@ mod profile_tests {
     #[test]
     fn local_icons_profile_exposes_local_sources_without_network_controls() {
         for accepted in [
-            ["merman-cli", "--iconPacks", "@iconify-json/logos"].as_slice(),
-            ["merman-cli", "--iconPacksNamesAndUrls", "logos#icons.json"].as_slice(),
+            [
+                "merman-cli",
+                "render",
+                "-",
+                "--icon-pack",
+                "@iconify-json/logos",
+            ]
+            .as_slice(),
+            [
+                "merman-cli",
+                "render",
+                "-",
+                "--icon-pack-source",
+                "logos#icons.json",
+            ]
+            .as_slice(),
         ] {
             assert!(
                 Cli::try_parse_from(accepted).is_ok(),
@@ -1401,9 +1763,12 @@ mod profile_tests {
         );
 
         let help = <Cli as clap::CommandFactory>::command()
+            .find_subcommand("render")
+            .expect("render command")
+            .clone()
             .render_long_help()
             .to_string();
-        for expected in ["--iconPacks", "--iconPacksNamesAndUrls"] {
+        for expected in ["--icon-pack", "--icon-pack-source"] {
             assert!(
                 help.contains(expected),
                 "local-icons help must expose {expected}:\n{help}"
@@ -1436,6 +1801,7 @@ mod profile_tests {
         assert!(
             Cli::try_parse_from([
                 "merman-cli",
+                "mmdc",
                 "-i",
                 "input.md",
                 "-o",
@@ -1458,6 +1824,9 @@ mod profile_tests {
         }
 
         let help = <Cli as clap::CommandFactory>::command()
+            .find_subcommand("mmdc")
+            .expect("mmdc command")
+            .clone()
             .render_long_help()
             .to_string();
         assert!(

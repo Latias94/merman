@@ -145,7 +145,7 @@ fn cli_renders_plain_ascii_output_to_file() {
             "render",
             "--format",
             "ascii",
-            "--out",
+            "--output",
             out_arg.as_str(),
             "-",
         ],

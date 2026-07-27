@@ -50,6 +50,6 @@ jobs:
           set -euo pipefail
           merman-cli --version
           printf 'flowchart TD\nA[Homebrew] --> B[merman-cli]\n' > homebrew-smoke.mmd
-          merman-cli render homebrew-smoke.mmd --out homebrew-smoke.svg
+          merman-cli render homebrew-smoke.mmd --output homebrew-smoke.svg
           grep -q '<svg' homebrew-smoke.svg
           grep -q 'Homebrew' homebrew-smoke.svg

@@ -28,7 +28,7 @@ fn cli_renders_jpg_smoke() {
             "render",
             "--format",
             "jpg",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])

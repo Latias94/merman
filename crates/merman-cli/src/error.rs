@@ -21,6 +21,8 @@ pub(crate) enum CliError {
     Json(#[from] serde_json::Error),
     #[error("No Mermaid diagram detected")]
     NoDiagram,
+    #[error("no input was provided to `{command}`")]
+    MissingInput { command: &'static str },
     #[error("{0}")]
     InvalidInput(String),
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -32,6 +34,7 @@ impl CliError {
     pub(crate) fn exit_code(&self) -> ExitCode {
         match self {
             Self::InvalidInput(_) | Self::Json(_) => ExitCode::from(2),
+            Self::MissingInput { .. } => ExitCode::from(2),
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::InvalidOutput(_) => ExitCode::from(2),
             Self::Io(_) => ExitCode::from(3),
@@ -48,5 +51,12 @@ impl CliError {
 
     pub(crate) fn is_broken_stdout_pipe(&self) -> bool {
         matches!(self, Self::BrokenStdoutPipe)
+    }
+
+    pub(crate) fn missing_input_command(&self) -> Option<&'static str> {
+        match self {
+            Self::MissingInput { command } => Some(command),
+            _ => None,
+        }
     }
 }

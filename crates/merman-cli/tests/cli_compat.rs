@@ -120,63 +120,7 @@ fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
 }
 
 #[test]
-fn cli_help_groups_top_level_surfaces() {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe).arg("--help").output().expect("run cli");
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-
-    for heading in [
-        "mmdc-compatible export:",
-        "Markdown batch export:",
-        "Merman raster controls:",
-        "Merman PDF controls:",
-        "Merman embedded-image controls:",
-        "Merman resource controls:",
-        "Mermaid configuration:",
-        "Merman renderer controls:",
-        "Runtime policy:",
-        "Accepted browser compatibility flags:",
-    ] {
-        assert!(
-            stdout.contains(heading),
-            "help should include `{heading}` heading:\n{stdout}"
-        );
-    }
-
-    for flag in [
-        "--input",
-        "--output",
-        "--outputFormat",
-        "--configFile",
-        "--cssFile",
-        "--pdfFit",
-        "--pdf-filter-scale",
-        "--pdf-max-filter-image-pixels",
-        "--embedded-image-max-bytes",
-        "--embedded-image-max-total-bytes",
-        "--embedded-image-max-pixels",
-        "--embedded-image-max-total-pixels",
-        "--encoding-parallel-budget-mib",
-        "--iconPacks",
-        "--iconPacksNamesAndUrls",
-        "--runtime",
-        "--system-timing",
-    ] {
-        assert!(
-            stdout.contains(flag),
-            "top-level help should include {flag}:\n{stdout}"
-        );
-    }
-    assert!(
-        stdout.contains("deterministic, native"),
-        "runtime help should enumerate the explicit policies:\n{stdout}"
-    );
-}
-
-#[test]
-fn render_help_excludes_top_level_only_options() {
+fn render_help_excludes_mmdc_and_batch_only_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
         .args(["render", "--help"])
@@ -192,19 +136,25 @@ fn render_help_excludes_top_level_only_options() {
         "--jobs",
         "--puppeteerConfigFile",
         "--pdfFit",
+        "--iconPacks",
+        "--iconPacksNamesAndUrls",
+        "--outputFormat",
+        "--configFile",
+        "--cssFile",
     ] {
         assert!(
             !stdout.contains(absent),
-            "render help should not include top-level-only {absent}:\n{stdout}"
+            "render help should not include mmdc- or batch-only {absent}:\n{stdout}"
         );
     }
 
     for present in [
         "--output",
         "--format",
-        "--cssFile",
+        "--css-file",
         "--raster-max-width",
-        "--iconPacks",
+        "--icon-pack",
+        "--icon-pack-source",
         "--runtime",
         "--system-timing",
         "--sequence-mirror-actors",
@@ -260,7 +210,7 @@ fn cli_rejects_non_positive_numeric_options() {
         ),
     ] {
         let output = Command::new(exe)
-            .args(["-i", "-", "-o", "-", flag, value])
+            .args(["mmdc", "-i", "-", "-o", "-", flag, value])
             .output()
             .expect("run cli");
 
@@ -280,7 +230,7 @@ fn cli_rejects_non_positive_numeric_options() {
 fn cli_rejects_non_positive_jobs() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
-        .args(["-i", "-", "-o", "-", "--jobs", "0"])
+        .args(["mmdc", "-i", "-", "-o", "-", "--jobs", "0"])
         .output()
         .expect("run cli");
 
@@ -391,6 +341,7 @@ fn cli_system_timing_is_explicit_and_reaches_each_runtime_configuration_path() {
 
     let render = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -404,7 +355,7 @@ fn cli_system_timing_is_explicit_and_reaches_each_runtime_configuration_path() {
     assert!(render.status.success(), "stderr: {:?}", render.stderr);
     assert!(
         String::from_utf8_lossy(&render.stderr).contains("[parse-render-timing]"),
-        "top-level render did not carry timing through ExportArgs: {}",
+        "mmdc did not carry timing through compatibility arguments: {}",
         String::from_utf8_lossy(&render.stderr)
     );
 
@@ -963,7 +914,7 @@ fn cli_commands_reject_out_of_range_fixed_local_midnight_consistently() {
 }
 
 #[test]
-fn top_level_gantt_fixed_today_is_carried_through_export_args() {
+fn mmdc_gantt_fixed_today_is_carried_through_compatibility_args() {
     let diagram = r#"gantt
 dateFormat YYYY-MM-DD
 section Demo
@@ -972,6 +923,7 @@ Missing ref: id2,after missing,1d
 "#;
     let first = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -987,6 +939,7 @@ Missing ref: id2,after missing,1d
     );
     let second = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1015,7 +968,7 @@ Missing ref: id2,after missing,1d
     );
     assert_ne!(
         first.stdout, second.stdout,
-        "top-level render must carry fixed Gantt time options through ExportArgs"
+        "mmdc must carry fixed Gantt time options through compatibility arguments"
     );
 }
 
@@ -1124,7 +1077,7 @@ fn completion_subcommand_generates_bash_script() {
 }
 
 #[test]
-fn default_cli_renders_architecture_fixture() {
+fn default_mmdc_profile_renders_architecture_fixture() {
     let root = repo_root();
     let fixture = root
         .join("fixtures")
@@ -1138,6 +1091,7 @@ fn default_cli_renders_architecture_fixture() {
     Command::new(exe)
         .current_dir(&root)
         .args([
+            "mmdc",
             "-i",
             fixture.to_string_lossy().as_ref(),
             "-o",
@@ -1151,9 +1105,9 @@ fn default_cli_renders_architecture_fixture() {
 }
 
 #[test]
-fn top_level_missing_output_directory_uses_output_exit_code() {
+fn mmdc_missing_output_directory_uses_output_exit_code() {
     let output = run_with_stdin(
-        &["-i", "-", "-o", "missing-dir/out.svg"],
+        &["mmdc", "-i", "-", "-o", "missing-dir/out.svg"],
         "flowchart LR\nA-->B\n",
     );
 
@@ -1174,9 +1128,9 @@ fn top_level_missing_output_directory_uses_output_exit_code() {
 }
 
 #[test]
-fn top_level_output_dash_writes_to_stdout() {
+fn mmdc_output_dash_writes_to_stdout() {
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-"],
+        &["mmdc", "-i", "-", "-o", "-"],
         "flowchart LR\nA[Start] --> B[Done]\n",
     );
 
@@ -1195,15 +1149,15 @@ fn top_level_output_dash_writes_to_stdout() {
 }
 
 #[test]
-fn top_level_svg_pipeline_resvg_safe_outputs_export_safe_svg() {
+fn mmdc_svg_pipeline_resvg_safe_outputs_export_safe_svg() {
     let diagram = "flowchart TD
 A[Start] --> B{Is it working?}
 B -->|Yes| C[Ship it]
 B -->|No| D[Debug]
 ";
-    let parity = run_with_stdin(&["-i", "-", "-o", "-"], diagram);
+    let parity = run_with_stdin(&["mmdc", "-i", "-", "-o", "-"], diagram);
     let resvg_safe = run_with_stdin(
-        &["-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
+        &["mmdc", "-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
         diagram,
     );
 
@@ -1231,11 +1185,11 @@ B -->|No| D[Debug]
 }
 
 #[test]
-fn top_level_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallback() {
+fn mmdc_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallback() {
     let diagram = "quadrantChart\n  title Reach and engagement\n  x-axis Low --> High\n  y-axis Low --> High\n  Campaign A: [0.3, 0.6]\n";
-    let parity = run_with_stdin(&["-i", "-", "-o", "-"], diagram);
+    let parity = run_with_stdin(&["mmdc", "-i", "-", "-o", "-"], diagram);
     let resvg_safe = run_with_stdin(
-        &["-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
+        &["mmdc", "-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
         diagram,
     );
 
@@ -1260,7 +1214,7 @@ fn top_level_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallba
 }
 
 #[test]
-fn top_level_infers_png_from_output_extension() {
+fn mmdc_infers_png_from_output_extension() {
     let root = repo_root();
     let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");
     assert!(fixture.exists(), "fixture missing: {}", fixture.display());
@@ -1272,6 +1226,7 @@ fn top_level_infers_png_from_output_extension() {
     Command::new(exe)
         .current_dir(&root)
         .args([
+            "mmdc",
             "-i",
             fixture.to_string_lossy().as_ref(),
             "-o",
@@ -1288,7 +1243,7 @@ fn top_level_infers_png_from_output_extension() {
 }
 
 #[test]
-fn top_level_rejects_unknown_output_extension() {
+fn mmdc_rejects_unknown_output_extension() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.mmd");
     fs::write(&input, "flowchart LR\nA-->B\n").expect("write input");
@@ -1296,7 +1251,7 @@ fn top_level_rejects_unknown_output_extension() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", "input.mmd", "-o", "out.unknown"])
+        .args(["mmdc", "-i", "input.mmd", "-o", "out.unknown"])
         .output()
         .expect("run cli");
 
@@ -1310,7 +1265,7 @@ fn top_level_rejects_unknown_output_extension() {
 }
 
 #[test]
-fn top_level_output_format_does_not_bypass_extension_validation() {
+fn mmdc_output_format_does_not_bypass_extension_validation() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.mmd");
     fs::write(&input, "flowchart LR\nA-->B\n").expect("write input");
@@ -1318,7 +1273,7 @@ fn top_level_output_format_does_not_bypass_extension_validation() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", "input.mmd", "-o", "out.unknown", "-e", "svg"])
+        .args(["mmdc", "-i", "input.mmd", "-o", "out.unknown", "-e", "svg"])
         .output()
         .expect("run cli");
 
@@ -1334,9 +1289,9 @@ fn top_level_output_format_does_not_bypass_extension_validation() {
 }
 
 #[test]
-fn top_level_rejects_unknown_output_format() {
+fn mmdc_rejects_unknown_output_format() {
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "-e", "gif"],
+        &["mmdc", "-i", "-", "-o", "-", "-e", "gif"],
         "flowchart LR\nA-->B\n",
     );
 
@@ -1349,7 +1304,7 @@ fn top_level_rejects_unknown_output_format() {
 }
 
 #[test]
-fn top_level_pdf_fit_controls_page_size() {
+fn mmdc_pdf_fit_controls_page_size() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.mmd");
     fs::write(
@@ -1371,12 +1326,12 @@ xychart-beta
     let exe = assert_cmd::cargo_bin!("merman-cli");
     Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", "input.mmd", "-o", "default.pdf", "-q"])
+        .args(["mmdc", "-i", "input.mmd", "-o", "default.pdf", "-q"])
         .assert()
         .success();
     Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", "input.mmd", "-o", "fit.pdf", "--pdfFit", "-q"])
+        .args(["mmdc", "-i", "input.mmd", "-o", "fit.pdf", "--pdfFit", "-q"])
         .assert()
         .success();
 
@@ -1402,9 +1357,9 @@ xychart-beta
 }
 
 #[test]
-fn top_level_default_output_for_stdin_writes_out_svg() {
+fn mmdc_default_output_for_stdin_writes_out_svg() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let output = run_with_stdin_in_dir(&["-q"], "flowchart LR\nA-->B\n", Some(tmp.path()));
+    let output = run_with_stdin_in_dir(&["mmdc", "-q"], "flowchart LR\nA-->B\n", Some(tmp.path()));
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let out = tmp.path().join("out.svg");
@@ -1420,10 +1375,11 @@ fn config_file_theme_overrides_cli_theme() {
     fs::write(&config, r#"{"theme":"default"}"#).expect("write config");
 
     let diagram = "flowchart LR\nA-->B\n";
-    let default_svg = run_with_stdin(&["-i", "-", "-o", "-", "-t", "default"], diagram);
-    let dark_svg = run_with_stdin(&["-i", "-", "-o", "-", "-t", "dark"], diagram);
+    let default_svg = run_with_stdin(&["mmdc", "-i", "-", "-o", "-", "-t", "default"], diagram);
+    let dark_svg = run_with_stdin(&["mmdc", "-i", "-", "-o", "-", "-t", "dark"], diagram);
     let config_svg = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1477,6 +1433,7 @@ fn config_file_theme_variables_and_theme_css_affect_svg() {
 
     let output = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1514,6 +1471,7 @@ fn non_object_config_file_fails_before_rendering() {
 
     let output = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1547,6 +1505,7 @@ fn markdown_input_writes_numbered_svg_artefacts() {
     Command::new(exe)
         .current_dir(tmp.path())
         .args([
+            "mmdc",
             "-i",
             input.to_string_lossy().as_ref(),
             "-o",
@@ -1577,6 +1536,7 @@ fn markdown_output_rewrites_mermaid_blocks_to_images() {
     Command::new(exe)
         .current_dir(tmp.path())
         .args([
+            "mmdc",
             "-i",
             input.to_string_lossy().as_ref(),
             "-o",
@@ -1609,6 +1569,7 @@ fn markdown_artefacts_directory_controls_image_location() {
     Command::new(exe)
         .current_dir(tmp.path())
         .args([
+            "mmdc",
             "-i",
             input.to_string_lossy().as_ref(),
             "-o",
@@ -1637,7 +1598,7 @@ fn markdown_input_rejects_stdout_output() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", input.to_string_lossy().as_ref(), "-o", "-"])
+        .args(["mmdc", "-i", input.to_string_lossy().as_ref(), "-o", "-"])
         .assert()
         .failure();
 }
@@ -1651,7 +1612,7 @@ fn markdown_without_charts_logs_and_writes_no_artefacts() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
         .current_dir(tmp.path())
-        .args(["-i", "input.md", "-o", "out.svg"])
+        .args(["mmdc", "-i", "input.md", "-o", "out.svg"])
         .output()
         .expect("run cli");
 
@@ -1673,7 +1634,15 @@ fn markdown_without_charts_logs_and_writes_no_artefacts() {
 #[test]
 fn missing_puppeteer_config_file_fails_before_rendering() {
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "-p", "missing-puppeteer-config.json"],
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "-p",
+            "missing-puppeteer-config.json",
+        ],
         "flowchart LR\nA-->B\n",
     );
 
@@ -1694,6 +1663,7 @@ fn invalid_puppeteer_config_file_fails_before_rendering() {
 
     let output = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1738,7 +1708,15 @@ fn dynamic_icon_pack_url_file_renders_flowchart_icon() {
 
     let icon_arg = format!("test#{}", icons.display());
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", &icon_arg],
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--iconPacksNamesAndUrls",
+            &icon_arg,
+        ],
         "flowchart TD\nA@{ icon: \"test:rocket\", label: \"Rocket\" }\n",
     );
 
@@ -1777,7 +1755,15 @@ fn dynamic_icon_pack_url_file_renders_tree_view_icon() {
 
     let icon_arg = format!("test#{}", icons.display());
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", &icon_arg],
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--iconPacksNamesAndUrls",
+            &icon_arg,
+        ],
         "treeView-beta\nRoot icon(test:rocket)\n",
     );
 
@@ -1813,6 +1799,7 @@ fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
     let icon_arg = format!("remote#{url}");
     let output = run_with_stdin(
         &[
+            "mmdc",
             "-i",
             "-",
             "-o",
@@ -1857,7 +1844,15 @@ fn dynamic_icon_pack_package_renders_local_node_modules_icon() {
     .expect("write icons");
 
     let output = run_with_stdin_in_dir(
-        &["-i", "-", "-o", "-", "--iconPacks", "@iconify-json/test"],
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--iconPacks",
+            "@iconify-json/test",
+        ],
         "flowchart TD\nA@{ icon: \"test:box\", label: \"Box\" }\n",
         Some(tmp.path()),
     );

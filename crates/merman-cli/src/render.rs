@@ -9,23 +9,21 @@ mod plan;
 mod svg_pipeline;
 
 pub(crate) use executor::run_render;
-pub(crate) use plan::{render_plan_for_mmdc, render_plan_for_subcommand};
+#[cfg(feature = "markdown")]
+pub(crate) use plan::render_plan_for_batch;
+pub(crate) use plan::{render_plan_for_mmdc, render_plan_for_native};
 
-#[cfg(all(
-    test,
-    feature = "svg",
-    feature = "network-icons",
-    feature = "parallel-markdown",
-    feature = "shell-completions"
-))]
+#[cfg(all(test, feature = "svg", feature = "png"))]
 mod tests {
     use super::executor::RenderRequest;
-    use super::export::{EmbeddedImageCliOptions, PdfCliOptions, RasterCliOptions};
     use super::plan::{RenderMode, RenderPlan};
     use super::svg_pipeline::svg_output_policy;
-    use crate::cli::{
-        ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind, TextOutputCliArgs,
-    };
+    #[cfg(feature = "ascii")]
+    use crate::cli::TextOutputCliArgs;
+    use crate::cli::{ParseCliArgs, RenderCliArgs, RenderFormat, RenderInputKind, SvgPipelineKind};
+    #[cfg(feature = "pdf")]
+    use crate::invocation::ResolvedPdfOptions;
+    use crate::invocation::{ResolvedEmbeddedImageOptions, ResolvedRasterOptions};
     use crate::io::OutputTarget;
     use merman::svg::{HeadlessRenderer, RenderEnvironment};
 
@@ -50,24 +48,38 @@ mod tests {
     fn test_plan(format: RenderFormat) -> RenderPlan {
         RenderPlan {
             input: None,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            input_kind: RenderInputKind::Mermaid,
             output: None::<OutputTarget>,
             format,
             parse: ParseCliArgs::default(),
             render: RenderCliArgs::default(),
             scale: 1.0,
-            raster: RasterCliOptions::default(),
-            pdf: PdfCliOptions::default(),
-            embedded_images: EmbeddedImageCliOptions::default(),
+            raster: ResolvedRasterOptions::default(),
+            #[cfg(feature = "pdf")]
+            pdf: ResolvedPdfOptions::default(),
+            embedded_images: ResolvedEmbeddedImageOptions::default(),
             background: Some("#f8fafc".to_string()),
             css: Some(".node { fill: red; }".to_string()),
             svg_pipeline: None,
+            #[cfg(feature = "icons")]
             icon_registry: None,
+            #[cfg(feature = "markdown")]
             artefacts: None,
+            #[cfg(feature = "parallel-markdown")]
             jobs: 1,
+            #[cfg(all(
+                feature = "parallel-markdown",
+                any(feature = "png", feature = "jpeg", feature = "pdf")
+            ))]
+            encoding_parallel_budget_bytes: None,
+            #[cfg(feature = "pdf")]
             pdf_fit: true,
             quiet: true,
+            warn_on_implicit_stdin: false,
+            #[cfg(feature = "ascii")]
             text: TextOutputCliArgs::default(),
-            mode: RenderMode::Subcommand,
+            mode: RenderMode::NativeSingle,
         }
     }
 

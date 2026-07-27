@@ -1,65 +1,41 @@
-use crate::cli::{
-    RenderArgs, RenderFormat, TextCharset, TextColorMode, TextDirection, TextOutputCliArgs,
-};
+use crate::cli::{RenderFormat, TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
+use crate::invocation::{ResolvedDestination, ResolvedOutput, ResolvedSingleRender};
 use crate::io::{OutputTarget, read_input, write_output};
 use std::env;
 use std::io::{self, IsTerminal};
 
-pub(crate) fn run_ascii_render(args: RenderArgs) -> Result<(), CliError> {
-    let input = merge_input(args.export.input_file, args.input)?;
-    let format = args
-        .export
-        .output_format
-        .or_else(|| {
-            args.export
-                .output
-                .as_deref()
-                .and_then(format_from_output_path)
-        })
-        .unwrap_or_default();
-    let output = args.export.output.map(OutputTarget::from_cli);
-    let text = read_input(input.as_deref(), args.export.quiet)?;
+pub(crate) fn run_ascii_render(args: ResolvedSingleRender) -> Result<(), CliError> {
+    let input = args.input.to_path_buf();
+    let (format, destination, text_options) = match args.output {
+        ResolvedOutput::Text {
+            format,
+            destination,
+            options,
+        } => (format, destination, options.into_legacy_cli_args()),
+    };
+    let output = match destination {
+        ResolvedDestination::Stdout => Some(OutputTarget::Stdout),
+        ResolvedDestination::File(path) => Some(OutputTarget::File(path)),
+    };
+    let quiet = args.common.quiet;
+    let parse = args.common.parse.into_legacy_cli_args();
+    let render = args.common.render.into_legacy_cli_args();
+    let text = read_input(Some(&input), quiet)?;
     let options = apply_text_options(
-        text_options_for_output(args.export.text, output.as_ref()),
+        text_options_for_output(text_options, output.as_ref()),
         format,
     )?;
     let renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_engine(engine_for(&args.export.parse)?)
-        .with_parse_options(parse_options(&args.export.parse))
+        .with_engine(engine_for(&parse)?)
+        .with_parse_options(parse_options(&parse))
         .with_ascii_options(options)
-        .with_resource_profile(args.export.render.resource_profile);
+        .with_resource_profile(render.resource_profile);
     let Some(rendered) = renderer.render_ascii_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
     write_output(output.as_ref(), rendered.as_bytes())
-}
-
-fn merge_input(
-    option_input: Option<String>,
-    positional_input: Option<String>,
-) -> Result<Option<String>, CliError> {
-    match (option_input, positional_input) {
-        (Some(a), Some(b)) if a != b => Err(CliError::InvalidInput(
-            "input was provided both positionally and with --input; choose one".to_string(),
-        )),
-        (Some(a), _) => Ok(Some(a)),
-        (_, Some(b)) => Ok(Some(b)),
-        (None, None) => Ok(None),
-    }
-}
-
-fn format_from_output_path(path: &str) -> Option<RenderFormat> {
-    let extension = std::path::Path::new(path)
-        .extension()?
-        .to_str()?
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "unicode" => Some(RenderFormat::Unicode),
-        "txt" | "ascii" => Some(RenderFormat::Ascii),
-        _ => None,
-    }
 }
 
 fn text_options_for_output(

@@ -32,7 +32,7 @@ fn cli_renders_pdf_smoke() {
             "render",
             "--format",
             "pdf",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])
@@ -84,7 +84,7 @@ fn cli_pdf_preserves_large_intrinsic_vector_page_by_default() {
             "render",
             "--format",
             "pdf",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             input.to_string_lossy().as_ref(),
         ])
@@ -119,7 +119,7 @@ fn cli_pdf_profile_does_not_expose_raster_pixel_limit_flags() {
             "1",
             "--raster-max-pixels",
             "1",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             input.to_string_lossy().as_ref(),
         ])
@@ -139,14 +139,14 @@ fn cli_pdf_profile_does_not_expose_raster_pixel_limit_flags() {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[test]
-fn cli_pdf_ignores_raster_pixel_limit_flags_when_raster_is_compiled() {
+fn cli_pdf_rejects_raster_pixel_limit_flags_when_raster_is_compiled() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("large.svg");
     let out = tmp.path().join("large.pdf");
     fs::write(&input, large_svg_input()).expect("write svg");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
+    let output = Command::new(exe)
         .args([
             "render",
             "--format",
@@ -157,13 +157,24 @@ fn cli_pdf_ignores_raster_pixel_limit_flags_when_raster_is_compiled() {
             "1",
             "--raster-max-pixels",
             "1",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             input.to_string_lossy().as_ref(),
         ])
-        .assert()
-        .success();
+        .output()
+        .expect("run cli");
 
-    let bytes = fs::read(&out).expect("read pdf");
-    assert!(bytes.starts_with(b"%PDF-"), "output is not a PDF");
+    assert!(
+        !output.status.success(),
+        "native PDF rendering must reject PNG/JPEG-only raster limits"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("raster options require --format png or --format jpg"),
+        "unexpected error: {stderr}"
+    );
+    assert!(
+        !out.exists(),
+        "validation must fail before creating the output file"
+    );
 }

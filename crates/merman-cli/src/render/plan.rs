@@ -1,17 +1,24 @@
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use super::export::EmbeddedImageCliOptions;
-#[cfg(feature = "pdf")]
-use super::export::PdfCliOptions;
-#[cfg(any(feature = "png", feature = "jpeg"))]
-use super::export::RasterCliOptions;
 #[cfg(feature = "icons")]
 use super::icons::load_icon_registry;
-use crate::cli::{
-    ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat, SvgPipelineKind,
-};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::cli::RenderInputKind;
+use crate::cli::{ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind};
 #[cfg(feature = "ascii")]
 use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
+#[cfg(feature = "markdown")]
+use crate::invocation::ResolvedBatchRender;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::invocation::ResolvedEmbeddedImageOptions;
+#[cfg(feature = "pdf")]
+use crate::invocation::ResolvedPdfOptions;
+#[cfg(any(feature = "png", feature = "jpeg"))]
+use crate::invocation::ResolvedRasterOptions;
+#[cfg(feature = "markdown")]
+use crate::invocation::ResolvedWorkflow;
+use crate::invocation::{
+    ResolvedDestination, ResolvedMmdcRender, ResolvedOutput, ResolvedSingleRender,
+};
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
 #[cfg(feature = "markdown")]
 use crate::markdown;
@@ -28,12 +35,16 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RenderMode {
     MmdcCompat,
-    Subcommand,
+    NativeSingle,
+    #[cfg(feature = "markdown")]
+    NativeBatch,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct RenderPlan {
-    pub(super) input: Option<String>,
+    pub(super) input: Option<PathBuf>,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    pub(super) input_kind: RenderInputKind,
     pub(super) output: Option<OutputTarget>,
     pub(super) format: RenderFormat,
     pub(super) parse: ParseCliArgs,
@@ -41,11 +52,11 @@ pub(crate) struct RenderPlan {
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(super) scale: f32,
     #[cfg(any(feature = "png", feature = "jpeg"))]
-    pub(super) raster: RasterCliOptions,
+    pub(super) raster: ResolvedRasterOptions,
     #[cfg(feature = "pdf")]
-    pub(super) pdf: PdfCliOptions,
+    pub(super) pdf: ResolvedPdfOptions,
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    pub(super) embedded_images: EmbeddedImageCliOptions,
+    pub(super) embedded_images: ResolvedEmbeddedImageOptions,
     pub(super) background: Option<String>,
     pub(super) css: Option<String>,
     pub(super) svg_pipeline: Option<SvgPipelineKind>,
@@ -55,137 +66,343 @@ pub(crate) struct RenderPlan {
     pub(super) artefacts: Option<PathBuf>,
     #[cfg(feature = "parallel-markdown")]
     pub(super) jobs: usize,
+    #[cfg(all(
+        feature = "parallel-markdown",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    pub(super) encoding_parallel_budget_bytes: Option<u64>,
     #[cfg(feature = "pdf")]
     pub(super) pdf_fit: bool,
     pub(super) quiet: bool,
+    pub(super) warn_on_implicit_stdin: bool,
     #[cfg(feature = "ascii")]
     pub(super) text: TextOutputCliArgs,
     pub(super) mode: RenderMode,
 }
 
-pub(crate) fn render_plan_for_mmdc(
-    positional_input: Option<String>,
-    export: ExportArgs,
-) -> Result<RenderPlan, CliError> {
-    let input = merge_input(export.input_file.clone(), positional_input)?;
-    #[cfg(not(feature = "markdown"))]
-    if input.as_deref().is_some_and(is_markdown_path)
-        || export.output.as_deref().is_some_and(is_markdown_path)
-    {
-        return Err(CliError::InvalidInput(
-            "Markdown batch export requires building merman-cli with --features markdown."
-                .to_string(),
-        ));
-    }
+pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<RenderPlan, CliError> {
     #[cfg(feature = "markdown")]
-    let artefacts = prepare_artefacts_dir(export.artefacts.as_deref(), input.as_deref())?;
-
-    let format = infer_output_format(export.output.as_deref(), export.output_format)?
-        .unwrap_or(RenderFormat::Svg);
-    validate_mmdc_output_path(export.output.as_deref())?;
-    let output = Some(OutputTarget::from_cli(
-        export
-            .output
-            .clone()
-            .unwrap_or_else(|| default_mmdc_output_path(input.as_deref(), format)),
-    ));
+    let markdown_batch = matches!(resolved.workflow, ResolvedWorkflow::MarkdownBatch);
+    #[cfg(feature = "markdown")]
+    let artefacts = if markdown_batch {
+        prepare_artefacts_dir(
+            resolved.compatibility.artefacts.as_deref(),
+            resolved.input.file(),
+        )?
+    } else {
+        None
+    };
+    validate_puppeteer_config_file(resolved.compatibility.puppeteer_config_file.as_deref())?;
+    let input = resolved
+        .input_was_explicit
+        .then(|| resolved.input.to_path_buf());
+    let output = project_output(resolved.output);
+    #[cfg(feature = "parallel-markdown")]
+    let jobs = resolved.jobs;
+    #[cfg(all(
+        feature = "parallel-markdown",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    let encoding_parallel_budget_bytes =
+        markdown_batch.then_some(resolved.encoding_parallel_budget_bytes);
+    let common = resolved.common;
     #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
-        &export.icons.icon_packs,
-        &export.icons.icon_packs_names_and_urls,
+        &common.icons.packages,
+        &common.icons.named_sources,
         #[cfg(feature = "network-icons")]
-        export.icons.allow_network,
+        common.icons.allow_network,
     )?;
+    let parse = common.parse.into_legacy_cli_args();
+    let render = common.render.into_legacy_cli_args();
     #[cfg(feature = "ascii")]
-    let text = resolve_text_output_args(export.text.clone(), output.as_ref());
-
-    let mut parse = export.parse.clone();
-    let mut render = export.render.clone();
-    apply_official_defaults(&mut parse, &mut render);
-    validate_puppeteer_config_file(export.puppeteer_config_file.as_deref())?;
+    let text = resolve_text_output_args(output.text, output.destination.as_ref());
 
     Ok(RenderPlan {
         input,
-        output,
-        format,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        input_kind: RenderInputKind::Mermaid,
+        output: output.destination,
+        format: output.format,
         parse,
         render,
         #[cfg(any(feature = "png", feature = "jpeg"))]
-        scale: export.raster.scale.unwrap_or(1.0),
+        scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
-        raster: RasterCliOptions::from_args(&export.raster)?,
+        raster: output.raster,
         #[cfg(feature = "pdf")]
-        pdf: PdfCliOptions::from_args(&export.pdf),
+        pdf: output.pdf,
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        embedded_images: EmbeddedImageCliOptions::from_args(&export.embedded_images),
-        background: Some(
-            export
-                .background_color
-                .clone()
-                .unwrap_or_else(|| "white".to_string()),
-        ),
-        css: read_optional_text_file(export.css_file.as_deref(), "CSS file")?,
-        svg_pipeline: export.svg_pipeline,
+        embedded_images: output.embedded_images,
+        background: common.background,
+        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        svg_pipeline: output.svg_pipeline,
         #[cfg(feature = "icons")]
         icon_registry,
         #[cfg(feature = "markdown")]
         artefacts,
         #[cfg(feature = "parallel-markdown")]
-        jobs: export.jobs.unwrap_or_else(default_jobs),
+        jobs,
+        #[cfg(all(
+            feature = "parallel-markdown",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        encoding_parallel_budget_bytes,
         #[cfg(feature = "pdf")]
-        pdf_fit: export.pdf_fit,
-        quiet: export.quiet,
+        pdf_fit: output.pdf_fit,
+        quiet: common.quiet,
+        warn_on_implicit_stdin: resolved.warn_on_implicit_stdin,
         #[cfg(feature = "ascii")]
         text,
         mode: RenderMode::MmdcCompat,
     })
 }
 
-pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan, CliError> {
-    let input = merge_input(args.export.input_file.clone(), args.input)?;
-    let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)?
-        .unwrap_or(RenderFormat::Svg);
-    let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
+pub(crate) fn render_plan_for_native(
+    resolved: ResolvedSingleRender,
+) -> Result<RenderPlan, CliError> {
+    let input = Some(resolved.input.to_path_buf());
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    let input_kind = resolved.input_kind;
+    let output = project_output(resolved.output);
+    let common = resolved.common;
     #[cfg(feature = "icons")]
     let icon_registry = load_icon_registry(
-        &args.export.icons.icon_packs,
-        &args.export.icons.icon_packs_names_and_urls,
+        &common.icons.packages,
+        &common.icons.named_sources,
         #[cfg(feature = "network-icons")]
-        args.export.icons.allow_network,
+        common.icons.allow_network,
     )?;
+    let parse = common.parse.into_legacy_cli_args();
+    let render = common.render.into_legacy_cli_args();
     #[cfg(feature = "ascii")]
-    let text = resolve_text_output_args(args.export.text.clone(), output.as_ref());
+    let text = resolve_text_output_args(output.text, output.destination.as_ref());
 
     Ok(RenderPlan {
         input,
-        output,
-        format,
-        parse: args.export.parse.clone(),
-        render: args.export.render.clone(),
-        #[cfg(any(feature = "png", feature = "jpeg"))]
-        scale: args.export.raster.scale.unwrap_or(1.0),
-        #[cfg(any(feature = "png", feature = "jpeg"))]
-        raster: RasterCliOptions::from_args(&args.export.raster)?,
-        #[cfg(feature = "pdf")]
-        pdf: PdfCliOptions::from_args(&args.export.pdf),
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        embedded_images: EmbeddedImageCliOptions::from_args(&args.export.embedded_images),
-        background: args.export.background_color.clone(),
-        css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
-        svg_pipeline: args.export.svg_pipeline,
+        input_kind,
+        output: output.destination,
+        format: output.format,
+        parse,
+        render,
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        scale: output.scale,
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        raster: output.raster,
+        #[cfg(feature = "pdf")]
+        pdf: output.pdf,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        embedded_images: output.embedded_images,
+        background: common.background,
+        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        svg_pipeline: output.svg_pipeline,
         #[cfg(feature = "icons")]
         icon_registry,
         #[cfg(feature = "markdown")]
         artefacts: None,
         #[cfg(feature = "parallel-markdown")]
         jobs: 1,
+        #[cfg(all(
+            feature = "parallel-markdown",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        encoding_parallel_budget_bytes: None,
         #[cfg(feature = "pdf")]
-        pdf_fit: true,
-        quiet: args.export.quiet,
+        pdf_fit: output.pdf_fit,
+        quiet: common.quiet,
+        warn_on_implicit_stdin: false,
         #[cfg(feature = "ascii")]
         text,
-        mode: RenderMode::Subcommand,
+        mode: RenderMode::NativeSingle,
     })
+}
+
+#[cfg(feature = "markdown")]
+pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<RenderPlan, CliError> {
+    let input = Some(resolved.input.to_path_buf());
+    let output_root = resolved.output_root;
+    std::fs::create_dir_all(&output_root)?;
+    let output = project_output(resolved.output);
+    let common = resolved.common;
+    #[cfg(feature = "icons")]
+    let icon_registry = load_icon_registry(
+        &common.icons.packages,
+        &common.icons.named_sources,
+        #[cfg(feature = "network-icons")]
+        common.icons.allow_network,
+    )?;
+    let parse = common.parse.into_legacy_cli_args();
+    let render = common.render.into_legacy_cli_args();
+    #[cfg(feature = "ascii")]
+    let text = resolve_text_output_args(output.text, output.destination.as_ref());
+
+    Ok(RenderPlan {
+        input,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        input_kind: RenderInputKind::Mermaid,
+        output: output.destination,
+        format: output.format,
+        parse,
+        render,
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        scale: output.scale,
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        raster: output.raster,
+        #[cfg(feature = "pdf")]
+        pdf: output.pdf,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        embedded_images: output.embedded_images,
+        background: common.background,
+        css: read_optional_text_file(common.css_file.as_deref(), "CSS file")?,
+        svg_pipeline: output.svg_pipeline,
+        #[cfg(feature = "icons")]
+        icon_registry,
+        artefacts: Some(output_root),
+        #[cfg(feature = "parallel-markdown")]
+        jobs: resolved.jobs,
+        #[cfg(all(
+            feature = "parallel-markdown",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        encoding_parallel_budget_bytes: Some(resolved.encoding_parallel_budget_bytes),
+        #[cfg(feature = "pdf")]
+        pdf_fit: output.pdf_fit,
+        quiet: common.quiet,
+        warn_on_implicit_stdin: false,
+        #[cfg(feature = "ascii")]
+        text,
+        mode: RenderMode::NativeBatch,
+    })
+}
+
+fn output_target(destination: ResolvedDestination) -> Option<OutputTarget> {
+    match destination {
+        ResolvedDestination::Stdout => Some(OutputTarget::Stdout),
+        ResolvedDestination::File(path) => Some(OutputTarget::File(path)),
+    }
+}
+
+struct ProjectedOutput {
+    destination: Option<OutputTarget>,
+    format: RenderFormat,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    scale: f32,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    raster: ResolvedRasterOptions,
+    #[cfg(feature = "pdf")]
+    pdf: ResolvedPdfOptions,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    embedded_images: ResolvedEmbeddedImageOptions,
+    svg_pipeline: Option<SvgPipelineKind>,
+    #[cfg(feature = "pdf")]
+    pdf_fit: bool,
+    #[cfg(feature = "ascii")]
+    text: TextOutputCliArgs,
+}
+
+fn project_output(output: ResolvedOutput) -> ProjectedOutput {
+    match output {
+        ResolvedOutput::Svg {
+            destination,
+            pipeline,
+        } => ProjectedOutput {
+            destination: output_target(destination),
+            format: RenderFormat::Svg,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            scale: 1.0,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster: ResolvedRasterOptions::default(),
+            #[cfg(feature = "pdf")]
+            pdf: ResolvedPdfOptions::default(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            embedded_images: ResolvedEmbeddedImageOptions::default(),
+            svg_pipeline: pipeline,
+            #[cfg(feature = "pdf")]
+            pdf_fit: true,
+            #[cfg(feature = "ascii")]
+            text: TextOutputCliArgs::default(),
+        },
+        #[cfg(feature = "ascii")]
+        ResolvedOutput::Text {
+            format,
+            destination,
+            options,
+        } => ProjectedOutput {
+            destination: output_target(destination),
+            format,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            scale: 1.0,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster: ResolvedRasterOptions::default(),
+            #[cfg(feature = "pdf")]
+            pdf: ResolvedPdfOptions::default(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            embedded_images: ResolvedEmbeddedImageOptions::default(),
+            svg_pipeline: None,
+            #[cfg(feature = "pdf")]
+            pdf_fit: true,
+            text: options.into_legacy_cli_args(),
+        },
+        #[cfg(feature = "png")]
+        ResolvedOutput::Png {
+            destination,
+            raster,
+            embedded_images,
+        } => ProjectedOutput {
+            destination: output_target(destination),
+            format: RenderFormat::Png,
+            scale: raster.scale,
+            raster,
+            #[cfg(feature = "pdf")]
+            pdf: ResolvedPdfOptions::default(),
+            embedded_images,
+            svg_pipeline: None,
+            #[cfg(feature = "pdf")]
+            pdf_fit: true,
+            #[cfg(feature = "ascii")]
+            text: TextOutputCliArgs::default(),
+        },
+        #[cfg(feature = "jpeg")]
+        ResolvedOutput::Jpeg {
+            destination,
+            raster,
+            embedded_images,
+        } => ProjectedOutput {
+            destination: output_target(destination),
+            format: RenderFormat::Jpeg,
+            scale: raster.scale,
+            raster,
+            #[cfg(feature = "pdf")]
+            pdf: ResolvedPdfOptions::default(),
+            embedded_images,
+            svg_pipeline: None,
+            #[cfg(feature = "pdf")]
+            pdf_fit: true,
+            #[cfg(feature = "ascii")]
+            text: TextOutputCliArgs::default(),
+        },
+        #[cfg(feature = "pdf")]
+        ResolvedOutput::Pdf {
+            destination,
+            options,
+            embedded_images,
+            fit,
+        } => ProjectedOutput {
+            destination: output_target(destination),
+            format: RenderFormat::Pdf,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            scale: 1.0,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster: ResolvedRasterOptions::default(),
+            pdf: options,
+            embedded_images,
+            svg_pipeline: None,
+            pdf_fit: fit,
+            #[cfg(feature = "ascii")]
+            text: TextOutputCliArgs::default(),
+        },
+    }
 }
 
 impl RenderPlan {
@@ -347,43 +564,27 @@ fn resolve_auto_text_color(environment: TerminalColorEnvironment) -> TextColorMo
     }
 }
 
-fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs) {
-    if parse.theme.is_none() {
-        parse.theme = Some("default".to_string());
-    }
-    if render.container_width.is_none() {
-        render.container_width = Some(800.0);
-    }
-    if render.container_height.is_none() {
-        render.container_height = Some(600.0);
-    }
-}
-
 #[cfg(feature = "markdown")]
 fn prepare_artefacts_dir(
-    artefacts: Option<&str>,
-    input: Option<&str>,
+    artefacts: Option<&Path>,
+    input: Option<&Path>,
 ) -> Result<Option<PathBuf>, CliError> {
-    let Some(raw_path) = artefacts else {
+    let Some(path) = artefacts else {
         return Ok(None);
     };
 
-    let is_markdown_input = input
-        .filter(|path| *path != "-")
-        .map(|path| markdown::is_markdown_path(Path::new(path)))
-        .unwrap_or(false);
+    let is_markdown_input = input.map(markdown::is_markdown_path).unwrap_or(false);
     if !is_markdown_input {
         return Err(CliError::InvalidInput(
             "Artefacts [-a|--artefacts] path can only be used with Markdown input file".to_string(),
         ));
     }
 
-    let path = PathBuf::from(raw_path);
     std::fs::create_dir_all(&path)?;
-    Ok(Some(path))
+    Ok(Some(path.to_path_buf()))
 }
 
-fn validate_puppeteer_config_file(path: Option<&str>) -> Result<(), CliError> {
+fn validate_puppeteer_config_file(path: Option<&Path>) -> Result<(), CliError> {
     let Some(path) = path else {
         return Ok(());
     };
@@ -391,206 +592,6 @@ fn validate_puppeteer_config_file(path: Option<&str>) -> Result<(), CliError> {
     let text = read_named_text_file(path, "Puppeteer configuration file")?;
     let _: serde_json::Value = serde_json::from_str(&text)?;
     Ok(())
-}
-
-#[cfg(feature = "parallel-markdown")]
-fn default_jobs() -> usize {
-    std::thread::available_parallelism()
-        .map(|count| (count.get() / 2).max(1))
-        .unwrap_or(1)
-}
-
-fn merge_input(
-    option_input: Option<String>,
-    positional_input: Option<String>,
-) -> Result<Option<String>, CliError> {
-    match (option_input, positional_input) {
-        (Some(a), Some(b)) if a != b => Err(CliError::InvalidInput(
-            "input was provided both positionally and with --input; choose one".to_string(),
-        )),
-        (Some(a), _) => Ok(Some(a)),
-        (_, Some(b)) => Ok(Some(b)),
-        (None, None) => Ok(None),
-    }
-}
-
-#[cfg(not(feature = "markdown"))]
-fn is_markdown_path(path: &str) -> bool {
-    if path == "-" {
-        return false;
-    }
-    matches!(
-        Path::new(path)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(str::to_ascii_lowercase)
-            .as_deref(),
-        Some("md" | "markdown" | "mdx")
-    )
-}
-
-#[cfg(all(test, feature = "svg", not(feature = "markdown")))]
-mod markdown_boundary_tests {
-    use super::*;
-
-    #[test]
-    fn markdown_input_requires_the_markdown_capability() {
-        let error = render_plan_for_mmdc(
-            None,
-            ExportArgs {
-                input_file: Some("diagram.md".to_string()),
-                ..Default::default()
-            },
-        )
-        .expect_err("Markdown input must not fall through to the SVG renderer");
-
-        assert!(error.to_string().contains("--features markdown"), "{error}");
-    }
-
-    #[test]
-    fn markdown_output_requires_the_markdown_capability() {
-        let error = render_plan_for_mmdc(
-            None,
-            ExportArgs {
-                output: Some("diagram.rendered.md".to_string()),
-                ..Default::default()
-            },
-        )
-        .expect_err("Markdown output must not receive SVG bytes");
-
-        assert!(error.to_string().contains("--features markdown"), "{error}");
-    }
-}
-
-fn infer_output_format(
-    output: Option<&str>,
-    explicit: Option<RenderFormat>,
-) -> Result<Option<RenderFormat>, CliError> {
-    match explicit {
-        Some(format) => Ok(Some(format)),
-        None => output
-            .map(format_from_output_path)
-            .transpose()
-            .map(|format| format.flatten()),
-    }
-}
-
-fn format_from_output_path(path: &str) -> Result<Option<RenderFormat>, CliError> {
-    if path == "-" {
-        return Ok(Some(RenderFormat::Svg));
-    }
-    let Some(extension) = Path::new(path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-    else {
-        return Ok(None);
-    };
-    match extension.as_str() {
-        "svg" => Ok(Some(RenderFormat::Svg)),
-        "png" => {
-            #[cfg(feature = "png")]
-            return Ok(Some(RenderFormat::Png));
-            #[cfg(not(feature = "png"))]
-            return Err(CliError::InvalidOutput(
-                "Output format requires building merman-cli with --features png.".to_string(),
-            ));
-        }
-        "jpg" | "jpeg" => {
-            #[cfg(feature = "jpeg")]
-            return Ok(Some(RenderFormat::Jpeg));
-            #[cfg(not(feature = "jpeg"))]
-            return Err(CliError::InvalidOutput(
-                "Output format requires building merman-cli with --features jpeg.".to_string(),
-            ));
-        }
-        "pdf" => {
-            #[cfg(feature = "pdf")]
-            return Ok(Some(RenderFormat::Pdf));
-            #[cfg(not(feature = "pdf"))]
-            return Err(CliError::InvalidOutput(
-                "Output format requires building merman-cli with --features pdf.".to_string(),
-            ));
-        }
-        "txt" | "ascii" => {
-            #[cfg(feature = "ascii")]
-            return Ok(Some(RenderFormat::Ascii));
-            #[cfg(not(feature = "ascii"))]
-            return Err(CliError::InvalidOutput(
-                "Output format requires building merman-cli with --features ascii.".to_string(),
-            ));
-        }
-        "unicode" => {
-            #[cfg(feature = "ascii")]
-            return Ok(Some(RenderFormat::Unicode));
-            #[cfg(not(feature = "ascii"))]
-            return Err(CliError::InvalidOutput(
-                "Output format requires building merman-cli with --features ascii.".to_string(),
-            ));
-        }
-        _ => Ok(None),
-    }
-}
-
-fn validate_mmdc_output_path(output: Option<&str>) -> Result<(), CliError> {
-    let Some(output) = output else {
-        return Ok(());
-    };
-    if output == "-" {
-        return Ok(());
-    }
-    let Some(extension) = Path::new(output)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-    else {
-        return Err(invalid_mmdc_output_extension());
-    };
-    if matches!(extension.as_str(), "md" | "markdown") {
-        return Ok(());
-    }
-    if format_from_output_path(output)?.is_some() {
-        return Ok(());
-    }
-    Err(invalid_mmdc_output_extension())
-}
-
-fn invalid_mmdc_output_extension() -> CliError {
-    CliError::InvalidOutput(
-        "Output file must end with a compiled output extension or .md/.markdown".to_string(),
-    )
-}
-
-fn default_mmdc_output_path(input: Option<&str>, format: RenderFormat) -> String {
-    let extension = format.extension();
-    match input.filter(|path| *path != "-") {
-        Some(path) => format!("{path}.{extension}"),
-        None => format!("out.{extension}"),
-    }
-}
-
-fn subcommand_output_target(
-    output: Option<String>,
-    input: Option<&str>,
-    format: RenderFormat,
-) -> Option<OutputTarget> {
-    if let Some(output) = output {
-        return Some(OutputTarget::from_cli(output));
-    }
-    if format == RenderFormat::Svg || format.is_text() {
-        return None;
-    }
-    Some(OutputTarget::File(default_binary_out_path(
-        input,
-        format.extension(),
-    )))
-}
-
-fn default_binary_out_path(input: Option<&str>, extension: &str) -> PathBuf {
-    match input.filter(|path| *path != "-") {
-        Some(path) => PathBuf::from(path).with_extension(extension),
-        None => PathBuf::from(format!("out.{extension}")),
-    }
 }
 
 #[cfg(all(test, feature = "ascii"))]
