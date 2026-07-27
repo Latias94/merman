@@ -119,7 +119,7 @@ def render_target_path(
         if kind == "spotcheck":
             name = f"spotcheck_{stamp}_perf-runner_{profile}.{suffix}"
         else:
-            name = f"COMPARISON.perf-runner_{stamp}_{profile}.{suffix}"
+            name = f"renderer_comparison_{stamp}_perf-runner_{profile}.{suffix}"
         return repo_root() / "docs" / "performance" / name
     return report_root / f"{stamp}_{profile}_{kind}.{suffix}"
 
@@ -134,7 +134,7 @@ def suite_target_path(
 ) -> Path:
     stamp = today_stamp()
     if docs:
-        name = f"COMPARISON.perf-runner_{stamp}_{profile}_suite_{suite}.{suffix}"
+        name = f"renderer_comparison_{stamp}_perf-runner_{profile}_suite_{suite}.{suffix}"
         return repo_root() / "docs" / "performance" / name
     return report_root / f"{stamp}_{profile}_suite_{suite}.{suffix}"
 

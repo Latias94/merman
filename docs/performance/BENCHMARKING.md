@@ -3,8 +3,7 @@
 This document describes how to benchmark `merman` locally in a way that is reproducible and useful
 for tracking regressions.
 
-For the optimization backlog (prioritized, correctness-first), see:
-`docs/performance/FEARLESS_REFACTORING.md`.
+For the current optimization backlog, see `docs/performance/PERF_PLAN.md`.
 For the execution order, see `docs/performance/RUNBOOK.md`.
 For a one-step local workflow, use `python3 tools/bench/perf_runner.py --profile canary`.
 
@@ -31,6 +30,8 @@ Notes:
 
 - Criterion performs multiple warm-up and measurement iterations and reports statistics.
 - Results vary across CPUs/OSes. Use relative comparisons on the same machine for regressions.
+- Dated evidence preserves the feature names that were actually used at measurement time. Use this
+  document for current commands instead of mechanically rewriting historical reports.
 
 ## What is benchmarked
 
@@ -64,7 +65,7 @@ python3 tools/bench/compare_mermaid_renderers.py
 ```
 
 By default this runs the `quick` corpus suite, writes a Markdown report to
-`docs/performance/COMPARISON.md`, and writes a structured JSON report to
+`target/bench/renderer_comparison.md`, and writes a structured JSON report to
 `target/bench/renderer_comparison.json`.
 
 The comparison harness is intentionally corpus-driven. `tools/bench/corpus.json` records which
@@ -92,14 +93,13 @@ a newer Rust toolchain than this workspace's `rust-toolchain.toml`, pass it expl
 python3 tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
 ```
 
-If you prefer keeping comparison artifacts out of the docs tree, pass `--out` and `--json-out`
-explicitly, e.g.:
+To use a different local artifact name, pass `--out` and `--json-out`, e.g.:
 
 ```bash
 python3 tools/bench/compare_mermaid_renderers.py \
   --suite standard \
-  --out target/bench/COMPARISON.latest.md \
-  --json-out target/bench/COMPARISON.latest.json
+  --out target/bench/renderer_comparison.latest.md \
+  --json-out target/bench/renderer_comparison.latest.json
 ```
 
 For lower-noise results (recommended when tracking canaries), use the `long` preset:
@@ -187,7 +187,7 @@ Mermaid JS results without mixing unlike measurements.
 For interactive visual comparison rather than timed measurement, see
 `docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
 
-See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary suite and report naming.
+See `docs/performance/RUNBOOK.md` for the default sentinel suite and dated report convention.
 
 ## Stage spot-check (recommended for triage)
 
@@ -212,6 +212,17 @@ python3 tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium
 
 The stage spot-check helper accepts the same `--mmdr-toolchain` option when the reference checkout
 needs a newer toolchain.
+
+## Per-request SVG timing diagnostics
+
+When the `render/*` stage is slow, direct `merman-render` callers can set
+`SvgDebugOptions::include_timing_diagnostics` and use an explicit `*_with_debug` render entry point.
+The resulting per-request breakdown can localize family-specific SVG emission work without a
+process-global timing switch.
+
+Use this diagnostic for attribution, then use Criterion A/B measurements for the performance
+claim. Keep timing diagnostics disabled in the measured production path. The API boundary and
+examples are documented in `crates/merman-render/README.md`.
 
 ## Recommendations
 

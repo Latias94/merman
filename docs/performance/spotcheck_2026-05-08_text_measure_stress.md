@@ -17,7 +17,7 @@ guarantees.
 ## Command
 
 ```text
-cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features render --bench text_measure_stress -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 ## Mid Estimates

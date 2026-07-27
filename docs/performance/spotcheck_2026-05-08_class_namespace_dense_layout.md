@@ -10,7 +10,7 @@ These numbers are local spot-checks, not release benchmark guarantees.
 
 - Date: 2026-05-08
 - Command:
-  `cargo bench -p merman --features svg --bench pipeline -- class_namespace_dense --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1`
+  `cargo bench -p merman --features render --bench pipeline -- class_namespace_dense --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1`
 - Fixture: `class_namespace_dense`
 - Fixture source: `fixtures/class/stress_class_dense_namespaces_generics_001.mmd`
 - Text measurer: pipeline bench default

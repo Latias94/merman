@@ -40,7 +40,7 @@ with fresh evidence after each slice.
   - `docs/alignment/STATUS.md`
   - `docs/alignment/PARITY_HARDENING_PLAN.md`
   - `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`
-  - `docs/performance/FEARLESS_REFACTORING.md`
+  - `docs/performance/RUNBOOK.md`
 - Architecture review input:
   - Read-only architecture review run from 2026-06-06, promoted into this workstream's problem
     statement, target state, and task ledger.

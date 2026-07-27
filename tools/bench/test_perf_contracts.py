@@ -121,8 +121,8 @@ class PerfRunnerContractsTest(unittest.TestCase):
         )
         self.assertIn("broader compare suite (standard)", out)
         self.assertIn(
-            "docs/performance/COMPARISON.perf-runner_"
-            f"{perf_runner.today_stamp()}_full_suite_standard.md",
+            "docs/performance/renderer_comparison_"
+            f"{perf_runner.today_stamp()}_perf-runner_full_suite_standard.md",
             out,
         )
         self.assertIn(
@@ -249,6 +249,12 @@ class CompareSelfContractsTest(unittest.TestCase):
 
 
 class RendererComparisonContractsTest(unittest.TestCase):
+    def test_default_markdown_report_stays_outside_docs_tree(self) -> None:
+        self.assertEqual(
+            compare_mermaid_renderers.DEFAULT_MARKDOWN_OUT,
+            "target/bench/renderer_comparison.md",
+        )
+
     def test_formats_tiny_ratios_as_less_than_one_percent(self) -> None:
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.0025), "<0.01x")
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.025), "0.03x")

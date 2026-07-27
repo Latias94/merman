@@ -1,129 +1,129 @@
-# Performance Plan (Targets -> Milestones -> Work Items)
+# Performance Plan
 
-This document is the actionable performance plan for `merman`.
-It is fixture-driven and stage-attributed (parse/layout/render/end-to-end).
+This is the single current performance backlog for Merman. It records what to optimize and why.
+Use [RUNBOOK.md](RUNBOOK.md) for the execution loop and [BENCHMARKING.md](BENCHMARKING.md) for
+measurement semantics and tool details. Dated reports are evidence for a particular revision and
+host; they are not rolling sources of truth.
 
-For the day-to-day workflow and execution order, see:
-`docs/performance/RUNBOOK.md` and `docs/performance/PERF_PLAYBOOK.md`.
+## Current evidence
 
-## Baseline (2026-02-17)
+The current release-range baseline was measured on 2026-07-27:
 
-We track two complementary views against `repo-ref/mermaid-rs-renderer` (mmdr):
+- [Alpha.3 to Alpha.4 Refactoring Report](../release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md)
+  compares `v0.8.0-alpha.3` with `d2698d0a3`.
+- [Renderer comparison, 2026-07-27](renderer_comparison_2026-07-27.md) compares that candidate
+  with Mermaid.js 11.16.0 and `mermaid-rs-renderer` at `7ff1196`.
 
-1) **End-to-end canaries** (throughput view)
-- Report: `docs/performance/COMPARISON.md`
-- Default corpus suite: `canary`
-  (`flowchart_medium`, `class_medium`, `mindmap_medium`, `architecture_medium`)
-- Observed ratios (`merman / mmdr`, mid estimate):
-  - `end_to_end/flowchart_medium`: `0.9x` (faster)
-  - `end_to_end/class_medium`: `0.4x` (faster)
-  - `end_to_end/mindmap_medium`: `2.0x` (slower)
-  - `end_to_end/architecture_medium`: `2.5x` (slower)
+| Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
+| --- | ---: | ---: | ---: | ---: |
+| Current / alpha.3, complete SVG product | 34 | 1.10x | 1.09x | 13 / 21 |
+| Current / alpha.3, minimal same-capability SVG | 32 | 1.12x | 1.07x | 10 / 22 |
+| Current / `mermaid-rs-renderer` | 32 | 0.697x | not reported | 19 / 13 |
+| Current native / warm Mermaid.js browser | 34 | 0.0237x | not reported | 34 / 0 |
 
-2) **Stage attribution** (what moved view)
-- Report: `docs/performance/spotcheck_2026-02-17_after_bench_fix.md`
-- Stage gmeans (`merman / mmdr`, geometric mean over the fixture set):
-  - `parse`: `1.07x`
-  - `layout`: `1.11x`
-  - `render`: `1.46x`
-  - `end_to_end`: `1.48x`
+The cross-runner rows are not quality-adjusted rankings. Merman and `mermaid-rs-renderer` have
+different Mermaid coverage and output goals, and native Rust versus warm Chromium is not a
+browser-WASM comparison.
 
-### What is actually slow (root-cause map)
+## Triage policy
 
-- **Architecture + mindmap end-to-end are the main gaps** (canaries show ~`2.0–2.5x`).
-- **Render fixed-cost is still behind** on the medium canaries (spotcheck `render` gmean `~1.46x`).
-- **Layout is not uniformly slow**:
-  - `class_medium layout` is already faster than mmdr (large margin).
-  - `mindmap_medium` and `architecture_medium` remain the main layout gaps.
-- **Tiny fixtures are dominated by fixed costs** (allocations + per-render setup); keep an eye on
-  deep JSON/config clones and benchmark harness overhead.
+An ordinary regression enters the active queue when both conditions hold:
 
-## Operating constraints
+- the same-host A/B regression exceeds 10%; and
+- the absolute median increase exceeds 50 microseconds.
 
-- Correctness gate: `cargo nextest run -p merman-render`
-- `manatee` forbids unsafe code (`#![forbid(unsafe_code)]`), so hot-loop wins must be safe Rust or
-  algorithmic/representation changes.
-- Prefer deterministic changes: benchmark stability and golden fixtures matter.
+A workload can bypass that threshold when it crosses an interactive frame budget, materially
+changes throughput or memory use, or affects a documented high-volume integration. A large ratio
+on a two-microsecond operation is evidence to retain, not automatically a priority.
 
-## Milestones (prioritized)
+Before implementation:
 
-### M0: Keep measurement honest (guardrails)
+1. Match capabilities between base and target revisions.
+2. Attribute parse, layout, render, and end-to-end stages.
+3. Repeat at least three same-host base/head runs for a decision-grade result, alternating which
+   checkout runs first.
+4. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
+5. Profile only after the slow stage is known.
 
-Goal: fast feedback without chasing noise.
+## Priorities
 
-- Use `tools/bench/stage_spotcheck.py` to decide *where* to optimize.
-- Use `tools/bench/compare_mermaid_renderers.py` to decide *whether* we improved end-to-end canaries.
-- Prefer `--preset long` for canary decisions (reduces noise at µs-scale).
-- For micro-scale work, prefer stress benches (batching work per iteration) and stable parameters:
-  - `--sample-size 50 --warm-up-time 2 --measurement-time 3`
+| Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
+| --- | --- | ---: | ---: | ---: | --- |
+| P0 | `mindmap_medium` | 685 us | 4.78x (+537 us) | 8.93x | Repeated documentation, blog, and editor previews accumulate the largest confirmed regression. |
+| P0 | `requirement_medium` | 337 us | 2.12-2.25x (+178-184 us) | 4.58x | Both complete and minimal capability lanes reproduce the regression. |
+| P0 | `kanban_medium` | 153 us | 3.88-4.08x (+114-118 us) | 5.22x | Both capability lanes reproduce a high family-local fixed cost. |
+| P1 | `flowchart_large` | 24.10 ms | about 1.00x | unavailable | This is not a refactor regression, but it is the only standard fixture beyond a 16.7 ms frame. |
+| P1 | `class_medium` | 950 us | 1.10-1.15x (+89-126 us) | 0.40x | A common family with a modest alpha.3 regression; Merman remains about 2.5x faster than mmdr. |
 
-Deliverables:
-- At least one committed spotcheck per major performance checkpoint (under `docs/performance/`).
-- Keep `end_to_end/*` benches lightweight (avoid Criterion harness overhead that dominates µs-scale fixtures).
+The alpha.3/current confidence intervals for Mindmap, Requirement, and Kanban did not overlap in
+the release measurements. These families also gained Mermaid 11.16 semantics, so optimization must
+preserve the additional work rather than reverting it.
 
-### M1: Reduce SVG emission overhead (multi-diagram, highest ROI)
+Do not prioritize the current Info, Packet, Radar, or Sankey ratios without new absolute-cost
+evidence. Their measured alpha.3 increases are about 2-5 microseconds. Architecture,
+`flowchart_small`, Gantt, and `flowchart_ports_heavy` are within the current noise band.
 
-Targets (spotcheck ratios, medium fixtures):
-- `render` gmean: `<= 1.50x` (from `1.94x`)
-- Canaries: `render/flowchart_medium`, `render/class_medium`, `render/mindmap_medium`, `render/architecture_medium`
+## Work queue
 
-Work items:
-- Remove per-node/per-edge temporary `String` creation in hot loops (`format!`, `to_string`, joins).
-- Introduce per-render scratch buffers (reused `String`s and small `Vec`s) for renderers with many loops.
-- Cache per-render derived values (escaped IDs, compiled style fragments, marker IDs).
-- Prefer write-into-buffer helpers over building intermediate strings.
+### P0.1: Establish stage-level evidence
 
-Correctness gate:
-- `cargo nextest run -p merman-render`
+- Compare alpha.3 `render,cytoscape-layout` with current `svg,layout-cytoscape` for Mindmap instead
+  of comparing mismatched product defaults.
+- Run parse, layout, render, and end-to-end measurements for Mindmap, Requirement, and Kanban with
+  30-50 samples, a two-second warm-up, and a three-second measurement window.
+- Use Instruments Time Profiler and Allocations only for the stage that remains slow.
 
-### M2: Mindmap layout (manatee COSE) - reduce the “small graph + many iters” cost
+Exit: each P0 family has a repeated same-host A/B result and a profile-backed cause.
 
-Targets (stage spotcheck):
-- `layout/mindmap_medium`: `<= 2.0x` (from `2.93x` in `docs/performance/spotcheck_2026-02-17.md`)
-- `end_to_end/mindmap_medium`: `<= 1.3x` (from `2.16x` in the same report)
+### P0.2: Remove redundant configuration ownership
 
-Work items (safe + deterministic):
-- Reduce fixed-cost around COSE calls (allocation and mapping) in `merman-render/src/mindmap.rs`.
-- Use Criterion or an external profiler for both the full layout and lower-level COSE
-  implementation to confirm that changes hit repulsion/spring rather than shifting overhead.
-- Consider algorithmic changes only with strict gates:
-  - early-exit criteria, iteration caps, or specialized tree layout
-  - must preserve golden fixtures and deterministic placements
+Static code review found two low-risk hypotheses:
 
-### M3: Architecture layout - reduce fixed-cost and post-layout passes
+- Kanban constructs an owned `KanbanMarkdown` configuration for layout and again for SVG emission.
+- Requirement clones the effective configuration in its SVG path.
 
-Targets (stage spotcheck):
-- `layout/architecture_medium`: `<= 2.5x` (from `3.86x`)
-- `render/architecture_medium`: `<= 2.0x` (from `2.45x`)
+Change these private helpers to borrow the operation configuration where lifetimes remain local.
+Measure `layout`, `render`, and `end_to_end` independently; preserve Kanban/Requirement goldens,
+sanitization behavior, and custom text-measurer behavior.
 
-Work items:
-- Keep pushing “dense indices + borrowed ids + fewer maps” through the layout pipeline.
-- Treat SVG emission as a first-class part of the architecture gap (stage spotcheck shows both layout and render).
-- Expand stress benches when a sub-step is too fast/noisy to move reliably.
+Exit: the targeted configuration clones are gone and the stage benchmark demonstrates the effect.
 
-### M4: Parse (targeted) - only when it wins canaries
+### P0.3: Prepare labels once per render operation
 
-Targets:
-- Focus on fixtures where parse dominates at the µs scale (tiny fixtures, or known outliers).
+Kanban, Mindmap, and Requirement currently repeat portions of Markdown conversion, HTML
+sanitization, and label measurement between layout and SVG emission. Introduce a private prepared
+label/layout artifact only after profiling confirms the repeated work dominates.
 
-Work items:
-- Add micro-timing inside parsing only after the spotcheck shows parse as the limiting stage.
-- Prefer fast-path + fallback patterns rather than a full parser rewrite.
+- Reuse prepared XHTML and exact text metrics across layout and SVG.
+- Keep caches operation-scoped and bounded.
+- Restore a plain-text fast path only when differential fixtures prove it equivalent for entities,
+  raw HTML, hostile input, Markdown, math, wrapping, fonts, and custom measurers.
 
-## Design decisions (avoid premature rewrites)
+Exit: no duplicated semantic work on the measured path, with family goldens and DOM parity green.
 
-### Should we adopt a parser crate (e.g. `nom`)?
+### P1.1: Avoid editor-only bookkeeping in render-only parsing
 
-Not as a default performance move.
-Today’s biggest, cross-diagram gap is `render`, and the largest layout gaps are `mindmap` and
-`architecture`.
+Several typed render parsers reuse semantic constructors that also populate editor facts and lexeme
+journals, then discard them. Prefer a shared constructor with a semantic-only or no-op facts sink;
+do not fork a second parser.
 
-We should consider a parser crate only if:
-- correctness/maintainability is a problem in the current parser, and
-- a prototype shows measurable wins on parse-heavy canaries.
+Exit: semantic models, errors, recovery, spans, and editor output remain identical, while
+`parse`, `parse_known_type`, and end-to-end measurements show where the fixed cost moved.
 
-### Should we switch graph crates?
+### P1.2: Optimize large Flowchart scaling
 
-Not first.
-The hot problems are dominated by algorithmic and representation choices (dense indices, fewer
-allocations, fewer string-keyed maps), and we can usually get the same wins without a public crate swap.
+Build a size/density curve rather than tuning against one 420-line fixture. Attribute ordering,
+crossing minimization, routing, text measurement, and SVG emission separately. Preserve
+source-backed layout semantics and reject magic-number changes made only to improve the benchmark.
+
+Exit: the curve identifies the first superlinear or allocation-heavy stage and a representative
+large preview fits the agreed interactive budget.
+
+## Guardrails
+
+- Correctness and Mermaid parity take precedence over a timing ratio.
+- Keep native, Node N-API, Node-WASM, and browser-WASM measurements in separate lanes.
+- Do not infer a shared cause from unrelated family ratios.
+- Do not add family allow-lists, bypass deterministic runtime policy, or remove sanitization.
+- Keep exploratory Markdown/JSON under `target/bench`; check in only dated, decision-relevant
+  evidence.

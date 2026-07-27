@@ -20,7 +20,7 @@
 {"kind":"audit","path":"docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md","why":"Prior architecture issue ledger and source-backed findings."}
 {"kind":"alignment","path":"docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md","why":"Admission inventory policy and family support claims."}
 {"kind":"alignment","path":"docs/alignment/PARITY_HARDENING_PLAN.md","why":"Current parity hardening priorities and gate expectations."}
-{"kind":"performance","path":"docs/performance/FEARLESS_REFACTORING.md","why":"Correctness-first refactor guardrails and validation defaults."}
+{"kind":"performance","path":"docs/performance/RUNBOOK.md","why":"Current performance workflow, guardrails, and validation defaults."}
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md","why":"Authoritative target state and scope for this lane."}
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/TODO.md","why":"Human task ledger for this lane."}
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md","why":"Fresh verification commands and evidence anchors."}

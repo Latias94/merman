@@ -26,7 +26,7 @@ LLVM version: 21.1.3
 
 ## Method
 
-- `merman`: `cargo bench -p merman --features svg --bench pipeline -- ...`
+- `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
 - Filter: "end_to_end/(c4_medium|xychart_medium)"
 - Exact benches: `end_to_end/c4_medium`, `end_to_end/xychart_medium`

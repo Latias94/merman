@@ -19,8 +19,7 @@ entry point that COSE-Bilkent already provides.
   - `docs/workstreams/fearless-refactor/STATUS.md`
   - `docs/workstreams/fearless-refactor/COMPLETION_AUDIT.md`
 - Performance docs:
-  - `docs/performance/PERF_MILESTONES.md`
-  - `docs/performance/COMPARISON.md`
+  - `docs/performance/renderer_comparison_2026-05-10.md`
   - `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`
 - Source boundaries:
   - `crates/merman-render/src/architecture.rs`

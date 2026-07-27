@@ -21,7 +21,7 @@ minimal same-capability pipeline has a 1.12x median and 1.07x geometric-mean cur
 ratio across 32 fixtures: 10 are faster, 22 are slower, and seven are within 5%. That is a
 substantial recovery, but not a universal native performance win. Remaining family-local
 regressions are recorded in
-[`FEARLESS_REFACTORING.md`](../performance/FEARLESS_REFACTORING.md).
+[`PERF_PLAN.md`](../performance/PERF_PLAN.md).
 
 ## At a glance
 
@@ -146,6 +146,9 @@ what those packages promise.
 ## Performance evidence
 
 ### Current Merman, Mermaid.js, and mermaid-rs-renderer
+
+The detailed generated checkpoint is
+[`renderer_comparison_2026-07-27.md`](../performance/renderer_comparison_2026-07-27.md).
 
 The checked-in comparison harness ran the `standard` suite: 34 end-to-end fixtures across 24
 families, 20 Criterion samples, one-second warm-up, and one-second measurement windows. It used

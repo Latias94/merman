@@ -2,6 +2,8 @@
 
 This is the default operating procedure for performance work in `merman`.
 Use it whenever you want to decide whether a change is actually faster, and at what stage.
+The current optimization queue lives in `docs/performance/PERF_PLAN.md`; benchmark definitions and
+comparison semantics live in `docs/performance/BENCHMARKING.md`.
 
 ## One-step entrypoints
 
@@ -63,7 +65,11 @@ gh workflow run performance.yml \
 
 ## 1. Choose the question
 
-- **Did the reused hot path get faster?** Use the standard stage spotcheck.
+- **Did this change get faster?** Use `compare_self.py` against two same-host checkouts.
+- **Which stage moved between those revisions?** Repeat the self-comparison for parse, layout,
+  render, and end-to-end groups.
+- **How does the current product compare with another renderer?** Use the stage spotcheck or
+  cross-runner comparison; do not use either as a base/head regression result.
 - **Did request-style parsing improve too?** Use `parse_cold_engine/*`.
 - **Did SVG emission or layout fixed-cost move?** Use the relevant stress bench plus timing toggles.
 - **Did the change hold across more of Mermaid?** Use the `standard`, `cross_family`, or `full`
@@ -71,45 +77,79 @@ gh workflow run performance.yml \
 
 ## 2. Measure in this order
 
-1. Correctness gate:
+1. Fast iteration gate:
    - `cargo nextest run -p merman-render`
-2. Stage attribution for the standard canaries:
-   - `python3 tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium,mindmap_medium,architecture_medium --out target/bench/perf-runner/stage_standard_canaries_latest.md`
-3. Cross-repo throughput comparison when the checkpoint matters:
-   - `python3 tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js --suite canary --out docs/performance/COMPARISON.md`
-4. Hot vs cold parse sanity:
+2. Same-host base/head A/B:
+
+   ```bash
+   python3 tools/bench/compare_self.py \
+     --base-dir ../merman-base \
+     --head-dir . \
+     --base-label base \
+     --head-label HEAD \
+     --preset long \
+     --filter 'end_to_end/(mindmap_medium|requirement_medium|kanban_medium|class_medium)' \
+     --out target/bench/self_comparison.md \
+     --json-out target/bench/self_comparison.json
+   ```
+
+   Repeat the command with `parse`, `layout`, and `render` in place of `end_to_end` when stage
+   attribution is required. The helper assumes both revisions use the current `svg` feature
+   vocabulary; release ranges that renamed capabilities need explicit per-revision feature lanes.
+3. Current Merman versus mmdr stage reference:
+   - `python3 tools/bench/stage_spotcheck.py --preset long --fixtures mindmap_medium,requirement_medium,kanban_medium,class_medium --out target/bench/perf-runner/stage_regression_sentinels_latest.md`
+4. Cross-runner end-to-end reference when the checkpoint matters:
+   - `python3 tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js --suite standard --out target/bench/renderer_comparison.md`
+5. Hot vs cold parse sanity:
    - `parse/*` measures a reused `Engine`
    - `parse_cold_engine/*` measures a fresh `Engine` per iteration
-5. Micro-hotspot validation:
+6. Micro-hotspot validation:
    - `cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
    - `cargo bench -p merman --features svg --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
    - `cargo bench -p merman --features svg --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
    - `cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
    - `cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3`
 
-## 3. Use the right report location
+## 3. Run acceptance gates
+
+Focused family tests are sufficient during iteration. Before accepting a shared-path optimization
+or recording a release checkpoint, run the complete repository and DOM parity gates:
+
+```bash
+cargo run -p xtask -- verify --strict
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+```
+
+Family-local changes should also retain their semantic, layout, SVG, sanitization, and custom
+text-measurer tests. A faster benchmark with a changed output contract is not an accepted result.
+
+## 4. Use the right report location
 
 - In-flight work: `target/bench/perf-runner/*.md`
 - Meaningful checkpoint: `docs/performance/spotcheck_YYYY-MM-DD*.md`
-- End-to-end baseline refresh: `docs/performance/COMPARISON.md`
+- Durable cross-runner checkpoint: `docs/performance/renderer_comparison_YYYY-MM-DD.md`
 
-## 4. Interpretation rules
+## 5. Interpretation rules
 
 - Prefer the long preset for decisions.
-- Re-run once if results conflict; prioritize the longer run.
-- Do not accept a change unless the stage movement is clear and parity still holds.
+- For a decision-grade base/head result, run at least three repetitions and alternate which
+  checkout runs first, normalizing every result back to the same head/base direction.
+- Accept a performance change only when correctness is green, the moved stage and cause are
+  explained, and the relevant evidence is recorded.
 - For microsecond-scale work, prefer batched stress benches over single-shot micro changes.
+- Treat ratio-only changes below the active plan's absolute-cost threshold as evidence, not an
+  automatic optimization priority.
 - Treat the PR comment as a triage signal. It currently summarizes same-runner mid estimates against
   warn/fail percentage thresholds; use manual long runs before claiming small wins or losses.
 
-## 5. Validation suite choice
+## 6. Validation suite choice
 
-- `--suite canary`: the four standard hotspot sentinels.
+- `--suite canary`: the four stable cross-release sentinels.
 - `--suite standard`: routine validation across the main cross-family canaries.
 - `--suite cross_family`: shared code-path changes that should be checked across families.
 - `--suite full`: framework, corpus, or infrastructure changes where broad coverage matters.
 
-## 6. Harness contract tests
+## 7. Harness contract tests
 
 - `python3 tools/bench/test_perf_contracts.py` checks the canary suite and `perf_runner` dry-run
   command contract.

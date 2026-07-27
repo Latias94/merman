@@ -9,7 +9,7 @@ dispatch.
 - Date: 2026-05-08
 - Git state: working tree after the xychart typed-first migration
 - Fixture: inline xychart render regression input
-- Render path check: `cargo test -p merman --features svg xychart_render_svg_sync_uses_typed_render_path -- --nocapture`
+- Render path check: `cargo test -p merman --features render xychart_render_svg_sync_uses_typed_render_path -- --nocapture`
 - JSON parity compare: `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Observations

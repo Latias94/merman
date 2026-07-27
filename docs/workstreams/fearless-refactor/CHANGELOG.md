@@ -1071,7 +1071,7 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Fixed the benchmark comparison scripts so the local `mermaid-rs-renderer` checkout runs its
   Criterion benches under `MMDR_RUN_CRITERION_BENCHES=1` instead of falling back to smoke
   validation.
-- Refreshed the rolling `docs/performance/COMPARISON.md` baseline after the C4 direct
+- Recorded `docs/performance/renderer_comparison_2026-05-10.md` after the C4 direct
   render-model parse cleanup. C4 end-to-end is now about `1.3x` slower than
   `mermaid-rs-renderer`, while Architecture and XYChart remain the largest current canary gaps.
 - Added dedicated C4/XYChart cross-repo end-to-end and stage spotcheck reports at

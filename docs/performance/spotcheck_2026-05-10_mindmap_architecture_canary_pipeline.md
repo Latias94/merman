@@ -10,7 +10,7 @@ direction, not as a release-grade benchmark.
 - Git commit: `ecba84ea`
 - Rust: `rustc 1.87.0 (17067e9ac 2025-05-09)`, host `x86_64-pc-windows-msvc`
 - Bench command:
-  `cargo bench -p merman --features svg --bench pipeline -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1 "architecture_medium|mindmap_medium"`
+  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1 "architecture_medium|mindmap_medium"`
 - Criterion comparison source: existing local history in `target/criterion`
 
 ## Results

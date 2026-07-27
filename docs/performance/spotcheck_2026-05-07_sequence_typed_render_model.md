@@ -7,7 +7,7 @@ model work. The numbers are local spot-checks, not release benchmark guarantees.
 
 - Date: 2026-05-07
 - Command:
-  `cargo bench -p merman --features svg --bench pipeline -- sequence --sample-size 20 --warm-up-time 1 --measurement-time 1`
+  `cargo bench -p merman --features render --bench pipeline -- sequence --sample-size 20 --warm-up-time 1 --measurement-time 1`
 - Fixtures: `sequence_tiny`, `sequence_medium`
 - Text measurer: pipeline bench default
 - Note: no immediate pre-migration sample was captured on the same machine. Treat this as the

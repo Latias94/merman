@@ -9,7 +9,7 @@ as fixture/coverage evidence, not as a release-grade performance verdict.
 - Date: 2026-05-09
 - Git state: working tree after the C4 direct render-model parse cleanup
 - Bench command:
-  `cargo bench -p merman --features svg --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 "c4_medium|xychart_medium"`
+  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 "c4_medium|xychart_medium"`
 
 ## Results
 

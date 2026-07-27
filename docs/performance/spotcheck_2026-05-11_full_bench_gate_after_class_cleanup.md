@@ -3,7 +3,7 @@
 Command:
 
 ```powershell
-cargo bench -p merman --features svg
+cargo bench -p merman --features render
 ```
 
 Result: passed.

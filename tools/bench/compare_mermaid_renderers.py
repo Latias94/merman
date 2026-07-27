@@ -29,7 +29,7 @@ from corpus_utils import Corpus, CorpusFixture, load_corpus, select_corpus_fixtu
 
 
 DEFAULT_CORPUS = "tools/bench/corpus.json"
-DEFAULT_MARKDOWN_OUT = "docs/performance/COMPARISON.md"
+DEFAULT_MARKDOWN_OUT = "target/bench/renderer_comparison.md"
 DEFAULT_JSON_OUT = "target/bench/renderer_comparison.json"
 DEFAULT_QUICK_FILTER = (
     r"end_to_end/(flowchart_tiny|flowchart_medium|flowchart_large|sequence_tiny|"

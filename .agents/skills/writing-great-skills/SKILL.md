@@ -89,8 +89,9 @@ Prefer repository commands and checked-in corpora. Use isolated temporary worktr
 When a same-capability revision lane regresses materially, split parse, layout, SVG emit, and
 end-to-end timing before writing the verdict. Confirm a suspected shared cost with one isolated
 A/B that preserves the input and benchmark harness. Record a proven regression, its semantic
-repair constraints, and its validation gate in `docs/performance/FEARLESS_REFACTORING.md`; do not
-hide it behind aggregate improvements or apply a diagnostic shortcut as a production fix.
+repair constraints, and its priority in `docs/performance/PERF_PLAN.md`; keep the runnable
+validation gates in `docs/performance/RUNBOOK.md`. Do not hide it behind aggregate improvements or
+apply a diagnostic shortcut as a production fix.
 
 ### 4. Write the user-facing report
 

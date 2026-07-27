@@ -19,7 +19,7 @@ migration. The goal is a local regression anchor, not a release-wide performance
 Typed commit:
 
 ```text
-cargo bench -p merman --features svg --bench pipeline kanban_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features render --bench pipeline kanban_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 ```
 
 Parent baseline:
@@ -27,7 +27,7 @@ Parent baseline:
 ```text
 git worktree add -f E:\Rust\merman-kanban-json-baseline 48ccb8ca
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\bench-parent-target'
-cargo bench -p merman --features svg --bench pipeline kanban_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
+cargo bench -p merman --features render --bench pipeline kanban_medium -- --noplot --sample-size 20 --warm-up-time 1 --measurement-time 1
 git worktree remove --force E:\Rust\merman-kanban-json-baseline
 ```
 
