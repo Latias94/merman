@@ -4,8 +4,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
+import { spawnNpmSync } from "./npm-command.mjs";
 
 const GENERATOR_VERSION = "4.2.1";
 const options = parseArgs(process.argv.slice(2));
@@ -24,9 +25,7 @@ for (const required of [packageJson, packageLock]) {
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-npm-licenses-"));
 const generatedPath = path.join(temporaryRoot, "licenses.txt");
 try {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(
-    npm,
+  const result = spawnNpmSync(
     [
       "exec",
       "--",
