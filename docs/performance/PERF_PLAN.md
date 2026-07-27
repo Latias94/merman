@@ -7,23 +7,28 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
-The current release-range baseline was measured on 2026-07-27:
+The release-range baseline and latest committed cross-runner checkpoint were measured on
+2026-07-27:
 
 - [Alpha.3 to Alpha.4 Refactoring Report](../release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md)
   compares `v0.8.0-alpha.3` with `d2698d0a3`.
-- [Renderer comparison, 2026-07-27](renderer_comparison_2026-07-27.md) compares that candidate
+- [Three-runner checkpoint](renderer_comparison_2026-07-27.md) compares that historical candidate
   with Mermaid.js 11.16.0 and `mermaid-rs-renderer` at `7ff1196`.
+- [Post-optimization mmdr checkpoint](renderer_comparison_2026-07-27_901afd393_vs_mmdr.md)
+  compares Merman `901afd393` with the same mmdr revision using the long preset and
+  byte-identical input gating.
 
 | Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
 | --- | ---: | ---: | ---: | ---: |
-| Current / alpha.3, complete SVG product | 34 | 1.10x | 1.09x | 13 / 21 |
-| Current / alpha.3, minimal same-capability SVG | 32 | 1.12x | 1.07x | 10 / 22 |
-| Current / `mermaid-rs-renderer` | 32 | 0.697x | not reported | 19 / 13 |
-| Current native / warm Mermaid.js browser | 34 | 0.0237x | not reported | 34 / 0 |
+| `d2698d0a3` / alpha.3, complete SVG product | 34 | 1.10x | 1.09x | 13 / 21 |
+| `d2698d0a3` / alpha.3, minimal same-capability SVG | 32 | 1.12x | 1.07x | 10 / 22 |
+| `901afd393` / `mermaid-rs-renderer`, identical inputs | 30 | 0.663x | 0.293x | 18 / 12 |
+| `d2698d0a3` native / warm Mermaid.js browser | 34 | 0.0237x | not reported | 34 / 0 |
 
 The cross-runner rows are not quality-adjusted rankings. Merman and `mermaid-rs-renderer` have
 different Mermaid coverage and output goals, and native Rust versus warm Chromium is not a
-browser-WASM comparison.
+browser-WASM comparison. The mmdr lane excludes Treemap and XYChart because their same-named
+fixtures differ; `flowchart_large` and Info have no shared measurement.
 
 ## Triage policy
 
@@ -49,18 +54,19 @@ Before implementation:
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | `requirement_medium` | 337 us | 2.12-2.25x (+178-184 us) | 4.58x | Both complete and minimal capability lanes reproduce the regression. |
-| P0 | `kanban_medium` | 153 us | 3.88-4.08x (+114-118 us) | 5.22x | Both capability lanes reproduce a high family-local fixed cost. |
-| P1 | `flowchart_large` | 24.10 ms | about 1.00x | unavailable | This is not a refactor regression, but it is the only standard fixture beyond a 16.7 ms frame. |
-| P1 | `class_medium` | 950 us | 1.10-1.15x (+89-126 us) | 0.40x | A common family with a modest alpha.3 regression; Merman remains about 2.5x faster than mmdr. |
-
-The alpha.3/current confidence intervals for Requirement and Kanban did not overlap in the release
-measurements. These families also gained Mermaid 11.16 semantics, so optimization must preserve the
-additional work rather than reverting it.
+| P0 | `requirement_medium` | 274 us | Not rerun at `901afd393`; historical candidate was 2.12-2.25x | 3.85x (+203 us) | Parse is faster than mmdr; the measured gaps are layout (2.83x) and SVG emission (10.14x). |
+| P1 | `mindmap_medium` | 162 us | No confirmed current regression; the ordinary-label fix reduced its pre-fix latency by 75% | 2.16x (+87 us) | The layout ratio compares real COSE-Bilkent with mmdr's radial fallback, so only same-algorithm work is actionable. |
+| P1 | `flowchart_large` | 23.67 ms | about 1.00x at the historical checkpoint | unavailable | This is not a refactor regression, but it is the only standard fixture beyond a 16.7 ms frame. |
+| P1 | `class_medium` | 874 us | Historical candidate was 1.10-1.15x (+89-126 us) | 0.37x | A common family worth rechecking against alpha.3; Merman remains about 2.7x faster than mmdr. |
 
 Do not prioritize the current Info, Packet, Radar, or Sankey ratios without new absolute-cost
 evidence. Their measured alpha.3 increases are about 2-5 microseconds. Architecture,
 `flowchart_small`, Gantt, and `flowchart_ports_heavy` are within the current noise band.
+
+Kanban is no longer a cross-runner P0: it now measures 56.50 us versus mmdr's 28.43 us, a 28.07 us
+absolute gap below the active threshold. Its alpha.3 lane must be rerun before declaring the
+historical release regression closed. XYChart is not a valid cross-runner priority until both
+runners use the same fixture.
 
 ## Completed work
 
@@ -85,43 +91,49 @@ after `#quot;` exposed Mermaid placeholder leakage.
 
 ## Work queue
 
-### P0.1: Establish stage-level evidence
+### P0.1: Profile Requirement layout and SVG emission
 
-- Run parse, layout, render, and end-to-end measurements for Requirement and Kanban with 30-50
-  samples, a two-second warm-up, and a three-second measurement window.
-- Use Instruments Time Profiler and Allocations only for the stage that remains slow.
+The long stage run measured parse at 0.71x mmdr, layout at 2.83x, and SVG emission at 10.14x.
+Profile the render stage first, then layout, using the exact `requirement_medium` benchmark.
+Separate the cost of label preparation, text measurement, sanitization, DOM emission, and
+operation/report bookkeeping.
 
-Exit: each remaining P0 family has a repeated same-host A/B result and a profile-backed cause.
+Exit: three same-host runs reproduce the stage result and a profile attributes the dominant cost.
 
-### P0.2: Remove redundant configuration ownership
+### P0.2: Prepare Requirement labels once per render operation
 
-Static code review found two low-risk hypotheses:
-
-- Kanban constructs an owned `KanbanMarkdown` configuration for layout and again for SVG emission.
-- Requirement clones the effective configuration in its SVG path.
-
-Change these private helpers to borrow the operation configuration where lifetimes remain local.
-Measure `layout`, `render`, and `end_to_end` independently; preserve Kanban/Requirement goldens,
-sanitization behavior, and custom text-measurer behavior.
-
-Exit: the targeted configuration clones are gone and the stage benchmark demonstrates the effect.
-
-### P0.3: Prepare labels once per render operation
-
-Kanban and Requirement currently repeat portions of Markdown conversion, HTML sanitization, and
-label measurement between layout and SVG emission. Mindmap still repeats work for complex labels,
-including paths where FontAwesome replacement can make measured and emitted content diverge.
-Introduce a private prepared label/layout artifact only after profiling confirms the remaining
-repeated work dominates.
+Requirement currently repeats portions of Markdown conversion, HTML sanitization, and label
+measurement between layout and SVG emission. Introduce a private prepared label/layout artifact
+only after profiling confirms that repeated work dominates.
 
 - Reuse prepared XHTML and exact text metrics across layout and SVG.
 - Keep caches operation-scoped and bounded.
 - Keep shortcut decisions with the Markdown interpreter or sanitizer policy owner. Do not restore a
   family-local classifier.
 
-Exit: no duplicated semantic work on the measured path, with family goldens and DOM parity green.
+Exit: no duplicated semantic work on the measured path, with Requirement goldens, sanitizer tests,
+custom text-measurer tests, and DOM parity green.
 
-### P1.1: Avoid editor-only bookkeeping in render-only parsing
+### P1.1: Add fair reusable and strict cross-runner lanes
+
+The current public-path comparison is intentionally asymmetric: Merman's one-shot helper creates a
+render environment per call, while mmdr reuses its theme/config; Merman uses strict render-model
+parsing, while the mmdr benchmark uses its permissive parser. Keep the public-path lane, then add:
+
+- a reusable environment/config lane for both implementations; and
+- a strict parsing lane where both products perform their documented validation.
+
+Exit: reports name the public, reusable, and strict lanes separately and never merge their ratios.
+
+### P1.2: Compare Mindmap with the same layout algorithm
+
+Run a tidy-tree lane only if both implementations expose equivalent configuration. Do not replace
+Merman's default COSE-Bilkent layout with mmdr's radial fallback to improve a benchmark.
+
+Exit: the report separates algorithm cost from parser/render cost and retains default-product
+geometry.
+
+### P1.3: Avoid editor-only bookkeeping in render-only parsing
 
 Several typed render parsers reuse semantic constructors that also populate editor facts and lexeme
 journals, then discard them. Prefer a shared constructor with a semantic-only or no-op facts sink;
@@ -130,7 +142,17 @@ do not fork a second parser.
 Exit: semantic models, errors, recovery, spans, and editor output remain identical, while
 `parse`, `parse_known_type`, and end-to-end measurements show where the fixed cost moved.
 
-### P1.2: Optimize large Flowchart scaling
+### P1.4: Measure reporting overhead on the string-only SVG path
+
+At `901afd393`, each render session initializes and updates measurement-provenance counters, and
+the string-only API constructs a completed report before discarding it. A/B a no-report terminal
+path while preserving the report-returning API unchanged. This is a hypothesis, not a proven
+cause; reject it if the absolute saving is below the active threshold.
+
+Exit: report APIs retain identical evidence, string APIs retain identical SVG/error behavior, and
+the stage benchmark demonstrates any saving.
+
+### P1.5: Optimize large Flowchart scaling
 
 Build a size/density curve rather than tuning against one 420-line fixture. Attribute ordering,
 crossing minimization, routing, text measurement, and SVG emission separately. Preserve

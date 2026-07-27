@@ -73,9 +73,16 @@ fixtures belong to each suite, their diagram family, broad feature tags, and the
 should eventually be paired with the timing result. This keeps benchmark selection out of the
 runner implementation and makes coverage differences explicit.
 
-The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout automatically.
+Before computing a Merman/mmdr ratio, the harness compares the exact fixture bytes used by each
+native Criterion bench. A non-identical same-named fixture keeps its raw timings for auditability
+and remains in measured coverage, but is excluded from ratios and family geomeans. The stage
+spot-check is stricter: it exits before starting Cargo if any requested fixture differs or is
+missing.
+
+The helper scripts set `MMDR_RUN_CRITERION_BENCHES=1` and enable mmdr's `benchmark` feature
+automatically.
 If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
-binary will only run its smoke validation path.
+binary will only run its smoke validation path; also pass `--features benchmark`.
 
 For broader validation, prefer the named suites in `tools/bench/corpus.json`:
 

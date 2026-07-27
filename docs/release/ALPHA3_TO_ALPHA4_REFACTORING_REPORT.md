@@ -3,9 +3,16 @@
 ## Scope and verdict
 
 This report compares `v0.8.0-alpha.3` (`56227a541011a3929b808bb3555d67372d630aae`)
-with `d2698d0a365b905bb65a58a7690c74075878a4f9`, the current alpha.4 candidate.
+with `d2698d0a365b905bb65a58a7690c74075878a4f9`, the alpha.4 candidate measured for this
+checkpoint.
 It was measured on an Apple M4 Pro with Rust 1.95.0, Cargo 1.95.0, Node 26.5.0, and
 the same local source corpus on 2026-07-27.
+
+The current post-optimization Merman/mmdr evidence is
+[`renderer_comparison_2026-07-27_901afd393_vs_mmdr.md`](../performance/renderer_comparison_2026-07-27_901afd393_vs_mmdr.md).
+The alpha.3 comparisons and Mermaid.js measurements below remain fixed to `d2698d0a3`.
+The older mmdr aggregate below predates byte-identical fixture gating and includes different
+Treemap and XYChart inputs; retain it as a historical raw run, not a comparable ranking.
 
 The refactor succeeds at changing the cost model: users can now choose explicit capability
 leaves and artifact profiles instead of inheriting the historical full stack. The clearest
@@ -166,8 +173,11 @@ On this host, Merman's median `Merman / Mermaid.js` warm end-to-end ratio was 0.
 pipeline compared with a warm browser renderer, not an intrinsic language benchmark or a
 browser-WASM claim.
 
-Against the 32 shared `mermaid-rs-renderer` rows, Merman was faster on 19 and slower on 13; the
-median `Merman / mmdr` ratio was 0.697. The result is workload-dependent:
+The original availability-only aggregation reported 32 `mermaid-rs-renderer` rows, with Merman
+faster on 19 and slower on 13 and a median ratio of 0.697. Subsequent fixture hashing found that
+Treemap and XYChart used different same-named inputs, so this aggregate is retained only to explain
+the historical checkpoint. Use the post-optimization report for comparable mmdr conclusions. The
+raw result was workload-dependent:
 
 | Fixture | Merman | mermaid-rs-renderer | Mermaid.js |
 | --- | ---: | ---: | ---: |
@@ -177,12 +187,11 @@ median `Merman / mmdr` ratio was 0.697. The result is workload-dependent:
 | `mindmap_medium` | 685.48 us | 76.79 us | 15.40 ms |
 | `kanban_medium` | 153.33 us | 29.38 us | 6.20 ms |
 
-Merman is particularly strong on the measured complex Flowchart cases and wins the median native
-comparison, while `mermaid-rs-renderer` remains much faster on Mindmap and Kanban. The harness
-confirms successful execution and aligned fixture selection; it does not claim byte, DOM, or
-Mermaid-semantic equivalence for `mermaid-rs-renderer`. These ratios measure latency for each
-implementation's output, not a quality-adjusted winner. That distinction matters more than a
-single geometric mean.
+The raw timings show that Merman is particularly strong on the measured complex Flowchart cases,
+while `mermaid-rs-renderer` was faster on Mindmap and Kanban at this revision. The harness confirms
+successful execution, but this historical version did not prove aligned fixture bytes, DOM output,
+or Mermaid-semantic equivalence for `mermaid-rs-renderer`. These timings are not a quality-adjusted
+winner. That distinction matters more than a single geometric mean.
 
 ### Alpha.3 to alpha.4 native pipeline
 
