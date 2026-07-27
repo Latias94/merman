@@ -499,6 +499,17 @@ class AndroidAarVerificationTests(unittest.TestCase):
 
 
 class AndroidConsumerRulesTests(unittest.TestCase):
+    def test_jni_registration_and_result_construction_classes_are_kept(self) -> None:
+        rules = ANDROID_CONSUMER_RULES.read_text(encoding="utf-8")
+
+        for class_name in (
+            "io.merman.MermanEngine",
+            "io.merman.MermanReusableEngine",
+            "io.merman.MermanOperationResult",
+        ):
+            with self.subTest(class_name=class_name):
+                self.assertIn(f"-keep class {class_name} {{ *; }}", rules)
+
     def test_jni_host_text_measurement_reflection_members_are_kept(self) -> None:
         rules = ANDROID_CONSUMER_RULES.read_text(encoding="utf-8")
 
