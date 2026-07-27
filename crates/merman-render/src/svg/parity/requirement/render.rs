@@ -83,11 +83,13 @@ fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &
 pub(crate) fn render_requirement_diagram_svg_model(
     layout: &RequirementDiagramLayout,
     model: &RequirementDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let effective_config = sanitize_config.as_value();
+
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
     }
@@ -323,7 +325,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
     let render_settings =
         crate::requirement::RequirementConfigView::new(effective_config).render_settings();
-    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
@@ -634,7 +635,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             lx = fmt(-w / 2.0),
             ly = fmt(-h / 2.0),
         );
-        let label_html = mermaid_markdown_to_html(&label_text, &sanitize_config);
+        let label_html = mermaid_markdown_to_html(&label_text, sanitize_config);
         mk_label_foreign_object(
             &mut out,
             LabelForeignObject {
@@ -1040,7 +1041,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if line.display_html.is_none() {
                 line.display_html = Some(mermaid_markdown_to_html(
                     &line.display_text,
-                    &sanitize_config,
+                    sanitize_config,
                 ));
             }
         }
@@ -1386,11 +1387,12 @@ mod tests {
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
+        let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
         with_test_svg_execution(request, |options| {
             render_requirement_diagram_svg_model(
                 layout,
                 model,
-                effective_config,
+                &effective_config,
                 diagram_title,
                 measurer,
                 options,

@@ -244,10 +244,11 @@ fn write_kanban_label_group(
 
 pub(crate) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
-    effective_config: &serde_json::Value,
+    sanitize_config: &merman_core::MermaidConfig,
     text_measurer: &dyn crate::text::TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let effective_config = sanitize_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -288,7 +289,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let render_settings = config_view.render_settings();
     let data_look = render_settings.look;
     let data_look_attr = escape_attr(data_look.as_str());
-    let markdown = KanbanMarkdown::new(effective_config);
+    let markdown = KanbanMarkdown::new(sanitize_config);
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
@@ -568,8 +569,9 @@ mod tests {
         options: &SvgRenderOptions,
     ) -> Result<String> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
+        let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
         with_test_svg_execution(options, |options| {
-            render_kanban_diagram_svg(layout, effective_config, &measurer, options)
+            render_kanban_diagram_svg(layout, &effective_config, &measurer, options)
         })
         .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Kanban))
     }
@@ -762,7 +764,8 @@ mod tests {
         let style = crate::kanban::KanbanConfigView::new(&config)
             .layout_settings()
             .text_style;
-        let markdown = crate::kanban::KanbanMarkdown::new(&config);
+        let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
+        let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
         let section_html = markdown.render("*Ready*");
         let section_metrics = markdown.measure_html(&measurer, &section_html, &style, None);
         let source_metrics = markdown.measure_html(&measurer, "*Ready*", &style, None);
@@ -780,7 +783,8 @@ mod tests {
         let config = serde_json::json!({
             "securityLevel": "strict"
         });
-        let html = crate::kanban::KanbanMarkdown::new(&config)
+        let sanitize_config = merman_core::MermaidConfig::from_value(config);
+        let html = crate::kanban::KanbanMarkdown::new(&sanitize_config)
             .render("*Ready* <b onclick=\"alert(1)\">safe</b><script>alert(2)</script>");
 
         assert!(html.contains("<em>Ready</em>"), "{html}");
@@ -946,7 +950,8 @@ mod tests {
         let style = crate::kanban::KanbanConfigView::new(&config)
             .layout_settings()
             .text_style;
-        let markdown = crate::kanban::KanbanMarkdown::new(&config);
+        let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
+        let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
         let title_html = markdown.render("Implement renderer");
         let title_metrics = markdown.measure_html(&measurer, &title_html, &style, None);
         let item = &layout.items[0];
@@ -1010,8 +1015,8 @@ mod tests {
         let debug = SvgDebugOptions::default();
         let options = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
-        let svg = render_kanban_diagram_svg(&layout, &serde_json::json!({}), &measurer, &options)
-            .unwrap();
+        let config = merman_core::MermaidConfig::default();
+        let svg = render_kanban_diagram_svg(&layout, &config, &measurer, &options).unwrap();
 
         let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
         assert_eq!(

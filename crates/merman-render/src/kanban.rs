@@ -11,22 +11,25 @@ pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
 
-pub(crate) struct KanbanMarkdown {
-    sanitize_config: merman_core::MermaidConfig,
+pub(crate) struct KanbanMarkdown<'a> {
+    sanitize_config: &'a merman_core::MermaidConfig,
     auto_wrap: bool,
 }
 
-impl KanbanMarkdown {
-    pub(crate) fn new(effective_config: &serde_json::Value) -> Self {
+impl<'a> KanbanMarkdown<'a> {
+    pub(crate) fn new(effective_config: &'a merman_core::MermaidConfig) -> Self {
         Self {
-            sanitize_config: merman_core::MermaidConfig::from_value(effective_config.clone()),
-            auto_wrap: crate::config::config_bool(effective_config, &["markdownAutoWrap"])
-                .unwrap_or(true),
+            sanitize_config: effective_config,
+            auto_wrap: crate::config::config_bool(
+                effective_config.as_value(),
+                &["markdownAutoWrap"],
+            )
+            .unwrap_or(true),
         }
     }
 
     pub(crate) fn render(&self, raw: &str) -> String {
-        let sanitized = merman_core::sanitize::sanitize_text(raw, &self.sanitize_config);
+        let sanitized = merman_core::sanitize::sanitize_text(raw, self.sanitize_config);
         crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
     }
 
@@ -72,9 +75,10 @@ pub(crate) fn layout_kanban_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
+    let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     layout_kanban_diagram_typed_with_resource_policy(
         model,
-        effective_config,
+        &effective_config,
         measurer,
         RenderResourcePolicy::interactive(),
     )
@@ -83,13 +87,13 @@ pub(crate) fn layout_kanban_diagram_typed(
 /// Lays out a Kanban model under the resource policy owned by the render operation.
 pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
     model: &KanbanDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<KanbanDiagramLayout> {
     resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
     resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
-    let cfg = KanbanConfigView::new(effective_config).layout_settings();
+    let cfg = KanbanConfigView::new(effective_config.as_value()).layout_settings();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;
     let padding = KANBAN_SECTION_PADDING_PX;

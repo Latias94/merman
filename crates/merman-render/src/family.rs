@@ -1154,7 +1154,7 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
                 crate::kanban::layout_kanban_diagram_typed_with_resource_policy(
                     model,
-                    effective_config,
+                    &meta.effective_config,
                     execution.text_measurer(),
                     execution.resource_policy(),
                 )
