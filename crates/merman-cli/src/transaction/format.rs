@@ -278,6 +278,14 @@ impl ArtifactNamespace {
         Ok(())
     }
 
+    pub(crate) fn has_same_series_as(&self, other: &Self) -> bool {
+        self.directory == other.directory && self.stem == other.stem
+    }
+
+    pub(crate) fn extension(&self) -> &OsStr {
+        &self.extension
+    }
+
     fn encoded(&self) -> Result<ArtifactNamespaceWire, TransactionError> {
         Ok(ArtifactNamespaceWire {
             directory: self
@@ -337,9 +345,16 @@ impl GenerationOwner {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn namespace(&self) -> &ArtifactNamespace {
         &self.namespace
+    }
+
+    pub(crate) fn dialect(&self) -> GenerationDialect {
+        self.dialect
+    }
+
+    pub(crate) fn has_same_subject_as(&self, other: &Self) -> bool {
+        self.dialect == other.dialect && self.owner == other.owner
     }
 
     pub(super) fn validate(&self, evidence: &Path) -> Result<(), TransactionError> {

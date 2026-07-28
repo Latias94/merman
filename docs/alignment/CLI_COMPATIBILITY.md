@@ -65,7 +65,7 @@ Compatibility and native commands converge only after argument normalization. Th
 | `mmdc@11.16.0` option | Local contract |
 | --- | --- |
 | `-i, --input` | File or `-`; omission reads stdin and emits the pinned warning even with `--quiet` |
-| `-o, --output` | File or `-`; omission writes `<input>.svg` or `out.svg`; stdout without `-e` warns before selecting SVG |
+| `-o, --output` | File or `-`; omission writes `<input>.<selected-format>` or `out.<selected-format>`; without `-e`, the selected format is SVG; stdout without `-e` warns before selecting SVG |
 | `-e, --outputFormat` | `svg`, `png`, or `pdf`, limited further by compiled output features |
 | `-t, --theme` | Exactly `default`, `forest`, `dark`, or `neutral` |
 | `-w, --width`; `-H, --height` | Pinned positive-integer parsing; defaults are 800 by 600 |
@@ -93,7 +93,7 @@ Strict compatibility retains the pinned JavaScript regular-expression behavior r
 - uppercase markers, tilde fences, longer native fences, MDX, and unclosed fences do not gain native behavior;
 - numbered output follows the compatibility output template;
 - zero charts with an image template writes no image; a Markdown target receives an unchanged document;
-- strict mode never deletes stale numbered files when a later run contains fewer charts.
+- strict mode never deletes stale numbered files when a later run contains fewer charts or selects a different format or artifacts directory.
 
 Native `batch` is intentionally more ergonomic. It accepts `.md`, `.markdown`, and `.mdx` case-insensitively, recognizes backtick, tilde, and colon fences of length three or more, supports `Mermaid` case variants, and retains an unclosed Mermaid fence through end of file.
 
@@ -123,7 +123,7 @@ The network restrictions and one-root Markdown rule are intentional safety diver
 
 Compatibility output uses the same integrity boundary as native output:
 
-- argument conflicts and unavailable capabilities fail before input acquisition;
+- argument conflicts and statically requested unavailable capabilities fail before input acquisition; capabilities discovered from diagram source fail during content processing;
 - output aliases of source, config, CSS, Puppeteer config, or local icon inputs are rejected;
 - a single output file keeps its prior complete contents until atomic replacement succeeds;
 - Markdown render failure leaves the previous final generation unchanged;
@@ -135,8 +135,8 @@ Exit classes are stable across command dialects:
 | Exit | Class |
 | ---: | --- |
 | `0` | Success |
-| `1` | Content or render failure |
-| `2` | Invocation, capability, or configuration error |
+| `1` | Content or render failure, including a layout or math capability required by parsed source but absent from the build |
+| `2` | Invocation or configuration error, including a statically requested option or output capability absent from the build |
 | `3` | Local/remote operational or publication failure |
 
 ## Version Lifecycle

@@ -70,6 +70,24 @@ fn manifest(path: &Path) -> serde_json::Value {
         .expect("parse generation manifest")
 }
 
+fn encoded_path_component(value: &str) -> String {
+    use std::fmt::Write as _;
+
+    #[cfg(windows)]
+    let units = value.encode_utf16().map(|unit| u32::from(unit));
+    #[cfg(not(windows))]
+    let units = value.as_bytes().iter().copied().map(u32::from);
+
+    let mut encoded = String::new();
+    for unit in units {
+        #[cfg(windows)]
+        write!(&mut encoded, "{unit:04x}").expect("encode Windows path component");
+        #[cfg(not(windows))]
+        write!(&mut encoded, "{unit:02x}").expect("encode path component");
+    }
+    encoded
+}
+
 fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn visit(root: &Path, directory: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         let mut entries = fs::read_dir(directory)
@@ -142,6 +160,170 @@ fn native_zero_chart_generation_publishes_document_and_cleans_only_owned_stale_f
     assert_eq!(manifest["owner"]["dialect"], "native_batch_v1");
     assert_eq!(manifest["artifacts"].as_array().map(Vec::len), Some(0));
     assert!(!manifest["document"].is_null());
+}
+
+#[cfg(feature = "pdf")]
+#[test]
+fn native_format_migration_replaces_only_the_owned_artifact_namespace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");
+
+    let first = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "generated", "--quiet"],
+    );
+    assert_success(&first);
+
+    let output_root = temp.path().join("generated");
+    assert!(output_root.join("input-1.svg").is_file());
+    assert!(output_root.join("input-2.svg").is_file());
+    fs::write(output_root.join("unowned.keep"), b"not owned by Merman")
+        .expect("write unowned file");
+
+    let second = run_in(
+        temp.path(),
+        &[
+            "batch",
+            "input.md",
+            "--output-dir",
+            "generated",
+            "--format",
+            "pdf",
+            "--quiet",
+        ],
+    );
+    assert_success(&second);
+
+    assert!(!output_root.join("input-1.svg").exists());
+    assert!(!output_root.join("input-2.svg").exists());
+    for index in 1..=2 {
+        let bytes = fs::read(output_root.join(format!("input-{index}.pdf")))
+            .expect("read migrated PDF artifact");
+        assert!(bytes.starts_with(b"%PDF-"), "artifact {index} is not a PDF");
+    }
+    assert_eq!(
+        fs::read(output_root.join("unowned.keep")).expect("read unowned file"),
+        b"not owned by Merman"
+    );
+    let rewritten =
+        fs::read_to_string(output_root.join("input.md")).expect("read rewritten document");
+    assert!(rewritten.contains("![diagram](./input-1.pdf)"));
+    assert!(rewritten.contains("![diagram](./input-2.pdf)"));
+
+    let empty = "# No diagrams after migration\n";
+    fs::write(temp.path().join("input.md"), empty).expect("write empty generation");
+    let third = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "generated", "--quiet"],
+    );
+    assert_success(&third);
+    assert!(!output_root.join("input-1.pdf").exists());
+    assert!(!output_root.join("input-2.pdf").exists());
+    assert!(!output_root.join("input-1.svg").exists());
+    assert_eq!(
+        fs::read_to_string(output_root.join("input.md")).expect("read empty generation"),
+        empty
+    );
+    assert_eq!(
+        fs::read(output_root.join("unowned.keep")).expect("read retained unowned file"),
+        b"not owned by Merman"
+    );
+}
+
+#[test]
+fn forged_native_namespace_is_never_deletion_authority() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        temp.path().join("input.md"),
+        "```mermaid\nflowchart LR\nA-->B\n```\n",
+    )
+    .expect("write Markdown input");
+
+    let baseline = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "generated", "--quiet"],
+    );
+    assert_success(&baseline);
+
+    let output_root = temp.path().join("generated");
+    let manifest_path = output_root.join(".merman-manifest.json");
+    let protected = output_root.join("input-1.txt");
+    fs::write(&protected, b"not a Merman artifact").expect("write protected file");
+
+    let mut forged = manifest(&manifest_path);
+    forged["owner"]["namespace"]["extension"] =
+        serde_json::Value::String(encoded_path_component("txt"));
+    forged["artifacts"] = serde_json::json!([[encoded_path_component("input-1.txt")]]);
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&forged).expect("encode forged manifest"),
+    )
+    .expect("write forged manifest");
+
+    let rerun = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "generated", "--quiet"],
+    );
+    assert_eq!(exit_code(&rerun), 3, "stderr:\n{}", stderr(&rerun));
+    assert!(
+        stderr(&rerun).contains("unsupported native artifact namespace"),
+        "stderr:\n{}",
+        stderr(&rerun)
+    );
+    assert_eq!(
+        fs::read(&protected).expect("read protected file"),
+        b"not a Merman artifact"
+    );
+    assert!(!output_root.join(".merman.transaction").exists());
+}
+
+#[cfg(feature = "pdf")]
+#[test]
+fn native_format_migration_rejects_a_stale_artifact_hardlinked_to_the_input() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input = temp.path().join("input.md");
+    fs::write(&input, "```mermaid\nflowchart LR\nA-->B\n```\n").expect("write Markdown input");
+
+    let baseline = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "generated", "--quiet"],
+    );
+    assert_success(&baseline);
+
+    let output_root = temp.path().join("generated");
+    let stale = output_root.join("input-1.svg");
+    fs::remove_file(&stale).expect("remove prior artifact");
+    fs::hard_link(&input, &stale).expect("hardlink stale artifact to input");
+    let expected_input = fs::read(&input).expect("read input");
+
+    let migration = run_in(
+        temp.path(),
+        &[
+            "batch",
+            "input.md",
+            "--output-dir",
+            "generated",
+            "--format",
+            "pdf",
+            "--quiet",
+        ],
+    );
+    assert_eq!(exit_code(&migration), 2, "stderr:\n{}", stderr(&migration));
+    assert!(
+        stderr(&migration).contains("aliases protected Input file"),
+        "stderr:\n{}",
+        stderr(&migration)
+    );
+    assert_eq!(
+        fs::read(&input).expect("read preserved input"),
+        expected_input
+    );
+    assert_eq!(
+        fs::read(&stale).expect("read preserved stale hardlink"),
+        expected_input
+    );
+    assert!(!output_root.join("input-1.pdf").exists());
+    assert!(!output_root.join(".merman.transaction").exists());
 }
 
 #[test]
@@ -258,6 +440,87 @@ fn strict_document_generations_never_delete_extra_numbered_outputs() {
     let manifest = manifest(&temp.path().join("out.md.merman-manifest.json"));
     assert_eq!(manifest["owner"]["dialect"], "mmdc11_16_0");
     assert_eq!(manifest["artifacts"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn strict_artefacts_directory_migration_preserves_the_previous_namespace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");
+
+    let first = run_in(
+        temp.path(),
+        &[
+            "mmdc",
+            "-i",
+            "input.md",
+            "-o",
+            "out.md",
+            "--artefacts",
+            "assets-a",
+            "--quiet",
+        ],
+    );
+    assert_success(&first);
+    let old_first =
+        fs::read(temp.path().join("assets-a/out-1.svg")).expect("read previous artifact");
+
+    let second = run_in(
+        temp.path(),
+        &[
+            "mmdc",
+            "-i",
+            "input.md",
+            "-o",
+            "out.md",
+            "--artefacts",
+            "assets-b",
+            "--quiet",
+        ],
+    );
+    assert_success(&second);
+
+    assert_eq!(
+        fs::read(temp.path().join("assets-a/out-1.svg")).expect("read retained artifact"),
+        old_first,
+        "strict mmdc migration must not delete previous numbered outputs"
+    );
+    assert!(temp.path().join("assets-a/out-2.svg").is_file());
+    assert!(temp.path().join("assets-b/out-1.svg").is_file());
+    assert!(temp.path().join("assets-b/out-2.svg").is_file());
+    let rewritten = fs::read_to_string(temp.path().join("out.md")).expect("read strict rewrite");
+    assert!(rewritten.contains("![diagram](./assets-b/out-1.svg)"));
+    assert!(rewritten.contains("![diagram](./assets-b/out-2.svg)"));
+
+    #[cfg(feature = "pdf")]
+    {
+        let third = run_in(
+            temp.path(),
+            &[
+                "mmdc",
+                "-i",
+                "input.md",
+                "-o",
+                "out.md",
+                "--artefacts",
+                "assets-b",
+                "-e",
+                "pdf",
+                "--quiet",
+            ],
+        );
+        assert_success(&third);
+        assert!(temp.path().join("assets-b/out-1.svg").is_file());
+        assert!(temp.path().join("assets-b/out-2.svg").is_file());
+        for index in 1..=2 {
+            let bytes = fs::read(temp.path().join(format!("assets-b/out-{index}.pdf")))
+                .expect("read migrated strict PDF artifact");
+            assert!(bytes.starts_with(b"%PDF-"));
+        }
+        let rewritten =
+            fs::read_to_string(temp.path().join("out.md")).expect("read PDF strict rewrite");
+        assert!(rewritten.contains("![diagram](./assets-b/out-1.pdf)"));
+        assert!(rewritten.contains("![diagram](./assets-b/out-2.pdf)"));
+    }
 }
 
 #[test]

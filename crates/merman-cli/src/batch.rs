@@ -3,7 +3,7 @@ use crate::invocation::{ResolvedOutput, ResolvedRenderCommon};
 use crate::markdown::{
     self, MarkdownChart, MarkdownChartLimitExceeded, MarkdownImage, NumberedOutputNamespace,
 };
-use crate::output::PublicationGuards;
+use crate::output::{AcquiredTransaction, PublicationGuards};
 use crate::render::render_markdown_charts;
 use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind, ResolvedResourcePolicy};
 use crate::runtime::{ExecutionContext, SharedWriter};
@@ -15,6 +15,9 @@ use crate::transaction::{
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+// This historical allowlist is part of native stale-file deletion authorization.
+const NATIVE_MANAGED_ARTIFACT_EXTENSIONS: &[&str] = &["svg", "png", "jpg", "pdf"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BatchDialect {
@@ -95,6 +98,20 @@ struct StageSlots {
     document: Option<StageSlot>,
 }
 
+enum ValidatedPreviousGeneration {
+    Native { stale: Vec<RelativeTarget> },
+    Strict,
+}
+
+impl ValidatedPreviousGeneration {
+    fn stale_artifacts(&self) -> &[RelativeTarget] {
+        match self {
+            Self::Native { stale } => stale,
+            Self::Strict => &[],
+        }
+    }
+}
+
 pub(crate) fn execute(
     prepared: PreparedBatch,
     context: &mut ExecutionContext,
@@ -151,9 +168,10 @@ pub(crate) fn execute(
 
     let approved = requested.approve(&publications, &approved_root_path)?;
     let previous = read_previous_manifest(&approved.manifest_path, &approved.root)?;
-    if let Some(previous) = previous.as_ref() {
-        validate_previous_manifest(previous, &approved)?;
-    }
+    let previous = previous
+        .as_ref()
+        .map(|previous| validate_previous_generation(previous, &approved))
+        .transpose()?;
     if !charts.is_empty() {
         materialize_artifact_directory(
             &publications,
@@ -163,12 +181,10 @@ pub(crate) fn execute(
         )?;
     }
 
-    let stale_targets = if dialect.is_native() {
-        native_stale_artifacts(previous.as_ref(), &approved.artifacts)
-    } else {
-        Vec::new()
-    };
-    let stale = approved.approve_stale_targets(&publications, &stale_targets)?;
+    let stale_targets = previous
+        .as_ref()
+        .map_or(&[][..], ValidatedPreviousGeneration::stale_artifacts);
+    let stale = approved.approve_stale_targets(&acquired, &publications, stale_targets)?;
 
     let plan = transaction_plan(&approved, &stale)?;
     let mut staging = context.publication.begin_transaction(acquired, plan)?;
@@ -378,14 +394,15 @@ impl RequestedLayout {
 impl ApprovedLayout {
     fn approve_stale_targets(
         &self,
+        acquired: &AcquiredTransaction,
         publications: &PublicationGuards,
         stale: &[RelativeTarget],
     ) -> Result<Vec<ApprovedTarget>, CliError> {
         let mut approved_stale = Vec::with_capacity(stale.len());
         for target in stale {
             let requested = target.to_path(&self.root)?;
-            let (approved, generation) = publications
-                .approved_transaction_target(&requested)?
+            let (approved, generation) = acquired
+                .approve_native_stale_artifact(publications, target)?
                 .into_parts();
             let approved = RelativeTarget::from_absolute(&self.root, approved)?;
             if &approved != target {
@@ -539,15 +556,15 @@ fn read_previous_manifest(
     }
 }
 
-fn validate_previous_manifest(
+fn validate_previous_generation(
     manifest: &GenerationManifest,
     approved: &ApprovedLayout,
-) -> Result<(), CliError> {
-    if manifest.owner() != &approved.owner {
+) -> Result<ValidatedPreviousGeneration, CliError> {
+    if !manifest.owner().has_same_subject_as(&approved.owner) {
         return Err(crate::transaction::TransactionError::InvalidState {
             evidence: approved.manifest_path.clone(),
             reason:
-                "generation manifest belongs to a different Markdown dialect, owner, or artefact namespace"
+                "generation manifest belongs to a different Markdown dialect, owner, or managed output"
                     .to_string(),
         }
         .into());
@@ -559,11 +576,34 @@ fn validate_previous_manifest(
         }
         .into());
     }
-    Ok(())
+
+    match approved.owner.dialect() {
+        GenerationDialect::NativeBatchV1 => {
+            let previous_namespace = manifest.owner().namespace();
+            let current_namespace = approved.owner.namespace();
+            let extension = previous_namespace.extension().to_str();
+            if !previous_namespace.has_same_series_as(current_namespace)
+                || !extension.is_some_and(|extension| {
+                    NATIVE_MANAGED_ARTIFACT_EXTENSIONS.contains(&extension)
+                })
+            {
+                return Err(crate::transaction::TransactionError::InvalidState {
+                    evidence: approved.manifest_path.clone(),
+                    reason: "generation manifest contains an unsupported native artifact namespace"
+                        .to_string(),
+                }
+                .into());
+            }
+            Ok(ValidatedPreviousGeneration::Native {
+                stale: native_stale_artifacts(manifest, &approved.artifacts),
+            })
+        }
+        GenerationDialect::Mmdc11_16_0 => Ok(ValidatedPreviousGeneration::Strict),
+    }
 }
 
 fn native_stale_artifacts(
-    previous: Option<&GenerationManifest>,
+    previous: &GenerationManifest,
     current: &[ApprovedTarget],
 ) -> Vec<RelativeTarget> {
     let current = current
@@ -571,8 +611,8 @@ fn native_stale_artifacts(
         .map(|artifact| &artifact.target)
         .collect::<HashSet<_>>();
     previous
-        .into_iter()
-        .flat_map(GenerationManifest::artifacts)
+        .artifacts()
+        .iter()
         .filter(|artifact| !current.contains(artifact))
         .cloned()
         .collect()

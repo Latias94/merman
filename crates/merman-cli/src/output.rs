@@ -143,6 +143,10 @@ struct GuardedInput {
     role: &'static str,
     requested: PathBuf,
     absolute: PathBuf,
+    #[cfg(feature = "markdown")]
+    lexical: PathBuf,
+    #[cfg(feature = "markdown")]
+    canonical: PathBuf,
     identity: Arc<same_file::Handle>,
 }
 
@@ -169,6 +173,10 @@ impl PublicationGuards {
                 role: input.role,
                 requested: input.requested.clone(),
                 absolute: input.absolute.clone(),
+                #[cfg(feature = "markdown")]
+                lexical: input.lexical.clone(),
+                #[cfg(feature = "markdown")]
+                canonical: input.canonical.clone(),
                 identity: Arc::clone(&input.identity),
             }));
     }
@@ -1776,6 +1784,72 @@ pub(crate) struct AcquiredTransaction {
 impl AcquiredTransaction {
     pub(crate) fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub(crate) fn approve_native_stale_artifact(
+        &self,
+        publications: &PublicationGuards,
+        target: &crate::transaction::RelativeTarget,
+    ) -> Result<ApprovedTransactionTarget, CliError> {
+        publications.verify()?;
+        let root_guard = publications.transaction_root.as_ref().ok_or_else(|| {
+            CliError::InvalidOutput(
+                "native Markdown cleanup has no transaction root approved by local preflight"
+                    .to_string(),
+            )
+        })?;
+        if root_guard.expected != self.root {
+            return Err(publication_identity_changed(&self.root));
+        }
+        root_guard.verify_anchor()?;
+
+        let requested = target.to_path(&self.root)?;
+        if requested.parent() != Some(self.root.as_path()) {
+            return Err(CliError::InvalidOutput(format!(
+                "manifest-owned stale artifact {} is not a direct child of native batch root {}",
+                safe_path(&requested),
+                safe_path(&self.root)
+            )));
+        }
+
+        let inspected = inspect_file_target(&requested, &requested, MissingParent::Reject)?;
+        if inspected.parent.expected != self.root {
+            return Err(publication_identity_changed(&requested));
+        }
+        let root_identity = root_guard.seal()?;
+        inspected.parent.seal_as(&root_identity)?;
+
+        let lexical = lexical_absolute(&requested, publications.working_directory()?);
+        for input in &publications.protected {
+            let aliases_input = lexical == input.lexical
+                || inspected.canonical == input.canonical
+                || inspected
+                    .identity
+                    .as_ref()
+                    .is_some_and(|identity| **identity == *input.identity);
+            if aliases_input {
+                return Err(CliError::InvalidOutput(format!(
+                    "manifest-owned stale artifact {} aliases protected {} {}",
+                    safe_path(&requested),
+                    input.role,
+                    safe_path(&input.requested)
+                )));
+            }
+        }
+        publications.verify()?;
+
+        let file_name = requested.file_name().ok_or_else(|| {
+            CliError::InvalidOutput(format!(
+                "manifest-owned stale artifact {} must name a file",
+                safe_path(&requested)
+            ))
+        })?;
+        Ok(ApprovedTransactionTarget {
+            path: self.root.join(file_name),
+            generation: crate::transaction::TargetGeneration::from_preflight_identity(
+                inspected.identity,
+            ),
+        })
     }
 
     pub(crate) fn into_parts(self) -> (PathBuf, crate::transaction::LockedRecoveredRoot) {

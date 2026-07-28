@@ -103,7 +103,7 @@ merman-cli batch README.md
 merman-cli batch docs/guide.md --output-dir generated --format pdf
 ```
 
-All charts render into staging before publication. The rewritten document is published last, stale files are removed only when named by the prior validated manifest, and an interrupted commit is recovered under the output lock before new work starts. A document with no eligible charts is a valid generation.
+All charts render into staging before publication. The rewritten document is published last, stale files are removed only when named by the prior validated manifest, and an interrupted commit is recovered under the output lock before new work starts. Switching among supported output formats migrates the same managed generation and removes its prior-format artifacts. A document with no eligible charts is a valid generation.
 
 Stdin requires an explicit logical name and output directory:
 
@@ -115,7 +115,7 @@ cat README.md | merman-cli batch - \
 
 The `parallel-markdown` Cargo feature adds Rayon-backed bounded scheduling and the `--jobs` option. It implies `markdown`; it does not affect single renders. Without it, `batch` remains fully supported and renders charts serially.
 
-Strict `mmdc` Markdown uses the pinned upstream fence scanner and output naming. To keep recovery honest, its rewritten document and artifacts must remain below one transaction root on one filesystem; split-root layouts are rejected before output creation or network access.
+Strict `mmdc` Markdown uses the pinned upstream fence scanner and output naming. To keep recovery honest, its rewritten document and artifacts must remain below one transaction root on one filesystem; split-root layouts are rejected before output creation or network access. Changing `-e` or `--artefacts` publishes the new namespace but leaves files from the previous namespace untouched.
 
 ## Analysis And Fixes
 
@@ -234,8 +234,8 @@ For SVG read from stdin, add `--input-kind svg`; named `.svg` files are inferred
 | Exit | Meaning |
 | ---: | --- |
 | `0` | Success, including a closed downstream stdout pipe |
-| `1` | Invalid Mermaid/content/render result, or `fix --check/--diff` would change source |
-| `2` | Invalid invocation, conflicting options, unavailable capability, or configuration |
+| `1` | Invalid Mermaid/content/render result, a source-required layout or math capability is unavailable, or `fix --check/--diff` would change source |
+| `2` | Invalid invocation, conflicting options, unavailable statically requested option/output capability, or configuration |
 | `3` | Local/remote operational failure, lock contention, incomplete recovery, or publication failure |
 
 stdout contains only the requested SVG, image, text, JSON, diff, fixed source, or completion payload. `--quiet` suppresses informational and timing diagnostics where supported; errors remain visible.
