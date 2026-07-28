@@ -13,6 +13,7 @@ on:
       - ".github/workflows/performance.yml"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "docs/performance/**"
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
@@ -107,6 +108,9 @@ jobs:
   contracts:
     name: perf-contracts
     runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout head
         uses: actions/checkout@v6
@@ -117,6 +121,9 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
       - name: Check Python performance scripts
         working-directory: head
         run: |
@@ -124,14 +131,38 @@ jobs:
             tools/bench/compare_mermaid_renderers.py \
             tools/bench/compare_self.py \
             tools/bench/corpus_utils.py \
+            tools/bench/freeze_perf_baseline.py \
+            tools/bench/native_memory.py \
             tools/bench/perf_runner.py \
             tools/bench/render_perf_comment.py \
+            tools/bench/run_native_memory.py \
             tools/bench/stage_spotcheck.py \
-            tools/bench/test_perf_contracts.py
+            tools/bench/test_perf_baseline_manifest.py \
+            tools/bench/test_native_memory_contracts.py \
+            tools/bench/test_native_memory_driver_contracts.py \
+            tools/bench/test_perf_contracts.py \
+            tools/bench/verify_pipeline_bench_list.py
 
       - name: Check performance helper contracts
         working-directory: head
-        run: python3 tools/bench/test_perf_contracts.py
+        run: |
+          python3 tools/bench/test_perf_baseline_manifest.py
+          python3 tools/bench/test_native_memory_contracts.py
+          python3 tools/bench/test_native_memory_driver_contracts.py
+          python3 tools/bench/test_perf_contracts.py
+
+      - name: Verify compiled pipeline benchmark list
+        working-directory: head
+        run: python3 tools/bench/verify_pipeline_bench_list.py
+
+      - name: Build native memory probe contract
+        working-directory: head
+        run: |
+          cargo test --locked -p merman --test native_memory_allocator
+          python3 tools/bench/run_native_memory.py --smoke \
+            --json-out target/bench/native_memory_smoke.json
+          python3 tools/bench/test_native_memory_driver_contracts.py \
+            --verify-smoke-report target/bench/native_memory_smoke.json
 
   regression:
     name: perf-regression

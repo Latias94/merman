@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import json
 import math
@@ -19,10 +20,13 @@ import compare_self
 import compare_mermaid_renderers
 import render_perf_comment
 import stage_spotcheck
+import verify_pipeline_bench_list
 from corpus_utils import (
     compare_mmdr_fixture_inputs,
     fixture_names_for_suite,
+    lane_selector_group,
     load_corpus,
+    resolve_lane_group,
     select_corpus_fixtures,
 )
 
@@ -32,6 +36,69 @@ CORPUS_PATH = ROOT / "tools" / "bench" / "corpus.json"
 
 
 class CorpusContractsTest(unittest.TestCase):
+    def test_pipeline_groups_are_owned_by_registered_lanes(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        expected_groups = {
+            "parse",
+            "compatibility_json_parse",
+            "parse_cold_engine",
+            "frontmatter_preprocess",
+            "layout",
+            "render",
+            "end_to_end",
+        }
+
+        self.assertEqual(
+            {group: resolve_lane_group(corpus, group).id for group in expected_groups},
+            {
+                "parse": "typed-render-model-parse",
+                "compatibility_json_parse": "compatibility-json-parse",
+                "parse_cold_engine": "typed-render-model-parse-cold",
+                "frontmatter_preprocess": "frontmatter-preprocess-known-type",
+                "layout": "prepare-layout",
+                "render": "emit-svg",
+                "end_to_end": "render-svg",
+            },
+        )
+
+        with self.assertRaisesRegex(compare_self.ContractViolation, "no registered lane"):
+            compare_self._optional_lane_for_group(corpus, "unregistered_group")
+
+    def test_compiled_pipeline_list_requires_current_groups_and_rejects_history(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        current_groups = sorted(
+            lane_selector_group(lane.selector)
+            for lane in corpus.lanes
+            if lane.transport == "native-criterion"
+            and set(lane.required_features).issubset({"svg"})
+        )
+        fixture = corpus.fixtures[0].name
+        output = "\n".join(
+            f"{group}/{fixture}: benchmark" for group in current_groups
+        )
+
+        result = verify_pipeline_bench_list.validate_pipeline_bench_list(corpus, output)
+
+        self.assertEqual(result["groups"], tuple(current_groups))
+        historical = output.replace(
+            f"compatibility_json_parse/{fixture}",
+            f"parse_known_type/{fixture}",
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "historical lane aliases",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(corpus, historical)
+
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            r"unknown=\['unregistered'\]",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                corpus,
+                output + f"\nunregistered/{fixture}: benchmark\n",
+            )
+
     def test_canary_suite_is_standard_hotspot_set(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
 
@@ -139,6 +206,26 @@ class PerfRunnerContractsTest(unittest.TestCase):
             f"target/bench/perf-runner/{perf_runner.today_stamp()}_full_suite_standard.json",
             out,
         )
+        self.assertNotIn("run_native_memory.py", out)
+
+    def test_native_memory_is_explicit_and_uses_the_isolated_driver(self) -> None:
+        buf = io.StringIO()
+
+        with redirect_stdout(buf):
+            result = perf_runner.main(
+                ["--profile", "triage", "--include-native-memory", "--dry-run"]
+            )
+
+        self.assertEqual(result, 0)
+        out = buf.getvalue().replace("\\", "/")
+        self.assertIn("native memory (flowchart-end-to-end-memory)", out)
+        self.assertIn("run_native_memory.py", out)
+        self.assertIn("--repeats 5", out)
+        self.assertIn("--bootstrap-resamples 10000", out)
+        self.assertIn(
+            f"target/bench/perf-runner/{perf_runner.today_stamp()}_triage_native_memory.json",
+            out,
+        )
 
 
 class CompareSelfContractsTest(unittest.TestCase):
@@ -151,6 +238,49 @@ class CompareSelfContractsTest(unittest.TestCase):
             "head_benchmark": f"end_to_end/{name}",
             "coverage_status": "comparable",
         }
+
+    @staticmethod
+    def _minimal_corpus(*, schema_version: int, default_group: str) -> dict[str, object]:
+        corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+        fixture = next(
+            item
+            for item in corpus["fixtures"]
+            if item["name"] == "flowchart_medium"
+        )
+        corpus["schema_version"] = schema_version
+        corpus["default_group"] = default_group
+        corpus["fixtures"] = [fixture]
+        if schema_version == 1:
+            corpus.pop("lanes", None)
+        return corpus
+
+    @staticmethod
+    def _write_comparison_checkout(
+        checkout: Path,
+        corpus: dict[str, object],
+    ) -> compare_self.RunnerRecipe:
+        corpus_path = checkout / "tools" / "bench" / "corpus.json"
+        corpus_path.parent.mkdir(parents=True)
+        corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
+        fixture = corpus["fixtures"][0]
+        assert isinstance(fixture, dict)
+        fixture_source = Path(str(fixture["source"]))
+        source = ROOT / fixture_source
+        target = checkout / fixture_source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+        return compare_self.RunnerRecipe(
+            label=checkout.name,
+            checkout=checkout,
+            package="merman",
+            bench="pipeline",
+            features=("svg",),
+            default_features=False,
+            toolchain=None,
+            target_dir=checkout / "target",
+            locked=True,
+            corpus=Path("tools/bench/corpus.json"),
+        )
 
     @staticmethod
     def _pairs(
@@ -506,6 +636,149 @@ class CompareSelfContractsTest(unittest.TestCase):
                 base_logical_operations=1,
                 head_logical_operations=100,
             )
+        with self.assertRaisesRegex(compare_self.ContractViolation, "both be one"):
+            compare_self._validate_confirmation_operation_contract(
+                [self._contract()],
+                base_logical_operations=100,
+                head_logical_operations=100,
+            )
+
+    def test_confirmation_uses_lane_history_and_corpus_owned_divisor(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        lane = resolve_lane_group(corpus, "compatibility_json_parse")
+        historical = self._contract()
+        historical["base_benchmark"] = "parse_known_type/flowchart_medium"
+        historical["head_benchmark"] = (
+            "compatibility_json_parse/flowchart_medium"
+        )
+
+        compare_self._validate_confirmation_operation_contract(
+            [historical],
+            base_logical_operations=1,
+            head_logical_operations=1,
+            base_lane=lane,
+            head_lane=lane,
+        )
+
+        recipe = compare_self.RunnerRecipe(
+            label="head",
+            checkout=ROOT,
+            package="merman",
+            bench="pipeline",
+            features=("svg",),
+            default_features=True,
+            toolchain=None,
+            target_dir=ROOT / "target",
+            locked=True,
+            corpus=Path("tools/bench/corpus.json"),
+        )
+        normalized = compare_self._recipe_with_lane_divisor(
+            recipe,
+            lane=lane,
+            explicit_divisor=None,
+        )
+        self.assertEqual(normalized.logical_operations, 1)
+        with self.assertRaisesRegex(compare_self.ContractViolation, "conflicts"):
+            compare_self._recipe_with_lane_divisor(
+                recipe,
+                lane=lane,
+                explicit_divisor=100,
+            )
+
+    def test_v1_to_v2_fixture_loading_applies_the_registered_history_lane(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            base_recipe = self._write_comparison_checkout(
+                root / "base",
+                self._minimal_corpus(
+                    schema_version=1,
+                    default_group="parse_known_type",
+                ),
+            )
+            head_recipe = self._write_comparison_checkout(
+                root / "head",
+                self._minimal_corpus(
+                    schema_version=2,
+                    default_group="compatibility_json_parse",
+                ),
+            )
+
+            contracts, selection, lanes = compare_self._load_fixture_contracts(
+                base_recipe=base_recipe,
+                head_recipe=head_recipe,
+                suite="full",
+                common_group=None,
+                base_group_override=None,
+                head_group_override=None,
+                filter_expr=None,
+            )
+
+        self.assertEqual(
+            contracts[0]["base_benchmark"],
+            "parse_known_type/flowchart_medium",
+        )
+        self.assertEqual(
+            contracts[0]["head_benchmark"],
+            "compatibility_json_parse/flowchart_medium",
+        )
+        self.assertIsNone(selection["lane_contracts"]["declared"]["base"])
+        self.assertEqual(lanes[0].id, "compatibility-json-parse")
+        self.assertEqual(lanes[1].id, "compatibility-json-parse")
+        compare_self._validate_confirmation_operation_contract(
+            contracts,
+            base_logical_operations=1,
+            head_logical_operations=1,
+            base_lane=lanes[0],
+            head_lane=lanes[1],
+        )
+
+    def test_loaded_v2_lanes_reject_semantic_mixing(self) -> None:
+        cases = (
+            ("process_lifecycle", "fresh-process"),
+            ("engine_lifecycle", "cold-engine"),
+            ("transport", "node-napi"),
+            ("public_operation", "different-public-operation"),
+        )
+        for field, value in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                base_corpus = self._minimal_corpus(
+                    schema_version=2,
+                    default_group="compatibility_json_parse",
+                )
+                head_corpus = copy.deepcopy(base_corpus)
+                lane = next(
+                    item
+                    for item in head_corpus["lanes"]
+                    if item["id"] == "compatibility-json-parse"
+                )
+                lane[field] = value
+                base_recipe = self._write_comparison_checkout(
+                    root / "base",
+                    base_corpus,
+                )
+                head_recipe = self._write_comparison_checkout(
+                    root / "head",
+                    head_corpus,
+                )
+                contracts, _selection, lanes = compare_self._load_fixture_contracts(
+                    base_recipe=base_recipe,
+                    head_recipe=head_recipe,
+                    suite="full",
+                    common_group=None,
+                    base_group_override=None,
+                    head_group_override=None,
+                    filter_expr=None,
+                )
+
+                with self.assertRaisesRegex(compare_self.ContractViolation, field):
+                    compare_self._validate_confirmation_operation_contract(
+                        contracts,
+                        base_logical_operations=1,
+                        head_logical_operations=1,
+                        base_lane=lanes[0],
+                        head_lane=lanes[1],
+                    )
 
     def test_output_aliases_are_rejected_before_sampling(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "lane_id": "flowchart-end-to-end-memory",
+  "workload": "flowchart-modular-generator-v1",
+  "evidence_class": "infrastructure-smoke",
+  "candidate_admission": false,
+  "generator": {
+    "id": "flowchart-modular-generator-v1",
+    "nodes_per_scale": 3,
+    "edges_per_scale": 4
+  },
+  "metrics": {
+    "allocation_count": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 10000000
+    },
+    "allocated_bytes": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 8589934592
+    },
+    "peak_growth_bytes": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 2147483648
+    }
+  }
+}

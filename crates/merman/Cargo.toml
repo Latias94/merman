@@ -84,6 +84,7 @@ png.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [[test]]
 name = "prepared_render"
@@ -109,6 +110,11 @@ required-features = ["layout-elk"]
 
 [[bench]]
 name = "pipeline"
+harness = false
+required-features = ["svg"]
+
+[[bench]]
+name = "native_memory"
 harness = false
 required-features = ["svg"]
 

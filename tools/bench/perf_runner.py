@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import run_native_memory
 from corpus_utils import fixture_names_for_suite, load_corpus
 
 
@@ -29,6 +30,7 @@ STANDARD_CANARY_FIXTURES = ",".join(
 )
 STANDARD_CANARY_SUITE = "canary"
 DEFAULT_COMPARE_SUITE = "standard"
+DEFAULT_NATIVE_MEMORY_LANE = "flowchart-end-to-end-memory"
 STRESS_BENCHES = [
     "flowchart_stress",
     "architecture_layout_stress",
@@ -137,6 +139,10 @@ def suite_target_path(
         name = f"renderer_comparison_{stamp}_perf-runner_{profile}_suite_{suite}.{suffix}"
         return repo_root() / "docs" / "performance" / name
     return report_root / f"{stamp}_{profile}_suite_{suite}.{suffix}"
+
+
+def native_memory_target_path(*, report_root: Path, profile: str) -> Path:
+    return report_root / f"{today_stamp()}_{profile}_native_memory.json"
 
 
 def build_steps(args: argparse.Namespace) -> list[Step]:
@@ -305,6 +311,47 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
                 )
             )
 
+    if args.include_native_memory:
+        memory_out = native_memory_target_path(
+            report_root=report_root,
+            profile=args.profile,
+        )
+        memory_cmd = python_cmd(
+            root,
+            "run_native_memory.py",
+            [
+                "--corpus",
+                args.corpus,
+                "--lane",
+                args.native_memory_lane,
+                "--repeats",
+                str(args.native_memory_repeats),
+                "--seed",
+                str(args.native_memory_seed),
+                "--bootstrap-resamples",
+                str(args.native_memory_bootstrap_resamples),
+                "--json-out",
+                cli_path(root, memory_out),
+            ]
+            + (
+                ["--contract", args.native_memory_contract]
+                if args.native_memory_contract
+                else []
+            )
+            + (
+                ["--toolchain", args.native_memory_toolchain]
+                if args.native_memory_toolchain
+                else []
+            ),
+        )
+        steps.append(
+            Step(
+                label=f"native memory ({args.native_memory_lane})",
+                cmd=memory_cmd,
+                cwd=root,
+            )
+        )
+
     return steps
 
 
@@ -396,6 +443,49 @@ def main(argv: list[str]) -> int:
         help="Root directory for local artifacts when not writing to docs.",
     )
     parser.add_argument(
+        "--corpus",
+        default=str(DEFAULT_CORPUS_PATH.relative_to(repo_root())),
+        help="Corpus registry used by opt-in native-memory evidence.",
+    )
+    parser.add_argument(
+        "--include-native-memory",
+        action="store_true",
+        help="Run the isolated native-memory driver after the selected latency profile.",
+    )
+    parser.add_argument(
+        "--native-memory-lane",
+        default=DEFAULT_NATIVE_MEMORY_LANE,
+        help="Registered native-memory lane to run.",
+    )
+    parser.add_argument(
+        "--native-memory-contract",
+        default="",
+        help="Optional owner evidence contract override; defaults to lane metadata.",
+    )
+    parser.add_argument(
+        "--native-memory-toolchain",
+        default="",
+        help="Optional rustup toolchain used only for the native-memory executable.",
+    )
+    parser.add_argument(
+        "--native-memory-repeats",
+        type=int,
+        default=5,
+        help="Fresh operation/zero pairs at every registered scale (default: 5).",
+    )
+    parser.add_argument(
+        "--native-memory-seed",
+        type=int,
+        default=run_native_memory.DEFAULT_SEED,
+        help="Fixed generator seed shared by the complete memory matrix.",
+    )
+    parser.add_argument(
+        "--native-memory-bootstrap-resamples",
+        type=int,
+        default=run_native_memory.DEFAULT_BOOTSTRAP_RESAMPLES,
+        help="Matched-vector bootstrap resamples for native-memory bounds.",
+    )
+    parser.add_argument(
         "--write-docs",
         action="store_true",
         help=(
@@ -470,6 +560,14 @@ def main(argv: list[str]) -> int:
                 suffix="md",
             )
             print(f"- {suite_out}")
+        if args.include_native_memory:
+            memory_out = native_memory_target_path(
+                report_root=(root / args.report_root).resolve()
+                if not Path(args.report_root).is_absolute()
+                else Path(args.report_root),
+                profile=args.profile,
+            )
+            print(f"- {memory_out}")
 
     return 0
 

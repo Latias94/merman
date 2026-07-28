@@ -23,7 +23,7 @@ import statistics
 import subprocess
 import sys
 import tomllib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -38,7 +38,14 @@ from compare_mermaid_renderers import (
     split_exact_bench,
     strip_ansi,
 )
-from corpus_utils import load_corpus, resolve_merman_fixture_path, select_corpus_fixtures
+from corpus_utils import (
+    LaneMetadata,
+    lane_selector_group,
+    load_corpus,
+    resolve_lane_group,
+    resolve_merman_fixture_path,
+    select_corpus_fixtures,
+)
 
 
 DEFAULT_CORPUS = "tools/bench/corpus.json"
@@ -736,6 +743,74 @@ def _fixture_metadata(fixture: Any | None) -> dict[str, Any] | None:
     }
 
 
+def _lane_metadata(lane: LaneMetadata | None) -> dict[str, Any] | None:
+    return asdict(lane) if lane is not None else None
+
+
+def _optional_lane_for_group(corpus: Any, group: str | None) -> LaneMetadata | None:
+    if group is None or not corpus.lanes:
+        return None
+    try:
+        return resolve_lane_group(corpus, group)
+    except ValueError as error:
+        if corpus.schema_version >= 2:
+            raise ContractViolation(
+                f"schema-v2 corpus has no registered lane for benchmark group {group!r}"
+            ) from error
+        return None
+
+
+def _lane_matches_group(lane: LaneMetadata, group: str) -> bool:
+    return any(
+        lane_selector_group(selector) == group
+        for selector in (lane.selector, *lane.history_aliases)
+    )
+
+
+def _effective_operation_lanes(
+    *,
+    base_lane: LaneMetadata | None,
+    head_lane: LaneMetadata | None,
+    base_group: str | None,
+    head_group: str | None,
+) -> tuple[LaneMetadata | None, LaneMetadata | None]:
+    effective_base = base_lane
+    effective_head = head_lane
+    if (
+        effective_base is None
+        and head_lane is not None
+        and base_group is not None
+        and _lane_matches_group(head_lane, base_group)
+    ):
+        effective_base = head_lane
+    if (
+        effective_head is None
+        and base_lane is not None
+        and head_group is not None
+        and _lane_matches_group(base_lane, head_group)
+    ):
+        effective_head = base_lane
+    return effective_base, effective_head
+
+
+def _recipe_with_lane_divisor(
+    recipe: RunnerRecipe,
+    *,
+    lane: LaneMetadata | None,
+    explicit_divisor: int | None,
+) -> RunnerRecipe:
+    if lane is None:
+        divisor = explicit_divisor if explicit_divisor is not None else 1
+    else:
+        divisor = lane.logical_operations_per_estimate
+        if explicit_divisor is not None and explicit_divisor != divisor:
+            raise ContractViolation(
+                f"{recipe.label} logical-operation divisor {explicit_divisor} conflicts "
+                f"with lane {lane.id!r} divisor {divisor}"
+            )
+    return replace(recipe, logical_operations=divisor)
+
+
 def _load_fixture_contracts(
     *,
     base_recipe: RunnerRecipe,
@@ -745,7 +820,11 @@ def _load_fixture_contracts(
     base_group_override: str | None,
     head_group_override: str | None,
     filter_expr: str | None,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, Any],
+    tuple[LaneMetadata | None, LaneMetadata | None],
+]:
     base_corpus_path = (
         base_recipe.corpus
         if base_recipe.corpus.is_absolute()
@@ -769,12 +848,15 @@ def _load_fixture_contracts(
             requested.append((name, exact, exact))
         base_selected = {name for name, _, _ in requested}
         head_selected = set(base_selected)
+        filter_groups = {split_exact_bench(exact)[0] for exact in exact_filters}
+        base_group = next(iter(filter_groups)) if len(filter_groups) == 1 else None
+        head_group = base_group
         selection = {
             "kind": "filter",
             "filter": filter_expr,
             "suite": None,
             "group": None,
-            "groups": {"base": None, "head": None},
+            "groups": {"base": base_group, "head": head_group},
         }
     else:
         base_fixtures = select_corpus_fixtures(base_corpus, suite)
@@ -832,7 +914,25 @@ def _load_fixture_contracts(
         "base": _describe_required_file(base_corpus_path),
         "head": _describe_required_file(head_corpus_path),
     }
-    return contracts, selection
+    base_lane = _optional_lane_for_group(base_corpus, base_group)
+    head_lane = _optional_lane_for_group(head_corpus, head_group)
+    effective_lanes = _effective_operation_lanes(
+        base_lane=base_lane,
+        head_lane=head_lane,
+        base_group=base_group,
+        head_group=head_group,
+    )
+    selection["lane_contracts"] = {
+        "declared": {
+            "base": _lane_metadata(base_lane),
+            "head": _lane_metadata(head_lane),
+        },
+        "effective": {
+            "base": _lane_metadata(effective_lanes[0]),
+            "head": _lane_metadata(effective_lanes[1]),
+        },
+    }
+    return contracts, selection, effective_lanes
 
 
 def _complete_fixture_contracts(
@@ -1521,8 +1621,10 @@ def _validate_args(args: argparse.Namespace) -> None:
             "confirmation --bootstrap-resamples must be at least "
             f"{DECISION_GRADE_BOOTSTRAP_RESAMPLES}"
         )
-    if args.base_logical_operations <= 0 or args.head_logical_operations <= 0:
-        raise ContractViolation("logical operation counts must be positive")
+    for side in ("base", "head"):
+        divisor = getattr(args, f"{side}_logical_operations")
+        if divisor is not None and divisor <= 0:
+            raise ContractViolation("logical operation counts must be positive")
     if args.timeout_seconds <= 0:
         raise ContractViolation("--timeout-seconds must be positive")
     sample_size, warm_up, measurement = benchmark_params(
@@ -1542,25 +1644,75 @@ def _validate_confirmation_operation_contract(
     *,
     base_logical_operations: int,
     head_logical_operations: int,
+    base_lane: LaneMetadata | None = None,
+    head_lane: LaneMetadata | None = None,
 ) -> None:
-    if base_logical_operations != 1 or head_logical_operations != 1:
-        raise ContractViolation(
-            "confirmation logical-operation divisors must both be one until corpus lane "
-            "metadata owns and validates normalization"
-        )
-    mismatches = [
-        (
-            contract.get("base_benchmark"),
-            contract.get("head_benchmark"),
-        )
-        for contract in contracts
-        if contract.get("base_benchmark") != contract.get("head_benchmark")
+    if base_lane is None or head_lane is None:
+        mismatches = [
+            (contract.get("base_benchmark"), contract.get("head_benchmark"))
+            for contract in contracts
+            if contract.get("base_benchmark") != contract.get("head_benchmark")
+        ]
+        if mismatches:
+            rendered = ", ".join(
+                f"{base!r} != {head!r}" for base, head in mismatches[:4]
+            )
+            raise ContractViolation(
+                "confirmation requires the same public operation on both sides; "
+                f"mismatched benchmark identities: {rendered}"
+            )
+        if base_logical_operations != 1 or head_logical_operations != 1:
+            raise ContractViolation(
+                "confirmation logical-operation divisors must both be one unless corpus "
+                "lane metadata owns both normalizations"
+            )
+        return
+
+    semantic_fields = (
+        "kind",
+        "owner",
+        "public_operation",
+        "process_lifecycle",
+        "engine_lifecycle",
+        "transport",
+        "workload",
+        "measurement_metrics",
+        "semantic_output_dimensions",
+    )
+    differences = [
+        field
+        for field in semantic_fields
+        if getattr(base_lane, field) != getattr(head_lane, field)
     ]
-    if mismatches:
-        rendered = ", ".join(f"{base!r} != {head!r}" for base, head in mismatches[:4])
+    if base_lane.kind != "public" or head_lane.kind != "public" or differences:
         raise ContractViolation(
-            "confirmation requires the same public operation on both sides; "
-            f"mismatched benchmark identities: {rendered}"
+            "confirmation lane metadata does not describe the same public operation: "
+            f"differences={differences}"
+        )
+    divisor_mismatches = []
+    if base_logical_operations != base_lane.logical_operations_per_estimate:
+        divisor_mismatches.append("base")
+    if head_logical_operations != head_lane.logical_operations_per_estimate:
+        divisor_mismatches.append("head")
+    if divisor_mismatches:
+        raise ContractViolation(
+            "logical-operation normalization differs from corpus lane metadata: "
+            + ", ".join(divisor_mismatches)
+        )
+
+    unmatched_groups: list[str] = []
+    for contract in contracts:
+        for side, lane in (("base", base_lane), ("head", head_lane)):
+            exact = contract.get(f"{side}_benchmark")
+            if not exact:
+                continue
+            group, _fixture = split_exact_bench(exact)
+            if not _lane_matches_group(lane, group):
+                unmatched_groups.append(f"{side}:{group}")
+    if unmatched_groups:
+        raise ContractViolation(
+            "confirmation benchmark groups are outside their lane selector/history contract: "
+            + ", ".join(sorted(set(unmatched_groups)))
         )
 
 
@@ -1626,7 +1778,7 @@ def _build_recipe(args: argparse.Namespace, side: str) -> RunnerRecipe:
         locked=True,
         corpus=Path(corpus_value),
         target=getattr(args, f"{side}_target") or None,
-        logical_operations=getattr(args, f"{side}_logical_operations"),
+        logical_operations=getattr(args, f"{side}_logical_operations") or 1,
     )
 
 
@@ -1733,7 +1885,7 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
     if base_recipe.target_dir.resolve() == head_recipe.target_dir.resolve():
         raise ContractViolation("base and head must use distinct Cargo target directories")
 
-    contracts, selection = _load_fixture_contracts(
+    contracts, selection, operation_lanes = _load_fixture_contracts(
         base_recipe=base_recipe,
         head_recipe=head_recipe,
         suite=args.suite,
@@ -1742,6 +1894,20 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         head_group_override=args.head_group,
         filter_expr=args.filter,
     )
+    base_recipe = _recipe_with_lane_divisor(
+        base_recipe,
+        lane=operation_lanes[0],
+        explicit_divisor=args.base_logical_operations,
+    )
+    head_recipe = _recipe_with_lane_divisor(
+        head_recipe,
+        lane=operation_lanes[1],
+        explicit_divisor=args.head_logical_operations,
+    )
+    report["recipes"] = {
+        "base": _recipe_report(base_recipe),
+        "head": _recipe_report(head_recipe),
+    }
     report["selection"] = selection
     report["fixtures"] = contracts
     if not contracts:
@@ -1749,8 +1915,10 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
     if args.evidence_mode == "confirmation":
         _validate_confirmation_operation_contract(
             contracts,
-            base_logical_operations=args.base_logical_operations,
-            head_logical_operations=args.head_logical_operations,
+            base_logical_operations=base_recipe.logical_operations,
+            head_logical_operations=head_recipe.logical_operations,
+            base_lane=operation_lanes[0],
+            head_lane=operation_lanes[1],
         )
     for side in ("base", "head"):
         groups = {
@@ -2119,14 +2287,20 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument(
         "--base-logical-operations",
         type=int,
-        default=1,
-        help="Uniform logical-operation divisor for the selected base group.",
+        default=None,
+        help=(
+            "Legacy divisor override for a group without lane metadata; registered lanes "
+            "must match their corpus-owned divisor."
+        ),
     )
     parser.add_argument(
         "--head-logical-operations",
         type=int,
-        default=1,
-        help="Uniform logical-operation divisor for the selected head group.",
+        default=None,
+        help=(
+            "Legacy divisor override for a group without lane metadata; registered lanes "
+            "must match their corpus-owned divisor."
+        ),
     )
     parser.add_argument("--timeout-seconds", type=int, default=1_800)
     parser.add_argument("--allow-dirty", action="store_true")

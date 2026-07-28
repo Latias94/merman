@@ -105,11 +105,12 @@ python3 tools/bench/compare_self.py \
 
 Default features are enabled independently for both sides. Use `--no-base-default-features` or
 `--no-head-default-features` only when the selected suite does not require a disabled family;
-missing capability for a mandatory fixture is a contract failure. The
-`--base-logical-operations` and `--head-logical-operations` overrides are diagnostic-only until
-corpus lane metadata validates normalization. Confirmation keeps both values at one. Use the same
-recipe shape for an adjacent candidate comparison, changing the labels and checkouts rather than
-silently inheriting head settings on base.
+missing capability for a mandatory fixture is a contract failure. Corpus schema-v2 lane metadata
+validates the public operation, lifecycle, selector history, and normalization divisor. An explicit
+`--base-logical-operations` or `--head-logical-operations` value must match that metadata. Legacy
+schema-v1 confirmation keeps both divisors at one and requires exact benchmark identity. Use the
+same recipe shape for an adjacent candidate comparison, changing the labels and checkouts rather
+than silently inheriting head settings on base.
 
 ## 3. Establish the evidence contract
 
@@ -196,11 +197,11 @@ count, and maximum pair budget before looking at the result. The default contrac
 Use `--confidence-level`, `--bootstrap-seed`, and `--bootstrap-resamples` when an experiment needs
 explicit reproducibility values. Confirmation requires at least 10,000 bootstrap resamples;
 smaller values are diagnostic-only, and values above 100,000 are rejected to keep evidence
-generation bounded. Until corpus lane metadata owns normalization, confirmation also requires
-exact base/head benchmark identity and both logical-operation divisors to remain one. If A/A is
-unstable, the required count exceeds `--max-pairs`, or a decision interval crosses the joint
-boundary, record the result as inconclusive. Do not add samples after seeing the classification or
-relax either threshold.
+generation bounded. Schema-v2 confirmation resolves current and registered historical selectors to
+one public operation and takes its divisor from lane metadata. Legacy schema-v1 confirmation instead
+requires exact benchmark identity and divisors of one. If A/A is unstable, the required count
+exceeds `--max-pairs`, or a decision interval crosses the joint boundary, record the result as
+inconclusive. Do not add samples after seeing the classification or relax either threshold.
 
 ## 6. Run semantic and resource gates
 
@@ -216,6 +217,36 @@ The exact gate set depends on the owner, but must include applicable semantic/mo
 error precedence, resource-limit, security, host-callback, deterministic-output, and control-fixture
 contracts. Native allocation count/bytes and peak live growth use the separate instrumented memory
 harness; do not place allocator instrumentation in the latency executable.
+
+Run the native memory harness only when the owner unit registers that gate:
+
+```bash
+python3 tools/bench/run_native_memory.py \
+  --json-out target/bench/native_memory.json
+```
+
+It prebuilds one instrumented executable, then launches 60 fresh subprocesses by default: matched
+operation/zero samples across six fixed scales and five repeats. Treat exit `2` as a protocol or
+provenance failure, `1` as a failed bound, `3` as inconclusive, and `0` as passing only the declared
+owner contract. The checked-in Flowchart contract is explicitly an `infrastructure-smoke` contract
+with broad safety limits and cannot admit a candidate. A candidate unit must freeze tighter bounds
+before collecting its adjacent A/B evidence. Use `perf_runner.py --include-native-memory` only when
+this explicit cost is intended; no normal latency profile enables it automatically.
+
+For a durable baseline, run the full harness from a clean committed checkout, then freeze its JSON
+as the authoritative evidence envelope:
+
+```bash
+python3 tools/bench/freeze_perf_baseline.py freeze \
+  --native-memory-report target/bench/native_memory.json \
+  --out docs/performance/baselines/runtime-<source-commit>.json
+```
+
+The new manifest makes the checkout dirty only after it has captured the clean source. Commit the
+manifest separately. To verify later, use a clean checkout of the manifest's recorded source commit
+as `--repo-root` and pass the manifest from the later receipt commit. Verification rehashes the
+source, fixtures, report, executable, and any ordered patch stack, then recomputes native-memory
+analysis rather than trusting persisted classifications.
 
 ## 7. Interpret schema-v2 evidence
 
@@ -263,9 +294,24 @@ python3 -m py_compile \
   tools/bench/compare_mermaid_renderers.py \
   tools/bench/compare_self.py \
   tools/bench/corpus_utils.py \
+  tools/bench/freeze_perf_baseline.py \
+  tools/bench/native_memory.py \
   tools/bench/perf_runner.py \
   tools/bench/render_perf_comment.py \
+  tools/bench/run_native_memory.py \
   tools/bench/stage_spotcheck.py \
-  tools/bench/test_perf_contracts.py
+  tools/bench/test_native_memory_contracts.py \
+  tools/bench/test_native_memory_driver_contracts.py \
+  tools/bench/test_perf_baseline_manifest.py \
+  tools/bench/test_perf_contracts.py \
+  tools/bench/verify_pipeline_bench_list.py
+python3 tools/bench/test_native_memory_contracts.py
+python3 tools/bench/test_native_memory_driver_contracts.py
+python3 tools/bench/test_perf_baseline_manifest.py
 python3 tools/bench/test_perf_contracts.py
+python3 tools/bench/verify_pipeline_bench_list.py
+python3 tools/bench/run_native_memory.py --smoke \
+  --json-out target/bench/native_memory_smoke.json
+python3 tools/bench/test_native_memory_driver_contracts.py \
+  --verify-smoke-report target/bench/native_memory_smoke.json
 ```

@@ -197,16 +197,16 @@ fn bench_parse(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_parse_known_type(c: &mut Criterion) {
+fn bench_compatibility_json_parse(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
 
-    let mut group = c.benchmark_group("parse_known_type");
+    let mut group = c.benchmark_group("compatibility_json_parse");
     for (name, input) in fixtures() {
         let diagram_type = match engine.parse_metadata_sync(input) {
             Ok(v) => v.diagram_type,
             Err(_) => {
-                eprintln!("[bench][skip][parse_known_type] {name}: metadata error");
+                eprintln!("[bench][skip][compatibility_json_parse] {name}: metadata error");
                 continue;
             }
         };
@@ -217,7 +217,7 @@ fn bench_parse_known_type(c: &mut Criterion) {
             .is_err()
         {
             eprintln!(
-                "[bench][skip][parse_known_type] {name}: parse_with_type({diagram_type}) error"
+                "[bench][skip][compatibility_json_parse] {name}: parse_with_type({diagram_type}) error"
             );
             continue;
         }
@@ -461,7 +461,7 @@ fn bench_end_to_end(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_parse,
-    bench_parse_known_type,
+    bench_compatibility_json_parse,
     bench_parse_cold_engine,
     bench_frontmatter_preprocess,
     bench_layout,

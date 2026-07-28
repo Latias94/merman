@@ -49,8 +49,9 @@ Before implementation:
 
 1. Match capabilities between base and target revisions.
 2. Attribute parse, layout, render, and end-to-end stages.
-3. Repeat at least three same-host base/head runs for a decision-grade result, alternating which
-   checkout runs first.
+3. Run at least eight balanced base and head A/A calibration pairs, derive the fixed even AB/BA
+   confirmation count from the preregistered MDE, and collect fresh order-balanced pairs within the
+   fixed maximum budget.
 4. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
 5. Profile only after the slow stage is known.
 
@@ -163,7 +164,7 @@ the conversion and sanitization. First add a stage benchmark and prove the share
 does; do not add a global cache or syntax classifier.
 
 Exit: Kanban semantic/layout/SVG goldens and hostile Markdown/HTML behavior remain identical, and a
-three-run A/B shows the exact stage and absolute saving.
+decision-grade adjacent A/B confirmation shows the exact stage and absolute saving.
 
 ### P1.4: Avoid editor-only bookkeeping in render-only parsing
 
@@ -172,7 +173,7 @@ journals, then discard them. Prefer a shared constructor with a semantic-only or
 do not fork a second parser.
 
 Exit: semantic models, errors, recovery, spans, and editor output remain identical, while
-`parse`, `parse_known_type`, and end-to-end measurements show where the fixed cost moved.
+`parse`, `compatibility_json_parse`, and end-to-end measurements show where the fixed cost moved.
 
 ### P1.5: Measure reporting overhead on the string-only SVG path
 

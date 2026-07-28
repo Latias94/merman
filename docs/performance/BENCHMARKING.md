@@ -35,7 +35,8 @@ It measures:
 
 - `parse/*`: parsing with a reused `Engine`, without layout.
 - `parse_cold_engine/*`: request-style parsing with a fresh `Engine` per iteration.
-- `parse_known_type/*`: compatibility parsing when the diagram type is already known.
+- `compatibility_json_parse/*`: compatibility JSON parsing when the diagram type is already known.
+  Historical reports may use its registered `parse_known_type/*` alias.
 - `layout/*`: geometry and route computation from a parsed diagram.
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
@@ -57,7 +58,8 @@ Base and head are separate `RunnerRecipe` values. Each recipe records its own:
 - Rust toolchain and optional compilation target;
 - Cargo target directory;
 - corpus manifest path;
-- diagnostic-only per-side logical-operation override for a single fixed-repeat lane.
+- a corpus schema-v2 lane contract that owns public operation, lifecycle, transport, selector
+  history, and the logical-operation divisor.
 
 Do not project the head recipe onto an older revision. Capability names can change across releases.
 For example, `v0.8.0-alpha.3` exposes SVG rendering through `render`, while the current candidate
@@ -161,10 +163,11 @@ harness does not weaken thresholds, extend the budget after seeing results, or s
 first becomes favorable.
 
 One normalized Criterion point estimate per side within an AB/BA pair is one independent
-observation. Until corpus schema v2 lane metadata owns normalization, confirmation requires exact
-base/head benchmark identity and logical-operation divisors of one. The
-`--base-logical-operations` and `--head-logical-operations` overrides are diagnostic-only; do not
-use an advisory normalized result as candidate evidence.
+observation. Corpus schema-v2 lane metadata owns the public operation and normalization. Current and
+registered historical selectors can therefore confirm the same operation even when their Criterion
+group names differ. An explicit `--base-logical-operations` or `--head-logical-operations` value must
+match the registered divisor. Legacy corpus schema-v1 evidence has no such attestation: confirmation
+requires exact benchmark identity and divisors of one, while any override remains diagnostic-only.
 
 ### Statistics and decisions
 
@@ -222,7 +225,7 @@ comments are projections of it. It records:
   provenance;
 - corpus and fixture paths, byte lengths, hashes, capability discovery, and coverage gaps;
 - evidence mode, thresholds, confidence settings, bootstrap seed/resamples, pair budgets, and the
-  logical-operation divisor;
+  declared/effective lane contract and logical-operation divisor;
 - base/head A/A calibration, order/stability diagnostics, derived power requirement, and every raw
   pair;
 - fresh AB/BA confirmation pairs, one-sided relative and absolute bounds, regression state, mirrored
@@ -235,6 +238,71 @@ Consumers must fail closed on an unknown schema. Schema version `1` can be displ
 diagnostic evidence and cannot support a current admission decision. The comment renderer always
 writes an available failure projection, including for nonstandard signal/OOM exit codes, then exits
 `2` when its consumer contract fails. CI combines that status with the producer exit code.
+
+## Native allocation and peak-live evidence
+
+Run the isolated native `System` allocator lane explicitly:
+
+```bash
+python3 tools/bench/run_native_memory.py \
+  --json-out target/bench/native_memory.json
+```
+
+The driver builds a dedicated instrumented executable once, freezes its SHA-256 digest, and then
+launches one fresh process for every operation or matched zero-work sample. The renderer is prepared
+before the allocator snapshot, so `fresh-process` describes sample isolation while `reused-engine`
+describes the measured public operation. This executable is never used for latency evidence.
+
+The registered contract fixes six scales (`1, 2, 4, 10, 32, 100`), one seed across the matrix, at
+least five repeats, and alternating operation/zero order. Strict one-line JSON records executable and
+invocation identity, generated node/edge counts, deterministic SVG identity and dimensions,
+allocation count, allocated bytes, and peak live-byte growth. The analysis subtracts each matched
+zero sample, retains per-scale medians, and uses deterministic matched-vector bootstrap bounds for
+the OLS slope and scale-100 median.
+
+The Flowchart generator uses three nodes and four edges per scale unit, so its `100x` boundary stays
+inside the default layout-work policy while still exercising 100 clusters, 300 nodes, and 400 edges.
+Protocol smoke runs matched operation/zero pairs at both `1x` and `100x`; this catches setup leakage
+and resource-budget drift before a full 60-process matrix.
+
+An upper bound at or below the cap passes; a lower bound above the cap fails; a crossing interval is
+inconclusive. Exit precedence is the same `2 > 1 > 3 > 0` contract used by latency evidence. The
+checked-in `infrastructure-smoke` owner contract contains broad harness-safety bounds only and has
+`candidate_admission: false`. Every optimization owner must preregister tighter adjacent-candidate
+memory bounds and combine them with its semantic and latency gates.
+
+The aggregate runner keeps this lane opt-in:
+
+```bash
+python3 tools/bench/perf_runner.py --profile triage --include-native-memory
+```
+
+A full native-memory report records the Git commit/tree and dirty disposition, workspace/package
+manifest and lock digests, build environment, requested and actual Rust toolchain, executable digest,
+and the complete raw schedule. Full evidence rejects a dirty worktree by default. `--allow-dirty`
+exists only for investigation, forces `candidate_admission` false, and cannot create a durable
+receipt. Protocol smoke is likewise never admission evidence.
+
+After a clean full run, freeze the report, source inputs, every corpus fixture, recipe, host, and
+executable into the authoritative receipt envelope:
+
+```bash
+python3 tools/bench/freeze_perf_baseline.py freeze \
+  --native-memory-report target/bench/native_memory.json \
+  --out docs/performance/baselines/runtime-<source-commit>.json
+```
+
+The freezer revalidates every persisted protocol response and recomputes paired adjustments,
+bootstrap bounds, metric classifications, and aggregate exit precedence before accepting the
+report. A report by itself is not a frozen baseline. The manifest describes the measured source
+commit, so verify it from a clean checkout of that recorded commit while passing the manifest path
+from the receipt commit:
+
+```bash
+python3 tools/bench/freeze_perf_baseline.py verify \
+  --repo-root ../merman-source-commit \
+  --manifest docs/performance/baselines/runtime-<source-commit>.json
+```
 
 ## Cross-renderer comparison
 
