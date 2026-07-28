@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pipeline bench and verify its Criterion list against lane metadata."""
+"""Build one Criterion bench and verify its list against lane metadata."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _pipeline_lane_groups(
     enabled_features: frozenset[str],
 ) -> tuple[dict[str, str], dict[str, str]]:
     if corpus.schema_version != 2:
-        raise PipelineBenchListError("pipeline bench-list verification requires schema_version 2")
+        raise PipelineBenchListError("Criterion bench-list verification requires schema_version 2")
 
     current: dict[str, str] = {}
     historical: dict[str, str] = {}
@@ -115,12 +115,12 @@ def validate_pipeline_bench_list(
     unknown = sorted(groups - set(current))
     if missing or unknown:
         raise PipelineBenchListError(
-            f"pipeline Criterion groups differ from schema-v2 lanes: "
+            f"compiled Criterion groups differ from schema-v2 lanes: "
             f"missing={missing}, unknown={unknown}"
         )
     if unknown_fixtures:
         raise PipelineBenchListError(
-            f"pipeline Criterion list contains fixtures absent from corpus: {sorted(unknown_fixtures)}"
+            f"compiled Criterion list contains fixtures absent from corpus: {sorted(unknown_fixtures)}"
         )
 
     return {
@@ -178,12 +178,14 @@ def verify_compiled_pipeline(
     features: tuple[str, ...],
     toolchain: str | None,
     timeout_seconds: int,
+    package: str = "merman",
+    bench: str = "pipeline",
 ) -> dict[str, object]:
     recipe = RunnerRecipe(
-        label="pipeline-bench-list",
+        label=f"{package}-{bench}-bench-list",
         checkout=root,
-        package="merman",
-        bench="pipeline",
+        package=package,
+        bench=bench,
         features=features,
         default_features=False,
         toolchain=toolchain,
@@ -215,12 +217,14 @@ def verify_compiled_pipeline(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Verify the compiled pipeline Criterion list against schema-v2 lanes."
+        description="Verify one compiled Criterion list against schema-v2 lanes."
     )
     parser.add_argument("--repo-root", default=str(ROOT))
     parser.add_argument("--corpus", default="tools/bench/corpus.json")
     parser.add_argument("--target-dir", default="target")
     parser.add_argument("--features", default="svg")
+    parser.add_argument("--package", default="merman")
+    parser.add_argument("--bench", default="pipeline")
     parser.add_argument("--toolchain")
     parser.add_argument("--timeout-seconds", type=int, default=900)
     return parser
@@ -243,6 +247,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if not features:
             raise PipelineBenchListError("at least one Cargo feature is required")
+        if not args.package or not args.bench:
+            raise PipelineBenchListError("package and bench must be non-empty")
         result = verify_compiled_pipeline(
             root=root,
             corpus_path=corpus,
@@ -250,14 +256,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             features=features,
             toolchain=args.toolchain,
             timeout_seconds=args.timeout_seconds,
+            package=args.package,
+            bench=args.bench,
         )
         print(
-            f"Verified pipeline Criterion list: {result['bench_count']} benches, "
+            f"Verified {args.package}/{args.bench} Criterion list: "
+            f"{result['bench_count']} benches, "
             f"{len(result['groups'])} lane groups"
         )
         return 0
     except (OSError, ValueError, subprocess.TimeoutExpired, PipelineBenchListError) as error:
-        print(f"pipeline bench-list contract failed: {error}", file=sys.stderr)
+        print(f"Criterion bench-list contract failed: {error}", file=sys.stderr)
         return 2
 
 

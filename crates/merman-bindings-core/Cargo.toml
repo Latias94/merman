@@ -39,4 +39,10 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+criterion = "0.8.2"
 roxmltree.workspace = true
+
+[[bench]]
+name = "request_overlay"
+harness = false
+required-features = ["analysis", "ascii", "svg"]

@@ -2271,6 +2271,7 @@ name = "merman-bindings-core"
 version = "0.8.0-alpha.4"
 dependencies = [
  "chrono",
+ "criterion",
  "merman",
  "merman-analysis",
  "roxmltree 0.21.1",

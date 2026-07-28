@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "default_group": "binding_request_version_only_analysis_ascii_svg",
+  "suites": {
+    "u6": "Bindings-core analysis/ASCII/SVG request-overlay attribution lanes.",
+    "full": "All fixtures in corpus order."
+  },
+  "lanes": [
+    {
+      "id": "binding-analysis-ascii-svg-request-empty",
+      "kind": "public",
+      "owner": "merman-bindings-core",
+      "public_operation": "binding-execute-operation-semantic-json",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-criterion",
+      "required_features": ["analysis", "ascii", "svg"],
+      "selector": "binding_request_empty_analysis_ascii_svg/{fixture}",
+      "history_aliases": [],
+      "size_vector": [],
+      "workload": "binding-semantic-info-analysis-ascii-svg-empty-trusted-native-v1",
+      "evidence_contract": null,
+      "measurement_metrics": ["latency_ns"],
+      "semantic_output_dimensions": [
+        "semantic_json_bytes",
+        "operation_metadata_bytes"
+      ]
+    },
+    {
+      "id": "binding-analysis-ascii-svg-request-version-only",
+      "kind": "public",
+      "owner": "merman-bindings-core",
+      "public_operation": "binding-execute-operation-semantic-json",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-criterion",
+      "required_features": ["analysis", "ascii", "svg"],
+      "selector": "binding_request_version_only_analysis_ascii_svg/{fixture}",
+      "history_aliases": [],
+      "size_vector": [],
+      "workload": "binding-semantic-info-analysis-ascii-svg-version-only-trusted-native-v1",
+      "evidence_contract": null,
+      "measurement_metrics": ["latency_ns"],
+      "semantic_output_dimensions": [
+        "semantic_json_bytes",
+        "operation_metadata_bytes"
+      ]
+    },
+    {
+      "id": "binding-analysis-ascii-svg-request-resource-override",
+      "kind": "public",
+      "owner": "merman-bindings-core",
+      "public_operation": "binding-execute-operation-semantic-json",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-criterion",
+      "required_features": ["analysis", "ascii", "svg"],
+      "selector": "binding_request_resource_override_analysis_ascii_svg/{fixture}",
+      "history_aliases": [],
+      "size_vector": [],
+      "workload": "binding-semantic-info-analysis-ascii-svg-resource-max-source-4096-trusted-native-v1",
+      "evidence_contract": null,
+      "measurement_metrics": ["latency_ns"],
+      "semantic_output_dimensions": [
+        "semantic_json_bytes",
+        "operation_metadata_bytes"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "info_fixed_cost",
+      "family": "info",
+      "size": "tiny",
+      "category": "fixed-cost-attribution",
+      "source": "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",
+      "suites": ["u6"],
+      "features": ["info"],
+      "quality": ["semantic_json_equality"]
+    }
+  ]
+}

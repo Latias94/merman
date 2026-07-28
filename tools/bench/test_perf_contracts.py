@@ -36,6 +36,7 @@ from corpus_utils import (
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_PATH = ROOT / "tools" / "bench" / "corpus.json"
+BINDING_REQUEST_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus.json"
 
 
 class CorpusContractsTest(unittest.TestCase):
@@ -100,6 +101,115 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list.validate_pipeline_bench_list(
                 corpus,
                 output + f"\nunregistered/{fixture}: benchmark\n",
+            )
+
+    def test_binding_request_corpus_owns_one_complete_benchmark_list(self) -> None:
+        corpus = load_corpus(BINDING_REQUEST_CORPUS_PATH)
+        fixture = corpus.fixtures[0]
+        expected_benches = (
+            "binding_request_empty_analysis_ascii_svg/info_fixed_cost",
+            "binding_request_resource_override_analysis_ascii_svg/info_fixed_cost",
+            "binding_request_version_only_analysis_ascii_svg/info_fixed_cost",
+        )
+        output = "\n".join(f"{bench}: benchmark" for bench in expected_benches)
+
+        result = verify_pipeline_bench_list.validate_pipeline_bench_list(
+            corpus,
+            output,
+            enabled_features=("analysis", "ascii", "svg"),
+        )
+
+        self.assertEqual(result["bench_count"], 3)
+        self.assertEqual(
+            result["lane_ids"],
+            (
+                "binding-analysis-ascii-svg-request-empty",
+                "binding-analysis-ascii-svg-request-resource-override",
+                "binding-analysis-ascii-svg-request-version-only",
+            ),
+        )
+        self.assertEqual(
+            corpus.default_group,
+            "binding_request_version_only_analysis_ascii_svg",
+        )
+        self.assertEqual(
+            resolve_lane_group(corpus, corpus.default_group).id,
+            "binding-analysis-ascii-svg-request-version-only",
+        )
+        self.assertEqual(
+            fixture.source,
+            "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",
+        )
+        lanes = {lane.id: lane for lane in corpus.lanes}
+        self.assertEqual(
+            {
+                lane_id: (
+                    lane.kind,
+                    lane.owner,
+                    lane.public_operation,
+                    lane.transport,
+                    lane.process_lifecycle,
+                    lane.engine_lifecycle,
+                    lane.required_features,
+                    lane.logical_operations_per_estimate,
+                    lane.measurement_metrics,
+                    lane.size_vector,
+                    lane.workload,
+                )
+                for lane_id, lane in lanes.items()
+            },
+            {
+                "binding-analysis-ascii-svg-request-empty": (
+                    "public",
+                    "merman-bindings-core",
+                    "binding-execute-operation-semantic-json",
+                    "native-criterion",
+                    "reused-process",
+                    "reused-engine",
+                    ("analysis", "ascii", "svg"),
+                    1,
+                    ("latency_ns",),
+                    (),
+                    "binding-semantic-info-analysis-ascii-svg-empty-trusted-native-v1",
+                ),
+                "binding-analysis-ascii-svg-request-version-only": (
+                    "public",
+                    "merman-bindings-core",
+                    "binding-execute-operation-semantic-json",
+                    "native-criterion",
+                    "reused-process",
+                    "reused-engine",
+                    ("analysis", "ascii", "svg"),
+                    1,
+                    ("latency_ns",),
+                    (),
+                    "binding-semantic-info-analysis-ascii-svg-version-only-trusted-native-v1",
+                ),
+                "binding-analysis-ascii-svg-request-resource-override": (
+                    "public",
+                    "merman-bindings-core",
+                    "binding-execute-operation-semantic-json",
+                    "native-criterion",
+                    "reused-process",
+                    "reused-engine",
+                    ("analysis", "ascii", "svg"),
+                    1,
+                    ("latency_ns",),
+                    (),
+                    "binding-semantic-info-analysis-ascii-svg-resource-max-source-4096-trusted-native-v1",
+                ),
+            },
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "missing=",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                corpus,
+                "\n".join(
+                    f"{bench}: benchmark" for bench in expected_benches[:-1]
+                ),
+                enabled_features=("analysis", "ascii", "svg"),
             )
 
     def test_canary_suite_is_standard_hotspot_set(self) -> None:
