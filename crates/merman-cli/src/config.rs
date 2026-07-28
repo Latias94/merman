@@ -119,7 +119,12 @@ pub(crate) fn site_config_for(
                 resources.files().config_bytes,
             ),
         )?;
-        let value: Value = serde_json::from_str(&text)?;
+        let value: Value = serde_json::from_str(&text).map_err(|error| {
+            CliError::InvalidInput(format!(
+                "JSON error while parsing configuration file {}: {error}",
+                crate::error::safe_path(path)
+            ))
+        })?;
         if !value.is_object() {
             return Err(CliError::InvalidInput(
                 "configuration file must contain a JSON object".to_string(),

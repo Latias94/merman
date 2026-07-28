@@ -225,24 +225,73 @@ pub(crate) fn numbered_output_path(
     format: RenderFormat,
     artefacts: Option<&Path>,
 ) -> PathBuf {
-    let original_ext = output_template
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or_else(|| format.extension());
-    let artifact_ext = if is_markdown_path(output_template) {
-        format.extension()
-    } else {
-        original_ext
-    };
-    let stem = output_template
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("out");
-    let file_name = format!("{stem}-{index}.{artifact_ext}");
+    NumberedOutputNamespace::new(output_template, format, artefacts).path(index)
+}
 
-    match artefacts {
-        Some(dir) => dir.join(file_name),
-        None => output_template.with_file_name(file_name),
+#[derive(Debug, Clone)]
+pub(crate) struct NumberedOutputNamespace {
+    directory: PathBuf,
+    stem: String,
+    extension: String,
+}
+
+impl NumberedOutputNamespace {
+    pub(crate) fn new(
+        output_template: &Path,
+        format: RenderFormat,
+        artefacts: Option<&Path>,
+    ) -> Self {
+        let original_ext = output_template
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_else(|| format.extension());
+        let extension = if is_markdown_path(output_template) {
+            format.extension()
+        } else {
+            original_ext
+        }
+        .to_string();
+        let stem = output_template
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("out")
+            .to_string();
+        let directory = artefacts
+            .map(Path::to_path_buf)
+            .or_else(|| output_template.parent().map(Path::to_path_buf))
+            .unwrap_or_default();
+
+        Self {
+            directory,
+            stem,
+            extension,
+        }
+    }
+
+    pub(crate) fn directory(&self) -> &Path {
+        &self.directory
+    }
+
+    pub(crate) fn path(&self, index: usize) -> PathBuf {
+        self.directory
+            .join(format!("{}-{index}.{}", self.stem, self.extension))
+    }
+
+    pub(crate) fn contains_file_name(&self, file_name: &std::ffi::OsStr) -> bool {
+        let Some(file_name) = file_name.to_str() else {
+            return false;
+        };
+        let prefix = format!("{}-", self.stem);
+        let suffix = format!(".{}", self.extension);
+        let Some(index) = file_name
+            .strip_prefix(&prefix)
+            .and_then(|rest| rest.strip_suffix(&suffix))
+        else {
+            return false;
+        };
+        !index.is_empty()
+            && !index.starts_with('0')
+            && index.bytes().all(|byte| byte.is_ascii_digit())
     }
 }
 

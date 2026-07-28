@@ -1,5 +1,5 @@
 use crate::error::CliError;
-use crate::io::{write_stdout, write_stdout_line};
+use crate::io::write_stdout;
 use serde::Serialize;
 
 #[allow(dead_code)]
@@ -62,7 +62,7 @@ pub(crate) fn write_compiled_capabilities(json: bool) -> Result<(), CliError> {
     };
 
     if json {
-        return write_stdout_line(&serde_json::to_string_pretty(&document)?);
+        return crate::diagnostics::write_json_stdout(&document, true);
     }
 
     let mut output = String::from("ID\tKind\tDescription\n");

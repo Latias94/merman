@@ -6,6 +6,7 @@ use crate::invocation::{ResolvedDetect, ResolvedInput, ResolvedInvocation, Resol
 #[cfg(any(feature = "analysis", feature = "shell-completions"))]
 use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
+use crate::output::LocalPreflight;
 use crate::resources::ResolvedResourcePolicy;
 use serde::Serialize;
 use serde_json::Value;
@@ -61,7 +62,10 @@ struct ParseOut<'a> {
     model: &'a Value,
 }
 
-pub(crate) fn run(invocation: ResolvedInvocation) -> Result<i32, CliError> {
+pub(crate) fn run(preflight: LocalPreflight) -> Result<i32, CliError> {
+    let (invocation, publications) = preflight.into_parts();
+    #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
+    let _ = &publications;
     let exit_code = match invocation {
         ResolvedInvocation::Capabilities(args) => {
             run_capabilities(args)?;
@@ -83,7 +87,7 @@ pub(crate) fn run(invocation: ResolvedInvocation) -> Result<i32, CliError> {
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => run_lint(args)?,
         #[cfg(feature = "analysis")]
-        ResolvedInvocation::Fix(args) => run_fix(args)?,
+        ResolvedInvocation::Fix(args) => run_fix(args, &publications)?,
         #[cfg(feature = "analysis")]
         ResolvedInvocation::LintRules(args) => {
             run_lint_rules(args)?;
@@ -91,24 +95,24 @@ pub(crate) fn run(invocation: ResolvedInvocation) -> Result<i32, CliError> {
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Render(args) => {
-            let plan = render_plan_for_native(args)?;
+            let plan = render_plan_for_native(args, publications)?;
             run_render(plan)?;
             0
         }
         #[cfg(all(feature = "ascii", not(feature = "svg")))]
         ResolvedInvocation::Render(args) => {
-            run_ascii_render(args)?;
+            run_ascii_render(args, &publications)?;
             0
         }
         #[cfg(feature = "markdown")]
         ResolvedInvocation::Batch(args) => {
-            let plan = render_plan_for_batch(args)?;
+            let plan = render_plan_for_batch(args, publications)?;
             run_render(plan)?;
             0
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Mmdc(args) => {
-            let plan = render_plan_for_mmdc(args)?;
+            let plan = render_plan_for_mmdc(args, publications)?;
             run_render(plan)?;
             0
         }
@@ -211,7 +215,12 @@ fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
 }
 
 #[cfg(feature = "analysis")]
-fn run_fix(args: ResolvedFix) -> Result<i32, CliError> {
+fn run_fix(
+    args: ResolvedFix,
+    publications: &crate::output::PublicationGuards,
+) -> Result<i32, CliError> {
+    use crate::invocation::ResolvedFixDestination;
+
     let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
     let max_source_bytes = source_limit(&args.resources);
     let text =
@@ -225,17 +234,14 @@ fn run_fix(args: ResolvedFix) -> Result<i32, CliError> {
     let payload = analyze_document(&text, &analyzer, source.clone());
     let fixed = apply_diagnostic_fixes(&text, &payload, args.all)?;
 
-    if args.write {
-        let Some(path) = args.input.file() else {
-            return Err(CliError::InvalidInput(
-                "--write requires a file input, not stdin".to_string(),
-            ));
-        };
-        write_file(path, fixed.as_bytes())?;
-    } else if let Some(path) = args.output.as_deref() {
-        write_file(path, fixed.as_bytes())?;
-    } else {
-        write_stdout(fixed.as_bytes())?;
+    match &args.destination {
+        ResolvedFixDestination::Stdout => write_stdout(fixed.as_bytes())?,
+        ResolvedFixDestination::Output(path) => {
+            write_file(path, fixed.as_bytes(), publications)?;
+        }
+        ResolvedFixDestination::WriteInput(path) => {
+            write_file(path, fixed.as_bytes(), publications)?;
+        }
     }
 
     let after = analyze_document(&fixed, &analyzer, source);
@@ -273,12 +279,7 @@ fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
 }
 
 fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
-    if pretty {
-        write_stdout_line(&serde_json::to_string_pretty(value)?)?;
-    } else {
-        write_stdout_line(&serde_json::to_string(value)?)?;
-    }
-    Ok(())
+    crate::diagnostics::write_json_stdout(value, pretty)
 }
 
 #[cfg(feature = "analysis")]

@@ -7,7 +7,10 @@ use crate::io::{OutputTarget, read_input, write_output};
 use std::env;
 use std::io::{self, IsTerminal};
 
-pub(crate) fn run_ascii_render(args: ResolvedSingleRender) -> Result<(), CliError> {
+pub(crate) fn run_ascii_render(
+    args: ResolvedSingleRender,
+    publications: &crate::output::PublicationGuards,
+) -> Result<(), CliError> {
     let input = args.input.to_path_buf();
     let (format, destination, text_options) = match args.output {
         ResolvedOutput::Text {
@@ -46,7 +49,7 @@ pub(crate) fn run_ascii_render(args: ResolvedSingleRender) -> Result<(), CliErro
     let Some(rendered) = renderer.render_ascii_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
-    write_output(output.as_ref(), rendered.as_bytes())
+    write_output(output.as_ref(), rendered.as_bytes(), publications)
 }
 
 fn text_options_for_output(

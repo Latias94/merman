@@ -134,11 +134,18 @@ pub(crate) struct ResolvedLint {
 pub(crate) struct ResolvedFix {
     pub(crate) input: ResolvedInput,
     pub(crate) stdin_file_name: Option<PathBuf>,
-    pub(crate) write: bool,
-    pub(crate) output: Option<PathBuf>,
+    pub(crate) destination: ResolvedFixDestination,
     pub(crate) all: bool,
     pub(crate) analysis: crate::cli::AnalysisCliArgs,
     pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[cfg(feature = "analysis")]
+#[derive(Debug)]
+pub(crate) enum ResolvedFixDestination {
+    Stdout,
+    Output(PathBuf),
+    WriteInput(PathBuf),
 }
 
 #[cfg(all(feature = "svg", feature = "markdown"))]
@@ -180,6 +187,16 @@ pub(crate) enum ResolvedDestination {
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
+impl ResolvedDestination {
+    pub(crate) fn file(&self) -> Option<&Path> {
+        match self {
+            Self::Stdout => None,
+            Self::File(path) => Some(path),
+        }
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone)]
 pub(crate) enum ResolvedOutput {
     #[cfg(feature = "svg")]
@@ -212,6 +229,40 @@ pub(crate) enum ResolvedOutput {
         embedded_images: ResolvedEmbeddedImageOptions,
         fit: bool,
     },
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+impl ResolvedOutput {
+    pub(crate) fn destination(&self) -> &ResolvedDestination {
+        match self {
+            #[cfg(feature = "svg")]
+            Self::Svg { destination, .. } => destination,
+            #[cfg(feature = "ascii")]
+            Self::Text { destination, .. } => destination,
+            #[cfg(feature = "png")]
+            Self::Png { destination, .. } => destination,
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg { destination, .. } => destination,
+            #[cfg(feature = "pdf")]
+            Self::Pdf { destination, .. } => destination,
+        }
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn format(&self) -> RenderFormat {
+        match self {
+            #[cfg(feature = "svg")]
+            Self::Svg { .. } => RenderFormat::Svg,
+            #[cfg(feature = "ascii")]
+            Self::Text { format, .. } => *format,
+            #[cfg(feature = "png")]
+            Self::Png { .. } => RenderFormat::Png,
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg { .. } => RenderFormat::Jpeg,
+            #[cfg(feature = "pdf")]
+            Self::Pdf { .. } => RenderFormat::Pdf,
+        }
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -262,6 +313,7 @@ pub(crate) struct ResolvedEmbeddedImageOptions {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 pub(crate) struct ResolvedRenderCommon {
+    pub(crate) cwd: PathBuf,
     pub(crate) parse: ResolvedParseOptions,
     pub(crate) render: ResolvedRenderOptions,
     pub(crate) resources: ResolvedResourcePolicy,
@@ -410,7 +462,7 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
         #[cfg(feature = "markdown")]
         RawCommand::Batch(args) => normalize_batch(args, facts).map(ResolvedInvocation::Batch),
         #[cfg(feature = "svg")]
-        RawCommand::Mmdc(args) => normalize_mmdc(args).map(ResolvedInvocation::Mmdc),
+        RawCommand::Mmdc(args) => normalize_mmdc(args, facts).map(ResolvedInvocation::Mmdc),
         #[cfg(feature = "shell-completions")]
         RawCommand::Completion(args) => Ok(ResolvedInvocation::Completion(args)),
     }
@@ -483,11 +535,22 @@ fn normalize_fix(args: FixArgs, facts: &InvocationFacts) -> Result<ResolvedFix, 
         args.stdin_file_name.is_some(),
     )?;
     validate_stdin_file_name(&input, args.stdin_file_name.as_deref())?;
+    let destination = if args.write {
+        let Some(path) = input.file() else {
+            return Err(CliError::InvalidInput(
+                "--write requires a file input, not stdin".to_string(),
+            ));
+        };
+        ResolvedFixDestination::WriteInput(path.to_path_buf())
+    } else if let Some(path) = args.output {
+        ResolvedFixDestination::Output(path)
+    } else {
+        ResolvedFixDestination::Stdout
+    };
     Ok(ResolvedFix {
         input,
         stdin_file_name: args.stdin_file_name,
-        write: args.write,
-        output: args.output,
+        destination,
         all: args.all,
         analysis: args.analysis,
         resources: resolve_resource_policy(args.resources)?,
@@ -618,7 +681,7 @@ fn normalize_render(
     validate_native_output_options(format, &args.options)?;
     let destination = resolve_single_destination(args.output, &input, format);
     let output = resolved_native_output(format, destination, &args.options)?;
-    let common = resolve_native_common(args.options, resources);
+    let common = resolve_native_common(args.options, resources, &facts.cwd);
 
     Ok(ResolvedSingleRender {
         input,
@@ -642,7 +705,7 @@ fn normalize_batch(
     {
         return Err(CliError::InvalidInput(format!(
             "batch input must be a Markdown file: {}",
-            path.display()
+            crate::error::safe_path(path)
         )));
     }
 
@@ -705,7 +768,7 @@ fn normalize_batch(
     )?;
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
-    let common = resolve_native_common(args.options, resources);
+    let common = resolve_native_common(args.options, resources, &facts.cwd);
 
     Ok(ResolvedBatchRender {
         input,
@@ -718,7 +781,7 @@ fn normalize_batch(
 }
 
 #[cfg(feature = "svg")]
-fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
+fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmdcRender, CliError> {
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input_was_explicit = args.input_file.is_some();
     let warn_on_implicit_stdin = !input_was_explicit && !args.quiet;
@@ -799,7 +862,14 @@ fn normalize_mmdc(args: MmdcArgs) -> Result<ResolvedMmdcRender, CliError> {
     } else {
         1
     };
-    let common = resolve_mmdc_common(parse, render, &args, output_is_stdout, resources);
+    let common = resolve_mmdc_common(
+        parse,
+        render,
+        &args,
+        output_is_stdout,
+        resources,
+        &facts.cwd,
+    );
     let compatibility = MmdcCompatibilityInputs {
         puppeteer_config_file: args.puppeteer_config_file.clone(),
         #[cfg(feature = "markdown")]
@@ -941,7 +1011,7 @@ fn format_from_path(path: &Path) -> Result<Option<RenderFormat>, CliError> {
         _ => {
             return Err(CliError::InvalidInput(format!(
                 "cannot infer a compiled output format from {}",
-                path.display()
+                crate::error::safe_path(path)
             )));
         }
     };
@@ -1055,8 +1125,18 @@ fn resolved_mmdc_output(
 fn resolve_native_common(
     options: NativeRenderOptions,
     resources: ResolvedResourcePolicy,
+    cwd: &Path,
 ) -> ResolvedRenderCommon {
+    #[cfg(feature = "system-timing")]
+    let options = {
+        let mut options = options;
+        if options.quiet {
+            options.parse.runtime.system_timing = false;
+        }
+        options
+    };
     ResolvedRenderCommon {
+        cwd: cwd.to_path_buf(),
         parse: resolve_parse_options(options.parse),
         render: resolve_render_options(options.render),
         resources,
@@ -1084,8 +1164,18 @@ fn resolve_mmdc_common(
     args: &MmdcArgs,
     output_is_stdout: bool,
     resources: ResolvedResourcePolicy,
+    cwd: &Path,
 ) -> ResolvedRenderCommon {
+    #[cfg(feature = "system-timing")]
+    let parse = {
+        let mut parse = parse;
+        if args.quiet {
+            parse.runtime.system_timing = false;
+        }
+        parse
+    };
     ResolvedRenderCommon {
+        cwd: cwd.to_path_buf(),
         parse: resolve_parse_options(parse),
         render: resolve_render_options(render),
         resources,

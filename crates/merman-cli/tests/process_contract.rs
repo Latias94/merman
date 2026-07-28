@@ -373,3 +373,30 @@ fn quiet_parallel_markdown_preserves_source_order() {
         "Markdown image order must follow source order:\n{rewritten}"
     );
 }
+
+#[cfg(feature = "system-timing")]
+#[test]
+fn quiet_suppresses_explicit_system_timing_diagnostics() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("input.mmd"), "flowchart LR\nA-->B\n").expect("write Mermaid source");
+
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "input.mmd",
+            "--output",
+            "out.svg",
+            "--system-timing",
+            "--quiet",
+        ],
+        "",
+        Some(tmp.path()),
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert!(
+        output.stderr.is_empty(),
+        "quiet mode must suppress timing diagnostics: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

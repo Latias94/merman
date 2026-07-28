@@ -381,6 +381,47 @@ fn remote_icon_body_stream_stops_at_limit_plus_one() {
 }
 
 #[test]
+fn remote_icon_json_errors_do_not_echo_url_secrets() {
+    let url = serve_body_once(b"not valid icon JSON");
+    let source = format!("remote#{url}/secret-path?token=do-not-print#fragment-do-not-print");
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--output",
+            "-",
+            "--icon-pack-source",
+            &source,
+            "--allow-network",
+            "--allow-private-network",
+        ],
+        SOURCE,
+    );
+
+    assert_eq!(exit_code(output.status), 2);
+    let stderr = utf8(&output.stderr);
+    assert!(stderr.contains("Invalid icon pack JSON"), "{stderr}");
+    for secret in ["secret-path", "do-not-print", "fragment-do-not-print"] {
+        assert!(!stderr.contains(secret), "{stderr}");
+    }
+}
+
+#[test]
+fn malformed_named_remote_source_does_not_echo_the_argument() {
+    let secret = "https://user:password@example.invalid/secret?token=hidden#fragment";
+    let output = run_with_stdin(
+        &["render", "-", "--output", "-", "--icon-pack-source", secret],
+        SOURCE,
+    );
+
+    assert_eq!(exit_code(output.status), 2);
+    let stderr = utf8(&output.stderr);
+    for secret in ["user", "password", "secret", "hidden", "fragment"] {
+        assert!(!stderr.contains(secret), "{stderr}");
+    }
+}
+
+#[test]
 fn markdown_chart_staging_and_scheduler_budgets_reject_workloads() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let markdown = tmp.path().join("input.md");

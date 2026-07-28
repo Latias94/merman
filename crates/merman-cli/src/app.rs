@@ -42,6 +42,10 @@ impl CliApp {
                 return report_error(error);
             }
         };
+        let invocation = match crate::output::preflight(invocation, &facts.cwd) {
+            Ok(invocation) => invocation,
+            Err(error) => return report_error(error),
+        };
         match crate::commands::run(invocation) {
             Ok(exit_code) => exit_code_from_i32(exit_code),
             Err(error) => report_error(error),

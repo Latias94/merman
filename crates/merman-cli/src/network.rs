@@ -30,7 +30,7 @@ pub(crate) struct NetworkPolicy {
 pub(crate) struct SanitizedEndpoint(String);
 
 impl SanitizedEndpoint {
-    fn from_url(url: &Url) -> Result<Self, NetworkError> {
+    pub(crate) fn from_url(url: &Url) -> Result<Self, NetworkError> {
         let host = normalized_host(url).ok_or(NetworkError::MissingHost)?;
         let host = match host.parse::<IpAddr>() {
             Ok(IpAddr::V6(address)) => format!("[{address}]"),
@@ -225,6 +225,10 @@ impl NetworkError {
                 | Self::TransportConnect { .. }
                 | Self::TransportRequest { .. }
                 | Self::UnapprovedPeer { .. }
+                | Self::InvalidRedirectLocation { .. }
+                | Self::InvalidRedirectTarget { .. }
+                | Self::TooManyRedirects { .. }
+                | Self::RedirectLoop { .. }
                 | Self::HttpStatus { .. }
                 | Self::BodyRead { .. }
                 | Self::BodyAllocation { .. }
@@ -1327,7 +1331,7 @@ mod tests {
             .is_operational()
         );
         assert!(
-            !NetworkError::TooManyRedirects {
+            NetworkError::TooManyRedirects {
                 endpoint,
                 max_redirects: 3,
             }

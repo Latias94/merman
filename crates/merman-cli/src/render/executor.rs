@@ -159,7 +159,11 @@ impl<'a> RenderRequest<'a> {
 
     fn render(&self, text: &str) -> Result<(), CliError> {
         let artifact = self.render_artifact(text)?;
-        write_output(self.plan.output.as_ref(), &artifact.bytes)
+        write_output(
+            self.plan.output.as_ref(),
+            &artifact.bytes,
+            &self.plan.publications,
+        )
     }
 
     pub(super) fn render_artifact(&self, text: &str) -> Result<RenderedArtifact, CliError> {
@@ -257,9 +261,7 @@ impl<'a> RenderRequest<'a> {
         feature = "pdf"
     ))]
     pub(super) fn info(&self, message: &str) {
-        if !self.plan.quiet {
-            eprintln!("{message}");
-        }
+        crate::diagnostics::DiagnosticSink::new(self.plan.quiet).info(message);
     }
 
     #[cfg(feature = "markdown")]

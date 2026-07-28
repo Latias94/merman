@@ -64,9 +64,9 @@ default = [
 
 # Public leaves describe observable CLI capabilities. Keep them additive: exact
 # absence claims belong to a `default-features = false` artifact profile.
-analysis = ["dep:merman-analysis"]
-svg = ["merman/svg"]
-ascii = ["merman/ascii"]
+analysis = ["dep:atomic-write-file", "dep:merman-analysis", "dep:same-file"]
+svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
+ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -87,6 +87,7 @@ shell-completions = ["dep:clap_complete"]
 
 
 [dependencies]
+atomic-write-file = { workspace = true, optional = true }
 clap.workspace = true
 clap_complete = { workspace = true, optional = true }
 chrono.workspace = true
@@ -97,15 +98,16 @@ rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+same-file = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio = { workspace = true, optional = true, features = ["rt", "time"] }
 url = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
-tempfile = "3.27.0"
 png.workspace = true
 roxmltree.workspace = true
+tempfile = "3.27.0"
 
 [[test]]
 name = "cli_compat"
@@ -170,6 +172,17 @@ required-features = [
     "analysis",
     "svg",
     "png",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+]
+
+[[test]]
+name = "output_integrity"
+required-features = [
+    "analysis",
+    "svg",
     "icons",
     "markdown",
     "network-icons",

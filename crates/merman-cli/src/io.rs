@@ -28,18 +28,16 @@ pub(crate) fn read_primary_input(
 ) -> Result<String, InputReadError> {
     match path {
         None => {
-            if !quiet {
-                eprintln!(
-                    "No input file specified, reading from stdin. Use -i <input> to suppress this warning."
-                );
-            }
+            crate::diagnostics::DiagnosticSink::new(quiet).info(
+                "No input file specified, reading from stdin. Use -i <input> to suppress this warning.",
+            );
             read_utf8(std::io::stdin().lock(), "stdin", limit, None)
         }
         Some(path) if path == Path::new("-") => {
             read_utf8(std::io::stdin().lock(), "stdin", limit, None)
         }
         Some(path) => {
-            let resource = format!("Input file \"{}\"", path.display());
+            let resource = format!("Input file {}", crate::error::safe_path(path));
             let file = File::open(path).map_err(|source| {
                 if source.kind() == std::io::ErrorKind::NotFound {
                     InputReadError::NotFound {
@@ -80,7 +78,7 @@ pub(crate) fn read_named_text_file(
     limit: InputLimit,
 ) -> Result<String, CliError> {
     let path = path.as_ref();
-    let resource = format!("{label} \"{}\"", path.display());
+    let resource = format!("{label} {}", crate::error::safe_path(path));
     let file = File::open(path).map_err(|source| {
         CliError::auxiliary_input(if source.kind() == std::io::ErrorKind::NotFound {
             InputReadError::NotFound {
@@ -108,27 +106,33 @@ pub(crate) fn read_named_text_file(
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
-pub(crate) fn write_output(target: Option<&OutputTarget>, bytes: &[u8]) -> Result<(), CliError> {
+pub(crate) fn write_output(
+    target: Option<&OutputTarget>,
+    bytes: &[u8],
+    publications: &crate::output::PublicationGuards,
+) -> Result<(), CliError> {
     match target {
         None | Some(OutputTarget::Stdout) => {
             write_stdout(bytes)?;
         }
         Some(OutputTarget::File(path)) => {
-            write_file(path, bytes)?;
+            write_file(path, bytes, publications)?;
         }
     }
     Ok(())
 }
 
 pub(crate) fn write_stdout(bytes: &[u8]) -> Result<(), CliError> {
-    let mut stdout = std::io::stdout();
-    write_stdout_bytes(&mut stdout, bytes)
+    let stdout = std::io::stdout();
+    let mut writer = stdout.lock();
+    write_stdout_bytes(&mut writer, bytes)
 }
 
 pub(crate) fn write_stdout_line(line: &str) -> Result<(), CliError> {
-    let mut stdout = std::io::stdout();
-    write_stdout_bytes(&mut stdout, line.as_bytes())?;
-    write_stdout_bytes(&mut stdout, b"\n")?;
+    let stdout = std::io::stdout();
+    let mut writer = stdout.lock();
+    write_stdout_bytes(&mut writer, line.as_bytes())?;
+    write_stdout_bytes(&mut writer, b"\n")?;
     Ok(())
 }
 
@@ -137,28 +141,16 @@ fn write_stdout_bytes(stdout: &mut impl Write, bytes: &[u8]) -> Result<(), CliEr
         if err.kind() == std::io::ErrorKind::BrokenPipe {
             CliError::BrokenStdoutPipe
         } else {
-            CliError::Io(err)
+            CliError::stream("stdout", err)
         }
     })
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
-    ensure_output_dir(path)?;
-    std::fs::write(path, bytes)?;
-    Ok(())
-}
-
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-fn ensure_output_dir(path: &Path) -> Result<(), CliError> {
-    let Some(parent) = path.parent() else {
-        return Ok(());
-    };
-    if parent.as_os_str().is_empty() || parent.exists() {
-        return Ok(());
-    }
-    Err(CliError::InvalidOutput(format!(
-        "Output directory \"{}\" does not exist",
-        parent.display()
-    )))
+pub(crate) fn write_file(
+    path: &Path,
+    bytes: &[u8],
+    publications: &crate::output::PublicationGuards,
+) -> Result<(), CliError> {
+    crate::output::publish_atomic_file(path, bytes, publications)
 }

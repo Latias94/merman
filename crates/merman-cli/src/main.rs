@@ -5,6 +5,7 @@ mod capabilities;
 mod cli;
 mod commands;
 mod config;
+mod diagnostics;
 mod error;
 mod input;
 mod invocation;
@@ -13,6 +14,7 @@ mod io;
 mod markdown;
 #[cfg(feature = "network-icons")]
 mod network;
+mod output;
 #[cfg(feature = "svg")]
 mod render;
 mod resources;

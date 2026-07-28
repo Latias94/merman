@@ -9,6 +9,8 @@ mod plan;
 mod svg_pipeline;
 
 pub(crate) use executor::run_render;
+#[cfg(feature = "icons")]
+pub(crate) use icons::{resolve_local_icon_paths, validate_icon_source_count};
 #[cfg(feature = "markdown")]
 pub(crate) use plan::render_plan_for_batch;
 pub(crate) use plan::{render_plan_for_mmdc, render_plan_for_native};
@@ -58,6 +60,7 @@ mod tests {
             resources: ResolvedResourcePolicy::for_profile(
                 merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
             ),
+            publications: crate::output::PublicationGuards::for_test(),
             scale: 1.0,
             raster: ResolvedRasterOptions::default(),
             #[cfg(feature = "pdf")]

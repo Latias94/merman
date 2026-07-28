@@ -23,6 +23,7 @@ use crate::invocation::{
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
 #[cfg(feature = "markdown")]
 use crate::markdown;
+use crate::output::PublicationGuards;
 use crate::resources::ResolvedResourcePolicy;
 #[cfg(feature = "icons")]
 use merman::svg::IconRegistry;
@@ -52,6 +53,7 @@ pub(crate) struct RenderPlan {
     pub(super) parse: ParseCliArgs,
     pub(super) render: RenderCliArgs,
     pub(super) resources: ResolvedResourcePolicy,
+    pub(super) publications: PublicationGuards,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(super) scale: f32,
     #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -78,7 +80,10 @@ pub(crate) struct RenderPlan {
     pub(super) mode: RenderMode,
 }
 
-pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<RenderPlan, CliError> {
+pub(crate) fn render_plan_for_mmdc(
+    resolved: ResolvedMmdcRender,
+    publications: PublicationGuards,
+) -> Result<RenderPlan, CliError> {
     #[cfg(feature = "markdown")]
     let markdown_batch = matches!(resolved.workflow, ResolvedWorkflow::MarkdownBatch);
     #[cfg(feature = "markdown")]
@@ -86,6 +91,7 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
         prepare_artefacts_dir(
             resolved.compatibility.artefacts.as_deref(),
             resolved.input.file(),
+            &publications,
         )?
     } else {
         None
@@ -103,15 +109,7 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolved.jobs;
     #[cfg(feature = "icons")]
-    let icon_registry = load_icon_registry(
-        &common.icons.packages,
-        &common.icons.named_sources,
-        &resources,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_network,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_private_network,
-    )?;
+    let icon_registry = load_icon_registry(&common.icons, &resources, &common.cwd)?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
     #[cfg(feature = "ascii")]
@@ -126,6 +124,7 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
         parse,
         render,
         resources,
+        publications,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -162,6 +161,7 @@ pub(crate) fn render_plan_for_mmdc(resolved: ResolvedMmdcRender) -> Result<Rende
 
 pub(crate) fn render_plan_for_native(
     resolved: ResolvedSingleRender,
+    publications: PublicationGuards,
 ) -> Result<RenderPlan, CliError> {
     let input = Some(resolved.input.to_path_buf());
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -170,15 +170,7 @@ pub(crate) fn render_plan_for_native(
     let common = resolved.common;
     let resources = common.resources;
     #[cfg(feature = "icons")]
-    let icon_registry = load_icon_registry(
-        &common.icons.packages,
-        &common.icons.named_sources,
-        &resources,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_network,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_private_network,
-    )?;
+    let icon_registry = load_icon_registry(&common.icons, &resources, &common.cwd)?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
     #[cfg(feature = "ascii")]
@@ -193,6 +185,7 @@ pub(crate) fn render_plan_for_native(
         parse,
         render,
         resources,
+        publications,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -228,23 +221,18 @@ pub(crate) fn render_plan_for_native(
 }
 
 #[cfg(feature = "markdown")]
-pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<RenderPlan, CliError> {
+pub(crate) fn render_plan_for_batch(
+    resolved: ResolvedBatchRender,
+    publications: PublicationGuards,
+) -> Result<RenderPlan, CliError> {
     let input = Some(resolved.input.to_path_buf());
     let output_root = resolved.output_root;
-    std::fs::create_dir_all(&output_root)?;
+    publications.prepare_directory(&output_root)?;
     let output = project_output(resolved.output);
     let common = resolved.common;
     let resources = common.resources;
     #[cfg(feature = "icons")]
-    let icon_registry = load_icon_registry(
-        &common.icons.packages,
-        &common.icons.named_sources,
-        &resources,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_network,
-        #[cfg(feature = "network-icons")]
-        common.icons.allow_private_network,
-    )?;
+    let icon_registry = load_icon_registry(&common.icons, &resources, &common.cwd)?;
     let parse = common.parse.into_legacy_cli_args();
     let render = common.render.into_legacy_cli_args();
     #[cfg(feature = "ascii")]
@@ -259,6 +247,7 @@ pub(crate) fn render_plan_for_batch(resolved: ResolvedBatchRender) -> Result<Ren
         parse,
         render,
         resources,
+        publications,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         scale: output.scale,
         #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -595,6 +584,7 @@ fn resolve_auto_text_color(environment: TerminalColorEnvironment) -> TextColorMo
 fn prepare_artefacts_dir(
     artefacts: Option<&Path>,
     input: Option<&Path>,
+    publications: &PublicationGuards,
 ) -> Result<Option<PathBuf>, CliError> {
     let Some(path) = artefacts else {
         return Ok(None);
@@ -607,7 +597,7 @@ fn prepare_artefacts_dir(
         ));
     }
 
-    std::fs::create_dir_all(&path)?;
+    publications.prepare_directory(path)?;
     Ok(Some(path.to_path_buf()))
 }
 
@@ -627,7 +617,12 @@ fn validate_puppeteer_config_file(
             max_bytes,
         ),
     )?;
-    let _: serde_json::Value = serde_json::from_str(&text)?;
+    let _: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        CliError::InvalidInput(format!(
+            "JSON error while parsing Puppeteer configuration file {}: {error}",
+            crate::error::safe_path(path)
+        ))
+    })?;
     Ok(())
 }
 

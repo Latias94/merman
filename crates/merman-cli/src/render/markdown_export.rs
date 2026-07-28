@@ -1,13 +1,18 @@
 use super::executor::RenderRequest;
 use crate::error::CliError;
-use crate::io::OutputTarget;
-use crate::io::write_file;
+use crate::io::{OutputTarget, write_file};
 use crate::markdown::{self, MarkdownImage};
 use crate::render::plan::RenderPlan;
 use crate::resources::CountLedgerKind;
 #[cfg(feature = "parallel-markdown")]
 use rayon::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+struct RenderedMarkdownChart {
+    output_file: PathBuf,
+    bytes: Vec<u8>,
+    image: MarkdownImage,
+}
 
 impl RenderPlan {
     pub(super) fn is_markdown_input(&self) -> bool {
@@ -68,13 +73,47 @@ impl<'a> RenderRequest<'a> {
             ));
         }
 
-        let images = self.render_markdown_charts(output_path, &charts)?;
+        let output_files = (1..=charts.len())
+            .map(|index| {
+                markdown::numbered_output_path(
+                    output_path,
+                    index,
+                    self.plan.format,
+                    self.plan.artefacts.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let writes_document = markdown::is_markdown_path(output_path);
 
-        if markdown::is_markdown_path(output_path) {
+        let rendered_charts = self.render_markdown_charts(output_path, &charts, &output_files)?;
+        let images = rendered_charts
+            .iter()
+            .map(|rendered| rendered.image.clone())
+            .collect::<Vec<_>>();
+        let rewritten = if writes_document {
             let rewritten = markdown::replace_charts_with_images(text, &images);
             self.charge_staged_bytes(rewritten.len())?;
-            write_file(output_path, rewritten.as_bytes())?;
-            self.info(&format!(" ✅ {}", output_path.display()));
+            Some(rewritten)
+        } else {
+            None
+        };
+
+        for rendered in &rendered_charts {
+            write_file(
+                &rendered.output_file,
+                &rendered.bytes,
+                &self.plan.publications,
+            )?;
+        }
+        if let Some(rewritten) = rewritten.as_deref() {
+            write_file(output_path, rewritten.as_bytes(), &self.plan.publications)?;
+        }
+
+        for rendered in &rendered_charts {
+            self.info(&format!(" ✅ {}", rendered.image.url));
+        }
+        if writes_document {
+            self.info(&format!(" ✅ {}", crate::error::safe_path(output_path)));
         }
 
         Ok(())
@@ -84,12 +123,15 @@ impl<'a> RenderRequest<'a> {
         &self,
         output_path: &Path,
         charts: &[markdown::MarkdownChart],
-    ) -> Result<Vec<MarkdownImage>, CliError> {
+        output_files: &[PathBuf],
+    ) -> Result<Vec<RenderedMarkdownChart>, CliError> {
         if charts.len() <= 1 || self.plan.markdown_jobs() == 1 {
             return charts
                 .iter()
-                .enumerate()
-                .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                .zip(output_files)
+                .map(|(chart, output_file)| {
+                    self.render_markdown_chart(output_path, output_file, chart)
+                })
                 .collect();
         }
 
@@ -107,8 +149,10 @@ impl<'a> RenderRequest<'a> {
             pool.install(|| {
                 charts
                     .par_iter()
-                    .enumerate()
-                    .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                    .zip(output_files.par_iter())
+                    .map(|(chart, output_file)| {
+                        self.render_markdown_chart(output_path, output_file, chart)
+                    })
                     .collect()
             })
         }
@@ -117,8 +161,10 @@ impl<'a> RenderRequest<'a> {
         {
             charts
                 .iter()
-                .enumerate()
-                .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                .zip(output_files)
+                .map(|(chart, output_file)| {
+                    self.render_markdown_chart(output_path, output_file, chart)
+                })
                 .collect()
         }
     }
@@ -126,25 +172,21 @@ impl<'a> RenderRequest<'a> {
     fn render_markdown_chart(
         &self,
         output_path: &Path,
-        index: usize,
+        output_file: &Path,
         chart: &markdown::MarkdownChart,
-    ) -> Result<MarkdownImage, CliError> {
-        let output_file = markdown::numbered_output_path(
-            output_path,
-            index + 1,
-            self.plan.format,
-            self.plan.artefacts.as_deref(),
-        );
+    ) -> Result<RenderedMarkdownChart, CliError> {
         let artifact = self.render_artifact(&chart.definition)?;
         self.charge_staged_bytes(artifact.bytes.len())?;
-        write_file(&output_file, &artifact.bytes)?;
 
-        let url = markdown::relative_markdown_url(output_path, &output_file)?;
-        self.info(&format!(" ✅ {url}"));
-        Ok(MarkdownImage {
-            url,
-            title: artifact.title,
-            alt: artifact.desc.unwrap_or_else(|| "diagram".to_string()),
+        let url = markdown::relative_markdown_url(output_path, output_file)?;
+        Ok(RenderedMarkdownChart {
+            output_file: output_file.to_path_buf(),
+            bytes: artifact.bytes,
+            image: MarkdownImage {
+                url,
+                title: artifact.title,
+                alt: artifact.desc.unwrap_or_else(|| "diagram".to_string()),
+            },
         })
     }
 }

@@ -44,6 +44,7 @@ rust-version = "1.95"
 independent-packages = ["roughr-merman"]
 
 [workspace.dependencies]
+atomic-write-file = { version = "0.3.0", default-features = false }
 base64 = "0.22.1"
 data-url = "0.3.2"
 brotli = "8.0.3"
@@ -71,6 +72,7 @@ ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1", default-features = false }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.150"
+same-file = "1.0.6"
 sha2 = "0.10.9"
 tokio = { version = "1.52.3", default-features = false }
 granit-parser = { version = "=1.0.0-rc.1", default-features = false, features = ["error_messages"] }
