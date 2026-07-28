@@ -1,34 +1,42 @@
 use crate::error::CliError;
+use crate::runtime::SharedWriter;
 use serde::Serialize;
-use std::io::{self, Write};
+use std::io::Write;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct DiagnosticSink {
     quiet: bool,
+    stderr: SharedWriter,
 }
 
 impl DiagnosticSink {
-    pub(crate) const fn new(quiet: bool) -> Self {
-        Self { quiet }
+    pub(crate) fn new(quiet: bool, stderr: &SharedWriter) -> Self {
+        Self {
+            quiet,
+            stderr: stderr.clone(),
+        }
     }
 
     pub(crate) fn info(&self, message: impl std::fmt::Display) {
         if self.quiet {
             return;
         }
-        let mut stderr = io::stderr().lock();
-        let _ = writeln!(stderr, "{message}");
+        self.stderr.with_writer(|stderr| {
+            let _ = writeln!(stderr, "{message}");
+        });
     }
 }
 
-pub(crate) fn write_json_stdout<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
-    let stdout = io::stdout();
-    let mut writer = stdout.lock();
-    write_json_to(&mut writer, value, pretty)
+pub(crate) fn write_json_stdout<T: Serialize>(
+    value: &T,
+    pretty: bool,
+    stdout: &SharedWriter,
+) -> Result<(), CliError> {
+    stdout.with_writer(|writer| write_json_to(writer, value, pretty))
 }
 
 fn write_json_to(
-    writer: &mut impl Write,
+    writer: &mut dyn Write,
     value: &impl Serialize,
     pretty: bool,
 ) -> Result<(), CliError> {
@@ -47,19 +55,22 @@ mod tests {
     use super::*;
     use serde::ser::SerializeSeq;
     use std::cell::Cell;
+    use std::io;
 
     #[test]
     fn quiet_sink_suppresses_messages() {
-        let mut bytes = Vec::new();
-        write_info_to(&mut bytes, DiagnosticSink::new(true), "hidden").unwrap();
-        assert!(bytes.is_empty());
+        let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let bytes = SharedWriter::new(TestBuffer(std::sync::Arc::clone(&written)));
+        DiagnosticSink::new(true, &bytes).info("hidden");
+        assert!(written.lock().unwrap().is_empty());
     }
 
     #[test]
     fn active_sink_writes_one_line() {
-        let mut bytes = Vec::new();
-        write_info_to(&mut bytes, DiagnosticSink::new(false), "visible").unwrap();
-        assert_eq!(bytes, b"visible\n");
+        let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let bytes = SharedWriter::new(TestBuffer(std::sync::Arc::clone(&written)));
+        DiagnosticSink::new(false, &bytes).info("visible");
+        assert_eq!(*written.lock().unwrap(), b"visible\n");
     }
 
     #[test]
@@ -113,14 +124,16 @@ mod tests {
         );
     }
 
-    fn write_info_to(
-        writer: &mut impl Write,
-        sink: DiagnosticSink,
-        message: &str,
-    ) -> io::Result<()> {
-        if sink.quiet {
-            return Ok(());
+    struct TestBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for TestBuffer {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
         }
-        writeln!(writer, "{message}")
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 }

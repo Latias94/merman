@@ -72,6 +72,7 @@ pub(crate) enum CliError {
     #[cfg(feature = "network-icons")]
     #[error("{0}")]
     Network(#[from] crate::network::NetworkError),
+    #[cfg(any(test, feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     Resource(#[from] crate::resources::ResourceLedgerError),
     #[cfg(feature = "markdown")]
@@ -228,7 +229,9 @@ impl CliError {
             #[cfg(feature = "network-icons")]
             Self::Network(_) => ErrorCategory::Usage,
             Self::BrokenStdoutPipe => ErrorCategory::Success,
-            Self::Mermaid(_) | Self::NoDiagram | Self::Resource(_) => ErrorCategory::Content,
+            Self::Mermaid(_) | Self::NoDiagram => ErrorCategory::Content,
+            #[cfg(any(test, feature = "svg", feature = "ascii"))]
+            Self::Resource(_) => ErrorCategory::Content,
             #[cfg(feature = "svg")]
             Self::Headless(_) => ErrorCategory::Content,
             #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

@@ -123,9 +123,7 @@ fn find_closing_marker(source: &str, body_start: usize) -> Option<(usize, usize)
             return Some((closing_start, match_end));
         }
 
-        let Some((_, terminator_len)) = terminator else {
-            return None;
-        };
+        let (_, terminator_len) = terminator?;
         segment_start = segment_end + terminator_len;
         if segment_start > source.len() {
             return None;

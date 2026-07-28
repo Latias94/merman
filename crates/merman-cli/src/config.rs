@@ -52,39 +52,7 @@ struct ResolvedCliRuntimePolicy {
 
 impl ResolvedCliRuntimePolicy {
     fn from_cli(args: &RuntimeCliArgs) -> Result<Self, CliError> {
-        Self::from_parts(
-            args.policy,
-            #[cfg(feature = "system-clock")]
-            args.system_clock,
-            #[cfg(feature = "system-timezone")]
-            args.system_timezone,
-            #[cfg(feature = "system-random")]
-            args.system_random,
-            #[cfg(feature = "system-timing")]
-            args.system_timing,
-            args.fixed_today,
-            args.fixed_local_offset_minutes,
-        )
-    }
-
-    #[cfg(any(feature = "svg", feature = "ascii"))]
-    fn from_resolved(args: &ResolvedRuntimeOptions) -> Self {
-        Self {
-            runtime_policy: args.runtime_policy.clone(),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn from_parts(
-        policy: RuntimePolicyKind,
-        #[cfg(feature = "system-clock")] system_clock: bool,
-        #[cfg(feature = "system-timezone")] system_timezone: bool,
-        #[cfg(feature = "system-random")] system_random: bool,
-        #[cfg(feature = "system-timing")] system_timing: bool,
-        fixed_today: Option<chrono::NaiveDate>,
-        fixed_local_offset_minutes: Option<i32>,
-    ) -> Result<Self, CliError> {
-        let mut runtime_policy = match policy {
+        let mut runtime_policy = match args.policy {
             RuntimePolicyKind::Deterministic => RuntimePolicy::deterministic(),
             #[cfg(all(
                 feature = "system-clock",
@@ -96,40 +64,47 @@ impl ResolvedCliRuntimePolicy {
             })?,
         };
         #[cfg(feature = "system-clock")]
-        if system_clock {
+        if args.system_clock {
             runtime_policy = runtime_policy.try_with_system_clock().map_err(|err| {
                 CliError::InvalidInput(format!("--system-clock is unavailable: {err}"))
             })?;
         }
         #[cfg(feature = "system-timezone")]
-        if system_timezone {
+        if args.system_timezone {
             runtime_policy = runtime_policy.try_with_system_time_zone().map_err(|err| {
                 CliError::InvalidInput(format!("--system-timezone is unavailable: {err}"))
             })?;
         }
         #[cfg(feature = "system-random")]
-        if system_random {
+        if args.system_random {
             runtime_policy = runtime_policy.try_with_system_random().map_err(|err| {
                 CliError::InvalidInput(format!("--system-random is unavailable: {err}"))
             })?;
         }
         #[cfg(feature = "system-timing")]
-        if system_timing {
+        if args.system_timing {
             runtime_policy = runtime_policy.try_with_system_timing().map_err(|err| {
                 CliError::InvalidInput(format!("--system-timing is unavailable: {err}"))
             })?;
         }
-        if let Some(offset_minutes) = fixed_local_offset_minutes {
+        if let Some(offset_minutes) = args.fixed_local_offset_minutes {
             runtime_policy = runtime_policy
                 .try_with_fixed_local_offset_minutes(offset_minutes)
                 .map_err(|err| CliError::InvalidInput(err.to_string()))?;
         }
-        if let Some(today) = fixed_today {
+        if let Some(today) = args.fixed_today {
             runtime_policy = runtime_policy
                 .try_with_fixed_today_at_local_midnight(today)
                 .map_err(|err| CliError::InvalidInput(err.to_string()))?;
         }
         Ok(Self { runtime_policy })
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn from_resolved(args: &ResolvedRuntimeOptions) -> Self {
+        Self {
+            runtime_policy: args.runtime_policy.clone(),
+        }
     }
 
     fn apply_engine(&self, engine: Engine) -> Engine {

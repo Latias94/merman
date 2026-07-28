@@ -47,6 +47,10 @@ fixtures/swimlane/_upstream_ddlt/**/*.mmd text eol=lf -whitespace
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
+# Generated CLI assets include extensionless and Elvish files.
+crates/merman-cli/assets/completions/** text eol=lf
+crates/merman-cli/assets/man/** text eol=lf
+
 # Binary assets
 *.png binary
 *.jpg binary

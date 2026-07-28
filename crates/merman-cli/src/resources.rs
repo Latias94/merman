@@ -341,25 +341,35 @@ pub(crate) struct AuxiliaryFileLimits {
     pub(crate) puppeteer_config_bytes: Option<usize>,
 }
 
+#[cfg(any(test, feature = "icons"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct IconResourceLimits {
     pub(crate) local_body_bytes: Option<usize>,
+    #[cfg(feature = "network-icons")]
     pub(crate) remote_body_bytes: Option<usize>,
+    #[cfg(test)]
     pub(crate) aggregate_bytes: Option<usize>,
+    #[cfg(test)]
     pub(crate) pack_count: Option<u64>,
 }
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BatchResourceLimits {
+    #[cfg(test)]
     pub(crate) markdown_charts: Option<u64>,
+    #[cfg(test)]
     pub(crate) staged_bytes: Option<u64>,
     /// Conservative admission weight used by the scheduler. This is neither
     /// measured RSS nor a promise that a process will remain below this value.
     pub(crate) scheduling_weight_bytes: Option<u64>,
+    #[cfg(any(test, feature = "parallel-markdown"))]
     pub(crate) default_jobs: usize,
+    #[cfg(any(test, feature = "parallel-markdown"))]
     pub(crate) max_jobs: usize,
 }
 
+#[cfg(any(test, feature = "network-icons"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NetworkResourceLimits {
     pub(crate) max_redirects: usize,
@@ -375,6 +385,7 @@ pub(crate) struct ResolvedResourcePolicy {
     #[cfg(feature = "svg")]
     render: RenderResourcePolicy,
     adjunct: CliAdjunctResourcePolicy,
+    #[cfg(any(test, feature = "parallel-markdown"))]
     available_parallelism: NonZeroUsize,
 }
 
@@ -388,16 +399,20 @@ impl ResolvedResourcePolicy {
         profile: ResourceProfile,
         available_parallelism: NonZeroUsize,
     ) -> Self {
+        #[cfg(not(any(test, feature = "parallel-markdown")))]
+        let _ = available_parallelism;
         Self {
             #[cfg(not(feature = "svg"))]
             input: InputResourcePolicy::for_profile(profile),
             #[cfg(feature = "svg")]
             render: RenderResourcePolicy::for_profile(profile),
             adjunct: CliAdjunctResourcePolicy::for_profile(profile),
+            #[cfg(any(test, feature = "parallel-markdown"))]
             available_parallelism,
         }
     }
 
+    #[cfg(any(test, feature = "svg", feature = "ascii"))]
     pub(crate) fn profile(&self) -> ResourceProfile {
         self.input_policy().profile()
     }
@@ -429,38 +444,52 @@ impl ResolvedResourcePolicy {
         }
     }
 
+    #[cfg(any(test, feature = "icons"))]
     pub(crate) fn icons(&self) -> IconResourceLimits {
         IconResourceLimits {
             local_body_bytes: self
                 .acquisition_byte_limit(CliResourceLimitId::MaxLocalIconBodyBytes),
+            #[cfg(feature = "network-icons")]
             remote_body_bytes: self
                 .acquisition_byte_limit(CliResourceLimitId::MaxRemoteIconBodyBytes),
+            #[cfg(test)]
             aggregate_bytes: self.acquisition_byte_limit(CliResourceLimitId::MaxAggregateIconBytes),
+            #[cfg(test)]
             pack_count: self.value(CliResourceLimitId::MaxIconPacks),
         }
     }
 
+    #[cfg(any(test, feature = "svg", feature = "ascii"))]
     pub(crate) fn batch(&self) -> BatchResourceLimits {
+        #[cfg(any(test, feature = "parallel-markdown"))]
         let maximum = self
             .value(CliResourceLimitId::MaxJobs)
             .expect("max_jobs always retains a hard guard");
+        #[cfg(any(test, feature = "parallel-markdown"))]
         let max_jobs = usize::try_from(maximum).expect("max_jobs hard guard fits usize");
+        #[cfg(any(test, feature = "parallel-markdown"))]
         let cpu_count = self.available_parallelism.get();
+        #[cfg(any(test, feature = "parallel-markdown"))]
         let profile_default = match self.profile() {
             ResourceProfile::Constrained => 1,
             ResourceProfile::Interactive => cpu_count.min(2),
-            ResourceProfile::TrustedNative => (cpu_count / 2).max(1).min(8),
-            ResourceProfile::UnboundedForTrustedInput => (cpu_count / 2).max(1).min(32),
+            ResourceProfile::TrustedNative => (cpu_count / 2).clamp(1, 8),
+            ResourceProfile::UnboundedForTrustedInput => (cpu_count / 2).clamp(1, 32),
         };
         BatchResourceLimits {
+            #[cfg(test)]
             markdown_charts: self.value(CliResourceLimitId::MaxMarkdownCharts),
+            #[cfg(test)]
             staged_bytes: self.value(CliResourceLimitId::MaxStagedBytes),
             scheduling_weight_bytes: self.value(CliResourceLimitId::MaxSchedulingWeightBytes),
+            #[cfg(any(test, feature = "parallel-markdown"))]
             default_jobs: profile_default.min(max_jobs),
+            #[cfg(any(test, feature = "parallel-markdown"))]
             max_jobs,
         }
     }
 
+    #[cfg(any(test, feature = "network-icons"))]
     pub(crate) fn network(&self) -> NetworkResourceLimits {
         NetworkResourceLimits {
             max_redirects: self
@@ -525,16 +554,19 @@ impl ResolvedResourcePolicy {
         self.adjunct.apply_limit(id, value)
     }
 
+    #[cfg(any(test, feature = "icons", feature = "markdown"))]
     pub(crate) fn checked_bytes(&self, kind: ByteLedgerKind) -> CheckedBytes {
         let id = kind.limit_id();
         CheckedBytes(CheckedLedger::new(self.profile(), id, self.value(id)))
     }
 
+    #[cfg(any(test, feature = "icons", feature = "markdown"))]
     pub(crate) fn checked_count(&self, kind: CountLedgerKind) -> CheckedCount {
         let id = kind.limit_id();
         CheckedCount(CheckedLedger::new(self.profile(), id, self.value(id)))
     }
 
+    #[cfg(any(test, feature = "svg", feature = "ascii"))]
     pub(crate) fn checked_scheduling_weight(&self) -> CheckedSchedulingWeight {
         let id = CliResourceLimitId::MaxSchedulingWeightBytes;
         CheckedSchedulingWeight(CheckedLedger::new(self.profile(), id, self.value(id)))
@@ -551,6 +583,7 @@ impl ResolvedResourcePolicy {
         })
     }
 
+    #[cfg(any(test, feature = "network-icons"))]
     fn duration(&self, id: CliResourceLimitId) -> Duration {
         Duration::from_secs(
             self.value(id)
@@ -606,40 +639,54 @@ pub(crate) enum ResourcePolicyOverrideError {
         requested: u64,
         max: u64,
     },
+    #[cfg(feature = "svg")]
     #[error("resource limit `{limit}` is a hard capability and cannot be set to {requested}")]
     HardCapability { limit: &'static str, requested: u64 },
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ByteLedgerKind {
+    #[cfg(any(test, feature = "icons"))]
     AggregateIcons,
+    #[cfg(any(test, feature = "markdown"))]
     StagedOutput,
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 impl ByteLedgerKind {
     const fn limit_id(self) -> CliResourceLimitId {
         match self {
+            #[cfg(any(test, feature = "icons"))]
             Self::AggregateIcons => CliResourceLimitId::MaxAggregateIconBytes,
+            #[cfg(any(test, feature = "markdown"))]
             Self::StagedOutput => CliResourceLimitId::MaxStagedBytes,
         }
     }
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CountLedgerKind {
+    #[cfg(any(test, feature = "icons"))]
     IconPacks,
+    #[cfg(any(test, feature = "markdown"))]
     MarkdownCharts,
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 impl CountLedgerKind {
     const fn limit_id(self) -> CliResourceLimitId {
         match self {
+            #[cfg(any(test, feature = "icons"))]
             Self::IconPacks => CliResourceLimitId::MaxIconPacks,
+            #[cfg(any(test, feature = "markdown"))]
             Self::MarkdownCharts => CliResourceLimitId::MaxMarkdownCharts,
         }
     }
 }
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CheckedLedger {
     profile: ResourceProfile,
@@ -648,6 +695,7 @@ struct CheckedLedger {
     max: Option<u64>,
 }
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 impl CheckedLedger {
     const fn new(profile: ResourceProfile, id: CliResourceLimitId, max: Option<u64>) -> Self {
         Self {
@@ -694,9 +742,11 @@ impl CheckedLedger {
     }
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CheckedBytes(CheckedLedger);
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 impl CheckedBytes {
     #[cfg(test)]
     pub(crate) const fn used(&self) -> u64 {
@@ -708,6 +758,7 @@ impl CheckedBytes {
         self.0.max
     }
 
+    #[cfg(feature = "icons")]
     pub(crate) const fn remaining(&self) -> Option<u64> {
         match self.0.max {
             Some(max) => Some(max - self.0.used),
@@ -720,15 +771,18 @@ impl CheckedBytes {
     }
 }
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CheckedCount(CheckedLedger);
 
+#[cfg(any(test, feature = "icons", feature = "markdown"))]
 impl CheckedCount {
     #[cfg(test)]
     pub(crate) const fn used(&self) -> u64 {
         self.0.used
     }
 
+    #[cfg(any(test, feature = "markdown"))]
     pub(crate) const fn max(&self) -> Option<u64> {
         self.0.max
     }
@@ -738,10 +792,12 @@ impl CheckedCount {
     }
 }
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 /// Tracks conservative backend admission weight, not measured or reserved RSS.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CheckedSchedulingWeight(CheckedLedger);
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 impl CheckedSchedulingWeight {
     #[cfg(test)]
     pub(crate) const fn used(&self) -> u64 {
@@ -766,6 +822,7 @@ impl CheckedSchedulingWeight {
     }
 }
 
+#[cfg(any(test, feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ResourceLedgerError {
     #[error("resource limit exceeded: {limit} actual={actual} max={max} profile={profile}")]

@@ -3,61 +3,132 @@ use crate::error::CliError;
 #[cfg(feature = "ascii")]
 use crate::invocation::ColorEnvironment;
 use crate::invocation::InvocationFacts;
+use crate::runtime::{ExecutionContext, SharedWriter};
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches};
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
-pub(crate) struct CliApp;
+#[cfg(all(test, feature = "shell-completions"))]
+mod distribution_assets;
+
+struct ProcessSnapshot {
+    args: Vec<OsString>,
+    cwd: io::Result<std::path::PathBuf>,
+    stdin_is_terminal: bool,
+    #[cfg(feature = "ascii")]
+    stdout_is_terminal: bool,
+    #[cfg(feature = "ascii")]
+    color: ColorEnvironment,
+}
+
+impl ProcessSnapshot {
+    fn system() -> Self {
+        Self {
+            args: env::args_os().collect(),
+            cwd: env::current_dir(),
+            stdin_is_terminal: io::stdin().is_terminal(),
+            #[cfg(feature = "ascii")]
+            stdout_is_terminal: io::stdout().is_terminal(),
+            #[cfg(feature = "ascii")]
+            color: ColorEnvironment {
+                no_color: nonempty_environment_value(env::var_os("NO_COLOR").as_deref()),
+                force_color: env::var_os("CLICOLOR_FORCE")
+                    .is_some_and(|value| value != OsStr::new("") && value != OsStr::new("0")),
+                colorterm: env::var("COLORTERM").ok(),
+                term: env::var("TERM").ok(),
+            },
+        }
+    }
+
+    fn into_facts(self, require_working_directory: bool) -> io::Result<InvocationFacts> {
+        let cwd = match self.cwd {
+            Ok(cwd) => Some(cwd),
+            Err(_) if !require_working_directory => None,
+            Err(error) => return Err(error),
+        };
+        Ok(InvocationFacts {
+            cwd,
+            stdin_is_terminal: self.stdin_is_terminal,
+            #[cfg(feature = "ascii")]
+            stdout_is_terminal: self.stdout_is_terminal,
+            #[cfg(feature = "ascii")]
+            color: self.color,
+        })
+    }
+}
+
+pub(crate) struct CliApp {
+    process: ProcessSnapshot,
+    execution: ExecutionContext,
+}
+
+pub(crate) fn run_system() -> ExitCode {
+    CliApp {
+        process: ProcessSnapshot::system(),
+        execution: ExecutionContext::system(),
+    }
+    .execute()
+}
 
 impl CliApp {
-    pub(crate) fn system() -> Self {
-        Self
-    }
-
-    pub(crate) fn execute(self) -> ExitCode {
-        let args = env::args_os().collect::<Vec<_>>();
-        let cli = match parse_cli(&args) {
+    fn execute(self) -> ExitCode {
+        let Self {
+            process,
+            mut execution,
+        } = self;
+        let cli = match parse_cli(&process.args) {
             Ok(cli) => cli,
-            Err(error) => return print_clap_error(error),
+            Err(error) => {
+                return print_clap_error(error, &execution.stdout, &execution.stderr);
+            }
         };
-        let facts = match system_facts(command_needs_working_directory(&cli.command)) {
+        let facts = match process.into_facts(command_needs_working_directory(&cli.command)) {
             Ok(facts) => facts,
-            Err(error) => return report_error(CliError::Io(error)),
+            Err(error) => return report_error(CliError::Io(error), &execution.stderr),
         };
-        self.execute_parsed(cli, facts)
+        Self::execute_parsed(cli, facts, &mut execution)
     }
 
-    fn execute_parsed(self, cli: Cli, facts: InvocationFacts) -> ExitCode {
+    fn execute_parsed(
+        cli: Cli,
+        facts: InvocationFacts,
+        execution: &mut ExecutionContext,
+    ) -> ExitCode {
         let invocation = match crate::invocation::resolve(cli, &facts) {
             Ok(invocation) => invocation,
             Err(error) => {
-                if let Some(command) = error.missing_input_command() {
-                    write_command_help_to_stderr(command);
+                if let Some(command) = error.missing_input_command()
+                    && let Err(source) = write_command_help_to_stderr(command, &execution.stderr)
+                {
+                    return CliError::stream("stderr", source).exit_code();
                 }
-                return report_error(error);
+                return report_error(error, &execution.stderr);
             }
         };
         let Some(cwd) = facts.cwd.as_deref() else {
             return match crate::output::LocalPreflight::path_free(invocation) {
-                Ok(preflight) => run_preflight(preflight),
-                Err(error) => report_error(error),
+                Ok(preflight) => run_preflight(preflight, execution),
+                Err(error) => report_error(error, &execution.stderr),
             };
         };
         let preflight = match crate::output::preflight(invocation, cwd) {
             Ok(preflight) => preflight,
-            Err(error) => return report_error(error),
+            Err(error) => return report_error(error, &execution.stderr),
         };
-        run_preflight(preflight)
+        run_preflight(preflight, execution)
     }
 }
 
-fn run_preflight(preflight: crate::output::LocalPreflight) -> ExitCode {
-    match crate::commands::run(preflight) {
+fn run_preflight(
+    preflight: crate::output::LocalPreflight,
+    execution: &mut ExecutionContext,
+) -> ExitCode {
+    match crate::commands::run(preflight, execution) {
         Ok(exit_code) => exit_code_from_i32(exit_code),
-        Err(error) => report_error(error),
+        Err(error) => report_error(error, &execution.stderr),
     }
 }
 
@@ -137,9 +208,7 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
     {
         return None;
     }
-    let Some(argument) = args.get(1).and_then(|value| value.to_str()) else {
-        return None;
-    };
+    let argument = args.get(1).and_then(|value| value.to_str())?;
     let long_name = argument.split_once('=').map_or(argument, |(name, _)| name);
     const LONG_FLAGS: &[&str] = &[
         "--input",
@@ -157,6 +226,7 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
         "--height",
         "--svgId",
         "--svg-id",
+        "--id",
         "--hand-drawn-seed",
         "--resource-profile",
         "--text-measurer",
@@ -231,7 +301,10 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
 fn removed_root_render_message(argument: &str) -> String {
     let mut message = format!("root-level rendering syntax `{argument}` was removed");
     if cfg!(feature = "svg") {
-        message.push_str("\nuse `merman-cli mmdc ...` for the pinned mmdc@11.16.0 interface");
+        message.push_str(&format!(
+            "\nuse `merman-cli mmdc ...` for the pinned mmdc@{} interface",
+            merman::baseline::PINNED_MERMAID_CLI_VERSION
+        ));
     }
     if cfg!(any(feature = "svg", feature = "ascii")) {
         message.push_str(
@@ -307,60 +380,44 @@ fn root_help(command: &clap::Command) -> String {
     output
 }
 
-fn system_facts(require_working_directory: bool) -> io::Result<InvocationFacts> {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => Some(cwd),
-        Err(_) if !require_working_directory => None,
-        Err(error) => return Err(error),
-    };
-    Ok(InvocationFacts {
-        cwd,
-        stdin_is_terminal: io::stdin().is_terminal(),
-        #[cfg(feature = "ascii")]
-        stdout_is_terminal: io::stdout().is_terminal(),
-        #[cfg(feature = "ascii")]
-        color: ColorEnvironment {
-            no_color: nonempty_environment_value(env::var_os("NO_COLOR").as_deref()),
-            force_color: env::var_os("CLICOLOR_FORCE")
-                .is_some_and(|value| value != OsStr::new("") && value != OsStr::new("0")),
-            colorterm: env::var("COLORTERM").ok(),
-            term: env::var("TERM").ok(),
-        },
-    })
-}
-
 #[cfg(feature = "ascii")]
 fn nonempty_environment_value(value: Option<&OsStr>) -> bool {
     value.is_some_and(|value| !value.is_empty())
 }
 
-fn write_command_help_to_stderr(name: &str) {
+fn write_command_help_to_stderr(name: &str, stderr: &SharedWriter) -> io::Result<()> {
     let mut command = cli_command();
     let Some(subcommand) = command.find_subcommand_mut(name) else {
-        return;
+        return Ok(());
     };
     let mut help = Vec::new();
-    if subcommand.write_help(&mut help).is_ok() {
-        let mut stderr = io::stderr().lock();
-        let _ = stderr.write_all(&help);
-        let _ = stderr.write_all(b"\n\n");
+    subcommand.write_help(&mut help)?;
+    stderr.write_all(&help)?;
+    stderr.write_all(b"\n\n")
+}
+
+fn print_clap_error(error: clap::Error, stdout: &SharedWriter, stderr: &SharedWriter) -> ExitCode {
+    let exit_code = error.exit_code();
+    let (stream, destination) = if error.use_stderr() {
+        ("stderr", stderr)
+    } else {
+        ("stdout", stdout)
+    };
+    match destination.write_all(error.render().to_string().as_bytes()) {
+        Ok(()) => exit_code_from_i32(exit_code),
+        Err(source) => CliError::stream(stream, source).exit_code(),
     }
 }
 
-fn print_clap_error(error: clap::Error) -> ExitCode {
-    let exit_code = error.exit_code();
-    let _ = error.print();
-    exit_code_from_i32(exit_code)
-}
-
-fn report_error(error: CliError) -> ExitCode {
+fn report_error(error: CliError, stderr: &SharedWriter) -> ExitCode {
     if error.is_broken_stdout_pipe() {
         return ExitCode::SUCCESS;
     }
     let exit_code = error.exit_code();
-    let mut stderr = io::stderr().lock();
-    let _ = writeln!(stderr, "{error}");
-    exit_code
+    match stderr.with_writer(|stderr| writeln!(stderr, "{error}")) {
+        Ok(()) => exit_code,
+        Err(source) => CliError::stream("stderr", source).exit_code(),
+    }
 }
 
 fn exit_code_from_i32(exit_code: i32) -> ExitCode {
@@ -372,6 +429,234 @@ fn exit_code_from_i32(exit_code: i32) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Cursor, Read, Write};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CaptureWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("injected stream failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct CountingReader {
+        reads: Arc<AtomicUsize>,
+        source: Cursor<Vec<u8>>,
+    }
+
+    impl Read for CountingReader {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            self.source.read(bytes)
+        }
+    }
+
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    struct RejectingPublication {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    impl crate::output::PublicationBackend for RejectingPublication {
+        #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+        fn publish_file(
+            &mut self,
+            _path: &std::path::Path,
+            _bytes: &[u8],
+            _publications: &crate::output::PublicationGuards,
+        ) -> Result<(), CliError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(CliError::Io(io::Error::other(
+                "injected publication failure",
+            )))
+        }
+
+        #[cfg(feature = "analysis")]
+        fn publish_file_verified(
+            &mut self,
+            _path: &std::path::Path,
+            _bytes: &[u8],
+            _publications: &crate::output::PublicationGuards,
+            _verify: &mut dyn FnMut(&std::path::Path) -> Result<(), CliError>,
+        ) -> Result<(), CliError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(CliError::Io(io::Error::other(
+                "injected publication failure",
+            )))
+        }
+
+        #[cfg(feature = "markdown")]
+        fn acquire_transaction(
+            &mut self,
+            _publications: &crate::output::PublicationGuards,
+        ) -> Result<crate::output::AcquiredTransaction, CliError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(CliError::Io(io::Error::other(
+                "injected publication failure",
+            )))
+        }
+    }
+
+    #[cfg(feature = "markdown")]
+    struct RejectingCommitPublication {
+        system: crate::output::SystemPublicationBackend,
+        commits: Arc<AtomicUsize>,
+    }
+
+    #[cfg(feature = "markdown")]
+    impl crate::output::PublicationBackend for RejectingCommitPublication {
+        fn publish_file(
+            &mut self,
+            path: &std::path::Path,
+            bytes: &[u8],
+            publications: &crate::output::PublicationGuards,
+        ) -> Result<(), CliError> {
+            self.system.publish_file(path, bytes, publications)
+        }
+
+        #[cfg(feature = "analysis")]
+        fn publish_file_verified(
+            &mut self,
+            path: &std::path::Path,
+            bytes: &[u8],
+            publications: &crate::output::PublicationGuards,
+            verify: &mut dyn FnMut(&std::path::Path) -> Result<(), CliError>,
+        ) -> Result<(), CliError> {
+            self.system
+                .publish_file_verified(path, bytes, publications, verify)
+        }
+
+        fn acquire_transaction(
+            &mut self,
+            publications: &crate::output::PublicationGuards,
+        ) -> Result<crate::output::AcquiredTransaction, CliError> {
+            self.system.acquire_transaction(publications)
+        }
+
+        fn commit_transaction(
+            &mut self,
+            _ready: crate::transaction::ReadyTransaction,
+        ) -> Result<(), CliError> {
+            self.commits.fetch_add(1, Ordering::SeqCst);
+            Err(CliError::Io(io::Error::other(
+                "injected transaction commit failure",
+            )))
+        }
+    }
+
+    #[cfg(feature = "network-icons")]
+    struct FixtureNetwork {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[cfg(feature = "network-icons")]
+    impl crate::network::NetworkAcquirer for FixtureNetwork {
+        fn fetch(
+            &mut self,
+            _raw_url: &str,
+            _policy: crate::network::NetworkPolicy,
+        ) -> Result<Vec<u8>, crate::network::NetworkError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(br#"{"prefix":"test","icons":{"rocket":{"body":"<path data-injected-network=\"true\"/>"}}}"#.to_vec())
+        }
+    }
+
+    fn capture() -> (SharedWriter, Arc<Mutex<Vec<u8>>>) {
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        (SharedWriter::new(CaptureWriter(Arc::clone(&bytes))), bytes)
+    }
+
+    fn snapshot(
+        args: &[&str],
+        cwd: io::Result<PathBuf>,
+        stdin_is_terminal: bool,
+    ) -> ProcessSnapshot {
+        ProcessSnapshot {
+            args: std::iter::once(OsString::from("merman-cli"))
+                .chain(args.iter().map(|argument| OsString::from(*argument)))
+                .collect(),
+            cwd,
+            stdin_is_terminal,
+            #[cfg(feature = "ascii")]
+            stdout_is_terminal: false,
+            #[cfg(feature = "ascii")]
+            color: ColorEnvironment {
+                no_color: false,
+                force_color: false,
+                colorterm: None,
+                term: None,
+            },
+        }
+    }
+
+    fn execution(
+        stdin: impl Read + Send + 'static,
+        stdout: SharedWriter,
+        stderr: SharedWriter,
+    ) -> ExecutionContext {
+        ExecutionContext {
+            stdin: Box::new(stdin),
+            stdout,
+            stderr,
+            #[cfg(feature = "network-icons")]
+            network: Box::new(crate::network::SystemNetworkAcquirer),
+            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            publication: Box::new(crate::output::SystemPublicationBackend),
+        }
+    }
+
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    fn execution_with_publication(
+        stdin: impl Read + Send + 'static,
+        stdout: SharedWriter,
+        stderr: SharedWriter,
+        publication: Box<dyn crate::output::PublicationBackend>,
+    ) -> ExecutionContext {
+        ExecutionContext {
+            stdin: Box::new(stdin),
+            stdout,
+            stderr,
+            #[cfg(feature = "network-icons")]
+            network: Box::new(crate::network::SystemNetworkAcquirer),
+            publication,
+        }
+    }
+
+    fn bytes(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
+        String::from_utf8(buffer.lock().unwrap().clone()).unwrap()
+    }
 
     #[cfg(feature = "ascii")]
     #[test]
@@ -399,5 +684,298 @@ mod tests {
         assert!(!command_needs_working_directory(&RawCommand::Capabilities(
             crate::cli::CapabilitiesArgs { json: true }
         )));
+    }
+
+    #[test]
+    fn injected_streams_preserve_help_and_error_channels() {
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["--help"], Ok(PathBuf::from(".")), true),
+            execution: execution(io::empty(), stdout, stderr),
+        };
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert!(bytes(&stdout_bytes).contains("Usage: merman-cli <COMMAND>"));
+        assert!(bytes(&stderr_bytes).is_empty());
+
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["--not-a-command"], Ok(PathBuf::from(".")), true),
+            execution: execution(io::empty(), stdout, stderr),
+        };
+        assert_eq!(app.execute(), ExitCode::from(2));
+        assert!(bytes(&stdout_bytes).is_empty());
+        assert!(bytes(&stderr_bytes).contains("unexpected argument"));
+    }
+
+    #[test]
+    fn piped_input_and_payload_use_the_injected_streams() {
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["detect"], Ok(PathBuf::from(".")), false),
+            execution: execution(
+                Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                stdout,
+                stderr,
+            ),
+        };
+
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert_eq!(bytes(&stdout_bytes), "flowchart-v2\n");
+        assert!(bytes(&stderr_bytes).is_empty());
+    }
+
+    #[test]
+    fn injected_working_directory_anchors_relative_input_acquisition() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("injected-cwd.mmd"),
+            "flowchart LR\nA-->B\n",
+        )
+        .unwrap();
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(
+                &["detect", "injected-cwd.mmd"],
+                Ok(directory.path().to_path_buf()),
+                true,
+            ),
+            execution: execution(io::empty(), stdout, stderr),
+        };
+
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert_eq!(bytes(&stdout_bytes), "flowchart-v2\n");
+        assert!(bytes(&stderr_bytes).is_empty());
+    }
+
+    #[test]
+    fn injected_help_and_usage_stream_failures_are_operational() {
+        let (stderr, _) = capture();
+        let help = CliApp {
+            process: snapshot(&["--help"], Ok(PathBuf::from(".")), true),
+            execution: execution(io::empty(), SharedWriter::new(FailingWriter), stderr),
+        };
+        assert_eq!(help.execute(), ExitCode::from(3));
+
+        let (stdout, _) = capture();
+        let usage = CliApp {
+            process: snapshot(&["--not-a-command"], Ok(PathBuf::from(".")), true),
+            execution: execution(io::empty(), stdout, SharedWriter::new(FailingWriter)),
+        };
+        assert_eq!(usage.execute(), ExitCode::from(3));
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn terminal_missing_input_stops_before_acquisition_or_publication() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let publication_calls = Arc::new(AtomicUsize::new(0));
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["render"], Ok(PathBuf::from(".")), true),
+            execution: execution_with_publication(
+                CountingReader {
+                    reads: Arc::clone(&reads),
+                    source: Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                },
+                stdout,
+                stderr,
+                Box::new(RejectingPublication {
+                    calls: Arc::clone(&publication_calls),
+                }),
+            ),
+        };
+
+        assert_eq!(app.execute(), ExitCode::from(2));
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
+        assert_eq!(publication_calls.load(Ordering::SeqCst), 0);
+        assert!(bytes(&stdout_bytes).is_empty());
+        let stderr = bytes(&stderr_bytes);
+        assert!(
+            stderr.contains("Usage:") && stderr.contains("render"),
+            "{stderr}"
+        );
+    }
+
+    #[test]
+    fn unavailable_working_directory_is_ignored_only_for_path_free_commands() {
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(
+                &["capabilities", "--json"],
+                Err(io::Error::new(io::ErrorKind::NotFound, "cwd unavailable")),
+                true,
+            ),
+            execution: execution(io::empty(), stdout, stderr),
+        };
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert!(bytes(&stdout_bytes).contains("\"schema_version\": 2"));
+        assert!(bytes(&stderr_bytes).is_empty());
+
+        let (stdout, _) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(
+                &["detect", "-"],
+                Err(io::Error::new(io::ErrorKind::NotFound, "cwd unavailable")),
+                false,
+            ),
+            execution: execution(
+                Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                stdout,
+                stderr,
+            ),
+        };
+        assert_eq!(app.execute(), ExitCode::from(3));
+        assert!(bytes(&stderr_bytes).contains("cwd unavailable"));
+    }
+
+    #[test]
+    fn injected_broken_stdout_pipe_remains_successful() {
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["detect", "-"], Ok(PathBuf::from(".")), false),
+            execution: execution(
+                Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                SharedWriter::new(BrokenPipeWriter),
+                stderr,
+            ),
+        };
+
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert!(bytes(&stderr_bytes).is_empty());
+    }
+
+    #[cfg(feature = "network-icons")]
+    #[test]
+    fn injected_network_acquirer_drives_the_icon_workflow() {
+        let network_calls = Arc::new(AtomicUsize::new(0));
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let mut execution = execution(
+            Cursor::new(b"flowchart TD\nA@{ icon: \"test:rocket\", label: \"Rocket\" }\n".to_vec()),
+            stdout,
+            stderr,
+        );
+        execution.network = Box::new(FixtureNetwork {
+            calls: Arc::clone(&network_calls),
+        });
+        let app = CliApp {
+            process: snapshot(
+                &[
+                    "render",
+                    "--format",
+                    "svg",
+                    "--allow-network",
+                    "--icon-pack-source",
+                    "test#https://example.com/icons.json",
+                    "-",
+                ],
+                Ok(PathBuf::from(".")),
+                false,
+            ),
+            execution,
+        };
+
+        assert_eq!(app.execute(), ExitCode::SUCCESS);
+        assert_eq!(network_calls.load(Ordering::SeqCst), 1);
+        assert!(bytes(&stdout_bytes).contains("data-injected-network"));
+        assert!(bytes(&stderr_bytes).is_empty());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn injected_publication_failure_is_operational_and_preserves_the_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("out.svg");
+        let publication_calls = Arc::new(AtomicUsize::new(0));
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(
+                &["render", "-", "--output", "out.svg"],
+                Ok(directory.path().to_path_buf()),
+                false,
+            ),
+            execution: execution_with_publication(
+                Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                stdout,
+                stderr,
+                Box::new(RejectingPublication {
+                    calls: Arc::clone(&publication_calls),
+                }),
+            ),
+        };
+
+        assert_eq!(app.execute(), ExitCode::from(3));
+        assert_eq!(publication_calls.load(Ordering::SeqCst), 1);
+        assert!(!target.exists());
+        assert!(bytes(&stdout_bytes).is_empty());
+        assert!(bytes(&stderr_bytes).contains("injected publication failure"));
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn injected_batch_commit_failure_is_recovered_by_the_next_run() {
+        let directory = tempfile::tempdir().unwrap();
+        let commits = Arc::new(AtomicUsize::new(0));
+        let source = b"# Document\n\n```mermaid\nflowchart LR\nA-->B\n```\n".to_vec();
+        let args = [
+            "batch",
+            "-",
+            "--stdin-file-name",
+            "README.md",
+            "--output-dir",
+            "generated",
+        ];
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let first = CliApp {
+            process: snapshot(&args, Ok(directory.path().to_path_buf()), false),
+            execution: execution_with_publication(
+                Cursor::new(source.clone()),
+                stdout,
+                stderr,
+                Box::new(RejectingCommitPublication {
+                    system: crate::output::SystemPublicationBackend,
+                    commits: Arc::clone(&commits),
+                }),
+            ),
+        };
+
+        assert_eq!(first.execute(), ExitCode::from(3));
+        assert_eq!(commits.load(Ordering::SeqCst), 1);
+        assert!(bytes(&stdout_bytes).is_empty());
+        assert!(bytes(&stderr_bytes).contains("injected transaction commit failure"));
+        assert!(!directory.path().join("generated/README.md").exists());
+        assert!(
+            directory
+                .path()
+                .join("generated/.merman.transaction")
+                .is_dir()
+        );
+
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let second = CliApp {
+            process: snapshot(&args, Ok(directory.path().to_path_buf()), false),
+            execution: execution(Cursor::new(source), stdout, stderr),
+        };
+
+        assert_eq!(second.execute(), ExitCode::SUCCESS);
+        assert!(bytes(&stdout_bytes).is_empty());
+        assert!(bytes(&stderr_bytes).contains("Found 1 mermaid charts"));
+        assert!(directory.path().join("generated/README.md").is_file());
+        assert!(
+            !directory
+                .path()
+                .join("generated/.merman.transaction")
+                .exists()
+        );
     }
 }

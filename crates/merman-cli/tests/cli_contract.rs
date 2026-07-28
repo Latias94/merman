@@ -54,9 +54,10 @@ fn compiled_help_and_version_are_available() {
         output.stderr
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(
-        stdout.contains(env!("CARGO_PKG_VERSION")),
-        "unexpected version output:\n{stdout}"
+    assert_eq!(
+        stdout,
+        format!("merman-cli {}\n", env!("CARGO_PKG_VERSION")),
+        "the version line is a machine-readable release contract"
     );
 
     for arg in ["--version", "-V"] {
@@ -70,6 +71,43 @@ fn compiled_help_and_version_are_available() {
         assert!(
             stdout.contains(env!("CARGO_PKG_VERSION")),
             "mmdc compatibility command should inherit the Merman version:\n{stdout}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn informational_commands_do_not_require_a_live_working_directory() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for args in [
+        vec!["--help"],
+        vec!["--version"],
+        vec!["capabilities", "--json"],
+        vec!["completion", "bash"],
+        vec!["lint-rules", "--format", "json"],
+    ] {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let removed = tmp.path().join("removed-cwd");
+        fs::create_dir(&removed).expect("create cwd");
+        let output = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "cd \"$REMOVED_CWD\" && rmdir \"$REMOVED_CWD\" && exec \"$MERMAN_EXE\" \"$@\"",
+                "merman-cli-info-test",
+            ])
+            .args(&args)
+            .env("REMOVED_CWD", &removed)
+            .env("MERMAN_EXE", exe)
+            .output()
+            .expect("run informational command from a removed cwd");
+        assert!(
+            output.status.success(),
+            "{args:?} should not inspect cwd: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "{args:?} should retain its stdout contract"
         );
     }
 }
@@ -225,6 +263,7 @@ fn native_text_render_rejects_svg_and_network_only_options() {
 
 #[test]
 fn invalid_render_configuration_precedes_primary_input_acquisition() {
+    const WIDTH_OUTSIDE_SUPPORTED_INTEGER_RANGE: &str = "18446744073709551616";
     let tmp = tempfile::tempdir().expect("tempdir");
     let cases: &[(&str, &[&str], &str)] = &[
         (
@@ -272,9 +311,9 @@ fn invalid_render_configuration_precedes_primary_input_acquisition() {
                 "out.pdf",
                 "--pdfFit",
                 "--width",
-                "1e308",
+                WIDTH_OUTSIDE_SUPPORTED_INTEGER_RANGE,
             ],
-            "PDF viewport width is outside the supported numeric range",
+            "expected a positive integer",
         ),
     ];
 
@@ -301,6 +340,7 @@ fn invalid_render_configuration_precedes_primary_input_acquisition() {
 
 #[test]
 fn invalid_render_configuration_does_not_wait_for_stdin() {
+    const WIDTH_OUTSIDE_SUPPORTED_INTEGER_RANGE: &str = "18446744073709551616";
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("puppeteer.json"), "{not json")
         .expect("write invalid Puppeteer config");
@@ -336,9 +376,16 @@ fn invalid_render_configuration_does_not_wait_for_stdin() {
         (
             "pdfFit viewport width",
             &[
-                "mmdc", "-i", "-", "-o", "out.pdf", "--pdfFit", "--width", "1e308",
+                "mmdc",
+                "-i",
+                "-",
+                "-o",
+                "out.pdf",
+                "--pdfFit",
+                "--width",
+                WIDTH_OUTSIDE_SUPPORTED_INTEGER_RANGE,
             ],
-            "PDF viewport width is outside the supported numeric range",
+            "expected a positive integer",
         ),
     ];
 
@@ -668,14 +715,41 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     );
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
-    assert_eq!(payload["schema_version"], 1);
-    assert_eq!(payload["target"], "native");
+    assert_eq!(payload["schema_version"], 2);
+    assert_eq!(payload["cli_contract_version"], 2);
+    assert_eq!(payload["package"]["name"], "merman-cli");
+    assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        payload["compatibility"]["mermaid"],
+        merman::baseline::PINNED_MERMAID_BASELINE_VERSION
+    );
+    assert_eq!(
+        payload["compatibility"]["mmdc"],
+        merman::baseline::PINNED_MERMAID_CLI_VERSION
+    );
+    assert_eq!(payload["descriptor"]["schema_version"], 1);
     assert!(
-        payload["descriptor_digest"]
+        payload["descriptor"]["digest"]
             .as_str()
             .is_some_and(|digest| digest.starts_with("sha256:")),
         "missing descriptor digest: {payload}"
     );
+    let command_ids = payload["commands"]
+        .as_array()
+        .expect("commands should be an array")
+        .iter()
+        .map(|value| value.as_str().expect("command ids should be strings"))
+        .collect::<Vec<_>>();
+    assert!(
+        command_ids.windows(2).all(|pair| pair[0] < pair[1]),
+        "command ids must be sorted and unique: {command_ids:?}"
+    );
+    for command in ["batch", "capabilities", "completion", "mmdc", "render"] {
+        assert!(
+            command_ids.contains(&command),
+            "missing compiled command {command}: {payload}"
+        );
+    }
 
     let capabilities = payload["capabilities"]
         .as_array()

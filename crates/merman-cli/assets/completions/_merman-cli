@@ -1,0 +1,522 @@
+#compdef merman-cli
+
+autoload -U is-at-least
+
+_merman-cli() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_merman-cli_commands" \
+"*::: :->merman-cli" \
+&& ret=0
+    case $state in
+    (merman-cli)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:merman-cli-command-$line[1]:"
+        case $line[1] in
+            (render)
+_arguments "${_arguments_options[@]}" : \
+'-o+[Output file. Use \`-\` for stdout]:OUTPUT:_files' \
+'--output=[Output file. Use \`-\` for stdout]:OUTPUT:_files' \
+'--input-kind=[Interpret the input as Mermaid source or an existing SVG document]:INPUT_KIND:(mermaid svg)' \
+'-e+[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
+'--format=[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
+'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
+'--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
+'-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'--css-file=[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'-s+[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--scale=[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--raster-fit-width=[Fit PNG/JPG raster output to this CSS-pixel width before applying --scale]:RASTER_FIT_WIDTH:_default' \
+'--raster-fit-height=[Fit PNG/JPG raster output to this CSS-pixel height before applying --scale]:RASTER_FIT_HEIGHT:_default' \
+'--raster-max-width=[Maximum PNG/JPG output width after scale and fit. Defaults to 4096]:RASTER_MAX_WIDTH:_default' \
+'--raster-max-height=[Maximum PNG/JPG output height after scale and fit. Defaults to 4096]:RASTER_MAX_HEIGHT:_default' \
+'--raster-max-pixels=[Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096]:RASTER_MAX_PIXELS:_default' \
+'--pdf-filter-scale=[Sampling scale for SVG filters that require localized PDF bitmaps. Defaults to 4]:FILTER_SCALE:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-image-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-bytes=[Maximum decoded data-URL bytes for one embedded image. Defaults to 16777216]:MAX_IMAGE_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-bytes=[Maximum aggregate decoded data-URL bytes for embedded images. Defaults to 33554432]:MAX_TOTAL_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-pixels=[Maximum intrinsic pixels for one embedded raster image. Defaults to 16777216]:MAX_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-pixels=[Maximum aggregate intrinsic pixels for embedded raster images. Defaults to 33554432]:MAX_TOTAL_PIXELS:_default' \
+'*--icon-pack=[Iconify package name or local package path. Can be repeated]:PACKAGE_OR_PATH:_default' \
+'*--icon-pack-source=[Iconify prefix and source as PREFIX#SOURCE. Can be repeated]:PREFIX#SOURCE:_default' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Mermaid theme override]:THEME:_default' \
+'--theme=[Mermaid theme override]:THEME:_default' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
+'--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
+'-w+[Available container width for size-sensitive layouts. \`mmdc\` defaults to 800]:CONTAINER_WIDTH:_default' \
+'--width=[Available container width for size-sensitive layouts. \`mmdc\` defaults to 800]:CONTAINER_WIDTH:_default' \
+'-H+[Available container height for size-sensitive layouts. \`mmdc\` defaults to 600]:CONTAINER_HEIGHT:_default' \
+'--height=[Available container height for size-sensitive layouts. \`mmdc\` defaults to 600]:CONTAINER_HEIGHT:_default' \
+'-I+[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--svg-id=[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
+'--ascii-charset=[Override the text renderer character set]:ASCII_CHARSET:(ascii unicode)' \
+'--ascii-direction=[Override the default graph direction when Mermaid input omits one]:ASCII_DIRECTION:(left-right top-down)' \
+'--ascii-color=[Color mode for terminal text output]:ASCII_COLOR:(plain auto ansi16 ansi256 truecolor html)' \
+'--xychart-vertical-plot-height=[XYChart vertical plot height for text output]:XYCHART_VERTICAL_PLOT_HEIGHT:_default' \
+'--xychart-category-band-width=[XYChart category band width for text output]:XYCHART_CATEGORY_BAND_WIDTH:_default' \
+'--xychart-horizontal-plot-width=[XYChart horizontal plot width for text output]:XYCHART_HORIZONTAL_PLOT_WIDTH:_default' \
+'--ascii-max-grid-cells=[Maximum graph grid cells for text route planning]:ASCII_MAX_GRID_CELLS:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'-q[Suppress non-error log output]' \
+'--quiet[Suppress non-error log output]' \
+'(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable PNG/JPG raster size limits. Use only for trusted oversized exports]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-images-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels)--embedded-images-unbounded[Disable embedded raster image decode budgets for trusted inputs]' \
+'--allow-network[Allow icon pack loading from public HTTP(S) destinations]' \
+'--allow-private-network[Allow explicitly configured icon URLs to resolve to private or loopback addresses]' \
+'--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'--sequence-mirror-actors[Mirror sequence participants below lifelines for ASCII/Unicode output]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(batch)
+_arguments "${_arguments_options[@]}" : \
+'--stdin-file-name=[Logical source file name for Markdown read from stdin]:STDIN_FILE_NAME:_files' \
+'-o+[Tool-owned directory for the rewritten document and generated artifacts]:OUTPUT_DIR:_files -/' \
+'--output-dir=[Tool-owned directory for the rewritten document and generated artifacts]:OUTPUT_DIR:_files -/' \
+'-j+[Maximum number of Markdown charts rendered concurrently]:JOBS:_default' \
+'--jobs=[Maximum number of Markdown charts rendered concurrently]:JOBS:_default' \
+'-e+[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
+'--format=[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
+'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
+'--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
+'-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'--css-file=[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'-s+[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--scale=[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--raster-fit-width=[Fit PNG/JPG raster output to this CSS-pixel width before applying --scale]:RASTER_FIT_WIDTH:_default' \
+'--raster-fit-height=[Fit PNG/JPG raster output to this CSS-pixel height before applying --scale]:RASTER_FIT_HEIGHT:_default' \
+'--raster-max-width=[Maximum PNG/JPG output width after scale and fit. Defaults to 4096]:RASTER_MAX_WIDTH:_default' \
+'--raster-max-height=[Maximum PNG/JPG output height after scale and fit. Defaults to 4096]:RASTER_MAX_HEIGHT:_default' \
+'--raster-max-pixels=[Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096]:RASTER_MAX_PIXELS:_default' \
+'--pdf-filter-scale=[Sampling scale for SVG filters that require localized PDF bitmaps. Defaults to 4]:FILTER_SCALE:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-image-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-bytes=[Maximum decoded data-URL bytes for one embedded image. Defaults to 16777216]:MAX_IMAGE_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-bytes=[Maximum aggregate decoded data-URL bytes for embedded images. Defaults to 33554432]:MAX_TOTAL_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-pixels=[Maximum intrinsic pixels for one embedded raster image. Defaults to 16777216]:MAX_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-pixels=[Maximum aggregate intrinsic pixels for embedded raster images. Defaults to 33554432]:MAX_TOTAL_PIXELS:_default' \
+'*--icon-pack=[Iconify package name or local package path. Can be repeated]:PACKAGE_OR_PATH:_default' \
+'*--icon-pack-source=[Iconify prefix and source as PREFIX#SOURCE. Can be repeated]:PREFIX#SOURCE:_default' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Mermaid theme override]:THEME:_default' \
+'--theme=[Mermaid theme override]:THEME:_default' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
+'--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
+'-w+[Available container width for size-sensitive layouts. \`mmdc\` defaults to 800]:CONTAINER_WIDTH:_default' \
+'--width=[Available container width for size-sensitive layouts. \`mmdc\` defaults to 800]:CONTAINER_WIDTH:_default' \
+'-H+[Available container height for size-sensitive layouts. \`mmdc\` defaults to 600]:CONTAINER_HEIGHT:_default' \
+'--height=[Available container height for size-sensitive layouts. \`mmdc\` defaults to 600]:CONTAINER_HEIGHT:_default' \
+'-I+[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--svg-id=[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'-q[Suppress non-error log output]' \
+'--quiet[Suppress non-error log output]' \
+'(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable PNG/JPG raster size limits. Use only for trusted oversized exports]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-images-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels)--embedded-images-unbounded[Disable embedded raster image decode budgets for trusted inputs]' \
+'--allow-network[Allow icon pack loading from public HTTP(S) destinations]' \
+'--allow-private-network[Allow explicitly configured icon URLs to resolve to private or loopback addresses]' \
+'--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Markdown file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(lint)
+_arguments "${_arguments_options[@]}" : \
+'--stdin-file-name=[Optional file name to use when linting stdin]:STDIN_FILE_NAME:_files' \
+'--format=[Output format for diagnostics]:FORMAT:(json text)' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--lint-profile=[Built-in lint rule profile\: core, recommended, or strict]:PROFILE:_default' \
+'*--enable-rule=[Enable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
+'*--disable-rule=[Disable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
+'*--rule-severity=[Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. Can be repeated]:RULE_ID=SEVERITY:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--pretty[Pretty-print JSON output]' \
+'--markdown[Include Markdown fence diagnostics by scanning \`.md\`, \`.markdown\`, or \`.mdx\` input]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid or Markdown file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(fix)
+_arguments "${_arguments_options[@]}" : \
+'--stdin-file-name=[Optional file name to use when fixing stdin]:STDIN_FILE_NAME:_files' \
+'(--check --diff --write)-o+[Write the result to this file instead of stdout]:OUTPUT:_files' \
+'(--check --diff --write)--output=[Write the result to this file instead of stdout]:OUTPUT:_files' \
+'*--rule=[Restrict fixes to this fixable lint rule id. Can be repeated]:RULE_ID:_default' \
+'*--fix=[Select an exact stable fix id. Can be repeated]:STABLE_FIX_ID:_default' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--lint-profile=[Built-in lint rule profile\: core, recommended, or strict]:PROFILE:_default' \
+'*--enable-rule=[Enable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
+'*--disable-rule=[Disable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
+'*--rule-severity=[Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. Can be repeated]:RULE_ID=SEVERITY:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'(--diff --write -o --output)--check[Exit 1 when the selected fixes would change the source]' \
+'(--check --write -o --output)--diff[Print a unified diff and exit 1 when the source would change]' \
+'(--check --diff -o --output)--write[Write the result back to the input file]' \
+'-q[Suppress non-error fix selection diagnostics]' \
+'--quiet[Suppress non-error fix selection diagnostics]' \
+'--markdown[Include Markdown fence diagnostics by scanning \`.md\`, \`.markdown\`, or \`.mdx\` input]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid or Markdown file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(lint-rules)
+_arguments "${_arguments_options[@]}" : \
+'--format=[Output format for rule metadata]:FORMAT:(json text)' \
+'--pretty[Pretty-print JSON output]' \
+'--configurable[Only list rules that public lint configuration can reference]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(mmdc)
+_arguments "${_arguments_options[@]}" : \
+'-i+[Input Mermaid file. Use \`-\` for stdin]:INPUT:_files' \
+'--input=[Input Mermaid file. Use \`-\` for stdin]:INPUT:_files' \
+'-o+[Output file. Use \`-\` for stdout]:OUTPUT:_files' \
+'--output=[Output file. Use \`-\` for stdout]:OUTPUT:_files' \
+'-a+[Output artefacts directory for Markdown input]:ARTEFACTS:_files -/' \
+'--artefacts=[Output artefacts directory for Markdown input]:ARTEFACTS:_files -/' \
+'-j+[Parallel jobs for Markdown input. Defaults and maxima come from the resource profile]:JOBS:_default' \
+'--jobs=[Parallel jobs for Markdown input. Defaults and maxima come from the resource profile]:JOBS:_default' \
+'-e+[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
+'--outputFormat=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
+'--format=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
+'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'-b+[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \
+'--backgroundColor=[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \
+'-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'--cssFile=[CSS file injected into SVG output before export]:CSS_FILE:_files' \
+'-p+[JSON Puppeteer configuration file. Accepted for mmdc compatibility]:PUPPETEER_CONFIG_FILE:_files' \
+'--puppeteerConfigFile=[JSON Puppeteer configuration file. Accepted for mmdc compatibility]:PUPPETEER_CONFIG_FILE:_files' \
+'-s+[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--scale=[PNG/JPG scale factor. Defaults to 1]:SCALE:_default' \
+'--raster-fit-width=[Fit PNG/JPG raster output to this CSS-pixel width before applying --scale]:RASTER_FIT_WIDTH:_default' \
+'--raster-fit-height=[Fit PNG/JPG raster output to this CSS-pixel height before applying --scale]:RASTER_FIT_HEIGHT:_default' \
+'--raster-max-width=[Maximum PNG/JPG output width after scale and fit. Defaults to 4096]:RASTER_MAX_WIDTH:_default' \
+'--raster-max-height=[Maximum PNG/JPG output height after scale and fit. Defaults to 4096]:RASTER_MAX_HEIGHT:_default' \
+'--raster-max-pixels=[Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096]:RASTER_MAX_PIXELS:_default' \
+'--pdf-filter-scale=[Sampling scale for SVG filters that require localized PDF bitmaps. Defaults to 4]:FILTER_SCALE:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-image-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--pdf-filter-images-unbounded)--pdf-max-filter-pixels=[Maximum aggregate pixels retained as localized PDF filter images. Defaults to 33554432]:MAX_FILTER_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-bytes=[Maximum decoded data-URL bytes for one embedded image. Defaults to 16777216]:MAX_IMAGE_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-bytes=[Maximum aggregate decoded data-URL bytes for embedded images. Defaults to 33554432]:MAX_TOTAL_BYTES:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-pixels=[Maximum intrinsic pixels for one embedded raster image. Defaults to 16777216]:MAX_IMAGE_PIXELS:_default' \
+'(--embedded-images-unbounded)--embedded-image-max-total-pixels=[Maximum aggregate intrinsic pixels for embedded raster images. Defaults to 33554432]:MAX_TOTAL_PIXELS:_default' \
+'*--iconPacks=[Iconify package names]:ICON_PACKS:_default' \
+'*--iconPacksNamesAndUrls=[Iconify prefix#url definitions]:ICON_PACKS_NAMES_AND_URLS:_default' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--configFile=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Theme of the chart]:THEME:(default forest dark neutral)' \
+'--theme=[Theme of the chart]:THEME:(default forest dark neutral)' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
+'--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
+'-w+[Width of the page]:CONTAINER_WIDTH:_default' \
+'--width=[Width of the page]:CONTAINER_WIDTH:_default' \
+'-H+[Height of the page]:CONTAINER_HEIGHT:_default' \
+'--height=[Height of the page]:CONTAINER_HEIGHT:_default' \
+'-I+[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--svgId=[Root SVG id and internal marker prefix]:SVG_ID:_default' \
+'--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'-f[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
+'--pdfFit[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
+'-q[Suppress non-error log output]' \
+'--quiet[Suppress non-error log output]' \
+'(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable PNG/JPG raster size limits. Use only for trusted oversized exports]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-images-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--pdf-max-filter-image-pixels)--pdf-filter-unbounded[Disable the retained PDF filter-image pixel budget for trusted inputs]' \
+'(--embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels)--embedded-images-unbounded[Disable embedded raster image decode budgets for trusted inputs]' \
+'--allow-network[Allow icon pack loading from HTTP(S) URLs]' \
+'--allow-private-network[Allow explicitly configured icon URLs to resolve to private or loopback addresses]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(detect)
+_arguments "${_arguments_options[@]}" : \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Mermaid theme override]:THEME:_default' \
+'--theme=[Mermaid theme override]:THEME:_default' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(parse)
+_arguments "${_arguments_options[@]}" : \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Mermaid theme override]:THEME:_default' \
+'--theme=[Mermaid theme override]:THEME:_default' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--pretty[Pretty-print JSON output]' \
+'--meta[Include parse metadata alongside the model]' \
+'--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(layout)
+_arguments "${_arguments_options[@]}" : \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'-t+[Mermaid theme override]:THEME:_default' \
+'--theme=[Mermaid theme override]:THEME:_default' \
+'--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
+'--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
+'--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
+'-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
+'--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
+'-H+[Available container height for size-sensitive layouts]:CONTAINER_HEIGHT:_default' \
+'--height=[Available container height for size-sensitive layouts]:CONTAINER_HEIGHT:_default' \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--pretty[Pretty-print JSON output]' \
+'--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
+'--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
+'--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
+'--system-random[Use system randomness while keeping other runtime sources deterministic]' \
+'--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::input -- Input Mermaid file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+(capabilities)
+_arguments "${_arguments_options[@]}" : \
+'--json[Emit the machine-readable capability document]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(completion)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':shell -- Shell to generate completions for:(bash elvish fish powershell zsh)' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_merman-cli_commands] )) ||
+_merman-cli_commands() {
+    local commands; commands=(
+'render:Render one Mermaid diagram with Merman'\''s native interface' \
+'batch:Render every Mermaid diagram in one Markdown document' \
+'lint:Analyze Mermaid source and print diagnostics JSON or text' \
+'fix:Apply non-conflicting diagnostics fixes to Mermaid or Markdown source' \
+'lint-rules:List lint rule metadata' \
+'mmdc:Render through the pinned mmdc-compatible interface' \
+'detect:Detect the Mermaid diagram type' \
+'parse:Parse Mermaid source and print the semantic JSON model' \
+'layout:Parse and layout Mermaid source, then print layout JSON' \
+'capabilities:Print the compiled capabilities from the canonical capability descriptor' \
+'completion:Generate shell completion scripts' \
+    )
+    _describe -t commands 'merman-cli commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__batch_commands] )) ||
+_merman-cli__subcmd__batch_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli batch commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__capabilities_commands] )) ||
+_merman-cli__subcmd__capabilities_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli capabilities commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__completion_commands] )) ||
+_merman-cli__subcmd__completion_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli completion commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__detect_commands] )) ||
+_merman-cli__subcmd__detect_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli detect commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__fix_commands] )) ||
+_merman-cli__subcmd__fix_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli fix commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__layout_commands] )) ||
+_merman-cli__subcmd__layout_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli layout commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__lint_commands] )) ||
+_merman-cli__subcmd__lint_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli lint commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__lint-rules_commands] )) ||
+_merman-cli__subcmd__lint-rules_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli lint-rules commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__mmdc_commands] )) ||
+_merman-cli__subcmd__mmdc_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli mmdc commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__parse_commands] )) ||
+_merman-cli__subcmd__parse_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli parse commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__render_commands] )) ||
+_merman-cli__subcmd__render_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli render commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_merman-cli" ]; then
+    _merman-cli "$@"
+else
+    compdef _merman-cli merman-cli
+fi

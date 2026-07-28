@@ -177,6 +177,40 @@ fn native_zero_chart_generation_skips_renderer_configuration() {
 }
 
 #[test]
+fn renderer_configuration_failure_precedes_output_root_and_lock_creation() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        temp.path().join("input.md"),
+        "```mermaid\nflowchart LR\nA-->B\n```\n",
+    )
+    .expect("write Markdown input");
+    fs::write(temp.path().join("invalid.json"), b"not valid JSON")
+        .expect("write invalid configuration");
+
+    let output = run_in(
+        temp.path(),
+        &[
+            "batch",
+            "input.md",
+            "--output-dir",
+            "generated",
+            "--config-file",
+            "invalid.json",
+            "--quiet",
+        ],
+    );
+
+    assert!(!output.status.success(), "renderer configuration must fail");
+    assert!(
+        stderr(&output).contains("invalid.json"),
+        "stderr:\n{}",
+        stderr(&output)
+    );
+    assert!(!temp.path().join("generated").exists());
+    assert!(!temp.path().join("generated/.merman.lock").exists());
+}
+
+#[test]
 fn strict_document_generations_never_delete_extra_numbered_outputs() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");

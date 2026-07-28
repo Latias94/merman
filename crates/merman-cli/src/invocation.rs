@@ -317,7 +317,12 @@ pub(crate) struct ResolvedRenderCommon {
     pub(crate) background: Option<String>,
     #[cfg(feature = "svg")]
     pub(crate) css_file: Option<PathBuf>,
-    #[cfg(feature = "svg")]
+    #[cfg(any(
+        feature = "markdown",
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf"
+    ))]
     pub(crate) quiet: bool,
     #[cfg(feature = "icons")]
     pub(crate) icons: ResolvedIconSources,
@@ -390,8 +395,8 @@ pub(crate) struct ResolvedMmdcRender {
     pub(crate) output: ResolvedOutput,
     pub(crate) common: ResolvedRenderCommon,
     pub(crate) compatibility: MmdcCompatibilityInputs,
-    pub(crate) input_was_explicit: bool,
     pub(crate) warn_on_implicit_stdin: bool,
+    pub(crate) warn_on_implicit_output_format: bool,
     #[cfg(feature = "parallel-markdown")]
     pub(crate) jobs: usize,
 }
@@ -664,7 +669,8 @@ fn normalize_render(
     args: RenderArgs,
     facts: &InvocationFacts,
 ) -> Result<ResolvedSingleRender, CliError> {
-    let runtime_policy = resolve_render_runtime_policy(&args.options.parse, args.options.quiet)?;
+    let runtime_policy =
+        resolve_render_runtime_policy(&args.options.graphical.parse, args.options.graphical.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "render")?;
     if input.file().is_some_and(is_native_markdown_path) {
@@ -683,13 +689,13 @@ fn normalize_render(
     }
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     if input_kind == RenderInputKind::Svg {
-        validate_raw_svg_options(&args.options)?;
+        validate_raw_svg_options(&args.options.graphical)?;
     }
     validate_native_output_options(format, &args.options)?;
     let destination = resolve_single_destination(args.output, &input, format);
     let output = resolved_native_output(format, destination, &args.options, facts)?;
     let common = resolve_native_common(
-        args.options,
+        args.options.graphical,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -709,7 +715,8 @@ fn normalize_batch(
     args: BatchArgs,
     facts: &InvocationFacts,
 ) -> Result<ResolvedBatchRender, CliError> {
-    let runtime_policy = resolve_render_runtime_policy(&args.options.parse, args.options.quiet)?;
+    let runtime_policy =
+        resolve_render_runtime_policy(&args.options.graphical.parse, args.options.graphical.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "batch")?;
     if let Some(path) = input.file()
@@ -765,24 +772,18 @@ fn normalize_batch(
     };
 
     let format = args.options.format.unwrap_or_default();
-    #[cfg(feature = "ascii")]
-    if format.is_text() {
-        return Err(CliError::InvalidInput(
-            "batch does not support ASCII or Unicode output".to_string(),
-        ));
-    }
-    validate_native_output_options(format, &args.options)?;
+    let render_format = RenderFormat::from(format);
+    validate_graphical_output_options(render_format, &args.options.graphical)?;
     let output_path = output_dir.join(&source_file_name);
-    let output = resolved_native_output(
-        format,
+    let output = resolved_graphical_output(
+        render_format,
         ResolvedDestination::File(output_path),
-        &args.options,
-        facts,
+        &args.options.graphical,
     )?;
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
     let common = resolve_native_common(
-        args.options,
+        args.options.graphical,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -801,8 +802,9 @@ fn normalize_batch(
 #[cfg(feature = "svg")]
 fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmdcRender, CliError> {
     let resources = resolve_resource_policy(args.resources.clone())?;
-    let input_was_explicit = args.input_file.is_some();
-    let warn_on_implicit_stdin = !input_was_explicit && !args.quiet;
+    let warn_on_implicit_stdin = args.input_file.is_none();
+    let warn_on_implicit_output_format =
+        args.output.as_deref() == Some(Path::new("-")) && args.output_format.is_none();
     let parse = ParseCliArgs {
         suppress_errors: false,
         config_file: args.parse.config_file.clone(),
@@ -902,8 +904,8 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         output,
         common,
         compatibility,
-        input_was_explicit,
         warn_on_implicit_stdin,
+        warn_on_implicit_output_format,
         #[cfg(feature = "parallel-markdown")]
         jobs,
     })
@@ -922,6 +924,7 @@ fn resolve_native_input(
     }
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
 fn working_directory(facts: &InvocationFacts) -> Result<&Path, CliError> {
     facts.cwd.as_deref().ok_or_else(|| {
         CliError::Io(std::io::Error::new(
@@ -1071,19 +1074,36 @@ fn resolved_native_output(
 ) -> Result<ResolvedOutput, CliError> {
     #[cfg(not(feature = "ascii"))]
     let _ = facts;
-    let output = match format {
+    match format {
+        #[cfg(feature = "ascii")]
+        RenderFormat::Ascii | RenderFormat::Unicode => {
+            let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
+            Ok(ResolvedOutput::Text {
+                destination,
+                options,
+            })
+        }
         #[cfg(feature = "svg")]
+        graphical_format => {
+            resolved_graphical_output(graphical_format, destination, &options.graphical)
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+fn resolved_graphical_output(
+    format: RenderFormat,
+    destination: ResolvedDestination,
+    options: &crate::cli::GraphicalRenderCliArgs,
+) -> Result<ResolvedOutput, CliError> {
+    let output = match format {
         RenderFormat::Svg => ResolvedOutput::Svg {
             destination,
             pipeline: options.svg_pipeline,
         },
         #[cfg(feature = "ascii")]
         RenderFormat::Ascii | RenderFormat::Unicode => {
-            let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
-            ResolvedOutput::Text {
-                destination,
-                options,
-            }
+            unreachable!("graphical output cannot use a text format")
         }
         #[cfg(feature = "png")]
         RenderFormat::Png => ResolvedOutput::Png {
@@ -1262,31 +1282,55 @@ fn resolve_mmdc_pdf_fit_width(args: &MmdcArgs) -> Result<Option<f32>, CliError> 
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_native_common(
-    options: NativeRenderOptions,
+    options: crate::cli::GraphicalRenderCliArgs,
     runtime_policy: RuntimePolicy,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
 ) -> ResolvedRenderCommon {
+    let crate::cli::GraphicalRenderCliArgs {
+        #[cfg(feature = "svg")]
+        background_color,
+        #[cfg(feature = "svg")]
+        css_file,
+        #[cfg(any(
+            feature = "markdown",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
+        quiet,
+        #[cfg(feature = "icons")]
+        icons,
+        parse,
+        #[cfg(feature = "svg")]
+        render,
+        ..
+    } = options;
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
-        parse: resolve_parse_options(options.parse, runtime_policy),
+        parse: resolve_parse_options(parse, runtime_policy),
         #[cfg(feature = "svg")]
-        render: resolve_render_options(options.render),
+        render: resolve_render_options(render),
         resources,
         #[cfg(feature = "svg")]
-        background: options.background_color,
+        background: background_color,
         #[cfg(feature = "svg")]
-        css_file: options.css_file,
-        #[cfg(feature = "svg")]
-        quiet: options.quiet,
+        css_file,
+        #[cfg(any(
+            feature = "markdown",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
+        quiet,
         #[cfg(feature = "icons")]
         icons: ResolvedIconSources {
-            packages: options.icons.icon_packs,
-            named_sources: options.icons.icon_packs_names_and_urls,
+            packages: icons.icon_packs,
+            named_sources: icons.icon_packs_names_and_urls,
             #[cfg(feature = "network-icons")]
-            allow_network: options.icons.allow_network,
+            allow_network: icons.allow_network,
             #[cfg(feature = "network-icons")]
-            allow_private_network: options.icons.allow_private_network,
+            allow_private_network: icons.allow_private_network,
         },
     }
 }
@@ -1297,7 +1341,7 @@ fn resolve_mmdc_common(
     runtime_policy: RuntimePolicy,
     render: RenderCliArgs,
     args: &MmdcArgs,
-    output_is_stdout: bool,
+    _output_is_stdout: bool,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
 ) -> ResolvedRenderCommon {
@@ -1312,7 +1356,13 @@ fn resolve_mmdc_common(
                 .unwrap_or_else(|| "white".to_string()),
         ),
         css_file: args.css_file.clone(),
-        quiet: args.quiet || output_is_stdout,
+        #[cfg(any(
+            feature = "markdown",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
+        quiet: args.quiet || _output_is_stdout,
         #[cfg(feature = "icons")]
         icons: ResolvedIconSources {
             packages: args.icons.icon_packs.clone(),
@@ -1458,6 +1508,26 @@ fn validate_native_output_options(
     format: RenderFormat,
     options: &NativeRenderOptions,
 ) -> Result<(), CliError> {
+    validate_graphical_output_options(format, &options.graphical)?;
+
+    #[cfg(feature = "ascii")]
+    if text_options_are_configured(&options.text) && !format.is_text() {
+        return Err(CliError::InvalidInput(
+            "text output options require --format ascii or --format unicode".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn validate_graphical_output_options(
+    format: RenderFormat,
+    options: &crate::cli::GraphicalRenderCliArgs,
+) -> Result<(), CliError> {
+    #[cfg(not(feature = "svg"))]
+    let _ = options;
+
     #[cfg(any(feature = "png", feature = "jpeg"))]
     {
         let raster_is_configured = options.raster.scale.is_some()
@@ -1552,18 +1622,11 @@ fn validate_native_output_options(
         }
     }
 
-    #[cfg(feature = "ascii")]
-    if text_options_are_configured(&options.text) && !format.is_text() {
-        return Err(CliError::InvalidInput(
-            "text output options require --format ascii or --format unicode".to_string(),
-        ));
-    }
-
     Ok(())
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn validate_raw_svg_options(options: &NativeRenderOptions) -> Result<(), CliError> {
+fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Result<(), CliError> {
     if options.parse.suppress_errors
         || options.parse.config_file.is_some()
         || options.parse.theme.is_some()

@@ -9,6 +9,7 @@ use std::path::PathBuf;
     name = "merman-cli",
     version,
     propagate_version = true,
+    disable_help_subcommand = true,
     subcommand_required = true,
     arg_required_else_help = true,
     override_usage = "merman-cli <COMMAND> [ARGS]",
@@ -430,7 +431,7 @@ pub(crate) struct BatchArgs {
     pub(crate) jobs: Option<usize>,
 
     #[command(flatten)]
-    pub(crate) options: NativeRenderOptions,
+    pub(crate) options: BatchRenderOptions,
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
@@ -558,7 +559,7 @@ pub(crate) enum RuntimePolicyKind {
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
-#[derive(Debug, Clone, ClapArgs)]
+#[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "svg")]
     /// Text measurement strategy.
@@ -579,7 +580,7 @@ pub(crate) struct RenderCliArgs {
     pub(crate) math_renderer: Option<MathRendererKind>,
 
     #[cfg(feature = "svg")]
-    /// Available container width for size-sensitive layouts. Top-level mmdc-compatible mode defaults to 800.
+    /// Available container width for size-sensitive layouts. `mmdc` defaults to 800.
     #[arg(
         short = 'w',
         long = "width",
@@ -589,7 +590,7 @@ pub(crate) struct RenderCliArgs {
     pub(crate) container_width: Option<f64>,
 
     #[cfg(feature = "svg")]
-    /// Available container height for size-sensitive layouts. Top-level mmdc-compatible mode defaults to 600.
+    /// Available container height for size-sensitive layouts. `mmdc` defaults to 600.
     #[arg(
         short = 'H',
         long = "height",
@@ -607,26 +608,6 @@ pub(crate) struct RenderCliArgs {
     /// Stabilize rough/hand-drawn rendering where supported.
     #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
     pub(crate) hand_drawn_seed: Option<u64>,
-}
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
-impl Default for RenderCliArgs {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "svg")]
-            text_measurer: None,
-            #[cfg(feature = "svg")]
-            math_renderer: None,
-            #[cfg(feature = "svg")]
-            container_width: None,
-            #[cfg(feature = "svg")]
-            container_height: None,
-            #[cfg(feature = "svg")]
-            svg_id: None,
-            #[cfg(feature = "svg")]
-            hand_drawn_seed: None,
-        }
-    }
 }
 
 #[cfg(feature = "svg")]
@@ -750,7 +731,7 @@ pub(crate) struct MmdcRenderCliArgs {
     #[arg(
         short = 'w',
         long = "width",
-        value_parser = parse_positive_f64,
+        value_parser = parse_mmdc_positive_integer,
         default_value_t = 800.0,
         help_heading = "mmdc-compatible export"
     )]
@@ -760,7 +741,7 @@ pub(crate) struct MmdcRenderCliArgs {
     #[arg(
         short = 'H',
         long = "height",
-        value_parser = parse_positive_f64,
+        value_parser = parse_mmdc_positive_integer,
         default_value_t = 600.0,
         help_heading = "mmdc-compatible export"
     )]
@@ -853,7 +834,7 @@ pub(crate) struct MmdcArgs {
     )]
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
-    /// Background color for the selected rendered output. Top-level mmdc-compatible mode defaults to white.
+    /// Background color for the selected rendered output. `mmdc` defaults to white.
     #[arg(
         short = 'b',
         long = "backgroundColor",
@@ -935,6 +916,33 @@ pub(crate) struct NativeRenderOptions {
     )]
     pub(crate) format: Option<RenderFormat>,
 
+    #[command(flatten)]
+    pub(crate) graphical: GraphicalRenderCliArgs,
+
+    #[cfg(feature = "ascii")]
+    #[command(flatten)]
+    pub(crate) text: TextOutputCliArgs,
+}
+
+#[cfg(feature = "markdown")]
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct BatchRenderOptions {
+    /// Output format. Defaults to SVG.
+    #[arg(
+        short = 'e',
+        long = "format",
+        value_enum,
+        help_heading = "Batch output"
+    )]
+    pub(crate) format: Option<BatchRenderFormat>,
+
+    #[command(flatten)]
+    pub(crate) graphical: GraphicalRenderCliArgs,
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct GraphicalRenderCliArgs {
     #[cfg(feature = "svg")]
     /// SVG output pipeline. Compiled binary exports always start from resvg-safe.
     #[arg(
@@ -984,10 +992,6 @@ pub(crate) struct NativeRenderOptions {
 
     #[command(flatten)]
     pub(crate) render: RenderCliArgs,
-
-    #[cfg(feature = "ascii")]
-    #[command(flatten)]
-    pub(crate) text: TextOutputCliArgs,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1355,6 +1359,35 @@ pub(crate) enum RenderFormat {
     Pdf,
 }
 
+#[cfg(feature = "markdown")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum BatchRenderFormat {
+    #[default]
+    Svg,
+    #[cfg(feature = "png")]
+    Png,
+    #[cfg(feature = "jpeg")]
+    #[value(name = "jpg", alias = "jpeg")]
+    Jpeg,
+    #[cfg(feature = "pdf")]
+    Pdf,
+}
+
+#[cfg(feature = "markdown")]
+impl From<BatchRenderFormat> for RenderFormat {
+    fn from(format: BatchRenderFormat) -> Self {
+        match format {
+            BatchRenderFormat::Svg => Self::Svg,
+            #[cfg(feature = "png")]
+            BatchRenderFormat::Png => Self::Png,
+            #[cfg(feature = "jpeg")]
+            BatchRenderFormat::Jpeg => Self::Jpeg,
+            #[cfg(feature = "pdf")]
+            BatchRenderFormat::Pdf => Self::Pdf,
+        }
+    }
+}
+
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum MmdcOutputFormat {
@@ -1550,6 +1583,31 @@ fn parse_positive_f64(value: &str) -> Result<f64, String> {
     Ok(parsed)
 }
 
+#[cfg(feature = "svg")]
+fn parse_mmdc_positive_integer(value: &str) -> Result<f64, String> {
+    let value = value.trim_start();
+    let (negative, digits) = match value.as_bytes().first() {
+        Some(b'+') => (false, &value[1..]),
+        Some(b'-') => (true, &value[1..]),
+        _ => (false, value),
+    };
+    let digit_count = digits
+        .as_bytes()
+        .iter()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if negative || digit_count == 0 {
+        return Err("expected a positive integer".to_string());
+    }
+    let parsed = digits[..digit_count]
+        .parse::<u64>()
+        .map_err(|_| "expected a positive integer".to_string())?;
+    if parsed == 0 {
+        return Err("expected a positive integer".to_string());
+    }
+    Ok(parsed as f64)
+}
+
 fn parse_naive_date(value: &str) -> Result<chrono::NaiveDate, String> {
     chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| "expected a date in YYYY-MM-DD format".to_string())
@@ -1568,15 +1626,45 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     Ok(parsed)
 }
 
-#[cfg(all(
-    test,
-    any(
-        feature = "pdf",
-        all(feature = "parallel-markdown", any(feature = "png", feature = "jpeg"))
-    )
-))]
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn mmdc_dimensions_follow_the_pinned_parse_int_contract() {
+        for (value, expected) in [
+            ("800", 800.0),
+            ("800.5", 800.0),
+            ("800px", 800.0),
+            ("1e308", 1.0),
+        ] {
+            let cli =
+                Cli::try_parse_from(["merman-cli", "mmdc", "-i", "-", "-o", "-", "--width", value])
+                    .expect("mmdc dimension should parse");
+            let RawCommand::Mmdc(args) = cli.command else {
+                panic!("expected mmdc command");
+            };
+            assert_eq!(args.render.container_width, expected);
+        }
+
+        for value in ["0", "-1", "pixels"] {
+            assert!(
+                Cli::try_parse_from([
+                    "merman-cli",
+                    "mmdc",
+                    "-i",
+                    "-",
+                    "-o",
+                    "-",
+                    "--height",
+                    value,
+                ])
+                .is_err(),
+                "invalid mmdc dimension must be rejected: {value}"
+            );
+        }
+    }
 
     #[cfg(feature = "pdf")]
     #[test]
@@ -1629,324 +1717,5 @@ mod tests {
             Cli::try_parse_from(args).is_ok(),
             "unified scheduling weight must parse"
         );
-    }
-}
-
-#[cfg(all(
-    test,
-    any(
-        all(
-            feature = "analysis",
-            not(feature = "svg"),
-            not(feature = "ascii"),
-            not(feature = "shell-completions")
-        ),
-        all(
-            feature = "svg",
-            not(feature = "analysis"),
-            not(feature = "ascii"),
-            not(feature = "png"),
-            not(feature = "jpeg"),
-            not(feature = "pdf"),
-            not(feature = "layout-cytoscape"),
-            not(feature = "layout-elk"),
-            not(feature = "math"),
-            not(feature = "icons"),
-            not(feature = "network-icons"),
-            not(feature = "markdown"),
-            not(feature = "parallel-markdown"),
-            not(feature = "shell-completions")
-        ),
-        all(
-            feature = "svg",
-            feature = "icons",
-            not(feature = "analysis"),
-            not(feature = "ascii"),
-            not(feature = "png"),
-            not(feature = "jpeg"),
-            not(feature = "pdf"),
-            not(feature = "layout-cytoscape"),
-            not(feature = "layout-elk"),
-            not(feature = "math"),
-            not(feature = "network-icons"),
-            not(feature = "markdown"),
-            not(feature = "parallel-markdown"),
-            not(feature = "shell-completions")
-        ),
-        all(
-            feature = "svg",
-            feature = "markdown",
-            not(feature = "analysis"),
-            not(feature = "ascii"),
-            not(feature = "png"),
-            not(feature = "jpeg"),
-            not(feature = "pdf"),
-            not(feature = "layout-cytoscape"),
-            not(feature = "layout-elk"),
-            not(feature = "math"),
-            not(feature = "icons"),
-            not(feature = "network-icons"),
-            not(feature = "parallel-markdown"),
-            not(feature = "shell-completions")
-        ),
-        all(
-            feature = "ascii",
-            not(feature = "svg"),
-            not(feature = "analysis"),
-            not(feature = "shell-completions")
-        )
-    )
-))]
-mod profile_tests {
-    use super::*;
-    use clap::Parser;
-
-    #[cfg(all(
-        feature = "analysis",
-        not(feature = "svg"),
-        not(feature = "ascii"),
-        not(feature = "shell-completions")
-    ))]
-    #[test]
-    fn lint_only_profile_has_no_render_or_tool_commands() {
-        for accepted in [
-            ["merman-cli", "capabilities"].as_slice(),
-            ["merman-cli", "detect", "-"].as_slice(),
-            ["merman-cli", "parse", "-"].as_slice(),
-            ["merman-cli", "lint", "-"].as_slice(),
-            ["merman-cli", "fix", "-"].as_slice(),
-            ["merman-cli", "lint-rules"].as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(accepted).is_ok(),
-                "expected CLI to accept {accepted:?}"
-            );
-        }
-
-        for rejected in [
-            ["merman-cli", "render"].as_slice(),
-            ["merman-cli", "layout"].as_slice(),
-            ["merman-cli", "completion"].as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(rejected).is_err(),
-                "lint-only CLI must not expose {rejected:?}"
-            );
-        }
-
-        let help = <Cli as clap::CommandFactory>::command()
-            .render_long_help()
-            .to_string();
-        for omitted in [
-            "\n  render ",
-            "\n  layout ",
-            "\n  completion ",
-            "--output",
-            "--format",
-        ] {
-            assert!(
-                !help.contains(omitted),
-                "lint-only help must not expose {omitted}:\n{help}"
-            );
-        }
-    }
-
-    #[cfg(all(
-        feature = "svg",
-        not(feature = "analysis"),
-        not(feature = "ascii"),
-        not(feature = "png"),
-        not(feature = "jpeg"),
-        not(feature = "pdf"),
-        not(feature = "layout-cytoscape"),
-        not(feature = "layout-elk"),
-        not(feature = "math"),
-        not(feature = "icons"),
-        not(feature = "network-icons"),
-        not(feature = "markdown"),
-        not(feature = "parallel-markdown"),
-        not(feature = "shell-completions")
-    ))]
-    #[test]
-    fn svg_basic_profile_hides_uncompiled_output_and_tool_options() {
-        assert!(Cli::try_parse_from(["merman-cli", "render", "--format", "svg", "-"]).is_ok());
-
-        for rejected in [
-            ["merman-cli", "render", "--format", "png", "-"].as_slice(),
-            ["merman-cli", "--artefacts", "images"].as_slice(),
-            ["merman-cli", "--pdfFit"].as_slice(),
-            ["merman-cli", "--jobs", "2"].as_slice(),
-            ["merman-cli", "--allow-network"].as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(rejected).is_err(),
-                "SVG-basic CLI must not expose {rejected:?}"
-            );
-        }
-
-        let help = <Cli as clap::CommandFactory>::command()
-            .render_long_help()
-            .to_string();
-        for omitted in [
-            "Markdown batch export:",
-            "--artefacts",
-            "--pdfFit",
-            "--jobs",
-            "--allow-network",
-            "--raster-max-width",
-        ] {
-            assert!(
-                !help.contains(omitted),
-                "SVG-basic help must not expose {omitted}:\n{help}"
-            );
-        }
-    }
-
-    #[cfg(all(
-        feature = "svg",
-        feature = "icons",
-        not(feature = "analysis"),
-        not(feature = "ascii"),
-        not(feature = "png"),
-        not(feature = "jpeg"),
-        not(feature = "pdf"),
-        not(feature = "layout-cytoscape"),
-        not(feature = "layout-elk"),
-        not(feature = "math"),
-        not(feature = "network-icons"),
-        not(feature = "markdown"),
-        not(feature = "parallel-markdown"),
-        not(feature = "shell-completions")
-    ))]
-    #[test]
-    fn local_icons_profile_exposes_local_sources_without_network_controls() {
-        for accepted in [
-            [
-                "merman-cli",
-                "render",
-                "-",
-                "--icon-pack",
-                "@iconify-json/logos",
-            ]
-            .as_slice(),
-            [
-                "merman-cli",
-                "render",
-                "-",
-                "--icon-pack-source",
-                "logos#icons.json",
-            ]
-            .as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(accepted).is_ok(),
-                "local-icons CLI must accept {accepted:?}"
-            );
-        }
-
-        assert!(
-            Cli::try_parse_from(["merman-cli", "--allow-network"]).is_err(),
-            "local-icons CLI must not expose network authorization"
-        );
-
-        let help = <Cli as clap::CommandFactory>::command()
-            .find_subcommand("render")
-            .expect("render command")
-            .clone()
-            .render_long_help()
-            .to_string();
-        for expected in ["--icon-pack", "--icon-pack-source"] {
-            assert!(
-                help.contains(expected),
-                "local-icons help must expose {expected}:\n{help}"
-            );
-        }
-        assert!(
-            !help.contains("--allow-network"),
-            "local-icons help must not expose network authorization:\n{help}"
-        );
-    }
-
-    #[cfg(all(
-        feature = "svg",
-        feature = "markdown",
-        not(feature = "analysis"),
-        not(feature = "ascii"),
-        not(feature = "png"),
-        not(feature = "jpeg"),
-        not(feature = "pdf"),
-        not(feature = "layout-cytoscape"),
-        not(feature = "layout-elk"),
-        not(feature = "math"),
-        not(feature = "icons"),
-        not(feature = "network-icons"),
-        not(feature = "parallel-markdown"),
-        not(feature = "shell-completions")
-    ))]
-    #[test]
-    fn markdown_profile_converts_documents_without_analysis_or_parallel_controls() {
-        assert!(
-            Cli::try_parse_from([
-                "merman-cli",
-                "mmdc",
-                "-i",
-                "input.md",
-                "-o",
-                "output.md",
-                "--artefacts",
-                "images",
-            ])
-            .is_ok(),
-            "Markdown conversion must be available without analysis"
-        );
-
-        for rejected in [
-            ["merman-cli", "lint", "-"].as_slice(),
-            ["merman-cli", "--jobs", "2"].as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(rejected).is_err(),
-                "markdown-only CLI must not expose {rejected:?}"
-            );
-        }
-
-        let help = <Cli as clap::CommandFactory>::command()
-            .find_subcommand("mmdc")
-            .expect("mmdc command")
-            .clone()
-            .render_long_help()
-            .to_string();
-        assert!(
-            help.contains("Markdown batch export:") && help.contains("--artefacts"),
-            "markdown-only help must expose conversion options:\n{help}"
-        );
-        for omitted in ["\n  lint ", "--jobs"] {
-            assert!(
-                !help.contains(omitted),
-                "markdown-only help must not expose {omitted}:\n{help}"
-            );
-        }
-    }
-
-    #[cfg(all(
-        feature = "ascii",
-        not(feature = "svg"),
-        not(feature = "analysis"),
-        not(feature = "shell-completions")
-    ))]
-    #[test]
-    fn ascii_only_profile_has_only_text_rendering() {
-        assert!(Cli::try_parse_from(["merman-cli", "render", "--format", "ascii", "-"]).is_ok());
-
-        for rejected in [
-            ["merman-cli", "layout"].as_slice(),
-            ["merman-cli", "render", "--format", "svg", "-"].as_slice(),
-            ["merman-cli", "render", "--svg-pipeline", "parity", "-"].as_slice(),
-        ] {
-            assert!(
-                Cli::try_parse_from(rejected).is_err(),
-                "ASCII-only CLI must not expose {rejected:?}"
-            );
-        }
     }
 }

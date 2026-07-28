@@ -20,9 +20,10 @@ mod output;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 mod render;
 mod resources;
+mod runtime;
 #[cfg(feature = "markdown")]
 mod transaction;
 
 fn main() -> std::process::ExitCode {
-    app::CliApp::system().execute()
+    app::run_system()
 }

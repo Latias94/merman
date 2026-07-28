@@ -512,13 +512,18 @@ impl HopGuard {
     }
 }
 
-pub(crate) fn fetch_http_body(
-    raw_url: &str,
-    policy: NetworkPolicy,
-) -> Result<Vec<u8>, NetworkError> {
-    let mut resolver = SystemResolver::default();
-    let mut transport = ReqwestTransport;
-    fetch_http_body_with(raw_url, policy, &mut resolver, &mut transport)
+pub(crate) trait NetworkAcquirer {
+    fn fetch(&mut self, raw_url: &str, policy: NetworkPolicy) -> Result<Vec<u8>, NetworkError>;
+}
+
+pub(crate) struct SystemNetworkAcquirer;
+
+impl NetworkAcquirer for SystemNetworkAcquirer {
+    fn fetch(&mut self, raw_url: &str, policy: NetworkPolicy) -> Result<Vec<u8>, NetworkError> {
+        let mut resolver = SystemResolver::default();
+        let mut transport = ReqwestTransport;
+        fetch_http_body_with(raw_url, policy, &mut resolver, &mut transport)
+    }
 }
 
 fn fetch_http_body_with<R, T>(

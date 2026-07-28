@@ -7,8 +7,14 @@ use crate::error::CliError;
 use crate::io::write_output;
 #[cfg(feature = "markdown")]
 use crate::resources::CheckedBytes;
+use crate::runtime::ExecutionContext;
+#[cfg(feature = "svg")]
+use crate::runtime::SharedWriter;
 
-pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
+pub(crate) fn execute_render(
+    prepared: PreparedRender,
+    context: &mut ExecutionContext,
+) -> Result<(), CliError> {
     match prepared {
         PreparedRender::Single(single) => {
             let artifact = match &single.output {
@@ -26,7 +32,7 @@ pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
                 }
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { renderer, .. } => {
-                    execute_graphical(renderer, &single.source)?
+                    execute_graphical(renderer, &single.source, &context.stderr)?
                 }
             };
             let destination = match &single.output {
@@ -35,10 +41,16 @@ pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { destination, .. } => destination,
             };
-            write_output(destination, &artifact.bytes, &single.publications)
+            write_output(
+                destination,
+                &artifact.bytes,
+                &single.publications,
+                &context.stdout,
+                context.publication.as_mut(),
+            )
         }
         #[cfg(feature = "markdown")]
-        PreparedRender::Markdown(batch) => crate::batch::execute(batch),
+        PreparedRender::Markdown(batch) => crate::batch::execute(*batch, context),
     }
 }
 
@@ -46,7 +58,10 @@ pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
 pub(crate) fn execute_graphical(
     prepared: &PreparedGraphicalRender,
     source: &str,
+    stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
+    #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
+    let _ = stderr;
     let permit = prepared.admission.acquire()?;
     match &prepared.source {
         PreparedGraphicalSource::Mermaid(renderer) => match &prepared.output {
@@ -74,7 +89,7 @@ pub(crate) fn execute_graphical(
                 else {
                     return Err(CliError::NoDiagram);
                 };
-                execute_encoded_svg(prepared, svg, permit)
+                execute_encoded_svg(prepared, svg, permit, stderr)
             }
         },
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -86,7 +101,7 @@ pub(crate) fn execute_graphical(
                 .pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::svg::HeadlessError::from)?;
-            execute_encoded_svg(prepared, svg, permit)
+            execute_encoded_svg(prepared, svg, permit, stderr)
         }
     }
 }
@@ -96,6 +111,7 @@ fn execute_encoded_svg(
     prepared: &PreparedGraphicalRender,
     svg: merman::svg::ResvgCompatibleSvg,
     permit: super::admission::BackendPermit,
+    stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "markdown")]
     let metadata = svg_metadata(svg.as_str());
@@ -112,7 +128,7 @@ fn execute_encoded_svg(
                 8,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan());
+            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_raster.encode_png()?,
                 _permit: Some(permit),
@@ -131,7 +147,7 @@ fn execute_encoded_svg(
                 10,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan());
+            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_raster.encode_jpeg()?,
                 _permit: Some(permit),
@@ -149,7 +165,7 @@ fn execute_encoded_svg(
                 prepared_pdf.embedded_image_plan(),
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan());
+            report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_pdf.encode()?,
                 _permit: Some(permit),
@@ -163,9 +179,9 @@ fn execute_encoded_svg(
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn report_raster_plan(quiet: bool, plan: merman::svg::export::RasterPlan) {
+fn report_raster_plan(quiet: bool, plan: merman::svg::export::RasterPlan, stderr: &SharedWriter) {
     if plan.limited {
-        crate::diagnostics::DiagnosticSink::new(quiet).info(format!(
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
             "Raster output was constrained from {:.0}x{:.0} to {}x{} pixels.",
             plan.requested_width_px, plan.requested_height_px, plan.width_px, plan.height_px
         ));
@@ -173,9 +189,13 @@ fn report_raster_plan(quiet: bool, plan: merman::svg::export::RasterPlan) {
 }
 
 #[cfg(feature = "pdf")]
-fn report_pdf_filter_plan(quiet: bool, plan: merman::svg::export::PdfFilterImagePlan) {
+fn report_pdf_filter_plan(
+    quiet: bool,
+    plan: merman::svg::export::PdfFilterImagePlan,
+    stderr: &SharedWriter,
+) {
     if plan.limited {
-        crate::diagnostics::DiagnosticSink::new(quiet).info(format!(
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
             "PDF filter sampling was constrained from {} to {} retained image pixels (scale {:.3} -> {:.3}).",
             plan.requested_image_pixels,
             plan.effective_image_pixels,

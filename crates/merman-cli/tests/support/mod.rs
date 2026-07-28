@@ -123,6 +123,42 @@ pub fn run_with_closed_stdout(args: &[&str], input: Option<&[u8]>) -> Output {
     child.wait_with_output().expect("wait cli")
 }
 
+pub fn pdf_media_box(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let marker = text.find("/MediaBox")?;
+    let after_marker = &text[marker..];
+    let start = after_marker.find('[')?;
+    let end = after_marker[start..].find(']')? + start;
+    Some(
+        after_marker[start + 1..end]
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+pub fn serve_icon_json_once(body: &'static str) -> String {
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test http server");
+    let address = listener.local_addr().expect("local addr");
+    std::thread::spawn(move || {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = stream.write_all(response.as_bytes());
+    });
+    format!("http://{address}/icons.json")
+}
+
 #[cfg(unix)]
 pub fn exit_code(status: ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;

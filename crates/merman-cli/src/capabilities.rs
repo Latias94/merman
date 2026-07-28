@@ -1,6 +1,10 @@
 use crate::error::CliError;
 use crate::io::write_stdout;
+use crate::runtime::SharedWriter;
 use serde::Serialize;
+
+const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
+const CLI_CONTRACT_VERSION: u32 = 2;
 
 #[allow(dead_code)]
 mod descriptor {
@@ -13,10 +17,31 @@ mod descriptor {
 #[derive(Serialize)]
 struct CapabilityDocument<'a> {
     schema_version: u32,
-    descriptor_digest: &'a str,
-    target: &'static str,
+    cli_contract_version: u32,
+    package: PackageView<'a>,
+    compatibility: CompatibilityView<'a>,
+    descriptor: DescriptorView<'a>,
+    commands: Vec<String>,
     capabilities: Vec<CapabilityView<'a>>,
     outputs: Vec<OutputView<'a>>,
+}
+
+#[derive(Serialize)]
+struct PackageView<'a> {
+    name: &'a str,
+    version: &'a str,
+}
+
+#[derive(Serialize)]
+struct CompatibilityView<'a> {
+    mermaid: &'a str,
+    mmdc: &'a str,
+}
+
+#[derive(Serialize)]
+struct DescriptorView<'a> {
+    schema_version: u32,
+    digest: &'a str,
 }
 
 #[derive(Serialize)]
@@ -34,12 +59,27 @@ struct OutputView<'a> {
     media_type: &'a str,
 }
 
-pub(crate) fn write_compiled_capabilities(json: bool) -> Result<(), CliError> {
+pub(crate) fn write_compiled_capabilities(
+    json: bool,
+    stdout: &SharedWriter,
+) -> Result<(), CliError> {
     let capability_ids = compiled_capability_ids();
     let document = CapabilityDocument {
-        schema_version: descriptor::CAPABILITY_DESCRIPTOR_SCHEMA_VERSION,
-        descriptor_digest: descriptor::CAPABILITY_DESCRIPTOR_DIGEST,
-        target: "native",
+        schema_version: CLI_CAPABILITIES_SCHEMA_VERSION,
+        cli_contract_version: CLI_CONTRACT_VERSION,
+        package: PackageView {
+            name: env!("CARGO_PKG_NAME"),
+            version: env!("CARGO_PKG_VERSION"),
+        },
+        compatibility: CompatibilityView {
+            mermaid: merman::baseline::PINNED_MERMAID_BASELINE_VERSION,
+            mmdc: merman::baseline::PINNED_MERMAID_CLI_VERSION,
+        },
+        descriptor: DescriptorView {
+            schema_version: descriptor::CAPABILITY_DESCRIPTOR_SCHEMA_VERSION,
+            digest: descriptor::CAPABILITY_DESCRIPTOR_DIGEST,
+        },
+        commands: compiled_command_ids(),
         capabilities: descriptor::CAPABILITIES
             .iter()
             .filter(|capability| capability_ids.contains(&capability.id))
@@ -62,7 +102,7 @@ pub(crate) fn write_compiled_capabilities(json: bool) -> Result<(), CliError> {
     };
 
     if json {
-        return crate::diagnostics::write_json_stdout(&document, true);
+        return crate::diagnostics::write_json_stdout(&document, true, stdout);
     }
 
     let mut output = String::from("ID\tKind\tDescription\n");
@@ -74,7 +114,18 @@ pub(crate) fn write_compiled_capabilities(json: bool) -> Result<(), CliError> {
         output.push_str(capability.description);
         output.push('\n');
     }
-    write_stdout(output.as_bytes())
+    write_stdout(output.as_bytes(), stdout)
+}
+
+fn compiled_command_ids() -> Vec<String> {
+    let mut command = crate::app::cli_command();
+    command.build();
+    let mut commands = command
+        .get_subcommands()
+        .map(|command| command.get_name().to_owned())
+        .collect::<Vec<_>>();
+    commands.sort();
+    commands
 }
 
 fn compiled_capability_ids() -> Vec<&'static str> {
@@ -123,6 +174,12 @@ mod tests {
                 .all(|id| declared.contains(id)),
             "CLI reported a capability absent from the canonical descriptor"
         );
+    }
+
+    #[test]
+    fn compiled_command_ids_are_sorted_and_unique() {
+        let commands = compiled_command_ids();
+        assert!(commands.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]

@@ -3,11 +3,12 @@ mod support;
 use assert_cmd::cargo::cargo_bin;
 use serde_json::Value;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output};
 use std::thread;
+use std::time::{Duration, Instant};
 use support::{exit_code, run_with_stdin, run_with_stdin_bytes, run_with_stdin_in_dir};
 
 const SOURCE: &str = "flowchart LR\nA-->B\n";
@@ -354,7 +355,7 @@ fn network_authorization_is_two_stage_and_diagnostics_are_sanitized() {
 #[test]
 fn remote_icon_body_stream_stops_at_limit_plus_one() {
     let body = icon_body("remote");
-    let url = serve_body_once(body.as_bytes());
+    let (url, server) = serve_body_once(body.as_bytes(), HttpBodyFraming::Chunked);
     let source = format!("remote#{url}/secret-path?token=do-not-print");
     let limit = format!("max_remote_icon_body_bytes={}", body.len() - 1);
     let output = run_with_stdin(
@@ -372,6 +373,7 @@ fn remote_icon_body_stream_stops_at_limit_plus_one() {
         ],
         SOURCE,
     );
+    join_fixture(server);
 
     assert_eq!(exit_code(output.status), 2);
     let stderr = utf8(&output.stderr);
@@ -382,7 +384,7 @@ fn remote_icon_body_stream_stops_at_limit_plus_one() {
 
 #[test]
 fn remote_icon_json_errors_do_not_echo_url_secrets() {
-    let url = serve_body_once(b"not valid icon JSON");
+    let (url, server) = serve_body_once(b"not valid icon JSON", HttpBodyFraming::ContentLength);
     let source = format!("remote#{url}/secret-path?token=do-not-print#fragment-do-not-print");
     let output = run_with_stdin(
         &[
@@ -397,6 +399,7 @@ fn remote_icon_json_errors_do_not_echo_url_secrets() {
         ],
         SOURCE,
     );
+    join_fixture(server);
 
     assert_eq!(exit_code(output.status), 2);
     let stderr = utf8(&output.stderr);
@@ -537,24 +540,76 @@ fn icon_body(prefix: &str) -> String {
     format!(r#"{{"prefix":"{prefix}","icons":{{"cloud":{{"body":"<path/>"}}}}}}"#)
 }
 
-fn serve_body_once(body: &[u8]) -> String {
+#[derive(Clone, Copy)]
+enum HttpBodyFraming {
+    ContentLength,
+    Chunked,
+}
+
+fn serve_body_once(
+    body: &[u8],
+    framing: HttpBodyFraming,
+) -> (String, thread::JoinHandle<Result<(), String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind HTTP fixture");
     let address = listener.local_addr().expect("fixture address");
     let body = body.to_vec();
-    thread::spawn(move || {
-        let Ok((mut stream, _)) = listener.accept() else {
-            return;
+    listener
+        .set_nonblocking(true)
+        .expect("make HTTP fixture listener nonblocking");
+    let server = thread::spawn(move || -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    if Instant::now() >= deadline {
+                        return Err("timed out waiting for HTTP fixture request".to_owned());
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(format!("accept HTTP fixture request: {error}")),
+            }
         };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|error| format!("set HTTP fixture timeout: {error}"))?;
         let mut request = [0_u8; 2048];
-        let _ = stream.read(&mut request);
-        let headers = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        let _ = stream.write_all(headers.as_bytes());
-        let _ = stream.write_all(&body);
+        stream
+            .read(&mut request)
+            .map_err(|error| format!("read HTTP fixture request: {error}"))?;
+        let response = match framing {
+            HttpBodyFraming::ContentLength => format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                String::from_utf8_lossy(&body)
+            ),
+            HttpBodyFraming::Chunked => format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:X}\r\n{}\r\n0\r\n\r\n",
+                body.len(),
+                String::from_utf8_lossy(&body)
+            ),
+        };
+        match stream.write_all(response.as_bytes()) {
+            Ok(()) => Ok(()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+                ) =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(format!("write HTTP fixture response: {error}")),
+        }
     });
-    format!("http://{address}")
+    (format!("http://{address}"), server)
+}
+
+fn join_fixture(server: thread::JoinHandle<Result<(), String>>) {
+    server
+        .join()
+        .expect("HTTP fixture thread")
+        .expect("HTTP fixture completion");
 }
 
 fn run_command_in(directory: &Path, args: &[&str]) -> Output {

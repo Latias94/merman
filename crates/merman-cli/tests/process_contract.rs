@@ -60,6 +60,7 @@ fn removed_root_render_syntax_points_to_explicit_workflows() {
         vec!["-imissing.mmd", "-oout.svg"],
         vec!["--pdfFit"],
         vec!["--svg-pipeline"],
+        vec!["--id", "diagram-root"],
         vec!["--suppress-errors"],
         vec!["--sequence-mirror-actors"],
         vec!["--ascii-charset"],
@@ -98,7 +99,7 @@ fn removed_root_render_syntax_points_to_explicit_workflows() {
 
 #[test]
 fn mmdc_distinguishes_implicit_stdin_from_explicit_stdin() {
-    let implicit = run_with_stdin(&["mmdc", "-o", "-"], "flowchart LR\nA-->B\n");
+    let implicit = run_with_stdin(&["mmdc", "-o", "-", "-e", "svg"], "flowchart LR\nA-->B\n");
     assert!(implicit.status.success(), "stderr: {:?}", implicit.stderr);
     let stderr = String::from_utf8(implicit.stderr).expect("stderr should be utf8");
     assert!(
@@ -106,12 +107,33 @@ fn mmdc_distinguishes_implicit_stdin_from_explicit_stdin() {
         "implicit compatibility stdin should retain the pinned warning:\n{stderr}"
     );
 
-    let explicit = run_with_stdin(&["mmdc", "-i", "-", "-o", "-"], "flowchart LR\nA-->B\n");
+    let explicit = run_with_stdin(
+        &["mmdc", "-i", "-", "-o", "-", "-e", "svg"],
+        "flowchart LR\nA-->B\n",
+    );
     assert!(explicit.status.success(), "stderr: {:?}", explicit.stderr);
     assert!(
         explicit.stderr.is_empty(),
         "explicit compatibility stdin should be quiet: {:?}",
         explicit.stderr
+    );
+
+    let implicit_quiet = run_with_stdin(
+        &["mmdc", "--quiet", "-o", "-", "-e", "svg"],
+        "flowchart LR\nA-->B\n",
+    );
+    assert!(implicit_quiet.status.success());
+    assert!(
+        String::from_utf8_lossy(&implicit_quiet.stderr).contains("No input file specified"),
+        "upstream compatibility warning must not be suppressed by --quiet"
+    );
+
+    let implicit_format = run_with_stdin(&["mmdc", "-i", "-", "-o", "-"], "flowchart LR\nA-->B\n");
+    assert!(implicit_format.status.success());
+    assert!(
+        String::from_utf8_lossy(&implicit_format.stderr)
+            .contains("No output format specified, using svg"),
+        "stdout format inference must retain the pinned warning"
     );
 }
 

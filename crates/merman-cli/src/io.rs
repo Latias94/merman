@@ -1,9 +1,8 @@
 use crate::error::CliError;
 use crate::input::{InputLimit, InputReadError, read_utf8};
+use crate::runtime::SharedWriter;
 use std::fs::File;
-#[cfg(feature = "analysis")]
 use std::io::Read;
-use std::io::Write;
 use std::path::Path;
 
 #[cfg(feature = "analysis")]
@@ -149,25 +148,27 @@ pub(crate) fn read_input(
     path: Option<&Path>,
     quiet: bool,
     limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
 ) -> Result<String, CliError> {
-    read_primary_input(path, quiet, limit).map_err(CliError::primary_input)
+    read_primary_input(path, quiet, limit, stdin, stderr).map_err(CliError::primary_input)
 }
 
 pub(crate) fn read_primary_input(
     path: Option<&Path>,
     quiet: bool,
     limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
 ) -> Result<String, InputReadError> {
     match path {
         None => {
-            crate::diagnostics::DiagnosticSink::new(quiet).info(
+            crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(
                 "No input file specified, reading from stdin. Use -i <input> to suppress this warning.",
             );
-            read_utf8(std::io::stdin().lock(), "stdin", limit, None)
+            read_utf8(stdin, "stdin", limit, None)
         }
-        Some(path) if path == Path::new("-") => {
-            read_utf8(std::io::stdin().lock(), "stdin", limit, None)
-        }
+        Some(path) if path == Path::new("-") => read_utf8(stdin, "stdin", limit, None),
         Some(path) => {
             let resource = format!("Input file {}", crate::error::safe_path(path));
             let file = File::open(path).map_err(|source| {
@@ -198,9 +199,10 @@ pub(crate) fn read_primary_input(
 pub(crate) fn read_fix_source(
     input: &crate::invocation::ResolvedInput,
     limit: InputLimit,
+    stdin: &mut dyn Read,
 ) -> Result<AcquiredFixSource, InputReadError> {
     let Some(path) = input.file() else {
-        let text = read_utf8(std::io::stdin().lock(), "stdin", limit, None)?;
+        let text = read_utf8(stdin, "stdin", limit, None)?;
         return Ok(AcquiredFixSource {
             text,
             snapshot: None,
@@ -290,33 +292,31 @@ pub(crate) fn write_output(
     target: &crate::invocation::ResolvedDestination,
     bytes: &[u8],
     publications: &crate::output::PublicationGuards,
+    stdout: &SharedWriter,
+    publication: &mut dyn crate::output::PublicationBackend,
 ) -> Result<(), CliError> {
     match target {
         crate::invocation::ResolvedDestination::Stdout => {
-            write_stdout(bytes)?;
+            write_stdout(bytes, stdout)?;
         }
         crate::invocation::ResolvedDestination::File(path) => {
-            write_file(path, bytes, publications)?;
+            write_file(path, bytes, publications, publication)?;
         }
     }
     Ok(())
 }
 
-pub(crate) fn write_stdout(bytes: &[u8]) -> Result<(), CliError> {
-    let stdout = std::io::stdout();
-    let mut writer = stdout.lock();
-    write_stdout_bytes(&mut writer, bytes)
+pub(crate) fn write_stdout(bytes: &[u8], stdout: &SharedWriter) -> Result<(), CliError> {
+    write_stdout_bytes(stdout, bytes)
 }
 
-pub(crate) fn write_stdout_line(line: &str) -> Result<(), CliError> {
-    let stdout = std::io::stdout();
-    let mut writer = stdout.lock();
-    write_stdout_bytes(&mut writer, line.as_bytes())?;
-    write_stdout_bytes(&mut writer, b"\n")?;
+pub(crate) fn write_stdout_line(line: &str, stdout: &SharedWriter) -> Result<(), CliError> {
+    write_stdout_bytes(stdout, line.as_bytes())?;
+    write_stdout_bytes(stdout, b"\n")?;
     Ok(())
 }
 
-fn write_stdout_bytes(stdout: &mut impl Write, bytes: &[u8]) -> Result<(), CliError> {
+fn write_stdout_bytes(stdout: &SharedWriter, bytes: &[u8]) -> Result<(), CliError> {
     stdout.write_all(bytes).map_err(|err| {
         if err.kind() == std::io::ErrorKind::BrokenPipe {
             CliError::BrokenStdoutPipe
@@ -331,8 +331,9 @@ pub(crate) fn write_file(
     path: &Path,
     bytes: &[u8],
     publications: &crate::output::PublicationGuards,
+    publication: &mut dyn crate::output::PublicationBackend,
 ) -> Result<(), CliError> {
-    crate::output::publish_atomic_file(path, bytes, publications)
+    publication.publish_file(path, bytes, publications)
 }
 
 #[cfg(feature = "analysis")]
@@ -340,9 +341,10 @@ pub(crate) fn write_file_verified(
     path: &Path,
     bytes: &[u8],
     publications: &crate::output::PublicationGuards,
-    verify: impl FnMut(&Path) -> Result<(), CliError>,
+    publication: &mut dyn crate::output::PublicationBackend,
+    verify: &mut dyn FnMut(&Path) -> Result<(), CliError>,
 ) -> Result<(), CliError> {
-    crate::output::publish_atomic_file_verified(path, bytes, publications, verify)
+    publication.publish_file_verified(path, bytes, publications, verify)
 }
 
 #[cfg(all(test, feature = "analysis"))]
@@ -351,9 +353,11 @@ mod tests {
     use crate::invocation::ResolvedInput;
 
     fn acquire(path: &Path) -> AcquiredFixSource {
+        let mut stdin = std::io::empty();
         read_fix_source(
             &ResolvedInput::File(path.to_path_buf()),
             InputLimit::new("max_source_bytes", Some(1024)),
+            &mut stdin,
         )
         .expect("acquire source")
     }

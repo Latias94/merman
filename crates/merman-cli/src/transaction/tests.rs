@@ -46,6 +46,10 @@ fn generation_owner(
     .unwrap()
 }
 
+fn existing_generation(path: &Path) -> TargetGeneration {
+    TargetGeneration::Existing(Arc::new(same_file::Handle::from_path(path).unwrap()))
+}
+
 #[test]
 fn approved_root_replacement_is_rejected_before_lock_creation() {
     let temp = tempfile::tempdir().unwrap();
@@ -148,6 +152,23 @@ fn transaction_plan_sorts_artifacts_and_keeps_document_last() {
 }
 
 #[test]
+fn live_transaction_plan_requires_every_preflight_generation() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+
+    let error = TransactionPlan::for_generation(
+        GenerationOwner::test_fixture(),
+        [TransactionEntryPlan::write(
+            TransactionRole::Manifest,
+            manifest,
+        )],
+    )
+    .unwrap_err();
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+}
+
+#[test]
 fn reserved_names_and_ascii_case_collisions_are_rejected() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();
@@ -197,7 +218,7 @@ fn generation_manifest_limits_apply_before_allocation_and_after_encoding() {
         &root,
         &relative(&root, "document.md"),
         &root,
-        &"x".repeat(600),
+        "x".repeat(600),
         "svg",
     );
     let artifacts = (1..=1_000)
@@ -285,6 +306,191 @@ fn successful_commit_is_deterministic_and_publishes_document_last() {
     assert_eq!(read(temp.path().join("document.md")), b"new-document");
     assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
     assert!(temp.path().join(LOCK_FILE_NAME).is_file());
+}
+
+#[test]
+fn target_created_after_missing_generation_approval_is_rejected_at_begin() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let plan =
+        TransactionPlan::new([
+            TransactionEntryPlan::write(TransactionRole::Manifest, manifest)
+                .expect_generation(TargetGeneration::Missing),
+        ])
+        .unwrap();
+
+    std::fs::write(&manifest_path, b"concurrent generation").unwrap();
+    let error = match LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(plan)
+    {
+        Ok(_) => panic!("a target created after approval must be rejected at begin"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+}
+
+#[test]
+fn target_created_after_missing_generation_approval_is_rejected_before_ready() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )
+            .expect_generation(TargetGeneration::Missing)])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"our generation").unwrap();
+
+    std::fs::write(&manifest_path, b"concurrent generation").unwrap();
+    let error = match staging.ready() {
+        Ok(_) => panic!("a target created after approval must not become the prior generation"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+}
+
+#[test]
+fn target_replaced_after_existing_generation_approval_is_rejected_before_ready() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"approved generation").unwrap();
+    let approved_generation = existing_generation(&manifest_path);
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )
+            .expect_generation(approved_generation)])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"our generation").unwrap();
+
+    std::fs::remove_file(&manifest_path).unwrap();
+    std::fs::write(&manifest_path, b"approved generation").unwrap();
+    let error = match staging.ready() {
+        Ok(_) => panic!("a replacement target must not become the prior generation"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+    assert_eq!(read(&manifest_path), b"approved generation");
+    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+    assert_eq!(read(&manifest_path), b"approved generation");
+}
+
+#[cfg(unix)]
+#[test]
+fn rename_replacement_at_commit_boundary_is_not_published_over() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    let replacement = temp.path().join("replacement");
+    std::fs::write(&manifest_path, b"approved generation").unwrap();
+    std::fs::write(&replacement, b"approved generation").unwrap();
+    let approved_generation = existing_generation(&manifest_path);
+    let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+    let hook_target = manifest_path.clone();
+    let hook_replacement = replacement.clone();
+    let replaced = Arc::new(AtomicBool::new(false));
+    let hook_replaced = Arc::clone(&replaced);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::ReplaceBefore { index: 0 })
+            && !hook_replaced.swap(true, AtomicOrdering::SeqCst)
+        {
+            std::fs::rename(&hook_replacement, &hook_target)?;
+        }
+        Ok(())
+    });
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )
+            .expect_generation(approved_generation)])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"our generation").unwrap();
+
+    let error = staging.ready().unwrap().commit().unwrap_err();
+
+    assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+    assert_eq!(read(&manifest_path), b"approved generation");
+    assert_eq!(
+        same_file::Handle::from_path(&manifest_path).unwrap(),
+        replacement_identity
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn unlink_then_replace_at_delete_boundary_does_not_delete_the_replacement() {
+    let temp = tempfile::tempdir().unwrap();
+    let artifact_path = temp.path().join("stale.svg");
+    let replacement = temp.path().join("replacement");
+    std::fs::write(&artifact_path, b"approved generation").unwrap();
+    std::fs::write(&replacement, b"approved generation").unwrap();
+    std::fs::write(temp.path().join(".merman-manifest.json"), b"old manifest").unwrap();
+    let approved_generation = existing_generation(&artifact_path);
+    let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+    let hook_target = artifact_path.clone();
+    let hook_replacement = replacement.clone();
+    let replaced = Arc::new(AtomicBool::new(false));
+    let hook_replaced = Arc::clone(&replaced);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::DeleteBefore { index: 0 })
+            && !hook_replaced.swap(true, AtomicOrdering::SeqCst)
+        {
+            std::fs::remove_file(&hook_target)?;
+            std::fs::rename(&hook_replacement, &hook_target)?;
+        }
+        Ok(())
+    });
+    let artifact = relative(temp.path(), "stale.svg");
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+        .unwrap()
+        .begin(
+            TransactionPlan::new([
+                TransactionEntryPlan::delete_artifact(artifact)
+                    .expect_generation(approved_generation),
+                TransactionEntryPlan::write(TransactionRole::Manifest, manifest.clone()),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"new manifest").unwrap();
+
+    let error = staging.ready().unwrap().commit().unwrap_err();
+
+    assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+    assert_eq!(read(&artifact_path), b"approved generation");
+    assert_eq!(
+        same_file::Handle::from_path(&artifact_path).unwrap(),
+        replacement_identity
+    );
 }
 
 #[cfg(unix)]

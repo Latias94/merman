@@ -97,10 +97,35 @@ impl TransactionError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TargetGeneration {
+    Missing,
+    Existing(Arc<same_file::Handle>),
+}
+
+impl TargetGeneration {
+    pub(crate) fn from_preflight_identity(identity: Option<Arc<same_file::Handle>>) -> Self {
+        identity.map_or(Self::Missing, Self::Existing)
+    }
+
+    fn from_observed_identity(identity: Option<same_file::Handle>) -> Self {
+        identity.map_or(Self::Missing, |identity| Self::Existing(Arc::new(identity)))
+    }
+
+    fn matches_identity(&self, current: Option<&same_file::Handle>) -> bool {
+        match (self, current) {
+            (Self::Missing, None) => true,
+            (Self::Existing(expected), Some(current)) => expected.as_ref() == current,
+            (Self::Missing, Some(_)) | (Self::Existing(_), None) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TransactionEntryPlan {
     role: TransactionRole,
     operation: TransactionOperation,
     target: RelativeTarget,
+    expected_generation: Option<TargetGeneration>,
 }
 
 impl TransactionEntryPlan {
@@ -109,6 +134,7 @@ impl TransactionEntryPlan {
             role,
             operation: TransactionOperation::Write,
             target,
+            expected_generation: None,
         }
     }
 
@@ -117,7 +143,13 @@ impl TransactionEntryPlan {
             role: TransactionRole::Artifact,
             operation: TransactionOperation::Delete,
             target,
+            expected_generation: None,
         }
+    }
+
+    pub(crate) fn expect_generation(mut self, generation: TargetGeneration) -> Self {
+        self.expected_generation = Some(generation);
+        self
     }
 
     #[cfg(test)]
@@ -137,7 +169,9 @@ impl TransactionPlan {
     pub(crate) fn new(
         entries: impl IntoIterator<Item = TransactionEntryPlan>,
     ) -> Result<Self, TransactionError> {
-        Self::for_generation(GenerationOwner::test_fixture(), entries)
+        let owner = GenerationOwner::test_fixture();
+        owner.validate(Path::new(TRANSACTION_DIR_NAME))?;
+        Self::normalize(owner, entries.into_iter().collect())
     }
 
     pub(crate) fn for_generation(
@@ -146,6 +180,22 @@ impl TransactionPlan {
     ) -> Result<Self, TransactionError> {
         owner.validate(Path::new(TRANSACTION_DIR_NAME))?;
         let entries = entries.into_iter().collect::<Vec<_>>();
+        if entries
+            .iter()
+            .any(|entry| entry.expected_generation.is_none())
+        {
+            return Err(TransactionError::invalid_state(
+                Path::new(TRANSACTION_DIR_NAME),
+                "every live transaction entry must carry its preflight target generation",
+            ));
+        }
+        Self::normalize(owner, entries)
+    }
+
+    fn normalize(
+        owner: GenerationOwner,
+        entries: Vec<TransactionEntryPlan>,
+    ) -> Result<Self, TransactionError> {
         let mut artifacts = entries
             .iter()
             .filter(|entry| entry.role == TransactionRole::Artifact)
@@ -271,20 +321,31 @@ impl LockedRecoveredRoot {
             verify_private_directory(&transaction_dir, &transaction_identity)?;
         self.context
             .verify_transaction_filesystem(&transaction_dir, &transaction_metadata)?;
-        let entries = plan
-            .entries
-            .into_iter()
-            .map(|entry| JournalEntry {
-                role: entry.role,
-                operation: entry.operation,
-                target: entry.target,
+        let TransactionPlan {
+            owner,
+            entries: planned_entries,
+        } = plan;
+        let mut entries = Vec::with_capacity(planned_entries.len());
+        let mut expected_generations = Vec::with_capacity(planned_entries.len());
+        for entry in planned_entries {
+            let TransactionEntryPlan {
+                role,
+                operation,
+                target,
+                expected_generation,
+            } = entry;
+            entries.push(JournalEntry {
+                role,
+                operation,
+                target,
                 prior: PriorState::Unknown,
                 prior_mode: None,
-            })
-            .collect();
+            });
+            expected_generations.push(expected_generation);
+        }
         let state = JournalState {
             id: transaction_id(&self.context.root),
-            owner: plan.owner,
+            owner,
             sequence: 0,
             phase: JournalPhase::Staging,
             next_index: 0,
@@ -296,6 +357,7 @@ impl LockedRecoveredRoot {
             transaction_identity,
             state,
             active_slot: None,
+            expected_generations,
         };
         working.validate_target_set()?;
         working.persist()?;
@@ -390,15 +452,30 @@ impl StagingTransaction {
         self.working.state.phase = JournalPhase::BackingUp;
         self.working.persist()?;
         let mut prior = Vec::with_capacity(self.working.state.entries.len());
+        let mut prior_generations = Vec::with_capacity(self.working.state.entries.len());
         for index in 0..self.working.state.entries.len() {
             let target = self.working.target_path(index)?;
-            match self.working.inspect_target(&target)? {
-                TargetPresence::Missing => {
+            let observed_identity = self.working.inspect_target_identity(&target)?;
+            if let Some(expected) = &self.working.expected_generations[index]
+                && !expected.matches_identity(observed_identity.as_ref())
+            {
+                return Err(TransactionError::invalid_state(
+                    &self.working.transaction_dir,
+                    format!(
+                        "publication target changed after local preflight approval: {target:?}"
+                    ),
+                ));
+            }
+            let retained_generation = self.working.expected_generations[index]
+                .take()
+                .unwrap_or_else(|| TargetGeneration::from_observed_identity(observed_identity));
+            match &retained_generation {
+                TargetGeneration::Missing => {
                     prior.push((PriorState::Missing, None));
                     self.working
                         .verify_internal_missing(&self.working.backup_path(index))?;
                 }
-                TargetPresence::Regular => {
+                TargetGeneration::Existing(_) => {
                     let backup = self.working.backup_path(index);
                     let prior_mode = copy_regular_to_private(
                         &self.working,
@@ -407,8 +484,14 @@ impl StagingTransaction {
                         "back up publication target",
                     )?;
                     prior.push((PriorState::Present, prior_mode));
+                    self.working.verify_target_generation(
+                        &target,
+                        &retained_generation,
+                        "publication target changed while its prior generation was retained",
+                    )?;
                 }
             }
+            prior_generations.push(retained_generation);
         }
         for (entry, (prior, prior_mode)) in self.working.state.entries.iter_mut().zip(prior) {
             entry.prior = prior;
@@ -426,6 +509,7 @@ impl StagingTransaction {
         self.working.persist()?;
         Ok(ReadyTransaction {
             working: self.working,
+            prior_generations,
         })
     }
 
@@ -496,10 +580,12 @@ impl Drop for StageSlot {
 
 pub(crate) struct ReadyTransaction {
     working: WorkingTransaction,
+    prior_generations: Vec<TargetGeneration>,
 }
 
 impl ReadyTransaction {
     pub(crate) fn commit(mut self) -> Result<(), TransactionError> {
+        self.verify_unpublished_generations(0)?;
         let generations = self.working.classify_all()?;
         if generations.iter().any(|generation| !generation.is_old()) {
             return Err(TransactionError::invalid_state(
@@ -552,10 +638,24 @@ impl ReadyTransaction {
             self.working.verify_publication_frontier(index)?;
             self.working
                 .checkpoint(Checkpoint::CommitBefore { index })?;
-            self.working.publish_entry(index)?;
+            self.verify_unpublished_generations(index)?;
+            let prior_generation = self.prior_generations[index].clone();
+            self.working.publish_entry(index, &prior_generation)?;
             self.working.checkpoint(Checkpoint::CommitAfter { index })?;
             self.working.state.next_index = index + 1;
             self.working.persist()?;
+        }
+        Ok(())
+    }
+
+    fn verify_unpublished_generations(&self, start: usize) -> Result<(), TransactionError> {
+        for index in start..self.working.state.entries.len() {
+            let target = self.working.target_path(index)?;
+            self.working.verify_target_generation(
+                &target,
+                &self.prior_generations[index],
+                "publication target generation changed before commit",
+            )?;
         }
         Ok(())
     }
@@ -815,6 +915,7 @@ struct WorkingTransaction {
     transaction_identity: Arc<same_file::Handle>,
     state: JournalState,
     active_slot: Option<StateSlot>,
+    expected_generations: Vec<Option<TargetGeneration>>,
 }
 
 impl WorkingTransaction {
@@ -829,6 +930,41 @@ impl WorkingTransaction {
             .verify_transaction_filesystem(&self.transaction_dir, &metadata)
     }
 
+    fn verify_target_generation(
+        &self,
+        target: &Path,
+        expected: &TargetGeneration,
+        reason: &'static str,
+    ) -> Result<(), TransactionError> {
+        let current = self.inspect_target_identity(target)?;
+        if expected.matches_identity(current.as_ref()) {
+            return Ok(());
+        }
+        Err(TransactionError::invalid_state(
+            &self.transaction_dir,
+            format!("{reason}: {target:?}"),
+        ))
+    }
+
+    fn inspect_target_identity(
+        &self,
+        target: &Path,
+    ) -> Result<Option<same_file::Handle>, TransactionError> {
+        match self.inspect_target(target)? {
+            TargetPresence::Missing => Ok(None),
+            TargetPresence::Regular => {
+                let identity = same_file::Handle::from_path(target).map_err(|source| {
+                    TransactionError::operational(
+                        "inspect publication target generation",
+                        target,
+                        source,
+                    )
+                })?;
+                Ok(Some(identity))
+            }
+        }
+    }
+
     fn validate_target_set(&self) -> Result<(), TransactionError> {
         validate_entries(&self.state.entries, &self.transaction_dir)?;
         self.verify_owned_state()?;
@@ -836,6 +972,13 @@ impl WorkingTransaction {
         for index in 0..self.state.entries.len() {
             let target = self.target_path(index)?;
             self.verify_target_ancestors(&target)?;
+            if let Some(expected) = &self.expected_generations[index] {
+                self.verify_target_generation(
+                    &target,
+                    expected,
+                    "publication target changed before transaction staging",
+                )?;
+            }
             if self.inspect_target(&target)? == TargetPresence::Regular {
                 let identity = publication_target_identity(&target)?;
                 if existing_identities.contains(&identity) {
@@ -1133,7 +1276,11 @@ impl WorkingTransaction {
         })
     }
 
-    fn publish_entry(&mut self, index: usize) -> Result<(), TransactionError> {
+    fn publish_entry(
+        &mut self,
+        index: usize,
+        prior_generation: &TargetGeneration,
+    ) -> Result<(), TransactionError> {
         let target = self.target_path(index)?;
         match self.state.entries[index].operation {
             TransactionOperation::Write => {
@@ -1142,11 +1289,18 @@ impl WorkingTransaction {
                     index,
                     &self.stage_path(index),
                     &target,
+                    Some(prior_generation),
                     "publish transaction entry",
                 )?;
             }
             TransactionOperation::Delete => {
-                remove_regular_if_present(self, &target, "publish artifact deletion")?;
+                remove_regular_if_present(
+                    self,
+                    index,
+                    &target,
+                    Some(prior_generation),
+                    "publish artifact deletion",
+                )?;
             }
         }
         let generation = self.classify_entry(index)?;
@@ -1168,11 +1322,18 @@ impl WorkingTransaction {
                     index,
                     &self.backup_path(index),
                     &target,
+                    None,
                     "restore transaction backup",
                 )?;
             }
             PriorState::Missing => {
-                remove_regular_if_present(self, &target, "remove newly published target")?;
+                remove_regular_if_present(
+                    self,
+                    index,
+                    &target,
+                    None,
+                    "remove newly published target",
+                )?;
             }
             PriorState::Unknown => {
                 return Err(TransactionError::invalid_state(
@@ -1427,6 +1588,7 @@ fn recover_existing_transaction(context: RootContext) -> Result<RootContext, Tra
         context,
         transaction_dir,
         transaction_identity,
+        expected_generations: vec![None; state.entries.len()],
         state,
         active_slot: Some(active_slot),
     };
@@ -1617,7 +1779,7 @@ fn load_journal_file(
     transaction_dir: &Path,
     permit_eof_truncation: bool,
 ) -> Result<JournalRead, TransactionError> {
-    let metadata = match std::fs::symlink_metadata(&path) {
+    let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
             return Ok(JournalRead::Missing);
@@ -1625,7 +1787,7 @@ fn load_journal_file(
         Err(source) => {
             return Err(TransactionError::operational(
                 "inspect transaction journal slot",
-                &path,
+                path,
                 source,
             ));
         }
@@ -1636,12 +1798,12 @@ fn load_journal_file(
             format!("journal slot is a symlink or non-regular file: {path:?}"),
         ));
     }
-    verify_private_file_mode(&path, &metadata)?;
-    let mut file = File::open(&path).map_err(|source| {
-        TransactionError::operational("open transaction journal slot", &path, source)
+    verify_private_file_mode(path, &metadata)?;
+    let mut file = File::open(path).map_err(|source| {
+        TransactionError::operational("open transaction journal slot", path, source)
     })?;
-    verify_open_regular_identity(&path, &file, "transaction journal slot")?;
-    let bytes = read_at_most(&mut file, MAX_STATE_BYTES, &path)?;
+    verify_open_regular_identity(path, &file, "transaction journal slot")?;
+    let bytes = read_at_most(&mut file, MAX_STATE_BYTES, path)?;
     let value = match serde_json::from_slice::<serde_json::Value>(&bytes) {
         Ok(value) => value,
         Err(source)
@@ -2079,6 +2241,7 @@ fn deterministic_replace_from(
     index: usize,
     source: &Path,
     target: &Path,
+    expected_target: Option<&TargetGeneration>,
     operation: &'static str,
 ) -> Result<(), TransactionError> {
     working.verify_owned_state()?;
@@ -2126,22 +2289,15 @@ fn deterministic_replace_from(
     }
     working.context.verify_root_and_lock()?;
     working.verify_target_ancestors(target)?;
-    match std::fs::symlink_metadata(target) {
-        Ok(metadata) if metadata.file_type().is_file() => {}
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
-        Ok(_) => {
-            return Err(TransactionError::invalid_state(
-                &working.transaction_dir,
-                format!("transaction target became a symlink or non-regular file: {target:?}"),
-            ));
-        }
-        Err(source) => {
-            return Err(TransactionError::operational(
-                "reinspect transaction target",
-                target,
-                source,
-            ));
-        }
+    working.checkpoint(Checkpoint::ReplaceBefore { index })?;
+    if let Some(expected) = expected_target {
+        working.verify_target_generation(
+            target,
+            expected,
+            "publication target generation changed at replace boundary",
+        )?;
+    } else {
+        let _ = working.inspect_target(target)?;
     }
     verify_open_put_identity(&put, &destination, working.state.entries[index].prior_mode)?;
     std::fs::rename(&put, target)
@@ -2154,10 +2310,20 @@ fn deterministic_replace_from(
 
 fn remove_regular_if_present(
     working: &WorkingTransaction,
+    index: usize,
     path: &Path,
+    expected_target: Option<&TargetGeneration>,
     operation: &'static str,
 ) -> Result<(), TransactionError> {
     working.context.verify_root_and_lock()?;
+    working.checkpoint(Checkpoint::DeleteBefore { index })?;
+    if let Some(expected) = expected_target {
+        working.verify_target_generation(
+            path,
+            expected,
+            "publication target generation changed at delete boundary",
+        )?;
+    }
     match working.inspect_target(path)? {
         TargetPresence::Missing => Ok(()),
         TargetPresence::Regular => {
@@ -2454,6 +2620,8 @@ enum Checkpoint {
     PersistPrepared { slot: StateSlot },
     PersistAfter { slot: StateSlot },
     CommitBefore { index: usize },
+    ReplaceBefore { index: usize },
+    DeleteBefore { index: usize },
     CommitAfter { index: usize },
     RollbackBefore { index: usize },
     RollbackAfter { index: usize },

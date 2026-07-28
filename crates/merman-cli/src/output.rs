@@ -5,11 +5,12 @@ use crate::error::InputRole;
 use crate::error::{FileOperation, safe_path};
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use crate::input::InputReadError;
-#[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::invocation::ResolvedInput;
 use crate::invocation::ResolvedInvocation;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+#[cfg(feature = "markdown")]
+use std::collections::HashMap;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use std::ffi::{OsStr, OsString};
 #[cfg(all(
@@ -20,7 +21,7 @@ use std::fs::File;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use std::io::Write;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-use std::path::{Component, PathBuf};
+use std::path::Component;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use std::sync::{Arc, OnceLock};
 
@@ -73,6 +74,20 @@ pub(crate) struct PublicationGuards {
 pub(crate) struct ApprovedTransactionRoot {
     path: PathBuf,
     identity: Arc<DirectoryIdentity>,
+}
+
+#[cfg(feature = "markdown")]
+#[derive(Debug, Clone)]
+pub(crate) struct ApprovedTransactionTarget {
+    path: PathBuf,
+    generation: crate::transaction::TargetGeneration,
+}
+
+#[cfg(feature = "markdown")]
+impl ApprovedTransactionTarget {
+    pub(crate) fn into_parts(self) -> (PathBuf, crate::transaction::TargetGeneration) {
+        (self.path, self.generation)
+    }
 }
 
 #[cfg(feature = "markdown")]
@@ -258,9 +273,7 @@ impl PublicationGuards {
         self.verify()?;
         guard.verify_anchor()?;
         let directory = &guard.expected;
-        std::fs::create_dir_all(directory)
-            .map_err(|source| CliError::file(FileOperation::CreateDirectory, directory, source))?;
-        let identity = guard.seal()?;
+        let identity = guard.create_and_seal()?;
         Ok(ApprovedTransactionRoot {
             path: directory.clone(),
             identity,
@@ -274,9 +287,7 @@ impl PublicationGuards {
     ) -> Result<ApprovedTransactionRoot, CliError> {
         let matching = self.approved_directory_scopes(path)?;
         let directory = &matching[0].parent.expected;
-        std::fs::create_dir_all(directory)
-            .map_err(|source| CliError::file(FileOperation::CreateDirectory, directory, source))?;
-        let identity = matching[0].parent.seal()?;
+        let identity = matching[0].parent.create_and_seal()?;
         for scope in matching.iter().skip(1) {
             scope.parent.seal_as(&identity)?;
         }
@@ -293,7 +304,10 @@ impl PublicationGuards {
     }
 
     #[cfg(feature = "markdown")]
-    pub(crate) fn approved_target_path(&self, requested: &Path) -> Result<PathBuf, CliError> {
+    pub(crate) fn approved_transaction_target(
+        &self,
+        requested: &Path,
+    ) -> Result<ApprovedTransactionTarget, CliError> {
         let lexical = lexical_absolute(requested, self.working_directory()?);
         let file_name = lexical.file_name().ok_or_else(|| {
             CliError::InvalidOutput(format!(
@@ -304,7 +318,11 @@ impl PublicationGuards {
         let scope = self
             .scopes
             .iter()
-            .find(|scope| scope.matcher.matches(&lexical))
+            .find(|scope| {
+                scope.matcher.matches(&lexical)
+                    || (scope.parent.expected.join(file_name) == lexical
+                        && scope.matcher.contains_file_name(file_name))
+            })
             .ok_or_else(|| {
                 CliError::InvalidOutput(format!(
                     "output target {} was not approved by local preflight",
@@ -313,7 +331,12 @@ impl PublicationGuards {
             })?;
         self.verify()?;
         scope.parent.verify_anchor()?;
-        Ok(scope.parent.expected.join(file_name))
+        Ok(ApprovedTransactionTarget {
+            path: scope.parent.expected.join(file_name),
+            generation: crate::transaction::TargetGeneration::from_preflight_identity(
+                scope.matcher.target_identity(file_name),
+            ),
+        })
     }
 
     #[cfg(feature = "markdown")]
@@ -386,8 +409,6 @@ pub(crate) fn preflight(
     mut invocation: ResolvedInvocation,
     cwd: &Path,
 ) -> Result<LocalPreflight, CliError> {
-    #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
-    let _ = cwd;
     #[allow(unused_mut)]
     let mut publications = PublicationGuards::new(Some(cwd));
     match &mut invocation {
@@ -516,10 +537,79 @@ pub(crate) fn preflight(
         _ => {}
     }
 
+    anchor_acquisition_paths(&mut invocation, cwd);
     Ok(LocalPreflight {
         invocation,
         publications,
     })
+}
+
+fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
+    match invocation {
+        ResolvedInvocation::Capabilities(_) => {}
+        ResolvedInvocation::Detect(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_optional_path(&mut args.engine.config_file, cwd);
+        }
+        ResolvedInvocation::Parse(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_optional_path(&mut args.parse.config_file, cwd);
+        }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::Layout(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_optional_path(&mut args.parse.config_file, cwd);
+        }
+        #[cfg(feature = "analysis")]
+        ResolvedInvocation::Lint(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_optional_path(&mut args.analysis.config_file, cwd);
+        }
+        #[cfg(feature = "analysis")]
+        ResolvedInvocation::Fix(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_optional_path(&mut args.analysis.config_file, cwd);
+        }
+        #[cfg(feature = "analysis")]
+        ResolvedInvocation::LintRules(_) => {}
+        #[cfg(any(feature = "svg", feature = "ascii"))]
+        ResolvedInvocation::Render(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_render_inputs(&mut args.common, cwd);
+        }
+        #[cfg(feature = "markdown")]
+        ResolvedInvocation::Batch(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_render_inputs(&mut args.common, cwd);
+        }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::Mmdc(args) => {
+            anchor_input(&mut args.input, cwd);
+            anchor_render_inputs(&mut args.common, cwd);
+            anchor_optional_path(&mut args.compatibility.puppeteer_config_file, cwd);
+        }
+        #[cfg(feature = "shell-completions")]
+        ResolvedInvocation::Completion(_) => {}
+    }
+}
+
+fn anchor_input(input: &mut ResolvedInput, cwd: &Path) {
+    if let ResolvedInput::File(path) = input {
+        *path = anchored_absolute(path, cwd);
+    }
+}
+
+fn anchor_optional_path(path: &mut Option<PathBuf>, cwd: &Path) {
+    if let Some(path) = path {
+        *path = anchored_absolute(path, cwd);
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cwd: &Path) {
+    anchor_optional_path(&mut common.parse.config_file, cwd);
+    #[cfg(feature = "svg")]
+    anchor_optional_path(&mut common.css_file, cwd);
 }
 
 #[cfg(feature = "analysis")]
@@ -727,7 +817,7 @@ enum PublicationMatcher {
     Numbered {
         directory: PathBuf,
         namespace: crate::markdown::NumberedOutputNamespace,
-        existing: Vec<(OsString, Arc<same_file::Handle>)>,
+        existing: HashMap<OsString, Arc<same_file::Handle>>,
     },
 }
 
@@ -737,16 +827,21 @@ impl PublicationMatcher {
         match self {
             Self::Exact { path, .. } => lexical == path,
             #[cfg(feature = "markdown")]
-            Self::Numbered {
-                directory,
-                namespace,
-                ..
-            } => {
+            Self::Numbered { directory, .. } => {
                 lexical.parent().is_some_and(|parent| parent == directory)
                     && lexical
                         .file_name()
-                        .is_some_and(|name| namespace.contains_file_name(name))
+                        .is_some_and(|file_name| self.contains_file_name(file_name))
             }
+        }
+    }
+
+    #[cfg(feature = "markdown")]
+    fn contains_file_name(&self, file_name: &OsStr) -> bool {
+        match self {
+            Self::Exact { path, .. } => path.file_name() == Some(file_name),
+            #[cfg(feature = "markdown")]
+            Self::Numbered { namespace, .. } => namespace.contains_file_name(file_name),
         }
     }
 
@@ -754,10 +849,7 @@ impl PublicationMatcher {
         match self {
             Self::Exact { identity, .. } => identity.as_ref().map(Arc::clone),
             #[cfg(feature = "markdown")]
-            Self::Numbered { existing, .. } => existing
-                .iter()
-                .find(|(name, _)| name == _file_name)
-                .map(|(_, identity)| Arc::clone(identity)),
+            Self::Numbered { existing, .. } => existing.get(_file_name).map(Arc::clone),
         }
     }
 
@@ -785,12 +877,13 @@ struct ApprovedPublication {
 #[derive(Debug)]
 struct DirectoryIdentity {
     handle: same_file::Handle,
+    #[cfg(feature = "markdown")]
     filesystem: FileSystemIdentity,
-    #[cfg(windows)]
-    _rename_guard: File,
+    #[cfg(all(feature = "markdown", any(unix, windows)))]
+    directory_handle: File,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(feature = "markdown")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FileSystemIdentity(u64);
 
@@ -810,44 +903,61 @@ impl DirectoryIdentity {
                 .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
                 .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
                 .open(path)?;
+            #[cfg(feature = "markdown")]
             let filesystem = windows_filesystem_identity(&guard)?;
             let handle = same_file::Handle::from_file(guard.try_clone()?)?;
             return Ok(Self {
                 handle,
+                #[cfg(feature = "markdown")]
                 filesystem,
-                _rename_guard: guard,
+                #[cfg(feature = "markdown")]
+                directory_handle: guard,
             });
         }
 
         #[cfg(unix)]
         {
-            use std::os::unix::fs::MetadataExt;
-
-            Ok(Self {
-                handle: same_file::Handle::from_path(path)?,
-                filesystem: FileSystemIdentity(std::fs::metadata(path)?.dev()),
-            })
+            Self::from_unix_file(File::open(path)?)
         }
 
         #[cfg(not(any(unix, windows)))]
         {
             Ok(Self {
                 handle: same_file::Handle::from_path(path)?,
+                #[cfg(feature = "markdown")]
                 filesystem: FileSystemIdentity(0),
             })
         }
+    }
+
+    #[cfg(unix)]
+    fn from_unix_file(directory_handle: File) -> std::io::Result<Self> {
+        #[cfg(feature = "markdown")]
+        use std::os::unix::fs::MetadataExt;
+
+        #[cfg(feature = "markdown")]
+        let metadata = directory_handle.metadata()?;
+        let handle = same_file::Handle::from_file(directory_handle.try_clone()?)?;
+        Ok(Self {
+            handle,
+            #[cfg(feature = "markdown")]
+            filesystem: FileSystemIdentity(metadata.dev()),
+            #[cfg(feature = "markdown")]
+            directory_handle,
+        })
     }
 
     fn same_file(&self, other: &Self) -> bool {
         self.handle == other.handle
     }
 
+    #[cfg(feature = "markdown")]
     fn same_filesystem(&self, other: &Self) -> bool {
         self.filesystem == other.filesystem
     }
 }
 
-#[cfg(all(windows, any(feature = "analysis", feature = "svg", feature = "ascii")))]
+#[cfg(all(windows, feature = "markdown"))]
 fn windows_filesystem_identity(file: &File) -> std::io::Result<FileSystemIdentity> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
@@ -868,6 +978,13 @@ fn windows_filesystem_identity(file: &File) -> std::io::Result<FileSystemIdentit
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
+struct CanonicalDirectory {
+    path: PathBuf,
+    identity: Arc<DirectoryIdentity>,
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[derive(Debug)]
 struct DirectoryGuard {
     expected: PathBuf,
     anchor_path: PathBuf,
@@ -879,41 +996,31 @@ struct DirectoryGuard {
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 impl DirectoryGuard {
-    fn existing(path: PathBuf, requested: &Path) -> Result<Self, CliError> {
-        let identity = Arc::new(DirectoryIdentity::open(&path).map_err(|source| {
-            CliError::file(FileOperation::VerifyPublication, requested, source)
-        })?);
+    fn existing(directory: CanonicalDirectory) -> Self {
+        let CanonicalDirectory { path, identity } = directory;
         let parent_identity = OnceLock::new();
         parent_identity
             .set(Arc::clone(&identity))
             .expect("a new directory identity cell is empty");
-        Ok(Self {
+        Self {
             expected: path.clone(),
             anchor_path: path,
             anchor_identity: identity,
             parent_identity,
             #[cfg(feature = "markdown")]
             existed_at_preflight: true,
-        })
+        }
     }
 
-    fn projected(
-        expected: PathBuf,
-        anchor_path: PathBuf,
-        requested: &Path,
-    ) -> Result<Self, CliError> {
-        let anchor_identity =
-            Arc::new(DirectoryIdentity::open(&anchor_path).map_err(|source| {
-                CliError::file(FileOperation::VerifyPublication, requested, source)
-            })?);
-        Ok(Self {
+    fn projected(expected: PathBuf, anchor: CanonicalDirectory) -> Self {
+        Self {
             expected,
-            anchor_path,
-            anchor_identity,
+            anchor_path: anchor.path,
+            anchor_identity: anchor.identity,
             parent_identity: OnceLock::new(),
             #[cfg(feature = "markdown")]
             existed_at_preflight: false,
-        })
+        }
     }
 
     fn verify_anchor(&self) -> Result<(), CliError> {
@@ -948,6 +1055,15 @@ impl DirectoryGuard {
 
     fn seal(&self) -> Result<Arc<DirectoryIdentity>, CliError> {
         self.freeze_identity(self.current_identity()?)
+    }
+
+    #[cfg(feature = "markdown")]
+    fn create_and_seal(&self) -> Result<Arc<DirectoryIdentity>, CliError> {
+        if self.existed_at_preflight {
+            return self.seal();
+        }
+        let created = create_projected_directory(self)?;
+        self.seal_as(&created)
     }
 
     #[cfg(feature = "markdown")]
@@ -1012,6 +1128,157 @@ impl DirectoryGuard {
     }
 }
 
+#[cfg(all(
+    feature = "markdown",
+    unix,
+    not(any(target_os = "espidf", target_os = "horizon", target_os = "redox"))
+))]
+fn create_projected_directory(guard: &DirectoryGuard) -> Result<Arc<DirectoryIdentity>, CliError> {
+    use rustix::fs::{Mode, OFlags, mkdirat, openat};
+
+    let components = projected_directory_components(guard)?;
+    let mut current_path = guard.anchor_path.clone();
+    let mut current = guard
+        .anchor_identity
+        .directory_handle
+        .try_clone()
+        .map_err(|source| {
+            CliError::file(FileOperation::CreateDirectory, &guard.anchor_path, source)
+        })?;
+
+    for component in components {
+        current_path.push(&component);
+        match mkdirat(&current, &component, Mode::from_bits_truncate(0o777)) {
+            Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+            Err(source) => {
+                return Err(CliError::file(
+                    FileOperation::CreateDirectory,
+                    &current_path,
+                    std::io::Error::from(source),
+                ));
+            }
+        }
+
+        let child = openat(
+            &current,
+            &component,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|source| {
+            CliError::file(
+                FileOperation::CreateDirectory,
+                &current_path,
+                std::io::Error::from(source),
+            )
+        })?;
+        current = File::from(child);
+    }
+
+    DirectoryIdentity::from_unix_file(current)
+        .map(Arc::new)
+        .map_err(|source| CliError::file(FileOperation::CreateDirectory, &guard.expected, source))
+}
+
+#[cfg(all(feature = "markdown", windows))]
+fn create_projected_directory(guard: &DirectoryGuard) -> Result<Arc<DirectoryIdentity>, CliError> {
+    let components = projected_directory_components(guard)?;
+    let mut current_path = guard.anchor_path.clone();
+    let mut ancestors = Vec::with_capacity(components.len());
+
+    for component in components {
+        current_path.push(component);
+        match std::fs::create_dir(&current_path) {
+            Ok(()) => {}
+            Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(source) => {
+                return Err(CliError::file(
+                    FileOperation::CreateDirectory,
+                    &current_path,
+                    source,
+                ));
+            }
+        }
+
+        let metadata = std::fs::symlink_metadata(&current_path).map_err(|source| {
+            CliError::file(FileOperation::CreateDirectory, &current_path, source)
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(CliError::file(
+                FileOperation::CreateDirectory,
+                &current_path,
+                std::io::Error::other("output directory component became a link or non-directory"),
+            ));
+        }
+
+        let identity = Arc::new(DirectoryIdentity::open(&current_path).map_err(|source| {
+            CliError::file(FileOperation::CreateDirectory, &current_path, source)
+        })?);
+        let canonical = std::fs::canonicalize(&current_path).map_err(|source| {
+            CliError::file(FileOperation::CreateDirectory, &current_path, source)
+        })?;
+        let current_identity = DirectoryIdentity::open(&current_path).map_err(|source| {
+            CliError::file(FileOperation::CreateDirectory, &current_path, source)
+        })?;
+        if canonical != current_path || !current_identity.same_file(&identity) {
+            return Err(publication_identity_changed(&current_path));
+        }
+        ancestors.push(identity);
+    }
+
+    ancestors
+        .pop()
+        .ok_or_else(|| invalid_projected_directory(guard))
+}
+
+#[cfg(all(
+    feature = "markdown",
+    not(any(
+        windows,
+        all(
+            unix,
+            not(any(target_os = "espidf", target_os = "horizon", target_os = "redox"))
+        )
+    ))
+))]
+fn create_projected_directory(guard: &DirectoryGuard) -> Result<Arc<DirectoryIdentity>, CliError> {
+    Err(CliError::InvalidOutput(format!(
+        "creating missing output directory {} is not supported on this target",
+        safe_path(&guard.expected)
+    )))
+}
+
+#[cfg(feature = "markdown")]
+fn projected_directory_components(guard: &DirectoryGuard) -> Result<Vec<OsString>, CliError> {
+    let relative = guard
+        .expected
+        .strip_prefix(&guard.anchor_path)
+        .map_err(|_| invalid_projected_directory(guard))?;
+    let components = relative
+        .components()
+        .map(|component| match component {
+            Component::Normal(name) => Ok(name.to_os_string()),
+            Component::Prefix(_)
+            | Component::RootDir
+            | Component::CurDir
+            | Component::ParentDir => Err(invalid_projected_directory(guard)),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if components.is_empty() {
+        return Err(invalid_projected_directory(guard));
+    }
+    Ok(components)
+}
+
+#[cfg(feature = "markdown")]
+fn invalid_projected_directory(guard: &DirectoryGuard) -> CliError {
+    CliError::InvalidOutput(format!(
+        "output directory {} is not a strict descendant of approved anchor {}",
+        safe_path(&guard.expected),
+        safe_path(&guard.anchor_path)
+    ))
+}
+
 #[cfg(feature = "markdown")]
 fn require_transaction_descendant(
     root: &DirectoryGuard,
@@ -1055,7 +1322,7 @@ struct FileTarget {
 #[cfg(feature = "markdown")]
 struct NumberedTargetGuard {
     parent: DirectoryGuard,
-    existing: Vec<(OsString, Arc<same_file::Handle>)>,
+    existing: HashMap<OsString, Arc<same_file::Handle>>,
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -1189,10 +1456,10 @@ fn preflight_numbered_namespace(
     if !parent.existed_at_preflight {
         return Ok(NumberedTargetGuard {
             parent,
-            existing: Vec::new(),
+            existing: HashMap::new(),
         });
     }
-    let mut existing = Vec::new();
+    let mut existing = HashMap::new();
     let entries = std::fs::read_dir(&directory)
         .map_err(|source| CliError::file(FileOperation::ReadDirectory, &directory, source))?;
     for entry in entries {
@@ -1228,7 +1495,13 @@ fn preflight_numbered_namespace(
                 let identity = target.identity.expect(
                     "an entry returned by read_dir and inspected successfully has an identity",
                 );
-                existing.push((entry.file_name(), identity));
+                let file_name = entry.file_name();
+                if existing.insert(file_name.clone(), identity).is_some() {
+                    return Err(CliError::InvalidOutput(format!(
+                        "reserved Markdown output directory returned duplicate entry {}",
+                        safe_path(directory.join(file_name))
+                    )));
+                }
             }
             Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
             Err(source) => {
@@ -1298,9 +1571,8 @@ fn prospective_directory(
                     safe_path(requested)
                 )));
             }
-            let canonical = std::fs::canonicalize(absolute)
-                .map_err(|source| CliError::file(FileOperation::Canonicalize, requested, source))?;
-            DirectoryGuard::existing(canonical, requested)
+            let directory = open_canonical_directory(absolute, requested)?;
+            Ok(DirectoryGuard::existing(directory))
         }
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
             if matches!(missing_parent, MissingParent::Reject) {
@@ -1311,7 +1583,7 @@ fn prospective_directory(
                 )));
             }
             let (projected, anchor) = project_from_existing_ancestor(absolute, requested)?;
-            DirectoryGuard::projected(projected, anchor, requested)
+            Ok(DirectoryGuard::projected(projected, anchor))
         }
         Err(source) => Err(CliError::file(FileOperation::Inspect, requested, source)),
     }
@@ -1321,7 +1593,7 @@ fn prospective_directory(
 fn project_from_existing_ancestor(
     path: &Path,
     requested: &Path,
-) -> Result<(PathBuf, PathBuf), CliError> {
+) -> Result<(PathBuf, CanonicalDirectory), CliError> {
     let mut cursor = path;
     let mut missing = Vec::<OsString>::new();
     loop {
@@ -1333,10 +1605,8 @@ fn project_from_existing_ancestor(
                         safe_path(cursor)
                     )));
                 }
-                let anchor = std::fs::canonicalize(cursor).map_err(|source| {
-                    CliError::file(FileOperation::Canonicalize, requested, source)
-                })?;
-                let mut projected = anchor.clone();
+                let anchor = open_canonical_directory(cursor, requested)?;
+                let mut projected = anchor.path.clone();
                 for component in missing.iter().rev() {
                     projected.push(component);
                 }
@@ -1365,6 +1635,34 @@ fn project_from_existing_ancestor(
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn open_canonical_directory(path: &Path, requested: &Path) -> Result<CanonicalDirectory, CliError> {
+    open_canonical_directory_with(path, requested, |_| {})
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn open_canonical_directory_with(
+    path: &Path,
+    requested: &Path,
+    after_open: impl FnOnce(&Path),
+) -> Result<CanonicalDirectory, CliError> {
+    let identity =
+        Arc::new(DirectoryIdentity::open(path).map_err(|source| {
+            CliError::file(FileOperation::VerifyPublication, requested, source)
+        })?);
+    after_open(path);
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|source| CliError::file(FileOperation::Canonicalize, requested, source))?;
+    let canonical_identity = DirectoryIdentity::open(&canonical)
+        .map_err(|source| CliError::file(FileOperation::VerifyPublication, requested, source))?;
+    if !identity.same_file(&canonical_identity) {
+        return Err(publication_identity_changed(path));
+    }
+    Ok(CanonicalDirectory {
+        path: canonical,
+        identity,
+    })
+}
+
 fn anchored_absolute(path: &Path, cwd: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
@@ -1402,6 +1700,122 @@ pub(crate) fn publish_atomic_file(
     publications: &PublicationGuards,
 ) -> Result<(), CliError> {
     publish_with_backend(path, bytes, publications, &SystemAtomicBackend)
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+pub(crate) trait PublicationBackend {
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    fn publish_file(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+    ) -> Result<(), CliError>;
+
+    #[cfg(feature = "analysis")]
+    fn publish_file_verified(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        verify: &mut dyn FnMut(&Path) -> Result<(), CliError>,
+    ) -> Result<(), CliError>;
+
+    #[cfg(feature = "markdown")]
+    fn acquire_transaction(
+        &mut self,
+        publications: &PublicationGuards,
+    ) -> Result<AcquiredTransaction, CliError>;
+
+    #[cfg(feature = "markdown")]
+    fn begin_transaction(
+        &mut self,
+        acquired: AcquiredTransaction,
+        plan: crate::transaction::TransactionPlan,
+    ) -> Result<crate::transaction::StagingTransaction, CliError> {
+        let (_, locked) = acquired.into_parts();
+        locked.begin(plan).map_err(Into::into)
+    }
+
+    #[cfg(feature = "markdown")]
+    fn ready_transaction(
+        &mut self,
+        staging: crate::transaction::StagingTransaction,
+    ) -> Result<crate::transaction::ReadyTransaction, CliError> {
+        staging.ready().map_err(Into::into)
+    }
+
+    #[cfg(feature = "markdown")]
+    fn commit_transaction(
+        &mut self,
+        ready: crate::transaction::ReadyTransaction,
+    ) -> Result<(), CliError> {
+        ready.commit().map_err(Into::into)
+    }
+
+    #[cfg(feature = "markdown")]
+    fn abort_transaction(
+        &mut self,
+        staging: crate::transaction::StagingTransaction,
+    ) -> Result<(), CliError> {
+        staging.abort()?;
+        Ok(())
+    }
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+pub(crate) struct SystemPublicationBackend;
+
+#[cfg(feature = "markdown")]
+pub(crate) struct AcquiredTransaction {
+    root: PathBuf,
+    locked: crate::transaction::LockedRecoveredRoot,
+}
+
+#[cfg(feature = "markdown")]
+impl AcquiredTransaction {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(crate) fn into_parts(self) -> (PathBuf, crate::transaction::LockedRecoveredRoot) {
+        (self.root, self.locked)
+    }
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+impl PublicationBackend for SystemPublicationBackend {
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    fn publish_file(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+    ) -> Result<(), CliError> {
+        publish_atomic_file(path, bytes, publications)
+    }
+
+    #[cfg(feature = "analysis")]
+    fn publish_file_verified(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        verify: &mut dyn FnMut(&Path) -> Result<(), CliError>,
+    ) -> Result<(), CliError> {
+        publish_atomic_file_verified(path, bytes, publications, verify)
+    }
+
+    #[cfg(feature = "markdown")]
+    fn acquire_transaction(
+        &mut self,
+        publications: &PublicationGuards,
+    ) -> Result<AcquiredTransaction, CliError> {
+        let approved = publications.prepare_transaction_root()?;
+        let root = approved.path().to_path_buf();
+        let locked = crate::transaction::LockedRecoveredRoot::acquire_approved(approved)?;
+        Ok(AcquiredTransaction { root, locked })
+    }
 }
 
 #[cfg(feature = "analysis")]
@@ -1483,20 +1897,32 @@ fn publish_with_backend_and_verifier<B: AtomicBackend>(
     stage
         .write_all(bytes)
         .map_err(|source| CliError::file(FileOperation::WriteAtomicStaging, path, source))?;
-    publications.verify()?;
-    verify_publication_target(&approved, &publications.protected)?;
-    backend
-        .verify_parent(&stage, &approved.path, &approved.parent_identity)
-        .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
-    verify(&approved.path)?;
-    publications.verify()?;
-    verify_publication_target(&approved, &publications.protected)?;
-    backend
-        .verify_parent(&stage, &approved.path, &approved.parent_identity)
-        .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
+    verify_commit_preconditions(path, &approved, publications, backend, &stage, &mut verify)?;
+    // The condition is intentionally repeatable: the final call narrows, but
+    // cannot eliminate, the portable compare-to-rename window.
+    verify_commit_preconditions(path, &approved, publications, backend, &stage, &mut verify)?;
     backend
         .commit(stage)
         .map_err(|source| CliError::file(FileOperation::CommitAtomicReplacement, path, source))
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn verify_commit_preconditions<B: AtomicBackend>(
+    requested_path: &Path,
+    approved: &ApprovedPublication,
+    publications: &PublicationGuards,
+    backend: &B,
+    stage: &B::Stage,
+    verify: &mut impl FnMut(&Path) -> Result<(), CliError>,
+) -> Result<(), CliError> {
+    publications.verify()?;
+    verify_publication_target(approved, &publications.protected)?;
+    backend
+        .verify_parent(stage, &approved.path, &approved.parent_identity)
+        .map_err(|source| {
+            CliError::file(FileOperation::VerifyPublication, requested_path, source)
+        })?;
+    verify(&approved.path)
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -1647,7 +2073,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(guard.existing.len(), 1);
-        assert_eq!(guard.existing[0].0, OsStr::new("out-1.svg"));
+        assert!(guard.existing.contains_key(OsStr::new("out-1.svg")));
     }
 
     #[cfg(all(feature = "markdown", unix))]
@@ -1692,6 +2118,50 @@ mod tests {
 
     #[cfg(all(feature = "markdown", unix))]
     #[test]
+    fn canonical_numbered_target_uses_its_numbered_scope_generation() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let actual = directory.path().join("actual");
+        let view = directory.path().join("view");
+        std::fs::create_dir(&actual).unwrap();
+        symlink(&actual, &view).unwrap();
+        let canonical_actual = std::fs::canonicalize(&actual).unwrap();
+        let manifest = view.join(".merman-manifest.json");
+        let numbered = canonical_actual.join("out-1.svg");
+        std::fs::write(&manifest, b"manifest").unwrap();
+        std::fs::write(&numbered, b"numbered").unwrap();
+
+        let mut guards = PublicationGuards::new(Some(directory.path()));
+        let exact =
+            preflight_file_target(&manifest, directory.path(), &[], MissingParent::Reject).unwrap();
+        guards.approve_exact(exact).unwrap();
+        let namespace = crate::markdown::NumberedOutputNamespace::new(
+            &view.join("out.svg"),
+            crate::cli::RenderFormat::Svg,
+            None,
+        );
+        let numbered_guard =
+            preflight_numbered_namespace(&namespace, directory.path(), &[], MissingParent::Reject)
+                .unwrap();
+        guards.approve_numbered(namespace, numbered_guard).unwrap();
+
+        let (approved, generation) = guards
+            .approved_transaction_target(&numbered)
+            .unwrap()
+            .into_parts();
+
+        assert_eq!(approved, numbered);
+        assert_eq!(
+            generation,
+            crate::transaction::TargetGeneration::Existing(Arc::new(
+                same_file::Handle::from_path(&numbered).unwrap()
+            ))
+        );
+    }
+
+    #[cfg(all(feature = "markdown", unix))]
+    #[test]
     fn projected_scopes_must_share_the_first_sealed_directory_identity() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("root");
@@ -1699,8 +2169,10 @@ mod tests {
         let anchor = std::fs::canonicalize(&root).unwrap();
         let expected = anchor.join("output");
         let displaced = anchor.join("displaced");
-        let first = DirectoryGuard::projected(expected.clone(), anchor.clone(), &expected).unwrap();
-        let second = DirectoryGuard::projected(expected.clone(), anchor, &expected).unwrap();
+        let first_anchor = open_canonical_directory(&anchor, &expected).unwrap();
+        let second_anchor = open_canonical_directory(&anchor, &expected).unwrap();
+        let first = DirectoryGuard::projected(expected.clone(), first_anchor);
+        let second = DirectoryGuard::projected(expected.clone(), second_anchor);
 
         std::fs::create_dir(&expected).unwrap();
         let identity = first.seal().unwrap();
@@ -1717,6 +2189,76 @@ mod tests {
         ));
     }
 
+    #[cfg(all(
+        feature = "markdown",
+        unix,
+        not(any(target_os = "espidf", target_os = "horizon", target_os = "redox"))
+    ))]
+    #[test]
+    fn projected_directory_creation_stays_with_the_approved_anchor_identity() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let approved = directory.path().join("approved");
+        let displaced = directory.path().join("displaced");
+        let redirect = directory.path().join("redirect");
+        std::fs::create_dir(&approved).unwrap();
+        std::fs::create_dir(&redirect).unwrap();
+        let anchor = std::fs::canonicalize(&approved).unwrap();
+        let expected = anchor.join("new").join("nested");
+        let anchor = open_canonical_directory(&anchor, &expected).unwrap();
+        let guard = DirectoryGuard::projected(expected.clone(), anchor);
+        guard.verify_anchor().unwrap();
+
+        std::fs::rename(&approved, &displaced).unwrap();
+        symlink(&redirect, &approved).unwrap();
+
+        let error = guard.create_and_seal().unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::File {
+                operation: FileOperation::VerifyPublication,
+                ..
+            }
+        ));
+        assert!(displaced.join("new").join("nested").is_dir());
+        assert!(!redirect.join("new").exists());
+    }
+
+    #[cfg(all(
+        feature = "markdown",
+        unix,
+        not(any(target_os = "espidf", target_os = "horizon", target_os = "redox"))
+    ))]
+    #[test]
+    fn projected_directory_creation_rejects_a_link_component() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("root");
+        let redirect = directory.path().join("redirect");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&redirect).unwrap();
+        let anchor = std::fs::canonicalize(&root).unwrap();
+        let expected = anchor.join("new").join("nested");
+        let anchor = open_canonical_directory(&anchor, &expected).unwrap();
+        let anchor_path = anchor.path.clone();
+        let guard = DirectoryGuard::projected(expected.clone(), anchor);
+        symlink(&redirect, anchor_path.join("new")).unwrap();
+
+        let error = guard.create_and_seal().unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::File {
+                operation: FileOperation::CreateDirectory,
+                ..
+            }
+        ));
+        assert!(!redirect.join("nested").exists());
+    }
+
     #[cfg(feature = "markdown")]
     #[test]
     fn post_preflight_non_directory_parent_is_an_operational_failure() {
@@ -1725,7 +2267,8 @@ mod tests {
         let expected = root.join("output");
         std::fs::create_dir(&root).unwrap();
         let anchor = std::fs::canonicalize(&root).unwrap();
-        let guard = DirectoryGuard::projected(expected.clone(), anchor, &expected).unwrap();
+        let anchor = open_canonical_directory(&anchor, &expected).unwrap();
+        let guard = DirectoryGuard::projected(expected.clone(), anchor);
 
         std::fs::write(&expected, b"replaced directory").unwrap();
         let error = guard.seal().unwrap_err();
@@ -1737,6 +2280,36 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[cfg(all(feature = "markdown", unix))]
+    #[test]
+    fn canonical_directory_authorization_rejects_identity_change_before_projection() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let approved = directory.path().join("approved");
+        let displaced = directory.path().join("displaced");
+        let redirect = directory.path().join("redirect");
+        let requested = approved.join("new").join("nested");
+        std::fs::create_dir(&approved).unwrap();
+        std::fs::create_dir(&redirect).unwrap();
+
+        let error = open_canonical_directory_with(&approved, &requested, |_| {
+            std::fs::rename(&approved, &displaced).unwrap();
+            symlink(&redirect, &approved).unwrap();
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::File {
+                operation: FileOperation::VerifyPublication,
+                ..
+            }
+        ));
+        assert!(!redirect.join("new").exists());
+        assert!(!displaced.join("new").exists());
     }
 
     struct FailingWriteBackend;
@@ -1996,6 +2569,62 @@ mod tests {
         assert_eq!(
             std::fs::read(&target).unwrap(),
             b"mutation after snapshot comparison"
+        );
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn same_inode_mutation_after_custom_verification_is_rechecked_before_commit() {
+        use std::fs::OpenOptions;
+
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("output.svg");
+        std::fs::write(&target, b"acquired output").unwrap();
+        let mut stdin = std::io::empty();
+        let acquired = crate::io::read_fix_source(
+            &crate::invocation::ResolvedInput::File(target.clone()),
+            crate::input::InputLimit::new("max_source_bytes", Some(1024)),
+            &mut stdin,
+        )
+        .unwrap();
+        let original_identity = same_file::Handle::from_path(&target).unwrap();
+        let mut guards = PublicationGuards::new(Some(directory.path()));
+        let target_guard =
+            preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
+        guards.approve_exact(target_guard).unwrap();
+        let mut checks = 0_u8;
+
+        let error = publish_with_backend_and_verifier(
+            &target,
+            b"our replacement",
+            &guards,
+            &SystemAtomicBackend,
+            |approved| {
+                checks = checks.saturating_add(1);
+                acquired.verify_unchanged(approved)?;
+                if checks == 1 {
+                    let mut file = OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .open(approved)
+                        .unwrap();
+                    file.write_all(b"same inode concurrent edit").unwrap();
+                    file.sync_all().unwrap();
+                    assert_eq!(
+                        same_file::Handle::from_path(approved).unwrap(),
+                        original_identity
+                    );
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, CliError::ConcurrentModification { .. }));
+        assert_eq!(checks, 2);
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"same inode concurrent edit"
         );
     }
 

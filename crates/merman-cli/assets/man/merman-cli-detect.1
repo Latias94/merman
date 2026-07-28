@@ -1,0 +1,83 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH merman-cli-detect 1  "detect 0.8.0-alpha.4"
+.SH NAME
+merman\-cli\-detect \- Detect the Mermaid diagram type
+.SH SYNOPSIS
+\fBmerman\-cli detect\fR [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+.SH DESCRIPTION
+Detect the Mermaid diagram type
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+[\fIINPUT\fR]
+Input Mermaid file. Use `\-` for stdin
+.SH "MERMAID CONFIGURATION"
+.TP
+\fB\-c\fR, \fB\-\-config\-file\fR \fI<CONFIG_FILE>\fR
+JSON Mermaid configuration file
+.TP
+\fB\-t\fR, \fB\-\-theme\fR \fI<THEME>\fR
+Mermaid theme override
+.SH "RUNTIME POLICY"
+.TP
+\fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
+Runtime source for clock, local timezone, and operation randomness
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+deterministic
+.IP \(bu 2
+native
+.RE
+.TP
+\fB\-\-system\-clock\fR
+Use the system clock while keeping other runtime sources deterministic
+.TP
+\fB\-\-system\-timezone\fR
+Use the system local timezone while keeping other runtime sources deterministic
+.TP
+\fB\-\-system\-random\fR
+Use system randomness while keeping other runtime sources deterministic
+.TP
+\fB\-\-system\-timing\fR
+Enable operation timing diagnostics through the compiled system timing adapter
+.TP
+\fB\-\-fixed\-today\fR \fI<FIXED_TODAY>\fR
+Override the local "today" date for time\-dependent diagrams
+.TP
+\fB\-\-fixed\-local\-offset\-minutes\fR \fI<FIXED_LOCAL_OFFSET_MINUTES>\fR
+Override the local timezone offset in minutes for time\-dependent diagrams
+.SH "RESOURCE CONTROLS"
+.TP
+\fB\-\-resource\-profile\fR \fI<PROFILE>\fR [default: trusted\-native]
+Resource policy for input, semantic models, output, and CLI acquisition.
+
+Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+interactive: General interactive applications and public binding surfaces
+.IP \(bu 2
+constrained: Constrained rendering for untrusted or publicly submitted documents
+.IP \(bu 2
+trusted\-native: Local CLI and controlled native batch rendering
+.IP \(bu 2
+unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retaining hard backend capabilities
+.RE
+.TP
+\fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
+Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH VERSION
+v0.8.0\-alpha.4

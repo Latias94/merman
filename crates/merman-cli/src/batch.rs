@@ -6,9 +6,10 @@ use crate::markdown::{
 use crate::output::PublicationGuards;
 use crate::render::render_markdown_charts;
 use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind, ResolvedResourcePolicy};
+use crate::runtime::{ExecutionContext, SharedWriter};
 use crate::transaction::{
-    ArtifactNamespace, GenerationDialect, GenerationManifest, GenerationOwner, LockedRecoveredRoot,
-    RelativeTarget, StageSlot, StagingTransaction, TransactionEntryPlan, TransactionPlan,
+    ArtifactNamespace, GenerationDialect, GenerationManifest, GenerationOwner, RelativeTarget,
+    StageSlot, StagingTransaction, TargetGeneration, TransactionEntryPlan, TransactionPlan,
     TransactionRole,
 };
 use std::collections::HashSet;
@@ -78,9 +79,14 @@ struct ApprovedLayout {
     owner: GenerationOwner,
     artifact_directory: PathBuf,
     manifest_path: PathBuf,
-    manifest: RelativeTarget,
-    document: Option<RelativeTarget>,
-    artifacts: Vec<RelativeTarget>,
+    manifest: ApprovedTarget,
+    document: Option<ApprovedTarget>,
+    artifacts: Vec<ApprovedTarget>,
+}
+
+struct ApprovedTarget {
+    target: RelativeTarget,
+    generation: TargetGeneration,
 }
 
 struct StageSlots {
@@ -89,7 +95,10 @@ struct StageSlots {
     document: Option<StageSlot>,
 }
 
-pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
+pub(crate) fn execute(
+    prepared: PreparedBatch,
+    context: &mut ExecutionContext,
+) -> Result<(), CliError> {
     let PreparedBatch {
         dialect,
         source,
@@ -115,15 +124,28 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
         charts.len(),
     )?;
 
+    let renderer = if charts.is_empty() {
+        None
+    } else {
+        let (_, renderer) = crate::render::prepare_graphical_output(
+            output,
+            common,
+            false,
+            matches!(dialect, BatchDialect::Mmdc11_16_0),
+            #[cfg(feature = "network-icons")]
+            context.network.as_mut(),
+        )?;
+        Some(renderer)
+    };
+
     // This is the first filesystem mutation in the batch path. Source
-    // acquisition, scanning, target expansion, and strict containment have
-    // already completed.
-    let approved_root = publications.prepare_transaction_root()?;
-    let approved_root_path = approved_root.path().to_path_buf();
-    let locked = LockedRecoveredRoot::acquire_approved(approved_root)?;
+    // acquisition, scanning, renderer preparation, target expansion, and
+    // strict containment have already completed.
+    let acquired = context.publication.acquire_transaction(&publications)?;
+    let approved_root_path = acquired.root().to_path_buf();
 
     if charts.is_empty() && !requested.writes_document && !dialect.is_native() {
-        report_chart_count(quiet, 0);
+        report_chart_count(quiet, 0, &context.stderr);
         return Ok(());
     }
 
@@ -141,32 +163,28 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
         )?;
     }
 
-    let stale = if dialect.is_native() {
+    let stale_targets = if dialect.is_native() {
         native_stale_artifacts(previous.as_ref(), &approved.artifacts)
     } else {
         Vec::new()
     };
-
-    let renderer = if charts.is_empty() {
-        None
-    } else {
-        let (_, renderer) = crate::render::prepare_graphical_output(
-            output,
-            common,
-            false,
-            matches!(dialect, BatchDialect::Mmdc11_16_0),
-        )?;
-        Some(renderer)
-    };
+    let stale = approved.approve_stale_targets(&publications, &stale_targets)?;
 
     let plan = transaction_plan(&approved, &stale)?;
-    let mut staging = locked.begin(plan)?;
+    let mut staging = context.publication.begin_transaction(acquired, plan)?;
     let setup = (|| {
         let manifest = GenerationManifest::new(
             staging.transaction_id().to_owned(),
             approved.owner.clone(),
-            approved.document.clone(),
-            approved.artifacts.clone(),
+            approved
+                .document
+                .as_ref()
+                .map(|document| document.target.clone()),
+            approved
+                .artifacts
+                .iter()
+                .map(|artifact| artifact.target.clone())
+                .collect(),
         )?;
         let manifest_bytes = manifest.encode()?;
         let slots = issue_stage_slots(&mut staging, &approved)?;
@@ -174,7 +192,7 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
     })();
     let (manifest_bytes, slots) = match setup {
         Ok(setup) => setup,
-        Err(error) => return abort_staging(staging, error),
+        Err(error) => return abort_staging(context, staging, error),
     };
     let StageSlots {
         artifacts: artifact_slots,
@@ -191,6 +209,7 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
             artifact_slots,
             urls,
             &staged_bytes,
+            &context.stderr,
             #[cfg(feature = "parallel-markdown")]
             jobs,
         ),
@@ -201,7 +220,7 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
         Err(error) => {
             drop(manifest_slot);
             drop(document_slot);
-            return abort_staging(staging, error);
+            return abort_staging(context, staging, error);
         }
     };
 
@@ -214,12 +233,13 @@ pub(crate) fn execute(prepared: PreparedBatch) -> Result<(), CliError> {
         &manifest_bytes,
         &staged_bytes,
     ) {
-        return abort_staging(staging, error);
+        return abort_staging(context, staging, error);
     }
 
-    staging.ready()?.commit()?;
-    report_chart_count(quiet, charts.len());
-    report_publication(quiet, &requested, &images);
+    let ready = context.publication.ready_transaction(staging)?;
+    context.publication.commit_transaction(ready)?;
+    report_chart_count(quiet, charts.len(), &context.stderr);
+    report_publication(quiet, &requested, &images, &context.stderr);
     Ok(())
 }
 
@@ -291,17 +311,33 @@ impl RequestedLayout {
         publications: &PublicationGuards,
         canonical_root: &Path,
     ) -> Result<ApprovedLayout, CliError> {
-        let output_path = if self.writes_document {
-            publications.approved_target_path(&self.output)?
+        let (output_path, output_generation) = if self.writes_document {
+            let (path, generation) = publications
+                .approved_transaction_target(&self.output)?
+                .into_parts();
+            (path, Some(generation))
         } else {
-            rebase_target(&self.root, canonical_root, &self.output)?
+            (
+                rebase_target(&self.root, canonical_root, &self.output)?,
+                None,
+            )
         };
-        let manifest_path = publications.approved_target_path(&self.manifest)?;
+        let (manifest_path, manifest_generation) = publications
+            .approved_transaction_target(&self.manifest)?
+            .into_parts();
         let artifact_directory = publications.approved_directory_path(&self.artifact_directory)?;
-        let artifact_paths = self
+        let artifacts = self
             .artifacts
             .iter()
-            .map(|artifact| publications.approved_target_path(artifact))
+            .map(|artifact| {
+                let (path, generation) = publications
+                    .approved_transaction_target(artifact)?
+                    .into_parts();
+                Ok::<_, CliError>(ApprovedTarget {
+                    target: RelativeTarget::from_absolute(canonical_root, path)?,
+                    generation,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let owner_target = RelativeTarget::from_absolute(canonical_root, &output_path)?;
         let namespace = ArtifactNamespace::from_absolute(
@@ -315,15 +351,18 @@ impl RequestedLayout {
             BatchDialect::Mmdc11_16_0 => GenerationDialect::Mmdc11_16_0,
         };
         let owner = GenerationOwner::new(dialect, owner_target, namespace)?;
-        let manifest = RelativeTarget::from_absolute(canonical_root, &manifest_path)?;
-        let document = self
-            .writes_document
-            .then(|| RelativeTarget::from_absolute(canonical_root, &output_path))
+        let manifest = ApprovedTarget {
+            target: RelativeTarget::from_absolute(canonical_root, &manifest_path)?,
+            generation: manifest_generation,
+        };
+        let document = output_generation
+            .map(|generation| {
+                Ok::<_, CliError>(ApprovedTarget {
+                    target: RelativeTarget::from_absolute(canonical_root, &output_path)?,
+                    generation,
+                })
+            })
             .transpose()?;
-        let artifacts = artifact_paths
-            .iter()
-            .map(|artifact| RelativeTarget::from_absolute(canonical_root, artifact))
-            .collect::<Result<Vec<_>, _>>()?;
         Ok(ApprovedLayout {
             root: canonical_root.to_path_buf(),
             owner,
@@ -333,6 +372,46 @@ impl RequestedLayout {
             document,
             artifacts,
         })
+    }
+}
+
+impl ApprovedLayout {
+    fn approve_stale_targets(
+        &self,
+        publications: &PublicationGuards,
+        stale: &[RelativeTarget],
+    ) -> Result<Vec<ApprovedTarget>, CliError> {
+        let mut approved_stale = Vec::with_capacity(stale.len());
+        for target in stale {
+            let requested = target.to_path(&self.root)?;
+            let (approved, generation) = publications
+                .approved_transaction_target(&requested)?
+                .into_parts();
+            let approved = RelativeTarget::from_absolute(&self.root, approved)?;
+            if &approved != target {
+                return Err(CliError::InvalidOutput(format!(
+                    "stale artifact {} no longer matches its approved transaction target",
+                    crate::error::safe_path(requested)
+                )));
+            }
+            approved_stale.push(ApprovedTarget {
+                target: approved,
+                generation,
+            });
+        }
+        Ok(approved_stale)
+    }
+}
+
+impl ApprovedTarget {
+    fn write_entry(&self, role: TransactionRole) -> TransactionEntryPlan {
+        TransactionEntryPlan::write(role, self.target.clone())
+            .expect_generation(self.generation.clone())
+    }
+
+    fn delete_artifact_entry(&self) -> TransactionEntryPlan {
+        TransactionEntryPlan::delete_artifact(self.target.clone())
+            .expect_generation(self.generation.clone())
     }
 }
 
@@ -473,7 +552,7 @@ fn validate_previous_manifest(
         }
         .into());
     }
-    if manifest.document() != approved.document.as_ref() {
+    if manifest.document() != approved.document.as_ref().map(|document| &document.target) {
         return Err(crate::transaction::TransactionError::InvalidState {
             evidence: approved.manifest_path.clone(),
             reason: "generation manifest belongs to a different Markdown document".to_string(),
@@ -485,9 +564,12 @@ fn validate_previous_manifest(
 
 fn native_stale_artifacts(
     previous: Option<&GenerationManifest>,
-    current: &[RelativeTarget],
+    current: &[ApprovedTarget],
 ) -> Vec<RelativeTarget> {
-    let current = current.iter().collect::<HashSet<_>>();
+    let current = current
+        .iter()
+        .map(|artifact| &artifact.target)
+        .collect::<HashSet<_>>();
     previous
         .into_iter()
         .flat_map(GenerationManifest::artifacts)
@@ -498,30 +580,21 @@ fn native_stale_artifacts(
 
 fn transaction_plan(
     approved: &ApprovedLayout,
-    stale: &[RelativeTarget],
+    stale: &[ApprovedTarget],
 ) -> Result<TransactionPlan, CliError> {
-    let entries = approved
-        .artifacts
-        .iter()
-        .cloned()
-        .map(|target| TransactionEntryPlan::write(TransactionRole::Artifact, target))
-        .chain(
-            stale
-                .iter()
-                .cloned()
-                .map(TransactionEntryPlan::delete_artifact),
-        )
-        .chain(std::iter::once(TransactionEntryPlan::write(
-            TransactionRole::Manifest,
-            approved.manifest.clone(),
-        )))
-        .chain(
-            approved
-                .document
-                .iter()
-                .cloned()
-                .map(|target| TransactionEntryPlan::write(TransactionRole::Document, target)),
-        );
+    let mut entries = Vec::with_capacity(
+        approved.artifacts.len() + stale.len() + 1 + usize::from(approved.document.is_some()),
+    );
+    for artifact in &approved.artifacts {
+        entries.push(artifact.write_entry(TransactionRole::Artifact));
+    }
+    for artifact in stale {
+        entries.push(artifact.delete_artifact_entry());
+    }
+    entries.push(approved.manifest.write_entry(TransactionRole::Manifest));
+    if let Some(document) = &approved.document {
+        entries.push(document.write_entry(TransactionRole::Document));
+    }
     TransactionPlan::for_generation(approved.owner.clone(), entries).map_err(Into::into)
 }
 
@@ -532,13 +605,13 @@ fn issue_stage_slots(
     let artifacts = approved
         .artifacts
         .iter()
-        .map(|target| staging.stage_slot(target).map_err(CliError::from))
+        .map(|artifact| staging.stage_slot(&artifact.target).map_err(CliError::from))
         .collect::<Result<Vec<_>, _>>()?;
-    let manifest = staging.stage_slot(&approved.manifest)?;
+    let manifest = staging.stage_slot(&approved.manifest.target)?;
     let document = approved
         .document
         .as_ref()
-        .map(|target| staging.stage_slot(target))
+        .map(|document| staging.stage_slot(&document.target))
         .transpose()?;
     Ok(StageSlots {
         artifacts,
@@ -587,13 +660,17 @@ fn charge_staged_bytes(staged_bytes: &Mutex<CheckedBytes>, bytes: usize) -> Resu
     Ok(())
 }
 
-fn abort_staging(staging: StagingTransaction, error: CliError) -> Result<(), CliError> {
-    staging.abort()?;
+fn abort_staging(
+    context: &mut ExecutionContext,
+    staging: StagingTransaction,
+    error: CliError,
+) -> Result<(), CliError> {
+    context.publication.abort_transaction(staging)?;
     Err(error)
 }
 
-fn report_chart_count(quiet: bool, count: usize) {
-    let sink = crate::diagnostics::DiagnosticSink::new(quiet);
+fn report_chart_count(quiet: bool, count: usize, stderr: &SharedWriter) {
+    let sink = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
     if count == 0 {
         sink.info("No mermaid charts found in Markdown input");
     } else {
@@ -601,8 +678,13 @@ fn report_chart_count(quiet: bool, count: usize) {
     }
 }
 
-fn report_publication(quiet: bool, requested: &RequestedLayout, images: &[MarkdownImage]) {
-    let sink = crate::diagnostics::DiagnosticSink::new(quiet);
+fn report_publication(
+    quiet: bool,
+    requested: &RequestedLayout,
+    images: &[MarkdownImage],
+    stderr: &SharedWriter,
+) {
+    let sink = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
     for image in images {
         sink.info(format!("Wrote {}", image.url));
     }

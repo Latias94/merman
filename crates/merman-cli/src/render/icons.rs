@@ -3,7 +3,7 @@ use crate::input::InputLimit;
 use crate::invocation::ResolvedIconSources;
 use crate::io::read_named_text_file;
 #[cfg(feature = "network-icons")]
-use crate::network::{NetworkAuthorization, NetworkPolicy, SanitizedEndpoint, fetch_http_body};
+use crate::network::{NetworkAcquirer, NetworkAuthorization, NetworkPolicy, SanitizedEndpoint};
 use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind, ResolvedResourcePolicy};
 use merman::svg::IconRegistry;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ pub(super) fn load_icon_registry(
     icon_sources: &ResolvedIconSources,
     resources: &ResolvedResourcePolicy,
     cwd: &Path,
+    #[cfg(feature = "network-icons")] network: &mut dyn NetworkAcquirer,
 ) -> Result<Option<Arc<IconRegistry>>, CliError> {
     if icon_sources.packages.is_empty() && icon_sources.named_sources.is_empty() {
         return Ok(None);
@@ -48,6 +49,8 @@ pub(super) fn load_icon_registry(
                 max_body_limit_id: crate::resources::CliResourceLimitId::MaxRemoteIconBodyBytes
                     .as_str(),
             },
+            #[cfg(feature = "network-icons")]
+            network,
         )?;
         register_icon_pack_json(
             &mut registry,
@@ -295,6 +298,7 @@ fn read_icon_pack_source(
     #[cfg(feature = "network-icons")] remote_body_limit: Option<usize>,
     aggregate_bytes: &mut CheckedBytes,
     #[cfg(feature = "network-icons")] network_policy: NetworkPolicy,
+    #[cfg(feature = "network-icons")] network: &mut dyn NetworkAcquirer,
 ) -> Result<String, CliError> {
     let remaining = aggregate_bytes.remaining();
     let bytes = match source {
@@ -318,7 +322,7 @@ fn read_icon_pack_source(
             );
             policy.max_body_bytes = limit.max_bytes;
             policy.max_body_limit_id = limit.stable_id;
-            fetch_http_body(url, policy)?
+            network.fetch(url, policy)?
         }
         #[cfg(feature = "network-icons")]
         IconPackSource::RemoteUrl { .. } => {

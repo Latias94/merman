@@ -21,10 +21,12 @@ use crate::io::read_input;
 use crate::io::{read_named_text_file, read_optional_text_file};
 use crate::output::PublicationGuards;
 use crate::resources::ResolvedResourcePolicy;
+use crate::runtime::SharedWriter;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman::svg::RenderEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{HeadlessRenderer, SvgPipeline};
+use std::io::Read;
 use std::path::Path;
 
 #[cfg(feature = "pdf")]
@@ -33,9 +35,9 @@ const MMDC_DEFAULT_PDF_WIDTH_PT: f32 = 612.0;
 const MMDC_DEFAULT_PDF_HEIGHT_PT: f32 = 792.0;
 
 pub(crate) enum PreparedRender {
-    Single(PreparedSingleRender),
+    Single(Box<PreparedSingleRender>),
     #[cfg(feature = "markdown")]
-    Markdown(PreparedBatch),
+    Markdown(Box<PreparedBatch>),
 }
 
 pub(crate) struct PreparedSingleRender {
@@ -48,13 +50,13 @@ pub(super) enum PreparedSingleOutput {
     #[cfg(feature = "ascii")]
     Text {
         destination: ResolvedDestination,
-        renderer: merman::ascii::HeadlessAsciiRenderer,
+        renderer: Box<merman::ascii::HeadlessAsciiRenderer>,
         admission: BackendAdmission,
     },
     #[cfg(feature = "svg")]
     Graphical {
         destination: ResolvedDestination,
-        renderer: PreparedGraphicalRender,
+        renderer: Box<PreparedGraphicalRender>,
     },
 }
 
@@ -64,14 +66,15 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) pipeline: SvgPipeline,
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) quiet: bool,
 }
 
 #[cfg(feature = "svg")]
 pub(super) enum PreparedGraphicalSource {
-    Mermaid(HeadlessRenderer),
+    Mermaid(Box<HeadlessRenderer>),
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    RawSvg(RenderEnvironment),
+    RawSvg(Box<RenderEnvironment>),
 }
 
 #[cfg(feature = "svg")]
@@ -94,13 +97,16 @@ pub(super) enum PreparedGraphicalOutput {
 pub(crate) fn prepare_render_for_native(
     resolved: ResolvedSingleRender,
     publications: PublicationGuards,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
+    #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<PreparedRender, CliError> {
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     let raw_svg = matches!(resolved.input_kind, crate::cli::RenderInputKind::Svg);
     #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     let raw_svg = false;
     let limit = render_input_limit(raw_svg, &resolved.common.resources);
-    let source = read_resolved_input(&resolved.input, true, limit)?;
+    let source = read_resolved_input(&resolved.input, true, limit, stdin, stderr)?;
     prepare_single(
         source,
         raw_svg,
@@ -108,14 +114,18 @@ pub(crate) fn prepare_render_for_native(
         resolved.common,
         publications,
         false,
+        #[cfg(feature = "network-icons")]
+        network,
     )
-    .map(PreparedRender::Single)
+    .map(|render| PreparedRender::Single(Box::new(render)))
 }
 
 #[cfg(feature = "markdown")]
 pub(crate) fn prepare_render_for_batch(
     resolved: ResolvedBatchRender,
     publications: PublicationGuards,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
 ) -> Result<PreparedRender, CliError> {
     let source = read_resolved_input(
         &resolved.input,
@@ -124,6 +134,8 @@ pub(crate) fn prepare_render_for_batch(
             crate::resources::CliResourceLimitId::MaxMarkdownDocumentBytes.as_str(),
             resolved.common.resources.files().markdown_document_bytes,
         ),
+        stdin,
+        stderr,
     )?;
     let output_path = resolved
         .output
@@ -132,7 +144,7 @@ pub(crate) fn prepare_render_for_batch(
         .expect("native batch normalization always selects a file target")
         .to_path_buf();
     let quiet = resolved.common.quiet;
-    Ok(PreparedRender::Markdown(PreparedBatch {
+    Ok(PreparedRender::Markdown(Box::new(PreparedBatch {
         dialect: BatchDialect::NativeBatchV1,
         source,
         output: resolved.output,
@@ -144,13 +156,16 @@ pub(crate) fn prepare_render_for_batch(
         #[cfg(feature = "parallel-markdown")]
         jobs: resolved.jobs,
         quiet,
-    }))
+    })))
 }
 
 #[cfg(feature = "svg")]
 pub(crate) fn prepare_render_for_mmdc(
     resolved: ResolvedMmdcRender,
     publications: PublicationGuards,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
+    #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<PreparedRender, CliError> {
     validate_puppeteer_config_file(
         resolved.compatibility.puppeteer_config_file.as_deref(),
@@ -162,7 +177,7 @@ pub(crate) fn prepare_render_for_mmdc(
         resolved.workflow,
         crate::invocation::ResolvedWorkflow::MarkdownBatch
     ) {
-        return prepare_mmdc_markdown(resolved, publications);
+        return prepare_mmdc_markdown(resolved, publications, stdin, stderr);
     }
 
     let source = read_mmdc_input(
@@ -175,6 +190,8 @@ pub(crate) fn prepare_render_for_mmdc(
                 .input_policy()
                 .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
         ),
+        stdin,
+        stderr,
     )?;
     prepare_single(
         source,
@@ -183,8 +200,10 @@ pub(crate) fn prepare_render_for_mmdc(
         resolved.common,
         publications,
         true,
+        #[cfg(feature = "network-icons")]
+        network,
     )
-    .map(PreparedRender::Single)
+    .map(|render| PreparedRender::Single(Box::new(render)))
 }
 
 #[cfg(feature = "svg")]
@@ -216,6 +235,8 @@ fn validate_puppeteer_config_file(
 fn prepare_mmdc_markdown(
     resolved: ResolvedMmdcRender,
     publications: PublicationGuards,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
 ) -> Result<PreparedRender, CliError> {
     let source = read_mmdc_input(
         &resolved,
@@ -223,6 +244,8 @@ fn prepare_mmdc_markdown(
             crate::resources::CliResourceLimitId::MaxMarkdownDocumentBytes.as_str(),
             resolved.common.resources.files().markdown_document_bytes,
         ),
+        stdin,
+        stderr,
     )?;
     let output_path = resolved
         .output
@@ -236,7 +259,7 @@ fn prepare_mmdc_markdown(
         .unwrap_or_default();
     let quiet = resolved.common.quiet;
 
-    Ok(PreparedRender::Markdown(PreparedBatch {
+    Ok(PreparedRender::Markdown(Box::new(PreparedBatch {
         dialect: BatchDialect::Mmdc11_16_0,
         source,
         output: resolved.output,
@@ -248,7 +271,7 @@ fn prepare_mmdc_markdown(
         #[cfg(feature = "parallel-markdown")]
         jobs: resolved.jobs,
         quiet,
-    }))
+    })))
 }
 
 fn prepare_single(
@@ -258,6 +281,7 @@ fn prepare_single(
     common: ResolvedRenderCommon,
     publications: PublicationGuards,
     mmdc_compat: bool,
+    #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<PreparedSingleRender, CliError> {
     #[cfg(not(feature = "svg"))]
     let _ = (raw_svg, mmdc_compat);
@@ -281,7 +305,7 @@ fn prepare_single(
                 source,
                 output: PreparedSingleOutput::Text {
                     destination,
-                    renderer,
+                    renderer: Box::new(renderer),
                     admission,
                 },
                 publications,
@@ -289,13 +313,19 @@ fn prepare_single(
         }
         #[cfg(feature = "svg")]
         graphical => {
-            let (destination, renderer) =
-                prepare_graphical_output(graphical, common, raw_svg, mmdc_compat)?;
+            let (destination, renderer) = prepare_graphical_output(
+                graphical,
+                common,
+                raw_svg,
+                mmdc_compat,
+                #[cfg(feature = "network-icons")]
+                network,
+            )?;
             Ok(PreparedSingleRender {
                 source,
                 output: PreparedSingleOutput::Graphical {
                     destination,
-                    renderer,
+                    renderer: Box::new(renderer),
                 },
                 publications,
             })
@@ -309,6 +339,7 @@ pub(crate) fn prepare_graphical_output(
     common: ResolvedRenderCommon,
     raw_svg: bool,
     mmdc_compat: bool,
+    #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<(ResolvedDestination, PreparedGraphicalRender), CliError> {
     #[cfg(not(feature = "pdf"))]
     let _ = mmdc_compat;
@@ -411,10 +442,10 @@ pub(crate) fn prepare_graphical_output(
     let source = if raw_svg {
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
-            PreparedGraphicalSource::RawSvg(
+            PreparedGraphicalSource::RawSvg(Box::new(
                 RenderEnvironment::deterministic()
                     .with_resource_policy(common.resources.render_policy()),
-            )
+            ))
         }
         #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
         {
@@ -430,9 +461,13 @@ pub(crate) fn prepare_graphical_output(
             &common.resources,
         )?;
         #[cfg(feature = "icons")]
-        let renderer = if let Some(icon_registry) =
-            load_icon_registry(&common.icons, &common.resources, &common.cwd)?
-        {
+        let renderer = if let Some(icon_registry) = load_icon_registry(
+            &common.icons,
+            &common.resources,
+            &common.cwd,
+            #[cfg(feature = "network-icons")]
+            network,
+        )? {
             let environment = renderer
                 .environment()
                 .clone()
@@ -441,7 +476,7 @@ pub(crate) fn prepare_graphical_output(
         } else {
             renderer
         };
-        PreparedGraphicalSource::Mermaid(renderer)
+        PreparedGraphicalSource::Mermaid(Box::new(renderer))
     };
 
     Ok((
@@ -451,6 +486,7 @@ pub(crate) fn prepare_graphical_output(
             pipeline,
             output,
             admission,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
             quiet: common.quiet,
         },
     ))
@@ -460,6 +496,8 @@ fn read_resolved_input(
     input: &crate::invocation::ResolvedInput,
     suppress_implicit_warning: bool,
     limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
 ) -> Result<String, CliError> {
     let path = match input {
         crate::invocation::ResolvedInput::File(path) => Some(path.as_path()),
@@ -468,20 +506,28 @@ fn read_resolved_input(
         }
         crate::invocation::ResolvedInput::Stdin => None,
     };
-    read_input(path, suppress_implicit_warning, limit)
+    read_input(path, suppress_implicit_warning, limit, stdin, stderr)
 }
 
 #[cfg(feature = "svg")]
-fn read_mmdc_input(resolved: &ResolvedMmdcRender, limit: InputLimit) -> Result<String, CliError> {
-    let path = if resolved.input_was_explicit {
-        match &resolved.input {
-            crate::invocation::ResolvedInput::File(path) => Some(path.as_path()),
-            crate::invocation::ResolvedInput::Stdin => Some(Path::new("-")),
-        }
-    } else {
-        None
-    };
-    read_input(path, !resolved.warn_on_implicit_stdin, limit)
+fn read_mmdc_input(
+    resolved: &ResolvedMmdcRender,
+    limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
+) -> Result<String, CliError> {
+    let diagnostics = crate::diagnostics::DiagnosticSink::new(false, stderr);
+    if resolved.warn_on_implicit_stdin {
+        diagnostics.info(
+            "No input file specified, reading from stdin. Use -i <input> to suppress this warning.",
+        );
+    }
+    if resolved.warn_on_implicit_output_format {
+        diagnostics.info(
+            "No output format specified, using svg. Use -e <format> to suppress this warning.",
+        );
+    }
+    read_resolved_input(&resolved.input, true, limit, stdin, stderr)
 }
 
 fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> InputLimit {

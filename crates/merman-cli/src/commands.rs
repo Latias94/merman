@@ -8,6 +8,7 @@ use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
 use crate::output::LocalPreflight;
 use crate::resources::ResolvedResourcePolicy;
+use crate::runtime::{ExecutionContext, SharedWriter};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -62,78 +63,110 @@ struct ParseOut<'a> {
     model: &'a Value,
 }
 
-pub(crate) fn run(preflight: LocalPreflight) -> Result<i32, CliError> {
+pub(crate) fn run(
+    preflight: LocalPreflight,
+    context: &mut ExecutionContext,
+) -> Result<i32, CliError> {
     let (invocation, publications) = preflight.into_parts();
     #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
     let _ = &publications;
     let exit_code = match invocation {
         ResolvedInvocation::Capabilities(args) => {
-            run_capabilities(args)?;
+            run_capabilities(args, &context.stdout)?;
             0
         }
         ResolvedInvocation::Detect(args) => {
-            run_detect(args)?;
+            run_detect(args, context)?;
             0
         }
         ResolvedInvocation::Parse(args) => {
-            run_parse(args)?;
+            run_parse(args, context)?;
             0
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Layout(args) => {
-            run_layout(args)?;
+            run_layout(args, context)?;
             0
         }
         #[cfg(feature = "analysis")]
-        ResolvedInvocation::Lint(args) => run_lint(args)?,
+        ResolvedInvocation::Lint(args) => run_lint(args, context)?,
         #[cfg(feature = "analysis")]
-        ResolvedInvocation::Fix(args) => run_fix(args, &publications)?,
+        ResolvedInvocation::Fix(args) => run_fix(args, &publications, context)?,
         #[cfg(feature = "analysis")]
         ResolvedInvocation::LintRules(args) => {
-            run_lint_rules(args)?;
+            run_lint_rules(args, &context.stdout)?;
             0
         }
         #[cfg(any(feature = "svg", feature = "ascii"))]
         ResolvedInvocation::Render(args) => {
-            let prepared = prepare_render_for_native(args, publications)?;
-            execute_render(prepared)?;
+            let prepared = prepare_render_for_native(
+                args,
+                publications,
+                context.stdin.as_mut(),
+                &context.stderr,
+                #[cfg(feature = "network-icons")]
+                context.network.as_mut(),
+            )?;
+            execute_render(prepared, context)?;
             0
         }
         #[cfg(feature = "markdown")]
         ResolvedInvocation::Batch(args) => {
-            let prepared = prepare_render_for_batch(args, publications)?;
-            execute_render(prepared)?;
+            let prepared = prepare_render_for_batch(
+                args,
+                publications,
+                context.stdin.as_mut(),
+                &context.stderr,
+            )?;
+            execute_render(prepared, context)?;
             0
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Mmdc(args) => {
-            let prepared = prepare_render_for_mmdc(args, publications)?;
-            execute_render(prepared)?;
+            let prepared = prepare_render_for_mmdc(
+                args,
+                publications,
+                context.stdin.as_mut(),
+                &context.stderr,
+                #[cfg(feature = "network-icons")]
+                context.network.as_mut(),
+            )?;
+            execute_render(prepared, context)?;
             0
         }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(args) => {
-            run_completion(args)?;
+            run_completion(args, &context.stdout)?;
             0
         }
     };
     Ok(exit_code)
 }
 
-fn run_capabilities(args: CapabilitiesArgs) -> Result<(), CliError> {
-    crate::capabilities::write_compiled_capabilities(args.json)
+fn run_capabilities(args: CapabilitiesArgs, stdout: &SharedWriter) -> Result<(), CliError> {
+    crate::capabilities::write_compiled_capabilities(args.json, stdout)
 }
 
-fn run_detect(args: ResolvedDetect) -> Result<(), CliError> {
-    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+fn run_detect(args: ResolvedDetect, context: &mut ExecutionContext) -> Result<(), CliError> {
+    let text = read_resolved_input(
+        &args.input,
+        source_limit(&args.resources),
+        context.stdin.as_mut(),
+        &context.stderr,
+    )?;
     let engine = engine_for(&args.engine.into_parse_args(), &args.resources)?;
     let meta = engine.parse_metadata_sync(&text)?;
-    write_stdout_line(&meta.diagram_type)?;
+    write_stdout_line(&meta.diagram_type, &context.stdout)?;
     Ok(())
 }
 
-fn run_parse(args: ResolvedParse) -> Result<(), CliError> {
-    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), CliError> {
+    let text = read_resolved_input(
+        &args.input,
+        source_limit(&args.resources),
+        context.stdin.as_mut(),
+        &context.stderr,
+    )?;
     let engine = engine_for(&args.parse, &args.resources)?;
     let Some(parsed) = engine.parse_diagram_sync(&text, parse_options(&args.parse))? else {
         return Err(CliError::NoDiagram);
@@ -149,16 +182,21 @@ fn run_parse(args: ResolvedParse) -> Result<(), CliError> {
             },
             model: &parsed.model,
         };
-        print_json(&out, args.pretty)?;
+        print_json(&out, args.pretty, &context.stdout)?;
     } else {
-        print_json(&parsed.model, args.pretty)?;
+        print_json(&parsed.model, args.pretty, &context.stdout)?;
     }
     Ok(())
 }
 
 #[cfg(feature = "svg")]
-fn run_layout(args: ResolvedLayout) -> Result<(), CliError> {
-    let text = read_resolved_input(&args.input, source_limit(&args.resources))?;
+fn run_layout(args: ResolvedLayout, context: &mut ExecutionContext) -> Result<(), CliError> {
+    let text = read_resolved_input(
+        &args.input,
+        source_limit(&args.resources),
+        context.stdin.as_mut(),
+        &context.stderr,
+    )?;
     let renderer = renderer_for(
         &args.parse,
         &args.render.into_render_args(),
@@ -168,14 +206,19 @@ fn run_layout(args: ResolvedLayout) -> Result<(), CliError> {
     let Some(layout_json) = renderer.layout_json_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
-    print_json(&layout_json, args.pretty)
+    print_json(&layout_json, args.pretty, &context.stdout)
 }
 
 #[cfg(feature = "analysis")]
-fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
+fn run_lint(args: ResolvedLint, context: &mut ExecutionContext) -> Result<i32, CliError> {
     let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
     let max_source_bytes = source_limit(&args.resources);
-    let text = match read_analysis_input(&args.input, max_source_bytes) {
+    let text = match read_analysis_input(
+        &args.input,
+        max_source_bytes,
+        context.stdin.as_mut(),
+        &context.stderr,
+    ) {
         Ok(text) => text,
         Err(InputReadError::LimitExceeded { actual, limit, .. }) => {
             let source_len = observed_size_as_usize(actual);
@@ -186,8 +229,8 @@ fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
                 )],
             );
             match args.format {
-                LintOutputFormat::Json => print_json(&payload, args.pretty)?,
-                LintOutputFormat::Text => print_lint_text(&payload)?,
+                LintOutputFormat::Json => print_json(&payload, args.pretty, &context.stdout)?,
+                LintOutputFormat::Text => print_lint_text(&payload, &context.stdout)?,
             }
             return Ok(1);
         }
@@ -202,8 +245,8 @@ fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
     let payload = analyze_document(&text, &analyzer, source);
 
     match args.format {
-        LintOutputFormat::Json => print_json(&payload, args.pretty)?,
-        LintOutputFormat::Text => print_lint_text(&payload)?,
+        LintOutputFormat::Json => print_json(&payload, args.pretty, &context.stdout)?,
+        LintOutputFormat::Text => print_lint_text(&payload, &context.stdout)?,
     }
 
     Ok(i32::from(!payload.valid))
@@ -213,13 +256,15 @@ fn run_lint(args: ResolvedLint) -> Result<i32, CliError> {
 fn run_fix(
     args: ResolvedFix,
     publications: &crate::output::PublicationGuards,
+    context: &mut ExecutionContext,
 ) -> Result<i32, CliError> {
     use crate::invocation::ResolvedFixMode;
 
     let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
     let max_source_bytes = source_limit(&args.resources);
     let input_limit = source_input_limit(max_source_bytes);
-    let acquired = read_fix_source(&args.input, input_limit).map_err(CliError::primary_input)?;
+    let acquired = read_fix_source(&args.input, input_limit, context.stdin.as_mut())
+        .map_err(CliError::primary_input)?;
     let text = acquired.text();
     let analyzer = analyzer_for(
         &args.analysis,
@@ -235,7 +280,7 @@ fn run_fix(
         fix_ids: args.selectors.fixes,
     };
     let plan = catalog.plan(&selection).map_err(map_fix_plan_error)?;
-    let sink = DiagnosticSink::new(args.quiet);
+    let sink = DiagnosticSink::new(args.quiet, &context.stderr);
     for conflict in plan.skipped_conflicts() {
         sink.info(format!(
             "skipped rule `{}` fix `{}` because it conflicts with selected fix `{}`",
@@ -246,22 +291,35 @@ fn run_fix(
     let changed = fixed.as_bytes() != text.as_bytes();
 
     match &args.mode {
-        ResolvedFixMode::Stdout => write_stdout(fixed.as_bytes())?,
+        ResolvedFixMode::Stdout => write_stdout(fixed.as_bytes(), &context.stdout)?,
         ResolvedFixMode::Check => return Ok(i32::from(changed)),
         ResolvedFixMode::Diff => {
             if changed {
-                write_stdout(unified_fix_diff(text, &fixed, &source_label).as_bytes())?;
+                write_stdout(
+                    unified_fix_diff(text, &fixed, &source_label).as_bytes(),
+                    &context.stdout,
+                )?;
             }
             return Ok(i32::from(changed));
         }
         ResolvedFixMode::Output(path) => {
-            write_file(path, fixed.as_bytes(), publications)?;
+            write_file(
+                path,
+                fixed.as_bytes(),
+                publications,
+                context.publication.as_mut(),
+            )?;
         }
         ResolvedFixMode::WriteInput(path) => {
             if changed {
-                write_file_verified(path, fixed.as_bytes(), publications, |approved_path| {
-                    acquired.verify_unchanged(approved_path)
-                })?;
+                let mut verify = |approved_path: &Path| acquired.verify_unchanged(approved_path);
+                write_file_verified(
+                    path,
+                    fixed.as_bytes(),
+                    publications,
+                    context.publication.as_mut(),
+                    &mut verify,
+                )?;
             }
         }
     }
@@ -303,7 +361,7 @@ fn unified_fix_diff(source: &str, fixed: &str, label: &str) -> String {
 }
 
 #[cfg(feature = "analysis")]
-fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
+fn run_lint_rules(args: LintRulesArgs, stdout: &SharedWriter) -> Result<(), CliError> {
     match args.format {
         LintOutputFormat::Json => {
             let response = if args.configurable {
@@ -311,7 +369,7 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
             } else {
                 merman_analysis::rule_catalog_response()
             };
-            print_json(&response, args.pretty)
+            print_json(&response, args.pretty, stdout)
         }
         LintOutputFormat::Text => {
             let catalog = if args.configurable {
@@ -319,25 +377,32 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
             } else {
                 merman_analysis::rule_catalog()
             };
-            print_lint_rules_text(&catalog)
+            print_lint_rules_text(&catalog, stdout)
         }
     }
 }
 
 #[cfg(feature = "shell-completions")]
-fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
+fn run_completion(args: CompletionArgs, stdout: &SharedWriter) -> Result<(), CliError> {
     let mut command = crate::app::cli_command();
     let mut output = Vec::new();
     clap_complete::generate(args.shell, &mut command, "merman-cli", &mut output);
-    write_stdout(&output)
+    write_stdout(&output, stdout)
 }
 
-fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
-    crate::diagnostics::write_json_stdout(value, pretty)
+fn print_json<T: Serialize>(
+    value: &T,
+    pretty: bool,
+    stdout: &SharedWriter,
+) -> Result<(), CliError> {
+    crate::diagnostics::write_json_stdout(value, pretty, stdout)
 }
 
 #[cfg(feature = "analysis")]
-fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) -> Result<(), CliError> {
+fn print_lint_rules_text(
+    catalog: &[merman_analysis::RuleCatalogEntry],
+    stdout: &SharedWriter,
+) -> Result<(), CliError> {
     let mut output = String::new();
     output
         .push_str("ID\tSeverity\tProfile\tOrigin\tConfigurable\tFixable\tEvidence\tDescription\n");
@@ -356,15 +421,15 @@ fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) -> Resul
         )
         .expect("writing to a String should not fail");
     }
-    write_stdout(output.as_bytes())
+    write_stdout(output.as_bytes(), stdout)
 }
 
 #[cfg(feature = "analysis")]
-fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
+fn print_lint_text(payload: &AnalysisPayload, stdout: &SharedWriter) -> Result<(), CliError> {
     let mut output = String::new();
     if payload.diagnostics.is_empty() {
         output.push_str("No Mermaid diagnostics.\n");
-        return write_stdout(output.as_bytes());
+        return write_stdout(output.as_bytes(), stdout);
     }
 
     let path = payload.source.path.as_deref().unwrap_or("-");
@@ -393,18 +458,22 @@ fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
         payload.summary.hints
     )
     .expect("writing to a String should not fail");
-    write_stdout(output.as_bytes())
+    write_stdout(output.as_bytes(), stdout)
 }
 
 #[cfg(feature = "analysis")]
 fn read_analysis_input(
     input: &ResolvedInput,
     max_source_bytes: Option<usize>,
+    stdin: &mut dyn std::io::Read,
+    stderr: &SharedWriter,
 ) -> Result<String, InputReadError> {
     read_primary_input(
         Some(resolved_input_path(input)),
         true,
         source_input_limit(max_source_bytes),
+        stdin,
+        stderr,
     )
 }
 
@@ -435,11 +504,15 @@ fn resolved_input_path(input: &ResolvedInput) -> &Path {
 fn read_resolved_input(
     input: &ResolvedInput,
     max_source_bytes: Option<usize>,
+    stdin: &mut dyn std::io::Read,
+    stderr: &SharedWriter,
 ) -> Result<String, CliError> {
     read_input(
         Some(resolved_input_path(input)),
         true,
         source_input_limit(max_source_bytes),
+        stdin,
+        stderr,
     )
 }
 
@@ -490,13 +563,19 @@ fn lint_rule_config(args: &AnalysisCliArgs) -> AnalysisRuleConfig {
         config.set_profile(profile);
     }
     for rule_id in &args.enable_rules {
-        config.enable_rule(rule_id.clone());
+        config
+            .enable_rule(rule_id.clone())
+            .expect("CLI enable-rule ids are validated by clap");
     }
     for rule_id in &args.disable_rules {
-        config.disable_rule(rule_id.clone());
+        config
+            .disable_rule(rule_id.clone())
+            .expect("CLI disable-rule ids are validated by clap");
     }
     for LintRuleSeverityOverride { rule_id, severity } in &args.rule_severities {
-        config.set_rule_severity(rule_id.clone(), *severity);
+        config
+            .set_rule_severity(rule_id.clone(), *severity)
+            .expect("CLI rule-severity ids are validated by clap");
     }
     config
 }

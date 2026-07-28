@@ -1,0 +1,37 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH merman-cli-completion 1  "completion 0.8.0-alpha.4"
+.SH NAME
+merman\-cli\-completion \- Generate shell completion scripts
+.SH SYNOPSIS
+\fBmerman\-cli completion\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fISHELL\fR>
+.SH DESCRIPTION
+Generate shell completion scripts
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+<\fISHELL\fR>
+Shell to generate completions for
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+bash
+.IP \(bu 2
+elvish
+.IP \(bu 2
+fish
+.IP \(bu 2
+powershell
+.IP \(bu 2
+zsh
+.RE
+.SH VERSION
+v0.8.0\-alpha.4

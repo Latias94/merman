@@ -544,8 +544,10 @@ mod tests {
                 ENCODER_AND_STACK_OVERHEAD_BYTES + 39,
             )
             .unwrap();
-        let mut options = merman::svg::export::RasterOptions::default();
-        options.embedded_image_limit = merman::svg::export::EmbeddedImageLimit::unbounded();
+        let options = merman::svg::export::RasterOptions {
+            embedded_image_limit: merman::svg::export::EmbeddedImageLimit::unbounded(),
+            ..Default::default()
+        };
 
         let error = match BackendAdmission::for_raster(&policy, &options, 8, true) {
             Ok(_) => panic!("raw SVG bytes must bound embedded-image preparation"),

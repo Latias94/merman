@@ -3,6 +3,7 @@ use super::prepare::PreparedGraphicalRender;
 use crate::error::CliError;
 use crate::markdown::{MarkdownChart, MarkdownImage};
 use crate::resources::CheckedBytes;
+use crate::runtime::SharedWriter;
 use crate::transaction::StageSlot;
 #[cfg(feature = "parallel-markdown")]
 use rayon::prelude::*;
@@ -14,6 +15,7 @@ pub(crate) fn render_charts(
     slots: Vec<StageSlot>,
     urls: Vec<String>,
     staged_bytes: &Mutex<CheckedBytes>,
+    stderr: &SharedWriter,
     #[cfg(feature = "parallel-markdown")] jobs: usize,
 ) -> Result<Vec<MarkdownImage>, CliError> {
     debug_assert_eq!(charts.len(), slots.len());
@@ -40,6 +42,7 @@ pub(crate) fn render_charts(
                         slot,
                         url,
                         staged_bytes,
+                        stderr,
                         chart_number(index),
                     )
                 })
@@ -60,6 +63,7 @@ pub(crate) fn render_charts(
                 slot,
                 url,
                 staged_bytes,
+                stderr,
                 chart_number(index),
             )
         })
@@ -72,10 +76,11 @@ fn render_chart(
     slot: StageSlot,
     url: String,
     staged_bytes: &Mutex<CheckedBytes>,
+    stderr: &SharedWriter,
     chart_index: u64,
 ) -> Result<MarkdownImage, CliError> {
     let rendered = (|| {
-        let artifact = execute_graphical(renderer, chart.definition())?;
+        let artifact = execute_graphical(renderer, chart.definition(), stderr)?;
         let ExecutedMetadata { title, desc } = artifact.stage_into(slot, staged_bytes)?;
         Ok(MarkdownImage {
             url,
