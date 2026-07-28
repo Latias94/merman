@@ -21,6 +21,9 @@ The release-range baseline and latest committed checkpoints were measured on 202
   from source `5f540c08d` with one capability recipe and the independently validated 4,001-case
   schema-2 corpus. It remains a private, inconclusive macOS arm64 result rather than a selected
   transport.
+- [Runtime evidence manifest](baselines/runtime-06616dd71.json) freezes source `06616dd71`, the
+  native-memory executable, full six-scale report, recipes, fixtures, and host. Its
+  `infrastructure-smoke` owner contract is not candidate-admission evidence.
 
 | Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
 | --- | ---: | ---: | ---: | ---: |
@@ -190,6 +193,20 @@ the stage benchmark demonstrates any saving.
 Build a size/density curve rather than tuning against one 420-line fixture. Attribute ordering,
 crossing minimization, routing, text measurement, and SVG emission separately. Preserve
 source-backed layout semantics and reject magic-number changes made only to improve the benchmark.
+
+The clean `06616dd71` native allocator baseline completed 30 matched operation/zero pairs on an
+Apple M4 Pro with Rust 1.95.0. Every repeat was deterministic, so the one-sided bootstrap bounds
+collapsed to the estimates:
+
+| Metric | Log-log slope upper bound | `100x` upper bound | Infrastructure cap | Result |
+| --- | ---: | ---: | ---: | --- |
+| Allocation count | 1.411568 | 4,265,827 | 2.0 / 10,000,000 | Pass |
+| Allocated bytes | 2.338849 | 33,701,769,467 B | 2.0 / 8 GiB | Failed bound |
+| Peak growth | 1.434359 | 144,199,480 B | 2.0 / 2 GiB | Pass |
+
+This makes cumulative allocation the first qualified scaling target. It does not prove which
+Flowchart stage owns the bytes; U4 still requires owner-local attribution and an adjacent public
+latency comparison before retaining production code.
 
 Exit: the curve identifies the first superlinear or allocation-heavy stage and a representative
 large preview fits the agreed interactive budget.
