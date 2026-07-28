@@ -83,7 +83,7 @@ merman-ascii
 merman feature ascii
   ^
   |
-merman-cli --format ascii/unicode
+merman-cli render --format ascii/unicode
 ```
 
 Initial internal modules:

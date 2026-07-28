@@ -2,9 +2,15 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-A browserless Mermaid command-line renderer for SVG, PNG, JPEG, PDF, ASCII, and Unicode output. The top-level command follows common `mmdc` input and output conventions; parser, layout, lint, and inspection subcommands support development tooling.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, optional layout engines, math, icons, completions, and native runtime adapters.
 
-> Installation commands follow the repository release state. Development versions use the Git checkout; release commits use an exact crates.io version. Registry form does not prove that publication has completed.
+The command line has three explicit workflows:
+
+| Workflow | Command | Use it when |
+| --- | --- | --- |
+| One native render | `merman-cli render` | You want concise Rust-native defaults and strict option validation |
+| Native Markdown batch | `merman-cli batch` | You want a recoverable, tool-owned multi-file generation |
+| Pinned compatibility | `merman-cli mmdc` | You are migrating an `mmdc@11.16.0` command or need its naming and scanner rules |
 
 ## Install
 
@@ -18,54 +24,140 @@ cargo install --git https://github.com/Latias94/merman --locked merman-cli
 
 <!-- END GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
 
+Homebrew users can install the stable formula:
+
+```sh
+brew install merman-cli
+```
+
+The formula follows stable releases and may trail this pre-release documentation.
+
 From a local checkout:
 
 ```sh
 cargo install --path crates/merman-cli
 ```
 
-The installed command is `merman-cli`, not `mmdc`.
+The executable is named `merman-cli`; Merman does not install an `mmdc` alias.
 
 ## First Render
 
+For a named input, native rendering writes a sibling file and replaces the source extension:
+
 ```sh
-merman-cli -i diagram.mmd -o diagram.svg
-merman-cli -i diagram.mmd -o diagram.png -t dark -b transparent
-printf 'flowchart LR\n  Source --> Merman --> SVG\n' | merman-cli -i - -o -
+merman-cli render diagram.mmd
+# writes diagram.svg
+
+merman-cli render diagram.mmd --format png
+# writes diagram.png
 ```
 
-`-` means stdin or stdout. Payload bytes go to stdout; diagnostics and progress go to stderr. When `-o` is omitted, file input produces `<input>.svg` and stdin produces `out.svg`.
+Piped input writes the payload to stdout:
+
+```sh
+printf 'flowchart LR\n  Source --> Merman --> SVG\n' | merman-cli render -
+```
+
+Use `--output -` to request stdout explicitly or `--output PATH` to choose a file. Payload bytes go only to stdout; diagnostics and progress go to stderr.
 
 ## Common Workflows
 
 | Task | Command |
 | --- | --- |
-| Mermaid to SVG | `merman-cli -i diagram.mmd -o diagram.svg` |
-| Mermaid to PNG/JPEG | `merman-cli -i diagram.mmd -o diagram.png` |
-| Mermaid to vector PDF | `merman-cli -i diagram.mmd -o diagram.pdf --pdfFit` |
-| Terminal output | `merman-cli render --format unicode diagram.mmd` |
-| Markdown fences to assets and links | `merman-cli -i README.md -o README.rendered.md --artifacts docs/assets` |
-| Human-readable diagnostics | `merman-cli lint --format text diagram.mmd` |
-| Machine-readable analysis | `merman-cli lint --format json diagram.mmd` |
+| Mermaid to SVG | `merman-cli render diagram.mmd` |
+| Mermaid to PNG | `merman-cli render diagram.mmd --format png` |
+| Mermaid to JPEG | `merman-cli render diagram.mmd --format jpg` |
+| Mermaid to vector PDF | `merman-cli render diagram.mmd --format pdf` |
+| Terminal output | `merman-cli render diagram.mmd --format unicode --output -` |
+| Markdown fences to a managed generation | `merman-cli batch README.md` |
+| Human-readable diagnostics | `merman-cli lint diagram.mmd --format text` |
+| Check whether fixes are needed | `merman-cli fix diagram.mmd --check` |
 | Inspect the compiled binary | `merman-cli capabilities --json` |
 
-The output extension selects the format unless `-e`, `--outputFormat`, or `--format` overrides it.
+Run `merman-cli --help` to see only the commands compiled into your binary, then use `<command> --help` for command-owned options.
+
+## Migrating From The Old Root Syntax
+
+Root-level render flags were removed. They were ambiguous with native subcommands, exposed options that silently did nothing for some formats, and made compatibility behavior impossible to version independently. The break gives each workflow its own parser, defaults, validation, help, completion output, input rules, and publication guarantees.
+
+| Before | Now |
+| --- | --- |
+| `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
+| `merman-cli -i diagram.mmd -o diagram.png -t dark` | `merman-cli mmdc -i diagram.mmd -o diagram.png -t dark` |
+| `merman-cli -i README.md -o README.rendered.md --artifacts docs/assets` | `merman-cli mmdc -i README.md -o README.rendered.md --artifacts docs/assets` |
+| Native single render through shared flags | `merman-cli render diagram.mmd --output diagram.svg` |
+| Native Markdown through extension inference | `merman-cli batch README.md --output-dir README.merman` |
+
+Passing a removed root render flag exits `2` with a targeted message pointing to `mmdc`, `render`, and `batch`; it does not execute a hidden compatibility path.
+
+The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
+
+## Markdown Batches
+
+Native batch rendering owns one output directory:
+
+```sh
+merman-cli batch README.md
+# writes README.merman/README.md, numbered assets, a manifest, and a stable lock
+
+merman-cli batch docs/guide.md --output-dir generated --format pdf
+```
+
+All charts render into staging before publication. The rewritten document is published last, stale files are removed only when named by the prior validated manifest, and an interrupted commit is recovered under the output lock before new work starts. A document with no eligible charts is a valid generation.
+
+Stdin requires an explicit logical name and output directory:
+
+```sh
+cat README.md | merman-cli batch - \
+  --stdin-file-name README.md \
+  --output-dir README.merman
+```
+
+The `parallel-markdown` Cargo feature adds Rayon-backed bounded scheduling and the `--jobs` option. It implies `markdown`; it does not affect single renders. Without it, `batch` remains fully supported and renders charts serially.
+
+Strict `mmdc` Markdown uses the pinned upstream fence scanner and output naming. To keep recovery honest, its rewritten document and artifacts must remain below one transaction root on one filesystem; split-root layouts are rejected before output creation or network access.
+
+## Analysis And Fixes
+
+The `analysis` capability enables parser-backed diagnostics, deterministic fix selection, and rule metadata:
+
+```sh
+merman-cli detect diagram.mmd
+merman-cli parse diagram.mmd --pretty --meta
+merman-cli layout diagram.mmd --pretty
+merman-cli lint diagram.mmd --format json
+merman-cli lint README.md --markdown --format text
+merman-cli lint-rules --configurable --format json
+```
+
+`fix` has one explicit output mode:
+
+```sh
+merman-cli fix diagram.mmd                  # fixed source on stdout
+merman-cli fix diagram.mmd --check          # exit 1 when source would change
+merman-cli fix diagram.mmd --diff           # print diff; exit 1 when it changes
+merman-cli fix diagram.mmd --output fixed.mmd
+merman-cli fix diagram.mmd --write
+```
+
+Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automation needs a narrower edit plan. Duplicate edit sets are applied once, alternative fixes remain alternatives, and conflicting selections fail before publication. `--write` atomically replaces the canonical input target after checking that its identity and complete bounded contents still match the acquired snapshot.
 
 ## Choose A Build
 
-The default binary includes rendering, all export formats, analysis, ASCII/Unicode, both optional layout engines, math, Markdown conversion, offline Iconify loading, opt-in network Iconify retrieval, parallel Markdown work, shell completions, and native runtime adapters.
+The default feature set is the complete local product. Cargo features are additive capabilities, not diagram-family switches. For a slim binary, disable defaults and select only the required leaves:
 
-Cargo features are additive. Any artifact that must exclude capabilities needs `--no-default-features` and one explicit leaf set.
-
-| Build | Intended use |
+| Build | Capabilities |
 | --- | --- |
-| Default | Complete local `mmdc`-style CLI |
-| `--no-default-features --features analysis` | Detection, parsing, linting, fixes, and rule metadata without rendering |
-| `--no-default-features --features svg` | Basic deterministic SVG without optional layouts or math |
-| `--no-default-features --features markdown` | Sequential Markdown conversion without analysis |
-| `--no-default-features --features icons` | Offline local Iconify packs without an HTTP client |
+| `--no-default-features` | `detect`, `parse`, and `capabilities` |
+| `--no-default-features --features analysis` | Lint, fixes, and rule metadata without render dependencies |
+| `--no-default-features --features svg` | Basic deterministic SVG |
+| `--no-default-features --features ascii` | ASCII/Unicode without SVG |
+| `--no-default-features --features markdown` | Sequential native Markdown batch and SVG |
+| `--no-default-features --features icons` | SVG plus bounded local Iconify packs |
+| `--no-default-features --features png` | SVG plus PNG only |
+| `--no-default-features --features pdf` | SVG plus vector PDF only |
 
-Install a slim lint binary:
+Install a lint-only binary:
 
 <!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_LEAN_INSTALL -->
 
@@ -76,134 +168,90 @@ cargo install --git https://github.com/Latias94/merman --locked merman-cli \
 
 <!-- END GENERATED RELEASE README CLI_PACKAGE_LEAN_INSTALL -->
 
-Public capability leaves are `analysis`, `svg`, `ascii`, `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, `icons`, `markdown`, `network-icons`, `parallel-markdown`, `shell-completions`, and the four `system-*` adapters. Output, layout, and math features imply `svg` where required. Use `capabilities --json` as the authoritative contract for the binary you actually built.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-## Runtime And Resource Policy
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. It reports the CLI contract version, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs.
 
-Every command defaults to deterministic runtime state, even when the binary contains native adapters. Deterministic mode uses a fixed clock, UTC time zone, operation-owned randomness, and no timing instrumentation.
+## Rendering And Runtime Policy
 
-Select native clock, time-zone rules, and operating-system randomness explicitly:
+Native `render` rejects options that are irrelevant to the selected output before reading input or creating output. Examples:
 
 ```sh
-merman-cli -i diagram.mmd -o diagram.svg --runtime native
-merman-cli lint --runtime native diagram.mmd
+merman-cli render diagram.mmd --format svg --svg-pipeline readable
+merman-cli render diagram.mmd --format png --raster-fit-width 1600
+merman-cli render diagram.mmd --format pdf --pdf-filter-scale 4
+merman-cli render diagram.mmd --format unicode --ascii-color auto
 ```
 
-Native mode requires `system-clock`, `system-timezone`, and `system-random`. Timing is separate and requires both `system-timing` and `--system-timing`.
+PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
 
-Choose a resource profile according to input trust:
+Runtime behavior is deterministic by default even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:
 
-| Profile | Use |
+```sh
+merman-cli render diagram.mmd --runtime native
+merman-cli mmdc -i diagram.mmd -o diagram.svg --runtime native
+```
+
+Each adapter is also independently selectable with `--system-clock`, `--system-timezone`, `--system-random`, or `--system-timing` when its feature is compiled. `--runtime native` is shown only when the clock, time-zone, and random adapters are all available. Timing remains separately opt-in.
+
+## Resource And Network Policy
+
+`--resource-profile` derives one complete budget for source/config/CSS/icon acquisition, chart count, staging, render working set, jobs, redirects, and network duration:
+
+| Profile | Intended input |
 | --- | --- |
-| `constrained` | Untrusted, public, or multi-tenant input |
-| `interactive` | Cooperative local editing |
-| `trusted-native` | Local automation; CLI default |
-| `unbounded-for-trusted-input` | Explicitly trusted workloads that own the cost |
+| `constrained` | Untrusted, public, or multi-tenant |
+| `interactive` | Cooperative editor-like work |
+| `trusted-native` | Controlled local automation; CLI default |
+| `unbounded-for-trusted-input` | Explicitly trusted work that owns its cost |
 
-PNG/JPEG allocation, PDF filter sampling, embedded image decoding, and parallel encoding memory have separate bounds. Inspect `merman-cli --help` before changing an `--*-unbounded` control; each disables only its named boundary.
+Use repeatable `--resource-limit STABLE_ID=POSITIVE_U64` only for a scoped override. The unbounded profile retains hard protocol guards, finite network timeouts, redirect limits, overflow checks, and backend capabilities.
 
-## Output Contracts
-
-| Format | Contract |
-| --- | --- |
-| SVG | Mermaid-parity SVG by default; `--svg-pipeline readable` and `resvg-safe` are available |
-| PNG/JPEG | Bounded bitmap export through the `resvg-safe` SVG path |
-| PDF | Vector SVG conversion with independent filter and embedded-image budgets |
-| ASCII/Unicode | Typed terminal projection for supported families |
+Local icon packs stay offline:
 
 ```sh
-merman-cli -i diagram.mmd -o diagram.svg --svg-pipeline readable
-merman-cli -i diagram.mmd -o diagram.jpg
-merman-cli -i diagram.mmd -o diagram.pdf
-merman-cli -i diagram.mmd -o diagram.txt -e unicode
+merman-cli render diagram.mmd \
+  --icon-pack @iconify-json/logos
+
+merman-cli render diagram.mmd \
+  --icon-pack-source logos#icons.json
 ```
 
-Raster and PDF export are not Chromium screenshots. PNG/JPEG allocate a bounded pixmap; PDF keeps vector geometry and budgets only localized raster work. Use `--raster-fit-width`, `--raster-fit-height`, and `--scale` for preview-sized bitmap output.
-
-ASCII support is family-specific and may be full, partial, or a deliberate text summary. See the [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) rather than assuming every SVG family has a terminal projection.
-
-## Markdown Documents
-
-`.md`, `.markdown`, and `.mdx` inputs activate Markdown mode when the `markdown` capability is compiled.
-
-```sh
-merman-cli -i README.md -o README.rendered.md --artifacts docs/assets
-merman-cli -i docs/input.md -o docs/output.md --jobs 4
-```
-
-An SVG output template such as `README.svg` produces numbered assets (`README-1.svg`, `README-2.svg`, and so on). A Markdown output path also rewrites Mermaid fences to image links. Markdown mode cannot write to stdout because one document may produce multiple files.
-
-`parallel-markdown` adds `--jobs`; results remain linked in source order.
-
-## Analysis And Tooling
-
-The `analysis` capability enables parser-backed diagnostics, fixes, and the governed lint catalog:
-
-```sh
-merman-cli detect diagram.mmd
-merman-cli parse --pretty --meta diagram.mmd
-merman-cli layout --pretty diagram.mmd
-merman-cli lint --format text diagram.mmd
-merman-cli lint --markdown README.md
-merman-cli lint-rules --configurable --format json
-```
-
-The default `core` lint profile reports syntax, compatibility, resource, and internal diagnostics. `--lint-profile recommended` adds opt-in Merman authoring guidance. JSON output uses the versioned canonical diagnostic and rule metadata contracts shared with editor integrations.
-
-The explicit `render` subcommand exposes Rust-native output controls:
-
-```sh
-merman-cli render --format svg --out out.svg diagram.mmd
-merman-cli render --format png --out out.png diagram.mmd
-merman-cli render --format unicode diagram.mmd
-```
-
-Builds with `shell-completions` can emit completion scripts through `merman-cli completion <shell>`.
-
-## Icon Packs
-
-The `icons` capability loads local Iconify JSON for Flowchart, Architecture, and TreeView without a browser:
-
-```sh
-merman-cli -i diagram.mmd -o diagram.svg --iconPacks @iconify-json/logos
-merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#icons.json
-```
-
-Package names are resolved from `node_modules` upward from the current directory. Local paths and `file://` URLs stay offline. HTTP(S) requires a binary built with `network-icons` and an explicit `--allow-network`; the CLI never silently downloads a missing pack.
-
-## Math And Host Overrides
-
-The default binary includes RaTeX. A slim build must add `math` before selecting it:
-
-```sh
-printf 'flowchart LR\nA["$$x^2$$"] --> B\n' | \
-  merman-cli render --math-renderer ratex -
-```
-
-Useful host overrides include `--fixed-today`, `--fixed-local-offset-minutes`, `--hand-drawn-seed`, `--text-measurer`, and `--svgId`. These preserve deterministic defaults while letting one operation supply explicit environment values.
+HTTP(S) sources require `network-icons` plus `--allow-network`. Loopback, private, link-local, multicast, and unspecified destinations additionally require `--allow-private-network`. Every redirect is resolved and authorized again; diagnostics redact URL credentials, paths, queries, and fragments.
 
 ## Existing SVG Input
 
-`merman-cli render --format png|jpg|pdf` can convert an input beginning with `<svg`:
+PNG, JPEG, and PDF builds can convert a named `.svg` file directly:
 
 ```sh
-merman-cli render --format png --out diagram.png diagram.svg
+merman-cli render diagram.svg --format png --output diagram.png
 ```
 
-Treat this as a trusted-input conversion boundary. Arbitrary uploaded SVG can contain expensive trees, images, filters, or resources even when the final output is a bitmap.
+For SVG read from stdin, add `--input-kind svg`; named `.svg` files are inferred by extension. Raw SVG conversion is native-only and passes through the same bounded sanitizer/export pipeline.
 
-## mmdc Compatibility
+## Exit And Output Contracts
 
-Merman does not start Puppeteer, Chromium, or a Mermaid browser runtime. Common `mmdc` input, output, theme, background, config, CSS, sizing, icon, and PDF-fit workflows are available under the `merman-cli` command name.
+| Exit | Meaning |
+| ---: | --- |
+| `0` | Success, including a closed downstream stdout pipe |
+| `1` | Invalid Mermaid/content/render result, or `fix --check/--diff` would change source |
+| `2` | Invalid invocation, conflicting options, unavailable capability, or configuration |
+| `3` | Local/remote operational failure, lock contention, incomplete recovery, or publication failure |
 
-`--puppeteerConfigFile` is accepted for script compatibility, but its valid JSON contents are ignored because no Puppeteer runtime exists. PDF output follows Merman's vector conversion and is not expected to be pixel-identical to Chromium print-to-PDF.
+stdout contains only the requested SVG, image, text, JSON, diff, fixed source, or completion payload. `--quiet` suppresses informational and timing diagnostics where supported; errors remain visible.
 
-See the [CLI compatibility matrix](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for the exact supported surface, or run:
+## Completions And Man Pages
+
+A binary built with `shell-completions` generates completions that contain only its compiled commands:
 
 ```sh
-merman-cli --help
-merman-cli render --help
+source <(merman-cli completion bash)
+merman-cli completion zsh > _merman-cli
+merman-cli completion fish > merman-cli.fish
+merman-cli completion powershell > merman-cli.ps1
 ```
+
+Release archives also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
 
 ## License
 

@@ -86,9 +86,10 @@ tag. Treat direct remote SwiftPM support as a separate release-manifest design t
 
 Homebrew installs `merman-cli` from the formula in `homebrew/core`; it is not published directly by
 this repository. After a stable release, Homebrew's autobump flow should pick up the new GitHub tag.
-Use `homebrew.yml` or `brew livecheck merman-cli` to verify formula freshness and run a smoke test
-against the installed Homebrew package. Pre-release tags are intentionally ignored by that workflow
-because Homebrew/core tracks stable versions.
+Use the scheduled `homebrew.yml` workflow, or dispatch it with an optional `expected_version`, to
+verify formula freshness and run the installed CLI, linkage, and formula-test contracts. The
+workflow is deliberately independent of repository tags because Homebrew/core tracks stable
+versions on its own publication schedule.
 
 ## Release Surface Status
 
@@ -176,7 +177,7 @@ For local spot checks, run the normal Rust and platform gates:
 
 ```bash
 cargo nextest run --cargo-quiet
-cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 python3 -m py_compile \
   scripts/release-status.py \
   scripts/verify-release-surfaces.py \

@@ -193,8 +193,12 @@ effective closure.
 
 `icons` enables local Iconify JSON, `node_modules`, and `file://` sources. `network-icons` adds
 the HTTP client and `--allow-network`; network access remains an explicit runtime permission.
-Likewise, `markdown` enables document conversion without analysis commands, while
-`parallel-markdown` only adds the Rayon worker pool and `--jobs`.
+Likewise, `markdown` enables serial document conversion without analysis commands.
+`parallel-markdown` implies `markdown` and adds only the Rayon worker pool and `--jobs` to
+`batch` and Markdown-mode `mmdc`. Disabling it does not remove Markdown support or change chart
+numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
+Use `--no-default-features --features markdown` for the smallest sequential Markdown CLI and
+`--no-default-features --features parallel-markdown` when measured throughput justifies Rayon.
 
 ## Browser, Typst, and native packages
 

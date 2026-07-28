@@ -107,8 +107,10 @@ Merman CI keeps publication separate from validation:
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
-- `homebrew.yml` checks the published Homebrew formula, runs `brew livecheck`, installs
-  `merman-cli`, and renders a smoke diagram from the installed binary.
+- `homebrew.yml` checks the published stable Homebrew formula on a schedule or on demand, runs
+  `brew livecheck`, installs the exact formula version, and exercises native rendering. Formulae
+  implementing CLI contract v2 are also checked for capability JSON and generated completions;
+  every installed formula runs Homebrew's linkage audit and formula test.
 
 Release preflight is manual and publish-free. Crates and cargo-dist remain tag-driven after
 preflight passes. Platform publishing is manual so a fixed workflow on `main` can build and upload

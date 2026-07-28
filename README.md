@@ -60,20 +60,26 @@ Install the complete CLI and render a diagram:
 ```sh
 cargo install --git https://github.com/Latias94/merman --locked merman-cli
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
-  merman-cli -i - -o diagram.svg
+  merman-cli render - --output diagram.svg
 ```
 
 <!-- END GENERATED RELEASE README CLI -->
 
-The familiar `-i` / `-o` path also works for files:
+Native commands use explicit single-diagram and Markdown workflows:
 
 ```sh
-merman-cli -i diagram.mmd -o diagram.svg
-merman-cli -i diagram.mmd -o diagram.png -t dark -b transparent
-merman-cli -i README.md -o README.rendered.md --artifacts docs/assets
+merman-cli render diagram.mmd
+merman-cli render diagram.mmd --format png --theme dark --background transparent
+merman-cli batch README.md
 ```
 
-The last command renders Mermaid fences and rewrites them as image links. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for PDF, ASCII/Unicode, Iconify, runtime policy, and batch options.
+Scripts migrating from the official CLI use the pinned compatibility command:
+
+```sh
+merman-cli mmdc -i diagram.mmd -o diagram.svg
+```
+
+Root-level `-i` / `-o` rendering was removed so native and compatibility defaults, validation, help, and publication guarantees can evolve independently. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
 
 ### Rust
 
@@ -106,7 +112,7 @@ The default dependency enables complete deterministic SVG rendering, including b
 | You want to | Start with |
 | --- | --- |
 | Render from Rust | [`merman`](https://crates.io/crates/merman) |
-| Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or [Homebrew](https://formulae.brew.sh/formula/merman-cli) |
+| Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or the [stable Homebrew formula](https://formulae.brew.sh/formula/merman-cli) |
 | Render in a browser with SVG only | [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) |
 | Combine browser rendering, analysis, ASCII, and editor APIs | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) |
 | Analyze Mermaid without SVG | [`merman-analysis`](https://crates.io/crates/merman-analysis) |

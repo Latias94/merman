@@ -99,7 +99,7 @@ README_BLOCKS = {
                 "merman-cli",
                 followup=(
                     "printf 'flowchart LR\\n  Source --> Merman --> SVG\\n' | \\",
-                    "  merman-cli -i - -o diagram.svg",
+                    "  merman-cli render - --output diagram.svg",
                 ),
             ),
         ),

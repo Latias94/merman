@@ -255,6 +255,14 @@ class ReleaseReadmeTests(unittest.TestCase):
             registry_root,
         )
         self.assertIn(
+            "merman-cli render - --output diagram.svg",
+            registry_root,
+        )
+        self.assertNotIn(
+            "merman-cli -i - -o diagram.svg",
+            registry_root,
+        )
+        self.assertIn(
             "--no-default-features --features stdio",
             registry_lsp,
         )
