@@ -222,6 +222,21 @@ def validate_contract(data: dict[str, Any]) -> None:
             credential = channel.get("credential")
             if credential is not None and (not isinstance(credential, str) or not credential.strip()):
                 raise SurfaceError(f"{owner}: credential must be null or a non-empty string")
+            if state == "credential-blocked" and credential is None:
+                raise SurfaceError(
+                    f"{owner}: credential-blocked channels must name the missing credential"
+                )
+            blocker = channel.get("blocker")
+            if blocker is not None and (
+                not isinstance(blocker, str) or not blocker.strip()
+            ):
+                raise SurfaceError(f"{owner}: blocker must be a non-empty string")
+            if state in {
+                "credential-blocked",
+                "registry-blocked",
+                "manual-registry",
+            } and blocker is None:
+                raise SurfaceError(f"{owner}: {state} channels must explain the blocker")
             validate_probe_contract(channel, kind, owner)
 
         public_channel = surface.get("public_channel")
@@ -740,9 +755,13 @@ def probe_github_actions_artifacts(
 
     workflow = Path(channel["workflow"]).name
     encoded_workflow = urllib.parse.quote(workflow, safe="")
+    encoded_source_sha = urllib.parse.quote(source_sha, safe="")
     runs, failure = run_gh_paginated_json(
         gh,
-        f"repos/{repository}/actions/workflows/{encoded_workflow}/runs?status=success&per_page=100",
+        (
+            f"repos/{repository}/actions/workflows/{encoded_workflow}/runs"
+            f"?status=success&head_sha={encoded_source_sha}&per_page=100"
+        ),
         collection="workflow_runs",
     )
     if failure is not None:
@@ -766,6 +785,8 @@ def probe_github_actions_artifacts(
             continue
         if event == "pull_request" or event not in {"push", "workflow_dispatch"}:
             continue
+        if head_sha.lower() != source_sha:
+            continue
         run_ids.append(run["id"])
     if not run_ids:
         if malformed_successful_run:
@@ -775,39 +796,31 @@ def probe_github_actions_artifacts(
             }
         return {"state": "missing", "reason": f"no successful runs found for {workflow}"}
 
-    artifacts, failure = run_gh_paginated_json(
-        gh,
-        f"repos/{repository}/actions/artifacts?per_page=100",
-        collection="artifacts",
-    )
-    if failure is not None:
-        return failure
-    artifacts_by_run: dict[int, list[dict[str, Any]]] = {run_id: [] for run_id in run_ids}
-    malformed_artifact = False
-    for artifact in artifacts:
-        if not isinstance(artifact, dict):
-            malformed_artifact = True
-            continue
-        if artifact.get("expired") is True:
-            continue
-        if (
-            not isinstance(artifact.get("name"), str)
-            or artifact.get("expired") is not False
-            or not isinstance(artifact.get("workflow_run"), dict)
-        ):
-            malformed_artifact = True
-            continue
-        run_id = artifact["workflow_run"].get("id")
-        if not isinstance(run_id, int) or isinstance(run_id, bool):
-            malformed_artifact = True
-            continue
-        if run_id in artifacts_by_run:
-            artifacts_by_run[run_id].append(artifact)
-
     legacy_provenance = False
     malformed_target_artifact = False
     for run_id in run_ids:
-        artifacts_for_run = artifacts_by_run[run_id]
+        artifacts, failure = run_gh_paginated_json(
+            gh,
+            f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
+            collection="artifacts",
+        )
+        if failure is not None:
+            return failure
+        artifacts_for_run: list[dict[str, Any]] = []
+        malformed_artifact = False
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                malformed_artifact = True
+                continue
+            if artifact.get("expired") is True:
+                continue
+            if (
+                not isinstance(artifact.get("name"), str)
+                or artifact.get("expired") is not False
+            ):
+                malformed_artifact = True
+                continue
+            artifacts_for_run.append(artifact)
         all_names = [artifact["name"] for artifact in artifacts_for_run]
         valid_names: list[str] = []
         invalid_names: list[str] = []
@@ -865,6 +878,11 @@ def probe_github_actions_artifacts(
             for name in invalid_names
         ):
             malformed_target_artifact = True
+        if malformed_artifact:
+            return {
+                "state": "unknown",
+                "reason": "GitHub Actions artifact response contained malformed metadata",
+            }
     if legacy_provenance:
         return {
             "state": "unknown",
@@ -879,11 +897,6 @@ def probe_github_actions_artifacts(
         return {
             "state": "unknown",
             "reason": f"successful {workflow} run response contained malformed metadata",
-        }
-    if malformed_artifact:
-        return {
-            "state": "unknown",
-            "reason": "GitHub Actions artifact response contained malformed metadata",
         }
     return {
         "state": "missing",

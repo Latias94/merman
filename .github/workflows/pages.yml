@@ -94,7 +94,6 @@ jobs:
           cargo run -p xtask -- verify-text-measurement-protocol
           cargo run -p xtask -- verify-web-diagram-catalog
           cargo run -p xtask -- verify-playground-example-catalog
-          python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web

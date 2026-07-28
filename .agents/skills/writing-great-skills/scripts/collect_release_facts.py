@@ -386,13 +386,15 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
             f"target {args.target} ({target_commit})"
         )
     manifests = args.manifests or DEFAULT_MANIFESTS
+    worktree_dirty_paths = dirty_paths(repo)
+    comparison_changed_paths = changed_paths(repo, base_commit, target_commit)
     return {
         "schema_version": 1,
         "collected_at_utc": datetime.now(timezone.utc).isoformat(),
         "repository": str(repo),
         "worktree": {
-            "dirty": bool(dirty_paths(repo)),
-            "dirty_paths": dirty_paths(repo),
+            "dirty": bool(worktree_dirty_paths),
+            "dirty_paths": worktree_dirty_paths,
         },
         "comparison": {
             "base_ref": base_ref,
@@ -419,10 +421,8 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
             "shortstat": git_text(
                 repo, ["diff", "--shortstat", base_commit, target_commit]
             ).strip(),
-            "changed_path_count": len(
-                changed_paths(repo, base_commit, target_commit)
-            ),
-            "changed_paths": changed_paths(repo, base_commit, target_commit),
+            "changed_path_count": len(comparison_changed_paths),
+            "changed_paths": comparison_changed_paths,
         },
         "first_parent_commits": first_parent_commits(
             repo, base_commit, target_commit

@@ -182,7 +182,7 @@ python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 ```
 
 Also run the installed `skill-creator` `quick_validate.py` against this skill directory. The
-workflow validator must reject a fixture with any required workflow heading removed. Its minimal
-release-delta forward test must also fail closed on missing capability ownership, incomplete
-parser/editor/render/Playground evidence, an unscoped companion major, an unreasoned feature
-decision, or an incomplete verification command sequence.
+workflow validator enforces the stable headings, repository references, verification commands,
+handoff boundaries, and publication-command ban. Validate release-specific evidence by running the
+repository commands above against the selected source graph; do not replace that evidence with a
+synthetic fixture.

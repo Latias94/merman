@@ -1324,10 +1324,45 @@ class ReleaseStatusProbeTests(unittest.TestCase):
         }
         with mock.patch.object(release_status.shutil, "which", return_value="/usr/bin/gh"), mock.patch.object(
             release_status, "github_repository", return_value="Latias94/merman"
-        ), mock.patch.object(release_status.subprocess, "run", side_effect=responses):
+        ), mock.patch.object(release_status.subprocess, "run", side_effect=responses) as run:
             result = release_status.probe_github_actions_artifacts(channel, "0.8.0-alpha.3")
 
         self.assertEqual(result["state"], "found")
+        self.assertIn(
+            f"head_sha={SOURCE_SHA}",
+            run.call_args_list[1].args[0][-1],
+        )
+        self.assertEqual(
+            run.call_args_list[2].args[0][-1],
+            "repos/Latias94/merman/actions/runs/42/artifacts?per_page=100",
+        )
+
+    def test_actions_artifact_probe_ignores_runs_from_other_source_commits(self) -> None:
+        responses = actions_artifact_responses(event="workflow_dispatch")
+        run_page = json.loads(responses[1].stdout)
+        run_page[0]["workflow_runs"][0]["head_sha"] = "b" * 40
+        responses[1] = subprocess.CompletedProcess(
+            args=["gh"],
+            returncode=0,
+            stdout=json.dumps(run_page),
+            stderr="",
+        )
+
+        with mock.patch.object(
+            release_status.shutil, "which", return_value="/usr/bin/gh"
+        ), mock.patch.object(
+            release_status, "github_repository", return_value="Latias94/merman"
+        ), mock.patch.object(
+            release_status.subprocess, "run", side_effect=responses[:2]
+        ) as run:
+            result = release_status.probe_github_actions_artifacts(
+                versioned_actions_channel(),
+                "0.8.0-alpha.3",
+            )
+
+        self.assertEqual(result["state"], "missing")
+        self.assertIn("no successful runs", result["reason"])
+        self.assertEqual(run.call_count, 2)
 
     def test_actions_artifact_probe_expands_independent_package_version(self) -> None:
         responses = actions_artifact_responses(
@@ -1790,6 +1825,46 @@ class ReleaseStatusContractTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(release_status.SurfaceError, "not_applicable_reason"):
             release_status.validate_contract(data)
+
+    def test_contract_requires_blocked_channel_metadata(self) -> None:
+        missing_credential = contract(
+            surfaces=[
+                surface(
+                    channels=[
+                        channel(
+                            declared_state="credential-blocked",
+                        )
+                    ],
+                )
+            ]
+        )
+        missing_blocker = contract(
+            surfaces=[
+                surface(
+                    channels=[
+                        channel(
+                            declared_state="registry-blocked",
+                        )
+                    ],
+                )
+            ]
+        )
+
+        for data, message in [
+            (
+                missing_credential,
+                "credential-blocked channels must name the missing credential",
+            ),
+            (
+                missing_blocker,
+                "registry-blocked channels must explain the blocker",
+            ),
+        ]:
+            with self.subTest(message=message), self.assertRaisesRegex(
+                release_status.SurfaceError,
+                message,
+            ):
+                release_status.validate_contract(data)
 
     def test_contract_requires_literal_environment_for_protected_publication(self) -> None:
         missing_environment = contract()
