@@ -24,7 +24,11 @@ try {
 }
 ```
 
-`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, sorted capability/output/operation/adapter IDs, text measurement availability, and agreement between the table and catalog package versions before it creates a usable engine.
+`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, sorted capability/output/operation/adapter IDs, text measurement availability, complete resource relations, and agreement between the table and catalog package versions before it creates a usable engine.
+
+The generated `MermanResourceLimitId` and `MermanResourceProfile` enums provide the stable IDs needed to construct resource options. Limit entries also retain the `overridable` flag required by the builder; they intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
+
+The loaded artifact remains authoritative at runtime. `resourceLimits`, `resourceProfiles`, `resourceLimitsById`, and `resourceProfilesById` expose the same typed descriptor shapes from the runtime catalog. `generalBindingDefaultResourceProfile` and `cliDefaultResourceProfile` resolve its default IDs. Schema-1 parsing accepts additive declared IDs for ABI-compatible `openPath` and `fromDynamicLibrary` loads, but rejects missing or duplicate descriptors, undeclared or missing profile-limit references, coerced scalar types, nonpositive finite limits, unbounded hard caps, and inconsistent default recommendations.
 
 The generic operation entry point returns structured data:
 

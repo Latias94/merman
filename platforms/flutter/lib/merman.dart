@@ -30,6 +30,8 @@ export 'src/merman_ffi.dart'
         MermanOperation,
         MermanOperationResult,
         MermanReentrantCallException,
+        MermanResourceLimitDescriptor,
+        MermanResourceProfileDescriptor,
         MermanReusableEngine,
         MermanRuntimeCatalog,
         MermanTextMeasureRequest,

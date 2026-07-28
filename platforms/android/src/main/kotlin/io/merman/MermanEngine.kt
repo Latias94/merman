@@ -7,8 +7,9 @@ import org.json.JSONObject
  * Stateless Android entry point for the transport-neutral Merman operation catalog.
  *
  * Native methods are registered during `JNI_OnLoad`; no Java-name-derived JNI symbols are part of
- * the public native library contract. The runtime catalog is validated before any operation so a
- * mismatched AAR/native slice fails at the boundary rather than during a render.
+ * the public native library contract. The runtime catalog schema and transport API are validated
+ * before any operation. Exact release equality is not checked; Kotlin classes and native slices
+ * must come from the same AAR.
  */
 object MermanEngine {
     const val TRANSPORT_API_VERSION: Int = 1

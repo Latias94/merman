@@ -827,7 +827,6 @@ fn resolve_operations(
 
 fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor {
     let mut canonical = descriptor.clone();
-    canonical.entry_point.description.clear();
     canonical
         .error_kinds
         .sort_by(|left, right| left.id.cmp(&right.id));
@@ -845,27 +844,6 @@ fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor
     canonical
         .records
         .sort_by(|left, right| left.id.cmp(&right.id));
-    for status in &mut canonical.status_codes {
-        status.description.clear();
-    }
-    for kind in &mut canonical.error_kinds {
-        kind.description.clear();
-    }
-    for callback in &mut canonical.callbacks {
-        callback.description.clear();
-    }
-    for slot in &mut canonical.function_slots {
-        slot.description.clear();
-    }
-    for record in &mut canonical.records {
-        record.description.clear();
-        for field in &mut record.fields {
-            field.ownership.clear();
-        }
-    }
-    for rule in &mut canonical.ownership_rules {
-        rule.description.clear();
-    }
     canonical
 }
 
@@ -883,6 +861,31 @@ fn descriptor_digest(
 
 fn full_descriptor_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
     descriptor_digest(descriptor, "full descriptor")
+}
+
+fn strip_layout_irrelevant_metadata(descriptor: &mut NativeAbiDescriptor) {
+    descriptor.entry_point.description.clear();
+    for status in &mut descriptor.status_codes {
+        status.description.clear();
+    }
+    for kind in &mut descriptor.error_kinds {
+        kind.description.clear();
+    }
+    for callback in &mut descriptor.callbacks {
+        callback.description.clear();
+    }
+    for slot in &mut descriptor.function_slots {
+        slot.description.clear();
+    }
+    for record in &mut descriptor.records {
+        record.description.clear();
+        for field in &mut record.fields {
+            field.ownership.clear();
+        }
+    }
+    for rule in &mut descriptor.ownership_rules {
+        rule.description.clear();
+    }
 }
 
 fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
@@ -903,6 +906,7 @@ fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<Stri
     prefix.function_slots.truncate(minimum.function_slot_count);
     prefix.records.truncate(minimum.record_count);
     prefix.ownership_rules.clear();
+    strip_layout_irrelevant_metadata(&mut prefix);
     descriptor_digest(&prefix, "minimum-prefix layout")
 }
 
@@ -1692,14 +1696,19 @@ mod tests {
         let original_prefix = minimum_prefix_layout_digest(&descriptor).unwrap();
         let original_full = full_descriptor_digest(&descriptor).unwrap();
 
-        let mut prose_only = descriptor.clone();
-        prose_only.records[0].description = "Reworded documentation only.".to_string();
-        prose_only.records[0].fields[0].ownership = "Also documentation only.".to_string();
+        let mut semantic_provenance = descriptor.clone();
+        semantic_provenance.records[0].description =
+            "Reworded complete descriptor semantics.".to_string();
+        semantic_provenance.records[0].fields[0].ownership =
+            "Changed ownership semantics.".to_string();
         assert_eq!(
-            minimum_prefix_layout_digest(&prose_only).unwrap(),
+            minimum_prefix_layout_digest(&semantic_provenance).unwrap(),
             original_prefix
         );
-        assert_eq!(full_descriptor_digest(&prose_only).unwrap(), original_full);
+        assert_ne!(
+            full_descriptor_digest(&semantic_provenance).unwrap(),
+            original_full
+        );
 
         let mut structural = descriptor.clone();
         structural.records[0].fields[1].rust_type = "*mut u8".to_string();

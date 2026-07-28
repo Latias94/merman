@@ -75,6 +75,15 @@ require_tool() {
     fi
 }
 
+verify_macho_c_abi() {
+    local library="$1"
+    python3 "$REPO_ROOT/scripts/native_symbol_contract.py" --contract c-abi \
+        --llvm-nm "$LLVM_NM" \
+        --all-macho-architectures \
+        --label "$RECIPE_PROFILE $library" \
+        "$library"
+}
+
 ensure_rust_target_installed() {
     local target="$1"
     local installed_targets
@@ -191,6 +200,12 @@ require_tool lipo
 require_tool install_name_tool
 require_tool xcrun
 
+LLVM_NM="${MERMAN_LLVM_NM:-$(xcrun --find llvm-nm)}"
+if [[ ! -f "$LLVM_NM" ]]; then
+    echo "llvm-nm does not exist: $LLVM_NM" >&2
+    exit 1
+fi
+
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
@@ -218,8 +233,9 @@ xcodebuild -create-xcframework \
     -framework "$OUT_DIR/ios-simulator/$FRAMEWORK_NAME.framework" \
     -output "$FRAMEWORK_OUT"
 
-for HEADERS_DIR in "$FRAMEWORK_OUT"/*/"$FRAMEWORK_NAME.framework"/Headers; do
-    verify_public_headers "$HEADERS_DIR"
+for FRAMEWORK_DIR in "$FRAMEWORK_OUT"/*/"$FRAMEWORK_NAME.framework"; do
+    verify_public_headers "$FRAMEWORK_DIR/Headers"
+    verify_macho_c_abi "$FRAMEWORK_DIR/$FRAMEWORK_NAME"
 done
 
 echo "==> Wrote $FRAMEWORK_OUT"

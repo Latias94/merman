@@ -57,6 +57,59 @@ ANDROID_CONSUMER_RULES = (
 )
 
 
+class SemanticOperationFixtureTests(unittest.TestCase):
+    def test_canonical_fixture_uses_the_strict_semantic_schema(self) -> None:
+        cases = verify_platform_bindings.load_semantic_operation_fixtures()
+
+        self.assertEqual(len(cases), 6)
+        self.assertEqual(cases[0]["operation_id"], "semantic-json")
+        self.assertTrue(all(case["operation_id"] != "not-an-operation" for case in cases))
+
+    def test_duplicate_json_keys_are_rejected_at_the_shared_gate(self) -> None:
+        canonical = verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
+            encoding="utf-8"
+        )
+        malformed = canonical.replace(
+            '"max_svg_bytes": 1024',
+            '"max_svg_bytes": 1024,\n            "max_svg_bytes": 2048',
+            1,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "fixtures.json"
+            path.write_text(malformed, encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
+                verify_platform_bindings.load_semantic_operation_fixtures(path)
+
+    def test_transport_wire_fields_are_rejected(self) -> None:
+        root = json.loads(
+            verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
+                encoding="utf-8"
+            )
+        )
+        root["cases"][0]["native_operation_code"] = 6
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "fixtures.json"
+            path.write_text(json.dumps(root), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "unknown fields"):
+                verify_platform_bindings.load_semantic_operation_fixtures(path)
+
+    def test_each_case_declares_exactly_one_outcome(self) -> None:
+        root = json.loads(
+            verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
+                encoding="utf-8"
+            )
+        )
+        root["cases"][0]["expected_error_kind"] = "generic"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "fixtures.json"
+            path.write_text(json.dumps(root), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "exactly one expected outcome"):
+                verify_platform_bindings.load_semantic_operation_fixtures(path)
+
+
 class NativeSdkRecipeTests(unittest.TestCase):
     def test_android_transport_checks_use_each_exact_descriptor_recipe(self) -> None:
         target = "aarch64-linux-android"
@@ -114,6 +167,20 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 "dart",
                 "run",
                 "example/smoke.dart",
+                str(
+                    MODULE_PATH.parents[1]
+                    / "target"
+                    / "native-sdk"
+                    / "libmerman_ffi.so"
+                ),
+            ],
+        )
+        self.assertEqual(
+            run.call_args_list[2].args[0],
+            [
+                "dart",
+                "run",
+                "tool/semantic_operation_fixtures_test.dart",
                 str(
                     MODULE_PATH.parents[1]
                     / "target"
@@ -629,9 +696,14 @@ class AndroidInstrumentationReportTests(unittest.TestCase):
             report.parent.mkdir(parents=True)
             report.write_text(
                 """
-                <testsuite name="io.merman.MermanInstrumentedSmokeTest">
-                  <testcase name="runsPublicSmokeIncludingThrowingTextMeasurerFallback" />
-                </testsuite>
+                <testsuites>
+                  <testsuite name="io.merman.MermanInstrumentedSmokeTest">
+                    <testcase name="runsPublicSmokeIncludingThrowingTextMeasurerFallback" />
+                  </testsuite>
+                  <testsuite name="io.merman.MermanSemanticOperationFixtureTest">
+                    <testcase name="consumesSharedSemanticOperationFixtures" />
+                  </testsuite>
+                </testsuites>
                 """,
                 encoding="utf-8",
             )
@@ -647,6 +719,27 @@ class AndroidInstrumentationReportTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "MermanInstrumentedSmokeTest"):
                 verify_platform_bindings.assert_android_instrumentation_smoke_report(results_root)
+
+    def test_android_instrumentation_report_requires_shared_fixture_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results_root = Path(temp_dir)
+            report = results_root / "connected" / "TEST-smoke.xml"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                """
+                <testsuite name="io.merman.MermanInstrumentedSmokeTest">
+                  <testcase name="runsPublicSmokeIncludingThrowingTextMeasurerFallback" />
+                </testsuite>
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError, "MermanSemanticOperationFixtureTest"
+            ):
+                verify_platform_bindings.assert_android_instrumentation_smoke_report(
+                    results_root
+                )
 
 
 def write_aar(

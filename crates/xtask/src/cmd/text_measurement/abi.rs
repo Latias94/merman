@@ -17,8 +17,8 @@ const TEXT_MEASUREMENT_WRAP_MODE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_DIRECTION_COUNT: usize = 1;
 const TEXT_MEASUREMENT_WHITE_SPACE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_PHASE_COUNT: usize = 4;
-const TEXT_MEASUREMENT_V1_VOCABULARY_SHA256: &str =
-    "45104e3baf4d17e3b16626c5693dc21181abc8b8b680c3b482b1e286b379b2b6";
+const TEXT_MEASUREMENT_V1_PROTOCOL_SHA256: &str =
+    "86f824a5217b4eabe41e914e42e7ab046617b1c94ea085b398a63d8fa278098f";
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
@@ -67,7 +67,7 @@ const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     ),
 ];
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct TextMeasurementProtocolDescriptor {
     schema_version: u32,
@@ -90,7 +90,7 @@ struct VocabularyValue {
     code: i32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ResultKind {
     id: String,
@@ -99,7 +99,7 @@ struct ResultKind {
     code: i32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Operation {
     id: String,
@@ -278,14 +278,8 @@ fn validate_vocabulary(
     )
 }
 
-fn vocabulary_sha256(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let bytes = serde_json::to_vec(&(
-        &descriptor.wrap_modes,
-        &descriptor.directions,
-        &descriptor.white_spaces,
-        &descriptor.phases,
-    ))
-    .expect("text-measurement vocabulary is serializable");
+fn protocol_sha256(descriptor: &TextMeasurementProtocolDescriptor) -> String {
+    let bytes = serde_json::to_vec(descriptor).expect("text-measurement protocol is serializable");
     crate::util::sha256_hex(&bytes)
 }
 
@@ -336,13 +330,6 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
         "white-space",
     )?;
     validate_vocabulary(&descriptor.phases, TEXT_MEASUREMENT_PHASE_COUNT, "phase")?;
-    let vocabulary_sha256 = vocabulary_sha256(descriptor);
-    if vocabulary_sha256 != TEXT_MEASUREMENT_V1_VOCABULARY_SHA256 {
-        return Err(descriptor_error(format!(
-            "text-measurement protocol 1 vocabulary is immutable; expected sha256:{TEXT_MEASUREMENT_V1_VOCABULARY_SHA256}, found sha256:{vocabulary_sha256}; add a new protocol version before changing an emitted value"
-        )));
-    }
-
     for kind in &descriptor.result_kinds {
         validate_identifier(&kind.id, "result kind")?;
         validate_external_name(&kind.external_name, "result kind")?;
@@ -421,6 +408,12 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
                 operation.id, result_kind.id
             )));
         }
+    }
+    let protocol_sha256 = protocol_sha256(descriptor);
+    if protocol_sha256 != TEXT_MEASUREMENT_V1_PROTOCOL_SHA256 {
+        return Err(descriptor_error(format!(
+            "text-measurement protocol 1 contract is immutable; expected sha256:{TEXT_MEASUREMENT_V1_PROTOCOL_SHA256}, found sha256:{protocol_sha256}; add a new protocol version before changing an emitted value or meaning"
+        )));
     }
     Ok(())
 }
@@ -1238,6 +1231,16 @@ mod tests {
             .expect("committed text-measurement protocol descriptor")
     }
 
+    fn assert_protocol_v1_contract_is_immutable(descriptor: &TextMeasurementProtocolDescriptor) {
+        let error = validate_descriptor(descriptor).expect_err("protocol v1 mutation must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("text-measurement protocol 1 contract is immutable"),
+            "unexpected validation error: {error}"
+        );
+    }
+
     #[test]
     fn descriptor_is_complete_unique_and_protocol_v1_stable() {
         let descriptor = committed_descriptor();
@@ -1251,8 +1254,8 @@ mod tests {
         assert_eq!(descriptor.white_spaces.len(), 3);
         assert_eq!(descriptor.phases.len(), 4);
         assert_eq!(
-            vocabulary_sha256(&descriptor),
-            TEXT_MEASUREMENT_V1_VOCABULARY_SHA256
+            protocol_sha256(&descriptor),
+            TEXT_MEASUREMENT_V1_PROTOCOL_SHA256
         );
         assert_eq!(
             sorted_operations(&descriptor)
@@ -1308,6 +1311,34 @@ mod tests {
         let mut vocabulary_gap = committed_descriptor();
         vocabulary_gap.phases[3].code = 4;
         assert!(validate_descriptor(&vocabulary_gap).is_err());
+    }
+
+    #[test]
+    fn validator_rejects_semantic_protocol_v1_mutations() {
+        let mut swapped_operation_codes = committed_descriptor();
+        let first_code = swapped_operation_codes.operations[0].code;
+        swapped_operation_codes.operations[0].code = swapped_operation_codes.operations[1].code;
+        swapped_operation_codes.operations[1].code = first_code;
+        assert_protocol_v1_contract_is_immutable(&swapped_operation_codes);
+
+        let mut changed_result_shape = committed_descriptor();
+        changed_result_shape.operations[0].result_kind = "length".to_string();
+        assert_protocol_v1_contract_is_immutable(&changed_result_shape);
+
+        let mut changed_signed_length_semantics = committed_descriptor();
+        changed_signed_length_semantics.operations[1].accepts_signed_length = true;
+        assert_protocol_v1_contract_is_immutable(&changed_signed_length_semantics);
+
+        let mut changed_result_kind_name = committed_descriptor();
+        changed_result_kind_name.result_kinds[0].external_name = "metric-values".to_string();
+        assert_protocol_v1_contract_is_immutable(&changed_result_kind_name);
+
+        let mut swapped_result_kind_codes = committed_descriptor();
+        let first_code = swapped_result_kind_codes.result_kinds[0].code;
+        swapped_result_kind_codes.result_kinds[0].code =
+            swapped_result_kind_codes.result_kinds[1].code;
+        swapped_result_kind_codes.result_kinds[1].code = first_code;
+        assert_protocol_v1_contract_is_immutable(&swapped_result_kind_codes);
     }
 
     #[test]

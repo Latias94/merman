@@ -64,6 +64,16 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             script,
         )
         self.assertNotIn("required_capabilities", script)
+        self.assertIn("assert_shared_semantic_operation_fixtures(engine)", script)
+
+    def test_python_wheel_smoke_receives_the_shared_fixture_path(self) -> None:
+        environment = wheel_builder.wheel_smoke_environment()
+
+        self.assertEqual(
+            environment["MERMAN_SEMANTIC_OPERATION_FIXTURES"],
+            str(wheel_builder.SEMANTIC_OPERATION_FIXTURES),
+        )
+        self.assertTrue(wheel_builder.SEMANTIC_OPERATION_FIXTURES.is_file())
 
     def test_native_sdk_profile_owns_the_release_optimization_policy(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

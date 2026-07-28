@@ -31,6 +31,7 @@ from native_symbol_contract import (
     assert_symbol_contract,
     read_defined_dynamic_symbols,
 )
+from strict_json import StrictJsonContract
 
 
 C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
@@ -86,6 +87,23 @@ ANDROID_MAVEN_SCM = (
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
 FLUTTER_GENERATED_ABI = (
     FLUTTER_ROOT / "lib" / "src" / "generated" / "native_abi.dart"
+)
+SEMANTIC_OPERATION_FIXTURES = (
+    REPO_ROOT / "fixtures" / "bindings" / "assets" / "semantic-operations-v1.json"
+)
+SEMANTIC_OPERATION_FIXTURE_INVARIANTS = frozenset(
+    {
+        "error-message-nonempty",
+        "json-object",
+        "metadata-operation-id",
+        "nonempty",
+        "svg-root",
+        "utf8",
+    }
+)
+SEMANTIC_OPERATION_FIXTURE_JSON = StrictJsonContract(
+    RuntimeError,
+    read_error_prefix="failed to load semantic operation fixtures from",
 )
 
 
@@ -214,6 +232,92 @@ def verify_tracked_generated_file(path: Path) -> None:
         raise RuntimeError(f"generated file does not exist: {relative}")
     run(["git", "ls-files", "--error-unmatch", "--", relative])
     run(["git", "diff", "--exit-code", "--", relative])
+
+
+def load_semantic_operation_fixtures(
+    path: Path = SEMANTIC_OPERATION_FIXTURES,
+) -> list[dict[str, object]]:
+    root = SEMANTIC_OPERATION_FIXTURE_JSON.load(path)
+    if not isinstance(root, dict) or set(root) != {"schema_version", "cases"}:
+        raise RuntimeError("semantic operation fixture root fields drifted")
+    if type(root["schema_version"]) is not int or root["schema_version"] != 1:
+        raise RuntimeError("unsupported semantic operation fixture schema")
+    cases = root["cases"]
+    if not isinstance(cases, list) or not cases:
+        raise RuntimeError("semantic operation fixtures must be a non-empty array")
+
+    required = {"operation_id", "source", "payload_invariants"}
+    optional = {
+        "uri",
+        "options",
+        "expected_media_type",
+        "expected_error_kind",
+    }
+    signatures: set[str] = set()
+    for index, case in enumerate(cases):
+        label = f"semantic operation fixture case {index}"
+        if not isinstance(case, dict):
+            raise RuntimeError(f"{label} must be an object")
+        keys = set(case)
+        if not required.issubset(keys):
+            raise RuntimeError(f"{label} is missing required fields")
+        unknown = keys - required - optional
+        if unknown:
+            raise RuntimeError(f"{label} has unknown fields: {sorted(unknown)}")
+        for key in ("operation_id", "source"):
+            if not isinstance(case[key], str) or not case[key]:
+                raise RuntimeError(f"{label}.{key} must be a non-empty string")
+        if "uri" in case and (
+            not isinstance(case["uri"], str) or not case["uri"]
+        ):
+            raise RuntimeError(f"{label}.uri must be a non-empty string")
+        if "options" in case and not isinstance(case["options"], dict):
+            raise RuntimeError(f"{label}.options must be an object")
+
+        expected_media_type = case.get("expected_media_type")
+        expected_error_kind = case.get("expected_error_kind")
+        for key, value in (
+            ("expected_media_type", expected_media_type),
+            ("expected_error_kind", expected_error_kind),
+        ):
+            if value is not None and (not isinstance(value, str) or not value):
+                raise RuntimeError(f"{label}.{key} must be a non-empty string")
+        if expected_error_kind not in {None, "generic"}:
+            raise RuntimeError(f"{label} has unknown error kind {expected_error_kind!r}")
+        if (expected_media_type is None) == (expected_error_kind is None):
+            raise RuntimeError(f"{label} must declare exactly one expected outcome")
+
+        invariants = case["payload_invariants"]
+        if (
+            not isinstance(invariants, list)
+            or not invariants
+            or any(not isinstance(value, str) or not value for value in invariants)
+            or len(set(invariants)) != len(invariants)
+        ):
+            raise RuntimeError(
+                f"{label}.payload_invariants must be unique non-empty strings"
+            )
+        unknown_invariants = set(invariants) - SEMANTIC_OPERATION_FIXTURE_INVARIANTS
+        if unknown_invariants:
+            raise RuntimeError(
+                f"{label} has unknown payload invariants: {sorted(unknown_invariants)}"
+            )
+        if expected_media_type is not None:
+            if "error-message-nonempty" in invariants:
+                raise RuntimeError(
+                    f"{label} success case cannot inspect an error payload"
+                )
+        elif invariants != ["error-message-nonempty"]:
+            raise RuntimeError(
+                f"{label} error cases expose only the semantic error invariant"
+            )
+
+        signature = json.dumps(case, sort_keys=True, separators=(",", ":"))
+        if signature in signatures:
+            raise RuntimeError(f"{label} duplicates an earlier fixture case")
+        signatures.add(signature)
+
+    return cases
 
 
 def require_command(name: str) -> str:
@@ -708,16 +812,42 @@ def assert_android_instrumentation_smoke_report(
     results_root: Path = ANDROID_TEST_RESULTS_ROOT,
 ) -> None:
     reports = list(results_root.rglob("*.xml")) if results_root.exists() else []
+    required = {
+        (
+            "MermanInstrumentedSmokeTest",
+            "runsPublicSmokeIncludingThrowingTextMeasurerFallback",
+        ),
+        (
+            "MermanSemanticOperationFixtureTest",
+            "consumesSharedSemanticOperationFixtures",
+        ),
+    }
+    observed: set[tuple[str, str]] = set()
     for report in reports:
-        text = report.read_text(encoding="utf-8", errors="ignore")
-        if (
-            "MermanInstrumentedSmokeTest" in text
-            and "runsPublicSmokeIncludingThrowingTextMeasurerFallback" in text
-        ):
-            return
-    raise RuntimeError(
-        "Android instrumentation output did not include MermanInstrumentedSmokeTest results."
-    )
+        try:
+            root = ET.parse(report).getroot()
+        except ET.ParseError as exc:
+            raise RuntimeError(
+                f"Android instrumentation report is invalid XML: {report}"
+            ) from exc
+        suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+        for suite in suites:
+            suite_class = suite.attrib.get("name", "").rsplit(".", 1)[-1]
+            for testcase in suite.iter("testcase"):
+                testcase_class = testcase.attrib.get("classname", suite_class)
+                observed.add(
+                    (
+                        testcase_class.rsplit(".", 1)[-1],
+                        testcase.attrib.get("name", ""),
+                    )
+                )
+
+    missing = sorted(required - observed)
+    if missing:
+        rendered = ", ".join(f"{class_name}/{method}" for class_name, method in missing)
+        raise RuntimeError(
+            f"Android instrumentation output did not include required tests: {rendered}"
+        )
 
 
 def host_dynamic_library(
@@ -750,6 +880,15 @@ def run_dart_ffi_native_smoke(
             dart,
             "run",
             "example/smoke.dart",
+            str(host_dynamic_library(recipe, host_system=host_system)),
+        ],
+        cwd=FLUTTER_ROOT,
+    )
+    run(
+        [
+            dart,
+            "run",
+            "tool/semantic_operation_fixtures_test.dart",
             str(host_dynamic_library(recipe, host_system=host_system)),
         ],
         cwd=FLUTTER_ROOT,
@@ -799,6 +938,7 @@ def main() -> int:
             print(f"Android Maven publication contract verified: {version_dir}")
             return 0
 
+        load_semantic_operation_fixtures()
         if args.only_android_instrumentation_smoke:
             step("Android instrumentation smoke")
             run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)

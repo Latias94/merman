@@ -83,6 +83,84 @@ require_tool() {
     fi
 }
 
+resolve_llvm_nm() {
+    local candidate
+    local rust_host
+    local rust_sysroot
+
+    if [[ -n "${MERMAN_LLVM_NM:-}" ]]; then
+        if [[ -f "$MERMAN_LLVM_NM" ]]; then
+            echo "$MERMAN_LLVM_NM"
+            return
+        fi
+        if command -v "$MERMAN_LLVM_NM" >/dev/null 2>&1; then
+            command -v "$MERMAN_LLVM_NM"
+            return
+        fi
+        echo "MERMAN_LLVM_NM does not resolve to a file: $MERMAN_LLVM_NM" >&2
+        exit 1
+    fi
+
+    if command -v llvm-nm >/dev/null 2>&1; then
+        command -v llvm-nm
+        return
+    fi
+
+    if command -v xcrun >/dev/null 2>&1; then
+        candidate="$(xcrun --find llvm-nm 2>/dev/null || true)"
+        if [[ -f "$candidate" ]]; then
+            echo "$candidate"
+            return
+        fi
+    fi
+
+    rust_host="$(rustc -vV | sed -n 's/^host: //p')"
+    rust_sysroot="$(rustc --print sysroot)"
+    for candidate in \
+        "$rust_sysroot/lib/rustlib/$rust_host/bin/llvm-nm" \
+        "$rust_sysroot/lib/rustlib/$rust_host/bin/llvm-nm.exe"; do
+        if [[ -f "$candidate" ]]; then
+            echo "$candidate"
+            return
+        fi
+    done
+
+    echo "required tool not found: llvm-nm (set MERMAN_LLVM_NM or install llvm-tools-preview)" >&2
+    exit 1
+}
+
+verify_dynamic_c_abi() {
+    local library="$1"
+    python3 "$REPO_ROOT/scripts/native_symbol_contract.py" --contract c-abi \
+        --llvm-nm "$LLVM_NM" \
+        --label "$RECIPE_PROFILE $library" \
+        "$library"
+}
+
+verify_macho_c_abi() {
+    local library="$1"
+    python3 "$REPO_ROOT/scripts/native_symbol_contract.py" --contract c-abi \
+        --llvm-nm "$LLVM_NM" \
+        --all-macho-architectures \
+        --label "$RECIPE_PROFILE $library" \
+        "$library"
+}
+
+verify_windows_dll_c_abi() {
+    local built_library="$1"
+    local import_library="$2"
+    if [[ ! -f "$built_library" ]]; then
+        echo "Windows DLL does not exist: $built_library" >&2
+        exit 1
+    fi
+    # LLVM nm cannot read a PE export table; Cargo's import library lists the same exports.
+    python3 "$REPO_ROOT/scripts/native_symbol_contract.py" --contract c-abi \
+        --llvm-nm "$LLVM_NM" \
+        --external-only \
+        --label "$RECIPE_PROFILE $built_library (via $import_library)" \
+        "$import_library"
+}
+
 ensure_rust_target_installed() {
     local target="$1"
     local installed_targets
@@ -157,6 +235,9 @@ build_host() {
     local system
     local arch
     local target
+    local built_library
+    local import_library
+    local packaged_library
     system="$(uname -s)"
     arch="$(host_arch)"
     target="$(host_rust_target)"
@@ -165,19 +246,26 @@ build_host() {
 
     case "$system" in
         Darwin)
+            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib"
+            packaged_library="$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
             mkdir -p "$FLUTTER_ROOT/macos/Libraries"
-            cp "$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
-                "$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
-            write_macos_xcframework "$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
+            cp "$built_library" "$packaged_library"
+            verify_macho_c_abi "$packaged_library"
+            write_macos_xcframework "$packaged_library"
             ;;
         Linux)
+            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so"
+            packaged_library="$FLUTTER_ROOT/linux/lib/$arch/libmerman_ffi.so"
             mkdir -p "$FLUTTER_ROOT/linux/lib/$arch"
-            cp "$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so" \
-                "$FLUTTER_ROOT/linux/lib/$arch/libmerman_ffi.so"
+            cp "$built_library" "$packaged_library"
+            verify_dynamic_c_abi "$packaged_library"
             ;;
         MINGW*|MSYS*|CYGWIN*)
-            cp "$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll" \
-                "$FLUTTER_ROOT/windows/merman_ffi.dll"
+            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll"
+            import_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dll.a"
+            packaged_library="$FLUTTER_ROOT/windows/merman_ffi.dll"
+            cp "$built_library" "$packaged_library"
+            verify_windows_dll_c_abi "$packaged_library" "$import_library"
             ;;
         *)
             echo "unsupported host platform: $system" >&2
@@ -190,6 +278,7 @@ write_macos_xcframework() {
     local dylib="$1"
     local out_dir="$REPO_ROOT/target/flutter-macos-xcframework"
     local headers_dir="$out_dir/Headers"
+    local library
 
     require_tool xcodebuild
     require_tool xcrun
@@ -213,6 +302,10 @@ module MermanFFI {
     export *
 }
 EOF
+    done
+
+    for library in "$MACOS_XCFRAMEWORK_OUT"/*/"lib$NATIVE_SDK_LIBRARY_STEM.dylib"; do
+        verify_macho_c_abi "$library"
     done
 }
 
@@ -263,6 +356,8 @@ build_linux() {
         "$FLUTTER_ROOT/linux/lib/x86_64/libmerman_ffi.so"
     cp "$REPO_ROOT/target/aarch64-unknown-linux-gnu/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so" \
         "$FLUTTER_ROOT/linux/lib/aarch64/libmerman_ffi.so"
+    verify_dynamic_c_abi "$FLUTTER_ROOT/linux/lib/x86_64/libmerman_ffi.so"
+    verify_dynamic_c_abi "$FLUTTER_ROOT/linux/lib/aarch64/libmerman_ffi.so"
 }
 
 build_windows() {
@@ -270,12 +365,16 @@ build_windows() {
     require_tool zig
     build_target_with_zigbuild x86_64-pc-windows-gnu
 
-    cp "$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll" \
-        "$FLUTTER_ROOT/windows/merman_ffi.dll"
+    local built_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll"
+    local import_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dll.a"
+    local packaged_library="$FLUTTER_ROOT/windows/merman_ffi.dll"
+    cp "$built_library" "$packaged_library"
+    verify_windows_dll_c_abi "$packaged_library" "$import_library"
 }
 
 require_tool cargo
 require_tool rustup
+LLVM_NM="$(resolve_llvm_nm)"
 
 if [[ "$MODE" == "host" ]]; then
     build_host

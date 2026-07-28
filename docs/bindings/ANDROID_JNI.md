@@ -57,7 +57,7 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
 {
   "schema_version": 1,
   "transport_api_version": 1,
-  "package_version": "0.8.0-alpha.4",
+  "package_version": "<loaded artifact version>",
   "capabilities": {
     "capability_ids": ["svg"],
     "operation_ids": ["svg"],

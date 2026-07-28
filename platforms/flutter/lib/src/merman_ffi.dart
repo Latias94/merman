@@ -494,6 +494,38 @@ typedef MermanTextMeasurer = MermanTextMeasureResult? Function(
 );
 
 /// A validated runtime catalog returned by the native ABI 3 table.
+final class MermanResourceLimitDescriptor {
+  const MermanResourceLimitDescriptor({
+    required this.id,
+    required this.phase,
+    required this.description,
+    required this.overridable,
+    required this.hardCap,
+  });
+
+  final String id;
+  final String phase;
+  final String description;
+  final bool overridable;
+  final bool hardCap;
+}
+
+final class MermanResourceProfileDescriptor {
+  const MermanResourceProfileDescriptor({
+    required this.id,
+    required this.purpose,
+    required this.trustAssumption,
+    required this.recommendedBindingDefault,
+    required this.limits,
+  });
+
+  final String id;
+  final String purpose;
+  final String trustAssumption;
+  final bool recommendedBindingDefault;
+  final Map<String, int?> limits;
+}
+
 class MermanRuntimeCatalog {
   MermanRuntimeCatalog._({
     required this.packageVersion,
@@ -505,7 +537,16 @@ class MermanRuntimeCatalog {
     required this.diagramFamilyCount,
     required this.generalBindingDefaultProfile,
     required this.cliDefaultProfile,
-  });
+    required List<MermanResourceLimitDescriptor> resourceLimits,
+    required List<MermanResourceProfileDescriptor> resourceProfiles,
+  })  : resourceLimits = List.unmodifiable(resourceLimits),
+        resourceProfiles = List.unmodifiable(resourceProfiles),
+        resourceLimitsById = Map.unmodifiable({
+          for (final limit in resourceLimits) limit.id: limit,
+        }),
+        resourceProfilesById = Map.unmodifiable({
+          for (final profile in resourceProfiles) profile.id: profile,
+        });
 
   factory MermanRuntimeCatalog.fromJson(Map<String, Object?> catalog) {
     _requireRequiredKeys(
@@ -647,17 +688,7 @@ class MermanRuntimeCatalog {
       },
       'runtime resources',
     );
-    final generalBindingDefaultProfile =
-        resources['general_binding_default_profile'];
-    final cliDefaultProfile = resources['cli_default_profile'];
-    if (generalBindingDefaultProfile is! String ||
-        generalBindingDefaultProfile.isEmpty ||
-        cliDefaultProfile is! String ||
-        cliDefaultProfile.isEmpty ||
-        resources['limits'] is! List ||
-        resources['profiles'] is! List) {
-      throw MermanException.contract('runtime resource contract is invalid');
-    }
+    final resourceContract = _parseRuntimeResources(resources);
 
     return MermanRuntimeCatalog._(
       packageVersion: packageVersion,
@@ -667,8 +698,11 @@ class MermanRuntimeCatalog {
       systemAdapterIds: List.unmodifiable(systemAdapterIds),
       textMeasurementProviderIds: List.unmodifiable(providers),
       diagramFamilyCount: diagramFamilyCount,
-      generalBindingDefaultProfile: generalBindingDefaultProfile,
-      cliDefaultProfile: cliDefaultProfile,
+      generalBindingDefaultProfile:
+          resourceContract.generalBindingDefaultProfile,
+      cliDefaultProfile: resourceContract.cliDefaultProfile,
+      resourceLimits: resourceContract.limits,
+      resourceProfiles: resourceContract.profiles,
     );
   }
 
@@ -681,10 +715,20 @@ class MermanRuntimeCatalog {
   final int diagramFamilyCount;
   final String generalBindingDefaultProfile;
   final String cliDefaultProfile;
+  final List<MermanResourceLimitDescriptor> resourceLimits;
+  final List<MermanResourceProfileDescriptor> resourceProfiles;
+  final Map<String, MermanResourceLimitDescriptor> resourceLimitsById;
+  final Map<String, MermanResourceProfileDescriptor> resourceProfilesById;
 
   bool supportsCapability(String id) => capabilityIds.contains(id);
   bool supportsOutput(String id) => outputIds.contains(id);
   bool supportsOperation(String id) => operationIds.contains(id);
+
+  MermanResourceProfileDescriptor get generalBindingDefaultResourceProfile =>
+      resourceProfilesById[generalBindingDefaultProfile]!;
+
+  MermanResourceProfileDescriptor get cliDefaultResourceProfile =>
+      resourceProfilesById[cliDefaultProfile]!;
 }
 
 /// Native ABI 3 facade for Flutter and standalone Dart hosts.
@@ -1551,6 +1595,170 @@ Uint8List _copySlice(native.MermanNativeSlice slice, String label) {
 String _utf8FromSlice(native.MermanNativeSlice slice, String label) =>
     utf8.decode(_copySlice(slice, label));
 
+final class _ParsedRuntimeResources {
+  const _ParsedRuntimeResources({
+    required this.generalBindingDefaultProfile,
+    required this.cliDefaultProfile,
+    required this.limits,
+    required this.profiles,
+  });
+
+  final String generalBindingDefaultProfile;
+  final String cliDefaultProfile;
+  final List<MermanResourceLimitDescriptor> limits;
+  final List<MermanResourceProfileDescriptor> profiles;
+}
+
+_ParsedRuntimeResources _parseRuntimeResources(
+  Map<String, Object?> resources,
+) {
+  final generalBindingDefaultProfile = _requiredNonEmptyString(
+    resources,
+    'general_binding_default_profile',
+    'runtime resources',
+  );
+  final cliDefaultProfile = _requiredNonEmptyString(
+    resources,
+    'cli_default_profile',
+    'runtime resources',
+  );
+
+  final rawLimits = resources['limits'];
+  if (rawLimits is! List || rawLimits.isEmpty) {
+    throw MermanException.contract(
+      'runtime resources.limits must be a non-empty array',
+    );
+  }
+  final limits = <MermanResourceLimitDescriptor>[];
+  final limitIds = <String>{};
+  for (var index = 0; index < rawLimits.length; index += 1) {
+    final label = 'runtime resources.limits[$index]';
+    final limit = _asObject(rawLimits[index], label);
+    _requireRequiredKeys(
+      limit,
+      const {'id', 'phase', 'description', 'overridable', 'hard_cap'},
+      label,
+    );
+    final id = _requiredNonEmptyString(limit, 'id', label);
+    if (!limitIds.add(id)) {
+      throw MermanException.contract(
+        'runtime resource limit ID `$id` is duplicated',
+      );
+    }
+    final overridable = _requiredBool(limit, 'overridable', label);
+    final hardCap = _requiredBool(limit, 'hard_cap', label);
+    if (hardCap && overridable) {
+      throw MermanException.contract(
+        'runtime resource limit `$id` cannot be both a hard cap and overridable',
+      );
+    }
+    limits.add(MermanResourceLimitDescriptor(
+      id: id,
+      phase: _requiredNonEmptyString(limit, 'phase', label),
+      description: _requiredNonEmptyString(limit, 'description', label),
+      overridable: overridable,
+      hardCap: hardCap,
+    ));
+  }
+
+  final rawProfiles = resources['profiles'];
+  if (rawProfiles is! List || rawProfiles.isEmpty) {
+    throw MermanException.contract(
+      'runtime resources.profiles must be a non-empty array',
+    );
+  }
+  final profiles = <MermanResourceProfileDescriptor>[];
+  final profileIds = <String>{};
+  for (var index = 0; index < rawProfiles.length; index += 1) {
+    final label = 'runtime resources.profiles[$index]';
+    final profile = _asObject(rawProfiles[index], label);
+    _requireRequiredKeys(
+      profile,
+      const {
+        'id',
+        'purpose',
+        'trust_assumption',
+        'recommended_binding_default',
+        'limits',
+      },
+      label,
+    );
+    final id = _requiredNonEmptyString(profile, 'id', label);
+    if (!profileIds.add(id)) {
+      throw MermanException.contract(
+        'runtime resource profile ID `$id` is duplicated',
+      );
+    }
+
+    final rawProfileLimits = _asObject(
+      profile['limits'],
+      '$label.limits',
+    );
+    final profileLimitIds = rawProfileLimits.keys.toSet();
+    final missingLimitIds = limitIds.difference(profileLimitIds);
+    final unknownLimitIds = profileLimitIds.difference(limitIds);
+    if (missingLimitIds.isNotEmpty || unknownLimitIds.isNotEmpty) {
+      throw MermanException.contract(
+        '$label.limits must contain exactly the declared resource limit IDs; '
+        'missing: ${missingLimitIds.toList()..sort()}, '
+        'unknown: ${unknownLimitIds.toList()..sort()}',
+      );
+    }
+
+    final profileLimits = <String, int?>{};
+    for (final limit in limits) {
+      final value = rawProfileLimits[limit.id];
+      if (value != null && (value is! int || value <= 0)) {
+        throw MermanException.contract(
+          '$label.limits[`${limit.id}`] must be null or a positive integer',
+        );
+      }
+      if (limit.hardCap && value == null) {
+        throw MermanException.contract(
+          '$label.limits[`${limit.id}`] must retain its finite hard cap',
+        );
+      }
+      profileLimits[limit.id] = value as int?;
+    }
+    profiles.add(MermanResourceProfileDescriptor(
+      id: id,
+      purpose: _requiredNonEmptyString(profile, 'purpose', label),
+      trustAssumption:
+          _requiredNonEmptyString(profile, 'trust_assumption', label),
+      recommendedBindingDefault:
+          _requiredBool(profile, 'recommended_binding_default', label),
+      limits: Map.unmodifiable(profileLimits),
+    ));
+  }
+
+  if (!profileIds.contains(generalBindingDefaultProfile)) {
+    throw MermanException.contract(
+      'runtime general binding default resource profile '
+      '`$generalBindingDefaultProfile` is not declared',
+    );
+  }
+  if (!profileIds.contains(cliDefaultProfile)) {
+    throw MermanException.contract(
+      'runtime CLI default resource profile `$cliDefaultProfile` is not declared',
+    );
+  }
+  final recommendedProfiles =
+      profiles.where((profile) => profile.recommendedBindingDefault).toList();
+  if (recommendedProfiles.length != 1 ||
+      recommendedProfiles.single.id != generalBindingDefaultProfile) {
+    throw MermanException.contract(
+      'runtime resources must recommend exactly the general binding default profile',
+    );
+  }
+
+  return _ParsedRuntimeResources(
+    generalBindingDefaultProfile: generalBindingDefaultProfile,
+    cliDefaultProfile: cliDefaultProfile,
+    limits: limits,
+    profiles: profiles,
+  );
+}
+
 Map<String, Object?> _decodeJsonObject(Uint8List bytes, String label) {
   final decoded = jsonDecode(utf8.decode(bytes));
   return _asObject(decoded, label);
@@ -1595,6 +1803,32 @@ int _requiredInt(Map<String, Object?> source, String key) {
   final value = source[key];
   if (value is! int) {
     throw MermanException.contract('`$key` must be an integer');
+  }
+  return value;
+}
+
+String _requiredNonEmptyString(
+  Map<String, Object?> source,
+  String key,
+  String label,
+) {
+  final value = source[key];
+  if (value is! String || value.isEmpty) {
+    throw MermanException.contract(
+      '$label.$key must be a non-empty string',
+    );
+  }
+  return value;
+}
+
+bool _requiredBool(
+  Map<String, Object?> source,
+  String key,
+  String label,
+) {
+  final value = source[key];
+  if (value is! bool) {
+    throw MermanException.contract('$label.$key must be a boolean');
   }
   return value;
 }

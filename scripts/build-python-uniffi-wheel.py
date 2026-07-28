@@ -31,6 +31,9 @@ from python_wheel_licenses import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CAPABILITY_DESCRIPTOR = REPO_ROOT / "capabilities" / "feature-surface-v1.json"
+SEMANTIC_OPERATION_FIXTURES = (
+    REPO_ROOT / "fixtures" / "bindings" / "assets" / "semantic-operations-v1.json"
+)
 PYTHON_GENERATED_SUPPORT_FILES = (
     "src/merman/__init__.py",
     "src/merman/_resource_options.py",
@@ -139,7 +142,61 @@ def python_generator_environment() -> dict[str, str]:
     return environment
 
 WHEEL_SMOKE = """
+import json
+import os
+
 import merman
+
+
+def assert_shared_semantic_operation_fixtures(engine):
+    fixture_path = os.environ["MERMAN_SEMANTIC_OPERATION_FIXTURES"]
+    with open(fixture_path, encoding="utf-8") as handle:
+        fixture_root = json.load(handle)
+    assert set(fixture_root) == {"schema_version", "cases"}
+    assert fixture_root["schema_version"] == 1
+    assert fixture_root["cases"]
+
+    for index, case in enumerate(fixture_root["cases"]):
+        label = f"fixture {index} operation `{case['operation_id']}`"
+        options = case.get("options")
+        request = merman.MermanOperationRequest(
+            operation_id=case["operation_id"],
+            source=case["source"],
+            uri=case.get("uri"),
+            options_json=(
+                json.dumps(options, separators=(",", ":"))
+                if options is not None
+                else None
+            ),
+        )
+        try:
+            result = engine.execute(request)
+        except merman.MermanError.Binding as error:
+            assert case.get("expected_media_type") is None, label
+            assert case.get("expected_error_kind") == "generic", label
+            assert error.kind == merman.MermanErrorKind.GENERIC, label
+            assert error.capability_id is None, label
+            assert error.message, label
+            assert case["payload_invariants"] == ["error-message-nonempty"], label
+            continue
+
+        assert case.get("expected_error_kind") is None, label
+        assert result.operation_id == case["operation_id"], label
+        assert result.media_type == case["expected_media_type"], label
+        for invariant in case["payload_invariants"]:
+            if invariant == "nonempty":
+                assert result.data, label
+            elif invariant == "utf8":
+                result.data.decode("utf-8")
+            elif invariant == "json-object":
+                assert isinstance(json.loads(result.data), dict), label
+            elif invariant == "svg-root":
+                assert result.data.lstrip().startswith(b"<svg"), label
+            elif invariant == "metadata-operation-id":
+                metadata = json.loads(result.metadata_json)
+                assert metadata["operation_id"] == case["operation_id"], label
+            else:
+                raise AssertionError(f"{label} has unsupported invariant `{invariant}`")
 
 
 def measurement_result(operation, width, height):
@@ -303,6 +360,7 @@ except merman.MermanError.Binding as error:
     assert error.capability_id is None
 else:
     raise AssertionError("unknown operation did not preserve its typed binding error")
+assert_shared_semantic_operation_fixtures(engine)
 assert "Hello" in engine.render_svg(source, None)
 assert "Hello" in engine.render_ascii(source, None)
 assert engine.render_png(source, None).startswith(b"\\x89PNG\\r\\n\\x1a\\n")
@@ -434,6 +492,18 @@ def python_wheel_smoke_script(profile_id: str) -> str:
     )
 
 
+def wheel_smoke_environment() -> dict[str, str]:
+    if not SEMANTIC_OPERATION_FIXTURES.is_file():
+        raise RuntimeError(
+            f"semantic operation fixtures are missing: {SEMANTIC_OPERATION_FIXTURES}"
+        )
+    environment = os.environ.copy()
+    environment["MERMAN_SEMANTIC_OPERATION_FIXTURES"] = str(
+        SEMANTIC_OPERATION_FIXTURES
+    )
+    return environment
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -465,7 +535,8 @@ def run(
     cwd: Path = REPO_ROOT,
     env: dict[str, str] | None = None,
 ) -> None:
-    print("+", " ".join(args))
+    display_args = ("<inline-script>" if "\n" in arg else arg for arg in args)
+    print("+", " ".join(display_args))
     subprocess.run(args, cwd=cwd, env=env, check=True)
 
 
@@ -634,7 +705,8 @@ def main() -> int:
                 str(python),
                 "-c",
                 python_wheel_smoke_script(recipe.profile_id),
-            ]
+            ],
+            env=wheel_smoke_environment(),
         )
         example = package_source / "examples" / "smoke.py"
         if not example.is_file():

@@ -14,15 +14,17 @@ void main() {
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   projectsSvgPlanOperationFromGeneratedAbi();
+  preservesCompleteRuntimeResourceContract();
   acceptsInvariantOnlyCatalog();
   acceptsAdditiveRuntimeCatalogFields();
+  acceptsAdditiveRuntimeResourceIds();
   rejectsDuplicateCapabilityIds();
   rejectsUncallableOutputIds();
   rejectsInconsistentAdapters();
   rejectsCoercedRuntimeCatalogVersionFields();
   rejectsInconsistentTextMeasurement();
   rejectsTextMeasurementWithoutVendoredProvider();
-  rejectsMalformedResources();
+  rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
   rejectsMismatchedNativeErrorSchema();
@@ -114,6 +116,45 @@ void acceptsAFlatAbi3Catalog() {
   );
 }
 
+void preservesCompleteRuntimeResourceContract() {
+  final catalog = MermanRuntimeCatalog.fromJson(_catalog());
+  _expect(
+    catalog.resourceLimits.length == MermanResourceLimitId.values.length &&
+        catalog.resourceProfiles.length == MermanResourceProfile.values.length,
+    'runtime resource descriptors must be retained',
+  );
+
+  final sourceBytes = catalog.resourceLimitsById['max_source_bytes'];
+  final interactive = catalog.resourceProfilesById['interactive'];
+  final unbounded = catalog.resourceProfilesById['unbounded-for-trusted-input'];
+  _expect(
+    sourceBytes != null &&
+        sourceBytes.phase == 'source' &&
+        sourceBytes.description.isNotEmpty &&
+        sourceBytes.overridable &&
+        !sourceBytes.hardCap,
+    'runtime limit phase, description, override, and hard-cap facts must survive',
+  );
+  _expect(
+    interactive != null &&
+        interactive.purpose.isNotEmpty &&
+        interactive.trustAssumption.isNotEmpty &&
+        interactive.recommendedBindingDefault &&
+        interactive.limits.length == catalog.resourceLimits.length,
+    'runtime profile purpose, trust, recommendation, and limits must survive',
+  );
+  _expect(
+    unbounded != null &&
+        unbounded.limits.values.every((value) => value == null),
+    'runtime nullable limit facts must survive',
+  );
+  _expect(
+    catalog.generalBindingDefaultResourceProfile.id == 'interactive' &&
+        catalog.cliDefaultResourceProfile.id == 'trusted-native',
+    'runtime default profile references must resolve to typed profiles',
+  );
+}
+
 void acceptsAdditiveRuntimeCatalogFields() {
   final catalog = _catalog();
   catalog['future_root'] = true;
@@ -135,6 +176,41 @@ void acceptsAdditiveRuntimeCatalogFields() {
   _expect(
     validated.supportsCapability('svg'),
     'schema 1 consumers must tolerate additive catalog fields',
+  );
+}
+
+void acceptsAdditiveRuntimeResourceIds() {
+  final catalog = _catalog();
+  final resources = catalog['resources'] as Map<String, Object?>;
+  final limits = resources['limits'] as List<Object?>;
+  limits.add(<String, Object?>{
+    'id': 'future_limit',
+    'phase': 'future_phase',
+    'description': 'Future additive resource limit',
+    'overridable': false,
+    'hard_cap': true,
+    'future_limit_metadata': true,
+  });
+  for (final rawProfile in resources['profiles'] as List<Object?>) {
+    final profile = rawProfile as Map<String, Object?>;
+    final profileLimits = profile['limits'] as Map<String, Object?>;
+    profileLimits['future_limit'] = 4096;
+    profile['future_profile_metadata'] = true;
+  }
+
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  final futureLimit = validated.resourceLimitsById['future_limit'];
+  _expect(
+    futureLimit != null &&
+        futureLimit.phase == 'future_phase' &&
+        futureLimit.hardCap &&
+        !futureLimit.overridable &&
+        validated.resourceProfiles.every(
+          (profile) =>
+              profile.limits.containsKey('future_limit') &&
+              profile.limits['future_limit'] == 4096,
+        ),
+    'ABI 3 consumers must retain additive declared resource IDs',
   );
 }
 
@@ -214,11 +290,49 @@ void rejectsTextMeasurementWithoutVendoredProvider() {
   }
 }
 
-void rejectsMalformedResources() {
-  final catalog = _catalog();
-  final resources = catalog['resources'] as Map<String, Object?>;
-  resources.remove('profiles');
-  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+void rejectsMalformedResourceDescriptors() {
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) => _resources(catalog).remove('profiles'),
+    (catalog) => _limitAt(catalog, 0).remove('description'),
+    (catalog) => _limitAt(catalog, 0)['hard_cap'] = 'false',
+    (catalog) => _limitAt(catalog, 0)['overridable'] = 1,
+    (catalog) => _limitAt(catalog, 0)
+      ..['hard_cap'] = true
+      ..['overridable'] = true,
+    (catalog) => _limitAt(catalog, 0)
+      ..['hard_cap'] = true
+      ..['overridable'] = false,
+    (catalog) => (_resources(catalog)['limits'] as List<Object?>)
+        .add(Map<String, Object?>.from(_limitAt(catalog, 0))),
+    (catalog) => _profileAt(catalog, 0).remove('purpose'),
+    (catalog) => _profileAt(catalog, 0)['recommended_binding_default'] = 'true',
+    (catalog) => (_profileAt(catalog, 0)['limits']
+        as Map<String, Object?>)['max_source_bytes'] = '1',
+    (catalog) => (_profileAt(catalog, 0)['limits']
+        as Map<String, Object?>)['max_source_bytes'] = 1.5,
+    (catalog) => (_profileAt(catalog, 0)['limits']
+        as Map<String, Object?>)['max_source_bytes'] = 0,
+    (catalog) => (_profileAt(catalog, 0)['limits'] as Map<String, Object?>)
+        .remove('max_source_bytes'),
+    (catalog) => (_profileAt(catalog, 0)['limits']
+        as Map<String, Object?>)['undeclared_limit'] = null,
+    (catalog) => (_resources(catalog)['profiles'] as List<Object?>)
+        .add(Map<String, Object?>.from(_profileAt(catalog, 0))),
+    (catalog) =>
+        _resources(catalog)['general_binding_default_profile'] = 'missing',
+    (catalog) => _resources(catalog)['cli_default_profile'] = 'missing',
+    (catalog) {
+      for (final rawProfile
+          in _resources(catalog)['profiles'] as List<Object?>) {
+        (rawProfile as Map<String, Object?>)['recommended_binding_default'] =
+            false;
+      }
+    },
+  ]) {
+    final catalog = _clonedCatalog();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
 }
 
 void textMeasurementFactoriesRejectMalformedValues() {
@@ -425,14 +539,67 @@ Map<String, Object?> _catalog({
           : null,
     },
     'registry': {'diagram_family_count': 35},
-    'resources': {
-      'general_binding_default_profile': 'interactive',
-      'cli_default_profile': 'trusted-native',
-      'limits': <Object?>[],
-      'profiles': <Object?>[],
-    },
+    'resources': _resourceContract(),
   };
 }
+
+Map<String, Object?> _resourceContract() => <String, Object?>{
+      'general_binding_default_profile': MermanResourceProfile.interactive.id,
+      'cli_default_profile': MermanResourceProfile.trustedNative.id,
+      'limits': <Object?>[
+        for (final limit in MermanResourceLimitId.values)
+          <String, Object?>{
+            'id': limit.id,
+            'phase': _resourceLimitPhase(limit),
+            'description': 'Test descriptor for ${limit.id}',
+            'overridable': limit.overridable,
+            'hard_cap': false,
+          },
+      ],
+      'profiles': <Object?>[
+        for (final profile in MermanResourceProfile.values)
+          <String, Object?>{
+            'id': profile.id,
+            'purpose': 'Test purpose for ${profile.id}',
+            'trust_assumption': 'Test trust assumption for ${profile.id}',
+            'recommended_binding_default':
+                profile == MermanResourceProfile.interactive,
+            'limits': <String, Object?>{
+              for (final limit in MermanResourceLimitId.values)
+                limit.id:
+                    profile == MermanResourceProfile.unboundedForTrustedInput
+                        ? null
+                        : 1,
+            },
+          },
+      ],
+    };
+
+String _resourceLimitPhase(MermanResourceLimitId limit) => switch (limit) {
+      MermanResourceLimitId.maxSourceBytes => 'source',
+      MermanResourceLimitId.maxModelItems ||
+      MermanResourceLimitId.maxModelTextBytes ||
+      MermanResourceLimitId.maxModelNestingDepth =>
+        'model',
+      MermanResourceLimitId.maxLayoutWorkUnits => 'layout',
+      MermanResourceLimitId.maxSvgBytes ||
+      MermanResourceLimitId.maxSvgElements =>
+        'svg',
+    };
+
+Map<String, Object?> _clonedCatalog() =>
+    jsonDecode(jsonEncode(_catalog())) as Map<String, Object?>;
+
+Map<String, Object?> _resources(Map<String, Object?> catalog) =>
+    catalog['resources']! as Map<String, Object?>;
+
+Map<String, Object?> _limitAt(Map<String, Object?> catalog, int index) =>
+    (_resources(catalog)['limits'] as List<Object?>)[index]
+        as Map<String, Object?>;
+
+Map<String, Object?> _profileAt(Map<String, Object?> catalog, int index) =>
+    (_resources(catalog)['profiles'] as List<Object?>)[index]
+        as Map<String, Object?>;
 
 Map<String, Object?> _runtimeCapabilities(Map<String, Object?> catalog) =>
     catalog['capabilities']! as Map<String, Object?>;
