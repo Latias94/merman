@@ -5,11 +5,10 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
+use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 use merman_core::{MermaidConfig, geom::Size};
-use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -388,422 +387,6 @@ fn lowest_common_parent(
     None
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct FlowchartAdapterWork {
-    hierarchy_builds: usize,
-    hierarchy_node_visits: usize,
-    boundary_edge_visits: usize,
-    anchor_leaf_visits: usize,
-    anchor_pair_probes: usize,
-    rewrite_edge_visits: usize,
-    extraction_ledger_builds: usize,
-    extraction_index_edge_visits: usize,
-    extraction_incident_handle_visits: usize,
-    extraction_processed_edges: usize,
-    extraction_copy_node_visits: usize,
-    extraction_new_handles: usize,
-    extraction_reinsertions: usize,
-    physical_node_batches: usize,
-    retired_nodes: usize,
-}
-
-#[cfg(test)]
-thread_local! {
-    static FLOWCHART_ADAPTER_WORK: std::cell::RefCell<FlowchartAdapterWork> =
-        std::cell::RefCell::new(FlowchartAdapterWork::default());
-}
-
-#[cfg(test)]
-macro_rules! record_flowchart_adapter_work {
-    ($field:ident += $value:expr) => {
-        FLOWCHART_ADAPTER_WORK.with(|work| {
-            work.borrow_mut().$field += $value;
-        });
-    };
-}
-
-#[cfg(not(test))]
-macro_rules! record_flowchart_adapter_work {
-    ($field:ident += $value:expr) => {};
-}
-
-#[cfg(test)]
-fn reset_flowchart_adapter_work() {
-    FLOWCHART_ADAPTER_WORK.with(|work| *work.borrow_mut() = FlowchartAdapterWork::default());
-}
-
-#[cfg(test)]
-fn flowchart_adapter_work() -> FlowchartAdapterWork {
-    FLOWCHART_ADAPTER_WORK.with(|work| *work.borrow())
-}
-
-const MISSING_FLOWCHART_ORDINAL: usize = usize::MAX;
-
-#[derive(Debug)]
-struct FlowchartHierarchyIndex {
-    node_ids: Vec<String>,
-    dense_by_graph_ix: Vec<usize>,
-    parent: Vec<Option<usize>>,
-    children: Vec<Vec<usize>>,
-    tin: Vec<usize>,
-    tout: Vec<usize>,
-    preorder: Vec<usize>,
-    leaves: Vec<usize>,
-    leaf_start: Vec<usize>,
-    leaf_end: Vec<usize>,
-    clusters: Vec<usize>,
-}
-
-impl FlowchartHierarchyIndex {
-    fn new(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Self {
-        record_flowchart_adapter_work!(hierarchy_builds += 1);
-
-        let node_ids = graph.node_ids();
-        let graph_indices: Vec<usize> = node_ids
-            .iter()
-            .map(|id| graph.node_ix(id).expect("node id came from graph"))
-            .collect();
-        let mut dense_by_graph_ix = vec![
-            MISSING_FLOWCHART_ORDINAL;
-            graph_indices
-                .iter()
-                .copied()
-                .max()
-                .map_or(0, |max_ix| max_ix + 1)
-        ];
-        for (ordinal, graph_ix) in graph_indices.iter().copied().enumerate() {
-            dense_by_graph_ix[graph_ix] = ordinal;
-        }
-
-        let ordinal_for_graph_ix = |graph_ix: usize| {
-            dense_by_graph_ix
-                .get(graph_ix)
-                .copied()
-                .filter(|ordinal| *ordinal != MISSING_FLOWCHART_ORDINAL)
-        };
-        let mut parent = vec![None; node_ids.len()];
-        let mut children = vec![Vec::new(); node_ids.len()];
-        for (ordinal, id) in node_ids.iter().enumerate() {
-            parent[ordinal] = graph
-                .parent(id)
-                .and_then(|parent_id| graph.node_ix(parent_id))
-                .and_then(ordinal_for_graph_ix);
-            children[ordinal].extend(
-                graph
-                    .children_iter(id)
-                    .filter_map(|child_id| graph.node_ix(child_id))
-                    .filter_map(ordinal_for_graph_ix),
-            );
-        }
-        let clusters = children
-            .iter()
-            .enumerate()
-            .filter_map(|(ordinal, children)| (!children.is_empty()).then_some(ordinal))
-            .collect();
-
-        let mut tin = vec![0; node_ids.len()];
-        let mut tout = vec![0; node_ids.len()];
-        let mut preorder = Vec::with_capacity(node_ids.len());
-        let mut visited = vec![false; node_ids.len()];
-        let mut clock = 0usize;
-
-        for root in (0..node_ids.len()).filter(|ordinal| parent[*ordinal].is_none()) {
-            Self::index_subtree(
-                root,
-                &children,
-                &mut visited,
-                &mut tin,
-                &mut tout,
-                &mut preorder,
-                &mut clock,
-            );
-        }
-        // Compound graphs are trees, but indexing any defensive orphan here keeps membership
-        // queries total even if a partially constructed graph reaches this private adapter.
-        for root in 0..node_ids.len() {
-            if !visited[root] {
-                Self::index_subtree(
-                    root,
-                    &children,
-                    &mut visited,
-                    &mut tin,
-                    &mut tout,
-                    &mut preorder,
-                    &mut clock,
-                );
-            }
-        }
-
-        let leaves: Vec<usize> = preorder
-            .iter()
-            .copied()
-            .filter(|node| children[*node].is_empty())
-            .collect();
-        let mut leaf_start = vec![usize::MAX; node_ids.len()];
-        let mut leaf_end = vec![0; node_ids.len()];
-        for (leaf_ordinal, node) in leaves.iter().copied().enumerate() {
-            leaf_start[node] = leaf_ordinal;
-            leaf_end[node] = leaf_ordinal + 1;
-        }
-        for node in preorder.iter().rev().copied() {
-            let Some(parent) = parent[node] else {
-                continue;
-            };
-            leaf_start[parent] = leaf_start[parent].min(leaf_start[node]);
-            leaf_end[parent] = leaf_end[parent].max(leaf_end[node]);
-        }
-
-        Self {
-            node_ids,
-            dense_by_graph_ix,
-            parent,
-            children,
-            tin,
-            tout,
-            preorder,
-            leaves,
-            leaf_start,
-            leaf_end,
-            clusters,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn index_subtree(
-        root: usize,
-        children: &[Vec<usize>],
-        visited: &mut [bool],
-        tin: &mut [usize],
-        tout: &mut [usize],
-        preorder: &mut Vec<usize>,
-        clock: &mut usize,
-    ) {
-        let mut stack = vec![(root, false)];
-        while let Some((node, expanded)) = stack.pop() {
-            if expanded {
-                tout[node] = *clock;
-                continue;
-            }
-            if visited[node] {
-                continue;
-            }
-
-            visited[node] = true;
-            tin[node] = *clock;
-            *clock += 1;
-            preorder.push(node);
-            record_flowchart_adapter_work!(hierarchy_node_visits += 1);
-
-            stack.push((node, true));
-            stack.extend(
-                children[node]
-                    .iter()
-                    .rev()
-                    .copied()
-                    .map(|child| (child, false)),
-            );
-        }
-    }
-
-    fn ordinal_for_graph_ix(&self, graph_ix: usize) -> Option<usize> {
-        self.dense_by_graph_ix
-            .get(graph_ix)
-            .copied()
-            .filter(|ordinal| *ordinal != MISSING_FLOWCHART_ORDINAL)
-    }
-
-    fn ordinal(&self, graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) -> Option<usize> {
-        graph
-            .node_ix(id)
-            .and_then(|graph_ix| self.ordinal_for_graph_ix(graph_ix))
-    }
-
-    fn is_strict_descendant(&self, node: usize, ancestor: usize) -> bool {
-        self.tin[node] > self.tin[ancestor] && self.tin[node] < self.tout[ancestor]
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FlowchartTinRange {
-    min: usize,
-    max: usize,
-}
-
-impl Default for FlowchartTinRange {
-    fn default() -> Self {
-        Self {
-            min: usize::MAX,
-            max: 0,
-        }
-    }
-}
-
-impl FlowchartTinRange {
-    fn include(&mut self, tin: usize) {
-        self.min = self.min.min(tin);
-        self.max = self.max.max(tin);
-    }
-
-    fn merge(&mut self, other: Self) {
-        if other.min != usize::MAX {
-            self.include(other.min);
-            self.include(other.max);
-        }
-    }
-
-    fn reaches_outside(self, start: usize, end: usize) -> bool {
-        self.min != usize::MAX && (self.min < start || self.max >= end)
-    }
-}
-
-#[derive(Debug)]
-struct FlowchartAdjustmentIndex {
-    hierarchy: FlowchartHierarchyIndex,
-    edge_pairs: FxHashSet<(usize, usize)>,
-    outgoing: Vec<Vec<usize>>,
-    has_direct_outgoing: Vec<bool>,
-    external_connections: Vec<bool>,
-}
-
-impl FlowchartAdjustmentIndex {
-    fn new(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Self {
-        let hierarchy = FlowchartHierarchyIndex::new(graph);
-        let node_count = hierarchy.node_ids.len();
-        let mut edge_pairs = FxHashSet::default();
-        let mut outgoing = vec![Vec::new(); node_count];
-        let mut has_direct_outgoing = vec![false; node_count];
-        let mut direct_other_tin = vec![FlowchartTinRange::default(); node_count];
-
-        graph.for_each_edge_ix(|v_graph_ix, w_graph_ix, _edge, _label| {
-            record_flowchart_adapter_work!(boundary_edge_visits += 1);
-            let Some(v) = hierarchy.ordinal_for_graph_ix(v_graph_ix) else {
-                return;
-            };
-            let Some(w) = hierarchy.ordinal_for_graph_ix(w_graph_ix) else {
-                return;
-            };
-
-            has_direct_outgoing[v] = true;
-            if edge_pairs.insert((v, w)) {
-                outgoing[v].push(w);
-            }
-            direct_other_tin[v].include(hierarchy.tin[w]);
-            direct_other_tin[w].include(hierarchy.tin[v]);
-        });
-
-        let mut subtree_other_tin = direct_other_tin;
-        for node in hierarchy.preorder.iter().rev().copied() {
-            let Some(parent) = hierarchy.parent[node] else {
-                continue;
-            };
-            let child_range = subtree_other_tin[node];
-            subtree_other_tin[parent].merge(child_range);
-        }
-
-        let mut external_connections = vec![false; node_count];
-        for cluster in hierarchy.clusters.iter().copied() {
-            let mut descendant_other_tin = FlowchartTinRange::default();
-            for child in hierarchy.children[cluster].iter().copied() {
-                descendant_other_tin.merge(subtree_other_tin[child]);
-            }
-            external_connections[cluster] = descendant_other_tin
-                .reaches_outside(hierarchy.tin[cluster] + 1, hierarchy.tout[cluster]);
-        }
-
-        Self {
-            hierarchy,
-            edge_pairs,
-            outgoing,
-            has_direct_outgoing,
-            external_connections,
-        }
-    }
-
-    fn has_common_edge(&self, id1: usize, id2: usize) -> bool {
-        record_flowchart_adapter_work!(anchor_pair_probes += 1);
-        if self.edge_pairs.contains(&(id2, id1)) {
-            return true;
-        }
-
-        let (shorter, other) = if self.outgoing[id1].len() <= self.outgoing[id2].len() {
-            (&self.outgoing[id1], id2)
-        } else {
-            (&self.outgoing[id2], id1)
-        };
-        shorter.iter().copied().any(|target| {
-            record_flowchart_adapter_work!(anchor_pair_probes += 1);
-            self.edge_pairs.contains(&(other, target))
-        })
-    }
-
-    fn find_non_cluster_child(&self, id: usize, cluster_id: usize) -> Option<usize> {
-        if self.hierarchy.children[id].is_empty() {
-            return Some(id);
-        }
-
-        let mut reserve = None;
-        let start = self.hierarchy.leaf_start[id];
-        let end = self.hierarchy.leaf_end[id];
-        debug_assert!(start < end);
-        for leaf in self.hierarchy.leaves[start..end].iter().copied() {
-            record_flowchart_adapter_work!(anchor_leaf_visits += 1);
-            if self.has_common_edge(cluster_id, leaf) {
-                reserve = Some(leaf);
-            } else {
-                return Some(leaf);
-            }
-        }
-        reserve
-    }
-
-    fn is_node_in_extractable_cluster(
-        &self,
-        node: usize,
-        root: usize,
-        cluster_db: &[Option<FlowchartClusterDbEntry>],
-    ) -> bool {
-        let mut parent = self.hierarchy.parent[node];
-        while let Some(parent_id) = parent {
-            if parent_id == root {
-                break;
-            }
-            if cluster_db[parent_id]
-                .as_ref()
-                .is_some_and(|entry| !entry.external_connections)
-            {
-                return true;
-            }
-            parent = self.hierarchy.parent[parent_id];
-        }
-        false
-    }
-
-    fn find_safe_anchor_node(
-        &self,
-        cluster: usize,
-        excluded_cluster: usize,
-        cluster_db: &[Option<FlowchartClusterDbEntry>],
-    ) -> Option<usize> {
-        for child in self.hierarchy.children[cluster].iter().copied() {
-            if child == excluded_cluster
-                || self.hierarchy.is_strict_descendant(child, excluded_cluster)
-            {
-                continue;
-            }
-
-            let Some(candidate) = self.find_non_cluster_child(child, cluster) else {
-                continue;
-            };
-            if !self.is_node_in_extractable_cluster(candidate, cluster, cluster_db) {
-                return Some(candidate);
-            }
-        }
-        None
-    }
-}
-
-#[cfg(test)]
 fn extract_descendants(id: &str, g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
@@ -821,7 +404,6 @@ fn extract_descendants(id: &str, g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) ->
     out
 }
 
-#[cfg(test)]
 fn edge_in_cluster(
     edge: &dugong::graphlib::EdgeKey,
     cluster_id: &str,
@@ -838,8 +420,130 @@ fn edge_in_cluster(
 
 #[derive(Debug, Clone)]
 struct FlowchartClusterDbEntry {
-    anchor: usize,
+    anchor_id: String,
     external_connections: bool,
+}
+
+fn flowchart_find_common_edges(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    id1: &str,
+    id2: &str,
+) -> Vec<(String, String)> {
+    let edges1: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|edge| edge.v == id1 || edge.w == id1)
+        .map(|edge| (edge.v, edge.w))
+        .collect();
+    let edges2: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|edge| edge.v == id2 || edge.w == id2)
+        .map(|edge| (edge.v, edge.w))
+        .collect();
+
+    let edges1_prim: Vec<(String, String)> = edges1
+        .into_iter()
+        .map(|(v, w)| {
+            (
+                if v == id1 { id2.to_string() } else { v },
+                // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w` side
+                // back to `id1` rather than `id2` (Mermaid@11.12.2).
+                if w == id1 { id1.to_string() } else { w },
+            )
+        })
+        .collect();
+
+    let mut out = Vec::new();
+    for e1 in edges1_prim {
+        if edges2.contains(&e1) {
+            out.push(e1);
+        }
+    }
+    out
+}
+
+fn flowchart_find_non_cluster_child(
+    id: &str,
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+) -> Option<String> {
+    let children = graph.children(id);
+    if children.is_empty() {
+        return Some(id.to_string());
+    }
+    let mut reserve: Option<String> = None;
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = children.iter().rev().map(|s| s.to_string()).collect();
+
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        let children = graph.children(&node);
+        if !children.is_empty() {
+            for child in children.iter().rev() {
+                stack.push(child.to_string());
+            }
+            continue;
+        }
+        let common_edges = flowchart_find_common_edges(graph, cluster_id, &node);
+        if !common_edges.is_empty() {
+            reserve = Some(node);
+        } else {
+            return Some(node);
+        }
+    }
+
+    reserve
+}
+
+fn flowchart_is_node_in_extractable_cluster(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    node_id: &str,
+    root_id: &str,
+    cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
+) -> bool {
+    let mut parent = graph.parent(node_id);
+    while let Some(parent_id) = parent {
+        if parent_id == root_id {
+            break;
+        }
+        if cluster_db
+            .get(parent_id)
+            .is_some_and(|entry| !entry.external_connections)
+        {
+            return true;
+        }
+        parent = graph.parent(parent_id);
+    }
+    false
+}
+
+fn flowchart_find_safe_anchor_node(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+    excluded_cluster: &str,
+    descendants: &HashMap<String, Vec<String>>,
+    cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
+) -> Option<String> {
+    for child in graph.children(cluster_id) {
+        if child == excluded_cluster
+            || descendants
+                .get(excluded_cluster)
+                .is_some_and(|nodes| nodes.iter().any(|node| node == child))
+        {
+            continue;
+        }
+
+        let Some(candidate) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
+            continue;
+        };
+        if !flowchart_is_node_in_extractable_cluster(graph, &candidate, cluster_id, cluster_db) {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn adjust_flowchart_clusters_and_edges(
@@ -847,65 +551,111 @@ fn adjust_flowchart_clusters_and_edges(
 ) -> std::collections::HashMap<String, bool> {
     use serde_json::Value;
 
-    let index = FlowchartAdjustmentIndex::new(graph);
-    let mut cluster_db = vec![None; index.hierarchy.node_ids.len()];
-
-    for cluster in index.hierarchy.clusters.iter().copied() {
-        let anchor = index
-            .find_non_cluster_child(cluster, cluster)
-            .unwrap_or(cluster);
-        cluster_db[cluster] = Some(FlowchartClusterDbEntry {
-            anchor,
-            external_connections: index.external_connections[cluster],
-        });
+    fn is_descendant(
+        node_id: &str,
+        cluster_id: &str,
+        descendants: &std::collections::HashMap<String, Vec<String>>,
+    ) -> bool {
+        descendants
+            .get(cluster_id)
+            .is_some_and(|ds| ds.iter().any(|n| n == node_id))
     }
 
-    // Preserve Mermaid's source order. Anchor correction observes the initially computed external
-    // flags, while the edge rewrite below remains the only phase allowed to mutate those flags.
-    for cluster in index.hierarchy.clusters.iter().copied() {
-        let non_cluster_child = cluster_db[cluster]
-            .as_ref()
-            .expect("cluster entry was initialized")
-            .anchor;
-        if let Some(parent) = index.hierarchy.parent[non_cluster_child]
-            && parent != cluster
-            && cluster_db[parent]
-                .as_ref()
-                .is_some_and(|entry| !entry.external_connections)
+    let mut descendants: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut cluster_db: std::collections::HashMap<String, FlowchartClusterDbEntry> =
+        std::collections::HashMap::new();
+
+    for id in graph.node_ids() {
+        if graph.children(&id).is_empty() {
+            continue;
+        }
+        descendants.insert(id.clone(), extract_descendants(&id, graph));
+        let anchor_id =
+            flowchart_find_non_cluster_child(&id, graph, &id).unwrap_or_else(|| id.clone());
+        cluster_db.insert(
+            id,
+            FlowchartClusterDbEntry {
+                anchor_id,
+                external_connections: false,
+            },
+        );
+    }
+
+    for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
+        if graph.children(&id).is_empty() {
+            continue;
+        }
+        let mut has_external = false;
+        for e in graph.edges() {
+            let d1 = is_descendant(e.v.as_str(), id.as_str(), &descendants);
+            let d2 = is_descendant(e.w.as_str(), id.as_str(), &descendants);
+            if d1 ^ d2 {
+                has_external = true;
+                break;
+            }
+        }
+        if let Some(entry) = cluster_db.get_mut(&id) {
+            entry.external_connections = has_external;
+        }
+    }
+
+    for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
+        let Some(non_cluster_child) = cluster_db.get(&id).map(|e| e.anchor_id.clone()) else {
+            continue;
+        };
+        let parent = graph.parent(&non_cluster_child);
+        if parent.is_some_and(|p| p != id.as_str())
+            && parent.is_some_and(|p| cluster_db.contains_key(p))
+            && parent.is_some_and(|p| !cluster_db.get(p).is_some_and(|e| e.external_connections))
+            && let Some(p) = parent
+            && let Some(entry) = cluster_db.get_mut(&id)
         {
-            cluster_db[cluster]
-                .as_mut()
-                .expect("cluster entry was initialized")
-                .anchor = parent;
+            entry.anchor_id = p.to_string();
         }
 
-        let needs_safe_anchor = cluster_db[cluster]
-            .as_ref()
+        let has_direct_outgoing_edge = graph.edges().any(|edge| edge.v == id);
+        let needs_safe_anchor = cluster_db
+            .get(&id)
             .is_some_and(|entry| entry.external_connections)
-            && index.has_direct_outgoing[cluster]
-            && index.is_node_in_extractable_cluster(non_cluster_child, cluster, &cluster_db);
+            && has_direct_outgoing_edge
+            && flowchart_is_node_in_extractable_cluster(
+                graph,
+                &non_cluster_child,
+                &id,
+                &cluster_db,
+            );
         if needs_safe_anchor
-            && let Some(excluded_cluster) = index.hierarchy.parent[non_cluster_child]
-            && let Some(safe_anchor) =
-                index.find_safe_anchor_node(cluster, excluded_cluster, &cluster_db)
+            && let Some(excluded_cluster) = graph.parent(&non_cluster_child)
+            && let Some(safe_anchor) = flowchart_find_safe_anchor_node(
+                graph,
+                &id,
+                excluded_cluster,
+                &descendants,
+                &cluster_db,
+            )
+            && let Some(entry) = cluster_db.get_mut(&id)
         {
-            cluster_db[cluster]
-                .as_mut()
-                .expect("cluster entry was initialized")
-                .anchor = safe_anchor;
+            entry.anchor_id = safe_anchor;
         }
+    }
+
+    fn get_anchor_id(
+        id: &str,
+        cluster_db: &std::collections::HashMap<String, FlowchartClusterDbEntry>,
+    ) -> String {
+        let Some(entry) = cluster_db.get(id) else {
+            return id.to_string();
+        };
+        if !entry.external_connections {
+            return id.to_string();
+        }
+        entry.anchor_id.clone()
     }
 
     let edge_keys = graph.edge_keys();
     for ek in edge_keys {
-        record_flowchart_adapter_work!(rewrite_edge_visits += 1);
-        let Some(v_ordinal) = index.hierarchy.ordinal(graph, &ek.v) else {
-            continue;
-        };
-        let Some(w_ordinal) = index.hierarchy.ordinal(graph, &ek.w) else {
-            continue;
-        };
-        if cluster_db[v_ordinal].is_none() && cluster_db[w_ordinal].is_none() {
+        if !cluster_db.contains_key(&ek.v) && !cluster_db.contains_key(&ek.w) {
             continue;
         }
 
@@ -913,16 +663,8 @@ fn adjust_flowchart_clusters_and_edges(
             continue;
         };
 
-        let v_anchor = cluster_db[v_ordinal]
-            .as_ref()
-            .filter(|entry| entry.external_connections)
-            .map_or(v_ordinal, |entry| entry.anchor);
-        let w_anchor = cluster_db[w_ordinal]
-            .as_ref()
-            .filter(|entry| entry.external_connections)
-            .map_or(w_ordinal, |entry| entry.anchor);
-        let v = index.hierarchy.node_ids[v_anchor].clone();
-        let w = index.hierarchy.node_ids[w_anchor].clone();
+        let v = get_anchor_id(&ek.v, &cluster_db);
+        let w = get_anchor_id(&ek.w, &cluster_db);
 
         // Match Mermaid `adjustClustersAndEdges`: edges that touch cluster nodes are removed and
         // re-inserted even when their endpoints do not change. This affects edge iteration order
@@ -930,8 +672,8 @@ fn adjust_flowchart_clusters_and_edges(
         let _ = graph.remove_edge_key(&ek);
 
         if v != ek.v {
-            if let Some(parent) = index.hierarchy.parent[v_anchor]
-                && let Some(entry) = cluster_db[parent].as_mut()
+            if let Some(parent) = graph.parent(&v)
+                && let Some(entry) = cluster_db.get_mut(parent)
             {
                 entry.external_connections = true;
             }
@@ -941,8 +683,8 @@ fn adjust_flowchart_clusters_and_edges(
         }
 
         if w != ek.w {
-            if let Some(parent) = index.hierarchy.parent[w_anchor]
-                && let Some(entry) = cluster_db[parent].as_mut()
+            if let Some(parent) = graph.parent(&w)
+                && let Some(entry) = cluster_db.get_mut(parent)
             {
                 entry.external_connections = true;
             }
@@ -954,528 +696,13 @@ fn adjust_flowchart_clusters_and_edges(
         graph.set_edge_named(v, w, ek.name, Some(edge_label));
     }
 
-    let mut external_connections_by_id = HashMap::with_capacity(index.hierarchy.clusters.len());
-    for cluster in index.hierarchy.clusters {
-        let entry = cluster_db[cluster]
-            .take()
-            .expect("cluster entry was initialized");
-        external_connections_by_id.insert(
-            index.hierarchy.node_ids[cluster].clone(),
-            entry.external_connections,
-        );
-    }
-    external_connections_by_id
+    cluster_db
+        .into_iter()
+        .map(|(id, entry)| (id, entry.external_connections))
+        .collect()
 }
 
-#[derive(Debug, Clone, Copy)]
-struct FlowchartCopyNode {
-    node: usize,
-    owner_cluster: usize,
-}
-
-#[derive(Debug)]
-struct FlowchartIndexedEdge {
-    key: EdgeKey,
-    v: usize,
-    w: usize,
-    active: bool,
-}
-
-#[derive(Debug)]
-struct FlowchartReboundWinner {
-    key: EdgeKey,
-    removal_order: usize,
-    source_handle: usize,
-    last_applied_handle: usize,
-}
-
-/// Ordered logical mutation state for one cluster-extraction graph phase.
-///
-/// Initial indexing is `O(V + E)`. Extraction then pays the observable descendant and incident
-/// mutation work (`D + M`); recursive child graphs build their own phase-local ledger. Stable edge
-/// handles preserve Graphlib iteration order while physical node retirement is deferred to one
-/// batch at the end of the phase.
-#[derive(Debug)]
-struct FlowchartExtractionLedger {
-    edges: Vec<FlowchartIndexedEdge>,
-    handle_by_key: FxHashMap<EdgeKey, usize>,
-    incident_handles: Vec<Vec<usize>>,
-    active_nodes: Vec<bool>,
-    seen_handles: Vec<u32>,
-    seen_epoch: u32,
-    retirement_order: Vec<usize>,
-    retirement_marks: Vec<u32>,
-    retirement_epoch: u32,
-    radix_scratch: Vec<usize>,
-    retired_nodes: Vec<usize>,
-}
-
-impl FlowchartExtractionLedger {
-    fn new(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        hierarchy: &FlowchartHierarchyIndex,
-    ) -> Self {
-        record_flowchart_adapter_work!(extraction_ledger_builds += 1);
-
-        let mut edges = Vec::with_capacity(graph.edge_count());
-        let mut handle_by_key = FxHashMap::default();
-        handle_by_key.reserve(graph.edge_count());
-        let mut incident_handles = vec![Vec::new(); hierarchy.node_ids.len()];
-        for key in graph.edge_keys() {
-            record_flowchart_adapter_work!(extraction_index_edge_visits += 1);
-            let v = hierarchy
-                .ordinal(graph, &key.v)
-                .expect("edge source came from indexed graph");
-            let w = hierarchy
-                .ordinal(graph, &key.w)
-                .expect("edge target came from indexed graph");
-            let handle = edges.len();
-            incident_handles[v].push(handle);
-            if w != v {
-                incident_handles[w].push(handle);
-            }
-            handle_by_key.insert(key.clone(), handle);
-            edges.push(FlowchartIndexedEdge {
-                key,
-                v,
-                w,
-                active: true,
-            });
-        }
-
-        let edge_count = edges.len();
-        let node_count = hierarchy.node_ids.len();
-        Self {
-            edges,
-            handle_by_key,
-            incident_handles,
-            active_nodes: vec![true; node_count],
-            seen_handles: vec![0; edge_count],
-            seen_epoch: 0,
-            retirement_order: vec![0; node_count],
-            retirement_marks: vec![0; node_count],
-            retirement_epoch: 0,
-            radix_scratch: Vec::new(),
-            retired_nodes: Vec::new(),
-        }
-    }
-
-    fn has_active_children(&self, hierarchy: &FlowchartHierarchyIndex, node: usize) -> bool {
-        hierarchy.children[node]
-            .iter()
-            .copied()
-            .any(|child| self.active_nodes[child])
-    }
-
-    fn copy_nodes(
-        &self,
-        hierarchy: &FlowchartHierarchyIndex,
-        root: usize,
-    ) -> Vec<FlowchartCopyNode> {
-        let mut nodes = Vec::new();
-        let mut stack: Vec<(usize, usize, bool)> = hierarchy.children[root]
-            .iter()
-            .rev()
-            .copied()
-            .filter(|child| self.active_nodes[*child])
-            .map(|child| (child, root, false))
-            .collect();
-
-        while let Some((node, owner_cluster, expanded)) = stack.pop() {
-            if !self.active_nodes[node] {
-                continue;
-            }
-            if expanded {
-                nodes.push(FlowchartCopyNode {
-                    node,
-                    owner_cluster,
-                });
-                continue;
-            }
-
-            if !self.has_active_children(hierarchy, node) {
-                nodes.push(FlowchartCopyNode {
-                    node,
-                    owner_cluster,
-                });
-                continue;
-            }
-
-            stack.push((node, node, true));
-            stack.extend(
-                hierarchy.children[node]
-                    .iter()
-                    .rev()
-                    .copied()
-                    .filter(|child| self.active_nodes[*child])
-                    .map(|child| (child, node, false)),
-            );
-        }
-        nodes
-    }
-
-    fn next_seen_epoch(&mut self) -> u32 {
-        self.seen_epoch = self.seen_epoch.wrapping_add(1);
-        if self.seen_epoch == 0 {
-            self.seen_handles.fill(0);
-            self.seen_epoch = 1;
-        }
-        self.seen_epoch
-    }
-
-    fn next_retirement_epoch(&mut self) -> u32 {
-        self.retirement_epoch = self.retirement_epoch.wrapping_add(1);
-        if self.retirement_epoch == 0 {
-            self.retirement_marks.fill(0);
-            self.retirement_epoch = 1;
-        }
-        self.retirement_epoch
-    }
-
-    fn mark_retirement_order(&mut self, nodes: &[FlowchartCopyNode]) {
-        let epoch = self.next_retirement_epoch();
-        for (order, copy_node) in nodes.iter().copied().enumerate() {
-            self.retirement_marks[copy_node.node] = epoch;
-            self.retirement_order[copy_node.node] = order;
-        }
-    }
-
-    fn gather_cluster_edges(&mut self, nodes: &[FlowchartCopyNode]) -> Vec<usize> {
-        let epoch = self.next_seen_epoch();
-        let mut handles = Vec::new();
-        for copy_node in nodes.iter().copied() {
-            for handle in self.incident_handles[copy_node.node].iter().copied() {
-                record_flowchart_adapter_work!(extraction_incident_handle_visits += 1);
-                let edge = &self.edges[handle];
-                if !edge.active {
-                    continue;
-                }
-                if self.seen_handles[handle] == epoch {
-                    continue;
-                }
-                self.seen_handles[handle] = epoch;
-                handles.push(handle);
-            }
-        }
-        Self::radix_sort_handles(&mut handles, &mut self.radix_scratch);
-        handles
-    }
-
-    fn radix_sort_handles(handles: &mut Vec<usize>, scratch: &mut Vec<usize>) {
-        if handles.len() < 2 {
-            return;
-        }
-        let max_handle = handles.iter().copied().max().unwrap_or(0);
-        let significant_bits = usize::BITS as usize - max_handle.leading_zeros() as usize;
-        let passes = significant_bits.div_ceil(8).max(1);
-        let mut source = std::mem::take(handles);
-        scratch.resize(source.len(), 0);
-
-        for pass in 0..passes {
-            let shift = pass * 8;
-            let mut counts = [0usize; 256];
-            for handle in source.iter().copied() {
-                counts[(handle >> shift) & 0xff] += 1;
-            }
-            let mut offsets = [0usize; 256];
-            let mut next = 0usize;
-            for (offset, count) in offsets.iter_mut().zip(counts) {
-                *offset = next;
-                next += count;
-            }
-            for handle in source.iter().copied() {
-                let bucket = (handle >> shift) & 0xff;
-                scratch[offsets[bucket]] = handle;
-                offsets[bucket] += 1;
-            }
-            std::mem::swap(&mut source, scratch);
-        }
-        *handles = source;
-    }
-
-    fn copy_node(
-        hierarchy: &FlowchartHierarchyIndex,
-        copy_node: FlowchartCopyNode,
-        root: usize,
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) {
-        record_flowchart_adapter_work!(extraction_copy_node_visits += 1);
-        let node_id = &hierarchy.node_ids[copy_node.node];
-        let data = graph.node(node_id).cloned().unwrap_or_default();
-        new_graph.set_node(node_id.clone(), data);
-
-        if let Some(parent) = hierarchy.parent[copy_node.node]
-            && parent != root
-        {
-            new_graph.set_parent(node_id.clone(), hierarchy.node_ids[parent].clone());
-        }
-        if copy_node.owner_cluster != root && copy_node.node != copy_node.owner_cluster {
-            new_graph.set_parent(
-                node_id.clone(),
-                hierarchy.node_ids[copy_node.owner_cluster].clone(),
-            );
-        }
-    }
-
-    fn set_graph_edge(
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        key: &EdgeKey,
-        label: EdgeLabel,
-    ) {
-        graph.set_edge_named(key.v.clone(), key.w.clone(), key.name.clone(), Some(label));
-    }
-
-    fn ensure_rebound_handle(&mut self, key: &EdgeKey, v: usize, w: usize) -> usize {
-        if let Some(handle) = self.handle_by_key.get(key).copied() {
-            debug_assert!(self.active_nodes[v] && self.active_nodes[w]);
-            self.edges[handle].active = true;
-            return handle;
-        }
-
-        let handle = self.edges.len();
-        record_flowchart_adapter_work!(extraction_new_handles += 1);
-        self.incident_handles[v].push(handle);
-        if w != v {
-            self.incident_handles[w].push(handle);
-        }
-        self.handle_by_key.insert(key.clone(), handle);
-        self.edges.push(FlowchartIndexedEdge {
-            key: key.clone(),
-            v,
-            w,
-            active: true,
-        });
-        self.seen_handles.push(0);
-        handle
-    }
-
-    fn process_cluster_edges(
-        &mut self,
-        hierarchy: &FlowchartHierarchyIndex,
-        root: usize,
-        handles: &[usize],
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) {
-        let mut winners = Vec::<FlowchartReboundWinner>::new();
-        let mut winner_by_key = FxHashMap::<EdgeKey, usize>::default();
-
-        for handle in handles.iter().copied() {
-            let (key, edge_v, edge_w) = {
-                let edge = &self.edges[handle];
-                (edge.key.clone(), edge.v, edge.w)
-            };
-            debug_assert!(self.active_nodes[edge_v] && self.active_nodes[edge_w]);
-            // Root-touch edges are not copied, but they still retire with the descendant endpoint
-            // exactly as they would under sequential `remove_node` calls.
-            if edge_v == root || edge_w == root {
-                continue;
-            }
-            record_flowchart_adapter_work!(extraction_processed_edges += 1);
-            let Some(label) = graph.edge_by_key(&key).cloned() else {
-                continue;
-            };
-            let v_in = hierarchy.is_strict_descendant(edge_v, root);
-            let w_in = hierarchy.is_strict_descendant(edge_w, root);
-
-            if v_in && w_in {
-                if !new_graph.has_edge(&key.v, &key.w, key.name.as_deref()) {
-                    new_graph.set_edge_named(key.v, key.w, key.name, Some(label));
-                }
-                continue;
-            }
-
-            debug_assert!(v_in ^ w_in);
-            debug_assert!(edge_v != root && edge_w != root);
-            let rebound_v = if v_in { root } else { edge_v };
-            let rebound_w = if w_in { root } else { edge_w };
-            debug_assert!(rebound_v == root || rebound_w == root);
-            let rebound_key = EdgeKey {
-                v: hierarchy.node_ids[rebound_v].clone(),
-                w: hierarchy.node_ids[rebound_w].clone(),
-                name: key.name.clone(),
-            };
-            Self::set_graph_edge(graph, &rebound_key, label);
-            record_flowchart_adapter_work!(extraction_reinsertions += 1);
-            self.ensure_rebound_handle(&rebound_key, rebound_v, rebound_w);
-
-            let inside = if v_in { edge_v } else { edge_w };
-            debug_assert_eq!(self.retirement_marks[inside], self.retirement_epoch);
-            let removal_order = self.retirement_order[inside];
-            if let Some(winner_index) = winner_by_key.get(&rebound_key).copied() {
-                let winner = &mut winners[winner_index];
-                winner.last_applied_handle = handle;
-                if (removal_order, handle) > (winner.removal_order, winner.source_handle) {
-                    winner.removal_order = removal_order;
-                    winner.source_handle = handle;
-                }
-            } else {
-                winner_by_key.insert(rebound_key.clone(), winners.len());
-                winners.push(FlowchartReboundWinner {
-                    key: rebound_key,
-                    removal_order,
-                    source_handle: handle,
-                    last_applied_handle: handle,
-                });
-            }
-        }
-
-        // The first ordered pass establishes graph slots. Repeated source scans only change the
-        // winning labels, so replay a winner only when retirement order differs from edge order.
-        for winner in winners {
-            if winner.source_handle == winner.last_applied_handle {
-                continue;
-            }
-            let source_key = &self.edges[winner.source_handle].key;
-            let Some(label) = graph.edge_by_key(source_key).cloned() else {
-                continue;
-            };
-            Self::set_graph_edge(graph, &winner.key, label);
-            record_flowchart_adapter_work!(extraction_reinsertions += 1);
-        }
-    }
-
-    fn extract_cluster(
-        &mut self,
-        hierarchy: &FlowchartHierarchyIndex,
-        root: usize,
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> bool {
-        let nodes = self.copy_nodes(hierarchy, root);
-        let Some((first, remaining)) = nodes.split_first() else {
-            return false;
-        };
-        self.mark_retirement_order(&nodes);
-
-        Self::copy_node(hierarchy, *first, root, graph, new_graph);
-        let handles = self.gather_cluster_edges(&nodes);
-        self.process_cluster_edges(hierarchy, root, &handles, graph, new_graph);
-        for copy_node in remaining.iter().copied() {
-            Self::copy_node(hierarchy, copy_node, root, graph, new_graph);
-        }
-
-        for handle in handles {
-            self.edges[handle].active = false;
-        }
-        for copy_node in nodes {
-            if std::mem::replace(&mut self.active_nodes[copy_node.node], false) {
-                self.retired_nodes.push(copy_node.node);
-            }
-        }
-        true
-    }
-
-    fn finish_phase(
-        &mut self,
-        hierarchy: &FlowchartHierarchyIndex,
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) {
-        if self.retired_nodes.is_empty() {
-            return;
-        }
-        record_flowchart_adapter_work!(physical_node_batches += 1);
-        let removed = graph.remove_nodes(
-            self.retired_nodes
-                .iter()
-                .map(|node| hierarchy.node_ids[*node].as_str()),
-        );
-        record_flowchart_adapter_work!(retired_nodes += removed);
-        debug_assert_eq!(removed, self.retired_nodes.len());
-    }
-}
-
-fn should_extract_flowchart_cluster(
-    id: &str,
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
-    external_connections_by_id: &HashMap<String, bool>,
-) -> bool {
-    let has_explicit_dir = subgraphs_by_id
-        .get(id)
-        .is_some_and(|subgraph| subgraph.has_explicit_dir);
-    has_explicit_dir
-        || external_connections_by_id
-            .get(id)
-            .is_some_and(|external| !external)
-}
-
-fn new_extracted_flowchart_graph(
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    id: &str,
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
-) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-    let mut cluster_graph = Graph::new(GraphOptions {
-        multigraph: true,
-        compound: true,
-        directed: true,
-    });
-
-    // Mermaid's `extractor(...)` uses an explicit subgraph direction when present and otherwise
-    // toggles relative to the current graph's rankdir.
-    let dir = subgraphs_by_id
-        .get(id)
-        .and_then(|subgraph| subgraph.dir.as_deref())
-        .map(str::trim)
-        .filter(|dir| !dir.is_empty())
-        .map(normalize_dir)
-        .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
-
-    cluster_graph.set_graph(GraphLabel {
-        rankdir: dir_to_rankdir(&dir),
-        // Mermaid initializes extracted graphs with fixed Dagre defaults. Recursive layout later
-        // replaces nodesep and ranksep with the values inherited from the parent graph.
-        nodesep: 50.0,
-        ranksep: 50.0,
-        marginx: 8.0,
-        marginy: 8.0,
-        acyclicer: None,
-        ..Default::default()
-    });
-    cluster_graph
-}
-
-fn extract_flowchart_clusters_one_level(
-    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
-    external_connections_by_id: &HashMap<String, bool>,
-) -> Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> {
-    let hierarchy = FlowchartHierarchyIndex::new(graph);
-    let candidates: Vec<usize> = hierarchy
-        .clusters
-        .iter()
-        .copied()
-        .filter(|cluster| {
-            should_extract_flowchart_cluster(
-                &hierarchy.node_ids[*cluster],
-                subgraphs_by_id,
-                external_connections_by_id,
-            )
-        })
-        .collect();
-    if candidates.is_empty() {
-        return Vec::new();
-    }
-
-    let mut ledger = FlowchartExtractionLedger::new(graph, &hierarchy);
-    let mut extracted = Vec::with_capacity(candidates.len());
-    for root in candidates {
-        if !ledger.active_nodes[root] || !ledger.has_active_children(&hierarchy, root) {
-            continue;
-        }
-
-        let id = hierarchy.node_ids[root].clone();
-        let mut cluster_graph = new_extracted_flowchart_graph(graph, &id, subgraphs_by_id);
-        if ledger.extract_cluster(&hierarchy, root, graph, &mut cluster_graph) {
-            extracted.push((id, cluster_graph));
-        }
-    }
-    ledger.finish_phase(&hierarchy, graph);
-    extracted
-}
-
-#[cfg(test)]
-fn copy_cluster_reference(
+fn copy_cluster(
     cluster_id: &str,
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -1590,39 +817,6 @@ fn copy_cluster_reference(
     }
 }
 
-#[cfg(test)]
-fn extract_flowchart_clusters_one_level_reference(
-    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
-    external_connections_by_id: &HashMap<String, bool>,
-) -> Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> {
-    let node_ids = graph.node_ids();
-    let mut descendants = HashMap::new();
-    for id in &node_ids {
-        if !graph.children(id).is_empty() {
-            descendants.insert(id.clone(), extract_descendants(id, graph));
-        }
-    }
-
-    let candidates: Vec<String> = node_ids
-        .into_iter()
-        .filter(|id| !graph.children(id).is_empty())
-        .filter(|id| {
-            should_extract_flowchart_cluster(id, subgraphs_by_id, external_connections_by_id)
-        })
-        .collect();
-    let mut extracted = Vec::with_capacity(candidates.len());
-    for id in candidates {
-        if !graph.has_node(&id) || graph.children(&id).is_empty() {
-            continue;
-        }
-        let mut cluster_graph = new_extracted_flowchart_graph(graph, &id, subgraphs_by_id);
-        copy_cluster_reference(&id, graph, &mut cluster_graph, &id, &descendants);
-        extracted.push((id, cluster_graph));
-    }
-    extracted
-}
-
 fn extract_clusters_recursively(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
@@ -1636,8 +830,99 @@ fn extract_clusters_recursively(
         expanded: bool,
     }
 
-    let extracted_here =
-        extract_flowchart_clusters_one_level(graph, subgraphs_by_id, external_connections_by_id);
+    fn extract_one_level(
+        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+        external_connections_by_id: &std::collections::HashMap<String, bool>,
+    ) -> Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> {
+        let node_ids = graph.node_ids();
+        let mut descendants: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for id in &node_ids {
+            if graph.children(id).is_empty() {
+                continue;
+            }
+            descendants.insert(id.clone(), extract_descendants(id, graph));
+        }
+
+        let mut extracted_here: Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> = Vec::new();
+
+        let candidates: Vec<String> = node_ids
+            .into_iter()
+            .filter(|id| graph.has_node(id))
+            .filter(|id| !graph.children(id).is_empty())
+            // Mermaid 11.16 always extracts a cluster with an explicit `direction`, including
+            // clusters with external connections. Otherwise it retains the historical isolated-
+            // cluster rule based on the global `clusterDb.externalConnections` flag.
+            //
+            // Reference:
+            // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
+            .filter(|id| {
+                let has_explicit_dir = subgraphs_by_id
+                    .get(id.as_str())
+                    .is_some_and(|subgraph| subgraph.has_explicit_dir);
+                has_explicit_dir
+                    || external_connections_by_id
+                        .get(id.as_str())
+                        .is_some_and(|external| !external)
+            })
+            .collect();
+
+        for id in candidates {
+            if !graph.has_node(&id) {
+                continue;
+            }
+            if graph.children(&id).is_empty() {
+                continue;
+            }
+
+            let mut cluster_graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+                Graph::new(GraphOptions {
+                    multigraph: true,
+                    compound: true,
+                    directed: true,
+                });
+
+            // Mermaid's `extractor(...)` uses:
+            // - `clusterData.dir` when explicitly set for the subgraph
+            // - otherwise: toggle relative to the current graph's rankdir (TB<->LR)
+            let dir = subgraphs_by_id
+                .get(&id)
+                .and_then(|sg| sg.dir.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(normalize_dir)
+                .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
+
+            cluster_graph.set_graph(GraphLabel {
+                rankdir: dir_to_rankdir(&dir),
+                // Mermaid's cluster extractor initializes subgraphs with a fixed dagre config
+                // (nodesep/ranksep=50, marginx/marginy=8). Before each recursive render Mermaid then
+                // overrides `nodesep` to the parent graph value and `ranksep` to `parent.ranksep + 25`.
+                //
+                // We model that in headless mode by keeping the extractor defaults here, then applying
+                // the per-depth override inside `layout_graph_with_recursive_clusters(...)` right
+                // before laying out each extracted graph.
+                //
+                // Reference:
+                // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
+                // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
+                nodesep: 50.0,
+                ranksep: 50.0,
+                marginx: 8.0,
+                marginy: 8.0,
+                acyclicer: None,
+                ..Default::default()
+            });
+
+            copy_cluster(&id, graph, &mut cluster_graph, &id, &descendants);
+            extracted_here.push((id, cluster_graph));
+        }
+
+        extracted_here
+    }
+
+    let extracted_here = extract_one_level(graph, subgraphs_by_id, external_connections_by_id);
     let mut stack: Vec<ExtractFrame> = extracted_here
         .into_iter()
         .rev()
@@ -1654,55 +939,7 @@ fn extract_clusters_recursively(
             continue;
         }
 
-        let children = extract_flowchart_clusters_one_level(
-            &mut frame.graph,
-            subgraphs_by_id,
-            external_connections_by_id,
-        );
-        frame.expanded = true;
-        stack.push(frame);
-        stack.extend(children.into_iter().rev().map(|(id, graph)| ExtractFrame {
-            id,
-            graph,
-            expanded: false,
-        }));
-    }
-}
-
-#[cfg(test)]
-fn extract_clusters_recursively_reference(
-    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
-    external_connections_by_id: &HashMap<String, bool>,
-    extracted: &mut HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-) {
-    struct ExtractFrame {
-        id: String,
-        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        expanded: bool,
-    }
-
-    let extracted_here = extract_flowchart_clusters_one_level_reference(
-        graph,
-        subgraphs_by_id,
-        external_connections_by_id,
-    );
-    let mut stack: Vec<ExtractFrame> = extracted_here
-        .into_iter()
-        .rev()
-        .map(|(id, graph)| ExtractFrame {
-            id,
-            graph,
-            expanded: false,
-        })
-        .collect();
-
-    while let Some(mut frame) = stack.pop() {
-        if frame.expanded {
-            extracted.insert(frame.id, frame.graph);
-            continue;
-        }
-        let children = extract_flowchart_clusters_one_level_reference(
+        let children = extract_one_level(
             &mut frame.graph,
             subgraphs_by_id,
             external_connections_by_id,
@@ -1726,12 +963,12 @@ pub(crate) fn layout_flowchart_typed(
     layout_flowchart_with_model(model, effective_config, measurer, math_renderer)
 }
 
-/// Applies the conservative flowchart layout admission budget.
+/// Estimates the graphlib pre-pass work performed for flowchart clusters.
 ///
-/// The numeric policy intentionally remains compatible with the historical worst-case graphlib
-/// pre-pass estimate even when an implementation uses indexed linear passes. Changing the adapter
-/// must not silently raise the public Dagre/ELK resource envelope; that policy requires its own
-/// versioned review. The layout kernels remain responsible for their internal work.
+/// `adjust_flowchart_clusters_and_edges` scans every edge for every cluster and the recursive
+/// extractor scans the edge set again while copying each cluster's descendants. The estimate
+/// intentionally charges only those source-backed inspections (plus a small linear layout
+/// baseline); the Dagre/ELK kernels remain responsible for their own internal work.
 pub(crate) fn flowchart_layout_work_units(model: &FlowchartModel) -> usize {
     let nodes = model.nodes.len().saturating_add(model.subgraphs.len());
     let edges = model.edges.len();
@@ -3855,513 +3092,6 @@ mod tests {
         })
     }
 
-    #[derive(Debug, Clone)]
-    struct ReferenceClusterDbEntry {
-        anchor_id: String,
-        external_connections: bool,
-    }
-
-    fn reference_find_common_edges(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        id1: &str,
-        id2: &str,
-    ) -> bool {
-        let edges1: Vec<(String, String)> = graph
-            .edges()
-            .filter(|edge| edge.v == id1 || edge.w == id1)
-            .map(|edge| (edge.v.clone(), edge.w.clone()))
-            .collect();
-        let edges2: Vec<(String, String)> = graph
-            .edges()
-            .filter(|edge| edge.v == id2 || edge.w == id2)
-            .map(|edge| (edge.v.clone(), edge.w.clone()))
-            .collect();
-
-        edges1.into_iter().any(|(v, w)| {
-            let mapped = (
-                if v == id1 { id2.to_string() } else { v },
-                if w == id1 { id1.to_string() } else { w },
-            );
-            edges2.contains(&mapped)
-        })
-    }
-
-    fn reference_find_non_cluster_child(
-        id: &str,
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        cluster_id: &str,
-    ) -> Option<String> {
-        let children = graph.children(id);
-        if children.is_empty() {
-            return Some(id.to_string());
-        }
-
-        let mut reserve = None;
-        let mut stack: Vec<String> = children.iter().rev().map(|id| id.to_string()).collect();
-        while let Some(node) = stack.pop() {
-            let children = graph.children(&node);
-            if !children.is_empty() {
-                stack.extend(children.iter().rev().map(|id| id.to_string()));
-                continue;
-            }
-            if reference_find_common_edges(graph, cluster_id, &node) {
-                reserve = Some(node);
-            } else {
-                return Some(node);
-            }
-        }
-        reserve
-    }
-
-    fn reference_is_node_in_extractable_cluster(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        node_id: &str,
-        root_id: &str,
-        cluster_db: &HashMap<String, ReferenceClusterDbEntry>,
-    ) -> bool {
-        let mut parent = graph.parent(node_id);
-        while let Some(parent_id) = parent {
-            if parent_id == root_id {
-                break;
-            }
-            if cluster_db
-                .get(parent_id)
-                .is_some_and(|entry| !entry.external_connections)
-            {
-                return true;
-            }
-            parent = graph.parent(parent_id);
-        }
-        false
-    }
-
-    fn reference_find_safe_anchor_node(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        cluster_id: &str,
-        excluded_cluster: &str,
-        descendants: &HashMap<String, Vec<String>>,
-        cluster_db: &HashMap<String, ReferenceClusterDbEntry>,
-    ) -> Option<String> {
-        for child in graph.children(cluster_id) {
-            if child == excluded_cluster
-                || descendants
-                    .get(excluded_cluster)
-                    .is_some_and(|nodes| nodes.iter().any(|node| node == child))
-            {
-                continue;
-            }
-
-            let Some(candidate) = reference_find_non_cluster_child(child, graph, cluster_id) else {
-                continue;
-            };
-            if !reference_is_node_in_extractable_cluster(graph, &candidate, cluster_id, cluster_db)
-            {
-                return Some(candidate);
-            }
-        }
-        None
-    }
-
-    fn reference_adjust_flowchart_clusters_and_edges(
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> HashMap<String, bool> {
-        let node_ids = graph.node_ids();
-        let cluster_ids: Vec<String> = node_ids
-            .iter()
-            .filter(|id| !graph.children(id).is_empty())
-            .cloned()
-            .collect();
-        let mut descendants = HashMap::new();
-        let mut cluster_db = HashMap::new();
-        for id in &cluster_ids {
-            descendants.insert(id.clone(), extract_descendants(id, graph));
-            cluster_db.insert(
-                id.clone(),
-                ReferenceClusterDbEntry {
-                    anchor_id: reference_find_non_cluster_child(id, graph, id)
-                        .unwrap_or_else(|| id.clone()),
-                    external_connections: false,
-                },
-            );
-        }
-
-        for id in &cluster_ids {
-            let cluster_descendants = descendants
-                .get(id)
-                .expect("cluster descendants were initialized");
-            let has_external = graph.edges().any(|edge| {
-                let v_in = cluster_descendants.iter().any(|node| node == &edge.v);
-                let w_in = cluster_descendants.iter().any(|node| node == &edge.w);
-                v_in ^ w_in
-            });
-            cluster_db
-                .get_mut(id)
-                .expect("cluster entry was initialized")
-                .external_connections = has_external;
-        }
-
-        for id in &cluster_ids {
-            let non_cluster_child = cluster_db
-                .get(id)
-                .expect("cluster entry was initialized")
-                .anchor_id
-                .clone();
-            if let Some(parent) = graph.parent(&non_cluster_child)
-                && parent != id
-                && cluster_db
-                    .get(parent)
-                    .is_some_and(|entry| !entry.external_connections)
-            {
-                cluster_db
-                    .get_mut(id)
-                    .expect("cluster entry was initialized")
-                    .anchor_id = parent.to_string();
-            }
-
-            let needs_safe_anchor = cluster_db
-                .get(id)
-                .is_some_and(|entry| entry.external_connections)
-                && graph.edges().any(|edge| edge.v == *id)
-                && reference_is_node_in_extractable_cluster(
-                    graph,
-                    &non_cluster_child,
-                    id,
-                    &cluster_db,
-                );
-            if needs_safe_anchor
-                && let Some(excluded_cluster) = graph.parent(&non_cluster_child)
-                && let Some(safe_anchor) = reference_find_safe_anchor_node(
-                    graph,
-                    id,
-                    excluded_cluster,
-                    &descendants,
-                    &cluster_db,
-                )
-            {
-                cluster_db
-                    .get_mut(id)
-                    .expect("cluster entry was initialized")
-                    .anchor_id = safe_anchor;
-            }
-        }
-
-        for edge in graph.edge_keys() {
-            if !cluster_db.contains_key(&edge.v) && !cluster_db.contains_key(&edge.w) {
-                continue;
-            }
-            let Some(mut label) = graph.edge_by_key(&edge).cloned() else {
-                continue;
-            };
-            let v = cluster_db
-                .get(&edge.v)
-                .filter(|entry| entry.external_connections)
-                .map_or_else(|| edge.v.clone(), |entry| entry.anchor_id.clone());
-            let w = cluster_db
-                .get(&edge.w)
-                .filter(|entry| entry.external_connections)
-                .map_or_else(|| edge.w.clone(), |entry| entry.anchor_id.clone());
-
-            let _ = graph.remove_edge_key(&edge);
-            if v != edge.v {
-                if let Some(parent) = graph.parent(&v)
-                    && let Some(entry) = cluster_db.get_mut(parent)
-                {
-                    entry.external_connections = true;
-                }
-                label
-                    .extras
-                    .insert("fromCluster".to_string(), Value::String(edge.v.clone()));
-            }
-            if w != edge.w {
-                if let Some(parent) = graph.parent(&w)
-                    && let Some(entry) = cluster_db.get_mut(parent)
-                {
-                    entry.external_connections = true;
-                }
-                label
-                    .extras
-                    .insert("toCluster".to_string(), Value::String(edge.w.clone()));
-            }
-            graph.set_edge_named(v, w, edge.name, Some(label));
-        }
-
-        cluster_db
-            .into_iter()
-            .map(|(id, entry)| (id, entry.external_connections))
-            .collect()
-    }
-
-    fn adjustment_graph(seed: u64) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-        fn next(state: &mut u64) -> usize {
-            *state = state
-                .wrapping_mul(6_364_136_223_846_793_005)
-                .wrapping_add(1_442_695_040_888_963_407);
-            (*state >> 32) as usize
-        }
-
-        let mut graph = compound_graph();
-        let mut state = seed;
-        const NODE_COUNT: usize = 18;
-        for node in 0..NODE_COUNT {
-            graph.set_node(format!("n{node}"), NodeLabel::default());
-        }
-        for node in 1..NODE_COUNT {
-            if next(&mut state).is_multiple_of(4) {
-                continue;
-            }
-            let parent = next(&mut state) % node;
-            graph.set_parent(format!("n{node}"), format!("n{parent}"));
-        }
-        for serial in 0..54 {
-            let v = next(&mut state) % NODE_COUNT;
-            let w = next(&mut state) % NODE_COUNT;
-            let mut label = EdgeLabel::default();
-            label.extras.insert(
-                "serial".to_string(),
-                Value::from(u64::try_from(serial).expect("serial fits in u64")),
-            );
-            graph.set_edge_named(
-                format!("n{v}"),
-                format!("n{w}"),
-                Some(format!("slot-{}", serial % 7)),
-                Some(label),
-            );
-        }
-        graph
-    }
-
-    type AdjustmentEdges = Vec<(dugong::graphlib::EdgeKey, EdgeLabel)>;
-    type AdjustmentHierarchy = Vec<(String, Option<String>, Vec<String>)>;
-
-    fn adjustment_snapshot(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> (AdjustmentEdges, AdjustmentHierarchy) {
-        let edges = graph
-            .edge_keys()
-            .into_iter()
-            .map(|edge| {
-                let label = graph
-                    .edge_by_key(&edge)
-                    .cloned()
-                    .expect("edge key came from graph");
-                (edge, label)
-            })
-            .collect();
-        let hierarchy = graph
-            .node_ids()
-            .into_iter()
-            .map(|id| {
-                let parent = graph.parent(&id).map(str::to_string);
-                let children = graph
-                    .children(&id)
-                    .into_iter()
-                    .map(str::to_string)
-                    .collect();
-                (id, parent, children)
-            })
-            .collect();
-        (edges, hierarchy)
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct ExtractionGraphLabelSnapshot {
-        rankdir: RankDir,
-        nodesep: u64,
-        ranksep: u64,
-        edgesep: u64,
-        marginx: u64,
-        marginy: u64,
-        width: u64,
-        height: u64,
-        align: Option<String>,
-        ranker: Option<String>,
-        acyclicer: Option<String>,
-        dummy_chains: Vec<String>,
-        nesting_root: Option<String>,
-        node_rank_factor: Option<usize>,
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct ExtractionGraphSnapshot {
-        label: ExtractionGraphLabelSnapshot,
-        nodes: Vec<(String, NodeLabel, Option<String>, Vec<String>)>,
-        edges: Vec<(EdgeKey, EdgeLabel)>,
-    }
-
-    fn extraction_graph_snapshot(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> ExtractionGraphSnapshot {
-        let label = graph.graph();
-        ExtractionGraphSnapshot {
-            label: ExtractionGraphLabelSnapshot {
-                rankdir: label.rankdir,
-                nodesep: label.nodesep.to_bits(),
-                ranksep: label.ranksep.to_bits(),
-                edgesep: label.edgesep.to_bits(),
-                marginx: label.marginx.to_bits(),
-                marginy: label.marginy.to_bits(),
-                width: label.width.to_bits(),
-                height: label.height.to_bits(),
-                align: label.align.clone(),
-                ranker: label.ranker.clone(),
-                acyclicer: label.acyclicer.clone(),
-                dummy_chains: label.dummy_chains.clone(),
-                nesting_root: label.nesting_root.clone(),
-                node_rank_factor: label.node_rank_factor,
-            },
-            nodes: graph
-                .node_ids()
-                .into_iter()
-                .map(|id| {
-                    let label = graph.node(&id).cloned().expect("node id came from graph");
-                    let parent = graph.parent(&id).map(str::to_string);
-                    let children = graph
-                        .children(&id)
-                        .into_iter()
-                        .map(str::to_string)
-                        .collect();
-                    (id, label, parent, children)
-                })
-                .collect(),
-            edges: graph
-                .edge_keys()
-                .into_iter()
-                .map(|key| {
-                    let label = graph
-                        .edge_by_key(&key)
-                        .cloned()
-                        .expect("edge key came from graph");
-                    (key, label)
-                })
-                .collect(),
-        }
-    }
-
-    fn extracted_graphs_snapshot(
-        graphs: &HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-    ) -> Vec<(String, ExtractionGraphSnapshot)> {
-        let mut ids: Vec<&String> = graphs.keys().collect();
-        ids.sort_unstable();
-        ids.into_iter()
-            .map(|id| (id.clone(), extraction_graph_snapshot(&graphs[id])))
-            .collect()
-    }
-
-    fn extraction_graph(
-        seed: u64,
-    ) -> (
-        Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        HashMap<String, FlowSubgraph>,
-        HashMap<String, bool>,
-    ) {
-        fn next(state: &mut u64) -> usize {
-            *state = state
-                .wrapping_mul(6_364_136_223_846_793_005)
-                .wrapping_add(1_442_695_040_888_963_407);
-            (*state >> 32) as usize
-        }
-
-        fn shuffle(values: &mut [usize], state: &mut u64) {
-            for index in (1..values.len()).rev() {
-                let other = next(state) % (index + 1);
-                values.swap(index, other);
-            }
-        }
-
-        const NODE_COUNT: usize = 22;
-        let mut state = seed ^ 0x4D45_524D_414E;
-        let mut graph = compound_graph();
-        graph.set_graph(GraphLabel {
-            rankdir: if next(&mut state).is_multiple_of(2) {
-                RankDir::TB
-            } else {
-                RankDir::LR
-            },
-            nodesep: 37.0,
-            ranksep: 61.0,
-            ..Default::default()
-        });
-
-        let mut insertion_order: Vec<usize> = (0..NODE_COUNT).collect();
-        shuffle(&mut insertion_order, &mut state);
-        for node in insertion_order {
-            graph.set_node(
-                format!("n{node}"),
-                NodeLabel {
-                    width: node as f64 + 0.25,
-                    height: node as f64 + 0.5,
-                    ..Default::default()
-                },
-            );
-        }
-
-        let mut parents = vec![None; NODE_COUNT];
-        for (node, parent) in parents.iter_mut().enumerate().skip(1) {
-            if !next(&mut state).is_multiple_of(5) {
-                *parent = Some(next(&mut state) % node);
-            }
-        }
-        let mut assignment_order: Vec<usize> = (1..NODE_COUNT).collect();
-        shuffle(&mut assignment_order, &mut state);
-        for node in assignment_order {
-            if let Some(parent) = parents[node] {
-                graph.set_parent(format!("n{node}"), format!("n{parent}"));
-            }
-        }
-
-        for serial in 0..72 {
-            let v = next(&mut state) % NODE_COUNT;
-            let w = next(&mut state) % NODE_COUNT;
-            let mut label = EdgeLabel::default();
-            label.extras.insert(
-                "serial".to_string(),
-                Value::from(u64::try_from(serial).expect("serial fits in u64")),
-            );
-            graph.set_edge_named(
-                format!("n{v}"),
-                format!("n{w}"),
-                Some(format!("slot-{}", serial % 9)),
-                Some(label),
-            );
-        }
-
-        let mut subgraphs_by_id = HashMap::new();
-        let mut external_connections_by_id = HashMap::new();
-        let mut forced_extractable = false;
-        for node in 0..NODE_COUNT {
-            let id = format!("n{node}");
-            let has_children = parents.iter().any(|parent| *parent == Some(node));
-            let has_explicit_dir = next(&mut state).is_multiple_of(4);
-            let mut external = !next(&mut state).is_multiple_of(3);
-            if has_children && !forced_extractable {
-                external = false;
-                forced_extractable = true;
-            }
-            subgraphs_by_id.insert(
-                id.clone(),
-                FlowSubgraph {
-                    id: id.clone(),
-                    title: id.clone(),
-                    dir: has_explicit_dir.then(|| {
-                        if next(&mut state).is_multiple_of(2) {
-                            "LR".to_string()
-                        } else {
-                            "TB".to_string()
-                        }
-                    }),
-                    has_explicit_dir,
-                    label_type: None,
-                    classes: Vec::new(),
-                    styles: Vec::new(),
-                    nodes: Vec::new(),
-                },
-            );
-            external_connections_by_id.insert(id, external);
-        }
-
-        (graph, subgraphs_by_id, external_connections_by_id)
-    }
-
     #[test]
     fn flowchart_third_self_loop_segment_uses_mermaid_11_16_graph_key() {
         let edge = FlowEdge {
@@ -4391,778 +3121,6 @@ mod tests {
             flowchart_layout_edge_key(&edge, Some(&meta)),
             "A-cyclic-special-2"
         );
-    }
-
-    #[test]
-    fn flowchart_adjustment_index_matches_source_shaped_reference() {
-        for seed in 0..96 {
-            let mut expected_graph = adjustment_graph(seed);
-            let mut actual_graph = adjustment_graph(seed);
-
-            let expected_external =
-                reference_adjust_flowchart_clusters_and_edges(&mut expected_graph);
-            let actual_external = adjust_flowchart_clusters_and_edges(&mut actual_graph);
-
-            assert_eq!(
-                actual_external, expected_external,
-                "external flags, seed={seed}"
-            );
-            assert_eq!(
-                adjustment_snapshot(&actual_graph),
-                adjustment_snapshot(&expected_graph),
-                "adjusted graph, seed={seed}"
-            );
-        }
-    }
-
-    #[test]
-    fn flowchart_extraction_ledger_matches_recursive_reference() {
-        for seed in 0..128 {
-            let (mut expected_outer, subgraphs_by_id, external_connections_by_id) =
-                extraction_graph(seed);
-            let (mut actual_outer, _, _) = extraction_graph(seed);
-            let mut expected_extracted = HashMap::new();
-            let mut actual_extracted = HashMap::new();
-
-            extract_clusters_recursively_reference(
-                &mut expected_outer,
-                &subgraphs_by_id,
-                &external_connections_by_id,
-                &mut expected_extracted,
-            );
-            extract_clusters_recursively(
-                &mut actual_outer,
-                &subgraphs_by_id,
-                &external_connections_by_id,
-                &mut actual_extracted,
-                0,
-            );
-
-            assert_eq!(
-                extraction_graph_snapshot(&actual_outer),
-                extraction_graph_snapshot(&expected_outer),
-                "outer graph, seed={seed}"
-            );
-            assert_eq!(
-                extracted_graphs_snapshot(&actual_extracted),
-                extracted_graphs_snapshot(&expected_extracted),
-                "extracted graphs, seed={seed}"
-            );
-        }
-    }
-
-    #[test]
-    fn flowchart_extraction_retires_root_touch_edge_before_parent_candidate() {
-        let mut graph = compound_graph();
-        for id in ["inner", "leaf", "outer", "outside"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("leaf".to_string(), "inner".to_string());
-        graph.set_parent("inner".to_string(), "outer".to_string());
-        graph.set_edge_named(
-            "leaf".to_string(),
-            "inner".to_string(),
-            Some("root-touch".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        graph.set_edge_named(
-            "outer".to_string(),
-            "outside".to_string(),
-            Some("keep".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        let external_connections =
-            HashMap::from([("inner".to_string(), false), ("outer".to_string(), false)]);
-
-        let mut expected = graph.filter_nodes(|_| true);
-        let expected_extracted = extract_flowchart_clusters_one_level_reference(
-            &mut expected,
-            &HashMap::new(),
-            &external_connections,
-        );
-        let actual_extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-        );
-
-        assert_eq!(
-            extraction_graph_snapshot(&graph),
-            extraction_graph_snapshot(&expected)
-        );
-        assert_eq!(
-            actual_extracted
-                .iter()
-                .map(|(id, graph)| (id.clone(), extraction_graph_snapshot(graph)))
-                .collect::<Vec<_>>(),
-            expected_extracted
-                .iter()
-                .map(|(id, graph)| (id.clone(), extraction_graph_snapshot(graph)))
-                .collect::<Vec<_>>()
-        );
-        let outer = actual_extracted
-            .iter()
-            .find_map(|(id, graph)| (id == "outer").then_some(graph))
-            .expect("outer cluster was extracted");
-        assert_eq!(outer.node_ids(), vec!["inner".to_string()]);
-        assert_eq!(outer.edge_count(), 0);
-        let outer_keys = graph.edge_keys();
-        assert_eq!(outer_keys.len(), 1);
-        assert_eq!(
-            (
-                outer_keys[0].v.as_str(),
-                outer_keys[0].w.as_str(),
-                outer_keys[0].name.as_deref()
-            ),
-            ("outer", "outside", Some("keep"))
-        );
-    }
-
-    #[test]
-    fn flowchart_extraction_parent_first_defers_child_to_recursive_frame() {
-        let mut graph = compound_graph();
-        for id in ["parent", "child", "leaf"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("child".to_string(), "parent".to_string());
-        graph.set_parent("leaf".to_string(), "child".to_string());
-        let external_connections =
-            HashMap::from([("parent".to_string(), false), ("child".to_string(), false)]);
-        let mut extracted = HashMap::new();
-
-        extract_clusters_recursively(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-            &mut extracted,
-            0,
-        );
-
-        assert_eq!(graph.node_ids(), vec!["parent".to_string()]);
-        assert_eq!(extracted.len(), 2);
-        assert_eq!(extracted["parent"].node_ids(), vec!["child".to_string()]);
-        assert_eq!(extracted["child"].node_ids(), vec!["leaf".to_string()]);
-    }
-
-    #[test]
-    fn flowchart_extraction_collision_uses_retirement_order_and_existing_slot() {
-        fn labeled_edge(serial: &str) -> EdgeLabel {
-            let mut label = EdgeLabel::default();
-            label
-                .extras
-                .insert("serial".to_string(), Value::String(serial.to_string()));
-            label
-        }
-
-        let mut graph = compound_graph();
-        for id in ["cluster", "a", "b", "outside", "sentinel"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("a".to_string(), "cluster".to_string());
-        graph.set_parent("b".to_string(), "cluster".to_string());
-        graph.set_edge_named(
-            "cluster".to_string(),
-            "outside".to_string(),
-            Some("same".to_string()),
-            Some(labeled_edge("existing")),
-        );
-        graph.set_edge_named(
-            "outside".to_string(),
-            "sentinel".to_string(),
-            Some("sentinel".to_string()),
-            Some(labeled_edge("sentinel")),
-        );
-        graph.set_edge_named(
-            "b".to_string(),
-            "outside".to_string(),
-            Some("same".to_string()),
-            Some(labeled_edge("b")),
-        );
-        graph.set_edge_named(
-            "a".to_string(),
-            "outside".to_string(),
-            Some("same".to_string()),
-            Some(labeled_edge("a")),
-        );
-
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &HashMap::from([("cluster".to_string(), false)]),
-        );
-
-        assert_eq!(extracted.len(), 1);
-        let keys = graph.edge_keys();
-        assert_eq!(
-            keys.iter()
-                .map(|key| (key.v.as_str(), key.w.as_str(), key.name.as_deref()))
-                .collect::<Vec<_>>(),
-            vec![
-                ("cluster", "outside", Some("same")),
-                ("outside", "sentinel", Some("sentinel")),
-            ]
-        );
-        assert_eq!(
-            graph.edge_by_key(&keys[0]).expect("rebound edge").extras["serial"],
-            Value::String("b".to_string())
-        );
-    }
-
-    #[test]
-    fn flowchart_extraction_preserves_internal_edge_autocreation_order() {
-        let mut graph = compound_graph();
-        for id in ["cluster", "b", "c", "a"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        for child in ["a", "c", "b"] {
-            graph.set_parent(child.to_string(), "cluster".to_string());
-        }
-        graph.set_edge_named(
-            "b".to_string(),
-            "c".to_string(),
-            Some("internal".to_string()),
-            Some(EdgeLabel::default()),
-        );
-
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &HashMap::from([("cluster".to_string(), false)]),
-        );
-        let child = &extracted[0].1;
-
-        assert_eq!(
-            child.node_ids(),
-            vec!["a".to_string(), "b".to_string(), "c".to_string()]
-        );
-        assert_eq!(child.edge_keys().len(), 1);
-    }
-
-    #[test]
-    fn flowchart_extraction_appends_new_rebound_slots_in_edge_order() {
-        let mut graph = compound_graph();
-        for id in ["cluster", "a", "b", "x", "y", "sentinel"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("a".to_string(), "cluster".to_string());
-        graph.set_parent("b".to_string(), "cluster".to_string());
-        graph.set_edge_named(
-            "x".to_string(),
-            "sentinel".to_string(),
-            Some("sentinel".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        // The later-retiring child is deliberately first in edge order.
-        graph.set_edge_named(
-            "b".to_string(),
-            "x".to_string(),
-            Some("bx".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        graph.set_edge_named(
-            "a".to_string(),
-            "y".to_string(),
-            Some("ay".to_string()),
-            Some(EdgeLabel::default()),
-        );
-
-        let _ = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &HashMap::from([("cluster".to_string(), false)]),
-        );
-
-        assert_eq!(
-            graph
-                .edge_keys()
-                .iter()
-                .map(|key| (key.v.as_str(), key.w.as_str(), key.name.as_deref()))
-                .collect::<Vec<_>>(),
-            vec![
-                ("x", "sentinel", Some("sentinel")),
-                ("cluster", "x", Some("bx")),
-                ("cluster", "y", Some("ay")),
-            ]
-        );
-    }
-
-    #[test]
-    fn flowchart_extraction_rebinds_sibling_cross_edge_in_candidate_order() {
-        let mut graph = compound_graph();
-        for id in ["left", "left_leaf", "right", "right_leaf"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("left_leaf".to_string(), "left".to_string());
-        graph.set_parent("right_leaf".to_string(), "right".to_string());
-        graph.set_edge_named(
-            "left_leaf".to_string(),
-            "right_leaf".to_string(),
-            Some("cross".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        let external_connections =
-            HashMap::from([("left".to_string(), false), ("right".to_string(), false)]);
-
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-        );
-
-        assert_eq!(extracted.len(), 2);
-        assert_eq!(
-            extracted
-                .iter()
-                .map(|(id, _)| id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["left", "right"]
-        );
-        let keys = graph.edge_keys();
-        assert_eq!(keys.len(), 1);
-        assert_eq!(
-            (
-                keys[0].v.as_str(),
-                keys[0].w.as_str(),
-                keys[0].name.as_deref()
-            ),
-            ("left", "right", Some("cross"))
-        );
-    }
-
-    #[test]
-    fn flowchart_extraction_indexes_unrelated_edges_once() {
-        const CLUSTERS: usize = 100;
-        const EDGES: usize = 400;
-        const OUTSIDE_NODES: usize = 20;
-
-        let mut graph = compound_graph();
-        let mut external_connections = HashMap::new();
-        for cluster in 0..CLUSTERS {
-            let root = format!("c{cluster}");
-            let leaf = format!("l{cluster}");
-            graph.set_node(root.clone(), NodeLabel::default());
-            graph.set_node(leaf.clone(), NodeLabel::default());
-            graph.set_parent(leaf, root.clone());
-            external_connections.insert(root, false);
-        }
-        for node in 0..OUTSIDE_NODES {
-            graph.set_node(format!("u{node}"), NodeLabel::default());
-        }
-        for edge in 0..EDGES {
-            graph.set_edge_named(
-                format!("u{}", edge % OUTSIDE_NODES),
-                format!("u{}", (edge * 7 + 3) % OUTSIDE_NODES),
-                Some(format!("e{edge}")),
-                Some(EdgeLabel::default()),
-            );
-        }
-
-        reset_flowchart_adapter_work();
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-        );
-        let work = flowchart_adapter_work();
-
-        assert_eq!(extracted.len(), CLUSTERS);
-        assert_eq!(graph.edge_count(), EDGES);
-        assert_eq!(work.extraction_ledger_builds, 1);
-        assert_eq!(work.extraction_index_edge_visits, EDGES);
-        assert_eq!(work.extraction_incident_handle_visits, 0);
-        assert_eq!(work.extraction_processed_edges, 0);
-        assert_eq!(work.extraction_copy_node_visits, CLUSTERS);
-        assert_eq!(work.extraction_new_handles, 0);
-        assert_eq!(work.extraction_reinsertions, 0);
-        assert_eq!(work.physical_node_batches, 1);
-        assert_eq!(work.retired_nodes, CLUSTERS);
-    }
-
-    #[test]
-    fn flowchart_extraction_processes_flat_internal_edges_once() {
-        const CLUSTERS: usize = 100;
-        const LEAVES_PER_CLUSTER: usize = 4;
-        const EDGES: usize = CLUSTERS * LEAVES_PER_CLUSTER;
-
-        let mut graph = compound_graph();
-        let mut external_connections = HashMap::new();
-        for cluster in 0..CLUSTERS {
-            let root = format!("c{cluster}");
-            graph.set_node(root.clone(), NodeLabel::default());
-            external_connections.insert(root.clone(), false);
-            for leaf in 0..LEAVES_PER_CLUSTER {
-                let id = format!("c{cluster}-l{leaf}");
-                graph.set_node(id.clone(), NodeLabel::default());
-                graph.set_parent(id, root.clone());
-            }
-            for edge in 0..LEAVES_PER_CLUSTER {
-                graph.set_edge_named(
-                    format!("c{cluster}-l{edge}"),
-                    format!("c{cluster}-l{}", (edge + 1) % LEAVES_PER_CLUSTER),
-                    Some(format!("c{cluster}-e{edge}")),
-                    Some(EdgeLabel::default()),
-                );
-            }
-        }
-
-        reset_flowchart_adapter_work();
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-        );
-        let work = flowchart_adapter_work();
-
-        assert_eq!(extracted.len(), CLUSTERS);
-        assert_eq!(work.extraction_ledger_builds, 1);
-        assert_eq!(work.extraction_index_edge_visits, EDGES);
-        assert_eq!(work.extraction_incident_handle_visits, EDGES * 2);
-        assert_eq!(work.extraction_processed_edges, EDGES);
-        assert_eq!(
-            work.extraction_copy_node_visits,
-            CLUSTERS * LEAVES_PER_CLUSTER
-        );
-        assert_eq!(work.extraction_new_handles, 0);
-        assert_eq!(work.extraction_reinsertions, 0);
-        assert_eq!(work.physical_node_batches, 1);
-        assert_eq!(work.retired_nodes, CLUSTERS * LEAVES_PER_CLUSTER);
-    }
-
-    #[test]
-    fn flowchart_extraction_indexes_cross_edge_reinsertions_linearly() {
-        const CLUSTERS: usize = 100;
-
-        let mut graph = compound_graph();
-        let mut external_connections = HashMap::new();
-        graph.set_node("outside".to_string(), NodeLabel::default());
-        for cluster in 0..CLUSTERS {
-            let root = format!("c{cluster}");
-            let leaf = format!("l{cluster}");
-            graph.set_node(root.clone(), NodeLabel::default());
-            graph.set_node(leaf.clone(), NodeLabel::default());
-            graph.set_parent(leaf.clone(), root.clone());
-            graph.set_edge_named(
-                leaf,
-                "outside".to_string(),
-                Some(format!("e{cluster}")),
-                Some(EdgeLabel::default()),
-            );
-            external_connections.insert(root, false);
-        }
-
-        reset_flowchart_adapter_work();
-        let extracted = extract_flowchart_clusters_one_level(
-            &mut graph,
-            &HashMap::new(),
-            &external_connections,
-        );
-        let work = flowchart_adapter_work();
-
-        assert_eq!(extracted.len(), CLUSTERS);
-        assert_eq!(graph.edge_count(), CLUSTERS);
-        assert_eq!(work.extraction_ledger_builds, 1);
-        assert_eq!(work.extraction_index_edge_visits, CLUSTERS);
-        assert_eq!(work.extraction_incident_handle_visits, CLUSTERS);
-        assert_eq!(work.extraction_processed_edges, CLUSTERS);
-        assert_eq!(work.extraction_copy_node_visits, CLUSTERS);
-        assert_eq!(work.extraction_new_handles, CLUSTERS);
-        assert_eq!(work.extraction_reinsertions, CLUSTERS);
-        assert_eq!(work.physical_node_batches, 1);
-        assert_eq!(work.retired_nodes, CLUSTERS);
-        assert!(
-            work.extraction_incident_handle_visits
-                <= 2 * (work.extraction_index_edge_visits + work.extraction_new_handles)
-        );
-        assert!(
-            work.extraction_processed_edges
-                <= work.extraction_index_edge_visits + work.extraction_new_handles
-        );
-    }
-
-    #[test]
-    fn flowchart_common_edge_index_preserves_upstream_asymmetry() {
-        fn indexed_common(pairs: &[(&str, &str)]) -> bool {
-            let mut graph = compound_graph();
-            for id in ["cluster", "leaf", "shared"] {
-                graph.set_node(id.to_string(), NodeLabel::default());
-            }
-            for (serial, (v, w)) in pairs.iter().copied().enumerate() {
-                graph.set_edge_named(
-                    v.to_string(),
-                    w.to_string(),
-                    Some(format!("e{serial}")),
-                    Some(EdgeLabel::default()),
-                );
-            }
-            let index = FlowchartAdjustmentIndex::new(&graph);
-            let cluster = index
-                .hierarchy
-                .ordinal(&graph, "cluster")
-                .expect("cluster node");
-            let leaf = index.hierarchy.ordinal(&graph, "leaf").expect("leaf node");
-            index.has_common_edge(cluster, leaf)
-        }
-
-        assert!(indexed_common(&[("leaf", "cluster")]));
-        assert!(!indexed_common(&[("cluster", "leaf")]));
-        assert!(indexed_common(&[("cluster", "shared"), ("leaf", "shared")]));
-        assert!(!indexed_common(&[
-            ("shared", "cluster"),
-            ("shared", "leaf")
-        ]));
-        assert!(indexed_common(&[("cluster", "leaf"), ("leaf", "leaf")]));
-    }
-
-    #[test]
-    fn flowchart_adjustment_preserves_strict_cluster_endpoint_semantics() {
-        fn cluster_external(edges: &[(&str, &str)]) -> bool {
-            let mut graph = compound_graph();
-            for id in ["cluster", "child", "outside"] {
-                graph.set_node(id.to_string(), NodeLabel::default());
-            }
-            graph.set_parent("child".to_string(), "cluster".to_string());
-            for (serial, (v, w)) in edges.iter().copied().enumerate() {
-                graph.set_edge_named(
-                    v.to_string(),
-                    w.to_string(),
-                    Some(format!("e{serial}")),
-                    Some(EdgeLabel::default()),
-                );
-            }
-            adjust_flowchart_clusters_and_edges(&mut graph)["cluster"]
-        }
-
-        assert!(cluster_external(&[("cluster", "child")]));
-        assert!(cluster_external(&[("child", "cluster")]));
-        assert!(!cluster_external(&[("cluster", "outside")]));
-        assert!(!cluster_external(&[("cluster", "cluster")]));
-
-        let mut nested = compound_graph();
-        for id in ["outer", "inner", "leaf"] {
-            nested.set_node(id.to_string(), NodeLabel::default());
-        }
-        nested.set_parent("inner".to_string(), "outer".to_string());
-        nested.set_parent("leaf".to_string(), "inner".to_string());
-        nested.set_edge_named(
-            "inner".to_string(),
-            "leaf".to_string(),
-            Some("nested".to_string()),
-            Some(EdgeLabel::default()),
-        );
-        let external = adjust_flowchart_clusters_and_edges(&mut nested);
-        assert!(!external["outer"]);
-        assert!(external["inner"]);
-    }
-
-    #[test]
-    fn flowchart_anchor_index_preserves_parent_assignment_and_natural_dfs_order() {
-        let mut graph = compound_graph();
-        for id in ["cluster", "inner", "a", "b", "z"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("inner".to_string(), "cluster".to_string());
-        graph.set_parent("z".to_string(), "cluster".to_string());
-        // Parent assignment order, not node insertion order, defines sibling order.
-        graph.set_parent("b".to_string(), "inner".to_string());
-        graph.set_parent("a".to_string(), "inner".to_string());
-
-        let index = FlowchartAdjustmentIndex::new(&graph);
-        let cluster = index
-            .hierarchy
-            .ordinal(&graph, "cluster")
-            .expect("cluster node");
-        let first_anchor = index
-            .find_non_cluster_child(cluster, cluster)
-            .expect("first anchor");
-        assert_eq!(index.hierarchy.node_ids[first_anchor], "b");
-
-        for (serial, leaf) in ["b", "a", "z"].into_iter().enumerate() {
-            graph.set_edge_named(
-                leaf.to_string(),
-                "cluster".to_string(),
-                Some(format!("common-{serial}")),
-                Some(EdgeLabel::default()),
-            );
-        }
-        let index = FlowchartAdjustmentIndex::new(&graph);
-        let cluster = index
-            .hierarchy
-            .ordinal(&graph, "cluster")
-            .expect("cluster node");
-        let reserve_anchor = index
-            .find_non_cluster_child(cluster, cluster)
-            .expect("reserve anchor");
-        assert_eq!(index.hierarchy.node_ids[reserve_anchor], "z");
-    }
-
-    #[test]
-    fn flowchart_adjustment_preserves_sequential_external_cascade() {
-        fn cascade_graph(reverse_edges: bool) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-            let mut graph = compound_graph();
-            for id in ["outer", "middle", "inner", "leaf", "x", "y"] {
-                graph.set_node(id.to_string(), NodeLabel::default());
-            }
-            graph.set_parent("middle".to_string(), "outer".to_string());
-            graph.set_parent("inner".to_string(), "middle".to_string());
-            graph.set_parent("leaf".to_string(), "inner".to_string());
-
-            let mut insert = |v: &str, w: &str, name: &str| {
-                graph.set_edge_named(
-                    v.to_string(),
-                    w.to_string(),
-                    Some(name.to_string()),
-                    Some(EdgeLabel::default()),
-                );
-            };
-            if reverse_edges {
-                insert("middle", "y", "second");
-                insert("x", "outer", "first");
-            } else {
-                insert("x", "outer", "first");
-                insert("middle", "y", "second");
-            }
-            graph
-        }
-
-        let mut forward = cascade_graph(false);
-        let _ = adjust_flowchart_clusters_and_edges(&mut forward);
-        let forward_keys: Vec<(String, String)> = forward
-            .edge_keys()
-            .into_iter()
-            .map(|edge| (edge.v, edge.w))
-            .collect();
-        assert_eq!(
-            forward_keys,
-            vec![
-                ("x".to_string(), "inner".to_string()),
-                ("inner".to_string(), "y".to_string())
-            ]
-        );
-
-        let mut reverse = cascade_graph(true);
-        let _ = adjust_flowchart_clusters_and_edges(&mut reverse);
-        let reverse_keys: Vec<(String, String)> = reverse
-            .edge_keys()
-            .into_iter()
-            .map(|edge| (edge.v, edge.w))
-            .collect();
-        assert_eq!(
-            reverse_keys,
-            vec![
-                ("middle".to_string(), "y".to_string()),
-                ("x".to_string(), "inner".to_string())
-            ]
-        );
-    }
-
-    #[test]
-    fn flowchart_adjustment_collision_keeps_existing_slot_and_current_label() {
-        fn labeled_edge(serial: &str) -> EdgeLabel {
-            let mut label = EdgeLabel::default();
-            label
-                .extras
-                .insert("serial".to_string(), Value::String(serial.to_string()));
-            label
-        }
-
-        let mut graph = compound_graph();
-        for id in ["cluster", "child", "outside", "sentinel"] {
-            graph.set_node(id.to_string(), NodeLabel::default());
-        }
-        graph.set_parent("child".to_string(), "cluster".to_string());
-        graph.set_edge_named(
-            "cluster".to_string(),
-            "outside".to_string(),
-            Some("same".to_string()),
-            Some(labeled_edge("cluster")),
-        );
-        graph.set_edge_named(
-            "outside".to_string(),
-            "sentinel".to_string(),
-            Some("sentinel".to_string()),
-            Some(labeled_edge("sentinel")),
-        );
-        graph.set_edge_named(
-            "child".to_string(),
-            "outside".to_string(),
-            Some("same".to_string()),
-            Some(labeled_edge("existing")),
-        );
-
-        let _ = adjust_flowchart_clusters_and_edges(&mut graph);
-        let keys = graph.edge_keys();
-        assert_eq!(keys.len(), 2);
-        assert_eq!(
-            (keys[0].v.as_str(), keys[0].w.as_str()),
-            ("outside", "sentinel")
-        );
-        assert_eq!(
-            (keys[1].v.as_str(), keys[1].w.as_str()),
-            ("child", "outside")
-        );
-        let label = graph
-            .edge_by_key(&keys[1])
-            .expect("colliding edge keeps the existing key");
-        assert_eq!(label.extras["serial"], Value::String("cluster".to_string()));
-    }
-
-    #[test]
-    fn flowchart_adjustment_classifies_edges_once_independent_of_cluster_count() {
-        const CLUSTERS: usize = 100;
-        const EDGES: usize = 400;
-
-        let mut graph = compound_graph();
-        for cluster in 0..CLUSTERS {
-            graph.set_node(format!("c{cluster}"), NodeLabel::default());
-            graph.set_node(format!("n{cluster}"), NodeLabel::default());
-            graph.set_parent(format!("n{cluster}"), format!("c{cluster}"));
-        }
-        for edge in 0..EDGES {
-            graph.set_edge_named(
-                format!("n{}", edge % CLUSTERS),
-                format!("n{}", (edge * 37 + 11) % CLUSTERS),
-                Some(format!("e{edge}")),
-                Some(EdgeLabel::default()),
-            );
-        }
-        let original_edge_count = graph.edge_count();
-
-        reset_flowchart_adapter_work();
-        let _ = adjust_flowchart_clusters_and_edges(&mut graph);
-        let work = flowchart_adapter_work();
-
-        assert_eq!(original_edge_count, EDGES);
-        assert_eq!(work.hierarchy_builds, 1);
-        assert_eq!(work.hierarchy_node_visits, CLUSTERS * 2);
-        assert_eq!(work.boundary_edge_visits, EDGES);
-        assert_eq!(work.rewrite_edge_visits, EDGES);
-    }
-
-    #[test]
-    fn flowchart_adjustment_indexes_deep_edge_free_anchors_linearly() {
-        let (tx, rx) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("flowchart-linear-anchor-index".to_string())
-            .stack_size(512 * 1024)
-            .spawn(move || {
-                let mut graph = deep_compound_graph(DEEP_SUBGRAPH_DEPTH);
-                reset_flowchart_adapter_work();
-                let external = adjust_flowchart_clusters_and_edges(&mut graph);
-                tx.send((external.len(), flowchart_adapter_work()))
-                    .expect("send anchor work");
-            })
-            .expect("spawn anchor index test");
-
-        let (cluster_count, work) = rx
-            .recv_timeout(Duration::from_secs(15))
-            .expect("deep anchor indexing should remain stack-safe and linear");
-        assert_eq!(cluster_count, DEEP_SUBGRAPH_DEPTH);
-        assert_eq!(work.hierarchy_builds, 1);
-        assert_eq!(work.hierarchy_node_visits, DEEP_SUBGRAPH_DEPTH + 1);
-        assert_eq!(work.anchor_leaf_visits, DEEP_SUBGRAPH_DEPTH);
-        assert_eq!(work.anchor_pair_probes, DEEP_SUBGRAPH_DEPTH);
-        assert_eq!(work.boundary_edge_visits, 0);
-        assert_eq!(work.rewrite_edge_visits, 0);
     }
 
     fn deep_compound_graph(depth: usize) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
@@ -5202,22 +3160,18 @@ mod tests {
             .spawn(move || {
                 let mut graph = deep_compound_graph(DEEP_SUBGRAPH_DEPTH);
                 let descendants = extract_descendants("n0", &graph);
-                let index = FlowchartAdjustmentIndex::new(&graph);
-                let root = index.hierarchy.ordinal(&graph, "n0").expect("root node");
-                let anchor = index
-                    .find_non_cluster_child(root, root)
-                    .map(|ordinal| index.hierarchy.node_ids[ordinal].clone());
-                let subgraphs = deep_subgraphs(DEEP_SUBGRAPH_DEPTH);
-                let dirs = compute_effective_dir_by_id(&subgraphs, &graph, "TB", false);
-                let extracted = extract_flowchart_clusters_one_level(
-                    &mut graph,
-                    &subgraphs,
-                    &HashMap::from([("n0".to_string(), false)]),
+                let anchor = flowchart_find_non_cluster_child("n0", &graph, "n0");
+                let dirs = compute_effective_dir_by_id(
+                    &deep_subgraphs(DEEP_SUBGRAPH_DEPTH),
+                    &graph,
+                    "TB",
+                    false,
                 );
-                let copied = extracted
-                    .into_iter()
-                    .find_map(|(id, graph)| (id == "n0").then_some(graph))
-                    .expect("root cluster was extracted");
+
+                let mut descendants_by_id = HashMap::new();
+                descendants_by_id.insert("n0".to_string(), descendants.clone());
+                let mut copied = compound_graph();
+                copy_cluster("n0", &mut graph, &mut copied, "n0", &descendants_by_id);
 
                 tx.send(DeepTraversalOutcome {
                     descendant_count: descendants.len(),
