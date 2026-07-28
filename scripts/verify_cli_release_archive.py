@@ -1668,7 +1668,7 @@ def _repository_compatibility(repo_root: Path) -> dict[str, str]:
 
 def _cli_release_commands(runtime_ids: list[str]) -> list[str]:
     enabled = set(runtime_ids)
-    commands = {"capabilities", "detect", "parse"}
+    commands = {"capabilities", "detect", "help", "parse"}
     if enabled.intersection({"ascii", "svg"}):
         commands.add("render")
     for capability, gated_commands in (

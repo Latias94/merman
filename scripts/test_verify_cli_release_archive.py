@@ -42,6 +42,7 @@ CLI_RELEASE_COMMANDS = [
     "completion",
     "detect",
     "fix",
+    "help",
     "layout",
     "lint",
     "lint-rules",
